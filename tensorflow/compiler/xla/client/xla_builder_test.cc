@@ -405,6 +405,32 @@ TEST_F(XlaBuilderTest, AllGatherR2) {
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 64})));
 }
 
+TEST_F(XlaBuilderTest, AllReduceScatter) {
+  XlaBuilder b(TestName());
+  XlaComputation to_apply;
+  {
+    auto sub_builder = b.CreateSubBuilder("add");
+    auto arg0 =
+        Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32), "x");
+    auto arg1 =
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32), "y");
+    Add(arg0, arg1);
+    TF_ASSERT_OK_AND_ASSIGN(to_apply, sub_builder->Build());
+  }
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");
+  ReplicaGroup group;
+  group.add_replica_ids(0);
+  group.add_replica_ids(1);
+  AllReduceScatter(x, to_apply, /*scatter_dimension=*/1, /*shard_count=*/2,
+                   /*replica_groups=*/{group});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllReduceScatter);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 8})));
+}
+
 TEST_F(XlaBuilderTest, AllToAll) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16}), "x");

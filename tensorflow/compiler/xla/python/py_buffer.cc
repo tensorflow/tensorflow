@@ -112,8 +112,8 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
       buffer_(std::move(buffer)),
       traceback_(std::move(traceback)) {
   CHECK(PyGILState_Check());
-  next_ = client_->buffers_;
-  client_->buffers_ = this;
+  next_ = client_->buffers_[buffer_->device()->id()];
+  client_->buffers_[buffer_->device()->id()] = this;
   prev_ = nullptr;
   if (next_) {
     next_->prev_ = this;
@@ -122,8 +122,8 @@ PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
 
 PyBuffer::~PyBuffer() {
   CHECK(PyGILState_Check());
-  if (client_->buffers_ == this) {
-    client_->buffers_ = next_;
+  if (client_->buffers_[device()->id()] == this) {
+    client_->buffers_[device()->id()] = next_;
   }
   if (prev_) {
     prev_->next_ = next_;
@@ -575,7 +575,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       },
       py::is_method(type));
   type.attr("on_device_size_in_bytes") = py::cpp_function(
-      [](PyBuffer::object self) -> int64_t {
+      [](PyBuffer::object self) -> StatusOr<size_t> {
         return self.buf()->OnDeviceSizeInBytes();
       },
       py::is_method(type));

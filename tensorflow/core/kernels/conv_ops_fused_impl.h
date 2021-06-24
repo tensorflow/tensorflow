@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/fused_eigen_output_kernels.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
@@ -367,14 +368,15 @@ Status FindBestConvolveAlgorithm(
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& bias_desc,
     const se::dnn::BatchDescriptor& output_desc,
-    const se::dnn::ConvolutionDescriptor& conv_desc, const ConvLaunch launch,
-    OpKernelContext* context, se::Stream* stream,
-    se::DeviceMemory<T> output_ptr, const LogFunc& log,
+    const se::dnn::ConvolutionDescriptor& conv_desc, double conv_input_scale,
+    double side_input_scale, const ConvLaunch launch, OpKernelContext* context,
+    se::Stream* stream, se::DeviceMemory<T> output_ptr, const LogFunc& log,
     se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
   if (AutoTuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
     return Status::OK();
   }
+  profiler::ScopedAnnotation trace("cudnn_autotuning");
 
   // Find all candidate algorithms or execution plans (for CuDNN frontend APIs).
   std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
@@ -384,8 +386,9 @@ Status FindBestConvolveAlgorithm(
     if (!stream->parent()
              ->GetFusedConvolveExecutionPlans(
                  se::dnn::ConvolutionKind::FORWARD,
-                 se::dnn::ToDataType<T>::value, stream, input_desc, filter_desc,
-                 bias_desc, output_desc, conv_desc, &plans)
+                 se::dnn::ToDataType<T>::value, conv_input_scale,
+                 side_input_scale, stream, input_desc, filter_desc, bias_desc,
+                 output_desc, conv_desc, &plans)
              .ok()) {
       return errors::Unknown(
           "Failed to get convolution plans. This is probably because cuDNN "
@@ -713,35 +716,51 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         dnn_activation_mode  // activation_mode
     };
 
+    constexpr double kConvInputScale = 1.0;
+    constexpr double kSideInputScale = 0.0;
     // Launch fused convolution with given parameters and scratch allocator.
     // Record profile result into `profile_result` if it's not nullptr.
     const auto launch = [&](se::dnn::AlgorithmConfig algorithm_config,
                             se::ScratchAllocator* scratch_allocator,
                             se::DeviceMemory<T> output_ptr_to_use,
                             se::dnn::ProfileResult* profile_result) -> Status {
-      return stream->FusedConvolveWithAlgorithm(
-          input_desc, input_ptr,                     // input
-          /*conv_input_scale=*/1.0,                  // input_scale
-          filter_desc, filter_ptr,                   // filter
-          conv_desc,                                 // conv
-          side_input_ptr, /*side_input_scale=*/0.0,  // side_input
-          bias_desc, bias_ptr,                       // bias
-          dnn_activation_mode,                       // activation
-          output_desc, &output_ptr_to_use,           // output
-          scratch_allocator, algorithm_config, profile_result);
+      if (CudnnUseFrontend()) {
+        return stream->FusedConvolveWithExecutionPlan(
+            input_desc, input_ptr,            // input
+            kConvInputScale,                  // input_scale
+            filter_desc, filter_ptr,          // filter
+            conv_desc,                        // conv
+            side_input_ptr, kSideInputScale,  // side_input
+            bias_desc, bias_ptr,              // bias
+            dnn_activation_mode,              // activation
+            output_desc, &output_ptr_to_use,  // output
+            scratch_allocator, algorithm_config, profile_result);
+      } else {
+        return stream->FusedConvolveWithAlgorithm(
+            input_desc, input_ptr,            // input
+            kConvInputScale,                  // input_scale
+            filter_desc, filter_ptr,          // filter
+            conv_desc,                        // conv
+            side_input_ptr, kSideInputScale,  // side_input
+            bias_desc, bias_ptr,              // bias
+            dnn_activation_mode,              // activation
+            output_desc, &output_ptr_to_use,  // output
+            scratch_allocator, algorithm_config, profile_result);
+      }
     };
 
     se::dnn::AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune) {
       auto status = FindBestConvolveAlgorithm<T>(
           conv_parameters, input_desc, filter_desc, bias_desc, output_desc,
-          conv_desc, launch, context, stream, output_ptr,
+          conv_desc, kConvInputScale, kSideInputScale, launch, context, stream,
+          output_ptr,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
             LogFusedConvForwardAutotuneResults(
                 se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
                 output_ptr, bias_ptr, side_input_ptr, input_desc, filter_desc,
-                output_desc, conv_desc, 1.0, 0.0, dnn_activation_mode,
-                stream->parent(), results);
+                output_desc, conv_desc, kConvInputScale, kSideInputScale,
+                dnn_activation_mode, stream->parent(), results);
           },
           &algorithm_config);
       OP_REQUIRES_OK(context, status);

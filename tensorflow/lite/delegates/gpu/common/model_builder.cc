@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019-2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/lstm_parser.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder_internal.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/object_reader.h"
 #include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
@@ -2819,8 +2820,40 @@ class UnsupportedOperationParser : public TFLiteOperationParser {
   }
 };
 
+absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
+                         const TfLiteRegistration* registration,
+                         bool allow_quant_ops = false) {
+  return NewOperationParser(registration, allow_quant_ops)
+      ->IsSupported(context, node, registration);
+}
+
+bool IsAllAllowedTensors(TfLiteContext* context,
+                         const TfLiteIntArray* tensor_indices,
+                         const std::vector<TfLiteType>& allowed_types) {
+  for (int i = 0; i < tensor_indices->size; ++i) {
+    int tensor_idx = tensor_indices->data[i];
+    if (tensor_idx == kTfLiteOptionalTensor) continue;
+    const TfLiteTensor* t = &context->tensors[tensor_idx];
+    if (t->dims && t->dims->size >= 5) {
+      return false;
+    }
+    bool type_supported = false;
+    for (auto allowed_type : allowed_types) {
+      if (t->type == allowed_type) {
+        type_supported = true;
+        break;
+      }
+    }
+    if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
 std::unique_ptr<TFLiteOperationParser> NewOperationParser(
-    const TfLiteRegistration* registration, bool allow_quant_ops = false) {
+    const TfLiteRegistration* registration, bool allow_quant_ops) {
   const auto builtin_code = registration->builtin_code;
   switch (builtin_code) {
     case kTfLiteBuiltinAbs:
@@ -2999,35 +3032,6 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
   return std::make_unique<UnsupportedOperationParser>();
 }
 
-absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
-                         const TfLiteRegistration* registration,
-                         bool allow_quant_ops = false) {
-  return NewOperationParser(registration, allow_quant_ops)
-      ->IsSupported(context, node, registration);
-}
-
-bool IsAllAllowedTensors(TfLiteContext* context,
-                         const TfLiteIntArray* tensor_indices,
-                         const std::vector<TfLiteType>& allowed_types) {
-  for (int i = 0; i < tensor_indices->size; ++i) {
-    int tensor_idx = tensor_indices->data[i];
-    if (tensor_idx == kTfLiteOptionalTensor) continue;
-    const TfLiteTensor* t = &context->tensors[tensor_idx];
-    bool type_supported = false;
-    for (auto allowed_type : allowed_types) {
-      if (t->type == allowed_type) {
-        type_supported = true;
-        break;
-      }
-    }
-    if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
-      return false;
-    }
-  }
-  return true;
-}
-}  // namespace
-
 // TODO(impjdi): Check number of input/output tensors and their dimensions.
 // TODO(impjdi): Check ops' parameters.
 TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
@@ -3065,7 +3069,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
         *unsupported_details =
-            "OP is supported, but tensor type doesn't match.";
+            "OP is supported, but tensor type/shape doesn't supported.";
       }
       return false;
     }
@@ -3260,11 +3264,103 @@ absl::Status BuildFinalModel(
       BuildModel(context, delegate_params, graph, quant_conversion_map));
 
   // Apply general transformations on the graph.
-  NullTransformationReporter reporter;
-  ModelTransformer transformer(graph, &reporter);
+  ModelTransformer transformer(graph);
   if (!ApplyModelTransformations(&transformer)) {
     return absl::InternalError("Graph transformations failed");
   }
+  return absl::OkStatus();
+}
+
+namespace {
+
+class DelegateContext {
+ public:
+  struct DelegateData {
+    std::vector<int> input_ids;
+    std::vector<int> output_ids;
+    GraphFloat32* graph;
+    std::unique_ptr<absl::flat_hash_map<int, int>> quant_conversion_map;
+  };
+  bool Init(TfLiteContext* context,
+            const TfLiteDelegateParams* delegate_params) {
+    const auto* delegate_data =
+        reinterpret_cast<DelegateData*>(delegate_params->delegate->data_);
+    return delegate_data->graph &&
+           BuildModelEnforceIO(context, delegate_params,
+                               delegate_data->input_ids,
+                               delegate_data->output_ids, delegate_data->graph,
+                               delegate_data->quant_conversion_map.get())
+               .ok();
+  }
+};
+
+TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  TfLiteRegistration registration;
+  registration.init = [](TfLiteContext* context, const char* buffer,
+                         size_t) -> void* {
+    auto* delegate_context = new DelegateContext();
+    if (!delegate_context->Init(
+            context, reinterpret_cast<const TfLiteDelegateParams*>(buffer))) {
+      delete delegate_context;
+      return nullptr;
+    }
+    return delegate_context;
+  };
+  registration.free = [](TfLiteContext* context, void* buffer) -> void {
+    delete reinterpret_cast<DelegateContext*>(buffer);
+  };
+  registration.prepare = [](TfLiteContext* context,
+                            TfLiteNode* node) -> TfLiteStatus {
+    return node->user_data ? kTfLiteOk : kTfLiteError;
+  };
+  registration.invoke = nullptr;
+  registration.custom_name = nullptr;
+
+  const auto* delegate_data =
+      reinterpret_cast<const DelegateContext::DelegateData*>(delegate->data_);
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(
+      context, static_cast<bool>(delegate_data->quant_conversion_map));
+  const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
+      context, registration, ops_to_replace, delegate);
+  TfLiteIntArrayFree(ops_to_replace);
+  return status;
+}
+
+}  // namespace
+
+absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
+                                 const tflite::OpResolver& op_resolver,
+                                 GraphFloat32* graph, bool allow_quant_ops) {
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  tflite::InterpreterBuilder interpreter_builder(flatbuffer, op_resolver);
+  if (interpreter_builder(&interpreter) != kTfLiteOk || !interpreter) {
+    return absl::InternalError("Unable to prepare TfLite interpreter.");
+  }
+  TfLiteDelegate delegate;
+
+  DelegateContext::DelegateData delegate_data{interpreter->inputs(),
+                                              interpreter->outputs(), graph};
+  if (allow_quant_ops) {
+    delegate_data.quant_conversion_map =
+        absl::make_unique<absl::flat_hash_map<int, int>>();
+  }
+
+  delegate.data_ = &delegate_data;
+  delegate.flags = kTfLiteDelegateFlagsNone;
+  delegate.Prepare = DelegatePrepare;
+  delegate.CopyFromBufferHandle = nullptr;
+  delegate.CopyToBufferHandle = nullptr;
+  delegate.FreeBufferHandle = nullptr;
+
+  if (interpreter->ModifyGraphWithDelegate(&delegate) != kTfLiteOk) {
+    return absl::InternalError("Conversion from TfLite model failed.");
+  }
+
+  ModelTransformer transformer(graph);
+  if (!ApplyModelTransformations(&transformer)) {
+    return absl::InternalError("Graph transformations failed");
+  }
+
   return absl::OkStatus();
 }
 

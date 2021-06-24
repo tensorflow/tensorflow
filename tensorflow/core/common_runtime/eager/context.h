@@ -95,12 +95,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return context_id;
   }
 
-  EagerContext(const SessionOptions& opts,
-               ContextDevicePlacementPolicy default_device_placement_policy,
-               bool async, /*const*/ DeviceMgr* device_mgr,
-               bool device_mgr_owned, /*const*/ Rendezvous* rendezvous,
-               DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
-               bool run_eager_op_as_function = false);
+  EagerContext(
+      const SessionOptions& opts,
+      ContextDevicePlacementPolicy default_device_placement_policy, bool async,
+      /*const*/ DeviceMgr* device_mgr, bool device_mgr_owned,
+      /*const*/ Rendezvous* rendezvous,
+      DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
+      CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr,
+      bool run_eager_op_as_function = false);
 
   void Release() override { Unref(); }
 

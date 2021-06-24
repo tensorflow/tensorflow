@@ -161,6 +161,23 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   # support compilation with MSVC2015.
   if(MSVC)
     list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "/bigobj")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+      message("Disabling MSVC /O2 optimization for Win32")
+      set(CompFlags
+        CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_MINSIZEREL
+        CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        CMAKE_C_FLAGS_RELEASE
+        CMAKE_C_FLAGS_MINSIZEREL
+        CMAKE_C_FLAGS_RELWITHDEBINFO
+      )
+      foreach (CompFlag ${CompFlags})
+        string(REGEX REPLACE "(\/Ob. )" "" ${CompFlag} "${${CompFlag}}")
+        string(REPLACE "/O2" "/O1" ${CompFlag} "${${CompFlag}}")
+        list(REMOVE_DUPLICATES ${CompFlag})
+        set(${CompFlag} "${${CompFlag}}" CACHE INTERNAL "")
+      endforeach()
+    endif()
   elseif(CMAKE_COMPILER_IS_GNUCXX)
     list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-Wa,-mbig-obj")
   endif()
@@ -298,6 +315,7 @@ else()
   )
 endif()
 if(TFLITE_ENABLE_XNNPACK)
+  find_package(fp16_headers REQUIRED)
   find_package(xnnpack REQUIRED)
   populate_tflite_source_vars("delegates/xnnpack"
     TFLITE_DELEGATES_XNNPACK_SRCS
@@ -412,6 +430,7 @@ target_link_libraries(tensorflow-lite
     flatbuffers
     gemmlowp
     ruy
+    ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )
 

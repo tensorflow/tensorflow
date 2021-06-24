@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
+
 namespace mlir {
 class FuncOp;
 class ModuleOp;
@@ -27,6 +29,7 @@ class OperationPass;
 class Type;
 
 namespace TFL {
+using StringSet = absl::flat_hash_set<std::string>;
 class QuantizationSpecs;
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
@@ -51,7 +54,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
-    bool verify_numeric = false, bool legacy_float_scale = false);
+    bool verify_numeric = false, bool whole_model_verify = false,
+    bool legacy_float_scale = false, const StringSet& ops_blocklist = {},
+    const StringSet& nodes_blocklist = {});
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
@@ -81,6 +86,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass();
 
 std::unique_ptr<OperationPass<FuncOp>> CreateModifyIONodesPass(
     mlir::Type input_type, mlir::Type output_type);
+
+// Creates an instance of the TensorFlow Lite dialect PostQuantizeRemoveQDQ
+// pass.
+std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizeRemoveQDQPass();
 
 // Creates an instance of the TensorFlow Lite dialect pass to add default
 // quantization parameters.
@@ -116,17 +125,13 @@ CreateInsertCallOnceOpFromSessionInitializerPass();
 // TensorFlow Lite variables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
 
+// Creates a pass which analyze the model whether it is safe to use
+// native TFLite variables or not.
+std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass();
+
 // Creates a pass which is responsible for legalizing TensorFlow static hash
 // tables to TensorFlow Lite hash tables.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass();
-
-// Creates a pass which removes any unused bounded input arguments to functions
-// which corresponds to GlobalTensor.
-std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
-
-// Creates a pass which is responsible for initializing Tensorflow variables
-// as Tensorflow Lite variables.
-std::unique_ptr<OperationPass<ModuleOp>> CreateInitializeVariablesPass();
 
 // Creates get arithmetic count pass, which will calculate the arithmetic count
 // for each ops.

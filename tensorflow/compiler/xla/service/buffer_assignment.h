@@ -241,6 +241,7 @@ class BufferAllocation {
   // computation.
   void AddHeapTrace(const HeapSimulatorTrace& heap_trace) {
     heap_traces_.push_back(heap_trace);
+    heap_traces_.back().set_buffer_allocation_index(index());
   }
 
   // Return the set of heap traces used to assign slices to logical buffers in
@@ -618,12 +619,14 @@ class BufferAssigner {
       Colorer colorer = DefaultColorer(),
       const absl::flat_hash_set<HloOpcode>& must_not_live_out = {},
       HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
-      std::unique_ptr<PresetAssignments> preset_assignments = {});
+      std::unique_ptr<memory_space_assignment::PresetAssignments>
+          preset_assignments = {});
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
                  const absl::flat_hash_set<HloOpcode>& must_not_live_out,
-                 std::unique_ptr<PresetAssignments> preset_assignments)
+                 std::unique_ptr<memory_space_assignment::PresetAssignments>
+                     preset_assignments)
       : allocate_buffers_for_constants_(allocate_buffers_for_constants),
         colorer_(colorer),
         must_not_live_out_(must_not_live_out),
@@ -706,7 +709,8 @@ class BufferAssigner {
   absl::flat_hash_set<HloOpcode> must_not_live_out_;
 
   // Description of any buffer offsets that are already set by an earlier pass.
-  std::unique_ptr<PresetAssignments> preset_assignments_;
+  std::unique_ptr<memory_space_assignment::PresetAssignments>
+      preset_assignments_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

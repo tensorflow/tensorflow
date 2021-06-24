@@ -131,9 +131,8 @@ auto CudaLaunchKernel(Args&&... args)
 
 __host__ __device__ inline tensorflow::bfloat16 GpuLdg(
     const tensorflow::bfloat16* address) {
-  tensorflow::bfloat16 return_value;
-  return_value.value = GpuLdg(reinterpret_cast<const uint16_t*>(address));
-  return return_value;
+  return Eigen::numext::bit_cast<tensorflow::bfloat16>(
+      GpuLdg(reinterpret_cast<const uint16_t*>(address)));
 }
 // Already aliased in gpu_device_functions.h
 

@@ -39,6 +39,14 @@ def mean(*values):
   return 1.0 * sum(values) / len(values)
 
 
+def variance(*values):
+  return np.var(values, dtype=np.float64)
+
+
+def std(*values):
+  return np.std(values, dtype=np.float64)
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -128,6 +136,18 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           keepdims=False,
           expected=[3.75, 4, 4]  # = [mean(3, 1, 9, 2), mean(1, 5, 6), 4]
       ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_variance,
+          rt_input=[[3, 1, 4], [1, 1], [9], [2, 1]],
+          axis=0,
+          keepdims=False,
+          expected=[9.6875, 0.0, 0.0]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_std,
+          rt_input=[[3, 1, 4], [3, 1], [2], [2, 1]],
+          axis=0,
+          keepdims=False,
+          expected=[0.5, 0., 0.]),
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_any,
           rt_input=[[True, True], [True, True, False, True], [False, True]],
@@ -233,6 +253,18 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[[3.75, 4, 4]]  # = [[mean(3, 1, 9, 2), mean(1, 5, 6), 4]]
       ),
       dict(
+          ragged_reduce_op=ragged_math_ops.reduce_variance,
+          rt_input=[[3, 1, 4], [1, 1], [9], [2, 1]],
+          axis=0,
+          keepdims=True,
+          expected=[[9.6875, 0., 0.]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_std,
+          rt_input=[[3, 1, 4], [3, 1], [2], [2, 1]],
+          axis=0,
+          keepdims=True,
+          expected=[[0.5, 0., 0.]]),
+      dict(
           ragged_reduce_op=ragged_math_ops.reduce_any,
           rt_input=[[True, True], [True, True, False, True], [False, True]],
           axis=0,
@@ -298,6 +330,18 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=None,
           keepdims=False,
           expected=mean(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_variance,
+          rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
+          axis=None,
+          keepdims=False,
+          expected=variance(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_std,
+          rt_input=[[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]],
+          axis=None,
+          keepdims=False,
+          expected=std(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
       # axis=0
       dict(
           ragged_reduce_op=ragged_math_ops.reduce_sum,
@@ -330,6 +374,19 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           keepdims=False,
           expected=[mean(0, 4, 5, 7, 8),
                     mean(1, 6, 9), 2, 3]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_variance,
+          rt_input=[[0, 1, 2, 3], [1], [], [2, 1], [3], [4, 1]],
+          axis=0,
+          keepdims=False,
+          expected=[variance(0, 1, 2, 3, 4),
+                    variance(1, 1, 1), 0, 0]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_std,
+          rt_input=[[1, 1, 2, 3], [1], [], [1, 1], [1], [1, 1]],
+          axis=0,
+          keepdims=False,
+          expected=[std(1, 1, 1, 1, 1), std(1, 1, 1), 0, 0]),
       # axis=1
       # Note: we don't test mean here because it gives a NaN, and this will
       # cause assertEqual to fail (since NaN != NaN).  See testMeanNan().
@@ -505,6 +562,45 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=2,
           keepdims=False,
           expected=[[mean(1, 2), mean(3, 4, 5)], [mean(6, 7), 8], [9]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_variance,
+          rt_input=[[[6, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
+          axis=0,
+          keepdims=False,
+          expected=[[variance(6, 6, 9), variance(2, 7)],
+                    [variance(3, 8), 0., 0.]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_variance,
+          rt_input=[[[6, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
+          axis=1,
+          keepdims=False,
+          expected=[[variance(6, 3), variance(2, 4), 0.], [variance(6, 8), 0.],
+                    [0.]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_variance,
+          rt_input=[[[6, 2], [6, 9, 9]], [[6, 7], [8]], [[9]]],
+          axis=2,
+          keepdims=False,
+          expected=[[variance(6, 2), variance(6, 9, 9)], [variance(6, 7), 0.],
+                    [0.]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_std,
+          rt_input=[[[6, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
+          axis=0,
+          keepdims=False,
+          expected=[[std(6, 6, 9), std(2, 7)], [std(3, 8), 0., 0.]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_std,
+          rt_input=[[[6, 2], [3, 4, 5]], [[6, 7], [8]], [[9]]],
+          axis=1,
+          keepdims=False,
+          expected=[[std(6, 3), std(2, 4), 0.], [std(6, 8), 0.], [0.]]),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_std,
+          rt_input=[[[6, 2], [6, 9, 9]], [[6, 7], [8]], [[9]]],
+          axis=2,
+          keepdims=False,
+          expected=[[std(6, 2), std(6, 9, 9)], [std(6, 7), 0.], [0.]]),
 
       # Test case for GitHub issue 27497, multiple negative axes.
       dict(
@@ -546,10 +642,43 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     reduced = ragged_math_ops.reduce_mean(rt_input, axis=1)
     self.assertEqualWithNan(self.evaluate(reduced), expected)
 
+  def testVarianceNan(self):
+    rt_as_list = [[0, 1, 2, 3], [4], [], [5, 6], [7], [8, 9]]
+    expected = ([
+        variance(0, 1, 2, 3),
+        variance(4),
+        variance(),
+        variance(5, 6),
+        variance(7),
+        variance(8, 9)
+    ])
+    rt_input = ragged_factory_ops.constant(rt_as_list)
+    reduced = ragged_math_ops.reduce_variance(rt_input, axis=1)
+    self.assertEqualWithNan(self.evaluate(reduced), expected)
+
+  def testStdNan(self):
+    rt_as_list = [[0, 1, 1, 0], [4], [], [5, 6], [7], [8, 9]]
+    expected = ([std(0, 1, 1, 0), std(4), std(), std(5, 6), std(7), std(8, 9)])
+    rt_input = ragged_factory_ops.constant(rt_as_list)
+    reduced = ragged_math_ops.reduce_std(rt_input, axis=1)
+    self.assertEqualWithNan(self.evaluate(reduced), expected)
+
   def testMeanWithTensorInputs(self):
     tensor = [[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]]
     expected = [2.0, 20.0]
     reduced = ragged_math_ops.reduce_mean(tensor, axis=1)
+    self.assertAllEqual(reduced, expected)
+
+  def testVarianceWithTensorInputs(self):
+    tensor = [[6.0, 9.0, 6.0], [60.0, 90.0, 60.0]]
+    expected = [2., 200.]
+    reduced = ragged_math_ops.reduce_variance(tensor, axis=1)
+    self.assertAllEqual(reduced, expected)
+
+  def testStdWithTensorInputs(self):
+    tensor = [[1.0, 2.0, 2.0, 1.0], [10.0, 20.0, 20.0, 10.0]]
+    expected = [0.5, 5.]
+    reduced = ragged_math_ops.reduce_std(tensor, axis=1)
     self.assertAllEqual(reduced, expected)
 
   def testErrors(self):

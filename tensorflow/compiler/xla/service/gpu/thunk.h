@@ -61,6 +61,7 @@ class Thunk {
     kMemzero,
     kNcclAllGather,
     kNcclAllReduce,
+    kNcclAllReduceScatter,
     kNcclAllToAll,
     kOutfeed,
     kReplicaId,

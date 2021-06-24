@@ -204,7 +204,7 @@ def _prune_relocatable_code_impl(ctx):
             arguments = arguments,
             mnemonic = "nvprune",
         )
-        output.append(outputs)
+        outputs.append(output)
 
     return DefaultInfo(files = depset(outputs))
 

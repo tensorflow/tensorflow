@@ -38,6 +38,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_GRAPH_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -206,6 +207,10 @@ class Node {
   bool IsArg() const { return class_ == NC_ARG; }
   // Is this node a function output
   bool IsRetval() const { return class_ == NC_RETVAL; }
+
+  bool IsDistributedCommunication() const {
+    return op_def().is_distributed_communication();
+  }
 
   template <typename T>
   void AddAttr(const std::string& name, const T& val) {
@@ -520,6 +525,9 @@ class Graph {
   explicit Graph(const FunctionLibraryDefinition& flib_def);
 
   ~Graph();
+
+  // Clone the current graph into a new one.
+  std::unique_ptr<Graph> Clone();
 
   static const int kControlSlot;
 
@@ -874,6 +882,10 @@ inline bool IsScopedAllocator(const Node* n) { return n->IsScopedAllocator(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
+}
+
+inline bool IsDistributedCommunication(const Node* n) {
+  return n->IsDistributedCommunication();
 }
 
 // NOTE: We declare Reference type of NodeIter and NeighborIter as Node* (see

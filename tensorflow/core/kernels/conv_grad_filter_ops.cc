@@ -32,6 +32,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
@@ -753,16 +755,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    bool blas_launch_status =
-        stream
-            ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                           se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                           a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
-            .ok();
-    if (!blas_launch_status) {
-      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                      ", n=", n, ", k=", k));
-    }
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                                  se::blas::Transpose::kTranspose, n, m, k,
+                                  a_ptr, n, b_ptr, m, &c_ptr, n));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -784,16 +780,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    bool blas_launch_status =
-        stream
-            ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                           se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                           b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
-            .ok();
-    if (!blas_launch_status) {
-      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
-                                      ", n=", n, ", k=", k));
-    }
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
+                                  se::blas::Transpose::kTranspose, n, m, k,
+                                  b_ptr, n, a_ptr, m, &c_ptr, n));
     return;
   }
 
@@ -838,8 +828,9 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   // The Tensor Core in NVIDIA Volta+ GPUs supports efficient convolution with
   // fp16 in NHWC data layout. In all other configurations it's more efficient
   // to run computation in NCHW data format.
-  const bool compute_in_nhwc =
-      DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
+                               stream->GetCudaComputeCapability().IsAtLeast(
+                                   se::CudaComputeCapability::VOLTA);
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects the preferred layout and
@@ -998,6 +989,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
+    profiler::ScopedAnnotation trace("cudnn_autotuning");
+
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
 #if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;

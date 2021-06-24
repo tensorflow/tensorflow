@@ -273,6 +273,76 @@ TEST(AdaptiveSharedBatchSchedulerTest, FullBatchSchedulingBoostMicros) {
   stop_teardown.Notify();
 }
 
+TEST(AdaptiveSharedBatchSchedulerTest, FIFO) {
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+  {
+    AdaptiveSharedBatchScheduler<FakeTask>::Options options;
+    options.env = &env;
+    options.initial_in_flight_batches_limit = 1;
+    options.num_batch_threads = 1;
+    options.batches_to_average_over = 1000;
+    options.full_batch_scheduling_boost_micros = 0;
+    options.fifo_scheduling = true;
+    mutex mu;
+    int processed_batches = 0;
+    Notification finish_processing;
+    auto queue_callback = [&mu, &processed_batches, &finish_processing](
+                              std::unique_ptr<Batch<FakeTask>> batch) {
+      ASSERT_TRUE(batch->IsClosed());
+      finish_processing.WaitForNotification();
+      mutex_lock l(mu);
+      processed_batches++;
+      switch (processed_batches) {
+        case 1:
+          EXPECT_EQ(100, batch->size());
+          break;
+        case 2:
+          EXPECT_EQ(200, batch->size());
+          break;
+        case 3:
+          EXPECT_EQ(50, batch->size());
+          break;
+        case 4:
+          EXPECT_EQ(900, batch->size());
+          break;
+        default:
+          EXPECT_TRUE(false) << "Should only have 4 batches";
+      }
+    };
+    std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+    TF_ASSERT_OK(
+        AdaptiveSharedBatchScheduler<FakeTask>::Create(options, &scheduler));
+    AdaptiveSharedBatchScheduler<FakeTask>::QueueOptions queue_options;
+    std::unique_ptr<BatchScheduler<FakeTask>> queue1;
+    std::unique_ptr<BatchScheduler<FakeTask>> queue2;
+    queue_options.max_batch_size = 1000;
+    TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue1));
+    queue_options.max_batch_size = 100;
+    TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue2));
+
+    // First batch immediately processed.
+    TF_ASSERT_OK(ScheduleTask(100, queue1.get()));
+    env.AdvanceByMicroseconds(30);
+
+    TF_ASSERT_OK(ScheduleTask(100, queue1.get()));
+    env.AdvanceByMicroseconds(10);
+    TF_ASSERT_OK(ScheduleTask(100, queue1.get()));
+    env.AdvanceByMicroseconds(10);
+
+    TF_ASSERT_OK(ScheduleTask(50, queue2.get()));
+    env.AdvanceByMicroseconds(45);
+
+    TF_ASSERT_OK(ScheduleTask(900, queue1.get()));
+
+    finish_processing.Notify();
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
 TEST(AdaptiveSharedBatchSchedulerTest, DeleteQueue) {
   AdaptiveSharedBatchScheduler<FakeTask>::Options options;
   options.initial_in_flight_batches_limit = 1;

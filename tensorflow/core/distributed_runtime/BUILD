@@ -216,7 +216,7 @@ tf_cuda_library(
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/lib:device_profiler_session",
     ],
 )
 
@@ -278,6 +278,7 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
     ],
 )
@@ -549,6 +550,9 @@ tf_cc_test(
     name = "collective_rma_distributed_test",
     size = "small",
     srcs = ["collective_rma_distributed_test.cc"],
+    tags = [
+        "no_windows",  # TODO(b/187863739): Fix failure and remove.
+    ],
     deps = [
         ":collective_rma_distributed",
         ":device_resolver_distributed",
@@ -656,12 +660,7 @@ tf_cuda_cc_test(
         "master_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [
-        "manual",  # TODO(b/27683709): Re-enable when not flaky.
-        "notap",  # TODO(b/27683709): Re-enable when not flaky.
-        "noguitar",  # TODO(b/27683709): Re-enable when not flaky.
-        "no_oss",  # TODO(b/27683709): Re-enable when not flaky.
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
         ":remote_device",

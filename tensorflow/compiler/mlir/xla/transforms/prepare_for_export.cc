@@ -35,12 +35,10 @@ namespace mhlo {
 namespace {
 
 // Prepare module for export to XLA HLO.
-struct PrepareForExportPass : PrepareForExportPassBase<PrepareForExportPass> {
+struct PrepareForExportPass
+    : public PrepareForExportPassBase<PrepareForExportPass> {
   void runOnFunction() override;
 };
-
-static PassRegistration<PrepareForExportPass> registration(
-    "xla-prepare-for-export", "Prepare for XLA export");
 
 }  // end namespace
 

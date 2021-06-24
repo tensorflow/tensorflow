@@ -1,19 +1,32 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//third_party/mlir:tblgen.bzl", "gentbl")
+load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
-    default_visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen:friends"],
+    default_visibility = [
+        "//tensorflow/compiler/mlir/tools/kernel_gen:friends",
+        # Allow visibility from the mlir language server.
+        "//learning/brain/mlir/mlir_lsp_server:__pkg__",
+    ],
     licenses = ["notice"],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tf_framework_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-op-decls", "tf_framework_ops.h.inc"),
-        ("-gen-op-defs", "tf_framework_ops.cc.inc"),
-        ("-gen-dialect-decls", "tf_framework_dialect.h.inc"),
+        (
+            ["-gen-op-decls"],
+            "tf_framework_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "tf_framework_ops.cc.inc",
+        ),
+        (
+            ["-gen-dialect-decls"],
+            "tf_framework_dialect.h.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_framework_ops.td",
@@ -24,12 +37,18 @@ gentbl(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "tf_status_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
-        ("-gen-enum-decls", "tf_status.h.inc"),
-        ("-gen-enum-defs", "tf_status.cc.inc"),
+        (
+            ["-gen-enum-decls"],
+            "tf_status.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "tf_status.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_status.td",

@@ -262,23 +262,24 @@ Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
 Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
                        DatasetBase** output) {
   const Options& options = input->options();
-  std::vector<tstring> optimizations_enabled;
-  std::vector<tstring> optimizations_disabled;
-  std::vector<tstring> optimizations_default;
+  absl::flat_hash_set<tstring> optimizations_enabled;
+  absl::flat_hash_set<tstring> optimizations_disabled;
+  absl::flat_hash_set<tstring> optimizations_default;
   GetOptimizations(options, &optimizations_enabled, &optimizations_disabled,
                    &optimizations_default);
-
-  std::vector<std::string> optimization_configs;
-  CreateGraphRewriteConfigs(options, &optimization_configs);
   // Disable `enable_gradient_descent` as it assumes presence of ModelDatasetOp.
-  optimizations_disabled.push_back("enable_gradient_descent");
-  auto optimizations = ConfigureExperimentsAndSelectOptimizations(
-      optimizations_enabled, optimizations_disabled, optimizations_default);
+  optimizations_disabled.insert("enable_gradient_descent");
 
+  auto experiments = GetExperiments();
+  LogAndRecordExperiments(experiments);
+  auto optimizations =
+      SelectOptimizations(experiments, optimizations_enabled,
+                          optimizations_disabled, optimizations_default);
   if (optimizations.empty()) {
     return RootDataset::FromOptions(input, output);
   }
 
+  auto optimization_configs = CreateGraphRewriteConfigs(options);
   auto config_factory = [&optimizations, &optimization_configs]() {
     return CreateRewriterConfig(optimizations, optimization_configs);
   };

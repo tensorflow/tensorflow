@@ -7,6 +7,7 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -36,7 +37,6 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_chromiumos",
     "if_google",
     "if_not_android",
     "if_windows",
@@ -568,6 +568,26 @@ cc_library(
 )
 
 cc_library(
+    name = "intrusive_ptr",
+    hdrs = ["intrusive_ptr.h"],
+    deps = [],
+)
+
+tf_cc_test(
+    name = "intrusive_ptr_test",
+    size = "small",
+    srcs = [
+        "intrusive_ptr_test.cc",
+    ],
+    deps = [
+        ":intrusive_ptr",
+        ":refcount",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
@@ -671,6 +691,19 @@ cc_library(
         ":types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
+    ],
+)
+
+cc_library(
+    name = "status_matchers",
+    testonly = 1,
+    srcs = ["status_matchers.cc"],
+    hdrs = ["status_matchers.h"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 
@@ -1194,6 +1227,21 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "status_matchers_test",
+    size = "small",
+    srcs = ["status_matchers_test.cc"],
+    deps = [
+        ":status_matchers",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+tf_cc_test(
     name = "tstring_test",
     size = "small",
     srcs = ["tstring_test.cc"],
@@ -1536,6 +1584,7 @@ filegroup(
         "demangle.h",
         "denormal.h",
         "host_info.h",
+        "intrusive_ptr.h",
         "platform.h",
         "protobuf_internal.h",
         "refcount.h",
@@ -1662,6 +1711,7 @@ filegroup(
         "hash.h",
         "host_info.h",
         "init_main.h",
+        "intrusive_ptr.h",
         "load_library.h",
         "logging.h",
         "macros.h",
@@ -1709,15 +1759,15 @@ filegroup(
         "tracing.h",
         "tstring.h",
         "types.h",
-    ] + if_chromiumos(
-        tf_google_mobile_srcs_no_runtime(),
-        otherwise = [
+    ] + selects.with_or({
+        ("//tensorflow:chromiumos", "//tensorflow:fuchsia"): tf_google_mobile_srcs_no_runtime(),
+        "//conditions:default": [
             "//tensorflow/core/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "threadpool.cc",
             "tracing.cc",
         ],
-    ) + tf_platform_alias("additional_mobile_srcs_no_runtime"),
+    }) + tf_platform_alias("additional_mobile_srcs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 

@@ -32,6 +32,11 @@ from six.moves import map
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
 from tensorflow.lite.python import wrap_toco
+from tensorflow.lite.python.convert_phase import Component
+from tensorflow.lite.python.convert_phase import convert_phase
+from tensorflow.lite.python.convert_phase import ConverterError
+from tensorflow.lite.python.convert_phase import SubComponent
+from tensorflow.lite.python.metrics_wrapper import metrics_wrapper as _metrics_wrapper
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -191,18 +196,17 @@ class OpsSet(enum.Enum):
     return [str(option) for option in list(OpsSet)]
 
 
-class ConverterError(Exception):
-  """Raised when an error occurs during model conversion."""
-  pass
-
-
+@convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.QUANTIZE)
 def mlir_quantize(input_data_str,
                   disable_per_channel=False,
                   fully_quantize=False,
                   inference_type=_types_pb2.QUANTIZED_INT8,
                   input_data_type=dtypes.float32,
                   output_data_type=dtypes.float32,
-                  enable_numeric_verify=False):
+                  enable_numeric_verify=False,
+                  enable_whole_model_verify=False,
+                  blocklisted_ops=None,
+                  blocklisted_nodes=None):
   """Quantize `input_data_str` with calibration results.
 
   Args:
@@ -217,7 +221,14 @@ def mlir_quantize(input_data_str,
     output_data_type: Data type for the outputs. The default value is float32.
     enable_numeric_verify: Experimental. Subject to change. Bool indicating
       whether to add NumericVerify ops into the debug mode quantized model.
-
+    enable_whole_model_verify: Experimental. Subject to change. Bool indicating
+    whether to add verification for layer by layer, or on whole model. When
+    disabled (per-layer) float and quantized ops will be run from same input
+    (output of previous quantized layer). When enabled, float and quantized ops
+    will run with respective float and quantized output of previous ops.
+    blocklisted_ops: Experimental. Subject to change. Set of ops to blocklist.
+    blocklisted_nodes: Experimental. Subject to change. Set of notes to
+      blocklist.
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
@@ -226,9 +237,11 @@ def mlir_quantize(input_data_str,
       input_data_str, disable_per_channel, fully_quantize, inference_type,
       convert_tensor_tf_type_to_tflite_type(input_data_type),
       convert_tensor_tf_type_to_tflite_type(output_data_type),
-      enable_numeric_verify)
+      enable_numeric_verify, enable_whole_model_verify, blocklisted_ops,
+      blocklisted_nodes)
 
 
+@convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.SPARSIFY)
 def mlir_sparsify(input_data_str):
   """Sparsify `input_data_str` to encode sparse tensor with proper format.
 
@@ -294,8 +307,39 @@ def toco_convert_protos(model_flags_str,
                                                  enable_mlir_converter)
       return model_str
     except Exception as e:
-      raise ConverterError(str(e))
+      converter_error = ConverterError(str(e))
+      for error_data in _metrics_wrapper.retrieve_collected_errors():
+        converter_error.append_error(error_data)
+      raise converter_error
 
+  return _run_toco_binary(model_flags_str, toco_flags_str, input_data_str,
+                          debug_info_str)
+
+
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_GRAPHDEF_USING_DEPRECATED_CONVERTER)
+def _run_toco_binary(model_flags_str,
+                     toco_flags_str,
+                     input_data_str,
+                     debug_info_str=None):
+  """Convert `input_data_str` using TOCO converter binary.
+
+  Args:
+    model_flags_str: Serialized proto describing model properties, see
+      `toco/model_flags.proto`.
+    toco_flags_str: Serialized proto describing conversion properties, see
+      `toco/toco_flags.proto`.
+    input_data_str: Input data in serialized form (e.g. a graphdef is common)
+    debug_info_str: Serialized `GraphDebugInfo` proto describing logging
+      information. (default None)
+
+  Returns:
+    Converted model in serialized form (e.g. a TFLITE model is common).
+  Raises:
+    ConverterError: When cannot find the toco binary.
+    RuntimeError: When conversion fails, an exception is raised with the error
+      message embedded.
+  """
   if distutils.spawn.find_executable(_toco_from_proto_bin) is None:
     raise ConverterError("""Could not find toco_from_protos binary, make sure
 your virtualenv bin directory or pip local bin directory is in your path.
@@ -353,8 +397,6 @@ Alternative, use virtualenv.""")
         output_filename,
         "--debug_proto_file={}".format(debug_filename),
     ]
-    if enable_mlir_converter:
-      cmd.append("--enable_mlir_converter")
     cmdline = " ".join(cmd)
     is_windows = _platform.system() == "Windows"
     proc = _subprocess.Popen(
@@ -398,9 +440,12 @@ def build_toco_flags(inference_type=dtypes.float32,
                      target_ops=None,
                      conversion_summary_dir=None,
                      select_user_tf_ops=None,
+                     allow_all_select_tf_ops=False,
                      enable_tflite_resource_variables=False,
                      unfold_batchmatmul=True,
                      lower_tensor_list_ops=True,
+                     accumulation_type=None,
+                     allow_bfloat16=False,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -418,6 +463,7 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.allow_custom_ops = allow_custom_ops
   if select_user_tf_ops:
     toco.select_user_tf_ops.extend(select_user_tf_ops)
+  toco.allow_all_select_tf_ops = allow_all_select_tf_ops
   toco.post_training_quantize = post_training_quantize
   toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
@@ -436,6 +482,11 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.enable_tflite_resource_variables = enable_tflite_resource_variables
   toco.unfold_batchmatmul = unfold_batchmatmul
   toco.lower_tensor_list_ops = lower_tensor_list_ops
+  if accumulation_type:
+    toco.accumulation_type = convert_tensor_tf_type_to_tflite_type(
+        accumulation_type, usage="accumulation_type flag")
+  toco.allow_bfloat16 = allow_bfloat16
+
   return toco
 
 
@@ -465,8 +516,11 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_tags=None,
                               saved_model_exported_names=None,
                               select_user_tf_ops=None,
+                              allow_all_select_tf_ops=False,
                               unfold_batchmatmul=True,
-                              lower_tensor_list_ops=True):
+                              lower_tensor_list_ops=True,
+                              accumulation_type=None,
+                              allow_bfloat16=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -544,10 +598,16 @@ def build_toco_convert_protos(input_tensors,
     select_user_tf_ops: List of user's defined TensorFlow ops need to be
       supported in the TensorFlow Lite runtime. These ops will be supported as
       select TensorFlow ops.
+    allow_all_select_tf_ops: If True, automatically add all TF ops (including
+      custom TF ops) to the converted model as flex ops.
     unfold_batchmatmul: Whether to unfold tf.BatchMatMul to a set of
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
     lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
       not, use Flex tensor list ops.
+    accumulation_type: Data type of the accumulators in quantized inference.
+      Typically used for float16 quantization and is either fp16 or fp32.
+    allow_bfloat16: Whether the converted model supports reduced precision
+      inference with the bfloat16 type.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -576,8 +636,11 @@ def build_toco_convert_protos(input_tensors,
       target_ops=target_ops,
       conversion_summary_dir=conversion_summary_dir,
       select_user_tf_ops=select_user_tf_ops,
+      allow_all_select_tf_ops=allow_all_select_tf_ops,
       unfold_batchmatmul=unfold_batchmatmul,
-      lower_tensor_list_ops=lower_tensor_list_ops)
+      lower_tensor_list_ops=lower_tensor_list_ops,
+      accumulation_type=accumulation_type,
+      allow_bfloat16=allow_bfloat16)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
@@ -630,8 +693,11 @@ def build_toco_convert_protos(input_tensors,
   return model, toco, debug_info
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_GRAPHDEF)
 def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
-                           enable_mlir_converter, *args, **kwargs):
+                           enable_mlir_converter, control_output_arrays, *args,
+                           **kwargs):
   """"Convert a model using TOCO.
 
   This function is used to convert GraphDefs that cannot be loaded into
@@ -644,12 +710,16 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     input_arrays_with_shape: Tuple of strings representing input tensor names
       and list of integers representing input shapes
       (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
-        into TensorFlow and when `input_tensors` is None. (default None)
+        into TensorFlow and when `input_tensors` is None.
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
-      (default None)
     enable_mlir_converter: Enables MLIR-based conversion instead of TOCO
       conversion.
+    control_output_arrays: Control output node names. This is used when
+      converting a Graph with no output tensors. For example, if the
+      graph's last operation is a Print op, just specify that op's name in
+      this field. This can be used together with the `output_arrays`
+      parameter.
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
 
@@ -677,8 +747,12 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     input_array.name = name
     input_array.shape.dims.extend(list(map(int, shape)))
 
-  for name in output_arrays:
-    model_flags.output_arrays.append(name)
+  if output_arrays:
+    for name in output_arrays:
+      model_flags.output_arrays.append(name)
+  if control_output_arrays:
+    for name in control_output_arrays:
+      model_flags.control_output_arrays.append(name)
 
   data = toco_convert_protos(
       model_flags.SerializeToString(),
@@ -688,6 +762,8 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
   return data
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_GRAPHDEF)
 def toco_convert_impl(input_data, input_tensors, output_tensors,
                       enable_mlir_converter, *args, **kwargs):
   """"Convert a model using TOCO.
@@ -725,6 +801,8 @@ def toco_convert_impl(input_data, input_tensors, output_tensors,
   return data
 
 
+@convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
+               SubComponent.CONVERT_SAVED_MODEL)
 def convert_saved_model(saved_model_dir=None,
                         saved_model_version=0,
                         saved_model_tags=None,

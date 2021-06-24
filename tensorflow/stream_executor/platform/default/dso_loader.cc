@@ -149,6 +149,10 @@ port::StatusOr<void*> GetRocrandDsoHandle() {
   return GetDsoHandle("rocrand", "");
 }
 
+port::StatusOr<void*> GetRocsolverDsoHandle() {
+  return GetDsoHandle("rocsolver", "");
+}
+
 port::StatusOr<void*> GetRoctracerDsoHandle() {
   return GetDsoHandle("roctracer64", "");
 }
@@ -234,6 +238,11 @@ port::StatusOr<void*> GetRocrandDsoHandle() {
 
 port::StatusOr<void*> GetRoctracerDsoHandle() {
   static auto result = new auto(DsoLoader::GetRoctracerDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetRocsolverDsoHandle() {
+  static auto result = new auto(DsoLoader::GetRocsolverDsoHandle());
   return *result;
 }
 

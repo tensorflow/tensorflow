@@ -48,6 +48,11 @@ class RandomAlgorithm(enum.IntEnum):
   RNG_THREE_FRY: int
   RNG_PHILOX: int
 
+class CustomCallSchedule(enum.IntEnum):
+  SCHEDULE_NONE: int
+  SCHEDULE_LATEST: int
+  SCHEDULE_EARLIEST: int
+
 def AfterAll(builder: XlaBuilder, tokens: Sequence[XlaOp]) -> XlaOp: ...
 def AllGather(
     operand: XlaOp,
@@ -63,6 +68,15 @@ def AllReduce(
     replica_groups: Sequence[_ReplicaGroup] = ...,
     channel_id: Optional[ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...) -> XlaOp: ...
+def AllReduceScatter(
+    operand: XlaOp,
+    computation: XlaComputation,
+    scatter_dimension: int,
+    shard_count: int,
+    replica_groups: Sequence[_ReplicaGroup] = ...,
+    channel_id: Optional[ChannelHandle] = ...,
+    layout: Optional[_Layout] = ...,
+    use_global_device_ids: Optional[bool] = ...) -> XlaOp: ...
 def AllToAll(
     operand: XlaOp,
     split_dimension: int,
@@ -127,7 +141,8 @@ def CustomCall(
     operands: Sequence[XlaOp],
     shape: Shape,
     opaque: bytes = ...,
-    has_side_effects: bool = ...) -> XlaOp: ...
+    has_side_effects: bool = ...,
+    schedule: CustomCallSchedule = ...) -> XlaOp: ...
 def CustomCallWithLayout(
     builder: XlaBuilder,
     call_target_name: bytes,
@@ -135,7 +150,8 @@ def CustomCallWithLayout(
     shape_with_layout: Shape,
     operand_shapes_with_layout: Sequence[Shape],
     opaque: bytes = ...,
-    has_side_effects: bool = ...) -> XlaOp: ...
+    has_side_effects: bool = ...,
+    schedule: CustomCallSchedule = ...) -> XlaOp: ...
 def CustomCallWithAliasing(
     builder: XlaBuilder,
     call_target_name: bytes,
@@ -145,7 +161,8 @@ def CustomCallWithAliasing(
     opaque: bytes = ...,
     has_side_effects: bool = ...,
     output_operand_aliasing: Sequence[Tuple[ShapeIndex, Tuple[int, ShapeIndex]]] = ...,
-    literal: _LiteralSlice = ...) -> XlaOp: ...
+    literal: _LiteralSlice = ...,
+    schedule: CustomCallSchedule = ...) -> XlaOp: ...
 def Dot(
     lhs: XlaOp,
     rhs: XlaOp,
@@ -174,7 +191,8 @@ def Eigh(
     a: XlaOp,
     lower: bool = ...,
     max_iter: int = ...,
-    epsilon: float = ...) -> Tuple[XlaOp, XlaOp]: ...
+    epsilon: float = ...,
+    sort_eigenvalues: bool = ...) -> Tuple[XlaOp, XlaOp]: ...
 def Fft(
     operand: XlaOp,
     fft_type: FftType,

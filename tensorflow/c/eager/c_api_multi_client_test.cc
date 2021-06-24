@@ -24,58 +24,9 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace {
-
-tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
-                                              int num_tasks) {
-  tensorflow::ServerDef server_def;
-  server_def.set_protocol("grpc");
-  server_def.set_job_name(job_name);
-  server_def.set_task_index(0);
-  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
-  tensorflow::JobDef* job_def = cluster_def->add_job();
-  job_def->set_name(job_name);
-  for (int i = 0; i < num_tasks; i++) {
-    int port = tensorflow::testing::PickUnusedPortOrDie();
-    job_def->mutable_tasks()->insert(
-        {i, tensorflow::strings::StrCat("localhost:", port)});
-  }
-  auto* config = server_def.mutable_default_session_config();
-  config->mutable_experimental()->set_collective_group_leader(
-      tensorflow::strings::StrCat("/job:", job_name, "/replica:0/task:", 0));
-  auto* rewrite_options =
-      config->mutable_graph_options()->mutable_rewrite_options();
-  rewrite_options->set_scoped_allocator_optimization(
-      tensorflow::RewriterConfig::ON);
-  rewrite_options->mutable_scoped_allocator_opts()->add_enable_op(
-      "CollectiveReduce");
-  return server_def;
-}
-
-TFE_Op* AllReduceOp(TFE_Context* ctx, TFE_TensorHandle* in, int group_size) {
-  TF_Status* status = TF_NewStatus();
-
-  TFE_Op* op = TFE_NewOp(ctx, "CollectiveReduce", status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_OpAddInput(op, in, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
-  TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(in));
-  TFE_OpSetAttrInt(op, "group_size", group_size);
-  TFE_OpSetAttrInt(op, "group_key", 123);
-  TFE_OpSetAttrInt(op, "instance_key", 456);
-  TFE_OpSetAttrString(op, "merge_op", "Add", 3);
-  TFE_OpSetAttrString(op, "final_op", "Id", 2);
-  std::vector<int64_t> subdiv_offsets;
-  TFE_OpSetAttrIntList(op, "subdiv_offsets", subdiv_offsets.data(),
-                       subdiv_offsets.size());
-
-  return op;
-}
 
 TEST(CAPI, MultiClientCollectiveOps) {
   const int cluster_size = 2;

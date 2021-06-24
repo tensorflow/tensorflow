@@ -45,16 +45,19 @@ struct MklBatchNormFwdParams {
   int depth;
   float eps;
   bool training;
+  TensorFormat data_format;
   FusedBNActivationMode activation_mode;
   memory::desc src_md;
 
   MklBatchNormFwdParams(const memory::dims& src_dims, int depth, float eps,
-                        bool training, memory::desc src_md,
+                        bool training, TensorFormat data_format,
+                        memory::desc src_md,
                         FusedBNActivationMode activation_mode)
       : src_dims(src_dims),
         depth(depth),
         eps(eps),
         training(training),
+        data_format(data_format),
         activation_mode(activation_mode),
         src_md(src_md) {}
 };
@@ -356,6 +359,7 @@ class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey<int>(fwdParams.depth);
     key_creator.AddAsKey<float>(fwdParams.eps);
     key_creator.AddAsKey<bool>(fwdParams.training);
+    key_creator.AddAsKey<TensorFormat>(fwdParams.data_format);
     key_creator.AddAsKey<FusedBNActivationMode>(fwdParams.activation_mode);
     key_creator.AddAsKey(typeid(T).name());
     key_creator.AddAsKey(typeid(U).name());
@@ -380,18 +384,20 @@ struct MklBatchNormBwdParams {
   int depth;
   float eps;
   bool training;
-
+  TensorFormat data_format;
   memory::desc src_md;
   memory::desc diff_dst_md;
 
   MklBatchNormBwdParams(memory::dims src_dims, memory::dims diff_dst_dims,
                         int depth, float eps, bool training,
-                        memory::desc src_md, memory::desc diff_dst_md)
+                        TensorFormat data_format, memory::desc src_md,
+                        memory::desc diff_dst_md)
       : src_dims(src_dims),
         diff_dst_dims(diff_dst_dims),
         depth(depth),
         eps(eps),
         training(training),
+        data_format(data_format),
         src_md(src_md),
         diff_dst_md(diff_dst_md) {}
 };
@@ -614,6 +620,7 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey<int>(bwdParams.depth);
     key_creator.AddAsKey<float>(bwdParams.eps);
     key_creator.AddAsKey<bool>(bwdParams.training);
+    key_creator.AddAsKey<TensorFormat>(bwdParams.data_format);
     key_creator.AddAsKey(typeid(T).name());
     key_creator.AddAsKey(typeid(U).name());
     return key_creator.GetKey();
@@ -774,7 +781,7 @@ class MklFusedBatchNormOp : public OpKernel {
                         : memory::desc(src_dims, MklDnnType<T>(), dnn_fmt);
 
       MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_,
-                                      src_md, activation_mode_);
+                                      tensor_format_, src_md, activation_mode_);
 
       // Get forward batch-normalization op from the primitive caching pool.
       MklFusedBatchNormFwdPrimitive<T, U>* bn_fwd =
@@ -1219,7 +1226,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
       diff_weights.AllocateBuffer(2 * depth_ * sizeof(U));
 
       MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
-                                      is_training_, src_md, diff_dst_md);
+                                      is_training_, tensor_format_, src_md,
+                                      diff_dst_md);
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 

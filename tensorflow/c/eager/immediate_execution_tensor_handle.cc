@@ -29,8 +29,14 @@ std::string ImmediateExecutionTensorHandle::DebugString() const {
   if (!SummarizeValue(value_string).ok()) {
     value_string = "<error computing value>";
   }
+  Status s;
+  const char* device_name = DeviceName(&s);
+  if (!s.ok()) {
+    device_name = "<error fetching device name>";
+  }
   return absl::StrCat("TensorHandle(", value_string, ", shape=", shape_string,
-                      ", dtype=", DataType_Name(DataType()), ")");
+                      ", dtype=", DataType_Name(DataType()), ", device=\"",
+                      device_name, "\")");
 }
 
 Status ImmediateExecutionTensorHandle::SummarizeValue(

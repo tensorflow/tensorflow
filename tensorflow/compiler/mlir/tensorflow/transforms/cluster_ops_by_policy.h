@@ -58,6 +58,11 @@ enum class ValueConstraint {
 // the shape, you always know the rank.
 ValueConstraint Merge(ValueConstraint a, ValueConstraint b);
 
+// Returns success if constraint can be resolved statically based on the value
+// type, e.g. `shape` constraint can be resolved if the value is a tensor of
+// statically known shape.
+LogicalResult IsStaticallyResolved(Value value, ValueConstraint constraint);
+
 raw_ostream& operator<<(raw_ostream& os, const ValueConstraint& constraint);
 
 // -------------------------------------------------------------------------- //
@@ -91,6 +96,10 @@ class ValuesConstraintSet {
 
   // Merges all constrains from the other constraints set into this one.
   void MergeAll(const ValuesConstraintSet& other);
+
+  // Remove constraints that can be statically resolved from the type of the
+  // constrained value (see `IsStaticallyResolved` defined above).
+  ValuesConstraintSet& Resolve();
 
   // Reset all constraints.
   ValuesConstraintSet& Reset();
@@ -227,19 +236,31 @@ tf_device::ClusterOp CreateClusterOp(Cluster& cluster, StringAttr policy = {});
 // Helper functions for value constraints propagations and analysis.
 // -------------------------------------------------------------------------- //
 
-// Propagates initial constraints on the values in the `region` to the other
-// values in the same region, using user provided set of clustering policies.
+// Propagates initial constraints on the values defined by the `constraints` set
+// with operations in the `root` as a starting point, using user provided set of
+// clustering policies.
 //
-// Initially constrained values must be defined by operations in the `region`,
-// propagating constraints through block arguments is not currently supported.
+// Filter predicate specifies if constraints should be propagated across the
+// given operation. Operations in the root set will be also filtered using
+// the `filter` predicate.
+//
+// Optionally resolve constraints that can be statically satisfied by the
+// value type, and stop constraints propagation early.
 //
 // Returns failure if constraints can't be propagated through some of the
-// operations (there is no clustering policy for an operation, or constraints
-// can't be satisfied by the policy), and attaches error diagnostics to the
-// operation that prevented constraints propagation.
+// operations accepted by the filter (there is no clustering policy for an
+// operation, or constraints can't be satisfied by the policy), and attaches
+// error diagnostics to the operation that prevented constraints propagation.
+mlir::LogicalResult PropagateValuesConstraints(
+    llvm::ArrayRef<Operation*> root, std::function<bool(Operation*)> filter,
+    const ClusteringPolicySet& policies, ValuesConstraintSet& constraints,
+    bool resolve = false);
+
+// Propagates initial constraints on the values in the `region` to the other
+// values in the same region, using user provided set of clustering policies.
 mlir::LogicalResult PropagateValuesConstraints(
     mlir::Region& region, const ClusteringPolicySet& policies,
-    ValuesConstraintSet& constraints);
+    ValuesConstraintSet& constraints, bool resolve = false);
 
 // Emits constraints remarks for all operations that use constrained values.
 void EmitValueConstraintsRemarks(const ValuesConstraintSet& constraints);

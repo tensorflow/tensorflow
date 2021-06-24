@@ -82,6 +82,9 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // functionalization is ran before import. Ops can be lifted out of
   // tf_executor dialect islands/graphs.
   pm.addNestedPass<FuncOp>(CreateExecutorDialectToFunctionalConversionPass());
+  // Guarantee all functions have one use, which enables more exact shape
+  // inference.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
@@ -89,14 +92,14 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPUClusterFormationPass());
   pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
+  // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
+  // because DecomposeResourceOpsPass uses pattern rewriter which hoists
+  // changed constants out of tf_device.Launch.
+  pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
     OpPassManager &func_pm = pm.nest<FuncOp>();
-    // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
-    // because DecomposeResourceOpsPass uses pattern rewriter which hoists
-    // changed constants out of tf_device.Launch.
-    func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
     func_pm.addPass(CreateTPUHostComputationExpansionPass());
     func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
@@ -157,13 +160,18 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  pm.addPass(CreateTPUMergeVariablesWithExecutePass());
+  pm.addNestedPass<FuncOp>(
+      TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  // Guarantee all functions have one use, which enables more exact shape
+  // inference.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(TF::CreateTFShapeInferencePass());
   // For V1 compatibility, we process a module where the graph does not have
   // feeds and fetched. We extract first the TPU computation in a submodule,

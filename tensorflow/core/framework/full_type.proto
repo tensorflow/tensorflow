@@ -101,14 +101,26 @@ enum FullTypeId {
   //
   // Examples:
   //   TFT_ARRAY[TFT_TENSOR[TFT_INT32]] is a TensorArray holding int32 Tensors
-  //   of
-  //     any shape.
+  //     of any shape.
   //   TFT_ARRAY[TFT_TENSOR[TFT_UNKNOWN]] is a TensorArray holding Tensors of
   //     mixed element types.
   //   TFT_ARRAY[TFT_UNKNOWN] is a TensorArray holding any element type.
   //   TFT_ARRAY[] is equivalent to TFT_ARRAY[TFT_UNKNOWN].
   //   TFT_ARRAY[TFT_ARRAY[]] is an array or arrays (of unknown types).
   TFT_ARRAY = 1001;
+
+  // Optional (or tensorflow::OptionalVariant in the variant type registry).
+  // This type represents a value that may either hold an element of a single
+  // specified type, or nothing at all.
+  //
+  // Parametrization:
+  //   TFT_OPTIONAL[<element type>]
+  //   * <element_type> may be any concrete type.
+  //
+  // Examples:
+  //   TFT_OPTIONAL[TFT_TENSOR[TFT_INT32]] is an Optional holding an int32
+  //     Tensor of any shape.
+  TFT_OPTIONAL = 1002;
 
   // Datasets created by tf.data ops and APIs. Datasets have generator/iterable
   // semantics, that is, one can construct an iterator from them. Like
@@ -153,6 +165,7 @@ enum FullTypeId {
   TFT_HALF = 209;
   TFT_FLOAT = 210;
   TFT_DOUBLE = 211;
+  TFT_BFLOAT16 = 215;
   // Complex element types.
   // TODO(mdan): Represent as TFT_COMPLEX[TFT_DOUBLE] instead?
   TFT_COMPLEX64 = 212;

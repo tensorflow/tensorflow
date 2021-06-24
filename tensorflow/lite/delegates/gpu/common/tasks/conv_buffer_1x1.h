@@ -50,7 +50,7 @@ class ConvBuffer1x1 : public GPUOperation {
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
-    desc.layout = WeightsLayout::kOHWIOGroupI4O4;
+    desc.layout = WeightsLayout::kOSpatialIOGroupI4O4;
     desc.output_group_size = conv_params_.block_size.z;
     return desc;
   }

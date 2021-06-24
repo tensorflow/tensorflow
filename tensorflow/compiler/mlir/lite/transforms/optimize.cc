@@ -23,6 +23,7 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <numeric>
+#include <utility>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -364,6 +366,86 @@ bool IsF32Value(Value value) {
   return value.getType().cast<ShapedType>().getElementType().isF32();
 }
 
+// Returns the number of elements in attr if it is a DenseElementsAttr, 1
+// otherwise, as an unranked int32 Attribute.
+Attribute GetNumElementsOrOne(Attribute attr) {
+  const auto dense_attr = attr.dyn_cast_or_null<DenseElementsAttr>();
+  int32_t num_elements = dense_attr ? dense_attr.getNumElements() : 1;
+
+  OpBuilder builder(attr.getContext());
+
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get({}, builder.getI32Type()),
+      {llvm::APInt(32, num_elements, true)});
+}
+
+// Returns true if attr is a DenseIntElementsAttr with the last element equal 1.
+bool IsLastElementEqualsOne(Attribute attr) {
+  const auto ints = attr.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!ints) return false;
+  if (ints.empty()) return false;
+  const auto last_element_index = ints.getNumElements() - 1;
+  const auto iterator = ints.getIntValues().begin();
+  const APInt last_element = iterator[last_element_index];
+  return last_element == 1;
+}
+
+// Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or an
+// incrementing sequence from 0 to N-1.
+//
+// If such a value is used in an Equal operator, it can be replaced with OneHot.
+bool IsOneHotIndexAttribute(Attribute attr) {
+  const auto dense_attr = attr.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!dense_attr) {
+    return false;
+  }
+  auto index_type = dense_attr.getType();
+  const auto index_elem_bits = index_type.getElementTypeBitWidth();
+  if (index_elem_bits != 32 && index_elem_bits != 64) {
+    return false;
+  }
+  if (index_type.getRank() != 1) {
+    return false;
+  }
+  const auto elems = dense_attr.getIntValues().begin();
+  for (int i = 0; i < dense_attr.getNumElements(); ++i) {
+    if (i != elems[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Converts an Attribute with a single value of float or integral type to an
+// Attribute holding a single value of float type. If attr has no elements, the
+// result is 0.0f.
+Attribute ConvertSingleElementAttrToFloatAttr(Attribute attr) {
+  const auto dense_fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  if (dense_fp_attr) {
+    // Already float => return
+    return dense_fp_attr;
+  }
+
+  OpBuilder builder(attr.getContext());
+
+  const auto dense_int_attr = attr.dyn_cast<DenseIntElementsAttr>();
+  const auto int_values = dense_int_attr.getIntValues();
+  float float_val = 0.0f;
+  if (!int_values.empty()) {
+    const APInt apint_val = *int_values.begin();
+    if (dense_int_attr.getType().getElementType().isSignedInteger()) {
+      // Get the sign-extended value (=>int64) if the type is signed.
+      float_val = apint_val.getSExtValue();
+    } else {
+      // Get the zero-extended value (=>uint64) if unsigned or signless.
+      float_val = apint_val.getZExtValue();
+    }
+  }
+  return DenseFPElementsAttr::get(
+      RankedTensorType::get({}, builder.getF32Type()),
+      {llvm::APFloat(float_val)});
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
@@ -522,6 +604,62 @@ struct FuseAddAndFullyConnected
         /*input=*/add_op.lhs(),
         /*filter=*/fc_op.filter(),
         /*bias=*/*new_bias.output().begin(),
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(fc_op.fused_activation_function()),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+    rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
+
+    return success();
+  }
+};
+
+// Replace ..
+// FC(Mul(lhs, rhs), filter, bias)
+// .. with ..
+// FC(lhs, Mul(filter, rhs), bias)
+// .. if rhs, filter, and bias are all constants.
+// The generated Mul will be constant folded to a single matrix.
+struct FuseMulAndFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc_op,
+                                PatternRewriter &rewriter) const override {
+    // This only works with default format.
+    if (fc_op.weights_format() != "DEFAULT") return failure();
+
+    // Match Mul.
+    auto mul_op = dyn_cast_or_null<TFL::MulOp>(fc_op.input().getDefiningOp());
+    if (!mul_op) return failure();
+    if (mul_op.fused_activation_function() != "NONE") return failure();
+
+    // Don't match muls where the multiplier constant is not 1D.
+    {
+      auto multiplier_shape = mul_op.rhs().getType().cast<ShapedType>();
+      if (!multiplier_shape.hasStaticShape()) return failure();
+      if (multiplier_shape.getShape().size() != 1) return failure();
+    }
+
+    // We rely on constant folding, implemented only for F32. Check types.
+    if (!IsF32Value(mul_op.rhs()) || !IsF32Value(fc_op.filter())) {
+      return failure();
+    }
+
+    auto location =
+        FusedLoc::get(mul_op.getContext(), {mul_op.getLoc(), fc_op.getLoc()});
+
+    auto new_filter = rewriter.create<TFL::MulOp>(
+        location,
+        /*lhs=*/fc_op.filter(),
+        /*rhs=*/mul_op.rhs(),
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+    // Create the updated FC.
+    auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
+        location, fc_op.output().getTypes(),
+        /*input=*/mul_op.lhs(),
+        /*filter=*/new_filter,
+        /*bias=*/fc_op.bias(),
         /*fused_activation_function=*/
         rewriter.getStringAttr(fc_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
@@ -808,7 +946,8 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       // dimension of the weight.
       SmallVector<APFloat, 4> new_bias_values;
       if (bias.getType().isa<NoneType>()) {  // none bias, a list of zeros
-        new_bias_values.resize(bias_size, APFloat(0.0));
+        new_bias_values.resize(bias_size,
+                               APFloat::getZero(cst_value.getSemantics()));
       } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
         new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
       } else if (bias_cst.getNumElements() == bias_size) {  // 1-d bias, copy it
@@ -1159,7 +1298,7 @@ struct RemoveReshapeAfterFullyConnected
         fully_connected_op.weights_format() != "DEFAULT" ||
         fully_connected_op.keep_num_dims())
       return failure();
-    if (!reshape_op.input().getUseList()->hasOneUse()) return failure();
+    if (!reshape_op.input().hasOneUse()) return failure();
 
     auto input_shape = fully_connected_op.input().getType().cast<ShapedType>();
     auto output_shape = fully_connected_op.getType(0).cast<ShapedType>();
@@ -1276,10 +1415,10 @@ void OptimizePass::runOnFunction() {
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+                  FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
-                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-                  FuseFullyConnectedAndMul>(ctx);
+                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
   if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
@@ -1290,11 +1429,11 @@ void OptimizePass::runOnFunction() {
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
       ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
       FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
       FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-      FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
-      FuseBinaryOpToFollowingDepthwiseConv2D,
+      FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,

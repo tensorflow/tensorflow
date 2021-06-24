@@ -195,6 +195,9 @@ class Dropout(Layer):
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
+    if isinstance(rate, (int, float)) and not 0 <= rate <= 1:
+      raise ValueError(f'Invalid value {rate} received for '
+                       f'`rate`, expected a value between 0 and 1.')
     self.rate = rate
     if isinstance(rate, (int, float)) and not rate:
       keras_temporary_dropout_rate.get_cell().set(True)
@@ -739,6 +742,8 @@ class RepeatVector(Layer):
   def __init__(self, n, **kwargs):
     super(RepeatVector, self).__init__(**kwargs)
     self.n = n
+    if not isinstance(n, int):
+      raise TypeError(f'Expected an integer value for `n`, got {type(n)}.')
     self.input_spec = InputSpec(ndim=2)
 
   def compute_output_shape(self, input_shape):
@@ -1094,7 +1099,7 @@ class Dense(Layer):
 
   Note: If the input to the layer has a rank greater than 2, then `Dense`
   computes the dot product between the `inputs` and the `kernel` along the
-  last axis of the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+  last axis of the `inputs` and axis 0 of the `kernel` (using `tf.tensordot`).
   For example, if input has dimensions `(batch_size, d0, d1)`,
   then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
   along axis 2 of the `input`, on every sub-tensor of shape `(1, 1, d1)`
@@ -1165,6 +1170,9 @@ class Dense(Layer):
         activity_regularizer=activity_regularizer, **kwargs)
 
     self.units = int(units) if not isinstance(units, int) else units
+    if self.units < 0:
+      raise ValueError(f'Received an invalid value for `units`, expected '
+                       f'a positive integer, got {units}.')
     self.activation = activations.get(activation)
     self.use_bias = use_bias
     self.kernel_initializer = initializers.get(kernel_initializer)

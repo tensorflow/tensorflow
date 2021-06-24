@@ -226,7 +226,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    absl::optional<CudaComputeCapability> cuda_compute_capability);
+    se::CudaComputeCapability cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -286,7 +286,7 @@ std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
   return std::vector<T>(v.begin(), v.end());
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation> allocations,
     std::string* constant_name = nullptr);
 

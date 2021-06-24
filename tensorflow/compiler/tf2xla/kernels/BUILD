@@ -36,6 +36,7 @@ tf_kernel_library(
         "dequantize_op.cc",
         "device_index_op.cc",
         "diag_op.cc",
+        "dynamic_partition_op.cc",
         "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
         "einsum_op.cc",
@@ -173,6 +174,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
@@ -358,6 +360,7 @@ tf_kernel_library(
         "check_numerics_op.cc",
     ],
     deps = [
+        "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:array_ops_op_lib",

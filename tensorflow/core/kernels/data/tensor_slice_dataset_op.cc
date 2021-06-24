@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/util/batch_util.h"
 
@@ -32,8 +36,6 @@ namespace data {
 /* static */ constexpr const char* const TensorSliceDatasetOp::kComponents;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kToutputTypes;
 /* static */ constexpr const char* const TensorSliceDatasetOp::kOutputShapes;
-
-constexpr char kCurIndex[] = "i";
 
 class TensorSliceDatasetOp::Dataset : public DatasetBase {
  public:
@@ -134,11 +136,12 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       out_tensors->clear();
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
-        const Tensor& t = dataset()->tensors_[i];
-        out_tensors->emplace_back(ctx->allocator({}), t.dtype(),
-                                  dataset()->shapes_[i]);
-        TF_RETURN_IF_ERROR(
-            batch_util::CopySliceToElement(t, &out_tensors->back(), index));
+        Tensor slice = dataset()->tensors_[i].SubSlice(index);
+        if (slice.IsAligned()) {
+          out_tensors->push_back(std::move(slice));
+        } else {
+          out_tensors->push_back(tensor::DeepCopy(std::move(slice)));
+        }
       }
       *end_of_sequence = false;
       return Status::OK();

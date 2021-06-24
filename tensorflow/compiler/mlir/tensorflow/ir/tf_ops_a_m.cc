@@ -566,11 +566,15 @@ OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
   // Fold broadcast if operand and result types are the same and all dimensions
   // are statically known (no-op broadcast).
   auto result_ty = getType().dyn_cast<ShapedType>();
-  if (result_ty && result_ty.hasStaticShape() && result_ty == input.getType()) {
-    return input;
-  }
+  if (!result_ty || !result_ty.hasStaticShape()) return {};
 
-  return {};
+  if (result_ty == input.getType()) return input;
+
+  DenseIntElementsAttr cst_attr;
+  if (!matchPattern(input, m_Constant(&cst_attr))) return {};
+  if (!cst_attr.isSplat()) return {};
+
+  return DenseElementsAttr::get(result_ty, cst_attr.getSplatValue());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2132,7 +2136,7 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
 }
 
 //===----------------------------------------------------------------------===//
-// EqualOp
+// EqualOp/NotEqualOp
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(EqualOp op) {
@@ -2155,7 +2159,8 @@ namespace {
 
 // Flips the incompatible_shape_error attribute to true if the shapes are
 // identical and static.
-static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
+template <typename Ty>
+static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter &rewriter) {
   if (op.incompatible_shape_error()) {
     return rewriter.notifyMatchFailure(op, "the attribute is already true");
   }
@@ -2165,19 +2170,24 @@ static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
                                        "require the shapes to be identical");
   }
 
-  auto src_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  auto src_ty = op.x().getType().template dyn_cast<RankedTensorType>();
   if (!src_ty || !src_ty.hasStaticShape()) {
     return rewriter.notifyMatchFailure(op, "require the shapes to be static");
   }
-  rewriter.replaceOpWithNewOp<EqualOp>(op, op.x(), op.y(),
-                                       rewriter.getBoolAttr(true));
+  rewriter.template replaceOpWithNewOp<Ty>(op, op.x(), op.y(),
+                                           rewriter.getBoolAttr(true));
   return success();
 }
 }  // namespace
 
 void EqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.insert(convertEqualOp);
+  results.insert(flipComatibleShapeError<EqualOp>);
+}
+
+void NotEqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert(flipComatibleShapeError<NotEqualOp>);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2309,16 +2319,22 @@ static ShapedType InferFillOpType(Value dims, Value value) {
   Type etype = value.getType().cast<ShapedType>().getElementType();
 
   DenseIntElementsAttr dims_attr;
-  if (!matchPattern(dims, m_Constant(&dims_attr))) {
-    return UnrankedTensorType::get(etype);
+  if (matchPattern(dims, m_Constant(&dims_attr))) {
+    llvm::SmallVector<int64_t, 4> shape;
+    shape.reserve(dims_attr.getNumElements());
+    for (const APInt dim : dims_attr.getValues<APInt>()) {
+      shape.push_back(dim.getSExtValue());
+    }
+    return RankedTensorType::get(shape, etype);
   }
 
-  llvm::SmallVector<int64_t, 4> shape;
-  shape.reserve(dims_attr.getNumElements());
-  for (const APInt dim : dims_attr.getValues<APInt>()) {
-    shape.push_back(dim.getSExtValue());
+  if (auto shape_op = dims.getDefiningOp<ShapeOp>()) {
+    if (auto t = shape_op.input().getType().dyn_cast<ShapedType>()) {
+      return t;
+    }
   }
-  return RankedTensorType::get(shape, etype);
+
+  return UnrankedTensorType::get(etype);
 }
 
 void FillOp::build(OpBuilder &builder, OperationState &result, Value dims,
@@ -2858,6 +2874,16 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
 OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<MulOp>(*this, operands);
+}
+
+//===----------------------------------------------------------------------===//
+// HashTableOp
+//===----------------------------------------------------------------------===//
+void HashTableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<HashTableAndInitializeTableToV2>(context);
+  results.insert<HashTableAndLookupTableSizeToV2>(context);
+  results.insert<HashTableAndLookupTableFindToV2>(context);
 }
 
 }  // namespace TF

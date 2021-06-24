@@ -1766,6 +1766,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       with ops.get_default_graph().as_default():
         create_variable()
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testCallOptionsMemory(self):
+
+    @function.defun
+    def model(x):
+      return x + constant_op.constant(1.)
+
+    # This happens with a lot of option toggles, e.g. soft device placement
+    context.context().function_call_options = None
+    model(constant_op.constant(2.))
+
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testLayerInDefun(self):
     conv = convolutional.Conv2D(
@@ -2278,6 +2289,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                 'inputs incompatible with input_signature'):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
+
+  def testMismatchedConcreteSignatureRaisesError(self):
+
+    @def_function.function
+    def run_test():
+      @def_function.function
+      def f(x):
+        return x
+
+      with self.assertRaisesRegex(
+          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+        f.get_concrete_function(1)(constant_op.constant(1))
+
+      with self.assertRaisesRegex(TypeError, r'f\(x\) expected .* but got .*'):
+        f.get_concrete_function(constant_op.constant(1))(1)
+
+      with self.assertRaisesRegex(
+          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+        f.get_concrete_function(1)(2)
+
+    run_test()
 
   def testInputsIncompatibleWithNestedSignatureRaisesError(self):
 

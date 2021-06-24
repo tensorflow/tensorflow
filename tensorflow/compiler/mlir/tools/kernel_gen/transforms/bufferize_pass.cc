@@ -120,10 +120,11 @@ struct ComputeOpAndFuncBufferizePass
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect, math::MathDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
+    target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
 
     CustomBufferizeTypeConverter converter;
     // Configure bufferize pattern for functions and lhlo.
-    mhlo::populateDynamicHLOToLHLOConversionPattern(
+    mhlo::populateDynamicHLOToLHLOOrMemRefConversionPattern(
         &context, &converter, &patterns, /*insert_copy=*/false);
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
@@ -178,16 +179,18 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
                         tensor::FromElementsOp, tensor::CastOp,
                         chlo::MinimumBroadcastShapesOp, memref::TensorLoadOp,
-                        memref::BufferCastOp, linalg::TensorReshapeOp>();
+                        memref::BufferCastOp, linalg::TensorExpandShapeOp,
+                        linalg::TensorCollapseShapeOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, RankOp, SelectOp>(
-        typesAreLegal);
+    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, IndexCastOp, RankOp,
+                                 SelectOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
+    linalg::populateLinalgBufferizePatterns(converter, patterns);
     populateTensorBufferizePatterns(converter, patterns);
     populateStdBufferizePatterns(converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);

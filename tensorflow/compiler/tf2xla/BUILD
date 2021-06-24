@@ -38,7 +38,6 @@ package_group(
     name = "friends",
     includes = [":internal"],
     packages = [
-        "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
         "//tensorflow_models/...",
         "//third_party/mlir_edge/model_curriculum/iree/...",
@@ -250,6 +249,7 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
+        "//tensorflow/core/platform:stringpiece",
     ] + [
         # Extra dependencies required for multithreaded runtime objects.
         "//tensorflow/core/platform:blocking_counter",
@@ -355,6 +355,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "//tensorflow/compiler/jit:common",
@@ -363,6 +364,7 @@ cc_library(
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/xla/client:value_inference",
+        "//tensorflow/compiler/xla/service:computation_placer_hdr",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -538,9 +540,14 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/service:computation_placer_hdr",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor:stream_header",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -910,6 +917,11 @@ cc_library(
         ],
         if_true = [],
     ),
+    visibility = [
+        # We define a new TPU device in TFRT to enable TFRT TPU Runtime.
+        "//learning/brain/tfrt/tf_tpu:__pkg__",
+        ":internal",
+    ],
     deps = if_libtpu(
         if_false = [
             ":mlir_bridge_pass",

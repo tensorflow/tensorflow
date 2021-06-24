@@ -28,6 +28,8 @@ namespace tensorflow {
 namespace eager {
 namespace {
 
+using ::testing::ContainsRegex;
+
 class TestCustomDevice : public CustomDevice {
  public:
   explicit TestCustomDevice(std::string name) : name_(name) {}
@@ -110,8 +112,10 @@ TEST(CustomDevice, TestTensorHandle) {
   s = tensor->NumElements(&num_elements);
   ASSERT_TRUE(s.ok()) << s.error_message();
   EXPECT_EQ(3, num_elements);
-  EXPECT_EQ("TensorHandle(TestValue, shape=[3], dtype=DT_FLOAT)",
-            tensor->DebugString());
+  EXPECT_THAT(
+      tensor->DebugString(),
+      ContainsRegex(
+          R"re(TensorHandle\(TestValue, shape=\[3\], dtype=DT_FLOAT, device=.*\))re"));
 }
 
 TEST(CustomDevice, TestResourcePlacement) {

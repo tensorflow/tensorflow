@@ -47,8 +47,7 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
   // CHECK-NEXT: shape.assuming %[[WITNESS:.+]]
   // CHECK-DAG:    %[[LHS_SHAPE:.+]] = shape.shape_of %arg0
   // CHECK-DAG:    %[[RHS_SHAPE:.+]] = shape.shape_of %arg1
-  // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = shape.broadcast %[[LHS_SHAPE]], %[[RHS_SHAPE]] : tensor<1xindex>, tensor<2xindex> -> tensor<?xindex>
-  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor.cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<2xindex>
+  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.broadcast %[[LHS_SHAPE]], %[[RHS_SHAPE]] : tensor<1xindex>, tensor<2xindex> -> tensor<2xindex>
   // CHECK-NEXT:   %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-NEXT:   %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
   // CHECK-NEXT:   %[[RESULT:.+]] = mhlo.add %[[LHS_BCAST]], %[[RHS_BCAST]] : tensor<?x?xi32>
@@ -313,8 +312,7 @@ func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi1
   // CHECK-NEXT: shape.assuming %[[WITNESS]]
   // CHECK-DAG:    %[[LHS_SHAPE1:.+]] = shape.shape_of %arg0
   // CHECK-DAG:    %[[RHS_SHAPE1:.+]] = shape.shape_of %arg1
-  // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = shape.broadcast %[[LHS_SHAPE1]], %[[RHS_SHAPE1]] : tensor<1xindex>, tensor<1xindex> -> tensor<?xindex>
-  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor.cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<1xindex>
+  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.broadcast %[[LHS_SHAPE1]], %[[RHS_SHAPE1]] : tensor<1xindex>, tensor<1xindex> -> tensor<1xindex>
   // CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK-NEXT:   "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "GT"}

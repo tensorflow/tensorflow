@@ -39,7 +39,8 @@ def ExtractSingleElementAsFloat : NativeCodeCall<
 
 // Checks if the value has rank at most 'n'.
 class HasRankAtMost<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
@@ -273,6 +274,32 @@ def MatchHardSwishPattern2 : Pat<
      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
      TFL_AF_None),
      TFL_AF_None),
+  (TFL_HardSwishOp $x)>;
+
+def MatchHardSwishPattern3 : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     $x,
+     (TFL_AddOp
+      $x,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     TFL_AF_None),
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+    TFL_AF_None),
+  (TFL_HardSwishOp $x)>;
+
+def MatchHardSwishPattern4 : Pat<
+  (TFL_MulOp
+    (TFL_MulOp
+     (TFL_AddOp
+      $x,
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+      TFL_AF_Relu6),
+     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+    $x,
+    TFL_AF_None),
   (TFL_HardSwishOp $x)>;
 
 // Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
@@ -560,7 +587,7 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
       (ValueOp:$value (MoveOp:$move $input, $move_def)),
       (MoveOp (ValueOp $input), $move_def),
-      [(HasOneUse $move)]>;
+      [(SameElementType $input, $value), (HasOneUse $move)]>;
   }
 }
 
@@ -697,6 +724,18 @@ def OptimizePow2ToSquare : Pat<
     (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "2.0f">)),
   (TFL_MulOp $input, $input, TFL_AF_None)>;
 
+// Optimize X^(1/2) to √X
+def OptimizePow2ToSqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.5f">)),
+  (TFL_SqrtOp $input)>;
+
+// Optimize X^(-1/2) to 1/√X == rsqrt(x)
+def OptimizePow2ToRsqrt : Pat<
+  (TFL_PowOp $input,
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "-0.5f">)),
+  (TFL_RsqrtOp $input)>;
+
 def CanOptimizeIdentityGatherNdOrScatterNdOp : Constraint<CPred<
   "TFL::CanOptimizeIdentityGatherNdOrScatterNdOp("
   "$0, $1.cast<DenseIntElementsAttr>())">>;
@@ -716,8 +755,8 @@ def ShapeMatchesReduceWithKeepAxes : Constraint<CPred<
 
 // Fold reshapes re-inserting reduced dimensions into the results of a reduction
 // with `keep_dims=false` by changing it to one using `keep_dims=true`.
-foreach ReduceOp = [TFL_ReduceMaxOp, TFL_ReduceMinOp, TFL_ReduceProdOp,
-                    TFL_SumOp] in {
+foreach ReduceOp = [TFL_MeanOp, TFL_ReduceMaxOp, TFL_ReduceMinOp,
+                    TFL_ReduceProdOp, TFL_SumOp] in {
   def FoldReshapeTo#ReduceOp : Pat<
     (TFL_ReshapeOp
       (ReduceOp:$reduce $input, (ConstantOp I32ElementsAttr: $axes),
@@ -774,11 +813,11 @@ class AllElementsAreF32<string val> : Constraint<CPred<
 
 // Optimize X*1 to X
 def OptimizeMul1ToIdentity : Pat<
-  (TFL_MulOp $input,
+  (TFL_MulOp:$result $input,
              (ConstantOp $constant),
              TFL_AF_None),
   (replaceWithValue $input),
-  [(HaveSameType $input, $constant),
+  [(HaveSameType $input, $result),
    (AllElementsAreF32<"1.0f"> $constant)]>;
 
 class AllElementsAreBool<string val> : Constraint<CPred<
@@ -792,23 +831,19 @@ class AllElementsAreBool<string val> : Constraint<CPred<
 foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
   // select(true_tensor, A, B) -> A
   def Optimize#SelectOp#True : Pat<
-    (SelectOp (ConstantOp $constant),
-               $input1,
-               $input2),
+    (SelectOp:$result (ConstantOp $constant),
+                      $input1,
+                      $input2),
     (replaceWithValue $input1),
-    [(HaveSameType $input1, $input2),
-     (IsTailOfShape $input1, $constant),
-     (IsTailOfShape $constant, $input1),
+    [(HaveSameType $input1, $result),
      (AllElementsAreBool<"true"> $constant)]>;
   // select(false_tensor, A, B) -> B
   def Optimize#SelectOp#False : Pat<
-    (SelectOp (ConstantOp $constant),
-               $input1,
-               $input2),
+    (SelectOp:$result (ConstantOp $constant),
+                      $input1,
+                      $input2),
     (replaceWithValue $input2),
-    [(HaveSameType $input1, $input2),
-     (IsTailOfShape $input1, $constant),
-     (IsTailOfShape $constant, $input1),
+    [(HaveSameType $input2, $result),
      (AllElementsAreBool<"false"> $constant)]>;
 }
 
@@ -837,3 +872,53 @@ def OptimizeSliceOp : Pat<
   (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
   (replaceWithValue $input),
   [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
+
+def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
+
+def IsLastElementEqualsOne : Constraint<CPred<
+  "TFL::IsLastElementEqualsOne($0)">>;
+
+def IsOneHotIndexAttribute : Constraint<CPred<
+  "TFL::IsOneHotIndexAttribute($0)">>;
+
+// Replace
+//   Equal(Reshape(X, shape), indices)
+// With
+//   OneHot(X, N, true, false, -1)
+// where
+//  - last value in shape is 1
+//  - indices is a incrementing series from 0 to N-1. (N elements total.)
+def ReshapeEqualOpToOneHotOp : Pat<
+  (TFL_EqualOp (TFL_ReshapeOp $x, (ConstantOp $shape)),
+               (ConstantOp $series)),
+  (TFL_OneHotOp $x,
+                (ConstantOp (GetNumElementsOrOne $series)),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
+                ConstantAttr<I32Attr, "-1">),
+  [(IsLastElementEqualsOne $shape),
+   (IsOneHotIndexAttribute $series)]>;
+
+def F32ElementsVal : Constraint<CPred<
+  "$0.getType().cast<TensorType>().getElementType().isF32()">,
+  "32 bit float tensor">;
+
+def ConvertSingleElementAttrToFloatAttr :
+  NativeCodeCall<"ConvertSingleElementAttrToFloatAttr($0)">;
+
+// Replace
+//   (float)OneHot(index, depth, on_val, off_val, axis)
+// With
+//   OneHot(index, depth, (float)on_val, (float)off_val, axis)
+def FuseOneHotAndCastToFloat : Pat<
+  (TFL_CastOp:$output (TFL_OneHotOp $indices,
+                                    $depth,
+                                    (ConstantOp $on_val),
+                                    (ConstantOp $off_val),
+                                    $axis)),
+  (TFL_OneHotOp $indices,
+                $depth,
+                (ConstantOp (ConvertSingleElementAttrToFloatAttr $on_val)),
+                (ConstantOp (ConvertSingleElementAttrToFloatAttr $off_val)),
+                $axis),
+  [(F32ElementsVal $output)]>;

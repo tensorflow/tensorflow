@@ -403,18 +403,24 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testNumParallelBatches(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(drop_remainder=[True, False])))
+  def testNumParallelBatches(self, verify_fn, drop_remainder):
     range_size = 11
     num_shards = 3
     num_repeats = 2
     batch_size = 5
-    total_outputs = (range_size // num_shards) * num_repeats
-    num_outputs_drop_remainder = total_outputs // batch_size
-    num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
     num_parallel_batches = 2
+    total_outputs = (range_size // num_shards) * num_repeats
+    if drop_remainder:
+      num_outputs = total_outputs // batch_size
+    else:
+      num_outputs = int(math.ceil(total_outputs / batch_size))
 
-    def build_ds(range_start, drop_remainder=False):
+    def build_ds(range_start, drop_remainder):
 
       def _map_fn(x):
         return math_ops.square(x)
@@ -428,19 +434,25 @@ class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                       num_parallel_batches=num_parallel_batches,
                       drop_remainder=drop_remainder))
 
-    self.run_core_tests(lambda: build_ds(10), num_outputs_keep_remainder)
-    self.run_core_tests(lambda: build_ds(10, True), num_outputs_drop_remainder)
+    verify_fn(self, lambda: build_ds(10, drop_remainder=drop_remainder),
+              num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testNumParallelCalls(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(drop_remainder=[True, False])))
+  def testNumParallelCalls(self, verify_fn, drop_remainder):
     range_size = 11
     num_shards = 3
     num_repeats = 2
     batch_size = 5
-    total_outputs = (range_size // num_shards) * num_repeats
-    num_outputs_drop_remainder = total_outputs // batch_size
-    num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
     num_parallel_calls = 7
+    total_outputs = (range_size // num_shards) * num_repeats
+    if drop_remainder:
+      num_outputs = total_outputs // batch_size
+    else:
+      num_outputs = int(math.ceil(total_outputs / batch_size))
 
     def build_ds(range_start, drop_remainder=False):
 
@@ -456,11 +468,13 @@ class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                       num_parallel_calls=num_parallel_calls,
                       drop_remainder=drop_remainder))
 
-    self.run_core_tests(lambda: build_ds(10), num_outputs_keep_remainder)
-    self.run_core_tests(lambda: build_ds(10, True), num_outputs_drop_remainder)
+    verify_fn(self, lambda: build_ds(10, drop_remainder=drop_remainder),
+              num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparse(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
 
     def build_dataset():
 
@@ -471,7 +485,7 @@ class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return dataset_ops.Dataset.range(10).apply(
           batching.map_and_batch(map_fn, 5))
 
-    self.run_core_tests(build_dataset, 2)
+    verify_fn(self, build_dataset, num_outputs=2)
 
 
 if __name__ == "__main__":

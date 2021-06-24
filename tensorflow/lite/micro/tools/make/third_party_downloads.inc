@@ -36,11 +36,8 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="http://mirror.tensorflow.org/github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/38a9266b832767a3f535a74a9e0cf39f7892e594.zip"
-RUY_MD5="4cbc3104b27b718c819b2082beb732c5"
-
-IMAGE_RECOGNITION_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/models/tflite/cifar_image_recognition_model_2020_05_27.zip"
-IMAGE_RECOGNITION_MODEL_MD5 := "1f4607b05ac45b8a6146fb883dbc2d7b"
+RUY_URL="https://github.com/google/ruy/archive/e6c1b8dc8a8b00ee74e7268aac8b18d7260ab1ce.zip"
+RUY_MD5="755308f3046919a0097382c1c571c1c9"
 
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2020_05_27.zip"
 PERSON_MODEL_MD5 := "55b85f76e2995153e660391d4a209ef1"

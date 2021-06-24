@@ -274,7 +274,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, worker_session->cluster_flr());
+      request->async(), device_mgr, false, r, worker_session->cluster_flr(),
+      env_->collective_executor_mgr.get());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
@@ -356,8 +357,6 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
             << ctx->HostCPU()->name();
     return Status::OK();
   }
-  // TODO(b/143914772): Potential memory leak if rendezvous has pending
-  // tensors for removed / replaced workers.
 
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
@@ -591,7 +590,6 @@ Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
 
     if (!s.ok()) {
       if (stream_id != kInvalidStreamId) {
-        // TODO(b/138847548): Cleanup the executor when StreamCall is deleted.
         context->Context()->RemoteMgr()->DeleteExecutorForStream(stream_id);
       }
       return s;

@@ -197,7 +197,7 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
     const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
-    int32_t* per_channel_multiplier, int* per_channel_shift) {
+    int32_t* per_channel_multiplier, int32_t* per_channel_shift) {
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
   return PopulateConvolutionQuantizationParams(
@@ -212,7 +212,8 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
     const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
-    int32_t* per_channel_multiplier, int* per_channel_shift, int num_channels) {
+    int32_t* per_channel_multiplier, int32_t* per_channel_shift,
+    int num_channels) {
   TF_LITE_ENSURE_EQ(context, input->quantization.type,
                     kTfLiteAffineQuantization);
   TF_LITE_ENSURE_EQ(context, filter->quantization.type,
@@ -435,6 +436,10 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   int out_dims = std::max(dims1, dims2);
   if (NumElements(input1) == 0) {
     *output_shape = TfLiteIntArrayCopy(input1->dims);
+    return kTfLiteOk;
+  }
+  if (NumElements(input2) == 0) {
+    *output_shape = TfLiteIntArrayCopy(input2->dims);
     return kTfLiteOk;
   }
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(

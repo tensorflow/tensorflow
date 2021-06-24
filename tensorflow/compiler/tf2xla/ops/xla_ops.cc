@@ -371,6 +371,18 @@ REGISTER_OP("XlaSetDynamicDimensionSize")
         The current static dimension size will become the bound and the second
         operand becomes the dynamic size of the dimension.)doc");
 
+REGISTER_OP("XlaRemoveDynamicDimensionSize")
+    .Input("input: T")
+    .Input("dim_index: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    // Use unknown shape to prevent constant folding.
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(
+        R"doc(Inverse of XlaSetDynamicDimensionSize. Make an xla bounded
+        dynamic dimension into a static dimension. The bound of the size of
+        dimension `dim_index` becomes the static dimension size.)doc");
+
 REGISTER_OP("XlaDynamicSlice")
     .Input("input: T")
     .Input("start_indices: Tindices")
@@ -466,13 +478,13 @@ REGISTER_OP("XlaPad")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle input_shape_handle = c->input(0);
-      if (!c->FullyDefined(input_shape_handle)) {
+      if (!c->RankKnown(input_shape_handle)) {
         return UnchangedRank(c);
       }
       const int32 op_rank = c->Rank(input_shape_handle);
 
       shape_inference::ShapeHandle padding_shape_handle = c->input(1);
-      if (!c->RankKnown(padding_shape_handle) ||
+      if (c->RankKnown(padding_shape_handle) &&
           c->Rank(padding_shape_handle) != 0) {
         return errors::InvalidArgument(
             "padding_value input must be scalar, found rank ",
@@ -582,7 +594,7 @@ shape: The shape of the tensor.
 REGISTER_OP("XlaReduce")
     .Input("input: T")
     .Input("init_value: T")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("dimensions_to_reduce: list(int)")
     .Attr("reducer: func")
     .Output("output: T")
@@ -625,7 +637,7 @@ REGISTER_OP("XlaVariadicReduce")
     .Input("input: N * T")
     .Input("init_value: N * T")
     .Attr("N: int >= 1")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("dimensions_to_reduce: list(int)")
     .Attr("reducer: func")
     .Output("output: N * T")
@@ -685,7 +697,7 @@ REGISTER_OP("XlaReduceWindow")
     .Input("base_dilations: Tindices")
     .Input("window_dilations: Tindices")
     .Input("padding: Tindices")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .Attr("computation: func")
     .Output("output: T")

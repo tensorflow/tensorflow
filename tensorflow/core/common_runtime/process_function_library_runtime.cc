@@ -423,7 +423,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
     const std::vector<string>& input_devices,
     const std::vector<string>& output_devices, const DeviceSet& device_set,
     const std::vector<Node*>& arg_nodes, const std::vector<Node*>& ret_nodes,
-    Device* default_device) const {
+    const FunctionLibraryDefinition* lib_def, Device* default_device) {
   // If output_devices are not specified, we want to set the output device
   // based on the device of the output producing node. The output producing
   // node can be an arg node because functions can simply return their
@@ -477,7 +477,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
         // retval device assignment empty, and rely on placer to infer correct
         // assignment based on actual output device.
         const bool can_use_src_node_device =
-            !(dtype == DT_RESOURCE && IsFunctionCall(*lib_def_, *src_node));
+            !(dtype == DT_RESOURCE && IsFunctionCall(*lib_def, *src_node));
 
         if (!colocation_group.empty()) {
           AttrValue::ListValue colo_attr;
@@ -744,12 +744,19 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       SetArgShape(options.input_resource_dtypes_and_shapes, arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(
       options.input_devices, options.output_devices, *dev_set, arg_nodes,
-      ret_nodes,
+      ret_nodes, lib_def_,
       options.config_proto.allow_soft_placement() ? default_device : nullptr));
 
   auto data = absl::make_unique<MultiDeviceFunctionData>(
       function_name, function_key, ret_node_names.size(),
       lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
+
+  // The runtime shouldn't depend on duplication between the function library
+  // owned by the graph and the one owned by the runtime. To ensure this, for
+  // now we ensure that the graph function library is empty and the runtime
+  // library receives the query from LookUps on the graph function library.
+  graph->mutable_flib_def()->set_default_registry(&data->lib_def_);
+  graph->mutable_flib_def()->Clear();
 
   // Do not run function/graph optimization passes for component functions,
   // since they have already processed the main function.

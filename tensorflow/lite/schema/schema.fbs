@@ -372,7 +372,11 @@ enum BuiltinOperator : int32 {
   HASHTABLE_IMPORT = 138,
   HASHTABLE_SIZE = 139,
   REDUCE_ALL = 140,
-  TABLE = 141,
+  CONV_3D_TRANSPOSE = 141,
+  VAR_HANDLE = 142,
+  READ_VARIABLE = 143,
+  ASSIGN_VARIABLE = 144,
+  TABLE = 145,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -488,6 +492,9 @@ union BuiltinOptions {
   HashtableFindOptions,
   HashtableImportOptions,
   HashtableSizeOptions,
+  VarHandleOptions,
+  ReadVariableOptions,
+  AssignVariableOptions,
   TableOptions,
 }
 
@@ -511,6 +518,7 @@ table Conv2DOptions {
   dilation_h_factor:int = 1;
 }
 
+// Options for both Conv3D and Conv3DTranspose.
 table Conv3DOptions {
   padding:Padding;
   stride_d:int;
@@ -1062,6 +1070,17 @@ table HashtableImportOptions {
 table HashtableSizeOptions {
 }
 
+table VarHandleOptions {
+  container:string;
+  shared_name:string;
+}
+
+table ReadVariableOptions {
+}
+
+table AssignVariableOptions {
+}
+
 table TableOptions {
 }
 
@@ -1185,6 +1204,9 @@ table SignatureDef {
 
   // Key value which was in the Tensorflow SavedModel SignatureDef map.
   key:string;
+
+  // Subgraph index of the exported method.
+  subgraph_index:uint;
 }
 
 table Model {

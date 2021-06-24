@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_api_delegate.h"
+#include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/testing/tflite_model_reader.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"

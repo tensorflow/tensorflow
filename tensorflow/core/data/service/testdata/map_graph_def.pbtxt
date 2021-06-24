@@ -14,7 +14,7 @@ node {
         dtype: DT_INT64
         tensor_shape {
         }
-        int64_val: 0
+        int64_val: 0  # start
       }
     }
   }
@@ -35,7 +35,7 @@ node {
         dtype: DT_INT64
         tensor_shape {
         }
-        int64_val: 10
+        int64_val: 10  # stop
       }
     }
   }
@@ -56,7 +56,7 @@ node {
         dtype: DT_INT64
         tensor_shape {
         }
-        int64_val: 1
+        int64_val: 1  # step
       }
     }
   }

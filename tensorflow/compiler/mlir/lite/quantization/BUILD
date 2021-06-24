@@ -11,7 +11,7 @@ load(
 )
 load(
     "//third_party/mlir:tblgen.bzl",
-    "gentbl",
+    "gentbl_cc_library",
 )
 
 package(
@@ -42,16 +42,16 @@ filegroup(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "quantization_interfaces_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-op-interface-decls",
+            ["-gen-op-interface-decls"],
             "quantization_interface.h.inc",
         ),
         (
-            "-gen-op-interface-defs",
+            ["-gen-op-interface-defs"],
             "quantization_interface.cc.inc",
         ),
     ],
@@ -110,6 +110,7 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/tools/optimize:quantization_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -130,6 +131,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],

@@ -144,8 +144,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     if (inputs == null || inputs.isEmpty()) {
       throw new IllegalArgumentException("Input error: Inputs should not be null or empty.");
     }
-    if (outputs == null || outputs.isEmpty()) {
-      throw new IllegalArgumentException("Input error: Outputs should not be null or empty.");
+    if (outputs == null) {
+      throw new IllegalArgumentException("Input error: Outputs should not be null.");
     }
     initTensorIndexesMaps();
     // Map inputs/output to input indexes.
@@ -175,8 +175,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     if (inputs == null || inputs.length == 0) {
       throw new IllegalArgumentException("Input error: Inputs should not be null or empty.");
     }
-    if (outputs == null || outputs.isEmpty()) {
-      throw new IllegalArgumentException("Input error: Outputs should not be null or empty.");
+    if (outputs == null) {
+      throw new IllegalArgumentException("Input error: Outputs should not be null.");
     }
 
     // TODO(b/80431971): Remove implicit resize after deprecating multi-dimensional array inputs.
@@ -213,7 +213,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       }
     }
     for (Map.Entry<Integer, Object> output : outputs.entrySet()) {
-      getOutputTensor(output.getKey()).copyTo(output.getValue());
+      // Null output placeholders are allowed and ignored.
+      if (output.getValue() != null) {
+        getOutputTensor(output.getKey()).copyTo(output.getValue());
+      }
     }
 
     // Only set if the entire operation succeeds.
@@ -258,15 +261,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   private static native long allocateTensors(long interpreterHandle, long errorHandle);
-
-  void setNumThreads(int numThreads) {
-    numThreads(interpreterHandle, numThreads);
-  }
-
-  void modifyGraphWithDelegate(Delegate delegate) {
-    applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
-    delegates.add(delegate);
-  }
 
   void resetVariableTensors() {
     resetVariableTensors(interpreterHandle, errorHandle);
@@ -579,8 +573,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native String[] getInputNames(long interpreterHandle);
 
   private static native String[] getOutputNames(long interpreterHandle);
-
-  private static native void numThreads(long interpreterHandle, int numThreads);
 
   private static native void allowFp16PrecisionForFp32(long interpreterHandle, boolean allow);
 

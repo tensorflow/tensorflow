@@ -67,13 +67,6 @@ Status NcclBase::InitializeCollectiveContext(
       &col_ctx->device_locality);
 }
 
-Status NcclBase::InitializeCollectiveGroupRuntimeDetails(
-    CollGroupRuntimeDetails* col_group_runtime_details) {
-  col_group_runtime_details->communicator_key =
-      NcclManager::instance()->GenerateCommunicatorKey();
-  return Status::OK();
-}
-
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

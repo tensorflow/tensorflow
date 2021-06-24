@@ -1478,7 +1478,7 @@ class RestoredOptimizer(OptimizerV2):
         "you.")
 
 revived_types.register_revived_type(
-    "optimizer",
+    "tf_deprecated_optimizer",
     lambda obj: isinstance(obj, OptimizerV2),
     versions=[revived_types.VersionedTypeRegistration(
         object_factory=lambda proto: RestoredOptimizer(),

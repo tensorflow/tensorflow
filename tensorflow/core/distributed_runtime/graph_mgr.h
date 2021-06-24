@@ -163,13 +163,11 @@ class GraphMgr {
   // mechanism to gc these graphs.
   std::unordered_map<string, Item*> table_;
 
-  void StartParallelExecutors(const string& handle, int64 step_id, Item* item,
-                              Rendezvous* rendezvous,
-                              CollectiveExecutor::Handle* ce_handle,
-                              StepStatsCollector* collector,
-                              CostGraphDef* cost_graph,
-                              CancellationManager* cancellation_manager,
-                              WorkerSession* session, StatusCallback done);
+  void StartParallelExecutors(
+      const string& handle, int64 step_id, Item* item, Rendezvous* rendezvous,
+      CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
+      CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
+      WorkerSession* session, int64 start_time_usecs, StatusCallback done);
 
   // Don't attempt to process cost models unless explicitly requested for at
   // least one of the items.

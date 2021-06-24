@@ -131,19 +131,16 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
   const auto& description = executor->GetDeviceDescription();
   if (executor->platform()->id() == se::cuda::kCudaPlatformId) {
     // CUDA devices must have a minimum compute capability.
-    int major_version, minor_version;
-    if (description.cuda_compute_capability(&major_version, &minor_version)) {
-      if (major_version < kMinCudaComputeCapabilityMajor ||
-          (major_version == kMinCudaComputeCapabilityMajor &&
-           minor_version < kMinCudaComputeCapabilityMinor)) {
-        LOG(INFO) << "StreamExecutor cuda device ("
-                  << executor->device_ordinal() << ") is of "
-                  << "insufficient compute capability: "
-                  << kMinCudaComputeCapabilityMajor << "."
-                  << kMinCudaComputeCapabilityMinor << " required, "
-                  << "device is " << major_version << "." << minor_version;
-        return false;
-      }
+    se::CudaComputeCapability cc = description.cuda_compute_capability();
+    if (!cc.IsAtLeast(kMinCudaComputeCapabilityMajor,
+                      kMinCudaComputeCapabilityMinor)) {
+      LOG(INFO) << "StreamExecutor cuda device (" << executor->device_ordinal()
+                << ") is of "
+                << "insufficient compute capability: "
+                << kMinCudaComputeCapabilityMajor << "."
+                << kMinCudaComputeCapabilityMinor << " required, "
+                << "device is " << cc.ToString();
+      return false;
     }
   } else if (executor->platform()->id() == se::rocm::kROCmPlatformId) {
     int isa_version = 0;
@@ -198,9 +195,7 @@ PlatformUtil::GetStreamExecutors(
       }
       thread_pool.Schedule([platform, i, &stream_executors]() {
         VLOG(1) << "Started device init " << i;
-        se::StreamExecutorConfig config;
-        config.ordinal = i;
-        auto executor_status = platform->GetExecutor(config);
+        auto executor_status = platform->ExecutorForDevice(i);
         if (executor_status.ok()) {
           se::StreamExecutor* executor = executor_status.ValueOrDie();
           if (IsDeviceSupported(executor)) {

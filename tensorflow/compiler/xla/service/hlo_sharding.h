@@ -150,6 +150,10 @@ class HloSharding {
                           [](const HloSharding& s) { return s.IsManual(); });
   }
 
+  // Returns weather the sharding represents a tiled sharding where the mapping
+  // between devices and tiles is represented through 'tile_assignment()'.
+  bool IsTiled() const { return !IsTileMaximal() && !IsManual(); }
+
   // Returns if the sharding has partial replication and partial sharding. If
   // true, data is sharded according to other dimensions of tile_assignment(),
   // but replicated across devices along the last dimension.

@@ -63,7 +63,8 @@ LIBS := \
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
 CFLAGS := -O3 -DNDEBUG -DCPU_SETSIZE=__CPU_SETSIZE -fPIC $(EXTRA_CFLAGS)
-CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
+CXXSTANDARD := -std=c++11
+CXXFLAGS := $(CFLAGS) $(CXXSTANDARD) $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
@@ -139,6 +140,7 @@ $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/delegates/interpreter_utils.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
+$(wildcard tensorflow/lite/schema/schema_conversion_utils.cc) \
 $(wildcard tensorflow/lite/schema/schema_utils.cc) \
 $(wildcard tensorflow/lite/tools/make/downloads/ruy/ruy/*.cc)
 ifeq ($(TFLITE_HAVE_CPUINFO),true)
@@ -258,7 +260,9 @@ BENCHMARK_ALL_SRCS := \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS) \
 	$(CMD_LINE_TOOLS_SRCS) \
-	$(EVALUATION_UTILS_SRCS)
+	$(EVALUATION_UTILS_SRCS) \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/default_execution_provider.cc
 
 BENCHMARK_MAIN_SRC := $(BENCHMARK_SRCS_DIR)/benchmark_main.cc
 BENCHMARK_PERF_OPTIONS_SRC := \
@@ -268,8 +272,7 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(BENCHMARK_MAIN_SRC) \
 	$(BENCHMARK_PERF_OPTIONS_SRC) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc \
-	$(DELEGATE_PROVIDER_SRCS_DIR)/default_execution_provider.cc \
-	$(DELEGATE_PROVIDER_SRCS_DIR)/external_delegate_provider.cc \
+  $(DELEGATE_PROVIDER_SRCS_DIR)/external_delegate_provider.cc \
 	$(DELEGATE_PROVIDER_SRCS_DIR)/gpu_delegate_provider.cc \
 	$(DELEGATE_PROVIDER_SRCS_DIR)/hexagon_delegate_provider.cc \
 	$(DELEGATE_PROVIDER_SRCS_DIR)/nnapi_delegate_provider.cc \
@@ -349,7 +352,6 @@ micro: $(LIB_PATH)
 # Hack for generating schema files bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
 	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
-	@cp -u tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h.oss tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): tensorflow/lite/schema/schema_generated.h $(LIB_OBJS)

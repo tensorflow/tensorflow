@@ -37,16 +37,16 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                       PyObject* debug_info_txt_raw = nullptr,
                       bool enable_mlir_converter = false);
 
-// Returns a list of names of all ops potentially supported by tflite.
-PyObject* TocoGetPotentiallySupportedOps();
-
 // Quantize the model with calibration data. Throw errors if `fully_quantize`
 // is specified by the calibration data are not sufficient to quantize the
 // model.
 PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool fully_quantize, int inference_type,
                             int input_data_type, int output_data_type,
-                            bool enable_numeric_verify = false);
+                            bool enable_numeric_verify = false,
+                            bool enable_whole_model_verify = false,
+                            PyObject* op_blocklist = nullptr,
+                            PyObject* node_blocklist = nullptr);
 
 // Sparsifies model to encode sparse tensors with proper format. Throws error if
 // sparsification fails.

@@ -26,23 +26,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-// An allocator that wraps a GPU allocator and adds debugging
-// functionality that verifies that users do not write outside their
-// allocated memory.
+// An allocator which directly uses cuMemAlloc and cuMemFree to allocate and
+// free memory.
 class GPUcudaMallocAllocator : public Allocator {
  public:
-  explicit GPUcudaMallocAllocator(Allocator* allocator,
-                                  PlatformDeviceId platform_device_id);
-  ~GPUcudaMallocAllocator() override;
+  explicit GPUcudaMallocAllocator(PlatformDeviceId platform_device_id);
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() const override;
-  absl::optional<AllocatorStats> GetStats() override;
 
  private:
-  Allocator* base_allocator_ = nullptr;  // owned
-
   se::StreamExecutor* stream_exec_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUcudaMallocAllocator);

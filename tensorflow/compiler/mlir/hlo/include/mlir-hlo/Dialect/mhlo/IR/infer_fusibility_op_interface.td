@@ -66,7 +66,7 @@ def InferFusibilityOpInterface : OpInterface<"InferFusibilityOpInterface"> {
         Operation *op = this->getOperation();
         assert(lhs >= 0 && rhs >= 0);
         if (lhs == rhs) return true;
-        return inferShapeEquality(op->getOperand(lhs), op->getOperand(rhs));
+        return InferFusibilityOpInterface::inferShapeEquality(op->getOperand(lhs), op->getOperand(rhs));
       }]
     >,
     InterfaceMethod<
@@ -81,7 +81,7 @@ def InferFusibilityOpInterface : OpInterface<"InferFusibilityOpInterface"> {
         Operation *op = this->getOperation();
         assert(lhs >= 0 && rhs >= 0);
         if (lhs == rhs) return true;
-        return inferShapeEquality(op->getResult(lhs), op->getResult(rhs));
+        return InferFusibilityOpInterface::inferShapeEquality(op->getResult(lhs), op->getResult(rhs));
       }]
     >,
     InterfaceMethod<
@@ -95,7 +95,7 @@ def InferFusibilityOpInterface : OpInterface<"InferFusibilityOpInterface"> {
         /// Return whether the input and the output have the same shape.
         Operation *op = this->getOperation();
         assert(input >= 0 && output >= 0);
-        return inferShapeEquality(op->getOperand(input), op->getResult(output));
+        return InferFusibilityOpInterface::inferShapeEquality(op->getOperand(input), op->getResult(output));
       }]
     >,
     InterfaceMethod<

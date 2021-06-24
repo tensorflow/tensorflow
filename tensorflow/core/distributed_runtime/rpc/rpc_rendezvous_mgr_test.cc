@@ -84,6 +84,10 @@ class DummyWorkerCache : public WorkerCacheInterface {
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     return errors::Unimplemented("Unimplemented.");
   }
+  Status GetCoordinationClientCache(
+      std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
+  }
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {
     return false;

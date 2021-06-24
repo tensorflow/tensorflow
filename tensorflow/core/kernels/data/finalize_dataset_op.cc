@@ -31,6 +31,7 @@ namespace data {
 /* static */ constexpr const char* const FinalizeDatasetOp::kInputDataset;
 /* static */ constexpr const char* const FinalizeDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const FinalizeDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const FinalizeDatasetOp::kHasCapturedRef;
 
 namespace {
 
@@ -74,9 +75,9 @@ void MakeDatasetHelper(OpKernelContext* ctx, bool has_captured_ref,
     input->Unref();
     input = *output;
   }
-  std::vector<tstring> optimizations_enabled;
-  std::vector<tstring> optimizations_disabled;
-  std::vector<tstring> optimizations_default;
+  absl::flat_hash_set<tstring> optimizations_enabled;
+  absl::flat_hash_set<tstring> optimizations_disabled;
+  absl::flat_hash_set<tstring> optimizations_default;
   GetOptimizations(options, &optimizations_enabled, &optimizations_disabled,
                    &optimizations_default);
   if (ShouldApplyOptimizations(options, optimizations_enabled,
@@ -91,8 +92,7 @@ void MakeDatasetHelper(OpKernelContext* ctx, bool has_captured_ref,
           << "To enable rewrites, use resource variables instead by calling "
              "`tf.enable_resource_variables()` at the start of the program.";
     } else {
-      std::vector<std::string> optimization_configs;
-      CreateGraphRewriteConfigs(options, &optimization_configs);
+      auto optimization_configs = CreateGraphRewriteConfigs(options);
       OptimizeDatasetOp::MakeDatasetFromOptions(
           ctx, input, optimizations_enabled, optimizations_disabled,
           optimizations_default, optimization_configs, output);

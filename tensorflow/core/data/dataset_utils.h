@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
+#include <functional>
+#include <string>
+
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -103,19 +107,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<Tensor>& received);
 
-// Writes dataset elements to the checkpoint writer using the given key prefix.
-// The elements can be read back by passing the same key prefix to
-// ReadElementsFromCheckpoint. Only one list of elements can be written under
-// the same key_prefix.
-Status WriteElementsToCheckpoint(
-    IteratorStateWriter* writer, StringPiece key_prefix,
-    const std::vector<std::vector<Tensor>>& elements);
-
-// Reads dataset elements from the checkpoint reader using the given key prefix.
-Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
-                                  StringPiece key_prefix,
-                                  std::vector<std::vector<Tensor>>* elements);
-
 // Dataset op level determinism policy.
 class DeterminismPolicy {
  public:
@@ -163,87 +154,6 @@ class DeterminismPolicy {
 // non-deterministically chosen seeds.
 std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds);
 
-// Helper class for reading data from a vector of VariantTensorData objects.
-class VariantTensorDataReader : public IteratorStateReader {
- public:
-  explicit VariantTensorDataReader(
-      const std::vector<const VariantTensorData*>& data);
-
-  Status ReadScalar(StringPiece key, int64* val) const override;
-  Status ReadScalar(StringPiece key, tstring* val) const override;
-  Status ReadTensor(StringPiece key, Tensor* val) const override;
-  bool Contains(StringPiece key) const override;
-
-  Status ReadScalar(StringPiece name, StringPiece key,
-                    int64* val) const override;
-  Status ReadScalar(StringPiece name, StringPiece key,
-                    tstring* val) const override;
-  Status ReadTensor(StringPiece name, StringPiece key,
-                    Tensor* val) const override;
-  bool Contains(StringPiece name, StringPiece key) const override;
-
- private:
-  template <typename T>
-  Status ReadScalarInternal(StringPiece key, T* val) const;
-  Status ReadTensorInternal(StringPiece key, Tensor* val) const;
-
-  template <typename T>
-  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val) const;
-  Status ReadTensorInternal(StringPiece name, StringPiece key,
-                            Tensor* val) const;
-
-  std::map<string, std::map<string, size_t>> map_;
-  std::map<string, const VariantTensorData*> data_;  // Not owned.
-};
-
-// Helper class used to build a list of VariantTensorData objects, one for each
-// iterator which is determined from the key supplied from the Write* calls.
-// Sample usage:
-// VariantTensorDataWriter writer;
-// writer.WriteScalar(full_name("buffer_size"), buffer_.size());
-// writer.WriteScalar(full_name("num_threads"), threadpool_.size());
-// ....
-// std::vector<std::unique_ptr<VariantTensorData>> variants;
-// writer.ReleaseData(&variants);
-// Now the VariantTensorData objects can be used to serialize.
-class VariantTensorDataWriter : public IteratorStateWriter {
- public:
-  Status WriteScalar(StringPiece key, const int64 val) override;
-  Status WriteScalar(StringPiece key, const tstring& val) override;
-  Status WriteTensor(StringPiece key, const Tensor& val) override;
-
-  Status WriteScalar(StringPiece name, StringPiece key,
-                     const int64 val) override;
-  Status WriteScalar(StringPiece name, StringPiece key,
-                     const tstring& val) override;
-  Status WriteTensor(StringPiece name, StringPiece key,
-                     const Tensor& val) override;
-
-  // Releases the built VariantTensorData's to `variants`. Clears out all
-  // class state.
-  void ReleaseData(std::vector<std::unique_ptr<VariantTensorData>>* variants);
-
-  // Obtains a read-only version of the VariantTensorData's built.
-  void GetData(std::vector<const VariantTensorData*>* variants);
-
- private:
-  void MaybeFlush();
-  void Reset();
-
-  template <typename T>
-  Status WriteScalarInternal(StringPiece key, const T& val);
-  Status WriteTensorInternal(StringPiece key, const Tensor& val);
-
-  template <typename T>
-  Status WriteScalarInternal(StringPiece name, StringPiece key, const T& val);
-  Status WriteTensorInternal(StringPiece name, StringPiece key,
-                             const Tensor& val);
-
-  bool is_flushed_ = false;
-  std::map<string, std::unique_ptr<VariantTensorData>> data_;
-  std::map<string, std::vector<string>> keys_;
-};
-
 // Adds the functions in `to_add` to `base`. If a function with a matching
 // signature already exists in `base`, replaces it with the function from
 // `to_add`.
@@ -251,6 +161,14 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionLibraryDefinition& to_add);
 Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
                             const FunctionDefLibrary& to_add);
+
+// Determines whether the given function is stateful.
+Status IsFunctionStateful(const FunctionLibraryDefinition& library,
+                          const FunctionDef& function_def);
+
+// Determines whether the given node is stateful.
+Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                      const NodeDef& node);
 
 // Creates a runner that runs functions with limited parallelism.
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
@@ -294,9 +212,9 @@ Status CopyPartialBatch(int64 num_elements, const Tensor& value,
                         Tensor* output);
 
 // Reads a batch when restoring the iterator.
-Status ReadBatch(int64 batch_size, const string& iterator_prefix,
-                 const string& batch_prefix, IteratorContext* ctx,
-                 IteratorStateReader* reader, std::vector<Tensor>* batch);
+Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
+                 int64 batch_size, const string& iterator_prefix,
+                 const string& batch_prefix, std::vector<Tensor>* batch);
 
 // Writes a batch when saving the iterator.
 Status WriteBatch(int64 batch_size, int64 num_elements,
@@ -320,35 +238,35 @@ Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
 
 // Copies the input elements to a batch.
 Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
-                 std::vector<Tensor>* out_tensors,
-                 std::vector<std::vector<Tensor>>* batch_elements);
+                 const std::vector<std::vector<Tensor>>& batch_elements,
+                 std::vector<Tensor>* out_tensors);
 
-// Configures tf.data experiments and determines which optimizations should be
-// applied.
-std::vector<tstring> ConfigureExperimentsAndSelectOptimizations(
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default);
+// Computes the set of experiments to apply based on the job name, rollout
+// percentage of registered experiments, and the TF_DATA_EXPERIMENT_OPT_IN and
+// TF_DATA_EXPERIMENT_OPT_OUT environment variables.
+absl::flat_hash_set<string> GetExperiments();
+absl::flat_hash_set<string> GetExperiments(
+    const string& job_name, std::function<uint64(const string&)> hash_func);
 
-// Determines which optimizations should be applied.
-std::vector<tstring> SelectOptimizations(
-    const string& job_name,
-    const absl::flat_hash_map<string, uint64>& live_experiments,
-    const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_disabled,
-    const std::vector<tstring>& optimizations_default,
-    std::function<uint64(const string&)> hash_func);
+// Logs and records the experiments that will be applied.
+void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments);
 
 // Computes the set of enabled, disabled, and default optimizations based on the
 // given options.
 void GetOptimizations(const Options& options,
-                      std::vector<tstring>* optimizations_enabled,
-                      std::vector<tstring>* optimizations_disabled,
-                      std::vector<tstring>* optimizations_default);
+                      absl::flat_hash_set<tstring>* optimizations_enabled,
+                      absl::flat_hash_set<tstring>* optimizations_disabled,
+                      absl::flat_hash_set<tstring>* optimizations_default);
+
+// Determines which optimizations should be applied.
+absl::flat_hash_set<tstring> SelectOptimizations(
+    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default);
 
 // Creates graph rewrite configs based on the given options.
-void CreateGraphRewriteConfigs(const Options& options,
-                               std::vector<std::string>* configs);
+absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options);
 
 // Determines whether max intra-op parallelism should be configured.
 bool ShouldConfigureMaxIntraOpParallelism(const Options& options);
@@ -361,8 +279,39 @@ bool ShouldUseAutotuning(const Options& options);
 
 // Determines whether optimizations should be applied.
 bool ShouldApplyOptimizations(
-    const Options& options, const std::vector<tstring>& optimizations_enabled,
-    const std::vector<tstring>& optimizations_default);
+    const Options& options,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_default);
+
+// Registry of tf.data experiments.
+class DatasetExperimentRegistry {
+ public:
+  // Registers the experiment.
+  static void Register(const string& experiment, int64 rollout_pct);
+
+  // Returns all registered experiments.
+  static absl::flat_hash_map<string, int64> Experiments();
+};
+
+// Helper class to register a dataset experiment.
+class DatasetExperimentRegistrar {
+ public:
+  explicit DatasetExperimentRegistrar(const string& experiment,
+                                      int64 rollout_pct) {
+    DatasetExperimentRegistry::Register(experiment, rollout_pct);
+  }
+};
+
+// Macro that can be used to register a dataset experiment.
+#define REGISTER_DATASET_EXPERIMENT(experiment, rollout_pct) \
+  REGISTER_DATASET_OP_NAME_UNIQ_HELPER(__COUNTER__, experiment, rollout_pct)
+
+#define REGISTER_DATASET_OP_NAME_UNIQ_HELPER(ctr, experiment, rollout_pct) \
+  REGISTER_DATASET_OP_NAME_UNIQ(ctr, experiment, rollout_pct)
+
+#define REGISTER_DATASET_OP_NAME_UNIQ(ctr, experiment, rollout_pct) \
+  static ::tensorflow::data::DatasetExperimentRegistrar             \
+      registrar__body__##ctr##__object(experiment, rollout_pct)
 
 }  // namespace data
 }  // namespace tensorflow

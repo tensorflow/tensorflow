@@ -79,10 +79,10 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * <p>The TFLite library is built against NDK API 19. It may work for Android API levels below 19,
  * but is not guaranteed.
  */
-public final class Interpreter implements AutoCloseable {
+public final class Interpreter implements InterpreterApi {
 
   /** An options class for controlling runtime interpreter behavior. */
-  public static class Options {
+  public static class Options extends InterpreterApi.Options {
     public Options() {}
 
     /**
@@ -93,14 +93,16 @@ public final class Interpreter implements AutoCloseable {
      * unspecified, or set to the value -1, the number of threads used will be
      * implementation-defined and platform-dependent.
      */
+    @Override
     public Options setNumThreads(int numThreads) {
-      this.numThreads = numThreads;
+      super.setNumThreads(numThreads);
       return this;
     }
 
     /** Sets whether to use NN API (if available) for op execution. Defaults to false (disabled). */
+    @Override
     public Options setUseNNAPI(boolean useNNAPI) {
-      this.useNNAPI = useNNAPI;
+      super.setUseNNAPI(useNNAPI);
       return this;
     }
 
@@ -108,8 +110,9 @@ public final class Interpreter implements AutoCloseable {
      * Sets whether to allow float16 precision for FP32 calculation when possible. Defaults to false
      * (disallow).
      *
-     * @deprecated Prefer using {@link
-     *     org.tensorflow.lite.nnapi.NnApiDelegate.Options#setAllowFp16(boolean enable)}.
+     * @deprecated Prefer using <a
+     *     href="https://github.com/tensorflow/tensorflow/blob/5dc7f6981fdaf74c8c5be41f393df705841fb7c5/tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi/NnApiDelegate.java#L127">NnApiDelegate.Options#setAllowFp16(boolean
+     *     enable)</a>.
      */
     @Deprecated
     public Options setAllowFp16PrecisionForFp32(boolean allow) {
@@ -146,10 +149,11 @@ public final class Interpreter implements AutoCloseable {
     /**
      * Advanced: Set if the interpreter is able to be cancelled.
      *
-     * @see {@link Interpreter#setCancelled(boolean)}.
+     * @see #setCancelled(boolean).
      */
+    @Override
     public Options setCancellable(boolean allow) {
-      this.allowCancellation = allow;
+      super.setCancellable(allow);
       return this;
     }
 
@@ -179,11 +183,8 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
-    int numThreads = -1;
-    Boolean useNNAPI;
     Boolean allowFp16PrecisionForFp32;
     Boolean allowBufferHandleOutput;
-    Boolean allowCancellation;
 
     // TODO(b/171856982): update the comment when applying XNNPACK delegate by default is
     // enabled for C++ TfLite library on Android platform.
@@ -194,9 +195,9 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Initializes a {@code Interpreter}
+   * Initializes an {@code Interpreter}.
    *
-   * @param modelFile: a File of a pre-trained TF Lite model.
+   * @param modelFile a File of a pre-trained TF Lite model.
    * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
    *     model.
    */
@@ -205,23 +206,10 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
+   * Initializes an {@code Interpreter} and specifies options for customizing interpreter behavior.
    *
-   * @param modelFile: a file of a pre-trained TF Lite model
-   * @param numThreads: number of threads to use for inference
-   * @deprecated Prefer using the {@link #Interpreter(File,Options)} constructor. This method will
-   *     be removed in a future release.
-   */
-  @Deprecated
-  public Interpreter(@NonNull File modelFile, int numThreads) {
-    this(modelFile, new Options().setNumThreads(numThreads));
-  }
-
-  /**
-   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
-   *
-   * @param modelFile: a file of a pre-trained TF Lite model
-   * @param options: a set of options for customizing interpreter behavior
+   * @param modelFile a file of a pre-trained TF Lite model
+   * @param options a set of options for customizing interpreter behavior
    * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
    *     model.
    */
@@ -238,40 +226,10 @@ public final class Interpreter implements AutoCloseable {
    * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    *
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
-   *     direct {@link Bytebuffer} of nativeOrder.
+   *     direct {@link ByteBuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer) {
     this(byteBuffer, /* options= */ null);
-  }
-
-  /**
-   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and specifies the
-   * number of threads used for inference.
-   *
-   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
-   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
-   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
-   *
-   * @deprecated Prefer using the {@link #Interpreter(ByteBuffer,Options)} constructor. This method
-   *     will be removed in a future release.
-   */
-  @Deprecated
-  public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
-    this(byteBuffer, new Options().setNumThreads(numThreads));
-  }
-
-  /**
-   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file.
-   *
-   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
-   * Interpreter}.
-   *
-   * @deprecated Prefer using the {@link #Interpreter(ByteBuffer,Options)} constructor. This method
-   *     will be removed in a future release.
-   */
-  @Deprecated
-  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
-    this(mappedByteBuffer, /* options= */ null);
   }
 
   /**
@@ -283,7 +241,7 @@ public final class Interpreter implements AutoCloseable {
    * direct {@link ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    *
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@link MappedByteBuffer} nor a
-   *     direct {@link Bytebuffer} of nativeOrder.
+   *     direct {@link ByteBuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer, Options options) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
@@ -319,14 +277,18 @@ public final class Interpreter implements AutoCloseable {
    * @param output a multidimensional array of output data, or a {@link java.nio.Buffer} of
    *     primitive types including int, float, long, and byte. When a {@link java.nio.Buffer} is
    *     used, the caller must ensure that it is set the appropriate write position. A null value is
-   *     allowed only if the caller is using a {@link Delegate} that allows buffer handle interop,
-   *     and such a buffer has been bound to the output {@link Tensor}. See {@link
-   *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}.
-   * @throws IllegalArgumentException if {@code input} or {@code output} is null or empty, or if
-   *     error occurs when running the inference.
+   *     allowed, and is useful for certain cases, e.g., if the caller is using a {@link Delegate}
+   *     that allows buffer handle interop, and such a buffer has been bound to the output {@link
+   *     Tensor} (see also {@link Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or if
+   *     the graph has dynamically shaped outputs and the caller must query the output {@link
+   *     Tensor} shape after inference has been invoked, fetching the data directly from the output
+   *     tensor (via {@link Tensor#asReadOnlyBuffer()}).
+   * @throws IllegalArgumentException if {@code input} is null or empty, or if an error occurs when
+   *     running inference.
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
    *     interrupted by {@code setCancelled(true)}.
    */
+  @Override
   public void run(Object input, Object output) {
     Object[] inputs = {input};
     Map<Integer, Object> outputs = new HashMap<>();
@@ -366,10 +328,16 @@ public final class Interpreter implements AutoCloseable {
    * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
    *     java.nio.Buffer}s of primitive types including int, float, long, and byte. It only needs to
    *     keep entries for the outputs to be used. When a {@link java.nio.Buffer} is used, the caller
-   *     must ensure that it is set the appropriate write position.
-   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} is null or empty, or if
-   *     error occurs when running the inference.
+   *     must ensure that it is set the appropriate write position. The map may be empty for cases
+   *     where either buffer handles are used for output tensor data (see {@link
+   *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or cases where the outputs are
+   *     dynamically shaped and the caller must query the output {@link Tensor} shape after
+   *     inference has been invoked, fetching the data directly from the output tensor (via {@link
+   *     Tensor#asReadOnlyBuffer()}).
+   * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} is
+   *     null, or if an error occurs when running inference.
    */
+  @Override
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
     checkNotClosed();
@@ -377,18 +345,20 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Runs model inference based on SignatureDef provided through @code methodName.
+   * Runs model inference based on SignatureDef provided through {@code methodName}.
    *
    * <p>See {@link Interpreter#run(Object, Object)} for more details on the allowed input and output
    * data types.
    *
-   * @param inputs A Map of inputs from input name in the signatureDef to an input object.
-   * @param outputs a map mapping from output name in SignatureDef to output data.
-   * @param methodName The exported method name identifying the SignatureDef.
-   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} or {@code methodName} is
-   *     null or empty, or if error occurs when running the inference.
-   *
    * <p>WARNING: This is an experimental API and subject to change.
+   *
+   * @param inputs A map from input name in the SignatureDef to an input object.
+   * @param outputs A map from output name in SignatureDef to output data. This may be empty if the
+   *     caller wishes to query the {@link Tensor} data directly after inference (e.g., if the
+   *     output shape is dynamic, or output buffer handles are used).
+   * @param methodName The exported method name identifying the SignatureDef.
+   * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} or
+   *     {@code methodName} is null, or if an error occurs when running inference.
    */
   public void runSignature(
       @NonNull Map<String, Object> inputs,
@@ -407,12 +377,13 @@ public final class Interpreter implements AutoCloseable {
     wrapper.runSignature(inputs, outputs, methodName);
   }
 
-  /* Same as {@link Interpreter#runSignature(Object, Object, String)} but doesn't require
-   * passing a methodName, assuming the model has one SignatureDef. If the model has more than
-   * one SignatureDef it will throw an exception.
+  /**
+   * Same as {@link #runSignature(Map, Map, String)} but doesn't require passing a methodName,
+   * assuming the model has one SignatureDef. If the model has more than one SignatureDef it will
+   * throw an exception.
    *
-   * * <p>WARNING: This is an experimental API and subject to change.
-   * */
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
   public void runSignature(
       @NonNull Map<String, Object> inputs, @NonNull Map<String, Object> outputs) {
     checkNotClosed();
@@ -420,9 +391,9 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Expicitly updates allocations for all tensors, if necessary.
+   * Explicitly updates allocations for all tensors, if necessary.
    *
-   * <p>This will propagate shapes and memory allocations for all dependent tensors using the input
+   * <p>This will propagate shapes and memory allocations for dependent tensors using the input
    * tensor shape(s) as given.
    *
    * <p>Note: This call is *purely optional*. Tensor allocation will occur automatically during
@@ -432,15 +403,19 @@ public final class Interpreter implements AutoCloseable {
    * <pre>{@code
    * interpreter.resizeInput(0, new int[]{1, 4, 4, 3}));
    * interpreter.allocateTensors();
-   * FloatBuffer input = FloatBuffer.allocate(interpreter.getInputTensor(0),numElements());
+   * FloatBuffer input = FloatBuffer.allocate(interpreter.getInputTensor(0).numElements());
    * // Populate inputs...
    * FloatBuffer output = FloatBuffer.allocate(interpreter.getOutputTensor(0).numElements());
    * interpreter.run(input, output)
    * // Process outputs...
    * }</pre>
    *
+   * <p>Note: Some graphs have dynamically shaped outputs, in which case the output shape may not
+   * fully propagate until inference is executed.
+   *
    * @throws IllegalStateException if the graph's tensors could not be successfully allocated.
    */
+  @Override
   public void allocateTensors() {
     checkNotClosed();
     wrapper.allocateTensors();
@@ -452,6 +427,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
    *     model inputs; or if error occurs when resizing the idx-th input.
    */
+  @Override
   public void resizeInput(int idx, @NonNull int[] dims) {
     checkNotClosed();
     wrapper.resizeInput(idx, dims, false);
@@ -467,12 +443,14 @@ public final class Interpreter implements AutoCloseable {
    *     model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
    *     occurs when attempting to resize a tensor with fixed dimensions when `struct` is True.
    */
+  @Override
   public void resizeInput(int idx, @NonNull int[] dims, boolean strict) {
     checkNotClosed();
     wrapper.resizeInput(idx, dims, strict);
   }
 
   /** Gets the number of input tensors. */
+  @Override
   public int getInputTensorCount() {
     checkNotClosed();
     return wrapper.getInputTensorCount();
@@ -484,6 +462,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code opName} does not match any input in the model used
    *     to initialize the {@link Interpreter}.
    */
+  @Override
   public int getInputIndex(String opName) {
     checkNotClosed();
     return wrapper.getInputIndex(opName);
@@ -495,6 +474,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code inputIndex} is negtive or is not smaller than the
    *     number of model inputs.
    */
+  @Override
   public Tensor getInputTensor(int inputIndex) {
     checkNotClosed();
     return wrapper.getInputTensor(inputIndex);
@@ -503,13 +483,13 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Gets the Tensor associated with the provdied input name and signature method name.
    *
+   * <p>WARNING: This is an experimental API and subject to change.
+   *
    * @param inputName Input name in the signature.
    * @param methodName The exported method name identifying the SignatureDef, can be null if the
    *     model has one signature.
    * @throws IllegalArgumentException if {@code inputName} or {@code methodName} is null or empty,
    *     or invalid name provided.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
    */
   public Tensor getInputTensorFromSignature(String inputName, String methodName) {
     checkNotClosed();
@@ -536,7 +516,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Gets the list of SignatureDefs inputs for method {@code methodName}
+   * Gets the list of SignatureDefs inputs for method {@code methodName}.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    */
@@ -546,7 +526,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
-   * Gets the list of SignatureDefs outputs for method {@code methodName}
+   * Gets the list of SignatureDefs outputs for method {@code methodName}.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    */
@@ -556,6 +536,7 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /** Gets the number of output Tensors. */
+  @Override
   public int getOutputTensorCount() {
     checkNotClosed();
     return wrapper.getOutputTensorCount();
@@ -567,6 +548,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code opName} does not match any output in the model used
    *     to initialize the {@link Interpreter}.
    */
+  @Override
   public int getOutputIndex(String opName) {
     checkNotClosed();
     return wrapper.getOutputIndex(opName);
@@ -585,6 +567,7 @@ public final class Interpreter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code outputIndex} is negtive or is not smaller than the
    *     number of model outputs.
    */
+  @Override
   public Tensor getOutputTensor(int outputIndex) {
     checkNotClosed();
     return wrapper.getOutputTensor(outputIndex);
@@ -600,13 +583,13 @@ public final class Interpreter implements AutoCloseable {
    * that are dependent on input *values*, the output shape may not be fully determined until
    * running inference.
    *
+   * <p>WARNING: This is an experimental API and subject to change.
+   *
    * @param outputName Output name in the signature.
    * @param methodName The exported method name identifying the SignatureDef, can be null if the
    *     model has one signature.
    * @throws IllegalArgumentException if {@code outputName} or {@code methodName} is null or empty,
    *     or invalid name provided.
-   *
-   * <p>WARNING: This is an experimental API and subject to change.
    */
   public Tensor getOutputTensorFromSignature(String outputName, String methodName) {
     checkNotClosed();
@@ -627,34 +610,10 @@ public final class Interpreter implements AutoCloseable {
    *
    * @throws IllegalArgumentException if the model is not initialized by the {@link Interpreter}.
    */
+  @Override
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
     return wrapper.getLastNativeInferenceDurationNanoseconds();
-  }
-
-  /**
-   * Sets the number of threads to be used for ops that support multi-threading.
-   *
-   * @deprecated Prefer using {@link Interpreter.Options#setNumThreads(int)} directly for
-   *     controlling thread multi-threading. This method will be removed in a future release.
-   */
-  @Deprecated
-  public void setNumThreads(int numThreads) {
-    checkNotClosed();
-    wrapper.setNumThreads(numThreads);
-  }
-
-  /**
-   * Advanced: Modifies the graph with the provided {@link Delegate}.
-   *
-   * @throws IllegalArgumentException if error occurs when modifying graph with {@code delegate}.
-   * @deprecated Prefer using {@link Interpreter.Options#addDelegate} to provide delegates at
-   *     creation time. This method will be removed in a future release.
-   */
-  @Deprecated
-  public void modifyGraphWithDelegate(Delegate delegate) {
-    checkNotClosed();
-    wrapper.modifyGraphWithDelegate(delegate);
   }
 
   /**
@@ -683,7 +642,7 @@ public final class Interpreter implements AutoCloseable {
    *     resume.
    * @throws IllegalStateException if the interpreter is not initialized with the cancellable
    *     option, which is by default off.
-   * @see {@link Interpreter.Options#setCancellable(boolean)}.
+   * @see Interpreter.Options#setCancellable(boolean).
    */
   public void setCancelled(boolean cancelled) {
     wrapper.setCancelled(cancelled);

@@ -78,6 +78,50 @@ void TrtShapeOptimizationProfile::ImplicitBatchModeCompatibleStrategy(
   }
 }
 
+// Applies a binary operation for each dimension of the input shapes.
+// x[i].d[k] = op(x[i].d[k], y[i].d[k]), where i enumerates the input tensors,
+// and k enumerates the dimensions of the tensors. The BinaryOperation may be
+// std::min, std::max etc.
+template <typename BinaryOperation>
+Status ShapeProfileBinaryOp(std::vector<nvinfer1::Dims>* x,
+                            const std::vector<nvinfer1::Dims>& y,
+                            BinaryOperation op) {
+  if (x->size() != y.size())
+    return errors::InvalidArgument(
+        "Number of input tensors differ during profile creation");
+  for (int i = 0; i < x->size(); i++) {
+    if (x->at(i).nbDims != y[i].nbDims)
+      return errors::InvalidArgument(
+          "Number of input dimensions differ during profile creation");
+    for (int j = 0; j < x->at(i).nbDims; j++) {
+      x->at(i).d[j] = op(x->at(i).d[j], y[i].d[j]);
+    }
+  }
+  return Status::OK();
+}
+
+Status TrtShapeOptimizationProfile::RangeStrategy(
+    const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes) {
+  if (collected_shapes.empty()) return Status::OK();
+
+  std::vector<nvinfer1::Dims> min = collected_shapes[0];
+  std::vector<nvinfer1::Dims> max = min;
+
+  for (int i = 1; i < collected_shapes.size(); i++) {
+    TF_RETURN_IF_ERROR(
+        ShapeProfileBinaryOp(&min, collected_shapes[i],
+                             [](int a, int b) { return std::min(a, b); }));
+    TF_RETURN_IF_ERROR(
+        ShapeProfileBinaryOp(&max, collected_shapes[i],
+                             [](int a, int b) { return std::max(a, b); }));
+  }
+  VLOG(2) << "Initializing optimization profile config with min="
+          << DebugString(min) << ", opt=max=" << DebugString(max);
+  OptimizationProfileConfig profConfig{min, max, max};
+  profiles_.push_back(std::move(profConfig));
+  return Status::OK();
+}
+
 void TrtShapeOptimizationProfile::OptimalStrategy(
     const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes) {
   for (auto& shape_vec : collected_shapes) {
@@ -236,7 +280,14 @@ void TrtShapeOptimizationProfile::InitProfiles(
     // Treat all other strategies the same as kOptimal for now. Implementing
     // those is outlined in the dynamic shape support implementation plan.
     case ProfileStrategy::kRange:
+      VLOG(1) << "Creating profiles with Range strategy";
+      TF_CHECK_OK(RangeStrategy(collected_shapes));
+      break;
     case ProfileStrategy::kRangeOptimal:
+      VLOG(1) << "Creating profiles with RangeOptimal strategy";
+      OptimalStrategy(collected_shapes);
+      TF_CHECK_OK(RangeStrategy(collected_shapes));
+      break;
     case ProfileStrategy::kOptimal:
       VLOG(1) << "Creating profiles with Optimal strategy";
       OptimalStrategy(collected_shapes);

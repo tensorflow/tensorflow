@@ -1508,4 +1508,27 @@ InitializeHostForDistributedTpuOp, and outputs the latter's result.
   );
 }
 
+def TF_ShutdownTPUSystemOp : TF_Op<"ShutdownTPUSystem", []> {
+  let summary = [{
+An op that shuts down the TPU system.
+  }];
+
+  let arguments = (ins);
+  let results = (outs
+    TF_BoolTensor:$success
+  );
+}
+
+// Internal op for testing value-based side-effects for non-resource values.
+// TODO(mgester) We should have an extension of TF dialect only for testing so
+// TF dialect is not polluted with test ops.
+def TF__InternalTestNonResourceValueSideEffects_ : TF_Op<"_InternalTestNonResourceValueSideEffects_", []> {
+  let summary = "Internal op for testing only";
+
+  let arguments = (ins
+    Arg<TF_StrTensor,"", [TF_DatasetIteratorRead, TF_DatasetIteratorWrite]>:$key
+  );
+  let results = (outs);
+}
+
 #endif // TF_OPS

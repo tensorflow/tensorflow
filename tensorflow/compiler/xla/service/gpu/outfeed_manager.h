@@ -56,7 +56,12 @@ class OutfeedBuffer {
 
 // Manages a thread-safe queue of buffers. The buffers are supposed to be
 // produced by the transfer manager and consumed by the device.
-using OutfeedManager = XfeedQueue<ShapeTree<std::unique_ptr<OutfeedBuffer>>*>;
+class OutfeedManager
+    : public XfeedQueue<ShapeTree<std::unique_ptr<OutfeedBuffer>>*> {
+ public:
+  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                    MutableBorrowingLiteral literal);
+};
 
 // Returns the GPU outfeed manager for the given stream executor.
 OutfeedManager* GetOrCreateOutfeedManager(se::StreamExecutor* executor);

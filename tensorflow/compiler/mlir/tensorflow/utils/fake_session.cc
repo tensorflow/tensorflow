@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
+#include "absl/strings/match.h"
+#include "llvm/Support/CommandLine.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/platform/threadpool_options.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace mlir {
@@ -35,11 +38,28 @@ using ::tensorflow::Tensor;
 
 const char kDeviceNamePrefix[] = "/job:worker/replica:0/task:1";
 const char kDeviceName[] = "/job:worker/replica:0/task:1/device:CPU:0";
+
+// Struct holding options for FakeSession which are configuered through
+// command line flags.
+struct FakeSessionOptions {
+  llvm::cl::opt<bool> fail_to_fetch_local_device_manager{
+      "fail-to-fetch-local-device-manager",
+      llvm::cl::desc("Fail to fetch local device manager."),
+      llvm::cl::init(false)};
+};
+FakeSessionOptions* kSessionOptions = []() { return new FakeSessionOptions; }();
 }  // namespace
 
 FakeSession::FakeSession() {
+  // We don't initialize devices in constructor as it causes some
+  // global initialization fiasco between tests and code in TF.
+}
+
+void FakeSession::Initialize() {
+  if (initialized_) return;
   BuildDeviceManager();
   InitVariables();
+  initialized_ = true;
 }
 
 void FakeSession::BuildDeviceManager() {
@@ -80,6 +100,9 @@ Status FakeSession::ListDevices(
 
 Status FakeSession::LocalDeviceManager(
     const tensorflow::DeviceMgr** deviceMgrPtr) {
+  Initialize();
+  if (kSessionOptions->fail_to_fetch_local_device_manager)
+    return Status(tensorflow::error::UNKNOWN, "No Local Device Manager");
   *deviceMgrPtr = device_mgr_.get();
   return Status::OK();
 }
@@ -111,6 +134,7 @@ Status FakeSession::Run(
     const std::vector<std::string>& target_nodes, std::vector<Tensor>* outputs,
     tensorflow::RunMetadata* run_metadata,
     const tensorflow::thread::ThreadPoolOptions& thread_pool_options) {
+  Initialize();
   for (const std::string& output_name : output_names) {
     Tensor output;
     if (output_name == "dense/bias") {
@@ -140,6 +164,15 @@ Status FakeSession::Run(
       t.scalar<tensorflow::ResourceHandle>()().set_device(kDeviceName);
 
       outputs->push_back(t);
+    } else if (output_name == "invalid_var") {
+      Tensor t = Tensor(tensorflow::DT_RESOURCE, tensorflow::TensorShape({1}));
+      t.scalar<tensorflow::ResourceHandle>()().set_name("invalid_var");
+      t.scalar<tensorflow::ResourceHandle>()().set_device("invalid_device");
+
+      outputs->push_back(t);
+    } else if (absl::StartsWith(output_name, "var")) {
+      return Status(tensorflow::error::NOT_FOUND,
+                    "Can't find variable " + output_name + " in session");
     } else {
       // Create a scalar float tensor.
       Tensor t = Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({}));

@@ -1064,6 +1064,7 @@ class ArrayMethodsTest(test.TestCase):
   def testMoveaxis(self):
 
     def _test(*args):
+      # pylint: disable=no-value-for-parameter
       expected = np.moveaxis(*args)
       raw_ans = np_array_ops.moveaxis(*args)
 

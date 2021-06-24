@@ -38,17 +38,6 @@ from tensorflow.python.util.tf_export import tf_export
 _RESOURCE_TRACKER_STACK = []
 
 
-class NotTrackable(object):
-  """Marks instances of child classes as unsaveable using an object-based API.
-
-  Useful for marking objects which would otherwise look trackable because
-  of inheritance (e.g. through `Layer`) as not trackable. Inheriting from
-  `NotTrackable` does not prevent an object from being assigned to any
-  attributes, but will throw an error on save/restore.
-  """
-  pass
-
-
 @tf_export("__internal__.tracking.AutoTrackable", v1=[])
 class AutoTrackable(base.Trackable):
   """Manages dependencies on other objects.
@@ -317,10 +306,10 @@ class TrackableResource(CapturableResource):
   ...   def _create_resource(self):
   ...     return tf.raw_ops.VarHandleOp(dtype=tf.float32, shape=[2])
   ...   def _initialize(self):
-  ...     return tf.raw_ops.AssignVariableOp(
+  ...     tf.raw_ops.AssignVariableOp(
   ...         resource=self.resource_handle, value=tf.ones([2]))
   ...   def _destroy_resource(self):
-  ...     return tf.raw_ops.DestroyResourceOp(resource=self.resource_handle)
+  ...     tf.raw_ops.DestroyResourceOp(resource=self.resource_handle)
   >>> class DemoModule(tf.Module):
   ...   def __init__(self):
   ...     self.resource = DemoResource()

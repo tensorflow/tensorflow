@@ -30,11 +30,13 @@ class LoadOptions(object):
   """
 
   # Define object attributes in __slots__ for improved memory and performance.
-  __slots__ = ("allow_partial_checkpoint", "experimental_io_device",)
+  __slots__ = ("allow_partial_checkpoint", "experimental_io_device",
+               "experimental_skip_checkpoint")
 
   def __init__(self,
                allow_partial_checkpoint=False,
-               experimental_io_device=None):
+               experimental_io_device=None,
+               experimental_skip_checkpoint=False):
     """Creates an object that stores options for SavedModel loading.
 
     *When to set `allow_partial_checkpoint=True`?*
@@ -95,6 +97,9 @@ class LoadOptions(object):
         This is for example useful if you want to load from a local directory,
         such as "/tmp" when running in a distributed setting. In that case
         pass a device for the host where the "/tmp" directory is accessible.
+      experimental_skip_checkpoint: bool. Defaults to `False`. If set to `True`,
+        checkpoints will not be restored. Note that this in the majority of
+        cases will generate an unusable model.
 
     Example:
 
@@ -106,3 +111,4 @@ class LoadOptions(object):
     """
     self.experimental_io_device = experimental_io_device
     self.allow_partial_checkpoint = allow_partial_checkpoint
+    self.experimental_skip_checkpoint = experimental_skip_checkpoint

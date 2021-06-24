@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #include <algorithm>
+#include <iostream>
 #include <ostream>
 #include <set>
 #include <string>
@@ -425,7 +426,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.constrain_layout(), channel_id, proto.use_global_device_ids());
       break;
     }
-    case HloOpcode::kAllReduce: {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kAllReduceStart: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "AllReduce should have 1 called computation but sees "
           << proto.called_computation_ids_size();
@@ -438,14 +441,27 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      instruction = CreateAllReduce(
-          shape, all_operands(), computations(0),
-          /*replica_groups=*/
-          std::vector<ReplicaGroup>(proto.replica_groups().begin(),
-                                    proto.replica_groups().end()),
-          /*constrain_layout=*/proto.constrain_layout(),
-          /*channel_id=*/channel_id,
-          /*use_global_device_ids=*/proto.use_global_device_ids());
+      std::vector<ReplicaGroup> replica_groups(proto.replica_groups().begin(),
+                                               proto.replica_groups().end());
+      if (opcode == HloOpcode::kAllReduce) {
+        instruction =
+            CreateAllReduce(shape, all_operands(), computations(0),
+                            replica_groups, proto.constrain_layout(),
+                            channel_id, proto.use_global_device_ids());
+      } else if (opcode == HloOpcode::kAllReduceScatter) {
+        TF_RET_CHECK(proto.dimensions_size() == 1)
+            << "AllReduceScatter cannot have more than 1 scatter dimensions";
+        int64 scatter_dimension = proto.dimensions(0);
+        instruction = CreateAllReduceScatter(
+            shape, all_operands(), computations(0), replica_groups,
+            proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
+            scatter_dimension);
+      } else {
+        instruction =
+            CreateAllReduceStart(shape, all_operands(), computations(0),
+                                 replica_groups, proto.constrain_layout(),
+                                 channel_id, proto.use_global_device_ids());
+      }
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -473,26 +489,69 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {
-      std::vector<std::pair<int64, int64>> source_target_pairs(
+      TF_RET_CHECK(proto.operand_ids().size() == 1 ||
+                   proto.operand_ids().size() == 4);
+      std::vector<std::pair<int64_t, int64_t>> source_target_pairs(
           proto.source_target_pairs_size());
-      absl::optional<int64> channel_id;
+      absl::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
-      for (int i = 0; i < source_target_pairs.size(); i++) {
+      for (int i = 0; i < source_target_pairs.size(); ++i) {
         source_target_pairs[i].first = proto.source_target_pairs(i).source();
         source_target_pairs[i].second = proto.source_target_pairs(i).target();
       }
-
-      if (opcode == HloOpcode::kCollectivePermute) {
-        instruction = CreateCollectivePermute(shape, operands(0),
-                                              source_target_pairs, channel_id);
-      } else if (opcode == HloOpcode::kCollectivePermuteStart) {
-        instruction = CreateCollectivePermuteStart(
-            shape, operands(0), source_target_pairs, channel_id);
+      if (proto.dynamic_slice_sizes_size() == 0) {
+        if (opcode == HloOpcode::kCollectivePermute) {
+          instruction = CreateCollectivePermute(
+              shape, operands(0), source_target_pairs, channel_id);
+        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+          instruction = CreateCollectivePermuteStart(
+              shape, operands(0), source_target_pairs, channel_id);
+        } else {
+          LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
+                     << "but got " << HloOpcodeString(opcode);
+        }
       } else {
-        LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
-                   << "but got " << HloOpcodeString(opcode);
+        std::vector<std::vector<int64_t>> slice_sizes;
+        HloInstruction* input = operands(0);
+        if (input->shape().IsTuple() &&
+            input->shape().tuple_shapes_size() > 1) {
+          slice_sizes.resize(input->shape().tuple_shapes_size());
+        } else {
+          slice_sizes.resize(1);
+        }
+        int proto_index = 0;
+        if (input->shape().IsTuple()) {
+          for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
+            slice_sizes[i].resize(
+                input->shape().tuple_shapes(i).dimensions_size());
+            for (int j = 0;
+                 j < input->shape().tuple_shapes(i).dimensions_size(); ++j) {
+              CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
+              slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
+              proto_index += 1;
+            }
+          }
+        } else {
+          slice_sizes[0].resize(input->shape().dimensions_size());
+          for (int j = 0; j < input->shape().dimensions_size(); ++j) {
+            slice_sizes[0][j] = proto.dynamic_slice_sizes(proto_index);
+            proto_index += 1;
+          }
+        }
+        if (opcode == HloOpcode::kCollectivePermute) {
+          instruction = CreateCollectivePermute(
+              shape, operands(0), operands(1), operands(2), operands(3),
+              source_target_pairs, slice_sizes, channel_id);
+        } else if (opcode == HloOpcode::kCollectivePermuteStart) {
+          instruction = CreateCollectivePermuteStart(
+              shape, operands(0), operands(1), operands(2), operands(3),
+              source_target_pairs, slice_sizes, channel_id);
+        } else {
+          LOG(FATAL) << "Expect CollectivePermute or CollectivePermuteStart, "
+                     << "but got " << HloOpcodeString(opcode);
+        }
       }
       break;
     }
@@ -613,6 +672,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       custom_call_instr->set_output_to_operand_aliasing(
           std::move(output_to_operand_aliasing));
+      custom_call_instr->set_custom_call_schedule(proto.custom_call_schedule());
       break;
     }
     case HloOpcode::kPad:
@@ -884,6 +944,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
   // instructions with no auxiliary fields.
   switch (opcode) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
@@ -1040,7 +1101,7 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    int64 all_gather_dimension, const std::vector<ReplicaGroup>& replica_groups,
+    int64 all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
     bool constrain_layout, const absl::optional<int64>& channel_id,
     bool use_global_device_ids) {
   return absl::make_unique<HloAllGatherInstruction>(
@@ -1051,16 +1112,39 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids) {
   return absl::make_unique<HloAllReduceInstruction>(
+      HloOpcode::kAllReduce, shape, operands, reduce_computation,
+      replica_groups, constrain_layout, channel_id, use_global_device_ids);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateAllReduceScatter(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+    const absl::optional<int64>& channel_id, bool use_global_device_ids,
+    int64 scatter_dimension) {
+  return absl::make_unique<HloAllReduceScatterInstruction>(
       shape, operands, reduce_computation, replica_groups, constrain_layout,
-      channel_id, use_global_device_ids);
+      channel_id, use_global_device_ids, scatter_dimension);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateAllReduceStart(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+  return absl::make_unique<HloAllReduceInstruction>(
+      HloOpcode::kAllReduceStart, shape, operands, reduce_computation,
+      replica_groups, constrain_layout, channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id,
     const absl::optional<int64>& split_dimension) {
   return absl::make_unique<HloAllToAllInstruction>(
@@ -1071,21 +1155,46 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermute(
     const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64, int64>>& source_target_pairs,
-    const absl::optional<int64>& channel_id) {
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const absl::optional<int64_t>& channel_id) {
   return absl::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermute, shape, operand, source_target_pairs,
       channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectivePermute(
+    const Shape& shape, HloInstruction* input, HloInstruction* output,
+    HloInstruction* input_start_indices, HloInstruction* output_start_indices,
+    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+    absl::Span<const std::vector<int64_t>> slice_sizes,
+    const absl::optional<int64_t>& channel_id) {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      HloOpcode::kCollectivePermute, shape, input, output, input_start_indices,
+      output_start_indices, source_target_pairs, slice_sizes, channel_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermuteStart(
     const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64, int64>>& source_target_pairs,
-    const absl::optional<int64>& channel_id) {
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const absl::optional<int64_t>& channel_id) {
   return absl::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermuteStart, shape, operand, source_target_pairs,
       channel_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateCollectivePermuteStart(
+    const Shape& shape, HloInstruction* input, HloInstruction* output,
+    HloInstruction* input_start_indices, HloInstruction* output_start_indices,
+    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+    absl::Span<const std::vector<int64_t>> slice_sizes,
+    const absl::optional<int64_t>& channel_id) {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      HloOpcode::kCollectivePermuteStart, shape, input, output,
+      input_start_indices, output_start_indices, source_target_pairs,
+      slice_sizes, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId(
@@ -1529,6 +1638,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
@@ -1688,6 +1799,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
@@ -1713,6 +1826,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
@@ -2119,6 +2233,7 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kAllReduceDone:
     case HloOpcode::kAtan2:
     case HloOpcode::kAdd:
     case HloOpcode::kBitcast:
@@ -2228,6 +2343,8 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kOutfeed:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
@@ -2433,6 +2550,8 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
     case HloOpcode::kCustomCall:
@@ -2454,6 +2573,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
     case HloOpcode::kCustomCall:
@@ -2848,6 +2968,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kReduceWindow ||
                opcode() == HloOpcode::kReduce ||
                opcode() == HloOpcode::kAllReduce ||
+               opcode() == HloOpcode::kAllReduceScatter ||
+               opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
       extra.push_back(
@@ -2910,6 +3032,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kReduceWindow:
       case HloOpcode::kReduce:
       case HloOpcode::kAllReduce:
+      case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
         extra.push_back(
@@ -3159,6 +3282,12 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAllGather(this);
     case HloOpcode::kAllReduce:
       return visitor->HandleAllReduce(this);
+    case HloOpcode::kAllReduceScatter:
+      return visitor->HandleAllReduceScatter(this);
+    case HloOpcode::kAllReduceStart:
+      return visitor->HandleAllReduceStart(this);
+    case HloOpcode::kAllReduceDone:
+      return visitor->HandleAllReduceDone(this);
     case HloOpcode::kAllToAll:
       return visitor->HandleAllToAll(this);
     case HloOpcode::kCollectivePermute:
@@ -3341,12 +3470,7 @@ template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
-  // Calculating the instruction count within a module can be expensive on large
-  // models so only do it if the visit state is empty. This will help when the
-  // same visitor is reused across many computations of a single module.
-  if (visitor->VisitStateCapacity() == 0) {
-    visitor->ReserveVisitStates(root->GetModule()->instruction_count());
-  }
+  visitor->ReserveVisitStates(root->parent()->instruction_count());
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //
@@ -3729,25 +3853,44 @@ string PrecisionToString(const PrecisionConfig::Precision& precision) {
   return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
 }
 
+static string CustomCallScheduleToString(const CustomCallSchedule& schedule) {
+  return absl::AsciiStrToLower(CustomCallSchedule_Name(schedule));
+}
+
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
+  auto len_required = [](int64 a, int64 b, absl::Span<const int64> cs) {
+    return std::max({a, b, cs.empty() ? 0 : *absl::c_max_element(cs)}) + 1;
+  };
+
   // lhs_dims[i] is the symbol of the logical dimension i for the lhs
   // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
-  std::vector<string> lhs_dims(2 + dnums.input_spatial_dimensions().size());
+  std::vector<string> lhs_dims(len_required(dnums.input_batch_dimension(),
+                                            dnums.input_feature_dimension(),
+                                            dnums.input_spatial_dimensions()),
+                               "?");
   lhs_dims[dnums.input_batch_dimension()] = 'b';
   lhs_dims[dnums.input_feature_dimension()] = 'f';
   for (int64 i = 0; i < dnums.input_spatial_dimensions().size(); ++i) {
     lhs_dims[dnums.input_spatial_dimensions(i)] = StrCat(i);
   }
 
-  std::vector<string> rhs_dims(2 + dnums.kernel_spatial_dimensions().size());
+  std::vector<string> rhs_dims(
+      len_required(dnums.kernel_input_feature_dimension(),
+                   dnums.kernel_output_feature_dimension(),
+                   dnums.kernel_spatial_dimensions()),
+      "?");
   rhs_dims[dnums.kernel_input_feature_dimension()] = "i";
   rhs_dims[dnums.kernel_output_feature_dimension()] = "o";
   for (int64 i = 0; i < dnums.kernel_spatial_dimensions().size(); ++i) {
     rhs_dims[dnums.kernel_spatial_dimensions(i)] = StrCat(i);
   }
 
-  std::vector<string> output_dims(2 + dnums.output_spatial_dimensions().size());
+  std::vector<string> output_dims(
+      len_required(dnums.output_batch_dimension(),
+                   dnums.output_feature_dimension(),
+                   dnums.output_spatial_dimensions()),
+      "?");
   output_dims[dnums.output_batch_dimension()] = 'b';
   output_dims[dnums.output_feature_dimension()] = 'f';
   for (int64 i = 0; i < dnums.output_spatial_dimensions().size(); ++i) {
@@ -3758,7 +3901,7 @@ string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
-string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups) {
+string ReplicaGroupsToString(absl::Span<const ReplicaGroup> replica_groups) {
   std::vector<string> replica_group_str;
   replica_group_str.reserve(replica_groups.size());
   for (const ReplicaGroup& group : replica_groups) {
@@ -3819,6 +3962,25 @@ StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown distribution");
+  }
+  return found->second;
+}
+
+StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
+    absl::string_view name) {
+  static const absl::flat_hash_map<string, CustomCallSchedule>* map = [] {
+    static auto* map = new absl::flat_hash_map<string, CustomCallSchedule>;
+    for (int i = 0; i < CustomCallSchedule_ARRAYSIZE; i++) {
+      if (CustomCallSchedule_IsValid(i)) {
+        auto value = static_cast<CustomCallSchedule>(i);
+        (*map)[CustomCallScheduleToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(absl::AsciiStrToLower(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown schedule");
   }
   return found->second;
 }
@@ -4259,6 +4421,12 @@ int64 HloInstruction::slice_sizes(int64 dimension) const {
 
 const std::vector<int64>& HloInstruction::dynamic_slice_sizes() const {
   return Cast<HloDynamicSliceInstruction>(this)->dynamic_slice_sizes();
+}
+
+const std::vector<std::vector<int64_t>>&
+HloInstruction::dynamic_slice_sizes_list() const {
+  return Cast<HloCollectivePermuteInstruction>(this)
+      ->dynamic_slice_sizes_list();
 }
 
 const GatherDimensionNumbers& HloInstruction::gather_dimension_numbers() const {

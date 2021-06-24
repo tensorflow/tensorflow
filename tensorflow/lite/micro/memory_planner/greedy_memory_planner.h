@@ -81,7 +81,7 @@ class GreedyMemoryPlanner : public MemoryPlanner {
                                   int buffer_index, int* offset) override;
 
   // Prints an ascii-art diagram of the buffer layout plan.
-  void PrintMemoryPlan(ErrorReporter* error_reporter);
+  void PrintMemoryPlan();
 
   // Debug method to check whether any buffer allocations are overlapping. This
   // is an O(N^2) complexity operation, so only use for testing.

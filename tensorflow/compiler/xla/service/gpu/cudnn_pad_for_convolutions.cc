@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 
+#include "absl/functional/bind_front.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -139,18 +141,18 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
 // the desired input/output feature map shapes, and adds necessary padding and
 // slicing nodes around them.
 //
-// resolve_pad_shapes points to a function.  It takes conv, a custom call
-// instruction to cuDNN convolution that may need padding to figure out the
-// desired padded input and output tensor shapes and store the desired
-// shapes in new_input_shapes and new_input_shapes.  Notice that
-// new_input_shapes is a vector for multiple input tensors. This function
-// shall return true, if padding is necessary or false otherwise in addition to
-// status.
+// resolve_pad_shapes takes conv, a custom call instruction to cuDNN convolution
+// that may need padding to figure out the desired padded input and output
+// tensor shapes and store the desired shapes in new_input_shapes and
+// new_input_shapes.  Notice that new_input_shapes is a vector for multiple
+// input tensors. This function shall return true if padding is necessary or
+// false otherwise in addition to status.
 static StatusOr<bool> ResolveAndPad(
     HloCustomCallInstruction* conv,
-    StatusOr<bool> (*resolve_pad_shapes)(HloCustomCallInstruction* conv,
-                                         std::vector<Shape>* new_input_shapes,
-                                         Shape* new_result_shape)) {
+    std::function<StatusOr<bool>(HloCustomCallInstruction* conv,
+                                 std::vector<Shape>* new_input_shapes,
+                                 Shape* new_result_shape)>
+        resolve_pad_shapes) {
   std::vector<Shape> new_input_shapes;
   Shape new_result_shape;
   TF_ASSIGN_OR_RETURN(bool result, resolve_pad_shapes(conv, &new_input_shapes,
@@ -277,12 +279,13 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
 }
 
 // Adds padding to cudnn integer convolutions to make input and output feature
-// maps multiple of 4
+// maps multiples of pad_to (usually 4 or 32).
 static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
-    HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
-    Shape* new_result_shape_ptr) {
+    int pad_to, HloCustomCallInstruction* conv,
+    std::vector<Shape>* new_input_shapes_ptr, Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
   const Shape& input_shape = conv->operand(0)->shape();
+  const Shape& kernel_shape = conv->operand(1)->shape();
   const Shape& result_shape = conv->shape().tuple_shapes(0);
 
   // Integer convolution only
@@ -304,46 +307,85 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   Shape& new_result_shape = *new_result_shape_ptr;
   new_result_shape = conv->shape().tuple_shapes(0);
 
-  // Pad the features to multiples of 4 and check that
-  // the conv buffers size changes for debugging purpose.
+  // The input/kernel/output might already be vectorized (i.e. cudnn layout
+  // NCHW_VECT_C).  If so, we pad the features dim so that
+  // size(features_dim) * size(vect_dim) is a multiple of pad_to.
+  absl::optional<int64> input_vect_dim;
+  absl::optional<int64> kernel_vect_dim;
+  absl::optional<int64> result_vect_dim;
+  std::tie(input_vect_dim, kernel_vect_dim, result_vect_dim) =
+      FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, result_shape);
+
+  int64 input_vect_size =
+      input_vect_dim.has_value() ? input_shape.dimensions(*input_vect_dim) : 1;
+  int64 kernel_vect_size = kernel_vect_dim.has_value()
+                               ? kernel_shape.dimensions(*kernel_vect_dim)
+                               : 1;
+  int64 result_vect_size = result_vect_dim.has_value()
+                               ? result_shape.dimensions(*result_vect_dim)
+                               : 1;
+  if (pad_to % input_vect_size != 0 || pad_to % kernel_vect_size != 0 ||
+      pad_to % result_vect_size != 0) {
+    // If the conv is already vectorized but pad_to is not a multiple of the
+    // vector size, we choose not to pad.  This is a weird case, because the
+    // only useful vector sizes in cudnn (as of writing) are 4 and 32, and those
+    // are also the only pad_to cases.
+    return false;
+  }
+
+  // Pad the features to multiples of pad_to.
   {
-    auto pad_dim = [](Shape* s, int64 dim) {
-      s->set_dimensions(dim, RoundUpToNearest<int64>(s->dimensions(dim), 4));
+    auto pad_dim = [&](Shape* s, int64 dim, int64 cur_vect_size) {
+      CHECK_EQ(pad_to % cur_vect_size, 0);
+      s->set_dimensions(dim, RoundUpToNearest<int64>(s->dimensions(dim),
+                                                     pad_to / cur_vect_size));
     };
 
     switch (kind) {
       case CudnnConvKind::kForward:
         CHECK_EQ(new_input_shapes.size(), 2);
-        pad_dim(&new_input_shapes[0],
-                dnums.input_feature_dimension());  // Input feature maps
-        pad_dim(&new_input_shapes[1],
-                dnums.kernel_input_feature_dimension());  // Kernel for the
-                                                          // input feature maps
-        pad_dim(
-            &new_input_shapes[1],
-            dnums.kernel_output_feature_dimension());  // Kernel for the output
-                                                       // feature maps
-        pad_dim(&new_result_shape,
-                dnums.output_feature_dimension());  // Output feature maps
+        // Input feature maps
+        pad_dim(&new_input_shapes[0], dnums.input_feature_dimension(),
+                input_vect_size);
+        // Kernel for the input feature maps
+        pad_dim(&new_input_shapes[1], dnums.kernel_input_feature_dimension(),
+                kernel_vect_size);
+        // Kernel for the output feature maps.  In the NCHW_VECT_C, only the
+        // kernel input feature dim is vectorized, so this has cur_vect_size 1.
+        pad_dim(&new_input_shapes[1], dnums.kernel_output_feature_dimension(),
+                /*cur_vect_size=*/1);
+        // Output feature maps
+        pad_dim(&new_result_shape, dnums.output_feature_dimension(),
+                result_vect_size);
         break;
       case CudnnConvKind::kForwardActivation:
         CHECK(new_input_shapes.size() == 3 || new_input_shapes.size() == 4);
-        pad_dim(&new_input_shapes[0],
-                dnums.input_feature_dimension());  // Input feature maps
-        pad_dim(&new_input_shapes[1],
-                dnums.kernel_input_feature_dimension());  // Kernel for the
-                                                          // input feature maps
-        pad_dim(
-            &new_input_shapes[1],
-            dnums.kernel_output_feature_dimension());  // Kernel for the output
-                                                       // feature maps
-        pad_dim(&new_input_shapes[2], 0);              // Bias
+        // Input feature maps
+        pad_dim(&new_input_shapes[0], dnums.input_feature_dimension(),
+                input_vect_size);
+        // Kernel for the input feature maps
+        pad_dim(&new_input_shapes[1], dnums.kernel_input_feature_dimension(),
+                kernel_vect_size);
+        // Kernel for the output feature maps.  In the NCHW_VECT_C, only the
+        // kernel input feature dim is vectorized, so this has cur_vect_size 1.
+        pad_dim(&new_input_shapes[1], dnums.kernel_output_feature_dimension(),
+                /*cur_vect_size=*/1);
+
+        // Bias.  This ia 1D vector of length batch-size, and it's unclear if we
+        // *have* to pad it.  But hey, we might as well.  cur_vect_size 1
+        // because NCHW_VECT_C doesn't apply here (there is no channels
+        // dimension!).
+        pad_dim(&new_input_shapes[2], /*dim=*/0, /*cur_vect_size=*/1);
+
         if (new_input_shapes.size() == 4) {
-          pad_dim(&new_input_shapes[3],
-                  dnums.output_feature_dimension());  // Optional side input
+          // Optional side input.  Same layout as result, so gets padded the
+          // same.
+          pad_dim(&new_input_shapes[3], dnums.output_feature_dimension(),
+                  result_vect_size);
         }
-        pad_dim(&new_result_shape,
-                dnums.output_feature_dimension());  // Output feature maps
+        // Output feature maps
+        pad_dim(&new_result_shape, dnums.output_feature_dimension(),
+                result_vect_size);
         break;
       default:
         CHECK(false);
@@ -388,13 +430,27 @@ StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* comp : module->MakeNonfusionComputations()) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
-      TF_ASSIGN_OR_RETURN(
-          bool local_changed,
-          ResolveAndPad(conv, TryResolvePaddedShapesForIntegerConvolution));
+      // On Turing and later (sm75+), pad to multiples of 32 bytes if possible,
+      // because that lets us use the fast int8x32 data type.
+      bool local_changed = false;
+      if (compute_capability_.IsAtLeast(7, 5)) {
+        TF_ASSIGN_OR_RETURN(
+            local_changed,
+            ResolveAndPad(
+                conv, absl::bind_front(
+                          TryResolvePaddedShapesForIntegerConvolution, 32)));
+      }
+      if (!local_changed) {
+        TF_ASSIGN_OR_RETURN(
+            local_changed,
+            ResolveAndPad(conv,
+                          absl::bind_front(
+                              TryResolvePaddedShapesForIntegerConvolution, 4)));
+      }
       changed |= local_changed;
     }
-    for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
-      if (is_volta_or_later_) {
+    if (compute_capability_.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+      for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
         TF_ASSIGN_OR_RETURN(
             bool local_changed,
             ResolveAndPad(conv, TryResolvePaddedShapesForTensorCore));

@@ -106,6 +106,9 @@ struct TpuPartitionedCall_Params {
   // enable_auto_xla_input_sharding is set to true. Negative numbers are
   // allowed and refers to dimensions starting from the end.
   int32_t auto_xla_input_sharding_dim;
+
+  // If true, only create one variable on the TPU for each variable on the CPU.
+  bool enable_variable_deduplication;
 };
 
 // Compiles Mlir or TF function computation by lowering into HLO IR and returns
@@ -497,6 +500,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompact);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompactRaw);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuExecute_RuntimeInputToPaddedData);
 
   TFTPU_ADD_FN_IN_STRUCT(ConfigureDistributedTpuOp_DoWork);

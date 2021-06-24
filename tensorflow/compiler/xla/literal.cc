@@ -95,7 +95,9 @@ template <typename T>
 T GetRawValue(T val) {
   return val;
 }
-uint16 GetRawValue(Eigen::half val) { return val.x; }
+uint16 GetRawValue(Eigen::half val) {
+  return Eigen::numext::bit_cast<uint16>(val);
+}
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
   return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
@@ -1333,6 +1335,10 @@ string LiteralBase::ToStringWithLayout() const {
   return absl::StrJoin(pieces, "");
 }
 
+string LiteralBase::ToStringWithLayoutOneline() const {
+  return CompactOneline(ToStringWithLayout());
+}
+
 void LiteralBase::EachCellAsString(
     const std::function<void(absl::Span<const int64> indices,
                              const string& value)>& per_cell) const {
@@ -1443,9 +1449,9 @@ typename std::enable_if<(sizeof(NativeSrcT) == sizeof(Eigen::half) &&
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   // Eigen::half doesn't satisfy the absl::bit_cast contract, so explicitly
-  // cast to unsigned short and then use raw_uint16_to_half.
+  // cast to unsigned short first.
   auto converter = [](NativeSrcT src) {
-    return Eigen::half_impl::raw_uint16_to_half(
+    return Eigen::numext::bit_cast<Eigen::half>(
         absl::bit_cast<uint16>(GetRawValue(src)));
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, Eigen::half>(

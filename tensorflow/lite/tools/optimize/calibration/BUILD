@@ -72,7 +72,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
 )
@@ -129,7 +128,7 @@ cc_test(
         ":logging_op_resolver",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -32,9 +32,6 @@ class Pass;
 
 namespace mhlo {
 
-// Transforms unranked HLO operations to ranked ones where possible.
-std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
-
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 
@@ -46,11 +43,12 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
-    bool broadcast_only = false);
+    bool legalize_broadcasts = true, bool expand_compositions = true);
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
+    bool convert_to_lmhlo_only = false);
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
@@ -67,11 +65,23 @@ std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 std::unique_ptr<OperationPass<FuncOp>>
 createLegalizeTrigonometricToApproximationPass();
 
-std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass();
+// Move dynamic broadcasts up over element-wise operations and broadcast the
+// operands rather than the result. This will eventually allow for larger
+// fusions.
+std::unique_ptr<FunctionPass> createBroadcastPropagationPass();
+
+/// Rank specialization passes:
+///   - Find compatible operations and group them together in one rank
+///     specialization cluster.
+///   - Lower rank specialization clusters to SCF and ranked operations.
+std::unique_ptr<FunctionPass> createRankSpecializationClusterPass();
+std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass(
+    int64_t max_target_rank = 5);
 
 std::unique_ptr<FunctionPass> createOptimizeMhloPass();
 std::unique_ptr<FunctionPass> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
+std::unique_ptr<FunctionPass> createLegalizeEinsumToDotGeneralPass();
 std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass();
 
 }  // namespace mhlo
@@ -102,7 +112,24 @@ std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
+// Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTensorLoadOpPass();
+
+// fuse lmhlo ops to kLoop/kInput fusion patterns
+std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
+    int max_num_arguments_per_kernel = 64);
+
 }  // namespace lmhlo
+
+namespace disc_ral {
+
+std::unique_ptr<OperationPass<ModuleOp>> createRalInjectExecutionContextPass(
+    const std::string& entry_func_name = "main");
+
+// Lower some specific ops to library calls (modeled by `disc_ral.launch` op).
+std::unique_ptr<mlir::FunctionPass> createRalLowerToLibraryCallPass();
+
+}  // namespace disc_ral
 
 }  // namespace mlir
 

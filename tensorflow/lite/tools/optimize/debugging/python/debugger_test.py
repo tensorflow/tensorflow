@@ -86,6 +86,42 @@ def _quantize_model(func, calibration_gen, quantized_io=False, debug=True):
     return converter.convert()
 
 
+def _dummy_fn(*unused_args):
+  return 0.0
+
+
+class QuantizationDebugOptionsTest(test_util.TensorFlowTestCase,
+                                   parameterized.TestCase):
+
+  @test_util.run_v2_only
+  def test_init_duplicate_keys_raises_ValueError(self):
+    with self.assertRaises(ValueError):
+      debugger.QuantizationDebugOptions(
+          layer_debug_metrics={
+              'a': _dummy_fn,
+              'b': _dummy_fn
+          },
+          model_debug_metrics={
+              'c': _dummy_fn,
+              'd': _dummy_fn
+          },
+          layer_direct_compare_metrics={
+              'a': _dummy_fn,
+              'e': _dummy_fn
+          })
+
+    with self.assertRaises(ValueError):
+      debugger.QuantizationDebugOptions(
+          layer_debug_metrics={
+              'a': _dummy_fn,
+              'b': _dummy_fn
+          },
+          layer_direct_compare_metrics={
+              'a': _dummy_fn,
+              'e': _dummy_fn
+          })
+
+
 class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
                                parameterized.TestCase):
 
@@ -104,7 +140,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
       ('quantized_io', True),
   )
   @test_util.run_v2_only
-  def test_quantization_debugger_layer_metrics(self, quantized_io):
+  def test_layer_metrics(self, quantized_io):
     if quantized_io:
       debug_model = QuantizationDebuggerTest.debug_model_int8
     else:
@@ -142,8 +178,8 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
     expected_values.update({
         'op_name': 'CONV_2D',
         'tensor_idx': 7 if quantized_io else 8,
-        'scales': [0.15686275],
-        'zero_points': [-128],
+        'scale': 0.15686275,
+        'zero_point': -128,
         'tensor_name': r'Identity[1-9]?$'
     })
     for key, value in expected_values.items():
@@ -163,7 +199,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
       ('quantized_io', True),
   )
   @test_util.run_v2_only
-  def test_quantization_debugger_model_metrics(self, quantized_io):
+  def test_model_metrics(self, quantized_io):
     if quantized_io:
       debug_model = QuantizationDebuggerTest.debug_model_int8
     else:
@@ -184,8 +220,40 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
     for key, value in expected_metrics.items():
       self.assertAlmostEqual(value, actual_metrics[key], places=5)
 
+  @parameterized.named_parameters(
+      ('float_io', False),
+      ('quantized_io', True),
+  )
   @test_util.run_v2_only
-  def test_quantization_debugger_wrong_input_raises_ValueError(self):
+  def test_layer_direct_compare_metrics(self, quantized_io):
+    def _corr(float_values, quant_values, scale, zero_point):
+      dequant_values = (quant_values.astype(np.int32) - zero_point) * scale
+      return np.corrcoef(float_values.flatten(), dequant_values.flatten())[0, 1]
+
+    if quantized_io:
+      debug_model = QuantizationDebuggerTest.debug_model_int8
+    else:
+      debug_model = QuantizationDebuggerTest.debug_model_float
+
+    options = debugger.QuantizationDebugOptions(
+        layer_direct_compare_metrics={'corr': _corr})
+    quant_debugger = debugger.QuantizationDebugger(
+        quant_debug_model_content=debug_model,
+        debug_dataset=_calibration_gen,
+        debug_options=options)
+    quant_debugger.run()
+
+    expected_metrics = {
+        'corr': 0.99999,
+    }
+    self.assertLen(quant_debugger.layer_statistics, 1)
+    actual_metrics = next(iter(quant_debugger.layer_statistics.values()))
+
+    for key, value in expected_metrics.items():
+      self.assertAlmostEqual(value, actual_metrics[key], places=5)
+
+  @test_util.run_v2_only
+  def test_wrong_input_raises_ValueError(self):
 
     def wrong_calibration_gen():
       for _ in range(5):
@@ -202,7 +270,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
       quant_debugger.run()
 
   @test_util.run_v2_only
-  def test_quantization_debugger_non_debug_model_raises_ValueError(self):
+  def test_non_debug_model_raises_ValueError(self):
     normal_quant_model = _quantize_model(
         QuantizationDebuggerTest.tf_model, _calibration_gen, debug=False)
 
@@ -240,7 +308,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
 
   @mock.patch.object(metrics.TFLiteMetrics,
                      'increase_counter_debugger_creation')
-  def test_quantization_debugger_creation_counter(self, increase_call):
+  def test_creation_counter(self, increase_call):
     debug_model = QuantizationDebuggerTest.debug_model_float
     debugger.QuantizationDebugger(
         quant_debug_model_content=debug_model, debug_dataset=_calibration_gen)

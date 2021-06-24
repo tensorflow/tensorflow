@@ -110,13 +110,13 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
 }
 
 StatusOr<Literal> HloRunner::ExecuteWithExecutable(
-    std::unique_ptr<Executable> executable,
-    absl::Span<const Literal* const> arguments, ExecutionProfile* profile) {
+    Executable* executable, absl::Span<const Literal* const> arguments,
+    ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithDeviceBuffers(
-                          /*executable=*/executable.get(),
+                          /*executable=*/executable,
                           /*arguments=*/argument_buffers,
                           /*profile=*/profile));
   return TransferLiteralFromDevice(result.Result());

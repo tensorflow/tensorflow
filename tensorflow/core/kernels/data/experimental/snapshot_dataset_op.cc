@@ -251,8 +251,6 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
     Reader(const Params& params, int64 start_index)
         : DatasetIterator<Dataset>(params), start_index_(start_index) {}
 
-    ~Reader() override { input_->Unref(); }
-
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
 
@@ -301,11 +299,6 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(
           GetDatasetFromVariantTensor(reader_output[0], &input_));
-
-      // We need to take a reference here as we will use the input_ and
-      // its iterator.
-      input_->Ref();
-
       return input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
@@ -337,7 +330,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
 
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
-    DatasetBase* input_ TF_GUARDED_BY(mu_);
+    DatasetBase* input_ TF_GUARDED_BY(mu_) = nullptr;
 
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_reader_func_
         TF_GUARDED_BY(mu_);
@@ -614,7 +607,11 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
       if (iterator_ == nullptr) {
-        TF_RETURN_IF_ERROR(InitializeIterator(ctx, nullptr));
+        Status s = InitializeIterator(ctx, /*reader=*/nullptr);
+        if (!s.ok()) {
+          iterator_.reset();
+          return s;
+        }
       }
       index_++;
       return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
@@ -764,7 +761,7 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   } else {
     // Computes the hash of the preceding items in the graph.
     GraphDef graph_def;
-    SerializationContext::Params params;
+    SerializationContext::Params params(ctx);
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
     params.external_state_policy =
@@ -915,7 +912,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "path", &path));
 
-    SerializationContext::Params params;
+    SerializationContext::Params params(ctx);
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
     params.external_state_policy =
@@ -1135,7 +1132,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, iterator_));
+        if (iterator_ != nullptr) {
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, iterator_));
+        }
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kState), static_cast<int64>(state_)));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kHashDir), hash_dir_));
@@ -1154,11 +1153,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                      << hash_dir << "; new hash: " << hash_dir_;
           return Status::OK();
         }
-        {
-          int64 temp;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kState), &temp));
-          state_ = snapshot_util::Mode(temp);
-        }
+        int64 temp;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kState), &temp));
+        state_ = snapshot_util::Mode(temp);
         experimental::SnapshotMetadataRecord metadata;
         bool file_exists;
         TF_RETURN_IF_ERROR(snapshot_util::ReadMetadataFile(
@@ -1893,6 +1890,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             for (size_t j = 0; j < value_size; j++) {
               buffer_element.value.emplace_back();
               TF_RETURN_IF_ERROR(reader->ReadTensor(
+                  ctx->flr(),
                   full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
                   &buffer_element.value.back()));
             }
@@ -1935,7 +1933,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           for (size_t i = 0; i < next_elem_size; i++) {
             next_elem_.value.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat(kNextElem, "[", i, "]")),
+                ctx->flr(), full_name(strings::StrCat(kNextElem, "[", i, "]")),
                 &next_elem_.value.back()));
           }
           VLOG(2) << "Restoring SnapshotWriterIterator: "

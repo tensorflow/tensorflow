@@ -28,12 +28,14 @@ import time
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.coordinator import values as values_lib
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -335,7 +337,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     # Closure2 was an inflight closure when it got cancelled.
     self.assertEqual(closure2.output_remote_value._status,
-                     coordinator_lib._RemoteValueStatus.READY)
+                     values_lib.RemoteValueStatus.READY)
     with self.assertRaisesRegex(ValueError, 'Fake cancellation error.'):
       closure2.output_remote_value.fetch()
 
@@ -453,6 +455,12 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     super(ClusterCoordinatorTest, cls).setUpClass()
     cls.coordinator = make_coordinator(num_workers=5, num_ps=2)
     cls.strategy = cls.coordinator.strategy
+
+  def testClusterCoordinatorOnlyInitOnce(self):
+    cluster = self.coordinator._cluster
+    same_coordinator = coordinator_lib.ClusterCoordinator(self.strategy)
+    self.assertIs(self.coordinator, same_coordinator)
+    self.assertIs(cluster, same_coordinator._cluster)
 
   def testFnReturnNestedValues(self):
     x = constant_op.constant(1)
@@ -890,30 +898,35 @@ class StrategyIntegrationTest(test.TestCase):
     per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
 
     @contextlib.contextmanager
-    def _assert_raises_usage_error():
-      with self.assertRaisesRegexp(
-          NotImplementedError,
-          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
-          '`reduce` must be used within a function passed to '
-          '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
-          '.'):
+    def _assert_logs_usage_warning():
+      with self.assertLogs(level='WARNING') as logs:
         yield
 
-    with _assert_raises_usage_error():
-      # Invoking `run` without `coordinator.schedule` should error.
-      # Don't pass input_fn args to account for failure to copy created dataset
-      # on GPU.
-      # Failure: "No unary variant device copy function found for direction .."
-      # For the purpose of this test, input args do not affect the assertion
-      # outcome.
-      self.strategy.run(replica_fn)
+      self.assertIn(
+          'It is detected that a function used with '
+          '`tf.distribute.experimental.ParameterServerStrategy` '
+          'is executed locally on the coordinator. This is inefficient but may '
+          'be valid for one-off tasks such as inferring output signature. '
+          'To properly distribute functions to run on workers, `run` or '
+          '`reduce` should be used within a function passed to `'
+          'tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
+          '.',
+          logs.output[0])
+
+    with _assert_logs_usage_warning():
+      # Invoking `run` without `coordinator.schedule` should result in a
+      # warning.
+      self.strategy.run(
+          replica_fn, args=(constant_op.constant(1, dtype=dtypes.int64),))
 
     # A proper `schedule` should succeed.
     rv = self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
 
-    with _assert_raises_usage_error():
-      # Invoking `run` without `coordinator.schedule` again should error.
-      self.strategy.run(replica_fn)
+    with _assert_logs_usage_warning():
+      # Invoking `run` without `coordinator.schedule` again should result in a
+      # warning.
+      self.strategy.run(
+          replica_fn, args=(constant_op.constant(1, dtype=dtypes.int64),))
 
     all_results = [(2, 0)] * self.strategy.num_replicas_in_sync
     expected_result = []
@@ -1043,6 +1056,66 @@ class StrategyIntegrationTest(test.TestCase):
       for i in range(self.strategy.num_replicas_in_sync):
         expected_result = expected_result + i + 1
       self.assertEqual(v, expected_result)
+
+  def testVariableCaching(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(initial_value=1.)
+
+      # Test read value inside caching scope
+      with distribute_utils.cache_variable_reads():
+        v.read_value()  # Reads value 1.0
+        v.assign(constant_op.constant(5.0))  # v changes to 5.0
+        self.assertEqual(v.read_value(), 1.0)  # should be cached 1.0 value.
+
+      # Reset v to 1.0
+      v.assign(1.0)
+
+      # Verify caching scope inside tf.function
+      @def_function.function
+      def worker_fn():
+        with distribute_utils.cache_variable_reads():
+          def replica_fn():
+            t = v.read_value()  # Reads value 1.0
+            v.assign(constant_op.constant(5.0))  # v changes to 5.0
+            t = v.read_value()  # should return 1.0
+            return t  # Should be 1.0 instead of 5.0
+
+          return self.strategy.run(replica_fn)
+
+      result = self.coordinator.schedule(worker_fn)
+      result = result.fetch()
+      expected_result = 1.
+      self.assertEqual(result, expected_result)
+
+      # Verify that v.read_value works as expected outside of scope.
+      v.assign(4.0)
+      self.assertEqual(v.read_value(), 4.0)
+
+      v.assign(constant_op.constant(2.0))  # v changes to 2.0
+      # Check with scope outside of tf function and check that cache is reset
+      @def_function.function
+      def worker_fn1():
+        def replica_fn():
+          t = v.read_value()  # Reads value 2.0 ==> Should be cached
+          v.assign(constant_op.constant(5.0))  # v changes to 5.0
+          t = v.read_value()  # should return cached value 2.0
+          return t  # Should be 2.0 instead of 5.0
+
+        return self.strategy.run(replica_fn)
+
+      with distribute_utils.cache_variable_reads():
+        result = self.coordinator.schedule(worker_fn1)
+      result = result.fetch()
+      expected_result = 2.
+      self.assertEqual(result, expected_result)
+
+    # Verify scope nesting is not permitted.
+    with self.assertRaises(ValueError):
+      with distribute_utils.cache_variable_reads():
+        with distribute_utils.cache_variable_reads():
+          v.read_value()
 
   def testDistributeDataset(self):
 
@@ -1196,6 +1269,25 @@ class StrategyIntegrationTest(test.TestCase):
         input_lib._create_distributed_tensor_spec(self.strategy,
                                                   dataset.element_spec),
         per_worker_distribute_dataset.element_spec)
+
+  def testPerWorkerDistributedIteratorTypeSpec(self):
+    self._tracing_count = 0
+
+    def per_worker_dataset_fn():
+      self._tracing_count += 1
+      return self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_iterator = iter(
+        self.coordinator.create_per_worker_dataset(per_worker_dataset_fn))
+    worker_fn.get_concrete_function(distributed_iterator)
+
+    self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
+    self.assertEqual(self._tracing_count, 1)
 
 
 if __name__ == '__main__':

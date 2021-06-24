@@ -230,6 +230,11 @@ void TpuTransferManager_TransferLiteralFromOutfeed(
 void TpuTransferManager_ResetDevices(XLA_TransferManager* manager,
                                      SE_StreamExecutor** executors,
                                      int64_t num_executors, TF_Status* status);
+void TpuTransferManager_ReadDynamicShapes(SE_Stream* stream,
+                                          XLA_ShapedBuffer* buffer,
+                                          const XLA_Shape& original_shape,
+                                          XLA_Shape* updated_shape,
+                                          TF_Status* status);
 
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
@@ -453,6 +458,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferBuffersToInfeed);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromOutfeed);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_ResetDevices);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_ReadDynamicShapes);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);

@@ -49,7 +49,7 @@ std::string AlgorithmDesc::ToString() const {
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -83,13 +83,13 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -245,6 +245,7 @@ ConvDimIndices GetDimIndices(const DataLayout& layout, const int data_dims) {
 
     case DataLayout::kBatchDepthYX:
     case DataLayout::kBatchDepthYX4:
+    case DataLayout::kBatchDepthYX32:
       dim_indices.data.depth_idx = 1;
       dim_indices.data.batch_idx = 0;
       dim_indices.data.spatial_idx = 2;
@@ -262,6 +263,7 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
   switch (layout) {
     case FilterLayout::kOutputInputYX:
     case FilterLayout::kOutputInputYX4:
+    case FilterLayout::kOutputInputYX32:
       dim_indices.filter.input_idx = 1;
       dim_indices.filter.output_idx = 0;
       dim_indices.filter.spatial_idx = 2;
@@ -373,14 +375,6 @@ std::vector<int64> BatchDescriptor::full_dims(const DataLayout& layout) const {
 
 std::vector<int64> BatchDescriptor::full_strides(
     const DataLayout& layout) const {
-  if (this->layout() == DataLayout::kBatchDepthYX4) {
-    LOG(FATAL)
-        << "Cannot compute full strides for batch descriptor " << ToString()
-        << ", because its layout is kBatchDepthYX4. In fact, "
-           "cudnnSetTensorNdDescriptor doesn't work for kBatchDepthYX4 at all. "
-           "Use cudnnSetTensor4DDescriptor to set cudnnTensorDescriptor_t "
-           "instead.";
-  }
   std::vector<int64> phys_dims = full_dims(this->layout());
   std::vector<int64> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;
@@ -573,10 +567,6 @@ std::vector<int64> FilterDescriptor::full_dims(
 
 std::vector<int64> FilterDescriptor::full_strides(
     const FilterLayout& layout) const {
-  if (this->layout() == FilterLayout::kOutputInputYX4) {
-    LOG(FATAL) << "Cannot compute full strides for filter descriptor "
-               << ToString();
-  }
   std::vector<int64> phys_dims = full_dims(this->layout());
   std::vector<int64> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;

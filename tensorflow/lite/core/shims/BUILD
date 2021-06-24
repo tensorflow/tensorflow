@@ -13,18 +13,21 @@ package(
 #------------------------------------------------------------------------------
 # C++ API
 
-FRAMEWORK_LIB_HDRS = [
+FRAMEWORK_STABLE_LIB_HDRS = [
     "//tensorflow/lite:allocation.h",
-    "//tensorflow/lite:context.h",
     "//tensorflow/lite:context_util.h",
     "//tensorflow/lite:core/macros.h",
-    "//tensorflow/lite:core/subgraph.h",
     "//tensorflow/lite:error_reporter.h",
-    "//tensorflow/lite:graph_info.h",
     "//tensorflow/lite:mutable_op_resolver.h",
     "//tensorflow/lite:op_resolver.h",
-    "//tensorflow/lite:optional_debug_tools.h",
     "//tensorflow/lite:stderr_reporter.h",
+]
+
+FRAMEWORK_LIB_HDRS = FRAMEWORK_STABLE_LIB_HDRS + [
+    "//tensorflow/lite:context.h",
+    "//tensorflow/lite:core/subgraph.h",
+    "//tensorflow/lite:graph_info.h",
+    "//tensorflow/lite:optional_debug_tools.h",
 ]
 
 CC_API_HDRS = [
@@ -34,8 +37,62 @@ CC_API_HDRS = [
     "cc/model_builder.h",
 ]
 
-cc_library(
+# The public target for the full C++ API.
+#
+# Experimental APIs are functional, tested and usable in production; however,
+# the corresponding API surface has not been finalized, and is subject to
+# change.
+alias(
     name = "framework",
+    actual = "framework_experimental",
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+# The public target for the C++ API excluding experimental features.
+cc_library(
+    name = "framework_stable",
+    srcs = [],
+    hdrs = FRAMEWORK_STABLE_LIB_HDRS + CC_API_HDRS,
+    copts = tflite_copts() + tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite:allocation",
+        "//tensorflow/lite:arena_planner",
+        "//tensorflow/lite:external_cpu_backend_context",
+        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:memory_planner",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:simple_memory_arena",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+# The public target for the full C++ API, including experimental features.
+#
+# Experimental APIs are functional, tested and usable in production; however,
+# the corresponding API surface has not been finalized, and is subject to
+# change.
+#
+# Note that if you have code which depends on both stable and experimental API
+# features, it's fine to depend only on 'framework_experimental', since
+# that includes 'framework_stable' as a subset.
+cc_library(
+    name = "framework_experimental",
     srcs = [],
     hdrs = FRAMEWORK_LIB_HDRS + CC_API_HDRS,
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -65,8 +122,16 @@ cc_library(
     ],
 )
 
-cc_library(
+# DEPRECATED: use 'cc_api_stable' or 'cc_api_experimental' instead.
+alias(
     name = "cc_api",
+    actual = "cc_api_experimental",
+    visibility = ["//tensorflow/lite:__pkg__"],
+)
+
+# The key parts of C++ API, excluding experimental features.
+cc_library(
+    name = "cc_api_stable",
     srcs = [],
     hdrs = CC_API_HDRS,
     copts = tflite_copts() + tflite_copts_warnings(),
@@ -74,7 +139,36 @@ cc_library(
     deps = [
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:arena_planner",
-        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:cc_api_stable",
+        "//tensorflow/lite:external_cpu_backend_context",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:macros",
+        "//tensorflow/lite:memory_planner",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:simple_memory_arena",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite:type_to_tflitetype",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/api:verifier",
+        "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+# The key parts of C++ API, including experimental features.
+cc_library(
+    name = "cc_api_experimental",
+    srcs = [],
+    hdrs = CC_API_HDRS,
+    copts = tflite_copts() + tflite_copts_warnings(),
+    visibility = ["//tensorflow/lite:__pkg__"],
+    deps = [
+        "//tensorflow/lite:allocation",
+        "//tensorflow/lite:arena_planner",
+        "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite:graph_info",
         "//tensorflow/lite:kernel_api",
@@ -121,7 +215,11 @@ build_test(
     targets = [
         ":builtin_ops",
         ":cc_api",
+        ":cc_api_stable",
+        ":cc_api_experimental",
         ":framework",
+        ":framework_stable",
+        ":framework_experimental",
     ],
 )
 

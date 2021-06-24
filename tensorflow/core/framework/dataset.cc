@@ -215,37 +215,64 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(WrappedDatasetVariantWrapper,
 
 }  // namespace
 
+Status GraphDefBuilderWrapper::AddDataset(const DatasetBase* dataset,
+                                          const std::vector<Node*>& inputs,
+                                          Node** output) {
+  return AddDataset(dataset, inputs, {}, output);
+}
+
+Status GraphDefBuilderWrapper::AddDataset(
+    const DatasetBase* dataset, const std::vector<Node*>& inputs,
+    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+    Node** output) {
+  std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
+  for (size_t i = 0; i < inputs.size(); i++) {
+    enumerated_inputs[i] = std::make_pair(i, inputs[i]);
+  }
+  return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
+}
+
 Status GraphDefBuilderWrapper::AddDataset(
     const DatasetBase* dataset,
     const std::vector<std::pair<size_t, Node*>>& inputs,
     const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
     Node** output) {
-  const string& type_string = dataset->type_string();
-  std::unique_ptr<const GraphDefBuilder::Options> opts(
-      new GraphDefBuilder::Options(b_->opts()));
+  return AddDataset(dataset, inputs, list_inputs, attrs,
+                    /*use_dataset_name=*/false, output);
+}
+
+Status GraphDefBuilderWrapper::AddDataset(
+    const DatasetBase* dataset,
+    const std::vector<std::pair<size_t, Node*>>& inputs,
+    const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+    bool use_dataset_name, Node** output) {
+  auto& type_string = dataset->type_string();
+  auto opts = absl::make_unique<GraphDefBuilder::Options>(b_->opts());
   // TODO(srbs|mrry): Not all datasets have output_types and output_shapes
   // attributes defined. It will be nice to have a consistent pattern.
   bool has_output_types_attr = HasAttr(type_string, "output_types");
   bool has_output_shapes_attr = HasAttr(type_string, "output_shapes");
   if (has_output_shapes_attr) {
-    opts.reset(new GraphDefBuilder::Options(
-        opts->WithAttr("output_shapes", dataset->output_shapes())));
+    opts = absl::make_unique<GraphDefBuilder::Options>(
+        opts->WithAttr("output_shapes", dataset->output_shapes()));
   }
   if (has_output_types_attr) {
-    opts.reset(new GraphDefBuilder::Options(
-        opts->WithAttr("output_types", dataset->output_dtypes())));
+    opts = absl::make_unique<GraphDefBuilder::Options>(
+        opts->WithAttr("output_types", dataset->output_dtypes()));
   }
   for (const auto& attr : attrs) {
-    opts.reset(
-        new GraphDefBuilder::Options(opts->WithAttr(attr.first, attr.second)));
+    opts = absl::make_unique<GraphDefBuilder::Options>(
+        opts->WithAttr(attr.first, attr.second));
   }
   if (opts->HaveError()) {
     return errors::Internal("AddDataset: Failed to build Options with error ",
                             opts->StatusToString());
   }
-  NodeBuilder node_builder(opts->GetNameForOp(type_string), type_string,
-                           opts->op_registry());
+  NodeBuilder node_builder(
+      use_dataset_name ? dataset->node_name() : opts->GetNameForOp(type_string),
+      type_string, opts->op_registry());
   {
     size_t total_size = inputs.size() + list_inputs.size();
     auto inputs_iter = inputs.begin();
@@ -668,6 +695,11 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
     SerializationContext* ctx, const Tensor& t, Node** output) {
   const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
+  if (ctx->device_name() != handle.device()) {
+    return errors::InvalidArgument("Trying to access resource ", handle.name(),
+                                   " located in device ", handle.device(),
+                                   " from device ", ctx->device_name());
+  }
   ResourceBase* resource;
   TF_RETURN_IF_ERROR(ctx->resource_mgr()->Lookup(handle, &resource));
   core::ScopedUnref unref(resource);
@@ -834,10 +866,6 @@ string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
 
 // static
 bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
-  if (DatasetOpRegistry::IsRegistered(op_def->name())) {
-    return true;
-  }
-
   return (op_def->output_arg_size() == 1 &&
           op_def->output_arg(0).type() == DT_VARIANT &&
           (absl::EndsWith(op_def->name(), "Dataset") ||
@@ -913,19 +941,6 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
-}
-
-// static
-void DatasetOpRegistry::Register(const string& op_name) {
-  mutex_lock l(*get_dataset_op_registry_lock());
-  get_dataset_op_registry()->insert(op_name);
-}
-
-// static
-bool DatasetOpRegistry::IsRegistered(const string& op_name) {
-  mutex_lock l(*get_dataset_op_registry_lock());
-  std::unordered_set<string>* op_names = get_dataset_op_registry();
-  return op_names->find(op_name) != op_names->end();
 }
 
 namespace {

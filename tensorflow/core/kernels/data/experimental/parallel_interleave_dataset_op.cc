@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <atomic>
 #include <deque>
+#include <functional>
+#include <string>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
@@ -483,7 +485,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                   " worker states but found ", temp, ".");
         }
         for (size_t i = 0; i < dataset()->num_threads(); ++i) {
-          TF_RETURN_IF_ERROR(ReadWorkerStateLocked(reader, i, ctx));
+          TF_RETURN_IF_ERROR(ReadWorkerStateLocked(ctx, reader, i));
         }
       }
       std::unique_ptr<thread::ThreadPool> threadpool = ctx->CreateThreadPool(
@@ -493,7 +495,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < dataset()->num_threads(); ++i) {
         threadpool->Schedule([this, i, ctx, reader, &s, &counter] {
           WorkerThreadState state;
-          Status result = ReadWorkerThreadStateLocked(reader, i, ctx, &state);
+          Status result = ReadWorkerThreadStateLocked(ctx, reader, i, &state);
           mutex_lock l(mu_);
           mutex_lock ckpt_l(ckpt_mu_);
           if (!result.ok()) {
@@ -932,8 +934,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status ReadWorkerStateLocked(IteratorStateReader* reader, int index,
-                                 IteratorContext* ctx)
+    Status ReadWorkerStateLocked(IteratorContext* ctx,
+                                 IteratorStateReader* reader, int index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       string worker_prefix =
           strings::StrCat(prefix(), "::", kWorker, "_", index);
@@ -944,7 +946,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       workers_[index].input.reserve(input_size);
       for (int i = 0; i < input_size; ++i) {
         workers_[index].input.emplace_back();
-        TF_RETURN_IF_ERROR(reader->ReadTensor(worker_prefix,
+        TF_RETURN_IF_ERROR(reader->ReadTensor(ctx->flr(), worker_prefix,
                                               strings::StrCat(kInput, "_", i),
                                               &workers_[index].input.back()));
       }
@@ -954,7 +956,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       for (int i = 0; i < outputs_size; ++i) {
         workers_[index].outputs.emplace_back(Status::OK());
         TF_RETURN_IF_ERROR(ReadOutputElemLocked(
-            reader, &workers_[index].outputs.back(), worker_prefix,
+            ctx, reader, &workers_[index].outputs.back(), worker_prefix,
             strings::StrCat(kOutputs, "_", i)));
       }
       if (reader->Contains(worker_prefix, kIsProducing)) {
@@ -998,8 +1000,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status ReadWorkerThreadStateLocked(IteratorStateReader* reader, int index,
-                                       IteratorContext* ctx,
+    Status ReadWorkerThreadStateLocked(IteratorContext* ctx,
+                                       IteratorStateReader* reader, int index,
                                        WorkerThreadState* state) {
       string worker_prefix =
           strings::StrCat(prefix(), "::", kWorkerThread, "_", index);
@@ -1010,7 +1012,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       state->input.reserve(input_size);
       for (int i = 0; i < input_size; ++i) {
         state->input.emplace_back();
-        TF_RETURN_IF_ERROR(reader->ReadTensor(worker_prefix,
+        TF_RETURN_IF_ERROR(reader->ReadTensor(ctx->flr(), worker_prefix,
                                               strings::StrCat(kInput, "_", i),
                                               &state->input.back()));
       }
@@ -1029,7 +1031,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadStatusLocked(reader, worker_prefix,
                                           kIteratorCreationStatus,
                                           &state->iterator_creation_status));
-      TF_RETURN_IF_ERROR(ReadOutputElemLocked(reader, &state->output_elem,
+      TF_RETURN_IF_ERROR(ReadOutputElemLocked(ctx, reader, &state->output_elem,
                                               worker_prefix, kOutput));
       if (reader->Contains(worker_prefix, kEndOfSequence)) {
         state->end_of_sequence = true;
@@ -1058,7 +1060,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status ReadOutputElemLocked(IteratorStateReader* reader,
+    Status ReadOutputElemLocked(IteratorContext* ctx,
+                                IteratorStateReader* reader,
                                 OutputElem* output_elem,
                                 const string& iterator_name,
                                 const string& prefix) {
@@ -1072,9 +1075,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       output_elem->output.reserve(output_size);
       for (int i = 0; i < output_size; ++i) {
         output_elem->output.emplace_back();
-        TF_RETURN_IF_ERROR(reader->ReadTensor(
-            iterator_name, strings::StrCat(prefix, "_", kOutput, "_", i),
-            &output_elem->output.back()));
+        TF_RETURN_IF_ERROR(
+            reader->ReadTensor(ctx->flr(), iterator_name,
+                               strings::StrCat(prefix, "_", kOutput, "_", i),
+                               &output_elem->output.back()));
       }
       return Status::OK();
     }

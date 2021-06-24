@@ -431,7 +431,7 @@ def expand_dims_v2(input, axis, name=None):
     inserted at the index specified by `axis`.
 
   Raises:
-    ValueError: If `axis` is not specified.
+    TypeError: If `axis` is not specified.
     InvalidArgumentError: If `axis` is out of range `[-(D+1), D]`.
   """
   return gen_array_ops.expand_dims(input, axis, name)
@@ -2697,6 +2697,9 @@ def matrix_diag_part(
 
   Returns:
     A Tensor containing diagonals of `input`. Has the same type as `input`.
+
+  Raises:
+    InvalidArgumentError: When `k` is out of bound or when `k[0]>k[1:]`.
   """
   # Special case to sidestep the tf.constant conversion error:
   # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2896,7 +2899,7 @@ def _constant_if_small(value, shape, dtype, name):
   try:
     if np.prod(shape) < 1000:
       return constant(value, shape=shape, dtype=dtype, name=name)
-  except TypeError:
+  except (NotImplementedError, TypeError):
     # Happens when shape is a Tensor, list with Tensor elements, etc.
     pass
   return None
@@ -3248,10 +3251,6 @@ def placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={x: rand_array}))  # Will succeed.
   ```
 
-  @compatibility(eager)
-  Placeholders are not compatible with eager execution.
-  @end_compatibility
-
   Args:
     dtype: The type of elements in the tensor to be fed.
     shape: The shape of the tensor to be fed (optional). If the shape is not
@@ -3264,6 +3263,20 @@ def placeholder(dtype, shape=None, name=None):
 
   Raises:
     RuntimeError: if eager execution is enabled
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, rewrite the code to be compatible with eager execution. Check the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls. In TF2, you can just pass tensors directly
+  into ops and layers. If you want to explicitly set up your inputs, also see
+  [Keras functional API](https://www.tensorflow.org/guide/keras/functional) on
+  how to use `tf.keras.Input` to replace `tf.compat.v1.placeholder`.
+  `tf.function` arguments also do the job of `tf.compat.v1.placeholder`.
+  For more details please read [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError("tf.placeholder() is not compatible with "
@@ -4648,21 +4661,33 @@ def where_v2(condition, x=None, y=None, name=None):
   dtype=int32)>
 
   Note that if the gradient of either branch of the tf.where generates
-  a NaN, then the gradient of the entire tf.where will be NaN.
+  a NaN, then the gradient of the entire tf.where will be NaN. This is because
+  the gradient calculation for tf.where combines the two branches, for
+  performance reasons.
+
   A workaround is to use an inner tf.where to ensure the function has
   no asymptote, and to avoid computing a value whose gradient is NaN by
   replacing dangerous inputs with safe inputs.
 
   Instead of this,
 
-  >>> y = tf.constant(-1, dtype=tf.float32)
-  >>> tf.where(y > 0, tf.sqrt(y), y)
-  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+  >>> x = tf.constant(0., dtype=tf.float32)
+  >>> with tf.GradientTape() as tape:
+  ...   tape.watch(x)
+  ...   y = tf.where(x < 1., 0., 1. / x)
+  >>> print(tape.gradient(y, x))
+  tf.Tensor(nan, shape=(), dtype=float32)
 
-  Use this
+  Although, the `1. / x` values are never used, its gradient is a NaN when x =
+  0. Instead, we should guard that with another `tf.where`
 
-  >>> tf.where(y > 0, tf.sqrt(tf.where(y > 0, y, 1)), y)
-  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+  >>> x = tf.constant(0., dtype=tf.float32)
+  >>> with tf.GradientTape() as tape:
+  ...   tape.watch(x)
+  ...   safe_x = tf.where(tf.equal(x, 0.), 1., x)
+  ...   y = tf.where(x < 1., 0., 1. / safe_x)
+  >>> print(tape.gradient(y, x))
+  tf.Tensor(0.0, shape=(), dtype=float32)
 
   Args:
     condition: A `tf.Tensor` of type `bool`
@@ -6572,3 +6597,22 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     input = reshape(input, [-1])
     axis = 0
   return repeat_with_axis(input, repeats, axis, name)
+
+
+@tf_export("guarantee_const")
+@deprecation.deprecated(None, "Not for public use.")
+def guarantee_const(input, name=None):    # pylint: disable=redefined-builtin
+  """Promise to the TF runtime that the input tensor is a constant.
+
+  The runtime is then free to make optimizations based on this.
+
+  Returns the input tensor without modification.
+
+  Args:
+    input: A `Tensor`.
+    name: A name for this operation.
+
+  Returns:
+    A `Tensor`. Has the same dtype as `input`.
+  """
+  return gen_array_ops.guarantee_const(input=input, name=name)

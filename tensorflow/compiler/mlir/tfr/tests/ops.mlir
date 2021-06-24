@@ -245,6 +245,46 @@ func @build_list(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> !tfr.tensor_li
 
 // -----
 
+// CHECK-LABEL: quant_act_range
+func @quant_act_range(%arg0: !tfr.attr, %arg1: f32, %arg2: i64) -> !tfr.tensor {
+  %0:2 = "tfr.quant_act_range"(%arg0, %arg1, %arg2) : (!tfr.attr,f32,i64) -> (!tfr.tensor,!tfr.tensor)
+  return %0#0 : !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL: quant_rescale
+func @quant_rescale(%arg0: !tfr.tensor, %arg1: !tfr.tensor, %arg2: i64) -> !tfr.tensor {
+  %0 = "tfr.quant_rescale"(%arg0, %arg1, %arg2) : (!tfr.tensor, !tfr.tensor, i64) -> (!tfr.tensor)
+  return %0 : !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL: quant_raw_data
+func @quant_raw_data(%arg0: !tfr.tensor) -> !tfr.tensor {
+  %0 = "tfr.quant_raw_data"(%arg0) : (!tfr.tensor) -> (!tfr.tensor)
+  return %0 : !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL: quant_qparam
+func @quant_qparam(%arg0: !tfr.tensor) -> (!tfr.tensor, !tfr.tensor) {
+  %0:2 = "tfr.quant_qparam"(%arg0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
+  return %0#0, %0#1 : !tfr.tensor, !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL: quant_scale_factor
+func @quant_scale_factor(%arg0: f32, %arg1: !tfr.tensor_list) -> (!tfr.tensor) {
+  %0 = "tfr.quant_scale_factor"(%arg0, %arg1) : (f32, !tfr.tensor_list) -> (!tfr.tensor)
+  return %0 : !tfr.tensor
+}
+
+// -----
+
 // CHECK-LABEL: build_const_list
 // CANON-LABEL: build_const_list
 func @build_const_list() -> !tfr.attr {

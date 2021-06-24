@@ -138,7 +138,9 @@ class MlirHloBuilder : public XlaBuilder {
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal) override;
+      const Literal* literal, absl::optional<Window> window,
+      absl::optional<ConvolutionDimensionNumbers> dnums,
+      CustomCallSchedule schedule) override;
 
   StatusOr<XlaOp> ReduceInternal(
       const Shape& shape, absl::Span<const XlaOp> all_operands,

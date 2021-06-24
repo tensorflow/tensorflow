@@ -205,6 +205,13 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   auto lhs_type = input_lhs.getType().cast<RankedTensorType>();
   auto rhs_type = input_rhs.getType().cast<RankedTensorType>();
 
+  // Skip int8 x int8 => int32.
+  if (lhs_type.getElementType().isInteger(8) &&
+      rhs_type.getElementType().isInteger(8)) {
+    return rewriter.notifyMatchFailure(op,
+                                       "skip unrolling for int8 BatchMatMulV3");
+  }
+
   auto element_type = lhs_type.getElementType();
 
   if (element_type != rhs_type.getElementType()) {

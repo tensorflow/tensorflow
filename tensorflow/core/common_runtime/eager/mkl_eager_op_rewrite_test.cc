@@ -50,6 +50,9 @@ class EagerOpRewriteTest : public ::testing::Test {
         new tensorflow::EagerOperation(eager_ctx_));
     EXPECT_EQ(Status::OK(),
               op.get()->Reset(op_name.c_str(), nullptr, false, &executor_));
+    EXPECT_EQ(Status::OK(),
+              op.get()->SetDeviceName(
+                  "/job:localhost/replica:0/task:0/device:CPU:0"));
     return op;
   }
 

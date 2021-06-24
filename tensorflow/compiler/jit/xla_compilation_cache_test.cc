@@ -96,7 +96,7 @@ void BM_BuildSignature(::testing::benchmark::State& state) {
   }
 
   for (auto i : state) {
-    xla::StatusOr<XlaCompilationCache::Signature> s =
+    StatusOr<XlaCompilationCache::Signature> s =
         XlaCompilationCache::BuildSignature(fn, args);
     CHECK(s.ok());
     XlaCompilationCache::Signature sig = std::move(s.ValueOrDie());

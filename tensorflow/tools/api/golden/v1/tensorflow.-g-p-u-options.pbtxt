@@ -108,6 +108,18 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_INT32
       }
+      field {
+        name: "internal_fragmentation_fraction"
+        number: 10
+        label: LABEL_OPTIONAL
+        type: TYPE_DOUBLE
+      }
+      field {
+        name: "use_cuda_malloc_async"
+        number: 11
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       nested_type {
         name: "VirtualDevices"
         field {

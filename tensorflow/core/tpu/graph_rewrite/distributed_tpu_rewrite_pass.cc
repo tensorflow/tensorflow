@@ -2877,9 +2877,9 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
     }
   }
   NodeDef ndef;
-  ndef.set_name(
-      graph->NewName(absl::StrCat(replicate_node.name(), "/_variable_copy")));
-  ndef.set_op("IdentityN");
+  ndef.set_name(graph->NewName(
+      absl::StrCat(replicate_node.name(), "/", kTpuExecuteStagingNodeName)));
+  ndef.set_op(kTpuExecuteStagingOp);
   ndef.set_device(host_cpu_device);
   AddNodeAttr("T", dtypes, &ndef);
   // TF meta-optimizer should skip this node for constant folding.
@@ -3749,7 +3749,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
 
 /* static */ Status
 DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
-    Graph* g, const FunctionLibraryDefinition& flib_def,
+    Graph* g, FunctionLibraryDefinition& flib_def,
     const TPUReplicateDeviceNamesMapping& tpu_replicate_device_names_mapping) {
   bool modified = false;
   do {
@@ -3812,7 +3812,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
       int num_node_ids = g->num_node_ids();
       bool is_call_node = IsFunctionCall(flib_def, *n);
       if (n->IsWhileNode()) {
-        TF_RETURN_IF_ERROR(RewriteWhileNode(n, g,
+        TF_RETURN_IF_ERROR(RewriteWhileNode(n, g, &flib_def,
                                             /*keep_node_fetchable=*/false));
       } else if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, g, /*keep_node_fetchable=*/false));
@@ -4500,6 +4500,10 @@ Status DistributedTPURewritePass::Run(
     for (Node* n : graph->nodes()) {
       if (n->type_string() == kTPUPartitionedInput) graph->RemoveNode(n);
     }
+    VLOG(1) << DumpGraphToFile("distributed_tpu_compilation_after", *graph,
+                               options.flib_def);
+    VLOG(1) << "Replicate nodes are empty. DistributedTPURewritePass::Run() "
+               "finished";
     return Status::OK();
   }
 

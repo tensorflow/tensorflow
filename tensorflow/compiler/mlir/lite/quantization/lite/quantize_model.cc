@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
@@ -37,6 +39,11 @@ limitations under the License.
 namespace mlir {
 namespace lite {
 
+std::string TfLiteToMlir(const absl::string_view tflite_op_name) {
+  llvm::StringRef op_name(tflite_op_name.data(), tflite_op_name.size());
+  return llvm::Twine("tfl.", op_name.lower()).str();
+}
+
 // TODO(fengliuai): check the result for `fully_quantize` flag.
 TfLiteStatus QuantizeModel(
     const tflite::ModelT& input_model, const tflite::TensorType& input_type,
@@ -46,7 +53,14 @@ TfLiteStatus QuantizeModel(
     bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter, bool verify_numeric,
-    bool legacy_float_scale) {
+    bool whole_model_verify, bool legacy_float_scale,
+    const StringSet& blocklisted_ops, const StringSet& blocklisted_nodes) {
+  // Translate TFLite names to mlir op names.
+  StringSet blocklisted_mlir_op_names;
+  for (const auto& entry : blocklisted_ops) {
+    blocklisted_mlir_op_names.insert(TfLiteToMlir(entry));
+  }
+
   DialectRegistry registry;
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   MLIRContext context(registry);
@@ -77,6 +91,7 @@ TfLiteStatus QuantizeModel(
   quant_specs.post_training_quantization = true;
   quant_specs.disable_per_channel = disable_per_channel;
   quant_specs.verify_numeric = verify_numeric;
+  quant_specs.whole_model_verify = whole_model_verify;
   quant_specs.legacy_float_scale = legacy_float_scale;
 
   llvm::dbgs() << "fully_quantize: " << fully_quantize
@@ -95,11 +110,16 @@ TfLiteStatus QuantizeModel(
   }
 
   pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
-  pm.addPass(TFL::CreateQuantizePass(verify_numeric, legacy_float_scale));
+  pm.addPass(TFL::CreateQuantizePass(
+      verify_numeric, whole_model_verify, legacy_float_scale,
+      blocklisted_mlir_op_names, blocklisted_nodes));
   pm.addPass(TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
   pm.addPass(TFL::CreateOptimizeOpOrderPass());
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
-
+  if (!blocklisted_ops.empty() || !blocklisted_nodes.empty()) {
+    // If the first or final ops are not quantized, remove QDQ.
+    pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
+  }
   if (failed(pm.run(module.get()))) {
     const std::string& err = statusHandler.ConsumeStatus().error_message();
     error_reporter->Report("Failed to quantize: %s", err.c_str());

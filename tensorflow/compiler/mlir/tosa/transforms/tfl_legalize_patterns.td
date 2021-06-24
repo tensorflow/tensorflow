@@ -18,10 +18,8 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "mlir/Dialect/Quant/QuantOps.td"
 include "mlir/Dialect/Tosa/IR/TosaOps.td"
-
-// Nullary ops patterns.
-def : Pat<(ConstantOp ElementsAttr:$value), (Tosa_ConstOp $value)>;
 
 // Unary ops patterns.
 def : Pat<(TFL_AbsOp $arg), (Tosa_AbsOp $arg)>;
@@ -33,6 +31,10 @@ def : Pat<(TFL_RsqrtOp $arg), (Tosa_RsqrtOp $arg)>;
 def : Pat<(TFL_LogicalNotOp $arg), (Tosa_LogicalNotOp $arg)>;
 def : Pat<(TFL_SqrtOp $arg), (Tosa_ReciprocalOp(Tosa_RsqrtOp $arg))>;
 def : Pat<(TFL_CastOp $in), (Tosa_CastOp $in)>;
+
+// Removing the quant.stats op for unquantized models.
+def : Pat<(quant_StatisticsOp $value, $layer_stats, $axis_stats, $axis),
+          (replaceWithValue $value)>;
 
 //===----------------------------------------------------------------------===//
 // Binary ops patterns.

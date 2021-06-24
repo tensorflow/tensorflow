@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -50,6 +51,14 @@ class GemmRewriteTest : public GpuCodegenTest {
         gpu_executable->GetAllocations();
     CHECK_EQ(allocations.size(), expected_number_of_allocations);
   }
+
+  bool IsVoltaOrLater() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability()
+        .IsAtLeast(se::CudaComputeCapability::VOLTA);
+  }
 };
 
 TEST_F(GemmRewriteTest, SimpleRewrite) {
@@ -73,6 +82,58 @@ ENTRY AddDotsFunc {
 ; CHECK-NEXT:    %y = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT %custom-call = f32[2,2]{1,0} custom-call(%x, %y), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
+}
+
+TEST_F(GemmRewriteTest, TestBatchedAutotuning) {
+  const char* hlo_text = R"(
+HloModule ComplexDotMultipleNonContracting
+
+ENTRY %test {
+  %lhs = f32[7,17,10,13]{3,2,1,0} parameter(0)
+  %rhs = f32[7,9,10,13,6]{4,3,2,1,0} parameter(1)
+  ROOT %dot = f32[10,7,17,9,6]{4,3,2,1,0} dot(%lhs, %rhs), lhs_batch_dims={2,0}, rhs_batch_dims={2,0}, lhs_contracting_dims={3}, rhs_contracting_dims={3}
+}
+
+)";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK: \"batch_size\":\"70\"
+; CHECK: selected_algorithm
+      )");
+}
+
+TEST_F(GemmRewriteTest, SimpleRewriteDeterministic) {
+  const char* hlo_text = R"(
+HloModule SimpleGemm
+
+ENTRY AddDotsFunc {
+  x = f32[128,128] parameter(0)
+  y = f32[128,128] parameter(1)
+  ROOT dot_a = f32[128,128] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  auto get_module = [&]() -> StatusOr<std::unique_ptr<HloModule>> {
+    HloModuleConfig config;
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_deterministic_ops(true);
+    config.set_debug_options(debug_options);
+    return ParseAndReturnVerifiedModule(hlo_text, config);
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      backend().compiler()->RunHloPasses(
+          *get_module(), backend().default_stream_executor(),
+          backend().default_stream_executor()->GetAllocator()));
+  StatusOr<bool> filecheck_result = RunFileCheck(optimized_module->ToString(),
+                                                 R"(
+; CHECK:    \"selected_algorithm\":\"-1\"
+      )");
+  TF_ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
+  EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(GemmRewriteTest, ArgTransposeFoldCheck) {
@@ -299,6 +360,123 @@ ENTRY AddDotsFunc {
   // Bias should be fused into the multiplication.
   CheckNumberOfAllocations(hlo_text, 3);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(GemmRewriteTest, Int8Gemm) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY int8gemm {
+  %parameter.1 = s8[12,4]{1,0} parameter(0)
+  %parameter.2 = s8[4,8]{1,0} parameter(1)
+  ROOT %dot.8 = s32[12,8] dot(s8[12,4] %parameter.1, s8[4,8] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (IsVoltaOrLater()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm"
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} %bitcast, s32[4,8]{1,0} %bitcast.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, Int8GemmNoAlphaRewrite) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY int8gemm {
+  %parameter.1 = s8[12,4]{1,0} parameter(0)
+  %parameter.2 = s8[4,8]{1,0} parameter(1)
+  k = s32[] constant(2)
+  k_broadcast = s32[12,8] broadcast(k), dimensions={}
+  %dot.8 = s32[12,8] dot(s8[12,4] %parameter.1, s8[4,8] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot_multiplied = s32[12,8] multiply(%dot.8, k_broadcast)
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (IsVoltaOrLater()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} %bitcast, s32[4,8]{1,0} %bitcast.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, Int8GemmNoBetaRewrite) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY int8gemm {
+  %parameter.1 = s8[12,4]{1,0} parameter(0)
+  %parameter.2 = s8[4,8]{1,0} parameter(1)
+  bias = s32[12,8] parameter(2)
+  %dot.8 = s32[12,8] dot(s8[12,4] %parameter.1, s8[4,8] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = s32[12,8] add(%dot.8, bias)
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (IsVoltaOrLater()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} %bitcast, s32[4,8]{1,0} %bitcast.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, Int8GemmNotMultipleOfFour) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY int8gemm {
+  %parameter.1 = s8[13,4]{1,0} parameter(0)
+  %parameter.2 = s8[4,9]{1,0} parameter(1)
+  ROOT %dot.9 = s32[13,9] dot(s8[13,4] %parameter.1, s8[4,9] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (IsVoltaOrLater()) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[16,12]{1,0} custom-call(s8[16,4]{1,0} %pad, s8[4,12]{1,0} %pad.1)
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[13,9]{1,0} dot(s32[13,4]{1,0} %bitcast, s32[4,9]{1,0} %bitcast.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
 }
 
 }  // namespace

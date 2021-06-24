@@ -46,10 +46,11 @@ class MergeDensify : public NodeTransformation {
     if (inputs.size() != 2) return {TransformStatus::SKIPPED, ""};
 
     const Node* dequantize_or_densify = graph->FindProducer(inputs[1]->id);
-    if (dequantize_or_densify->operation.type !=
-            ToString(OperationType::DENSIFY) &&
-        dequantize_or_densify->operation.type !=
-            ToString(OperationType::QUANTIZE_AND_DEQUANTIZE)) {
+    if (!dequantize_or_densify ||
+        (dequantize_or_densify->operation.type !=
+             ToString(OperationType::DENSIFY) &&
+         dequantize_or_densify->operation.type !=
+             ToString(OperationType::QUANTIZE_AND_DEQUANTIZE))) {
       return {TransformStatus::SKIPPED, ""};
     }
     const Node* dequantize_node;

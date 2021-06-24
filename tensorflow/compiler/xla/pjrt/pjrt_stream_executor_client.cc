@@ -203,9 +203,9 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
+      owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
       process_index_(process_index),
-      owned_allocator_(std::move(allocator)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
@@ -981,7 +981,55 @@ void PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
   }
 
   EnqueueCrossHostReceive(std::move(buffers), std::move(definition_event),
-                          std::move(notifier));
+                          std::move(notifier), absl::nullopt);
+}
+void PjRtStreamExecutorClient::MakeCrossHostReceiveBuffersForGather(
+    absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+    PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) {
+  VLOG(2) << "Making " << gather_details.size()
+          << " cross host receive buffers for gather";
+  if (gather_details.empty()) {
+    notifier(
+        InvalidArgument("gather_details parameter empty in "
+                        "MakeCrossHostReceiveBuffersForGather"));
+    return;
+  }
+
+  if (shapes.size() != gather_details.size()) {
+    notifier(
+        InvalidArgument("gather_details parameter has length %lld but shapes "
+                        "parameter has length %lld in "
+                        "MakeCrossHostReceiveBuffersForGather",
+                        gather_details.size(), shapes.size()));
+    return;
+  }
+
+  auto local_device_or =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+          ->GetLocalDeviceState();
+  if (!local_device_or.ok()) {
+    notifier(local_device_or.status());
+    return;
+  }
+  LocalDeviceState* local_device = local_device_or.ConsumeValueOrDie();
+  std::shared_ptr<BufferSequencingEvent> definition_event =
+      std::make_shared<BufferSequencingEvent>();
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  buffers.reserve(shapes.size());
+  for (int i = 0; i < shapes.size(); ++i) {
+    StatusOr<std::unique_ptr<PjRtBuffer>> buffer_or = AllocateDestinationBuffer(
+        shapes[i], device, local_device,
+        /*copy_stream=*/nullptr,
+        /*is_uninitialized_create=*/false, this, definition_event);
+    if (!buffer_or.ok()) {
+      notifier(buffer_or.status());
+      return;
+    }
+    buffers.push_back(buffer_or.ConsumeValueOrDie());
+  }
+
+  EnqueueCrossHostReceive(std::move(buffers), std::move(definition_event),
+                          std::move(notifier), gather_details);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -1042,13 +1090,6 @@ PjRtStreamExecutorBuffer::~PjRtStreamExecutorBuffer() {
   for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
     CHECK_EQ(holds_[i], 0);
   }
-}
-
-int64 PjRtStreamExecutorBuffer::OnDeviceSizeInBytes() const {
-  return client_->client()
-      ->backend()
-      .transfer_manager()
-      ->GetByteSizeRequirement(on_device_shape_);
 }
 
 void PjRtStreamExecutorBuffer::WaitForOutstandingUsageHolds() {
@@ -1175,7 +1216,7 @@ PjRtStreamExecutorBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
     CHECK(device_buffer_ != nullptr);
   } else {
     if (device_buffer_ == nullptr) {
-      return InvalidArgument("Hold requested on deleted or donated buffer");
+      return InvalidArgument("Buffer has been deleted or donated.");
     } else {
       ++holds_[type];
     }
@@ -1459,6 +1500,14 @@ Status PjRtStreamExecutorBuffer::CopyToRemoteDevice(
   return client_->CopyToRemoteDevice(this, serialized_descriptor);
 }
 
+Status PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
+    absl::Span<const std::string> serialized_descriptors,
+    const ScatterDetails& scatter_details) {
+  VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered";
+  return client_->CopyToRemoteDeviceScattered(this, serialized_descriptors,
+                                              scatter_details);
+}
+
 Status PjRtStreamExecutorBuffer::BlockHostUntilReady() {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorBuffer::BlockHostUntilReady");
@@ -1675,8 +1724,8 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
 Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
   parameters_that_must_be_donated_.reserve(executables_.size());
   for (auto& executable : executables_) {
-    TF_ASSIGN_OR_RETURN(absl::flat_hash_set<int> parameters_to_donate,
-                        GetParametersThatMustBeDonated(
+    TF_ASSIGN_OR_RETURN(std::vector<int> parameters_to_donate,
+                        ComputeParametersThatMustBeDonated(
                             executable->executable()->module(), tuple_inputs));
     parameters_that_must_be_donated_.emplace_back(
         std::move(parameters_to_donate));
@@ -1693,9 +1742,9 @@ absl::string_view PjRtStreamExecutorExecutable::name() const {
   }
 }
 
-bool PjRtStreamExecutorExecutable::MustDonateParameter(int executable_idx,
-                                                       int parameter) const {
-  return parameters_that_must_be_donated_[executable_idx].contains(parameter);
+absl::Span<int const> PjRtStreamExecutorExecutable::ParametersThatMustBeDonated(
+    int executable_idx) const {
+  return parameters_that_must_be_donated_[executable_idx];
 }
 
 StatusOr<std::vector<ExecutionInput>>
@@ -1775,6 +1824,9 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
 
   absl::flat_hash_set<BufferSequencingEvent*> events;
   device_buffers->reserve(argument_handles.size());
+  absl::Span<int const> donated_params =
+      ParametersThatMustBeDonated(executable_idx);
+  auto donate_it = donated_params.begin();
   for (int i = 0; i < argument_handles.size(); ++i) {
     auto* handle =
         tensorflow::down_cast<PjRtStreamExecutorBuffer*>(argument_handles[i]);
@@ -1784,7 +1836,10 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
           "device %s, but replica is assigned to device %s.",
           i, replica, handle->device()->DebugString(), device->DebugString());
     }
-    bool must_donate = MustDonateParameter(executable_idx, i);
+    bool must_donate = donate_it != donated_params.end() && *donate_it == i;
+    if (must_donate) {
+      ++donate_it;
+    }
     device_buffers->emplace_back(handle->GetBufferWithHold(
         must_donate ? PjRtStreamExecutorBuffer::ScopedHold::kDonation
                     : PjRtStreamExecutorBuffer::ScopedHold::kUsage));

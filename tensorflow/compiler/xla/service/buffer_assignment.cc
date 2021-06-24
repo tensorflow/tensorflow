@@ -52,6 +52,7 @@ using absl::flat_hash_map;
 using absl::flat_hash_set;
 using absl::StrAppend;
 using absl::StrAppendFormat;
+using memory_space_assignment::PresetAssignments;
 using ::tensorflow::strings::HumanReadableNumBytes;
 
 // Given the interference map of a graph (the list of interfering node indices
@@ -193,6 +194,8 @@ Status GatherComputationsByAllocationType(
                                               false));  // Not thread local.
             break;
           case HloOpcode::kAllReduce:
+          case HloOpcode::kAllReduceScatter:
+          case HloOpcode::kAllReduceStart:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:
           case HloOpcode::kReduceWindow:

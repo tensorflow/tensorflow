@@ -199,7 +199,9 @@ static void SpatialMaxPoolWithArgMaxHelper(
         // CHECK(input_backprop_index >= in_start && input_backprop_index <
         // in_end)
         FastBoundsCheck(input_backprop_index - in_start, in_end - in_start);
-        input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
+        if (index < out_backprop.NumElements()) {
+          input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
+        }
       }
     }
   };

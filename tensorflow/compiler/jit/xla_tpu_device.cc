@@ -50,9 +50,9 @@ static bool tpu_use_substreams_for_cross_tpu_device_transfers_flag = true;
 // Given a tensor of `shape` and `type`, as what shape should it be stored on
 // the TPU device? This function tranposes or flattens the excessively-padded
 // tensors to rank 1, but leaves other tensor shapes alone.
-xla::StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
-                                                 DataType type,
-                                                 bool use_fast_memory) {
+StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
+                                            DataType type,
+                                            bool use_fast_memory) {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       tensorflow::TensorShapeToXLAShape(type, shape, &xla_shape));
@@ -371,6 +371,9 @@ Status TpuNodeDeviceFactory::CreateDevices(
     options.device_ordinal = i;
     options.compilation_device_name = DEVICE_TPU_XLA_JIT;
     options.use_multiple_streams = true;
+    // We set `use_global_compute_stream` to true for TPUs as TPUs can only
+    // have one program running on each core at the same time.
+    options.use_global_compute_stream = true;
     options.shape_representation_fn = &TpuShapeRepresentation;
     options.padded_shape_fn = &TpuPaddedShapeFn;
     auto device = absl::make_unique<XlaDevice>(session_options, options);

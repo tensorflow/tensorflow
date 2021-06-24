@@ -56,7 +56,8 @@ Status SparseSoftmaxCrossEntropyWithLogitsModel(
 Status BiasAddModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::BiasAdd(ctx, inputs[0], inputs[1], &outputs[0], "BiasAdd");
+  return ops::BiasAdd(ctx, inputs[0], inputs[1], &outputs[0], "NHWC",
+                      "BiasAdd");
 }
 
 class CppGradients

@@ -22,6 +22,7 @@ import itertools
 
 from absl.testing import parameterized
 import numpy as np
+import scipy.linalg
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -33,13 +34,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
-
-
-def _AddTest(test_class, op_name, testcase_name, fn):
-  test_name = "_".join(["test", op_name, testcase_name])
-  if hasattr(test_class, test_name):
-    raise RuntimeError("Test %s defined more than once" % test_name)
-  setattr(test_class, test_name, fn)
 
 
 def _RandomPDMatrix(n, rng, dtype=np.float64):
@@ -560,6 +554,139 @@ class LUSolveStatic(test.TestCase, _LUSolve):
 @test_util.run_all_in_graph_and_eager_modes
 class LUSolveDynamic(test.TestCase, _LUSolve):
   use_static_shape = False
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
+
+  def check_residual(self, matrix, eigvals, eigvectors, atol):
+    # Test that A*eigvectors is close to eigvectors*diag(eigvals).
+    l = math_ops.cast(linalg.diag(eigvals), dtype=eigvectors.dtype)
+    av = math_ops.matmul(matrix, eigvectors)
+    vl = math_ops.matmul(eigvectors, l)
+    self.assertAllClose(av, vl, atol=atol)
+
+  def check_orthogonality(self, eigvectors, tol):
+    # Test that eigenvectors are orthogonal.
+    k = array_ops.shape(eigvectors)[1]
+    vtv = math_ops.matmul(
+        eigvectors, eigvectors, adjoint_a=True) - linalg.eye(
+            k, dtype=eigvectors.dtype)
+    self.assertAllLess(math_ops.abs(vtv), tol)
+
+  def run_test(self, alpha, beta, eigvals_only=True):
+    n = alpha.shape[0]
+    matrix = np.diag(alpha) + np.diag(beta, 1) + np.diag(np.conj(beta), -1)
+    # scipy.linalg.eigh_tridiagonal doesn't support complex inputs, so for
+    # this we call the slower numpy.linalg.eigh.
+    if np.issubdtype(alpha.dtype, np.complexfloating):
+      eigvals_expected, _ = np.linalg.eigh(matrix)
+    else:
+      eigvals_expected = scipy.linalg.eigh_tridiagonal(
+          alpha, beta, eigvals_only=True)
+    eigvals = linalg.eigh_tridiagonal(alpha, beta, eigvals_only=eigvals_only)
+    if not eigvals_only:
+      eigvals, eigvectors = eigvals
+
+    eps = np.finfo(alpha.dtype).eps
+    atol = n * eps * np.amax(np.abs(eigvals_expected))
+    self.assertAllClose(eigvals_expected, eigvals, atol=atol)
+    if not eigvals_only:
+      self.check_orthogonality(eigvectors, np.sqrt(n) * eps)
+      self.check_residual(matrix, eigvals, eigvectors, atol)
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def test_small(self, dtype):
+    for n in [1, 2, 3]:
+      alpha = np.ones([n], dtype=dtype)
+      beta = np.ones([n - 1], dtype=dtype)
+      if np.issubdtype(alpha.dtype, np.complexfloating):
+        beta += 1j * beta
+      self.run_test(alpha, beta)
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def test_toeplitz(self, dtype):
+    n = 8
+    for a, b in [[2, -1], [1, 0], [0, 1], [-1e10, 1e10], [-1e-10, 1e-10]]:
+      alpha = a * np.ones([n], dtype=dtype)
+      beta = b * np.ones([n - 1], dtype=dtype)
+      if np.issubdtype(alpha.dtype, np.complexfloating):
+        beta += 1j * beta
+      self.run_test(alpha, beta)
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def test_random_uniform(self, dtype):
+    for n in [8, 50]:
+      alpha = np.random.uniform(size=(n,)).astype(dtype)
+      beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+      if np.issubdtype(beta.dtype, np.complexfloating):
+        beta += 1j * np.random.uniform(size=(n - 1,)).astype(dtype)
+      self.run_test(alpha, beta)
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def test_select(self, dtype):
+    n = 4
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    eigvals_all = linalg.eigh_tridiagonal(alpha, beta, select="a")
+
+    eps = np.finfo(alpha.dtype).eps
+    atol = 2 * n * eps
+    for first in range(n - 1):
+      for last in range(first + 1, n - 1):
+        # Check that we get the expected eigenvalues by selecting by
+        # index range.
+        eigvals_index = linalg.eigh_tridiagonal(
+            alpha, beta, select="i", select_range=(first, last))
+        self.assertAllClose(
+            eigvals_all[first:(last + 1)], eigvals_index, atol=atol)
+
+        # Check that we get the expected eigenvalues by selecting by
+        # value range.
+        eigvals_value = linalg.eigh_tridiagonal(
+            alpha,
+            beta,
+            select="v",
+            select_range=(eigvals_all[first], eigvals_all[last]))
+        self.assertAllClose(
+            eigvals_all[first:(last + 1)], eigvals_value, atol=atol)
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def test_extreme_eigenvalues_test(self, dtype):
+    huge = 0.33 * np.finfo(dtype).max
+    tiny = 3 * np.finfo(dtype).tiny
+    for (a, b) in [(tiny, tiny), (huge, np.sqrt(huge))]:
+      alpha = np.array([-a, -np.sqrt(a), np.sqrt(a), a]).astype(dtype)
+
+      beta = b * np.ones([3], dtype=dtype)
+      if np.issubdtype(alpha.dtype, np.complexfloating):
+        beta += 1j * beta
+
+  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
+                            (np.complex128))
+  def test_eigenvectors(self, dtype):
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
+      # cuda and XLA do not yet expose the stabilized tridiagonal solver
+      # needed for inverse iteration.
+      return
+    n = 8
+    alpha = np.random.uniform(size=(n,)).astype(dtype)
+    beta = np.random.uniform(size=(n - 1,)).astype(dtype)
+    if np.issubdtype(beta.dtype, np.complexfloating):
+      beta += 1j * np.random.uniform(size=(n - 1,)).astype(dtype)
+    self.run_test(alpha, beta, eigvals_only=False)
+
+    # Test that we can correctly generate an orthogonal basis for
+    # a fully degenerate matrix.
+    eps = np.finfo(dtype).eps
+    alpha = np.ones(n).astype(dtype)
+    beta = 0.01 * np.sqrt(eps) * np.ones((n - 1)).astype(dtype)
+    self.run_test(alpha, beta, eigvals_only=False)
 
 
 if __name__ == "__main__":

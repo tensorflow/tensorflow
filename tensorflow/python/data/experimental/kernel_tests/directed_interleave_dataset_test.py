@@ -199,6 +199,15 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.INFINITE)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsNested(self):
+    ds1 = dataset_ops.Dataset.range(10).window(2)
+    ds2 = dataset_ops.Dataset.range(10, 20).window(2)
+    ds = interleave_ops.sample_from_datasets([ds1, ds2], weights=[0.3, 0.7])
+    ds = ds.flat_map(lambda x: x)
+    next_element = self.getNext(ds)
+    self.evaluate(next_element())
+
+  @combinations.generate(test_base.default_test_combinations())
   def testChooseFromDatasets(self):
     words = [b"foo", b"bar", b"baz"]
     datasets = [dataset_ops.Dataset.from_tensors(w).repeat() for w in words]
@@ -251,6 +260,19 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
         datasets, choice_dataset=dataset_ops.Dataset.range(0),
         stop_on_empty_dataset=False)
     self.assertDatasetProduces(dataset, [])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testChooseFromDatasetsNested(self):
+    ds1 = dataset_ops.Dataset.range(10).window(2)
+    ds2 = dataset_ops.Dataset.range(10, 20).window(2)
+    choice_dataset = dataset_ops.Dataset.range(2).repeat(5)
+    ds = interleave_ops.choose_from_datasets([ds1, ds2], choice_dataset)
+    ds = ds.flat_map(lambda x: x)
+    expected = []
+    for i in range(5):
+      for j in range(2):
+        expected.extend([10*j + 2*i, 10*j + 2*i + 1])
+    self.assertDatasetProduces(ds, expected)
 
   @combinations.generate(test_base.default_test_combinations())
   def testErrors(self):
@@ -321,9 +343,12 @@ class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                                   seed=1813)
     return dataset.take(num_samples)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCheckpointCore(self):
-    self.run_core_tests(lambda: self._build_dataset([0.5, 0.5], 100), 100)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(
+        self, lambda: self._build_dataset([0.5, 0.5], 100), num_outputs=100)
 
 
 if __name__ == "__main__":

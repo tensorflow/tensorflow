@@ -24,8 +24,8 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestFloor(const int* input_dims_data, const float* input_data,
-               const float* expected_output_data, const int* output_dims_data,
+void TestFloor(int* input_dims_data, const float* input_data,
+               const float* expected_output_data, int* output_dims_data,
                float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
@@ -62,7 +62,7 @@ void TestFloor(const int* input_dims_data, const float* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(FloorOpSingleDimFloat32) {
-  const int dims[] = {1, 2};
+  int dims[] = {1, 2};
   const float input[] = {8.5f, 0.0f};
   const float golden[] = {8, 0};
   float output_data[2];
@@ -70,7 +70,7 @@ TF_LITE_MICRO_TEST(FloorOpSingleDimFloat32) {
 }
 
 TF_LITE_MICRO_TEST(FloorOpMultiDimFloat32) {
-  const int dims[] = {4, 2, 1, 1, 5};
+  int dims[] = {4, 2, 1, 1, 5};
   const float input[] = {0.0001f,  8.0001f,  0.9999f,  9.9999f,  0.5f,
                          -0.0001f, -8.0001f, -0.9999f, -9.9999f, -0.5f};
   const float golden[] = {0.0f,  8.0f,  0.0f,  9.0f,   0.0f,

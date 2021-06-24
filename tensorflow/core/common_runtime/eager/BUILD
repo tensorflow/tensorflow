@@ -4,6 +4,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_test_mkl",
+    "tf_copts",
     "tf_cuda_library",
     "tf_mkl_kernel_library",
 )
@@ -187,6 +188,8 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/coordination:coordination_service",
+            "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -485,7 +488,8 @@ cc_library(
     hdrs = [
         "execute.h",
         "execute_node.h",
-    ],
+    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
+    copts = if_mkl(["-DINTEL_MKL"]),
     deps = [
         ":context",
         ":copy_to_device_node",
@@ -494,6 +498,7 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -607,6 +612,7 @@ cc_library(
         "execute.h",
         "execute_node.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":context",
         ":copy_to_device_node",
@@ -616,6 +622,7 @@ cc_library(
         ":kernel_and_device",
         ":placement_utils",
         ":tensor_handle",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -722,6 +729,7 @@ tf_cc_test(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 

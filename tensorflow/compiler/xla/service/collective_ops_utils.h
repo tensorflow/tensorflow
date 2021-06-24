@@ -33,6 +33,10 @@ namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
+// Attempts to match instruction to one of the possible cases for ReductionKind.
+absl::optional<ReductionKind> MatchReductionInstruction(
+    const HloInstruction* hlo);
+
 // Attempts to match computation to one of the possible cases in ReductionKind.
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
@@ -92,6 +96,24 @@ absl::string_view CollectiveOpGroupModeToString(
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     bool has_channel_id, absl::optional<bool> use_global_device_ids);
+
+// Figures out subgroups of participating devices from given replica_groups and
+// group_mode.
+//
+// Returns list of participants, where each participant is a list of
+// GlobalDeviceIds.
+//
+// For example:
+//   device_assignment={{33, 34}, {44, 45}, {55, 56}}  3 replicas 2 partitions
+//   group_mode=CollectiveOpGroupMode::kCrossReplica
+//   replica_groups={{0}, {1, 2}}
+//
+//   This functions returns {{33, 34}, {44, 45, 55, 56}}
+//   There are 2 subgroups of participating devices {33, 34}, {44, 45, 55, 56}.
+StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              CollectiveOpGroupMode group_mode);
 
 // Figures out which devices are participating in the collective subgroup.
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -198,17 +220,12 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
 
 // Participant data for each rendezvous.
 struct ParticipantData {
-  ParticipantData(const RendezvousKey& rendezvous_key, int64 device_ordinal,
-                  se::Stream* stream)
-      : rendezvous_key(rendezvous_key),
-        device_ordinal(device_ordinal),
-        stream(stream) {}
+  explicit ParticipantData(const RendezvousKey& rendezvous_key)
+      : rendezvous_key(rendezvous_key) {}
 
   virtual ~ParticipantData() {}
 
   RendezvousKey rendezvous_key;
-  int64 device_ordinal;
-  se::Stream* stream;
 
   virtual std::string ToString() const = 0;
 };
@@ -217,7 +234,9 @@ struct ParticipantData {
 struct AllReduceParticipantData : ParticipantData {
   AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
                            int64 device_ordinal_p, se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+      : ParticipantData(rendezvous_key_p),
+        device_ordinal(device_ordinal_p),
+        stream(stream_p) {}
 
   // TODO(b/125951860): We should vet that we're buffer allocating such that
   // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
@@ -229,6 +248,8 @@ struct AllReduceParticipantData : ParticipantData {
     se::DeviceMemoryBase destination_data;
     PrimitiveType primitive_type;
   };
+  int64 device_ordinal;
+  se::Stream* stream;
   std::vector<Buffer> buffers;
   const gpu::NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
@@ -348,9 +369,9 @@ class Rendezvous {
     all_participants_present_.DecrementCount();
     WaitAndLogIfStuck(&all_participants_present_, [&] {
       return absl::StrFormat(
-          "participant for device ordinal %d, stream %p waiting for all "
-          "participants to arrive at rendezvous %s",
-          participant.device_ordinal, participant.stream, key_.ToString());
+          "participant %s waiting for all participants to arrive at rendezvous "
+          "%s",
+          participant.ToString(), key_.ToString());
     });
 
     TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));

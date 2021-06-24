@@ -107,7 +107,6 @@ tensorflow::swig::TryFindKernelClass
 
 [//tensorflow/lite/toco/python:toco_python_api] # toco_python_api
 toco::TocoConvert
-toco::TocoGetPotentiallySupportedOps
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
@@ -217,6 +216,7 @@ tensorflow::ImportFunction
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
+tensorflow::AttrValue  # tf_text
 
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
@@ -238,7 +238,7 @@ tensorflow::AddWhileInputHack
 tensorflow::ImportNumpy
 _tensorflow_numpy_api
 
-[//tensorflow/python:tf_session_helper] # tf_session
+[//tensorflow/python/client:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef
 tensorflow::TF_SessionMakeCallable
 tensorflow::TF_SessionRunCallable
@@ -370,6 +370,12 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
+[//tensorflow/cc/experimental/libexport:metrics_impl] # SavedModel metrics
+tensorflow::libexport::metrics::Write
+tensorflow::libexport::metrics::Read
+tensorflow::libexport::metrics::WriteApi
+tensorflow::libexport::metrics::ReadApi
+
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
@@ -400,4 +406,3 @@ tensorflow::CopyPythonAPITensorLists
 
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
-
