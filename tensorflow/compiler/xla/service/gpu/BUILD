@@ -1617,7 +1617,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core/platform:rocm_rocdl_path",
-        "@llvm-project//mlir:IR",
     ],
 )
 
