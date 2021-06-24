@@ -1,4 +1,4 @@
-// RUN: tf-opt --tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
+// RUN: tf-opt --split-input-file --tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
 
 // Operations for testing tfl-to-tosa-pipeline
 
@@ -779,12 +779,41 @@ func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x
 
 // -----
 
-// CHECK-LABEL: @test_dequantize
-func @test_dequantize(%arg0: tensor<10xf16>) -> tensor<10xf32> {
+// CHECK-LABEL: @test_dequantize_float
+func @test_dequantize_float(%arg0: tensor<10xf16>) -> tensor<10xf32> {
   // CHECK: %[[VAR0:.+]] = "tosa.cast"(%arg0) : (tensor<10xf16>) -> tensor<10xf32>
   // CHECK: return %[[VAR0]]
   %0 = "tfl.dequantize"(%arg0) : (tensor<10xf16>) -> tensor<10xf32>
   return %0 : tensor<10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @test_dequantize_quant_uniform
+func @test_dequantize_quant_uniform(%arg0: tensor<4x!quant.uniform<i8:f32, 1.0:-1>>) -> tensor<4xf32> {
+  // CHECK-DAG: %[[VAL0:.+]] = "tosa.const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK-DAG: %[[VAL1:.+]] = "tosa.const"() {value = dense<-1.000000e+00> : tensor<f32>}
+  // CHECK-DAG: %[[VAL2:.+]] = "tosa.cast"(%arg0)
+  // CHECK-DAG: %[[VAL3:.+]] = "tosa.reshape"(%[[VAL1]]) {new_shape = [1]}
+  // CHECK-DAG: %[[VAL4:.+]] = "tosa.sub"(%[[VAL2]], %[[VAL3]])
+  // CHECK-DAG: %[[VAL5:.+]] = "tosa.reshape"(%[[VAL0]]) {new_shape = [1]}
+  // CHECK-DAG: %[[VAL6:.+]] = "tosa.mul"(%[[VAL4]], %[[VAL5]]) {shift = 0 : i32}
+  // CHECK: return %[[VAL6]]
+  %0 = "tfl.dequantize"(%arg0) : (tensor<4x!quant.uniform<i8:f32, 1.0:-1>>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+// -----
+
+// CHECK-LABEL: @test_dequantize_quant_per_axis
+func @test_dequantize_quant_per_axis(%arg0: tensor<1x4x!quant.uniform<i8:f32:1, {1.0:5, 2.0:6, 3.0:7, 4.0:8}>>) -> tensor<1x4xf32> {
+  // CHECK-DAG: %[[VAL0:.+]] = "tosa.const"() {value = dense<{{\[}}[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]]> : tensor<1x4xf32>}
+  // CHECK-DAG: %[[VAL1:.+]] = "tosa.const"() {value = dense<{{\[}}[5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00]]> : tensor<1x4xf32>}
+  // CHECK-DAG: %[[VAL2:.+]] = "tosa.cast"(%arg0) : (tensor<1x4x!quant.uniform<i8:f32:1, {1.000000e+00:5,2.000000e+00:6,3.000000e+00:7,4.000000e+00:8}>>)
+  // CHECK-DAG: %[[VAL3:.+]] = "tosa.sub"(%[[VAL2]], %[[VAL1]]) : (tensor<1x4xf32>, tensor<1x4xf32>) -> tensor<1x4xf32>
+  // CHECK-DAG: %[[VAL4:.+]] = "tosa.mul"(%[[VAL3]], %[[VAL0]]) {shift = 0 : i32} : (tensor<1x4xf32>, tensor<1x4xf32>) -> tensor<1x4xf32>
+  // CHECK: return %[[VAL4]]
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x4x!quant.uniform<i8:f32:1, {1.0:5, 2.0:6, 3.0:7, 4.0:8}>>) -> tensor<1x4xf32>
+  return %0 : tensor<1x4xf32>
 }
 
 // -----
