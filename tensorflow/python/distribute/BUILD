@@ -272,6 +272,7 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
+        ":ps_values",
         ":reduce_util",
         ":sharded_variable",
         ":shared_variable_creator",
