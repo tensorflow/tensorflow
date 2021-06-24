@@ -227,6 +227,11 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_half) {
   TestAllOpsForReduce<Eigen::half>();
 }
 
+XLA_TEST_F(CollectiveOpsTest,
+           DISABLED_ON_CPU(AllReduceTwoReplicasOneOperand_bfloat16)) {
+  TestAllOpsForReduce<bfloat16>();
+}
+
 XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
   // Test with equal elements.
   TestTwoReplicasOneOperand<bool>(
