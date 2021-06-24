@@ -15410,10 +15410,12 @@ inline TableOptionsT *TableOptions::UnPack(const flatbuffers::resolver_function_
   UnPackTo(_o, _resolver);
   return _o;
 }
+
 inline void TableOptions::UnPackTo(TableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
 }
+
 inline flatbuffers::Offset<TableOptions> TableOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateTableOptions(_fbb, _o, _rehasher);
 }
