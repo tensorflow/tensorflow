@@ -374,6 +374,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   OwningRewritePatternList patterns(&getContext());
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
   TF::PopulateTFLoweringBeforeHLOPatterns(module.getContext(), &patterns);
+  TF::PopulateLoweringQuantizedPatterns(module.getContext(), &patterns);
   AddCanonicalizationPatterns(module.getContext(), &patterns);
 
   // `supported_ops` contains the name of all of the ops that can potentially be
