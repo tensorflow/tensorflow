@@ -68,6 +68,10 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
       return ncclFloat32;
     case F64:
       return ncclFloat64;
+#if defined(__CUDA_BF16_TYPES_EXIST__)
+    case BF16:
+      return ncclBfloat16;
+#endif
     default:
       return tensorflow::errors::InvalidArgument(absl::StrFormat(
           "Unsupported data type: %s", PrimitiveType_Name(element_type)));

@@ -2290,6 +2290,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
+  def testMismatchedConcreteSignatureRaisesError(self):
+
+    @def_function.function
+    def run_test():
+      @def_function.function
+      def f(x):
+        return x
+
+      with self.assertRaisesRegex(
+          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+        f.get_concrete_function(1)(constant_op.constant(1))
+
+      with self.assertRaisesRegex(TypeError, r'f\(x\) expected .* but got .*'):
+        f.get_concrete_function(constant_op.constant(1))(1)
+
+      with self.assertRaisesRegex(
+          TypeError, 'ConcreteFunction .* was constructed .* but was called'):
+        f.get_concrete_function(1)(2)
+
+    run_test()
+
   def testInputsIncompatibleWithNestedSignatureRaisesError(self):
 
     def foo(a, b):

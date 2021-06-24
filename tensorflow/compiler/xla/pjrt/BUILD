@@ -421,3 +421,63 @@ cc_library(
         "@tf_runtime//:support",
     ],
 )
+
+cc_library(
+    name = "lru_cache",
+    hdrs = ["lru_cache.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "lru_cache_test",
+    srcs = ["lru_cache_test.cc"],
+    deps = [
+        ":lru_cache",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "transpose",
+    srcs = [
+        "transpose.cc",
+        "transpose_kernels.h",
+    ],
+    hdrs = ["transpose.h"],
+    deps = [
+        ":lru_cache",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "transpose_test",
+    srcs = ["transpose_test.cc"],
+    deps = [
+        ":transpose",
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/numeric:int128",
+    ],
+)

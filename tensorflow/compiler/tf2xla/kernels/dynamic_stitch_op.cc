@@ -72,7 +72,17 @@ class DynamicStitchOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx,
                      XLAShapeToTensorShape(indices_input[input_num].shape(),
                                            &indices_shape));
-      const TensorShape& data_shape = data_shapes[input_num];
+      TensorShape& data_shape = data_shapes[input_num];
+      if (!TensorShapeUtils::StartsWith(data_shape, indices_shape)) {
+        // This happens when data shape is a dynamic shape with bound with
+        // indices_shape is a concrete shape. We use slice to reconcile the
+        // mismatch.
+        for (int64 i = 0; i < indices_shape.dims(); ++i) {
+          data_shape.set_dim(i, indices_shape.dim_size(i));
+          data[input_num] = xla::SliceInDim(data[input_num], 0,
+                                            indices_shape.dim_size(i), 1, i);
+        }
+      }
       OP_REQUIRES(
           ctx, TensorShapeUtils::StartsWith(data_shape, indices_shape),
           errors::InvalidArgument("data[", input_num,

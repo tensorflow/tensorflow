@@ -28,6 +28,10 @@ namespace tensorflow {
 
 class NcclCommunicator : public NcclCommunicatorInterface {
  public:
+  string GenerateCommunicatorKey() override {
+    return nccl_manager_.GenerateCommunicatorKey();
+  }
+
   void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                StatusCallback done) override;
 

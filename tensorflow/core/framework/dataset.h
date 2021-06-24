@@ -98,19 +98,29 @@ inline bool IsTFDataFunction(const FunctionDef& func) {
 // Read*(key, val) vs Read*(name, key, val).
 class IteratorStateReader {
  public:
-  virtual Status ReadScalar(StringPiece key, int64* val) const = 0;
-  virtual Status ReadScalar(StringPiece key, tstring* val) const = 0;
-  virtual Status ReadTensor(StringPiece key, Tensor* val) const = 0;
-
-  virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            int64* val) const = 0;
-  virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            tstring* val) const = 0;
-  virtual Status ReadTensor(StringPiece name, StringPiece key,
-                            Tensor* val) const = 0;
-
+  // Determines whether the iterator state contains the given key.
   virtual bool Contains(StringPiece key) const = 0;
   virtual bool Contains(StringPiece name, StringPiece key) const = 0;
+
+  // Reads an integer for the given key.
+  virtual Status ReadScalar(StringPiece key, int64* val) const = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            int64* val) const = 0;
+
+  // Reads a string for the given key.
+  virtual Status ReadScalar(StringPiece key, tstring* val) const = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            tstring* val) const = 0;
+
+  // Reads a tensor for the given key.
+  // TODO(jsimsa): Remove non-FLR overrides once all callers are updated.
+  virtual Status ReadTensor(StringPiece key, Tensor* val) const = 0;
+  virtual Status ReadTensor(FunctionLibraryRuntime* flr, StringPiece key,
+                            Tensor* val) const = 0;
+  virtual Status ReadTensor(StringPiece name, StringPiece key,
+                            Tensor* val) const = 0;
+  virtual Status ReadTensor(FunctionLibraryRuntime* flr, StringPiece name,
+                            StringPiece key, Tensor* val) const = 0;
 
   virtual ~IteratorStateReader() {}
 };
@@ -126,14 +136,18 @@ class IteratorStateReader {
 // into more manageable chunks.
 class IteratorStateWriter {
  public:
+  // Writes an integer for the given key.
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
-  virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
-  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
-
   virtual Status WriteScalar(StringPiece name, StringPiece key,
                              const int64 val) = 0;
+
+  // Writes a string for the given key.
+  virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
   virtual Status WriteScalar(StringPiece name, StringPiece key,
                              const tstring& val) = 0;
+
+  // Writes a tensor for the given key.
+  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
   virtual Status WriteTensor(StringPiece name, StringPiece key,
                              const Tensor& val) = 0;
 
@@ -223,36 +237,41 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-  Status AddDataset(const DatasetBase* dataset,
-                    const std::vector<Node*>& inputs, Node** output) {
-    return AddDataset(dataset, inputs, {}, output);
-  }
-
-  // Adds a node corresponding to the `DatasetType` to the Graph.
-  // Return value of `DatasetType::type_string()` is used as the op type for the
-  // node.
-  // Values for the output_types and output_shapes node attributes are also
-  // written if those attributes are defined in the OpDef.
+  // Adds a node for the given dataset to the `Graph`. The value of
+  // `DatasetBase::type_string()` is used as the op type for the node. Values
+  // for the `output_types` and `output_shapes` node attributes are also written
+  // if those attributes are defined in the `OpDef`.
+  //
+  // If `use_dataset_name` is set, the value of `DatasetBase::node_name()` is
+  // used as the op name for the node. This argument should only be set when
+  // serializing `DatasetBase` instances which might not have been created
+  // through op kernel execution to make sure the dataset op name is preserved
+  // across serialization boundaries, which is in turn needed to make sure
+  // iterator checkpoints are valid across serialization boundaries. When
+  // `use_dataset_name` is set, the caller is responsible for making sure that
+  // the op name is unique across the graph.
+  //
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
-  // non-null if the method returns with an OK status.
-  // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  // non-null if the method returns with an OK status. The returned `Node`
+  // pointer is owned by the backing `Graph` of `GraphDefBuilder`.
+  Status AddDataset(const DatasetBase* dataset,
+                    const std::vector<Node*>& inputs, Node** output);
   Status AddDataset(const DatasetBase* dataset,
                     const std::vector<Node*>& inputs,
                     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
-                    Node** output) {
-    std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
-    for (size_t i = 0; i < inputs.size(); i++) {
-      enumerated_inputs[i] = std::make_pair(i, inputs[i]);
-    }
-    return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
-  }
-
+                    Node** output);
   Status AddDataset(
       const DatasetBase* dataset,
       const std::vector<std::pair<size_t, Node*>>& inputs,
       const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
       const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
       Node** output);
+  Status AddDataset(
+      const DatasetBase* dataset,
+      const std::vector<std::pair<size_t, Node*>>& inputs,
+      const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+      const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+      bool use_dataset_name, Node** output);
 
   // Adds a user-defined function with name `function_name` to the graph and
   // recursively adds all functions it references. If a function with a matching
@@ -567,6 +586,12 @@ class SerializationContext {
   }
 
   struct Params {
+    explicit Params() {}
+
+    explicit Params(OpKernelContext* ctx)
+        : resource_mgr(ctx->resource_manager()),
+          device_name(ctx->device()->attributes().name()) {}
+
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
     // Indicates what to do if the dataset depends on external state.
@@ -594,6 +619,9 @@ class SerializationContext {
 
     // A resource manager for looking up resources during serialization.
     ResourceMgr* resource_mgr;
+
+    // The name of the device doing the serialization.
+    std::string device_name;
   };
 
   explicit SerializationContext(Params params) : params_(params) {}
@@ -612,7 +640,9 @@ class SerializationContext {
 
   bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
 
-  ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
+  const ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
+
+  const std::string& device_name() const { return params_.device_name; }
 
  private:
   Params params_;

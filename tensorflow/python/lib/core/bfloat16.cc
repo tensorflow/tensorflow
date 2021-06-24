@@ -1354,7 +1354,7 @@ bool Initialize() {
   }
 
   Safe_PyObjectPtr typeDict_obj =
-      make_safe(PyObject_GetAttrString(numpy.get(), "typeDict"));
+      make_safe(PyObject_GetAttrString(numpy.get(), "sctypeDict"));
   if (!typeDict_obj) return false;
   // Add the type object to `numpy.typeDict`: that makes
   // `numpy.dtype('bfloat16')` work.

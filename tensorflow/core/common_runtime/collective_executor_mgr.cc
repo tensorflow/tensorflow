@@ -99,7 +99,7 @@ std::unique_ptr<CollectiveExecutorMgr> CreateProdLocalCollectiveExecutorMgr(
     std::unique_ptr<NcclCommunicatorInterface> nccl_communicator) {
   auto device_resolver = absl::make_unique<DeviceResolverLocal>(device_mgr);
   auto param_resolver = absl::make_unique<CollectiveParamResolverLocal>(
-      config, device_mgr, device_resolver.get(),
+      config, device_mgr, device_resolver.get(), nccl_communicator.get(),
       "/job:localhost/replica:0/task:0");
   return absl::make_unique<CollectiveExecutorMgr>(
       config, device_mgr, std::move(device_resolver), std::move(param_resolver),

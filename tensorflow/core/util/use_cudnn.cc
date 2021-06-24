@@ -40,7 +40,7 @@ bool CudnnUseFrontend() {
   static bool result = [] {
     bool value = false;
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-    Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", false, &value);
+    Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", true, &value);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }

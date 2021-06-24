@@ -54,8 +54,9 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
   }
 
   void ResetParamResolver(const ConfigProto& config) {
-    prl_.reset(new CollectiveParamResolverLocal(config, device_mgr_.get(),
-                                                drl_.get(), task_name_));
+    prl_.reset(new CollectiveParamResolverLocal(
+        config, device_mgr_.get(), drl_.get(), /*nccl_communicator*/ nullptr,
+        task_name_));
   }
 
   void RunCompleteDefaultRanking(

@@ -80,6 +80,7 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
 
   void* alloc_mem = mem;
   QCHECK(Align(alignment, size, mem, total_size));
+  mutex_lock lock(mu_);
   if (mem != alloc_mem) {
     QCHECK(mem_map_.insert({mem, alloc_mem}).second);
   }
@@ -95,6 +96,7 @@ TRTDeviceAllocator::TRTDeviceAllocator(Allocator* allocator)
 }
 
 void TRTDeviceAllocator::free(void* memory) {
+  mutex_lock lock(mu_);
   VLOG(2) << "Deallocating @ " << memory;
   // allocated memory adjusted for alignment, restore the original pointer
   if (memory) {

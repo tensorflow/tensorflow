@@ -639,9 +639,10 @@ class Worker(object):
           on_recovery_fn=self._set_resources_aborted,
           worker_device_name=self.device_name):
         closure.execute_on(self)
-        # TODO(yuefengz): we don't have to materialize results every step.
         with metric_utils.monitored_timer("remote_value_fetch"):
-          closure.output_remote_value.fetch()
+          # Copy the remote tensor to local (the coordinator) in case worker
+          # becomes unavailable at a later time.
+          closure.output_remote_value.get()
         self._cluster._closure_queue.mark_finished()  # pylint: disable=protected-access
     except Exception as e:  # pylint: disable=broad-except
       # Avoid logging the derived cancellation error
@@ -902,16 +903,18 @@ class ClusterCoordinator(object):
     Raises:
       ValueError: if the strategy being used is not supported.
     """
-    if not isinstance(strategy,
-                      parameter_server_strategy_v2.ParameterServerStrategyV2):
-      raise ValueError(
-          "Only `tf.distribute.experimental.ParameterServerStrategy` "
-          "is supported to work with "
-          "`tf.distribute.experimental.coordinator.ClusterCoordinator` "
-          "currently.")
-    self._strategy = strategy
-    self.strategy.extended._used_with_coordinator = True
-    self._cluster = Cluster(strategy)
+    if not getattr(self, "_has_initialized", False):
+      if not isinstance(strategy,
+                        parameter_server_strategy_v2.ParameterServerStrategyV2):
+        raise ValueError(
+            "Only `tf.distribute.experimental.ParameterServerStrategy` "
+            "is supported to work with "
+            "`tf.distribute.experimental.coordinator.ClusterCoordinator` "
+            "currently.")
+      self._strategy = strategy
+      self.strategy.extended._used_with_coordinator = True
+      self._cluster = Cluster(strategy)
+      self._has_initialized = True
 
   def __del__(self):
     self._cluster.stop()

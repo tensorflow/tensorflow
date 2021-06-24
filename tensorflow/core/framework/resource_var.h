@@ -17,8 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/platform/random.h"
 
 namespace tensorflow {
 
@@ -69,25 +67,6 @@ class Var : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }
 
-  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
-    mutex_lock l(mu_);
-    Node* var = ops::SourceOp(
-        "VarHandleOp",
-        builder->opts()
-            .WithAttr("dtype", tensor_.dtype())
-            .WithAttr("shape", tensor_.shape())
-            .WithAttr("shared_name", ResourceHandle::ANONYMOUS_NAME));
-    Node* value = ops::SourceOp("Const", builder->opts()
-                                             .WithAttr("dtype", tensor_.dtype())
-                                             .WithAttr("value", tensor_));
-    Node* assign =
-        ops::BinaryOp("AssignVariableOp", var, value,
-                      builder->opts().WithAttr("dtype", tensor_.dtype()));
-    *out =
-        ops::UnaryOp("Identity", var, builder->opts().WithControlInput(assign));
-    return Status::OK();
-  }
-
   std::string DebugString() const override {
     return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
                            tensor_.shape().DebugString());
@@ -109,7 +88,7 @@ class Var : public ResourceBase {
   std::atomic<bool> copy_on_read_mode{false};
 
  private:
-  mutable mutex mu_;
+  mutex mu_;
   Tensor tensor_;
 
   ~Var() override {}

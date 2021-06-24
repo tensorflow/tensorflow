@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
@@ -74,6 +75,21 @@ class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected_output = np.array([[2.0, 4.0, 6.0, 8.0]], dtype=np.float32)
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
+
+  def testFlexWithAutomaticPassThrough(self):
+    # Create a graph that has one L2Loss op.
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[4], dtype=dtypes.float32, name='input')
+        out_tensor = nn_ops.l2_loss(in_tensor)
+        converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                      [out_tensor])
+        converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
+        converter._experimental_allow_all_select_tf_ops = True
+        tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertIn('FlexL2Loss', tflite_test_util.get_ops_list(tflite_model))
 
   def testDeprecatedFlags(self):
     with ops.Graph().as_default():

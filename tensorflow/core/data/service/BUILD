@@ -101,7 +101,6 @@ cc_library(
 tf_cc_test(
     name = "data_service_test",
     srcs = ["data_service_test.cc"],
-    tags = ["no_windows"],
     deps = [
         ":data_service",
         ":dispatcher_client",

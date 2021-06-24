@@ -103,8 +103,7 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
       }
     }
   }
-  SerializationContext::Params params;
-  params.resource_mgr = ctx->resource_manager();
+  SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
 
   GraphDef graph_def;

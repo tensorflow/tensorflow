@@ -40,7 +40,8 @@ inline int GetNumDims(const SubGraph* subgraph, const Operator* op, int idx) {
 }
 
 std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
-    const flatbuffers::Vector<int32_t>* tensors, const SubGraph* subgraph) {
+    const flatbuffers::Vector<int32_t>* tensors, const SubGraph* subgraph,
+    const Model* model) {
   std::vector<OpSignatureTensorSpec> tensor_specs;
   StderrReporter error_reporter;
 
@@ -50,8 +51,17 @@ std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
     OpSignatureTensorSpec tensor_spec = {kTfLiteNoType};
     if (tensor_no >= 0) {
       if (subgraph->tensors() && tensor_no < subgraph->tensors()->Length()) {
-        ConvertTensorType(subgraph->tensors()->Get(tensor_no)->type(),
-                          &tensor_spec.type, &error_reporter);
+        auto* fb_tensor = subgraph->tensors()->Get(tensor_no);
+        ConvertTensorType(fb_tensor->type(), &tensor_spec.type,
+                          &error_reporter);
+        auto buffer_idx = fb_tensor->buffer();
+        // Check if the tensor is a constant tensor.
+        if (buffer_idx != 0 && buffer_idx < model->buffers()->Length()) {
+          auto* buffer = model->buffers()->Get(buffer_idx);
+          if (buffer->data() && buffer->data()->size() != 0) {
+            tensor_spec.is_const = true;
+          }
+        }
         const flatbuffers::Vector<int32_t>* shape_vec =
             subgraph->tensors()->Get(tensor_no)->shape();
         if (shape_vec) {
@@ -101,7 +111,7 @@ std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
 }  // namespace
 
 OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
-                           const SubGraph* subgraph) {
+                           const SubGraph* subgraph, const Model* model) {
   auto builtin_code = GetBuiltinCode(op_code);
   OpSignature op_sig = {builtin_code};
   std::memset(&op_sig.ext_options, 0, sizeof(op_sig.ext_options));
@@ -111,6 +121,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     MallocDataAllocator allocator;
     ParseOpData(op, builtin_code, &error_reporter, &allocator,
                 &op_sig.builtin_data);
+  } else {
+    op_sig.custom_name = op_code->custom_code()->str();
   }
 
   switch (builtin_code) {
@@ -187,8 +199,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       break;
   }
 
-  op_sig.inputs = GetOpSignatureTensorSpecs(op->inputs(), subgraph);
-  op_sig.outputs = GetOpSignatureTensorSpecs(op->outputs(), subgraph);
+  op_sig.inputs = GetOpSignatureTensorSpecs(op->inputs(), subgraph, model);
+  op_sig.outputs = GetOpSignatureTensorSpecs(op->outputs(), subgraph, model);
   return op_sig;
 }
 

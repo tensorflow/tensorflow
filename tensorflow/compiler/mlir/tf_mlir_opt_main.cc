@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
   mlir::mhlo::registerXlaPasses();
   mlir::mhlo::registerLegalizeTfPasses();
-  mlir::tf_saved_model::registerTensorFlowSavedModelTestPasses();
+  mlir::tf_test::registerTensorFlowTestPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

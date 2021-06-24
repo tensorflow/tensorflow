@@ -91,7 +91,7 @@ TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 // being passed to a function by value, possibly inside the CUB library
 // somewhere, but I have not yet been able to reproduce it in isolation outside
 // of the GitHub CI.
-#if !defined(PLATFORM_WINDOWS)
+#if GOOGLE_CUDA && !defined(PLATFORM_WINDOWS)
 
 #define REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_SEGMENT_ID_TYPE(type, index_type) \
   REGISTER_GPU_SPARSE_KERNELS(type, index_type, int32)                         \
@@ -163,7 +163,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
 
-#endif  // !defined(PLATFORM_WINDOWS)
+#endif  // GOOGLE_CUDA && !defined(PLATFORM_WINDOWS)
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
   REGISTER_KERNEL_BUILDER(                                              \
@@ -201,5 +201,50 @@ TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 
 #undef REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE
 #undef REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_SEGMENT_ID_TYPE
+
+// TODO(benbarsdell): See comment above.
+#if GOOGLE_CUDA && !defined(PLATFORM_WINDOWS)
+
+#define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentSumGrad")                                      \
+          .Device(DEVICE_GPU)                                           \
+          .HostMemory("output_dim0")                                    \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentSumGradOp<GPUDevice, type, index_type, segment_ids_type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_GPU_SPARSE_KERNELS
+
+#define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentMeanGrad")                                     \
+          .Device(DEVICE_GPU)                                           \
+          .HostMemory("output_dim0")                                    \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentMeanGradOp<GPUDevice, type, index_type, segment_ids_type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_GPU_SPARSE_KERNELS
+
+#define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("SparseSegmentSqrtNGrad")                                    \
+          .Device(DEVICE_GPU)                                           \
+          .HostMemory("output_dim0")                                    \
+          .TypeConstraint<type>("T")                                    \
+          .TypeConstraint<index_type>("Tidx")                           \
+          .TypeConstraint<segment_ids_type>("Tsegmentids"),             \
+      SparseSegmentSqrtNGradOp<GPUDevice, type, index_type,             \
+                               segment_ids_type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+#undef REGISTER_GPU_SPARSE_KERNELS
+
+#undef REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE
+#undef REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_SEGMENT_ID_TYPE
+
+#endif  // GOOGLE_CUDA && !defined(PLATFORM_WINDOWS)
 
 }  // namespace tensorflow

@@ -174,8 +174,8 @@ std::unique_ptr<RpcCollectiveExecutorMgr> CreateProdRpcCollectiveExecutorMgr(
     WorkerCacheInterface* worker_cache, const string& default_worker_name) {
   auto dev_resolver = absl::make_unique<DeviceResolverDistributed>(device_mgr);
   auto param_resolver = absl::make_unique<CollectiveParamResolverDistributed>(
-      config, device_mgr, dev_resolver.get(), worker_cache,
-      default_worker_name);
+      config, device_mgr, dev_resolver.get(), nccl_communicator.get(),
+      worker_cache, default_worker_name);
   return absl::make_unique<RpcCollectiveExecutorMgr>(
       config, device_mgr, std::move(dev_resolver), std::move(param_resolver),
       std::move(nccl_communicator), worker_cache, default_worker_name);

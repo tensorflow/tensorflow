@@ -31,6 +31,7 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import remote
@@ -38,6 +39,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
@@ -581,6 +583,34 @@ class ParameterServerStrategyV2Extended(
   @property
   def _num_replicas_in_sync(self):
     return self._num_gpus_per_worker or 1
+
+  def _create_var_creator(self, next_creator, **kwargs):
+    aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
+
+    def var_creator(**kwargs):
+      """Create an AggregatingVariable."""
+      # Create and wrap the variable.
+      v = next_creator(**kwargs)
+      wrapped_v = ps_values.CachingVariable(v)
+      wrapped = ps_values.AggregatingVariable(self._container_strategy(),
+                                              wrapped_v, aggregation)
+      return wrapped
+
+    if self._num_replicas_in_sync > 1:
+      if aggregation not in (
+          vs.VariableAggregation.NONE,
+          vs.VariableAggregation.SUM,
+          vs.VariableAggregation.MEAN,
+          vs.VariableAggregation.ONLY_FIRST_REPLICA
+      ):
+        raise ValueError("Invalid variable aggregation mode: " + aggregation +
+                         " for variable: " + kwargs["name"])
+      return var_creator
+    else:
+      def variable_creator_single_replica(**kwargs):
+        v = next_creator(**kwargs)
+        return ps_values.CachingVariable(v)
+      return variable_creator_single_replica
 
   def _create_variable(self, next_creator, **kwargs):
     """Implements StrategyExtendedV2._create_variable.

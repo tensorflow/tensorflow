@@ -228,6 +228,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_MUL:
+      // Version 5 supports int64 inputs
+      if (op_sig.inputs.at(0).type == kTfLiteInt64) {
+        return 5;
+      }
       // Version 4 supports int16 inputs
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
@@ -793,7 +797,7 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
 
       auto builtin_code = GetBuiltinCode(op_code);
       if (builtin_code != BuiltinOperator_CUSTOM) {
-        OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
+        OpSignature op_sig = GetOpSignature(op_code, op, subgraph, model);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
         if (op_sig.builtin_data) {

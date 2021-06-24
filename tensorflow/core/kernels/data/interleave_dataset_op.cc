@@ -316,6 +316,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           args_list_[idx].resize(args_size);
           for (int i = 0; i < args_size; i++) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
+                ctx->flr(),
                 full_name(strings::StrCat(kArgsList, "[", idx, "][", i, "]")),
                 &args_list_[idx][i]));
           }
