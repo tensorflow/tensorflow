@@ -40,10 +40,12 @@ namespace tensorflow {
 
 CollectiveParamResolverLocal::CollectiveParamResolverLocal(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
-    DeviceResolverInterface* dev_resolver, const string& task_name)
+    DeviceResolverInterface* dev_resolver,
+    NcclCommunicatorInterface* nccl_communicator, const string& task_name)
     : nccl_(config.experimental().collective_nccl()),
       dev_mgr_(dev_mgr),
       dev_resolver_(dev_resolver),
+      nccl_communicator_(nccl_communicator),
       task_name_(task_name),
       gpu_ring_order_(
           config.gpu_options().experimental().collective_ring_order()) {}
@@ -142,29 +144,10 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       gr->group.group_key = cp->group.group_key;
       gr->group.group_size = cp->group.group_size;
       gr->group.device_type = cp->group.device_type;
-
-      // Initialize group runtime details.
-      CollectiveImplementationInterface* col_impl;
-      // Try to lookup a NCCL collective kernel.  This will return error status
-      // if `NcclReduce` kernel is not present in the registry, e.g. on an
-      // environment that does not support NCCL.
-      status = CollectiveRegistry::LookupParamResolverInstance("NcclReduce",
-                                                               &col_impl);
-      if (!status.ok()) {
-        // Fallback to non-NCCL collective.
-        status = CollectiveRegistry::LookupParamResolverInstance(
-            GetCollectiveName(cp, /*nccl=*/false), &col_impl);
+      if (nccl_communicator_ != nullptr) {
+        gr->group.runtime_details.communicator_key =
+            nccl_communicator_->GenerateCommunicatorKey();
       }
-      if (status.ok()) {
-        status = col_impl->InitializeCollectiveGroupRuntimeDetails(
-            &gr->group.runtime_details);
-      }
-
-      if (!status.ok()) {
-        done_with_cleanup(status, gr);
-        return;
-      }
-
       // Store GroupRec in group_table_ which is shared between all devices on
       // this worker.
       group_table_[gr->group.group_key].reset(gr);
