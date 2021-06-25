@@ -356,7 +356,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   lib->Run(
       opts, handle, args, rets,
       [rets, done = std::move(done), func_name, ctx,
-       function_step_id = opts.step_id,
        target_device = std::move(function_target.first)](const Status& status) {
         profiler::TraceMe activity(
             [&] {
