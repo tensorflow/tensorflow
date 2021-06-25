@@ -188,6 +188,7 @@ tf_cc_test(
     srcs = ["delegate_test.cc"],
     tags = [
         "no_gpu",  # GPU + flex is not officially supported.
+        "no_mac",  # TODO(b/192099521): Re-enable this test on mac.
     ],
     deps = [
         ":delegate",
