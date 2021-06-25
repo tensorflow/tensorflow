@@ -441,7 +441,10 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
       continue;
     }
     py::array array = py::cast<py::array>(std::move(output));
-    absl::Span<int64_t const> dims(array.shape(), array.ndim());
+    static_assert(sizeof(ssize_t) == sizeof(int64_t),
+                  "Expected ssize_t to be of equal size to int64_t");
+    absl::Span<int64_t const> dims(
+        reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
     if (dims != results_[i].expected_dims) {
       throw std::runtime_error(absl::StrFormat(
           "Mismatched result shape for %d-th return value from CPU callback; "
@@ -449,7 +452,8 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
           i, absl::StrJoin(results_[i].expected_dims, ","),
           absl::StrJoin(dims, ",")));
     }
-    absl::Span<int64_t const> strides(array.strides(), array.ndim());
+    absl::Span<int64_t const> strides(
+        reinterpret_cast<const int64_t*>(array.strides()), array.ndim());
     if (strides == results_[i].expected_strides) {
       std::memcpy(outputs[i], array.data(), results_[i].size_in_bytes);
     } else {
@@ -497,8 +501,10 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
   }
 
   std::vector<Shape> custom_call_arg_layouts(operands.size() + 1);
-  custom_call_arg_layouts[0] = ShapeUtil::MakeShapeWithDescendingLayout(
-      primitive_util::NativeToPrimitiveType<std::uintptr_t>(), {});
+  static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
+                "Expected 64-bit pointers");
+  custom_call_arg_layouts[0] =
+      ShapeUtil::MakeShapeWithDescendingLayout(U64, {});
   for (int i = 0; i < operands.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(operands[i]));
     xla::Shape& layout = custom_call_arg_layouts[i + 1];
