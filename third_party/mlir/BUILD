@@ -1490,8 +1490,26 @@ gentbl_cc_library(
 
 cc_library(
     name = "SparseTensor",
-    srcs = glob(["lib/Dialect/SparseTensor/IR/*.cpp"]),
+    srcs = glob([
+        "lib/Dialect/SparseTensor/IR/*.cpp",
+    ]),
     hdrs = ["include/mlir/Dialect/SparseTensor/IR/SparseTensor.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":SideEffectInterfaces",
+        ":SparseTensorAttrDefsIncGen",
+        ":SparseTensorOpsIncGen",
+        ":SparseTensorUtils",
+        ":StandardOps",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SparseTensorUtils",
+    srcs = glob(["lib/Dialect/SparseTensor/Utils/*.cpp"]),
+    hdrs = glob(["include/mlir/Dialect/SparseTensor/Utils/*.h"]),
     includes = ["include"],
     deps = [
         ":IR",
@@ -1518,6 +1536,7 @@ cc_library(
         ":SCFDialect",
         ":SparseTensor",
         ":SparseTensorPassIncGen",
+        ":SparseTensorUtils",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":TensorDialect",
@@ -4338,13 +4357,13 @@ cc_library(
         "lib/Target/LLVMIR/DebugTranslation.cpp",
         "lib/Target/LLVMIR/DebugTranslation.h",
         "lib/Target/LLVMIR/ModuleTranslation.cpp",
-        "lib/Target/LLVMIR/TypeTranslation.cpp",
+        "lib/Target/LLVMIR/TypeToLLVM.cpp",
     ],
     hdrs = [
         "include/mlir/Target/LLVMIR/Export.h",
         "include/mlir/Target/LLVMIR/LLVMTranslationInterface.h",
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
-        "include/mlir/Target/LLVMIR/TypeTranslation.h",
+        "include/mlir/Target/LLVMIR/TypeToLLVM.h",
     ],
     includes = ["include"],
     deps = [
@@ -4543,8 +4562,12 @@ cc_library(
     name = "FromLLVMIRTranslation",
     srcs = [
         "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
+        "lib/Target/LLVMIR/TypeFromLLVM.cpp",
     ],
-    hdrs = ["include/mlir/Target/LLVMIR/Import.h"],
+    hdrs = [
+        "include/mlir/Target/LLVMIR/Import.h",
+        "include/mlir/Target/LLVMIR/TypeFromLLVM.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
