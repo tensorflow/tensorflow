@@ -364,10 +364,14 @@ TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
 
 void DecreasingPartialArgSort(const float* values, int num_values,
                               int num_to_sort, int* indices) {
-  std::iota(indices, indices + num_values, 0);
-  std::partial_sort(
-      indices, indices + num_to_sort, indices + num_values,
-      [&values](const int i, const int j) { return values[i] > values[j]; });
+  if (num_to_sort == 1) {
+    indices[0] = optimized_ops::ArgMaxVector(values, num_values);
+  } else {
+    std::iota(indices, indices + num_values, 0);
+    std::partial_sort(
+        indices, indices + num_to_sort, indices + num_values,
+        [&values](const int i, const int j) { return values[i] > values[j]; });
+  }
 }
 
 void DecreasingArgSort(const float* values, int num_values, int* indices) {
