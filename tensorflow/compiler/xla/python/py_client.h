@@ -170,8 +170,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::pair<XlaOp, pybind11::object>> EmitPythonCallback(
       pybind11::function callable, XlaBuilder& builder,
       absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
-      absl::optional<std::vector<Shape const>> operand_layouts,
-      bool has_side_effect);
+      absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
 
  private:
   friend class PyBuffer;
