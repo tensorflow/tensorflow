@@ -82,6 +82,16 @@
     *   The recommended Android NDK version for building TensorFlow Lite has
         been changed from r18b to r19c.
     *   Supports int64 for mul.
+    *   Supports native variable builtin ops - ReadVariable, AssignVariable.
+    *   Converter:
+        *  Experimental support for variables in TFLite. To enable through
+           conversion, users need to set
+           `experimental_enable_resource_variables` on tf.lite.TFLiteConverter
+           to True.
+           Note: mutable variables is only available using from_saved_model
+           in this release, support for other methods is coming soon.
+        *  Old Converter (TOCO) is getting removed from next release.
+           It's been deprecated for few releases already.
 * `tf.saved_model`:
     *   SavedModels can now save custom gradients. Use the option
         `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
