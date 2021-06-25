@@ -281,6 +281,21 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, expected, assert_items_equal=assert_items_equal)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_workers=[1, 3])))
+  def testConcatenate(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    a = dataset_ops.Dataset.range(100)
+    b = dataset_ops.Dataset.range(100, 200)
+    ds = a.concatenate(b)
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+
+    assert_items_equal = (num_workers > 1)
+    self.assertDatasetProduces(
+        ds, list(range(200)), assert_items_equal=assert_items_equal)
+
   @combinations.generate(test_base.default_test_combinations())
   def testDistributedDataset(self):
     cluster_1 = data_service_test_base.TestCluster(num_workers=1)

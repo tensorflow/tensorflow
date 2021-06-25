@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -59,6 +63,12 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     return absl::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
+  }
+
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
+    return Status::OK();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -117,8 +127,11 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), i_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(
-          ctx, this, strings::StrCat(prefix(), "[0]"), &input_impl_);
+      TF_ASSIGN_OR_RETURN(input_contexts_,
+                          CreateInputIteratorContexts(ctx, dataset()));
+      return dataset()->input_->MakeIterator(&input_contexts_[0], this,
+                                             strings::StrCat(prefix(), "[0]"),
+                                             &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -130,14 +143,15 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       while (i_ < 2) {
-        TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+        TF_RETURN_IF_ERROR(input_impl_->GetNext(&input_contexts_[i_],
+                                                out_tensors, end_of_sequence));
         if (!*end_of_sequence) {
           return Status::OK();
         }
         if (++i_ < 2) {
           TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-              ctx, this, strings::StrCat(prefix(), "[1]"), &input_impl_));
+              &input_contexts_[i_], this, strings::StrCat(prefix(), "[1]"),
+              &input_impl_));
         }
       }
       *end_of_sequence = true;
@@ -191,6 +205,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     mutex mu_;
     int64 i_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    std::vector<IteratorContext> input_contexts_;
   };
 
   static PartialTensorShape MostSpecificCompatibleShape(
