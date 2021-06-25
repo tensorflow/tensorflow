@@ -3424,7 +3424,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
                   ArrayFloatNear(expected_outputs, 0));
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+#if IS_TRT_VERSION_GE(8, 0, 0 ,0)
 TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
   // Get the NodeDef for CombinedNMS.
   auto get_nms_nodedef = [](DataType tf_type, bool clip_boxes = true,
@@ -3472,11 +3472,16 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
     Status runtime_status;
   };
 
-  Status conv_status =
-      trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::Unimplemented(
-                "TensorRT BatchedNMS Plugin requires input with static shape")
-          : Status::OK();
+  Status conv_status;
+  if (trt_mode_ == TrtTestMode::kDynamicShape) {
+    conv_status = errors::Unimplemented(
+          "TensorRT BatchedNMS Plugin requires input with static shape");
+  } else if () {
+    errors::Unimplemented(StrCat("Data type int32 is not supported for ",
+                          node_def.op(), ", must be one of [float], at my_nms");
+  } else {
+    conv_status = Status::OK();
+  }
 
   std::vector<TestParams> params = {
       // TODO(aaroey): there is a bug in TRT's CombinedNonMaxSuppression
@@ -3627,7 +3632,7 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
                             {tf_type_, tf_type_, tf_type_, DT_INT32});
   }
 }
-#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
+#endif  // IS_TRT_VERSION_GE(8, 0, 0 ,0)
 
 template <typename T>
 NodeDef CreateUnaryOp(DataType tf_type) {

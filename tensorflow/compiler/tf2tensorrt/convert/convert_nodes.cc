@@ -6948,7 +6948,7 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
   return Status::OK();
 }
 
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
 
 bool AllowNmsTopkOverride() {
   static bool result = [] {
@@ -6989,6 +6989,11 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
     return errors::Unimplemented(
         "TensorRT BatchedNMS Plugin requires input with static shape");
   }
+
+  // CombinedNMS Plugin only allow FP32 precision
+  std::set<DataType> allowed_types{DataType::DT_FLOAT};
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
+
   const int offset = params->use_implicit_batch ? 0 : 1;
   if (boxes_dims.nbDims != 3 + offset) {
     return errors::InvalidArgument(
@@ -7150,7 +7155,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   return Status::OK();
 }
-#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
+#endif  // IS_TRT_VERSION_GE(8, 0, 0 ,0)
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status ConvertResize(OpConverterParams* params) {
@@ -7301,7 +7306,7 @@ static void RegisterValidatableOpConverters(
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   (*registration)["ClipByValue"] = ConvertClipByValue;
 #endif
-#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
   (*registration)["AddN"] = ConvertAddN;

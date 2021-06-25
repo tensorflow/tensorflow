@@ -95,12 +95,14 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
 
   def ShouldRunTest(self, run_params):
     should_run, reason = super().ShouldRunTest(run_params)
-    should_run = should_run and \
-        not trt_test.IsQuantizationMode(run_params.precision_mode)
-    reason += ' and precision != INT8'
-    # Only run for TRT 7.1.3 and above.
-    return should_run and trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3), \
-        reason + ' and >= TRT 7.1.3'
+
+    # CombinedNMS TensorRT Plugin only supports FP32 precision
+    should_run = should_run and run_params.precision_mode == "FP32"
+    reason += ' and precision != FP32'
+
+    # Only run for TRT 8.0.0 and above.
+    return should_run and trt_test.IsTensorRTVersionGreaterEqual(8, 0, 0), \
+        reason + ' and >= TRT 8.0.0'
 
 
 class CombinedNmsExecuteNativeSegmentTest(CombinedNmsTest):
