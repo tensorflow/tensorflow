@@ -139,6 +139,17 @@ Value loadGlobalString(OpBuilder& builder, const Location& loc,
       ValueRange{cst0, cst0});
 }
 
+// Returns true if the globalOp has the same value as `value`.
+bool checkGlobalOpContent(GlobalOp globalOp, StringRef value) {
+  Optional<Attribute> optValue = globalOp.value();
+  if (!optValue) return false;
+
+  StringAttr attr = (*optValue).cast<StringAttr>();
+  if (!attr) return false;
+
+  return attr.getValue() == value;
+}
+
 // Creates a global const string op named `name` using the value if not exists
 // and returns the Loaded value of this global op.
 Value loadOrCreateGlobalString(PatternRewriter& rewriter, Operation* op,
@@ -149,6 +160,7 @@ Value loadOrCreateGlobalString(PatternRewriter& rewriter, Operation* op,
     OpBuilder::InsertionGuard guard(rewriter);
     // Double-check under the lock
     if (globalOp = module.lookupSymbol<GlobalOp>(name)) {
+      assert(checkGlobalOpContent(globalOp, value));
       return loadGlobalString(rewriter, op->getLoc(), globalOp);
     }
     OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
@@ -161,6 +173,8 @@ Value loadOrCreateGlobalString(PatternRewriter& rewriter, Operation* op,
         rewriter.getStringAttr(value), /*alignment=*/0);
 
     rewriter.restoreInsertionPoint(ip);
+  } else {
+    assert(checkGlobalOpContent(globalOp, value));
   }
 
   return loadGlobalString(rewriter, op->getLoc(), globalOp);
@@ -193,30 +207,33 @@ LLVMFuncOp DispatchOpToLLVMPattern::getOrInsertDispatchFunction(
     PatternRewriter& rewriter, Operation* op) const {
   ModuleOp module = op->getParentOfType<ModuleOp>();
   LLVMFuncOp func = module.lookupSymbol<LLVMFuncOp>(kRalDispatchFunctionName);
-  if (!func) {
-    OpBuilder::InsertionGuard guard(rewriter);
-    // Double-check under the lock
-    if (func = module.lookupSymbol<LLVMFuncOp>(kRalDispatchFunctionName)) {
-      return func;
-    }
-    OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
-    rewriter.setInsertionPointToStart(module.getBody());
-    Type llvm_pointer_type =
-        LLVM::LLVMPointerType::get(IntegerType::get(op->getContext(), 8));
-    Type llvm_pointer_pointer_type =
-        LLVM::LLVMPointerType::get(llvm_pointer_type);
-    func = rewriter.create<LLVMFuncOp>(
-        op->getLoc(), kRalDispatchFunctionName,
-        LLVM::LLVMFunctionType::get(
-            getVoidType(),
-            {
-                llvm_pointer_type,        /* ral_context_t */
-                llvm_pointer_type,        /* void* call_target_name */
-                llvm_pointer_pointer_type /* void** args */
-            },
-            /*isVarArg=*/false));
-    rewriter.restoreInsertionPoint(ip);
+
+  if (func) return func;
+
+  // Try to insert the function since it's not found.
+  OpBuilder::InsertionGuard guard(rewriter);
+  // Double-check under the lock
+  if (func = module.lookupSymbol<LLVMFuncOp>(kRalDispatchFunctionName)) {
+    return func;
   }
+  OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
+  rewriter.setInsertionPointToStart(module.getBody());
+  Type llvm_pointer_type =
+      LLVM::LLVMPointerType::get(IntegerType::get(op->getContext(), 8));
+  Type llvm_pointer_pointer_type =
+      LLVM::LLVMPointerType::get(llvm_pointer_type);
+  func = rewriter.create<LLVMFuncOp>(
+      op->getLoc(), kRalDispatchFunctionName,
+      LLVM::LLVMFunctionType::get(
+          getVoidType(),
+          {
+              llvm_pointer_type,        /* ral_context_t */
+              llvm_pointer_type,        /* void* call_target_name */
+              llvm_pointer_pointer_type /* void** args */
+          },
+          /*isVarArg=*/false));
+  rewriter.restoreInsertionPoint(ip);
+
   return func;
 }
 
