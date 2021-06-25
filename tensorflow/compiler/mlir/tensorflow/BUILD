@@ -18,6 +18,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
+        "//tensorflow/cc/...",
         "//tensorflow/python/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
