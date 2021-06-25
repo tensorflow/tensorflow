@@ -1645,8 +1645,8 @@ Status LayoutAssignment::PropagateBufferConstraint(
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(
-      PropagateBufferConstraintToUses(buffer_constraint, constraints));
-  return PropagateBufferConstraintToOperands(buffer_constraint, constraints);
+      PropagateBufferConstraintToOperands(buffer_constraint, constraints));
+  return PropagateBufferConstraintToUses(buffer_constraint, constraints);
 }
 
 Status LayoutAssignment::PropagateBufferConstraintToUses(
