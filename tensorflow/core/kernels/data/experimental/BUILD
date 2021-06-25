@@ -243,6 +243,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:split_utils",
         "//third_party/eigen3",
     ],
 )
@@ -507,6 +508,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:split_utils",
     ],
 )
 

@@ -513,6 +513,40 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
   }
 };
 
+/// Conversion for unary operations i.e. tanh sin cos log log1p etc.
+template <typename LhloOpTy>
+struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
+  using OpRewritePattern<LhloOpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LhloOpTy op,
+                                PatternRewriter& rewriter) const override {
+    Value input = op.input();
+    auto inputType = input.getType().cast<MemRefType>();
+    auto elementType = inputType.getElementType();
+    ArrayRef<int64_t> shape = inputType.getShape();
+
+    SmallVector<Value, 4> induction_vars;
+    Location loc = op.getLoc();
+
+    LogicalResult map_status = success();
+    auto body_builder = [&](OpBuilder& builder, Location loc,
+                            ValueRange induction_vars) {
+      Value loadInput =
+          builder.create<AffineLoadOp>(loc, input, induction_vars);
+      Value opResult = lmhlo::HloOpToStdScalarOp::map<LhloOpTy>(
+          op, elementType, {loadInput}, &builder);
+      map_status = success(opResult != nullptr);
+      if (failed(map_status)) return;
+      rewriter.create<AffineStoreOp>(loc, opResult, op.output(),
+                                     induction_vars);
+    };
+    BuildBoundedAffineLoopNest(rewriter, op.getLoc(), shape, body_builder);
+    if (failed(map_status)) return failure();
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 void populateLHLOToAffineConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -526,14 +560,15 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
       BinaryOpConverter<lmhlo::SubOp>,
       ConcatOpConverter,
       DotOpConverter,
-      GatherOpConverter>(context);
+      GatherOpConverter,
+      UnaryOpConverter<lmhlo::LogOp>>(context);
   // clang-format on
 }
 
 struct LhloLegalizeToAffinePass
     : public LhloLegalizeToAffinePassBase<LhloLegalizeToAffinePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect>();
+    registry.insert<AffineDialect, math::MathDialect>();
   }
   void runOnFunction() override {
     auto func = getFunction();

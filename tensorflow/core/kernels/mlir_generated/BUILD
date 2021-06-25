@@ -370,10 +370,12 @@ tf_kernel_library(
     name = "gpu_relu_op",
     srcs = if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_relu.cc",
+        "gpu_op_elu.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_experimental_kernels_enabled([
         ":base_gpu_op",
+        ":gpu_elu_kernels",
         ":gpu_relu_kernels",
         "//third_party/eigen3",
     ]),
@@ -520,6 +522,17 @@ tf_cc_test(
 gpu_kernel_library(
     name = "gpu_relu_kernels",
     op = "relu",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_elu_kernels",
+    op = "elu",
     tile_size = "256",
     types = [
         "f16",
@@ -1084,8 +1097,7 @@ gpu_kernel_library(
         "floor",
         "log",
         "log1p",
-        # TODO(akuegel): Re-enable once relu_grad codegen supports unranked.
-        #"relu_grad",
+        "relu_grad",
         "rsqrt",
         "sqrt",
         "tanh",

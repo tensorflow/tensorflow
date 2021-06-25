@@ -2149,3 +2149,12 @@ func @conv3d_transpose_unsupported_strides(%arg0: tensor<2x5x6x8x2xf32>, %arg1: 
   // CHECK-LABEL: conv3d_transpose_unsupported_strides
   // CHECK: "tf.Conv3DBackpropInputV2"
 }
+
+func @mul_i64(%arg0: tensor<14xi64>, %arg1: tensor<14xi64>) -> tensor<14xi64> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xi64>, tensor<14xi64>) -> tensor<14xi64>
+  return %0: tensor<14xi64>
+
+// CHECK-LABEL: mul_i64
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xi64>
+// CHECK:  return
+}

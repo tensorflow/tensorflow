@@ -228,6 +228,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_MUL:
+      // Version 5 supports int64 inputs
+      if (op_sig.inputs.at(0).type == kTfLiteInt64) {
+        return 5;
+      }
       // Version 4 supports int16 inputs
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;

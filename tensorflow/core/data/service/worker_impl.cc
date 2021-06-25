@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "grpcpp/create_channel.h"
 #include "absl/memory/memory.h"
@@ -258,11 +259,15 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   }
   switch (task.task_def.processing_mode()) {
     case DISTRIBUTED_EPOCH: {
-      auto split_provider = absl::make_unique<DataServiceSplitProvider>(
-          config_.dispatcher_address(), config_.protocol(),
-          task.task_def.job_id(), config_.dispatcher_timeout_ms());
+      std::vector<std::unique_ptr<SplitProvider>> split_providers;
+      split_providers.reserve(task.task_def.num_split_providers());
+      for (int i = 0; i < task.task_def.num_split_providers(); ++i) {
+        split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
+            config_.dispatcher_address(), config_.protocol(),
+            task.task_def.job_id(), i, config_.dispatcher_timeout_ms()));
+      }
       TF_RETURN_IF_ERROR(
-          dataset->MakeIterator(std::move(split_provider), &iterator));
+          dataset->MakeIterator(std::move(split_providers), &iterator));
       break;
     }
     case PARALLEL_EPOCHS:

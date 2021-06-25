@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -141,6 +143,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
   }
 
  private:
+  // TODO(pifon): Remove strides computation.
   MemRefDescriptor CreateMemRefDescriptor(Location loc,
                                           ConversionPatternRewriter &rewriter,
                                           MemRefType memref_type,
@@ -286,12 +289,15 @@ class ReportErrorOpConverter
   Value GenerateErrorMessageConstant(Location loc, Operation *module,
                                      StringRef message,
                                      OpBuilder &builder) const {
-    std::string loc_str;
-    llvm::raw_string_ostream loc_stream(loc_str);
-    loc_stream << message << " at ";
-    loc.print(loc_stream);
+    std::string err_str;
+    llvm::raw_string_ostream err_stream(err_str);
+    err_stream << message;
+    if (!loc.isa<UnknownLoc>()) {
+      err_stream << " at ";
+      loc.print(err_stream);
+    }
 
-    StringRef generated_error(loc_stream.str().c_str());
+    StringRef generated_error(err_stream.str());
 
     std::string global_name =
         llvm::formatv("error_message_{0}", llvm::hash_value(generated_error));
@@ -335,15 +341,45 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
   LogicalResult matchAndRewrite(
       NullMemRefOp null_memref_op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
+    Location loc = null_memref_op->getLoc();
+    LLVMTypeConverter type_converter = *getTypeConverter();
     mlir::Operation *op = null_memref_op.getOperation();
 
-    Location loc = op->getLoc();
+    auto shaped_result_type = null_memref_op.getType().cast<BaseMemRefType>();
+    unsigned address_space = shaped_result_type.getMemorySpaceAsInt();
+
+    Type elem_type = shaped_result_type.getElementType();
+    Type llvm_elem_type = type_converter.convertType(elem_type);
+
+    Value zero = createIndexConstant(rewriter, loc, 0);
+    if (auto result_type = null_memref_op.getType().dyn_cast<MemRefType>()) {
+      // Set all dynamic sizes to 1 and compute fake strides.
+      SmallVector<Value, 4> dyn_sizes(result_type.getNumDynamicDims(),
+                                      createIndexConstant(rewriter, loc, 1));
+      SmallVector<Value, 4> sizes, strides;
+      Value sizeBytes;
+      getMemRefDescriptorSizes(loc, result_type, dyn_sizes, rewriter, sizes,
+                               strides, sizeBytes);
+
+      // Prepare packed args [allocatedPtr, alignedPtr, offset, sizes, strides]
+      // to create a memref descriptor.
+      Value null = rewriter.create<LLVM::NullOp>(
+          loc, LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
+      SmallVector<Value, 12> packed_values{null, null, zero};
+      packed_values.append(sizes);
+      packed_values.append(strides);
+
+      rewriter.replaceOp(
+          op, MemRefDescriptor::pack(rewriter, loc, type_converter, result_type,
+                                     packed_values));
+      return success();
+    }
+
     auto result_type = null_memref_op.getType().cast<UnrankedMemRefType>();
-    Type llvm_result_type = typeConverter->convertType(result_type);
+    Type llvm_result_type = type_converter.convertType(result_type);
 
     auto desc =
         UnrankedMemRefDescriptor::undef(rewriter, loc, llvm_result_type);
-    Value zero = createIndexConstant(rewriter, loc, 0);
     desc.setRank(rewriter, loc, zero);
 
     // Due to the current way of handling unranked memref results escaping, we
@@ -356,19 +392,16 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         loc, getVoidPtrType(), sizes.front(), llvm::None);
 
     // Populate underlying ranked descriptor.
-    unsigned address_space = result_type.getMemorySpaceAsInt();
-    Type elem_type = result_type.getElementType();
-    Type llvm_elem_type = typeConverter->convertType(elem_type);
     Type elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
         LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
 
-    auto nullPtr = rewriter.create<LLVM::NullOp>(
+    Value null = rewriter.create<LLVM::NullOp>(
         loc, LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
     UnrankedMemRefDescriptor::setAllocatedPtr(
-        rewriter, loc, underlying_desc_ptr, elem_ptr_ptr_type, nullPtr);
+        rewriter, loc, underlying_desc_ptr, elem_ptr_ptr_type, null);
     UnrankedMemRefDescriptor::setAlignedPtr(rewriter, loc, *getTypeConverter(),
                                             underlying_desc_ptr,
-                                            elem_ptr_ptr_type, nullPtr);
+                                            elem_ptr_ptr_type, null);
     UnrankedMemRefDescriptor::setOffset(rewriter, loc, *getTypeConverter(),
                                         underlying_desc_ptr, elem_ptr_ptr_type,
                                         zero);
@@ -379,12 +412,49 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
   }
 };
 
+class IsValidMemRefOpConverter
+    : public ConvertOpToLLVMPattern<IsValidMemRefOp> {
+ public:
+  using ConvertOpToLLVMPattern<IsValidMemRefOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      IsValidMemRefOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    MemRefDescriptor desc(IsValidMemRefOp::Adaptor(operands).arg());
+
+    // Compare every size in the descriptor to 0 to check num_elements == 0.
+    int64_t rank = op.arg().getType().cast<MemRefType>().getRank();
+    Value is_empty_shape = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI1Type(), rewriter.getBoolAttr(false));
+    Value zero = createIndexConstant(rewriter, loc, 0);
+    for (int i = 0; i < rank; ++i) {
+      Value size = desc.size(rewriter, loc, i);
+      Value is_zero_size = rewriter.create<LLVM::ICmpOp>(
+          loc, rewriter.getI1Type(), LLVM::ICmpPredicate::eq, size, zero);
+      is_empty_shape =
+          rewriter.create<LLVM::OrOp>(loc, is_empty_shape, is_zero_size);
+    }
+
+    Value ptr = rewriter.create<LLVM::BitcastOp>(
+        loc, getVoidPtrType(), desc.allocatedPtr(rewriter, loc));
+    Value null = rewriter.create<LLVM::NullOp>(loc, getVoidPtrType());
+    Value is_not_nullptr = rewriter.create<LLVM::ICmpOp>(
+        loc, rewriter.getI1Type(), LLVM::ICmpPredicate::ne, ptr, null);
+
+    // Valid memref = ptr != NULL || num_elements == 0;
+    rewriter.replaceOpWithNewOp<LLVM::OrOp>(op, is_not_nullptr, is_empty_shape);
+    return success();
+  }
+};
+
 }  // namespace
 
-void PopulateTFFrameworkToLLVMConversionPatterns(
-    LLVMTypeConverter *converter, RewritePatternSet *patterns) {
+void PopulateTFFrameworkToLLVMConversionPatterns(LLVMTypeConverter *converter,
+                                                 RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
+      IsValidMemRefOpConverter,
       NullContextOpConverter,
       NullMemRefOpConverter,
       ReportErrorOpConverter,

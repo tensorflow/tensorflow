@@ -438,6 +438,10 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
     *output_shape = TfLiteIntArrayCopy(input1->dims);
     return kTfLiteOk;
   }
+  if (NumElements(input2) == 0) {
+    *output_shape = TfLiteIntArrayCopy(input2->dims);
+    return kTfLiteOk;
+  }
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
   for (int i = 0; i < out_dims; ++i) {

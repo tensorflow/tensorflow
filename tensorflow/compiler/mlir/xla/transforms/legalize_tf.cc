@@ -444,33 +444,6 @@ static RankedTensorType GetExtentsTensorTypeFor(TensorType value_type) {
   return RankedTensorType::get({dim}, b.getIndexType());
 }
 
-// Broadcasts a 'lower_rank_value' to the shape of a 'higher_rank_value'
-// by assuming that the shape of the lower ranked is a broadcast compatible
-// prefix of the higher ranked.
-// Values must be RankedTensorType (this restriction derives from the
-// broadcast_dimensions attribute on DynamicBroadcastInDim).
-//
-// Example:
-//   CommonPrefixBroadcast(tensor<4x3x256>, tensor<4, 3>) will broadcast the
-//   lower rank value to [4, 3, 256] (i.e. the opposite of numpy-style
-//   implicit broadcasting).
-static Value CommonPrefixBroadcast(Location loc, Value higher_rank_value,
-                                   Value lower_rank_value, OpBuilder &builder) {
-  Value higher_rank_shape =
-      builder.create<shape::ShapeOfOp>(loc, higher_rank_value);
-  auto result_extents_type =
-      GetExtentsTensorTypeFor(higher_rank_value.getType().cast<TensorType>());
-  Value result_extents = builder.create<shape::ToExtentTensorOp>(
-      loc, result_extents_type, higher_rank_shape);
-
-  auto lower_rank_type = lower_rank_value.getType().cast<RankedTensorType>();
-  auto lower_rank = lower_rank_type.getRank();
-  auto prefix_dims = GetI64ElementsAttrForSeq(0, lower_rank, &builder);
-  return builder.create<DynamicBroadcastInDimOp>(
-      loc, higher_rank_value.getType(), lower_rank_value, result_extents,
-      prefix_dims);
-}
-
 // Given a value (broadcast_to) and a feature dimension, broadcasts a 1D
 // value (broadcast_from) along that feature dimension. This is a shortcut
 // for the cases where a 1D tensor must be broadcast along a specific feature
@@ -4402,8 +4375,8 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    // TODO(b/141785544): Update this to not require static shapes.
-    // Input shape needs to be static to convert negative indices in TensorFlow
+    // TODO(b/141785544): Update this to not require ranked shapes.
+    // Input shape needs to be ranked to convert negative indices in TensorFlow
     // to absolute indices required by HLO.
     auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
@@ -4484,26 +4457,20 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     result = rewriter.create<ConvertOp>(loc, result, element_type);
 
     // Need to reshape back after the reduction if we're keeping the reduced
-    // dimensions.
+    // dimensions. Note that we do this through successive (nominally 1)
+    // applications of the TF ExpandDims op vs a more labor intensive
+    // reshape. Various code generation techniques benefit from the knowledge
+    // that this is a restricted form of shape manipulation that is just adding
+    // unit dims.
     if (op.keep_dims()) {
-      // Rebuild the result shape by replacing reduced dimensions with '1'.
-      Value in_shape = rewriter.create<shape::ShapeOfOp>(loc, op.input());
-      SmallVector<Value> shape_components;
-      Value one = rewriter.create<ConstantIndexOp>(loc, 1);
       for (auto dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
         if (dim_is_reduced.value()) {
-          shape_components.push_back(one);
-        } else {
-          Value index =
-              rewriter.create<ConstantIndexOp>(loc, dim_is_reduced.index());
-          shape_components.push_back(
-              rewriter.create<tensor::ExtractOp>(loc, in_shape, index));
+          auto index_attr = GetI32ElementsAttr(
+              {static_cast<int>(dim_is_reduced.index())}, &rewriter);
+          Value index = rewriter.create<ConstantOp>(loc, index_attr);
+          result = rewriter.create<TF::ExpandDimsOp>(loc, result, index);
         }
       }
-      auto out_shape = rewriter.create<tensor::FromElementsOp>(
-          loc, rewriter.getIndexType(), shape_components);
-      result = rewriter.create<DynamicReshapeOp>(loc, op.getType(), result,
-                                                 out_shape);
     }
     rewriter.replaceOp(op, {result});
 
@@ -6816,23 +6783,15 @@ class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
 
     for (int i = 0; i < dims.size() - 1; i++) {
       // Add the extracted dim.
-      auto index = rewriter.create<ConstantIndexOp>(op.getLoc(), i);
-      auto dim = rewriter.create<shape::GetExtentOp>(
-          op.getLoc(), rewriter.getIndexType(), shape, index);
-
+      Value index = rewriter.create<ConstantIndexOp>(op.getLoc(), i);
+      Value dim = rewriter.create<tensor::ExtractOp>(op.getLoc(), shape, index);
       dims[i >= inserted_dim ? i + 1 : i] = dim;
     }
 
-    auto from_extents = rewriter.create<shape::FromExtentsOp>(
-        op.getLoc(), shape::ShapeType::get(op.getContext()), dims);
-
-    auto to_extent_tensor = rewriter.create<shape::ToExtentTensorOp>(
-        op.getLoc(),
-        RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType()),
-        from_extents);
-
+    auto from_extents =
+        rewriter.create<tensor::FromElementsOp>(op.getLoc(), dims);
     rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_ty, input,
-                                                        to_extent_tensor);
+                                                        from_extents);
     return success();
   }
 };
@@ -7646,8 +7605,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertSelectOp,
     ConvertSigmoidOp,
     ConvertShapeOp,
-    ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
-    ConvertSoftmaxOp<TF::SoftmaxOp, false>,
     ConvertSplitOp,
     ConvertSplitVOp,
     ConvertStridedSliceOp,

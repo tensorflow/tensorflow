@@ -113,6 +113,8 @@ void AddSupportedControlFlowOps(MLIRContext* context,
   supported_ops->insert(
       OperationName(TF::WhileRegionOp::getOperationName(), context));
   supported_ops->insert(
+      OperationName(TF::XlaReduceWindowOp::getOperationName(), context));
+  supported_ops->insert(
       OperationName(TF::YieldOp::getOperationName(), context));
 }
 
@@ -371,7 +373,8 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   }
   OwningRewritePatternList patterns(&getContext());
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
-  TF::PopulateLoweringTFPatterns(module.getContext(), &patterns);
+  TF::PopulateTFLoweringBeforeHLOPatterns(module.getContext(), &patterns);
+  TF::PopulateLoweringQuantizedPatterns(module.getContext(), &patterns);
   AddCanonicalizationPatterns(module.getContext(), &patterns);
 
   // `supported_ops` contains the name of all of the ops that can potentially be

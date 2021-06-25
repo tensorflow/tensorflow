@@ -475,9 +475,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       Status StartFlushingGroup(IteratorContext* ctx, int64 key)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DatasetBase* group_dataset;
-        TF_RETURN_IF_ERROR(NewWindowDataset(
-            groups_[key], dataset()->input_->output_dtypes(),
-            dataset()->input_->output_shapes(), &group_dataset));
+        TF_RETURN_IF_ERROR(
+            NewWindow(groups_[key], dataset()->input_->output_dtypes(),
+                      dataset()->input_->output_shapes(), &group_dataset));
 
         Tensor key_arg(DT_INT64, TensorShape({}));
         key_arg.scalar<int64>()() = key;

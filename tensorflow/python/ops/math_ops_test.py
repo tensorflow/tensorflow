@@ -762,10 +762,10 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @parameterized.parameters((dtypes.float32), (dtypes.float64),
+  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
+                            (dtypes.float32), (dtypes.float64),
                             (dtypes.complex64), (dtypes.complex128))
   def testBasic(self, dtype):
-    from tensorflow.python.platform import tf_logging as logging
     nums = np.arange(-10, 10, .25).reshape(80, 1)
     divs = np.arange(-3, 3, .25).reshape(1, 24)
 
@@ -783,7 +783,8 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       tf_result = math_ops.div_no_nan(tf_nums, tf_divs)
       self.assertAllCloseAccordingToType(tf_result, np_result)
 
-  @parameterized.parameters((dtypes.float32), (dtypes.float64),
+  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
+                            (dtypes.float32), (dtypes.float64),
                             (dtypes.complex64), (dtypes.complex128))
   def testSmall(self, dtype):
     # Choose values whose squared magnitude underflows to zero/subnormal.

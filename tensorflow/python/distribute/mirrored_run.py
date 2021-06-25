@@ -166,10 +166,11 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
   for index in range(len(devices)):
     variable_creator_fn = shared_variable_creator.make_fn(
         shared_variable_store, index)
-    t = _MirroredReplicaThread(
-        distribution, coord, index, devices, variable_creator_fn, fn,
-        distribute_utils.select_replica(index, args),
-        distribute_utils.select_replica(index, kwargs))
+    t = _MirroredReplicaThread(distribution, coord, index, devices,
+                               variable_creator_fn, fn,
+                               distribute_utils.caching_scope_local,
+                               distribute_utils.select_replica(index, args),
+                               distribute_utils.select_replica(index, kwargs))
     threads.append(t)
 
   for t in threads:
@@ -250,8 +251,8 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
 class _MirroredReplicaThread(threading.Thread):
   """A thread that runs() a function on a device."""
 
-  def __init__(self, dist, coord, replica_id, devices, variable_creator_fn,
-               fn, args, kwargs):
+  def __init__(self, dist, coord, replica_id, devices, variable_creator_fn, fn,
+               caching_scope, args, kwargs):
     super(_MirroredReplicaThread, self).__init__()
     self.coord = coord
     self.distribution = dist
@@ -275,6 +276,13 @@ class _MirroredReplicaThread(threading.Thread):
     self.merge_result = None
     self.captured_name_scope = None
     self.captured_var_scope = None
+    try:
+      self.caching_scope_entered = caching_scope.new_cache_scope_count
+      self.caching_scope_exited = caching_scope.cache_scope_exited_count
+    except AttributeError:
+      self.caching_scope_entered = None
+      self.caching_scope_exited = None
+
     # We use a thread.Event for the main thread to signal when this
     # thread should start running (`should_run`), and another for
     # this thread to transfer control back to the main thread
@@ -318,6 +326,10 @@ class _MirroredReplicaThread(threading.Thread):
         return
       self.restore_thread_local_summary_state()
       self.restore_thread_local_eager_context_state()
+      if (self.caching_scope_entered is not None and
+          self.caching_scope_exited is not None):
+        distribute_utils.caching_scope_local.new_cache_scope_count = self.caching_scope_entered
+        distribute_utils.caching_scope_local.cache_scope_exited_count = self.caching_scope_exited
       # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \

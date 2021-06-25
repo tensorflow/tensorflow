@@ -40,17 +40,19 @@ class TrtPlugin : public nvinfer1::IPluginV2Ext {
 
   TrtPlugin(const TrtPlugin& rhs) : namespace_(rhs.namespace_) {}
 
-  int initialize() override { return 0; }
+  int initialize() noexcept override { return 0; }
 
-  void terminate() override {}
+  void terminate() noexcept override {}
 
-  void destroy() override { delete this; }
+  void destroy() noexcept override { delete this; }
 
-  void setPluginNamespace(const char* plugin_namespace) override {
+  void setPluginNamespace(const char* plugin_namespace) noexcept override {
     namespace_ = plugin_namespace;
   }
 
-  const char* getPluginNamespace() const override { return namespace_.c_str(); }
+  const char* getPluginNamespace() const noexcept override {
+    return namespace_.c_str();
+  }
 
  protected:
   template <typename T>

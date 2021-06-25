@@ -19,6 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Must be declared here for pre-C++17 compatibility.
+/* static */ constexpr const char* ResourceHandle::ANONYMOUS_NAME;
+
 ResourceHandle::ResourceHandle() {}
 
 ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {

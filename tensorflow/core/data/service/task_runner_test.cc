@@ -141,7 +141,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, Cancel) {
   for (int i = 0; i < elements.size(); ++i) {
     GetElementResult result;
     EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
-                testing::TfStatusIs(error::CANCELLED));
+                testing::StatusIs(error::CANCELLED));
   }
 }
 
@@ -163,7 +163,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, GetNextAndCancel) {
   for (; i < elements.size(); ++i) {
     GetElementResult result;
     EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
-                testing::TfStatusIs(error::CANCELLED));
+                testing::StatusIs(error::CANCELLED));
   }
 }
 
@@ -172,11 +172,11 @@ TEST(FirstComeFirstServedTaskRunnerTest, Error) {
       absl::make_unique<TestErrorIterator>(errors::Aborted("Aborted")));
   GetElementResult result;
   EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
-              testing::TfStatusIs(error::ABORTED));
+              testing::StatusIs(error::ABORTED));
   EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
-              testing::TfStatusIs(error::ABORTED));
+              testing::StatusIs(error::ABORTED));
   EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
-              testing::TfStatusIs(error::ABORTED));
+              testing::StatusIs(error::ABORTED));
 }
 
 class ConsumeParallelTest

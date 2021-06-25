@@ -262,6 +262,7 @@ tf_cuda_library(
         "//tensorflow/c:__subpackages__",
         # copybara:uncomment_begin(google-only)
         # "//tensorflow/cc/experimental/libtf:__pkg__",
+        # "//tensorflow/cc/experimental/libtf:__subpackages__",
         # copybara:uncomment_end
         "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
     ],
@@ -594,6 +595,32 @@ tf_cuda_library(
             "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         ],
     }),
+)
+
+cc_library(
+    name = "kernels_experimental_hdrs",
+    hdrs = ["kernels_experimental.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [":kernels_hdrs"],
+)
+
+tf_cuda_library(
+    name = "kernels_experimental",
+    srcs = ["kernels_experimental.cc"],
+    hdrs = ["kernels_experimental.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernels",
+        ":tf_status_helper",
+        ":tf_status_internal",
+        ":tf_tensor_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:refcount",
+    ],
 )
 
 tf_cuda_library(

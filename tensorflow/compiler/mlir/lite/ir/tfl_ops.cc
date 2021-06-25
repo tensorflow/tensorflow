@@ -248,10 +248,10 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
         /*max_bcast_rank=*/4);
   }
 
-  // Allows I32, QI16 and F32 outputs when the operands have valid shapes, which
-  // are broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsQI16Type(element_type) ||
-      element_type.isF32()) {
+  // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
+  // which are broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type) || IsI64Type(element_type) ||
+      IsQI16Type(element_type) || element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
