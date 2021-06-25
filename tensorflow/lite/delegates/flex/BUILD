@@ -101,15 +101,6 @@ tflite_flex_cc_library(
     visibility = ["//visibility:public"],
 )
 
-# Compared to the library above, this one doesn't define a strong symbol for
-# AcquireFlexDelegate(). This is useful if one doesn't want the default flex
-# delegate to be automatically applied when building the interpreter.
-tflite_flex_cc_library(
-    name = "delegate_without_symbol",
-    link_symbol = False,
-    visibility = ["//visibility:public"],
-)
-
 # Shared lib target for convenience, pulls in the standard set of TensorFlow
 # ops and kernels. The output library name is platform dependent:
 #   - Linux/Android: `libtensorflowlite_flex.so`
@@ -117,18 +108,6 @@ tflite_flex_cc_library(
 #   - Windows: `libtensorflowlite_flex.dll`
 tflite_flex_shared_library(
     name = "tensorflowlite_flex",
-)
-
-cc_library(
-    name = "delegate_symbol",
-    srcs = [
-        "delegate_symbol.cc",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":delegate_only_runtime",
-        "//tensorflow/lite/c:c_api_types",
-    ],
 )
 
 # Delegate implementation that does *not* pull in the standard set of TensorFlow

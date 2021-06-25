@@ -92,8 +92,7 @@ def tflite_flex_cc_library(
         models = [],
         additional_deps = [],
         testonly = 0,
-        visibility = ["//visibility:public"],
-        link_symbol = True):
+        visibility = ["//visibility:public"]):
     """A rule to generate a flex delegate with only ops to run listed models.
 
     Args:
@@ -151,10 +150,6 @@ def tflite_flex_cc_library(
         )
         portable_tensorflow_lib = ":%s_tensorflow_lib" % name
 
-    delegate_symbol = []
-    if link_symbol:
-        delegate_symbol.append(clean_dep("//tensorflow/lite/delegates/flex:delegate_symbol"))
-
     # Define a custom flex delegate with above tensorflow_lib.
     native.cc_library(
         name = name,
@@ -177,7 +172,7 @@ def tflite_flex_cc_library(
                 clean_dep("//tensorflow/core:tensorflow"),
                 clean_dep("//tensorflow/lite/c:common"),
             ],
-        }) + additional_deps + delegate_symbol,
+        }) + additional_deps,
         testonly = testonly,
         alwayslink = 1,
     )
