@@ -3368,12 +3368,12 @@ def TFL_SplitOp : TFL_Op<"split", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$split_dim,
-    TFL_TensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$value,
+    TFL_TensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$value,
     Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
+    TFL_VariadicTensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
