@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import functools
 import os
 import re
 import threading
@@ -78,6 +77,7 @@ PerWorkerDistributedIterator = values_lib.PerWorkerDistributedIterator
 class InputError(Exception):
 
   def __init__(self, original_exception):
+    self.original_exception = original_exception
     message = ("Input has an error, the original exception is %r, "
                "error message is %s." %
                (original_exception, str(original_exception)))
@@ -92,10 +92,11 @@ def _maybe_rebuild_remote_values(worker, structure):
     if isinstance(val, RemoteValue):
       if val._status is RemoteValueStatus.ABORTED:  # pylint: disable=protected-access
         try:
-          with worker.failure_handler.wait_on_failure(
-              on_recovery_fn=functools.partial(val._rebuild_on, worker),  # pylint: disable=protected-access
-              worker_device_name=worker.device_name):
-            val._rebuild_on(worker)  # pylint: disable=protected-access
+          # This attempts to rebuild the resource on the worker, which may fail
+          # if the worker or PS is unavailable. If it fails, the original
+          # RemoteValue that requests a result will receive an `InputError`,
+          # which gets handled by `wait_on_failure` in `process_closure`.
+          val._rebuild_on(worker)  # pylint: disable=protected-access
         except Exception as e:  # pylint: disable=broad-except
           val._set_error(e)  # pylint: disable=protected-access
 
@@ -493,7 +494,7 @@ class WorkerPreemptionHandler(object):
     assert self._should_preemption_thread_run
     try:
       yield
-    except errors.OpError as e:
+    except (errors.OpError, InputError) as e:
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
@@ -517,7 +518,12 @@ class WorkerPreemptionHandler(object):
           on_failure_fn()
         return
 
+      # This reraises the error, if it's not considered recoverable; otherwise,
+      # the following failure recovery logic run. At this time, only worker
+      # unavailability is recoverable. PS unavailability as well as other
+      # errors in the user function is not recoverable.
       self._validate_preemption_failure(e)
+
       logging.error("Worker %s failed with %r:%s", worker_device_name, e, e)
       if on_failure_fn:
         on_failure_fn()
@@ -1191,12 +1197,22 @@ def _extract_failed_ps_instances(err_msg):
 
 def _is_ps_failure(error):
   """Whether the error is considered a parameter server failure."""
+
+  # For an `InputError`, extract the original error and assess it accordingly.
+  if isinstance(error, InputError):
+    error = error.original_exception
+
   return (isinstance(error, errors.UnavailableError) and
           _RPC_ERROR_FROM_PS in str(error))
 
 
 def _is_worker_failure(error):
   """Whether the error is considered a worker failure."""
+
+  # For an `InputError`, extract the original error and assess it accordingly.
+  if isinstance(error, InputError):
+    error = error.original_exception
+
   if _JOB_WORKER_STRING_IDENTIFIER not in str(error):
     return False
   if _RPC_ERROR_FROM_PS in str(error):
