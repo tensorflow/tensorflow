@@ -56,6 +56,7 @@ from tensorflow.lite.experimental.mlir.testing.op_tests.reciprocal import make_r
 from tensorflow.lite.experimental.mlir.testing.op_tests.rfft import make_rfft_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.rfft2d import make_rfft2d_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.roll import make_roll_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.roll import make_roll_with_constant_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.segment_sum import make_segment_sum_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.shape_to_strided_slice import make_shape_to_strided_slice_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.softplus import make_softplus_tests
