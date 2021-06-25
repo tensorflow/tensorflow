@@ -66,7 +66,6 @@ tf_py_test(
     size = "medium",
     srcs = ["distributed_epoch_test.py"],
     shard_count = 16,
-    tags = ["no_oss"],  #b/192075410
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
