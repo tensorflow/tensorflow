@@ -74,6 +74,9 @@ message FloatList {
 message Int64List {
   repeated int64 value = 1 [packed = true];
 }
+message Fixed64List {
+  repeated fixed64 value = 1 [packed = true];
+}
 
 // Containers for non-sequential data.
 message Feature {
@@ -82,6 +85,7 @@ message Feature {
     BytesList bytes_list = 1;
     FloatList float_list = 2;
     Int64List int64_list = 3;
+    Fixed64List fixed64_list = 4;
   }
 }
 
