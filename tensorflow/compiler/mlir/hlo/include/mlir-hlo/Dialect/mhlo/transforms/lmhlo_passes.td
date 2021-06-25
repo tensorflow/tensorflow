@@ -65,3 +65,8 @@ def LhloFusionPass : FunctionPass<"lhlo-fusion"> {
   ];
 }
 
+def LhloFusionInlinerPass : FunctionPass<"lhlo-fusion-inliner"> {
+  let summary = "Inline the contents of its body to the parent region "
+    "after its body has been lowered";
+  let constructor = "createLhloFusionInlinerPass()";
+}

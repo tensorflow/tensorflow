@@ -379,7 +379,7 @@ class CpuCallback {
     absl::InlinedVector<int64_t, 4> expected_dims;
     // Expected output byte strides, for array types. If the strides do not
     // match the output will be transposed into the expected layout.
-    std::vector<ssize_t> expected_strides;
+    std::vector<int64_t> expected_strides;
     // The desired order of output dimensions in major-to-minor order.
     absl::InlinedVector<int64_t, 4> reversed_layout;
     // Size of the array in bytes.
@@ -555,7 +555,7 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
       callback_results[i].expected_dims.resize(shape.dimensions_size());
       absl::c_copy(shape.dimensions(),
                    callback_results[i].expected_dims.begin());
-      callback_results[i].expected_strides = ByteStridesForShape(shape);
+      callback_results[i].expected_strides = ByteStridesForShapeInt64(shape);
       callback_results[i].type = shape.element_type();
       callback_results[i].size_in_bytes = ShapeUtil::ByteSizeOf(shape);
       callback_results[i].reversed_layout.resize(shape.dimensions_size());
@@ -574,8 +574,8 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
 
   auto callback = std::make_unique<CpuCallback>(
       std::move(callable), callback_args, callback_results);
-  custom_call_args[0] = ConstantR0<std::uintptr_t>(
-      &builder, absl::bit_cast<std::uintptr_t>(callback.get()));
+  custom_call_args[0] = ConstantR0<std::uint64_t>(
+      &builder, absl::bit_cast<std::uint64_t>(callback.get()));
 
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
   XlaOp result = CustomCallWithLayout(&builder, "xla_python_cpu_callback",

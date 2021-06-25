@@ -227,6 +227,20 @@ std::vector<ssize_t> ByteStridesForShape(const Shape& shape) {
   return strides;
 }
 
+std::vector<int64_t> ByteStridesForShapeInt64(const Shape& shape) {
+  std::vector<int64_t> strides;
+  CHECK(shape.IsArray());
+  CHECK(shape.has_layout());
+
+  strides.resize(shape.dimensions_size());
+  int64_t stride = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
+  for (int i : shape.layout().minor_to_major()) {
+    strides.at(i) = stride;
+    stride *= shape.dimensions(i);
+  }
+  return strides;
+}
+
 StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
   xla::Literal& m = *literal;
   if (m.shape().IsTuple()) {
