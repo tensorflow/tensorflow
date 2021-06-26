@@ -797,7 +797,6 @@ tf_cc_test(
     ],
     tags = [
         "no_gpu",  # GPU + flex is not officially supported.
-        "no_mac",  # TODO(b/192099521): Re-enable this test on mac.
         "no_windows",  # TODO(b/116667551): No weak symbols with MSVC.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
