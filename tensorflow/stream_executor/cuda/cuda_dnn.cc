@@ -965,6 +965,10 @@ cudnnDataType_t ToCudnnDataType(
       }
     case dnn::DataType::kInt32:
       return CUDNN_DATA_INT32;
+#if CUDNN_VERSION >= 8200
+    case dnn::DataType::kBF16:
+      return CUDNN_DATA_BFLOAT16;
+#endif
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
@@ -3092,9 +3096,10 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     algo_desc = dnn::AlgorithmDesc(algo, use_tensor_ops);
   }
 
-  auto scratch_or = AllocateCudnnConvolutionBackwardFilterWorkspace(
-      stream, cudnn, input_nd, filter, conv, output_nd, *algo_desc,
-      scratch_allocator);
+  port::StatusOr<DeviceMemory<uint8>> scratch_or =
+      AllocateCudnnConvolutionBackwardFilterWorkspace(
+          stream, cudnn, input_nd, filter, conv, output_nd, *algo_desc,
+          scratch_allocator);
 
   if (scratch_or.ok()) {
     *scratch = scratch_or.ValueOrDie();
@@ -3108,8 +3113,10 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
   if (!algo_desc.has_value()) {
     return port::Status(
         port::error::INVALID_ARGUMENT,
-        "The primary convolution algorithm failed memory allocation, "
-        "while a secondary algorithm is not provided.");
+        absl::StrCat(
+            "The primary convolution algorithm failed memory allocation, "
+            "while a secondary algorithm is not provided. Actual error: ",
+            scratch_or.status().ToString()));
   }
 
   SE_ASSIGN_OR_RETURN(use_tensor_ops,
@@ -3261,6 +3268,12 @@ dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
     case dnn::DataType::kInt8:
     case dnn::DataType::kInt32:
       return dnn::DataType::kInt32;
+#if CUDNN_VERSION >= 8200
+    case dnn::DataType::kBF16:
+      return CudnnEnvVar<ConvDoFP32ComputationFP16Input>::IsEnabled()
+                 ? dnn::DataType::kFloat
+                 : dnn::DataType::kBF16;
+#endif
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }

@@ -155,8 +155,10 @@ namespace {
 
 class GpuBfloat16Support : public BFloat16Support {
  public:
-  explicit GpuBfloat16Support(bool supports_matrix_multiplication)
-      : supports_matrix_multiplication_(supports_matrix_multiplication) {}
+  explicit GpuBfloat16Support(bool supports_matrix_multiplication,
+                              se::StreamExecutor* stream_exec)
+      : supports_matrix_multiplication_(supports_matrix_multiplication),
+        stream_exec_(stream_exec) {}
 
   bool SupportsBF16Operand(const HloInstruction& hlo,
                            int64 operand_index) const override {
@@ -173,10 +175,27 @@ class GpuBfloat16Support : public BFloat16Support {
   bool IsSupported(const HloInstruction& hlo) const {
     return hlo.opcode() == HloOpcode::kBitcast ||
            (supports_matrix_multiplication_ &&
-            gpu::IsMatrixMultiplication(hlo));
+            gpu::IsMatrixMultiplication(hlo)) ||
+           (IsConvBF16Supported() && hlo.opcode() == HloOpcode::kConvolution);
+  }
+
+  bool IsConvBF16Supported() const {
+    if (se::dnn::DnnSupport* dnn = stream_exec_->AsDnn()) {
+      se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
+          dnn->GetVersion();
+      return cudnn_version.ok() &&
+             (cudnn_version->major_version() > 8 ||
+              (cudnn_version->major_version() == 8 &&
+               cudnn_version->minor_version() >= 2)) &&
+             stream_exec_->GetDeviceDescription()
+                 .cuda_compute_capability()
+                 .IsAtLeast(se::CudaComputeCapability::AMPERE);
+    }
+    return false;
   }
 
   bool supports_matrix_multiplication_;
+  se::StreamExecutor* stream_exec_;
 };
 
 }  // end anonymous namespace
@@ -239,7 +258,8 @@ Status GpuCompiler::OptimizeHloModule(
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
 
-    GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true);
+    GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true,
+                            stream_exec);
     pipeline.AddPass<BFloat16Normalization>(&bf16);
 
     // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
@@ -525,7 +545,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Run conversion again, to catch those matrix multiplications which were not
   // rewritten into cuBLAS calls.
-  GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false);
+  GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
+                          stream_exec);
   pipeline.AddPass<BFloat16Normalization>(&bf16);
 
   // Choose the fastest algorithm for each conv.
