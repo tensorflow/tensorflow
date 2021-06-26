@@ -65,9 +65,6 @@ contain a custom operator called "cool_activation". Developer needs to implement
 and register this operator in TensorFlow Lite in order to do inference.
 """
 
-# TODO(aselle): Make this use generic graph transformations.
-# TODO(aselle): _tensor_name_base should be called _tensor_name_to_op_name.
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -84,7 +81,6 @@ from tensorflow.core.framework import node_def_pb2 as _node_def_pb2
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import tensor_util as _tensor_util
-# TODO(aselle): publicize these apis if we continue to use these.
 from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
 from tensorflow.python.ops import array_ops as _array_ops
@@ -116,9 +112,6 @@ class OpHint(object):
   is to be exported from the current op.
 
   """
-  # TODO(aselle): When TensorFlow functions functionality works for arbitrary
-  # constructs, this mechanism can be retired and changed to use python defun's.
-
   # Attr constants that are used for representation in the GraphDef. These
   # will be used on every Identity op that is involved in a total OpHint.
 
@@ -345,7 +338,7 @@ class OpHint(object):
     self._children_inputs_mappings = children_inputs_mappings
     if self._children_inputs_mappings is not None:
       self._validate_children_inputs_mappings(self._children_inputs_mappings)
-    self._unique_function_id = _uuid.uuid1().hex  # TODO(aselle): Unique enough?
+    self._unique_function_id = _uuid.uuid1().hex
     self._attrs_to_store_later = kwargs
     self._stored_attrs = False
     self._inputs = OpHint.OpHintArgumentTracker(
@@ -880,7 +873,6 @@ def _find_children_hints(call, graph_def):
               nodes_mapping = {}
               for i, function_input in enumerate(function_inputs):
                 nodes_mapping[function_input.name] = inputs_outside_loop[i]
-              # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
                new_nodes) = _find_children_hints_in_while_loop(
                    function_def, nodes_mapping)
@@ -913,7 +905,6 @@ def _tensorflow_output_name(tensor_name, output_index):
                                                           output_index)
 
 
-# TODO(aselle): This should be converted to grappler in the future.
 def _check_subgraph_closed(n, reachable_by_input, input_nodes_set,
                            name_to_input_name):
   """Checks to make sure node only connects to predecessor graph through inputs.
@@ -943,7 +934,6 @@ def _check_subgraph_closed(n, reachable_by_input, input_nodes_set,
       ]
 
 
-# TODO(aselle): This should be converted to grappler in the future.
 def _convert_single_op_hint_to_stub(call,
                                     graph_def,
                                     function_def_nodes=None,
@@ -1004,7 +994,6 @@ def _convert_single_op_hint_to_stub(call,
 
   # Create any stacks to aggregate arguments into to a single input
   # i.e. for static_rnn's.
-  # TODO(aselle): Check that the inputs are complete i.e. 0 to n-1
   sorted_input_indices = list(call.inputs.keys())
   sorted_input_indices.sort()
   sorted_output_indices = list(call.outputs.keys())
@@ -1054,7 +1043,6 @@ def _convert_single_op_hint_to_stub(call,
       output_dtype = optional_input_node.attr["type"].i
     output_dtypes.append(output_dtype)
   new_node.attr["_output_types"].list.type[:] = output_dtypes
-  # TODO(aselle): what is right here?
   new_node.attr["_output_quantized"].b = False
 
   # Add post output nodes that do not depend on the outputs
@@ -1073,7 +1061,6 @@ def _convert_single_op_hint_to_stub(call,
   return out
 
 
-# TODO(aselle): This should be converted to grappler in the future.
 def _remove_one_redundant_stack_unstack(in_graph_def):
   """Removes a stack->unstack pattern from in_graph_def in a returned graph.
 
@@ -1088,7 +1075,6 @@ def _remove_one_redundant_stack_unstack(in_graph_def):
       in_graph_def)
   del name_to_seq_num
 
-  # TODO(aselle): Make this not hardcoded.
   do_generic_pack_unpack = True
 
   out = _graph_pb2.GraphDef()

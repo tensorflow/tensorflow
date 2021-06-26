@@ -694,6 +694,30 @@ cc_library(
 )
 
 cc_library(
+    name = "ral_lower_to_library_call",
+    srcs = ["lib/Dialect/mhlo/transforms/ral_lower_to_library_call.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":disc_ral",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TensorTransforms",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo_dialect_registration",
     srcs = ["lib/Dialect/mhlo/IR/init.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
@@ -1055,6 +1079,26 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_einsum_to_dot_general",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_einsum_to_dot_general.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "legalize_gather_to_torch_index_select",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_gather_to_torch_index_select.cc"],
     hdrs = [
@@ -1231,6 +1275,17 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_fusion_inliner",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_fusion_inliner.cc"],
+    deps = [
+        ":lhlo",
+        ":pass_details",
+        "@llvm-project//mlir:Pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "chlo_legalize_to_hlo",
     srcs = ["lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
@@ -1327,6 +1382,7 @@ cc_library(
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":legalize_control_flow",
+        ":legalize_einsum_to_dot_general",
         ":legalize_gather_to_torch_index_select",
         ":legalize_tensor_load_op",
         ":legalize_to_linalg",
@@ -1335,6 +1391,7 @@ cc_library(
         ":lhlo",
         ":lhlo_fuse_linalg",
         ":lhlo_fusion",
+        ":lhlo_fusion_inliner",
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
@@ -1342,6 +1399,7 @@ cc_library(
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
         ":ral_inject_execution_context",
+        ":ral_lower_to_library_call",
         ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",

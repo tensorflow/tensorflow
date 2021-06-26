@@ -1033,7 +1033,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
       se->GetDeviceDescription().cuda_compute_capability();
   if ((per_process_gpu_memory_fraction > 1.0 ||
        gpu_options.experimental().use_unified_memory()) &&
-      !cc.IsAtLeast(se::CudaComputeCapability::PASCAL)) {
+      !cc.IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
     return errors::Internal(
         "Unified memory on GPUs with compute capability lower than 6.0 "
         "(pre-Pascal class GPUs) does not support oversubscription.");

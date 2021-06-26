@@ -548,6 +548,7 @@ BUILTIN_KERNEL_SRCS = [
     "add.cc",
     "add_n.cc",
     "arg_min_max.cc",
+    "assign_variable.cc",
     "audio_spectrogram.cc",
     "basic_rnn.cc",
     "batch_matmul.cc",
@@ -612,6 +613,7 @@ BUILTIN_KERNEL_SRCS = [
     "quantize.cc",
     "range.cc",
     "rank.cc",
+    "read_variable.cc",
     "reduce.cc",
     "reshape.cc",
     "resize_bilinear.cc",
@@ -643,6 +645,7 @@ BUILTIN_KERNEL_SRCS = [
     "unidirectional_sequence_rnn.cc",
     "unique.cc",
     "unpack.cc",
+    "var_handle.cc",
     "where.cc",
     "while.cc",
     "zeros_like.cc",
@@ -713,9 +716,7 @@ cc_library(
         "assign_variable.cc",
         "read_variable.cc",
         "var_handle.cc",
-        "variable_ops.cc",
     ],
-    hdrs = ["variable_ops.h"],
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
@@ -734,9 +735,11 @@ cc_test(
         "variable_ops_test.cc",
     ],
     deps = [
+        ":builtin_ops",
         ":test_main",
         ":variable_op_kernels",  # buildcleaner: keep
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -748,12 +751,10 @@ pybind_extension(
     srcs = [
         "variable_ops_wrapper.cc",
     ],
-    hdrs = ["variable_ops.h"],
     additional_exported_symbols = ["VariableOpsRegisterer"],
     link_in_framework = True,
     module_name = "pywrap_variable_ops",
     deps = [
-        ":variable_op_kernels",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:mutable_op_resolver",
         "//third_party/python_runtime:headers",
@@ -785,6 +786,7 @@ cc_library(
         "pooling3d.cc",
         "random_standard_normal.cc",
         "random_uniform.cc",
+        "roll.cc",
         "sign.cc",
         "unidirectional_sequence_gru.cc",
     ],
@@ -1504,6 +1506,21 @@ cc_test(
         ":custom_ops",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "roll_test",
+    size = "small",
+    srcs = ["roll_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",

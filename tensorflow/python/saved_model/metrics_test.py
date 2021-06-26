@@ -66,9 +66,12 @@ class MetricsTests(test.TestCase):
 
   def test_builder_save(self):
     write_count = metrics.GetWrite()
+    save_builder_count = metrics.GetWriteApi(builder_impl._SAVE_BUILDER_LABEL)
     _ = self._create_save_v1_model()
 
-    self.assertEqual(metrics.GetWriteApi(builder_impl._SAVE_BUILDER_LABEL), 1)
+    self.assertEqual(
+        metrics.GetWriteApi(builder_impl._SAVE_BUILDER_LABEL),
+        save_builder_count + 1)
     self.assertEqual(metrics.GetWrite(), write_count + 1)
 
   def test_load_v2(self):

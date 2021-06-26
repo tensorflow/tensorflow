@@ -1611,13 +1611,24 @@ func @stateful_pcall_multi_in_out(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (te
 
 // CHECK-LABEL: func @elu
 func @elu(%arg0: tensor<1xf32>) -> tensor<1xf32> {
-  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK-DAG: %[[PRED:.*]] = chlo.broadcast_compare %arg0, %[[ZERO]] {broadcast_dimensions = dense<> : tensor<0xi64>, comparison_direction = "GT"}
+  // CHECK-DAG: %[[ZERO:.*]] = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<1xf32>) -> tensor<1xf32>
+  // CHECK-DAG: %[[PRED:.*]] = "mhlo.compare"(%arg0, %[[ZERO]]) {comparison_direction = "GT"}
   // CHECK-DAG: %[[EXP:.*]] = "mhlo.exponential_minus_one"(%arg0)
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[PRED]], %arg0, %[[EXP]])
   // CHECK: return %[[RESULT]]
   %0 = "tf.Elu"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
   return %0: tensor<1xf32>
+}
+
+// CHECK-LABEL: func @elu_unranked
+func @elu_unranked(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-DAG: %[[ZERO:.*]] = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<?xf32>) -> tensor<?xf32>
+  // CHECK-DAG: %[[PRED:.*]] = "mhlo.compare"(%arg0, %[[ZERO]]) {comparison_direction = "GT"}
+  // CHECK-DAG: %[[EXP:.*]] = "mhlo.exponential_minus_one"(%arg0)
+  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[PRED]], %arg0, %[[EXP]])
+  // CHECK: return %[[RESULT]]
+  %0 = "tf.Elu"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  return %0: tensor<?xf32>
 }
 
 // CHECK-LABEL: func @elu_grad
@@ -1847,105 +1858,6 @@ func @selectv2_unranked(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %arg2: te
   // CHECK: chlo.broadcast_select
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x8x8xi32>, tensor<*xi32>) -> tensor<*xi32>
   return %0: tensor<*xi32>
-}
-
-//===----------------------------------------------------------------------===//
-// Softmax op legalizations.
-//===----------------------------------------------------------------------===//
-
-// CHECK-LABEL: func @simple_softmax
-// CHECK-SAME: (%[[ARG0:.*]]: tensor<2x3xf32>)
-func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-
-  // Verify reduce op for max computation and its body.
-  // CHECK-DAG: %[[NEG_INF:.*]] = mhlo.constant dense<0xFF800000> : tensor<f32>
-  // CHECK-DAG: %[[CASTED_INP:.*]] = "mhlo.convert"(%[[ARG0]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  // CHECK: %[[MAX:.*]] = "mhlo.reduce"(%[[CASTED_INP]], %[[NEG_INF]])
-  // CHECK:  mhlo.maximum
-  // CHECK: "mhlo.return"
-  // CHECK: {dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xf32>, tensor<f32>) -> tensor<2xf32>
-  // CHECK: %[[CASTED_MAX:.*]] = "mhlo.convert"(%[[MAX]]) : (tensor<2xf32>) -> tensor<2xf32>
-
-  // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
-  // CHECK: %[[BCAST_MAX:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[CASTED_MAX]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK: %[[SHIFTED_INP:.*]] = mhlo.subtract %[[ARG0]], %[[BCAST_MAX]]
-  // CHECK: %[[EXP:.*]] = "mhlo.exponential"(%[[SHIFTED_INP]])
-
-  // Verify reduce op for summation and its body.
-  // CHECK-DAG: %[[CASTED_EXP:.*]] = "mhlo.convert"(%[[EXP]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[SUM:.*]] = "mhlo.reduce"(%[[CASTED_EXP]], %[[ZERO]])
-  // CHECK:  mhlo.add
-  // CHECK: "mhlo.return"
-  // CHECK: {dimensions = dense<1> : tensor<1xi64>}
-  // CHECK: %[[CASTED_SUM:.*]] = "mhlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
-
-  // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
-  // CHECK: %[[BCAST_SUM:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[CASTED_SUM]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK: %[[RESULT:.*]] = mhlo.divide %[[EXP]], %[[BCAST_SUM]]
-  // CHECK: return %[[RESULT]]
-
-  %0 = "tf.Softmax"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  return %0: tensor<2x3xf32>
-}
-
-// Verify intermediate and final shape are correct with dynamic shapes.
-// CHECK-LABEL: func @dynamic_softmax
-func @dynamic_softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  // CHECK: mhlo.divide {{.*}}  : tensor<?x?xf32>
-  %0 = "tf.Softmax"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %0: tensor<?x?xf32>
-}
-
-// CHECK-LABEL: bf16_softmax
-func @bf16_softmax(%arg0: tensor<2x3xbf16>) -> tensor<2x3xbf16> {
-  // Verify that conversion to f32 and then back to bf16 are introduced.
-
-  // CHECK: "mhlo.convert"({{.*}}) : (tensor<2x3xbf16>) -> tensor<2x3xf32>
-  // CHECK: "mhlo.convert"({{.*}}) : (tensor<2xf32>) -> tensor<2xbf16>
-
-  %0 = "tf.Softmax"(%arg0) : (tensor<2x3xbf16>) -> tensor<2x3xbf16>
-  return %0: tensor<2x3xbf16>
-}
-
-// CHECK-LABEL: rank4_softmax
-func @rank4_softmax(%arg0: tensor<2x3x4x5xf16>) -> tensor<2x3x4x5xf16> {
-  // Verify that reduce op dimensions and broadcast dimensions are correct.
-
-  // CHECK: "mhlo.reduce"
-  // CHECK: dimensions = dense<3>
-
-  // CHECK: "mhlo.reduce"
-  // CHECK: dimensions = dense<3>
-
-  // CHECK: {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
-  // CHECK: mhlo.divide {{.*}}
-  %0 = "tf.Softmax"(%arg0) : (tensor<2x3x4x5xf16>) -> tensor<2x3x4x5xf16>
-  return %0: tensor<2x3x4x5xf16>
-}
-
-//===----------------------------------------------------------------------===//
-// LogSoftmax op legalizations.
-// This just changes the tail of the regular Softmax legalization
-//===----------------------------------------------------------------------===//
-
-// CHECK-LABEL: func @simple_logsoftmax
-// CHECK-SAME: (%[[ARG0:.*]]: tensor<2x3xf32>)
-func @simple_logsoftmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-  // CHECK: %{{.*}} = "mhlo.reduce"({{.*}})
-  // CHECK: %[[SUM:.*]] = "mhlo.reduce"({{.*}})
-  // CHECK: %[[CASTED_SUM:.*]] = "mhlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
-  // CHECK: %[[LOG:.*]] = "mhlo.log"(%[[CASTED_SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
-  // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
-  // CHECK: %[[BCAST_SUM:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[LOG]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK: %[[RESULT:.*]] = mhlo.subtract {{.*}}, %[[BCAST_SUM]]
-  // CHECK: return %[[RESULT]]
-
-  %0 = "tf.LogSoftmax"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  return %0: tensor<2x3xf32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -2647,18 +2559,17 @@ func @expand_dims(%arg0: tensor<2xf32>, %axis: tensor<i32>) -> tensor<1x2xf32> {
 func @expand_dims_dynamic(%arg0: tensor<?x?xf32>) -> tensor<?x1x?xf32> {
   %axis = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> (tensor<i32>)
 
-  // CHECK-DAG: [[SHAPEOF:%.+]] = shape.shape_of %arg0
-  // CHECK-DAG: [[CST0:%.+]] = constant 0
-  // CHECK-DAG: [[CST1:%.+]] = constant 1
-  // CHECK-DAG: [[GETEXTENT0:%.+]] = shape.get_extent [[SHAPEOF]], [[CST0]]
-  // CHECK-DAG: [[CST1_0:%.+]] = constant 1
-  // CHECK-DAG: [[GETEXTENT1:%.+]] = shape.get_extent [[SHAPEOF]], [[CST1_0]]
-  // CHECK-DAG: [[FROMEXTENTS:%.+]] = shape.from_extents [[GETEXTENT0]], [[CST1]], [[GETEXTENT1]]
-  // CHECK-DAG: [[TOEXTENTS:%.+]] = shape.to_extent_tensor [[FROMEXTENTS]]
-  // CHECK-DAG: [[RESHAPE:%.+]] = "mhlo.dynamic_reshape"(%arg0, [[TOEXTENTS]])
+  // CHECK-DAG: %[[SHAPEOF:.+]] = shape.shape_of %arg0
+  // CHECK-DAG: %[[CST0:.+]] = constant 0
+  // CHECK-DAG: %[[CST1:.+]] = constant 1
+  // CHECK-DAG: %[[GETEXTENT0:.+]] = tensor.extract %[[SHAPEOF]][%[[CST0]]]
+  // CHECK-DAG: %[[CST1_0:.+]] = constant 1
+  // CHECK-DAG: %[[GETEXTENT1:.+]] = tensor.extract %[[SHAPEOF]][%[[CST1_0]]]
+  // CHECK-DAG: %[[TOEXTENTS:.+]] = tensor.from_elements %[[GETEXTENT0]], %[[CST1]], %[[GETEXTENT1]]
+  // CHECK-DAG: %[[RESHAPE:.+]] = "mhlo.dynamic_reshape"(%arg0, %[[TOEXTENTS]])
   %0 = "tf.ExpandDims"(%arg0, %axis) : (tensor<?x?xf32>, tensor<i32>) -> tensor<?x1x?xf32>
 
-  // CHECK: return [[RESHAPE]]
+  // CHECK: return %[[RESHAPE]]
   return %0 : tensor<?x1x?xf32>
 }
 
@@ -2666,20 +2577,19 @@ func @expand_dims_dynamic(%arg0: tensor<?x?xf32>) -> tensor<?x1x?xf32> {
 func @expand_dynamic_dims_rank1_axis(%arg0: tensor<?x?x4xf32>) -> tensor<?x1x?x4xf32> {
   %axis = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
 
-  // CHECK-DAG: [[SHAPEOF:%.+]] = shape.shape_of %arg0
-  // CHECK-DAG: [[CST0:%.+]] = constant 0
-  // CHECK-DAG: [[CST1:%.+]] = constant 1
-  // CHECK-DAG: [[GETEXTENT0:%.+]] = shape.get_extent [[SHAPEOF]], [[CST0]]
-  // CHECK-DAG: [[CST1_0:%.+]] = constant 1
-  // CHECK-DAG: [[GETEXTENT1:%.+]] = shape.get_extent [[SHAPEOF]], [[CST1_0]]
-  // CHECK-DAG: [[CST2:%.+]] = constant 2
-  // CHECK-DAG: [[GETEXTENT2:%.+]] = shape.get_extent [[SHAPEOF]], [[CST2]]
-  // CHECK-DAG: [[FROMEXTENTS:%.+]] = shape.from_extents [[GETEXTENT0]], [[CST1]], [[GETEXTENT1]], [[GETEXTENT2]]
-  // CHECK-DAG: [[TOEXTENTS:%.+]] = shape.to_extent_tensor [[FROMEXTENTS]]
-  // CHECK-DAG: [[RESHAPE:%.+]] = "mhlo.dynamic_reshape"(%arg0, [[TOEXTENTS]])
+  // CHECK-DAG: %[[SHAPEOF:.+]] = shape.shape_of %arg0
+  // CHECK-DAG: %[[CST0:.+]] = constant 0
+  // CHECK-DAG: %[[CST1:.+]] = constant 1
+  // CHECK-DAG: %[[GETEXTENT0:.+]] = tensor.extract %[[SHAPEOF]][%[[CST0]]]
+  // CHECK-DAG: %[[CST1_0:.+]] = constant 1
+  // CHECK-DAG: %[[GETEXTENT1:.+]] = tensor.extract %[[SHAPEOF]][%[[CST1_0]]]
+  // CHECK-DAG: %[[CST2:.+]] = constant 2
+  // CHECK-DAG: %[[GETEXTENT2:.+]] = tensor.extract %[[SHAPEOF]][%[[CST2]]]
+  // CHECK-DAG: %[[TOEXTENTS:.+]] = tensor.from_elements %[[GETEXTENT0]], %[[CST1]], %[[GETEXTENT1]], %[[GETEXTENT2]]
+  // CHECK-DAG: %[[RESHAPE:.+]] = "mhlo.dynamic_reshape"(%arg0, %[[TOEXTENTS]])
   %0 = "tf.ExpandDims"(%arg0, %axis) : (tensor<?x?x4xf32>, tensor<1xi32>) -> tensor<?x1x?x4xf32>
 
-  // CHECK: return [[RESHAPE]]
+  // CHECK: return %[[RESHAPE]]
   return %0 : tensor<?x1x?x4xf32>
 }
 
@@ -3223,7 +3133,7 @@ func @mean(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x8xf32>, tensor<f32>) -> tensor<4xf32>
   // CHECK: %[[MEAN:.*]] = chlo.broadcast_divide %[[REDUCED]], %{{.*}} {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
   // CHECK: %[[CAST_BACK:.*]] = "mhlo.convert"(%[[MEAN]]) : (tensor<4xf32>) -> tensor<4xf16>
-  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CAST_BACK]], %{{.*}}) : (tensor<4xf16>, tensor<2xindex>) -> tensor<4x1xf16>
+  // CHECK: %[[RESULT:.*]] = "mhlo.reshape"(%[[CAST_BACK]]) : (tensor<4xf16>) -> tensor<4x1xf16>
   // CHECK: return %[[RESULT]] : tensor<4x1xf16>
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Mean"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xf16>, tensor<1xi64>) -> tensor<4x1xf16>
@@ -3260,10 +3170,10 @@ func @mean_dynamic(%arg0: tensor<?x?xf16>) -> tensor<?x1xf16> {
   // CHECK: %[[CONVERT:.*]] = "mhlo.convert"(%[[SCALAR_TENSOR]]) : (tensor<i64>) -> tensor<f32>
   // CHECK: %[[MEAN:.*]] = chlo.broadcast_divide %[[REDUCED]], %[[CONVERT]] {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
   // CHECK: %[[MEAN_CONVERTED:.*]] = "mhlo.convert"(%[[MEAN]]) : (tensor<?xf32>) -> tensor<?xf16>
-  // CHECK: %[[SHAPE1:.*]] = shape.shape_of %arg0 : tensor<?x?xf16> -> tensor<2xindex>
+  // CHECK: %[[SHAPE1:.*]] = shape.shape_of %[[MEAN_CONVERTED]] : tensor<?xf16> -> tensor<1xindex>
   // CHECK: %[[C1:.*]] = constant 1 : index
   // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[UNREDUCED_DIM:.*]] = tensor.extract %[[SHAPE1]][%[[C0]]] : tensor<2xindex>
+  // CHECK: %[[UNREDUCED_DIM:.*]] = tensor.extract %[[SHAPE1]][%[[C0]]] : tensor<1xindex>
   // CHECK: %[[RESULT_SHAPE:.*]] = tensor.from_elements %[[UNREDUCED_DIM]], %[[C1]] : tensor<2xindex>
   // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[MEAN_CONVERTED]], %[[RESULT_SHAPE]]) : (tensor<?xf16>, tensor<2xindex>) -> tensor<?x1xf16>
   // CHECK: return %[[RESULT]] : tensor<?x1xf16>
@@ -3282,7 +3192,7 @@ func @sum(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   // CHECK:  "mhlo.return"(%[[REDUCE_BODY_RESULT]]) : (tensor<f32>) -> ()
   // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x8xf32>, tensor<f32>) -> tensor<4xf32>
   // CHECK: %[[CAST_BACK:.*]] = "mhlo.convert"(%[[REDUCED]]) : (tensor<4xf32>) -> tensor<4xf16>
-  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CAST_BACK]], %{{.*}}) : (tensor<4xf16>, tensor<2xindex>) -> tensor<4x1xf16>
+  // CHECK: %[[RESULT:.*]] = "mhlo.reshape"(%[[CAST_BACK]]) : (tensor<4xf16>) -> tensor<4x1xf16>
   // CHECK: return %[[RESULT]] : tensor<4x1xf16>
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Sum"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xf16>, tensor<1xi64>) -> tensor<4x1xf16>
@@ -3299,7 +3209,7 @@ func @sum_dynamic(%arg0: tensor<4x?xf16>) -> tensor<4x1xf16> {
     // CHECK:  "mhlo.return"(%[[REDUCE_BODY_RESULT]]) : (tensor<f32>) -> ()
     // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x?xf32>, tensor<f32>) -> tensor<4xf32>
     // CHECK: %[[CAST_BACK:.*]] = "mhlo.convert"(%[[REDUCED]]) : (tensor<4xf32>) -> tensor<4xf16>
-    // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CAST_BACK]], %{{.*}}) : (tensor<4xf16>, tensor<2xindex>) -> tensor<4x1xf16>
+    // CHECK: %[[RESULT:.*]] = "mhlo.reshape"(%[[CAST_BACK]]) : (tensor<4xf16>) -> tensor<4x1xf16>
     // CHECK: return %[[RESULT]] : tensor<4x1xf16>
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Sum"(%arg0, %dimension) { keep_dims = true }: (tensor<4x?xf16>, tensor<1xi64>) -> tensor<4x1xf16>
@@ -3316,7 +3226,7 @@ func @max(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   // CHECK:  "mhlo.return"(%[[REDUCE_BODY_RESULT]]) : (tensor<f16>) -> ()
   // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x8xf16>, tensor<f16>) -> tensor<4xf16>
   // CHECK: %[[CAST_BACK:.*]] = "mhlo.convert"(%[[REDUCED]]) : (tensor<4xf16>) -> tensor<4xf16>
-  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CAST_BACK]], %{{.*}}) : (tensor<4xf16>, tensor<2xindex>) -> tensor<4x1xf16>
+  // CHECK: %[[RESULT:.*]] = "mhlo.reshape"(%[[CAST_BACK]]) : (tensor<4xf16>) -> tensor<4x1xf16>
   // CHECK: return %[[RESULT]] : tensor<4x1xf16>
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Max"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xf16>, tensor<1xi64>) -> tensor<4x1xf16>
@@ -3342,7 +3252,7 @@ func @max_dynamic(%arg0: tensor<4x?xf16>) -> tensor<4x1xf16> {
     // CHECK:  "mhlo.return"(%[[REDUCE_BODY_RESULT]]) : (tensor<f16>) -> ()
     // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x?xf16>, tensor<f16>) -> tensor<4xf16>
     // CHECK: %[[CAST_BACK:.*]] = "mhlo.convert"(%[[REDUCED]]) : (tensor<4xf16>) -> tensor<4xf16>
-    // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CAST_BACK]], %{{.*}}) : (tensor<4xf16>, tensor<2xindex>) -> tensor<4x1xf16>
+    // CHECK: %[[RESULT:.*]] = "mhlo.reshape"(%[[CAST_BACK]]) : (tensor<4xf16>) -> tensor<4x1xf16>
     // CHECK: return %[[RESULT]] : tensor<4x1xf16>
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Max"(%arg0, %dimension) { keep_dims = true }: (tensor<4x?xf16>, tensor<1xi64>) -> tensor<4x1xf16>
@@ -3359,7 +3269,7 @@ func @min(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   // CHECK:  "mhlo.return"(%[[REDUCE_BODY_RESULT]]) : (tensor<f16>) -> ()
   // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x8xf16>, tensor<f16>) -> tensor<4xf16>
   // CHECK: %[[CAST_BACK:.*]] = "mhlo.convert"(%[[REDUCED]]) : (tensor<4xf16>) -> tensor<4xf16>
-  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CAST_BACK]], %{{.*}}) : (tensor<4xf16>, tensor<2xindex>) -> tensor<4x1xf16>
+  // CHECK: %[[RESULT:.*]] = "mhlo.reshape"(%[[CAST_BACK]]) : (tensor<4xf16>) -> tensor<4x1xf16>
   // CHECK: return %[[RESULT]] : tensor<4x1xf16>
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Min"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xf16>, tensor<1xi64>) -> tensor<4x1xf16>
@@ -3385,7 +3295,7 @@ func @prod(%arg0: tensor<4x8xf16>) -> tensor<4x1xf16> {
   // CHECK:  "mhlo.return"(%[[REDUCE_BODY_RESULT]]) : (tensor<f32>) -> ()
   // CHECK: }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<4x8xf32>, tensor<f32>) -> tensor<4xf32>
   // CHECK: %[[CAST_BACK:.*]] = "mhlo.convert"(%[[REDUCED]]) : (tensor<4xf32>) -> tensor<4xf16>
-  // CHECK: %[[RESULT:.*]] = "mhlo.dynamic_reshape"(%[[CAST_BACK]], %{{.*}}) : (tensor<4xf16>, tensor<2xindex>) -> tensor<4x1xf16>
+  // CHECK: %[[RESULT:.*]] = "mhlo.reshape"(%[[CAST_BACK]]) : (tensor<4xf16>) -> tensor<4x1xf16>
   // CHECK: return %[[RESULT]] : tensor<4x1xf16>
   %dimension = "tf.Const"() { value = dense<1> : tensor<1xi64> } : () -> tensor<1xi64>
   %0 = "tf.Prod"(%arg0, %dimension) { keep_dims = true }: (tensor<4x8xf16>, tensor<1xi64>) -> tensor<4x1xf16>
@@ -3416,7 +3326,7 @@ func @all(%input: tensor<4x8xi1>) -> tensor<4xi1> {
 
 // CHECK-LABEL: @all_keep_dim
 func @all_keep_dim(%input: tensor<4x8xi1>) -> tensor<4x1xi1> {
-  // CHECK: "mhlo.dynamic_reshape"(%{{.*}}) : (tensor<4xi1>, tensor<2xindex>) -> tensor<4x1xi1>
+  // CHECK: "mhlo.reshape"(%{{.*}}) : (tensor<4xi1>) -> tensor<4x1xi1>
   %dims = "tf.Const"() { value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %0 = "tf.All"(%input, %dims) {keep_dims = true} : (tensor<4x8xi1>, tensor<1xi32>) -> tensor<4x1xi1>
   return %0 : tensor<4x1xi1>
@@ -3446,7 +3356,7 @@ func @any(%input: tensor<4x8xi1>) -> tensor<4xi1> {
 
 // CHECK-LABEL: @any_keep_dim
 func @any_keep_dim(%input: tensor<4x8xi1>) -> tensor<4x1xi1> {
-  // CHECK: "mhlo.dynamic_reshape"(%{{.*}}) : (tensor<4xi1>, tensor<2xindex>) -> tensor<4x1xi1>
+  // CHECK: "mhlo.reshape"(%{{.*}}) : (tensor<4xi1>) -> tensor<4x1xi1>
   %dims = "tf.Const"() { value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %0 = "tf.Any"(%input, %dims) {keep_dims = true} : (tensor<4x8xi1>, tensor<1xi32>) -> tensor<4x1xi1>
   return %0 : tensor<4x1xi1>

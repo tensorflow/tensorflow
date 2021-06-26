@@ -3063,7 +3063,6 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
-        "nogpu",  # TODO(b/153763253); flaky
         "optonly",  # times out
     ],
     deps = [
@@ -3271,6 +3270,20 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "sparse_tensor_dense_matmul_op_deterministic_test",
+    size = "small",
+    srcs = ["sparse_tensor_dense_matmul_op_deterministic_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
     ],
 )

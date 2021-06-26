@@ -30,6 +30,6 @@ limitations under the License.
 // which conveys no more information than EXPECT_FALSE(status.ok());
 // If you want to check for particular errors, a better alternative is with
 // status matchers:
-// EXPECT_THAT(s, tensorflow::testing::TfStatusIs(status.code(), "message"));
+// EXPECT_THAT(s, tensorflow::testing::StatusIs(status.code(), "message"));
 
 #endif  // TENSORFLOW_CORE_LIB_CORE_STATUS_TEST_UTIL_H_

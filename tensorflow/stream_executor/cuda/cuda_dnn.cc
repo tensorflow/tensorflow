@@ -3202,32 +3202,32 @@ struct RnnDoFP32ComputationFP16Input {
 namespace {
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-bool IsNonDeterministic(cudnnBackendDescriptor_t engine_config) {
-  return cudnn_frontend::hasNumericalNote<
-      CUDNN_NUMERICAL_NOTE_NONDETERMINISTIC>(engine_config);
-}
 
-bool IsWinograd(cudnnBackendDescriptor_t engine_config) {
-  return cudnn_frontend::hasNumericalNote<CUDNN_NUMERICAL_NOTE_WINOGRAD>(
-      engine_config);
-}
+bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
+                         bool disable_winograd, bool disable_nondeterminism,
+                         bool disable_tensor_core) {
+  bool ret = cudnn_frontend::hasNumericalNote<
+      CUDNN_NUMERICAL_NOTE_DOWN_CONVERT_INPUTS>(engine_config);
 
-bool IsDownConvertingInputs(cudnnBackendDescriptor_t engine_config) {
-  if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
-    return cudnn_frontend::hasNumericalNote<
-        CUDNN_NUMERICAL_NOTE_DOWN_CONVERT_INPUTS>(engine_config);
-  } else {
-    return IsWinograd(engine_config) ||
-           cudnn_frontend::hasNumericalNote<
-               CUDNN_NUMERICAL_NOTE_DOWN_CONVERT_INPUTS>(engine_config);
+  if (disable_winograd) {
+    ret |= cudnn_frontend::hasNumericalNote<CUDNN_NUMERICAL_NOTE_WINOGRAD>(
+        engine_config);
   }
+
+  if (disable_nondeterminism) {
+    ret |=
+        cudnn_frontend::hasNumericalNote<CUDNN_NUMERICAL_NOTE_NONDETERMINISTIC>(
+            engine_config);
+  }
+
+  if (disable_tensor_core) {
+    ret |= cudnn_frontend::hasNumericalNote<CUDNN_NUMERICAL_NOTE_TENSOR_CORE>(
+        engine_config);
+  }
+
+  return ret;
 }
 
-bool IsNonDeterministicOrIsDownConverting(
-    cudnnBackendDescriptor_t engine_config) {
-  return IsNonDeterministic(engine_config) ||
-         IsDownConvertingInputs(engine_config);
-}
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 }  // namespace
@@ -3753,6 +3753,7 @@ GetCudnnFusedOperationGraph(
 
 port::StatusOr<std::unique_ptr<cudnn_frontend::ExecutionPlan>>
 GetFirstWorkingExecutionPlan(
+    Stream* stream, dnn::DataType element_type,
     const std::unique_ptr<cudnn_frontend::OperationGraph>& op_graph,
     dnn::ConvolutionKind kind, CudnnHandle& cudnn,
     ScratchAllocator* scratch_allocator) {
@@ -3774,17 +3775,16 @@ GetFirstWorkingExecutionPlan(
   auto& fallback_list = fallback.getFallbackList();
 
   cudnn_frontend::EngineConfigList filtered_configs;
-  if (RequireCudnnDeterminism()) {
-    cudnn_frontend::filter(engine_config, filtered_configs,
-                           IsNonDeterministicOrIsDownConverting);
-    cudnn_frontend::filter(fallback_list, filtered_configs,
-                           IsNonDeterministicOrIsDownConverting);
-  } else {
-    cudnn_frontend::filter(engine_config, filtered_configs,
-                           IsDownConvertingInputs);
-    cudnn_frontend::filter(fallback_list, filtered_configs,
-                           IsDownConvertingInputs);
-  }
+  auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
+    return GenericEngineFilter(
+        engine_config,
+        /*disable_winograd*/ !CudnnEnvVar<WinogradNonfused>::IsEnabled(),
+        /*disable_nondeterminism*/ RequireCudnnDeterminism(),
+        /*disable_tensor_core*/ !IsTensorMathEnabled(stream, element_type));
+  };
+
+  cudnn_frontend::filter(engine_config, filtered_configs, generic_filter_fn);
+  cudnn_frontend::filter(fallback_list, filtered_configs, generic_filter_fn);
 
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
@@ -4036,9 +4036,9 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
                                filter_descriptor, output_descriptor,
                                convolution_descriptor, cudnn));
 
-    SE_ASSIGN_OR_RETURN(
-        current_plan,
-        GetFirstWorkingExecutionPlan(op_graph, kind, cudnn, scratch_allocator));
+    SE_ASSIGN_OR_RETURN(current_plan, GetFirstWorkingExecutionPlan(
+                                          stream, element_type, op_graph, kind,
+                                          cudnn, scratch_allocator));
   }
 
   size_t workspace_size = 0;
@@ -4242,7 +4242,8 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
 }
 
 port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+    Stream* stream, dnn::DataType element_type,
+    const dnn::BatchDescriptor& conv_input_descriptor,
     DeviceMemoryBase conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemoryBase filter_data,
@@ -4270,10 +4271,10 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
             side_input_scale, stream, conv_input_descriptor, filter_descriptor,
             bias_descriptor, output_descriptor, convolution_descriptor, cudnn));
 
-    SE_ASSIGN_OR_RETURN(
-        current_plan,
-        GetFirstWorkingExecutionPlan(op_graph, dnn::ConvolutionKind::FORWARD,
-                                     cudnn, scratch_allocator));
+    SE_ASSIGN_OR_RETURN(current_plan, GetFirstWorkingExecutionPlan(
+                                          stream, element_type, op_graph,
+                                          dnn::ConvolutionKind::FORWARD, cudnn,
+                                          scratch_allocator));
   }
 
   size_t workspace_size = 0;
@@ -4397,17 +4398,16 @@ bool CudnnSupport::GetConvolveExecutionPlans(
           << "\nFallback engine configs size: " << fallback_configs.size();
 
   cudnn_frontend::EngineConfigList filtered_configs;
-  if (RequireCudnnDeterminism()) {
-    cudnn_frontend::filter(heur_configs, filtered_configs,
-                           IsNonDeterministicOrIsDownConverting);
-    cudnn_frontend::filter(fallback_configs, filtered_configs,
-                           IsNonDeterministicOrIsDownConverting);
-  } else {
-    cudnn_frontend::filter(heur_configs, filtered_configs,
-                           IsDownConvertingInputs);
-    cudnn_frontend::filter(fallback_configs, filtered_configs,
-                           IsDownConvertingInputs);
-  }
+  auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
+    return GenericEngineFilter(
+        engine_config,
+        /*disable_winograd*/ !CudnnEnvVar<WinogradNonfused>::IsEnabled(),
+        /*disable_nondeterminism*/ RequireCudnnDeterminism(),
+        /*disable_tensor_core*/ !IsTensorMathEnabled(stream, element_type));
+  };
+
+  cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
+  cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
@@ -4475,17 +4475,16 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
           << "\nFallback engine configs size: " << fallback_configs.size();
 
   cudnn_frontend::EngineConfigList filtered_configs;
-  if (RequireCudnnDeterminism()) {
-    cudnn_frontend::filter(heur_configs, filtered_configs,
-                           IsNonDeterministicOrIsDownConverting);
-    cudnn_frontend::filter(fallback_configs, filtered_configs,
-                           IsNonDeterministicOrIsDownConverting);
-  } else {
-    cudnn_frontend::filter(heur_configs, filtered_configs,
-                           IsDownConvertingInputs);
-    cudnn_frontend::filter(fallback_configs, filtered_configs,
-                           IsDownConvertingInputs);
-  }
+  auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
+    return GenericEngineFilter(
+        engine_config,
+        /*disable_winograd*/ !CudnnEnvVar<WinogradNonfused>::IsEnabled(),
+        /*disable_nondeterminism*/ RequireCudnnDeterminism(),
+        /*disable_tensor_core*/ !IsTensorMathEnabled(stream, element_type));
+  };
+
+  cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
+  cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
@@ -5046,11 +5045,12 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   return DoFusedConvolveWithExecutionPlanImpl(
-      stream, conv_input_descriptor, conv_input_data, conv_input_scale,
-      filter_descriptor, filter_data, convolution_descriptor, side_input_data,
-      side_input_scale, bias_descriptor, biases, activation_mode,
-      output_descriptor, output_data, GetConvAccumulatorType(element_type),
-      scratch_allocator, algorithm_config, output_profile_result);
+      stream, element_type, conv_input_descriptor, conv_input_data,
+      conv_input_scale, filter_descriptor, filter_data, convolution_descriptor,
+      side_input_data, side_input_scale, bias_descriptor, biases,
+      activation_mode, output_descriptor, output_data,
+      GetConvAccumulatorType(element_type), scratch_allocator, algorithm_config,
+      output_profile_result);
 }
 
 port::Status CudnnSupport::DoPrepareForCtcLoss(

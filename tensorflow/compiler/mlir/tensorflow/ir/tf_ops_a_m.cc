@@ -2222,6 +2222,24 @@ void ExpandDimsOp::build(OpBuilder &builder, OperationState &result,
 }
 
 //===----------------------------------------------------------------------===//
+// Expm1Op
+//===----------------------------------------------------------------------===//
+LogicalResult Expm1Op::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  if (operands.empty()) {
+    return emitOptionalError(location, "requires at least one operand.");
+  }
+  auto input_ty = operands[0].getType().dyn_cast<TensorType>();
+  if (!input_ty) {
+    return emitOptionalError(location, "requires input to be of Tensor type");
+  }
+  inferredReturnTypes.assign({input_ty});
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FakeQuantWithMinMaxArgsOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {

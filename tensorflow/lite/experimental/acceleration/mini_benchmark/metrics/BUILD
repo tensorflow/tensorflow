@@ -74,7 +74,7 @@ validation_model(
 
 validation_test(
     name = "mobilenet_float_validation_test",
-    validation_model = ":mobilenet_quant_with_validation.tflite",
+    validation_model = ":mobilenet_float_with_validation.tflite",
 )
 
 py_binary(

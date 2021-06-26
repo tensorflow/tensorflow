@@ -691,15 +691,20 @@ cc_library(
             "//tensorflow/compiler/mlir/hlo:lhlo",
             # copybara:uncomment_begin(target not open-sourced yet)
             # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            # "//tensorflow/core/tfrt/gpu:gpu_shared_context",
+            # "//tensorflow/core/tfrt/runtime:work_queue_interface",
             # copybara:uncomment_end
             "//tensorflow/stream_executor/cuda:cublas_plugin",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
+            "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             # copybara:uncomment_begin(breaks bazel query)
+            # "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             # "@tf_runtime//backends/gpu:gpu_types",
             # copybara:uncomment_end
         ],
@@ -1570,24 +1575,24 @@ tf_cc_test(
 
 cc_library(
     name = "amdgpu_compiler",
-    srcs = [
+    srcs = if_rocm_is_configured([
         "amdgpu_compiler_registration.cc",
-    ],
-    deps = [
+    ]),
+    deps = if_rocm_is_configured([
         ":amdgpu_compiler_impl",
-    ],
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 
 cc_library(
     name = "amdgpu_compiler_impl",
-    srcs = [
+    srcs = if_rocm_is_configured([
         "amdgpu_compiler.cc",
-    ],
-    hdrs = [
+    ]),
+    hdrs = if_rocm_is_configured([
         "amdgpu_compiler.h",
-    ],
-    deps = [
+    ]),
+    deps = if_rocm_is_configured([
         ":cusolver_rewriter",
         ":gemm_rewriter",
         ":gpu_compiler",
@@ -1612,7 +1617,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core/platform:rocm_rocdl_path",
-    ],
+    ]),
 )
 
 cc_library(

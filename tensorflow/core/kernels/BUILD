@@ -1823,7 +1823,6 @@ tf_cuda_cc_test(
     srcs = ["depthwise_conv_ops_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171342266): re-enable.
-        "no_gpu",  # flaky, TODO(b/191214648)
     ],
     deps = [
         ":conv_ops",
@@ -6606,7 +6605,6 @@ cc_library(
         "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
-    features = ["-no_undefined"],
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",

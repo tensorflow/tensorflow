@@ -52,6 +52,13 @@ def initialize_tpu_system(cluster_resolver=None):
     RuntimeError: If running inside a tf.function.
     NotFoundError: If no TPU devices found in eager mode.
   """
+
+  # Clear out the eager context caches before initialize tpu system to
+  # deallocate all tpu buffers.
+  logging.info("Clearing out eager caches")
+  context.context()._clear_caches()  # pylint: disable=protected-access
+  context.context().clear_kernel_cache()
+
   job = None
   if cluster_resolver is None:
     # If no cluster resolver is specified, and running eagerly, execute the init
@@ -106,10 +113,7 @@ def initialize_tpu_system(cluster_resolver=None):
           + str(e))
 
     # Clear out the eager context caches since the memory is invalid now.
-    logging.info("Clearing out eager caches")
-    context.context()._clear_caches()  # pylint: disable=protected-access
     context.context()._initialize_logical_devices()  # pylint: disable=protected-access
-    context.context().clear_kernel_cache()
 
     serialized_topology = output.numpy()
   elif not ops.executing_eagerly_outside_functions():

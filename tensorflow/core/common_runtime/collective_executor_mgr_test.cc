@@ -46,6 +46,7 @@ class CollectiveExecutorMgrTest : public ::testing::Test {
         new DeviceResolverLocal(device_mgr_.get()));
     std::unique_ptr<ParamResolverInterface> prl(
         new CollectiveParamResolverLocal(cp, device_mgr_.get(), drl.get(),
+                                         /*nccl_communicator*/ nullptr,
                                          task_name));
     cme_.reset(new CollectiveExecutorMgr(cp, device_mgr_.get(), std::move(drl),
                                          std::move(prl),

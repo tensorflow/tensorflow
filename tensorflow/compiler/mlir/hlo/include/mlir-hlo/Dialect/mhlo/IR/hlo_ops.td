@@ -1838,6 +1838,8 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
 
   // TODO(b/129422361): SortOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",

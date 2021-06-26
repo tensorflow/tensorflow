@@ -20,15 +20,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
 namespace mlir {
-namespace tf_saved_model {
+namespace tf_test {
 namespace {
 
 struct FreezeVariableTestPass
-    : public FreezeVariablesTestPassBase<FreezeVariableTestPass> {
+    : public ::mlir::tf_test::FreezeVariablesTestPassBase<
+          FreezeVariableTestPass> {
   void runOnOperation() override {
     TF::test_util::FakeSession session;
     PassManager pass_manager(&getContext(), "module");
-    pass_manager.addPass(CreateFreezeVariablesPass(&session));
+    pass_manager.addPass(tf_saved_model::CreateFreezeVariablesPass(&session));
     auto status = pass_manager.run(getOperation());
     if (status.failed()) signalPassFailure();
   }
@@ -38,5 +39,5 @@ struct FreezeVariableTestPass
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariableTestPass() {
   return std::make_unique<FreezeVariableTestPass>();
 }
-}  // namespace tf_saved_model
+}  // namespace tf_test
 }  // namespace mlir

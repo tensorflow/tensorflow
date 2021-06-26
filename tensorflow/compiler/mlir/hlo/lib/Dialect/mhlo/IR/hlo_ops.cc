@@ -3587,6 +3587,56 @@ static LogicalResult Verify(SortOp op) {
   return success();
 }
 
+/// Drops the operands if the results are not used and they are not used in
+/// op.comparator().
+static LogicalResult SortDropEmptyUseArgs(SortOp op,
+                                          PatternRewriter& rewriter) {
+  DenseSet<unsigned> erased_args;
+  unsigned num_operands = op.getNumOperands();
+  for (unsigned i = 0; i < num_operands; ++i) {
+    if (!op.getResult(i).use_empty()) continue;
+    Block& block = op.comparator().front();
+    if (!block.getArgument(i * 2).use_empty()) continue;
+    if (!block.getArgument(i * 2 + 1).use_empty()) continue;
+    erased_args.insert(i);
+  }
+  if (erased_args.empty()) return failure();
+
+  SmallVector<Value> new_operands;
+  SmallVector<unsigned> erased_block_args;
+  for (auto en : llvm::enumerate(op.operands())) {
+    if (erased_args.contains(en.index())) {
+      erased_block_args.push_back(en.index() * 2);
+      erased_block_args.push_back(en.index() * 2 + 1);
+    } else {
+      new_operands.push_back(en.value());
+    }
+  }
+
+  auto new_op = rewriter.create<SortOp>(op.getLoc(), new_operands,
+                                        op.dimension(), op.is_stable());
+  Region& region = new_op.comparator();
+  rewriter.inlineRegionBefore(op.comparator(), region, region.end());
+  region.front().eraseArguments(erased_block_args);
+
+  SmallVector<Value> results;
+  for (unsigned i = 0, j = 0; i < num_operands; ++i) {
+    if (erased_args.contains(i)) {
+      results.push_back({});
+    } else {
+      results.push_back(new_op.getResult(j++));
+    }
+  }
+  rewriter.replaceOp(op, results);
+
+  return success();
+}
+
+void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* /*context*/) {
+  results.insert(SortDropEmptyUseArgs);
+}
+
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//

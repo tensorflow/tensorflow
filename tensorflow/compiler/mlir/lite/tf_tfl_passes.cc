@@ -92,6 +92,8 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
 
+  // TODO(b/149099381): Remove after handling WhileRegion in favor of later
+  // instance.
   if (session.hasValue()) {
     pass_manager->addPass(
         mlir::tf_saved_model::CreateFreezeVariablesPass(session.getValue()));
@@ -118,6 +120,12 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   // during which resources dont get frozen in the python layer.
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  // Try freezing again read only vars post resource decomposition.
+  if (session.hasValue()) {
+    pass_manager->addPass(
+        mlir::tf_saved_model::CreateFreezeVariablesPass(session.getValue()));
+  }
 
   // Note:
   // We need to fuse composite ops before LowerStaticTensorList pass.

@@ -88,7 +88,6 @@ enum BuiltinOperator : byte {
   SPACE_TO_DEPTH = 26,
   SVDF = 27,
   TANH = 28,
-  // TODO(aselle): Consider rename to CONCATENATE_EMBEDDINGS
   CONCAT_EMBEDDINGS = 29,
   SKIP_GRAM = 30,
   CALL = 31,
