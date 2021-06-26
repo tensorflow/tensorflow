@@ -158,13 +158,21 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
     }
   } else if (shape.IsArray()) {
     if (allocate_arrays) {
-      piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
-          piece->size_bytes(), kMinimumAlignment)));
-      if (shape.is_dynamic()) {
+      if (shape.is_static()) {
+        piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
+            piece->size_bytes(), kMinimumAlignment)));
+      } else {
         CHECK_EQ(piece->dynamic_size_buffer(), nullptr);
-        piece->set_dynamic_size_buffer(
-            static_cast<int32*>(tensorflow::port::AlignedMalloc(
-                piece->dynamic_size_buffer_bytes(), kMinimumAlignment)));
+        auto piece_size_bytes = piece->size_bytes();
+        int64 size_to_alloc = piece_size_bytes +
+                              piece->dynamic_size_buffer_bytes();
+        auto buf = static_cast<char*>(
+            tensorflow::port::AlignedMalloc(size_to_alloc, kMinimumAlignment));
+        CHECK(nullptr != buf);
+        piece->set_buffer(buf);
+        auto dynamic_size_buf = 
+            reinterpret_cast<int32*>(buf + piece_size_bytes);
+        piece->set_dynamic_size_buffer(dynamic_size_buf);
       }
     }
   } else {
@@ -198,9 +206,11 @@ void Literal::DeallocateBuffers() {
         if (piece->buffer() != nullptr) {
           tensorflow::port::AlignedFree(piece->buffer());
         }
-        if (piece->dynamic_size_buffer() != nullptr) {
-          tensorflow::port::AlignedFree(piece->dynamic_size_buffer());
-        }
+        // Since we have allocated the dynamic size buffer together with 
+        //     piece buffer, it is not necessary free it again.
+        //if (piece->dynamic_size_buffer() != nullptr) {
+        //  tensorflow::port::AlignedFree(piece->dynamic_size_buffer());
+        //}
       });
 }
 
