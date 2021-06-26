@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/async_all_reduce_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
+#include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
@@ -150,6 +151,36 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+class GpuBfloat16Support : public BFloat16Support {
+ public:
+  explicit GpuBfloat16Support(bool supports_matrix_multiplication)
+      : supports_matrix_multiplication_(supports_matrix_multiplication) {}
+
+  bool SupportsBF16Operand(const HloInstruction& hlo,
+                           int64 operand_index) const override {
+    return BFloat16Support::SupportsBF16Operand(hlo, operand_index) ||
+           IsSupported(hlo);
+  }
+
+  // Returns whether the backend supports BF16 output for the HLO instruction.
+  bool SupportsBF16Output(const HloInstruction& hlo) const override {
+    return BFloat16Support::SupportsBF16Output(hlo) || IsSupported(hlo);
+  }
+
+ private:
+  bool IsSupported(const HloInstruction& hlo) const {
+    return hlo.opcode() == HloOpcode::kBitcast ||
+           (supports_matrix_multiplication_ &&
+            gpu::IsMatrixMultiplication(hlo));
+  }
+
+  bool supports_matrix_multiplication_;
+};
+
+}  // end anonymous namespace
+
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
     : platform_id_(platform_id),
@@ -207,10 +238,9 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
-    // Convert BF16 operations to F32 operations so that the GPU backend can
-    // support BF16 operations without directly implementing a BF16 lowering for
-    // most ops.
-    pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
+
+    GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true);
+    pipeline.AddPass<BFloat16Normalization>(&bf16);
 
     // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
     // where possible.  Not every batchnorm op can be implemented as a call to
@@ -492,6 +522,11 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       TransposeFolding::NeverFoldTranspose);
   // Rewrite GEMMs into custom calls.
   pipeline.AddPass<GemmRewriter>();
+
+  // Run conversion again, to catch those matrix multiplications which were not
+  // rewritten into cuBLAS calls.
+  GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false);
+  pipeline.AddPass<BFloat16Normalization>(&bf16);
 
   // Choose the fastest algorithm for each conv.
   //

@@ -1371,13 +1371,15 @@ class Stream {
         std::is_same<InputType, Eigen::half>::value ||
             std::is_same<InputType, ConstantType>::value,
         "If input is not Eigen::half, constant and input types have to match");
-    static_assert(std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<InputType, float>::value ||
-                      std::is_same<InputType, double>::value ||
-                      std::is_same<InputType, std::complex<float>>::value ||
-                      std::is_same<InputType, std::complex<double>>::value,
-                  "Input can be half, float, double, std::complex<float> or "
-                  "std::complex<double>");
+    static_assert(
+        std::is_same<InputType, Eigen::half>::value ||
+            std::is_same<InputType, Eigen::bfloat16>::value ||
+            std::is_same<InputType, float>::value ||
+            std::is_same<InputType, double>::value ||
+            std::is_same<InputType, std::complex<float>>::value ||
+            std::is_same<InputType, std::complex<double>>::value,
+        "Input can be half, bf16, float, double, std::complex<float> or "
+        "std::complex<double>");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -1607,10 +1609,12 @@ class Stream {
       int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
       ConstantType beta, DeviceMemory<InputType> *c, int ldc, int64 stride_c,
       int batch_count) {
-    static_assert((std::is_same<InputType, Eigen::half>::value &&
+    static_assert(((std::is_same<InputType, Eigen::half>::value ||
+                    std::is_same<InputType, Eigen::bfloat16>::value) &&
                    std::is_same<ConstantType, float>::value) ||
                       ((std::is_same<InputType, float>::value ||
                         std::is_same<InputType, Eigen::half>::value ||
+                        std::is_same<InputType, Eigen::bfloat16>::value ||
                         std::is_same<InputType, double>::value ||
                         std::is_same<InputType, std::complex<float>>::value ||
                         std::is_same<InputType, std::complex<double>>::value) &&
@@ -2171,6 +2175,7 @@ class Stream {
   port::Status CheckTypesForExtendedBlas(
       blas::ComputationType computation_type) {
     static_assert(std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<InputType, Eigen::bfloat16>::value ||
                       std::is_same<InputType, float>::value ||
                       std::is_same<InputType, double>::value ||
                       std::is_same<InputType, int8>::value ||
@@ -2186,13 +2191,15 @@ class Stream {
         "int8 and output is int32");
     static_assert(std::is_same<ConstantType, OutputType>::value ||
                       (std::is_same<ConstantType, float>::value &&
-                       std::is_same<OutputType, Eigen::half>::value),
+                       (std::is_same<OutputType, Eigen::half>::value ||
+                        std::is_same<OutputType, Eigen::bfloat16>::value)),
                   "Constant and output types should match");
     blas::ComputationType expected_computation_type =
         blas::ToComputationType<ConstantType>::value;
     if (expected_computation_type != computation_type &&
         !(computation_type == blas::ComputationType::kF32 &&
-          expected_computation_type == blas::ComputationType::kF16)) {
+          (expected_computation_type == blas::ComputationType::kF16 ||
+           expected_computation_type == blas::ComputationType::kBF16AsF32))) {
       return port::InternalError(absl::StrCat(
           "Alpha/beta type and computation type have to match, got ",
           blas::ComputationTypeString(computation_type),
@@ -2299,6 +2306,13 @@ class Stream {
           static_cast<float>(*reinterpret_cast<Eigen::half *>(*alpha_ptr));
       *beta_storage =
           static_cast<float>(*reinterpret_cast<Eigen::half *>(*beta_ptr));
+      *alpha_ptr = alpha_storage;
+      *beta_ptr = beta_storage;
+    } else if (std::is_same<T, Eigen::bfloat16>::value) {
+      *alpha_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*alpha_ptr));
+      *beta_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*beta_ptr));
       *alpha_ptr = alpha_storage;
       *beta_ptr = beta_storage;
     }
