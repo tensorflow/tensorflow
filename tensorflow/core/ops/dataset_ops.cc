@@ -294,7 +294,7 @@ REGISTER_OP("WindowDataset")
       return shape_inference::ScalarShape(c);
     });
 
-REGISTER_OP("Window")
+REGISTER_OP("WindowOp")
     .Input("inputs: Tinputs")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")

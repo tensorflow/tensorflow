@@ -26,7 +26,6 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -233,35 +232,25 @@ class DistributedEpochTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testSampleFromDatasets(self):
     cluster = data_service_test_base.TestCluster(num_workers=3)
-    random_seed.set_random_seed(1619)
-    num_samples = 5000
-    rand_probs = np.random.random_sample((5,))
-    rand_probs = rand_probs / rand_probs.sum()
+    num_samples = 200
+    weights = [.6, .3, .1]
+    classes = len(weights)
 
-    # Use chi-squared test to assert that the observed distribution matches the
-    # expected distribution. Based on the implementation in
-    # "third_party/tensorflow/python/kernel_tests/multinomial_op_test.py".
-    for weights in [[.85, .05, .1], rand_probs, [1.]]:
-      classes = len(weights)
+    # Create a dataset that samples each integer in `[0, num_datasets)`
+    # with probability given by `weights[i]`.
+    ds = interleave_ops.sample_from_datasets(
+        [dataset_ops.Dataset.from_tensors(i).repeat() for i in range(classes)],
+        weights)
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode="distributed_epoch")
+    ds = ds.take(num_samples)
 
-      # Create a dataset that samples each integer in `[0, num_datasets)`
-      # with probability given by `weights[i]`.
-      ds = interleave_ops.sample_from_datasets([
-          dataset_ops.Dataset.from_tensors(i).repeat() for i in range(classes)
-      ], weights)
-      ds = self.make_distributed_dataset(
-          ds, cluster, processing_mode="distributed_epoch")
-      ds = ds.take(num_samples)
+    freqs = np.zeros([classes])
+    for v in self.getDatasetOutput(ds):
+      freqs[v] += 1
 
-      freqs = np.zeros([classes])
-      for v in self.getDatasetOutput(ds):
-        freqs[v] += 1
-
-      expected = np.asarray(weights)
-      actual = np.asarray(freqs / num_samples)
-      diff = actual - expected
-      chi2 = np.sum(diff * diff / expected, axis=0)
-      self.assertLess(chi2, 1e-2)
+    self.assertGreater(freqs[0], freqs[1])
+    self.assertGreater(freqs[1], freqs[2])
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),

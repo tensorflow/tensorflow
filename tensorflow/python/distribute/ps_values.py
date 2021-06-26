@@ -397,6 +397,8 @@ class CachingVariable(variables_lib.Variable, core.Tensor):
     return self._v.op
 
   def value(self):
+    if distribute_utils.caching_scope_local.in_caching_scope():
+      return self.cached_read_value()
     return self._v.value()
 
   def eval(self, session=None):
@@ -445,8 +447,10 @@ class CachingVariable(variables_lib.Variable, core.Tensor):
     pass
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
-    return ops.convert_to_tensor(self.get(), dtype=dtype, name=name,
-                                 as_ref=as_ref)
+    if distribute_utils.caching_scope_local.in_caching_scope():
+      return self.cached_read_value()
+    return ops.convert_to_tensor(
+        self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
   @classmethod
   def _overload_overloadable_operators(cls):

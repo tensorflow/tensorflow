@@ -521,8 +521,6 @@ class IteratorContext {
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
 
-  Params params() { return params_; }
-
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
     if (params_.thread_pool) {

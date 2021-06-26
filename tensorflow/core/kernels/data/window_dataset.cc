@@ -30,13 +30,14 @@ constexpr char kInputs[] = "inputs";
 constexpr char kOutputTypes[] = "output_types";
 constexpr char kOutputShapes[] = "output_shapes";
 constexpr char kWindow[] = "Window";
+constexpr char kWindowOp[] = "WindowOp";
 constexpr char kCurIndex[] = "i";
 
 class Window : public DatasetBase {
  public:
   Window(std::vector<std::vector<Tensor>> elements, DataTypeVector output_types,
          std::vector<PartialTensorShape> output_shapes)
-      : DatasetBase(DatasetContext({kWindow, kWindow})),
+      : DatasetBase(DatasetContext({kWindowOp, kWindow})),
         elements_(std::move(elements)),
         output_types_(std::move(output_types)),
         output_shapes_(std::move(output_shapes)) {}
@@ -174,7 +175,7 @@ class WindowOp : public DatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("Window").Device(DEVICE_CPU), WindowOp);
+REGISTER_KERNEL_BUILDER(Name("WindowOp").Device(DEVICE_CPU), WindowOp);
 
 }  // namespace
 
