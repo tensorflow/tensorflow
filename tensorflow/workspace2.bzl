@@ -9,8 +9,8 @@ load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
-load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//third_party/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
+load("@tf_toolchains//toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
+load("@tf_toolchains//toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
@@ -103,7 +103,7 @@ def _tf_toolchains():
     # Point //external/local_config_arm_compiler to //external/arm_compiler
     arm_compiler_configure(
         name = "local_config_arm_compiler",
-        build_file = "//third_party/toolchains/cpus/arm:BUILD",
+        build_file = "@tf_toolchains//toolchains/cpus/arm:BUILD",
         remote_config_repo_arm = "../arm_compiler",
         remote_config_repo_aarch64 = "../aarch64_compiler",
     )
@@ -111,7 +111,7 @@ def _tf_toolchains():
     # TFLite crossbuild toolchain for embeddeds Linux
     arm_linux_toolchain_configure(
         name = "local_config_embedded_arm",
-        build_file = "//third_party/toolchains/embedded/arm-linux:BUILD",
+        build_file = "@tf_toolchains//toolchains/embedded/arm-linux:BUILD",
         aarch64_repo = "../aarch64_linux_toolchain",
         armhf_repo = "../armhf_linux_toolchain",
     )
@@ -181,11 +181,11 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "4d655c0751ee6439584ef5e3d465953fe0c2f4ee2700bc02699bdc1d1572af0d",
-        strip_prefix = "oneDNN-2.2",
+        sha256 = "82795714f11649b2a3f797d99bd07d117cde97215f55654b028ca00f3b33e0cb",
+        strip_prefix = "oneDNN-2.3-rc2",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
         ],
     )
 
@@ -239,7 +239,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "aarch64_linux_toolchain",
-        build_file = "//third_party/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
+        build_file = "@tf_toolchains//toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
         sha256 = "8ce3e7688a47d8cd2d8e8323f147104ae1c8139520eca50ccf8a7fa933002731",
         strip_prefix = "gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu",
         urls = [
@@ -250,7 +250,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "armhf_linux_toolchain",
-        build_file = "//third_party/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
+        build_file = "@tf_toolchains//toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
         sha256 = "d4f6480ecaa99e977e3833cc8a8e1263f9eecd1ce2d022bb548a24c4f32670f5",
         strip_prefix = "gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf",
         urls = [

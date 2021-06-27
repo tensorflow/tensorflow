@@ -16,7 +16,9 @@ limitations under the License.
 // This file implements logic for lowering memref.tensor_load ops that are
 // inserted during `mhlo-legalize-to-lmhlo`.
 
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
@@ -71,7 +73,7 @@ struct ForwardShapeOfOp : public OpRewritePattern<ShapeOfOp> {
 };
 
 struct LegalizeTensorLoadOpPass
-    : public mlir::PassWrapper<LegalizeTensorLoadOpPass, FunctionPass> {
+    : public LegalizeTensorLoadOpPassBase<LegalizeTensorLoadOpPass> {
   // Perform the lowering to remove memref.tensor_load ops inserted during
   // `mhlo-legalize-to-lmhlo`.
   void runOnFunction() override {

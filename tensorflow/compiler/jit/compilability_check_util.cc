@@ -65,6 +65,8 @@ namespace tensorflow {
 
 namespace {
 
+constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
+
 bool HasResourceInput(const Node& node) {
   return absl::c_count(node.input_types(), DT_RESOURCE) != 0;
 }
@@ -73,6 +75,10 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
   VLOG(3) << "Found uncompilable node " << node.name() << " (op "
           << node.type_string() << ")" << (reason.empty() ? "" : ": ")
           << reason;
+}
+
+bool IsInOutsideCompilationCluster(const Node& n) {
+  return n.attrs().Find(kXlaOutsideCompilationAttr) != nullptr;
 }
 
 Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
@@ -378,6 +384,10 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
     const {
   auto stack_depth = stack_trace->size();
+
+  if (op_filter_.allow_outside_compiled && IsInOutsideCompilationCluster(node))
+    return true;
+
   if (node.IsSource() || node.IsSink()) {
     absl::string_view uncompilable_reason = "source or sink node";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,

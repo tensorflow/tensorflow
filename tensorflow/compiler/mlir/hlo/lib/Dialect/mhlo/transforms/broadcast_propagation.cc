@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -376,7 +377,7 @@ struct EarlyBroadcastInDimOpPattern
 };
 
 struct BroadcastPropagationPass
-    : public PassWrapper<BroadcastPropagationPass, FunctionPass> {
+    : public BroadcastPropagationPassBase<BroadcastPropagationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }

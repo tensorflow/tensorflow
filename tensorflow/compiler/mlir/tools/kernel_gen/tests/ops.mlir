@@ -30,7 +30,13 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 }
 
 // CHECK-LABEL: func @assert
-func @assert(%ctx: !tf_framework.op_kernel_context) {
+func @assert(%ctx: !tf_framework.op_kernel_context, %cond: i1) {
+  tf_framework.assert %ctx, %cond, "ALREADY_EXISTS", "Or maybe not"
+  return
+}
+
+// CHECK-LABEL: func @report_error
+func @report_error(%ctx: !tf_framework.op_kernel_context) {
   tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome"
   return
 }
@@ -45,4 +51,10 @@ func @null_memref() {
 func @null_context() {
   tf_framework.null_context : !tf_framework.op_kernel_context
   return
+}
+
+// CHECK-LABEL: func @is_valid_memref
+func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
+  %pred = tf_framework.is_valid_memref(%buf) : memref<?xf32> -> i1
+  return %pred : i1
 }

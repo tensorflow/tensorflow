@@ -409,12 +409,10 @@ cc_library(
         ":cudnn_lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@cudnn_frontend_archive//:cudnn_frontend",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        # copybara:comment_begin(OSS only)
-        "@cudnn_frontend_archive//:cudnn_frontend",
-        # copybara:comment_end
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",

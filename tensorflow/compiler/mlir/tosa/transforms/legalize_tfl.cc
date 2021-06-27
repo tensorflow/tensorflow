@@ -23,6 +23,8 @@ limitations under the License.
 #include <numeric>
 #include <unordered_set>
 
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -2919,27 +2921,52 @@ LogicalResult ConvertTFLDequantizeOp::matchAndRewrite(
       tfl_dequantize_op.input().getType().dyn_cast<RankedTensorType>();
   if (!qtype) return failure();
 
-  UniformQuantizedType element_type =
-      qtype.getElementType().dyn_cast<UniformQuantizedType>();
-  if (!element_type) {
+  Type element_type = qtype.getElementType();
+  if (element_type.isa<FloatType>()) {
     rewriter.replaceOpWithNewOp<tosa::CastOp>(op, output_type,
                                               tfl_dequantize_op.input());
     return success();
   }
 
-  double scale = element_type.getScale();
-  int64_t zp = element_type.getZeroPoint();
-  int64_t num_bits = element_type.getStorageTypeIntegralWidth();
-  zp = element_type.isSigned() ? zp : zp - (1 << (num_bits - 1));
+  if (auto eq_ty = element_type.dyn_cast<quant::UniformQuantizedType>()) {
+    double scale = eq_ty.getScale();
+    int64_t zp = eq_ty.getZeroPoint();
+    int64_t num_bits = eq_ty.getStorageTypeIntegralWidth();
+    zp = eq_ty.isSigned() ? zp : zp - (1 << (num_bits - 1));
 
-  llvm::Optional<Value> result = convertDequantizeOp(
-      rewriter, op, output_type, tfl_dequantize_op.input(), scale, zp);
+    llvm::Optional<Value> result = convertDequantizeOp(
+        rewriter, op, output_type, tfl_dequantize_op.input(), scale, zp, 0);
 
-  if (!result) return failure();
+    if (!result) return failure();
 
-  rewriter.replaceOp(op, {result.getValue()});
+    rewriter.replaceOp(op, {result.getValue()});
+    return success();
+  }
 
-  return success();
+  if (quant::UniformQuantizedPerAxisType eq_ty =
+          element_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+    SmallVector<float> zps;
+    for (auto zp : eq_ty.getZeroPoints()) {
+      int64_t num_bits = eq_ty.getStorageTypeIntegralWidth();
+      zps.push_back(eq_ty.isSigned() ? zp : zp - (1 << (num_bits - 1)));
+    }
+
+    SmallVector<float> scales;
+    for (auto scale : eq_ty.getScales()) {
+      scales.push_back(scale);
+    }
+
+    llvm::Optional<Value> result = convertDequantizeOp(
+        rewriter, op, output_type, tfl_dequantize_op.input(), scales, zps,
+        eq_ty.getQuantizedDimension());
+
+    if (!result) return failure();
+
+    rewriter.replaceOp(op, {result.getValue()});
+    return success();
+  }
+
+  return failure();
 }
 
 LogicalResult ConvertTFLQConstOp::matchAndRewrite(

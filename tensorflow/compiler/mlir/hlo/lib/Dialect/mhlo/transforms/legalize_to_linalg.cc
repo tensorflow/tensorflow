@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -1136,7 +1137,7 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     // First fill the output buffer with the init value.
     Value init_value =
         rewriter.create<memref::LoadOp>(loc, adaptor.init_values()[0]);
-    rewriter.create<linalg::FillOp>(loc, adaptor.out()[0], init_value);
+    rewriter.create<linalg::FillOp>(loc, init_value, adaptor.out()[0]);
 
     DenseIntElementsAttr dimensions_attr = reduce_op.dimensions();
     SmallVector<int, 4> reduction_dims;
@@ -1269,8 +1270,8 @@ class SliceConverter : public OpConversionPattern<OpTy> {
       rewriter.create<linalg::CopyOp>(loc, linalg_op, args[1]);
       rewriter.eraseOp(slice_op);
     } else {
-      rewriter.replaceOpWithNewOp<SubTensorOp>(slice_op, args[0], offsets,
-                                               sizes, strides);
+      rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+          slice_op, args[0], offsets, sizes, strides);
     }
     return success();
   }
@@ -1339,9 +1340,9 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
         this->typeConverter->convertType(dynamic_slice_op.getType())
             .cast<RankedTensorType>();
 
-    rewriter.replaceOpWithNewOp<SubTensorOp>(dynamic_slice_op, result_type,
-                                             adaptor.operand(), start_indices,
-                                             sizes, strides);
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        dynamic_slice_op, result_type, adaptor.operand(), start_indices, sizes,
+        strides);
     return success();
   }
 };
@@ -1409,7 +1410,7 @@ class DynamicUpdateSliceConverter
 
     int64_t rank = operand_type.getRank();
     SmallVector<OpFoldResult, 3> strides(rank, rewriter.getI64IntegerAttr(1));
-    rewriter.replaceOpWithNewOp<SubTensorInsertOp>(
+    rewriter.replaceOpWithNewOp<tensor::InsertSliceOp>(
         op, adaptor.update(), adaptor.operand(), start_indices, sizes, strides);
     return success();
   }
@@ -1495,7 +1496,7 @@ class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), op_type);
     auto init_tensor = GetInitTensor(rewriter, loc, output_type, dyn_shape);
     Value zero_tensor =
-        rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+        rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
     rewriter.replaceOpWithNewOp<LinalgOp>(
         op, TypeRange{op.getType()}, ValueRange{adaptor.lhs(), adaptor.rhs()},
         ValueRange{zero_tensor});
@@ -1563,7 +1564,7 @@ class DotGeneralOpOnTensorsConversion
     Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
     auto init_tensor = GetInitTensor(rewriter, loc, output_type, dyn_shape);
     Value zero_tensor =
-        rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+        rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
     Operation* linalg_op = rewriter.create<linalg::BatchMatmulOp>(
         loc, /*resultTensorTypes=*/TypeRange{op.getType()},
         /*inputs=*/ValueRange{adaptor.lhs(), adaptor.rhs()},
@@ -1574,16 +1575,19 @@ class DotGeneralOpOnTensorsConversion
   }
 };
 
+bool IsInBodyOfLinalgOps(Operation* op) {
+  auto parent_op = op->getParentRegion()->getParentOp();
+  return parent_op->getDialect() ==
+         parent_op->getContext()->getLoadedDialect<linalg::LinalgDialect>();
+}
+
 template <typename OpTy>
 struct ReduceRegionXLAOpConversion : public OpConversionPattern<OpTy> {
   using OpConversionPattern<OpTy>::OpConversionPattern;
   LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    // Only convert the body of reduction ops to std ops.
-    auto parent_op = op.getOperation()->getParentRegion()->getParentOp();
-    if (!isa<mhlo::ReduceOp, linalg::GenericOp, linalg::IndexedGenericOp>(
-            parent_op)) {
+    if (!IsInBodyOfLinalgOps(op)) {
       return failure();
     }
     if (!op.getResult().getType().template isa<TensorType>()) return failure();
@@ -1624,6 +1628,9 @@ class ReduceRegionReturnOpConversion
   LogicalResult matchAndRewrite(
       mhlo::ReturnOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
+    if (!IsInBodyOfLinalgOps(op)) {
+      return failure();
+    }
     rewriter.replaceOpWithNewOp<linalg::YieldOp>(op, args);
     return success();
   }
@@ -1670,7 +1677,7 @@ class ReduceOnTensorsConversion : public OpConversionPattern<mhlo::ReduceOp> {
           rewriter, loc, src, result_type, reduction_dims);
       auto init_tensor = GetInitTensor(rewriter, loc, result_type, dyn_shape);
       Value filled_tensor =
-          rewriter.create<linalg::FillOp>(loc, init_tensor, init_value)
+          rewriter.create<linalg::FillOp>(loc, init_value, init_tensor)
               .result();
       outputs.push_back(filled_tensor);
     }
@@ -1795,7 +1802,7 @@ struct NormalConvOpOnTensorsConversion
     auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
     Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
     Value zero_tensor =
-        rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+        rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
     linalg::LinalgOp res;
     Attribute strides = op.window_stridesAttr();
     // TODO(ataei): Only support dilated kernel right now. We need to consider
@@ -1920,7 +1927,7 @@ struct DepthwiseConvOpOnTensorsConversion
       auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
       Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
       Value zero_tensor =
-          rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+          rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
 
       auto reshaped_output_type = RankedTensorType::get(
           reshaped_output_dims, result_type.getElementType());
@@ -1944,7 +1951,7 @@ struct DepthwiseConvOpOnTensorsConversion
       auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
       Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
       Value zero_tensor =
-          rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+          rewriter.create<linalg::FillOp>(loc, zero, init_tensor).getResult(0);
 
       // Create a Linalg reshape op that converts the filter from 4 dimensions
       // into 3 dimensions (by droping the unit dimension). This is needed
@@ -2065,7 +2072,7 @@ struct ReduceWindowOpOnTensorsConversion
           loc, result_type.getShape(), result_type.getElementType());
       init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
       Value filled_init_tensor =
-          rewriter.create<linalg::FillOp>(loc, init_tensor, init_value)
+          rewriter.create<linalg::FillOp>(loc, init_value, init_tensor)
               .getResult(0);
       auto create_op = [&](auto* type_ptr) -> linalg::LinalgOp {
         return cast<linalg::LinalgOp>(
@@ -2104,7 +2111,7 @@ struct ReduceWindowOpOnTensorsConversion
   }
 };
 
-/// Converts xla-hlo.torch_index_select op to a linalg.indexed_generic op.
+/// Converts xla-hlo.torch_index_select op to a linalg.generic op.
 struct TorchIndexSelectOpOnTensorsConversion
     : public OpConversionPattern<mhlo::TorchIndexSelectOp> {
   using OpConversionPattern<mhlo::TorchIndexSelectOp>::OpConversionPattern;
@@ -2428,7 +2435,7 @@ class RemoveSignTypeConverter : public TypeConverter {
 //     iterator_types = ["parallel", "parallel"],
 // } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 struct LhloLegalizeToLinalgPass
-    : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
+    : public lmhlo::LhloLegalizeToLinalgPassBase<LhloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<AffineDialect, complex::ComplexDialect, linalg::LinalgDialect,
@@ -2454,7 +2461,7 @@ struct LhloLegalizeToLinalgPass
 };
 
 struct HloLegalizeToLinalgPass
-    : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
+    : public mhlo::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<linalg::LinalgDialect, scf::SCFDialect, complex::ComplexDialect,

@@ -636,7 +636,6 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
   static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "Not little endian");
 #endif
-  namespace half_impl = Eigen::half_impl;
   intptr_t intptr = reinterpret_cast<intptr_t>(ptr);
   assert(!(intptr & 0x1));  // should be 2-aligned.
   if (intptr & 0x2) {

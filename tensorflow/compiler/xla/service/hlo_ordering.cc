@@ -513,6 +513,11 @@ bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
   if (!order_position_.contains(a) || !order_position_.contains(b)) {
     return false;
   }
+  if (a->parent()->root_instruction() == a) {
+    // 'a' is the root instruction of the computation, which lives out. So
+    // 'a' cannot execute before 'b'.
+    return false;
+  }
   return order_position_.at(a) < order_position_.at(b);
 }
 

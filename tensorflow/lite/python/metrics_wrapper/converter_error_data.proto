@@ -34,6 +34,45 @@ message ConverterErrorData {
     optional string name = 1;
   }
 
+  // Represents the type of location.
+  enum LocationType {
+    // No location information available.
+    UNKNOWNLOC = 0;
+    // The location is the nodename;
+    NAMELOC = 1;
+    // The location is a stacktrace.
+    CALLSITELOC = 2;
+    // The location is a fused location, usually represents the list of output
+    // tensor locations of that node.
+    FUSEDLOC = 3;
+  }
+
+  // Represents a source location with file name, line and column number.
+  message FileLoc {
+    optional string filename = 1;
+    optional uint32 line = 2;
+    optional uint32 column = 3;
+  }
+
+  // Represents the node name and its source location.
+  message SourceLoc {
+    optional string name = 1;
+    optional FileLoc source = 2;
+  }
+
+  // Represents the location information of current node.
+  message Location {
+    optional LocationType type = 1;
+    // For each location type, this field is different. If type is:
+    // - UNKNOWNLOC: call is empty.
+    // - NAMELOC: call has a single element representing the current node.
+    // - CALLSITELOC: call is a chain of source locations representing a
+    //     stacktrace.
+    // - FUSEDLOC: call is a list, represents the list of output tensor
+    //     locations.
+    repeated SourceLoc call = 2;
+  }
+
   // The name of the component from which the error was originally thrown.
   optional string component = 1;
   // The name of the subcomponent from which the error was originally thrown. In
@@ -43,5 +82,5 @@ message ConverterErrorData {
   optional ErrorCode error_code = 3;
   optional string error_message = 4;
   optional Operator operator = 5;
-  // TODO(b/188616508) Collects the location information.
+  optional Location location = 6;
 }

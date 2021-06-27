@@ -62,7 +62,7 @@ class DatasetCreatorModelFitTest(test_base.DatasetCreatorModelFitTestBase):
           (x, y)).shuffle(10).batch(2)
 
     if strategy._should_use_with_coordinator:
-      with self.assertRaises(errors.OutOfRangeError):
+      with self.assertRaises((errors.OutOfRangeError, errors.CancelledError)):
         self._model_fit(
             strategy,
             steps_per_epoch=-1,

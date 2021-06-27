@@ -47,99 +47,14 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
 
 Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
-  const Shape& literal_shape = literal.shape();
-  VLOG(2) << "Transferring literal to infeed with shape: "
-          << ShapeUtil::HumanString(literal_shape);
-
-  // For a tuple, we transfer each of its elements to the device and
-  // enqueue the resulting destination device addresses with the
-  // infeed manager.
-  ShapeTree<InfeedBuffer> buffer_tree(literal_shape);
-  for (auto& leaf : buffer_tree.leaves()) {
-    const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
-    CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);
-    int64 tuple_element_size = GetByteSizeRequirement(sub_shape);
-    TF_ASSIGN_OR_RETURN(leaf.second, TransferBufferToInfeedInternal(
-                                         executor, tuple_element_size,
-                                         literal.untyped_data(leaf.first)));
-  }
-  return EnqueueBuffersToInfeed(executor, std::move(buffer_tree));
-}
-
-Status GpuTransferManager::EnqueueBuffersToInfeed(
-    se::StreamExecutor* executor, ShapeTree<InfeedBuffer> buffers) {
-  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager(executor);
-  se::Stream* stream = infeed_manager->GetStream();
-
-  // TODO(b/30467474): Since this stream is shared across different
-  // infeed requests, blocking on the stream might be
-  // heavy-handed. Figure out if finer-grained acknowledgement is
-  // possible.
-  Status block_status = stream->BlockHostUntilDone();
-  if (!block_status.ok()) {
-    return InternalError("Failed to complete data transfer on stream %p: %s",
-                         stream, block_status.error_message());
-  }
-
-  infeed_manager->EnqueueDestination(std::move(buffers));
-
-  VLOG(2) << "Infeed data transferred";
-
-  return Status::OK();
-}
-
-StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
-    se::StreamExecutor* executor, int64 size, const void* source) {
-  if (size > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
-                           size, std::numeric_limits<int32>::max());
-  }
-
-  if (size == 0) {
-    return InvalidArgument("Infeed shape needs 0 bytes");
-  }
-
-  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager(executor);
-  se::Stream* stream = infeed_manager->GetStream();
-  if (stream == nullptr) {
-    return InternalError("Failed to obtain a stream");
-  }
-
-  InfeedBuffer buffer(executor, size);
-  stream->ThenMemcpy(buffer.device_memory(), source, size);
-
-  VLOG(2) << "Queued infeed data on stream " << stream;
-
-  return std::move(buffer);
+  return gpu::GetOrCreateInfeedManager(executor)->TransferLiteralToInfeed(
+      executor, literal);
 }
 
 Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
-  ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
-      &literal.shape());
-
-  for (auto& leaf : outfeed_buffers.leaves()) {
-    const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
-    CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
-    leaf.second =
-        absl::make_unique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
-    leaf.second->set_destination(
-        absl::make_unique<MutableBorrowingLiteral>(literal, leaf.first));
-  }
-
-  // Give the tree of buffers to the outfeed manager. The device will fill it
-  // while we're waiting for it below.
-  gpu::OutfeedManager* outfeed_manager =
-      gpu::GetOrCreateOutfeedManager(executor);
-  outfeed_manager->EnqueueDestination(&outfeed_buffers);
-
-  // Now wait till all the buffers are written.
-  for (auto& leaf : outfeed_buffers.leaves()) {
-    const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
-    CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
-    leaf.second->WaitUntilAvailable();
-  }
-  return Status::OK();
+  return gpu::GetOrCreateOutfeedManager(executor)->TransferLiteralFromOutfeed(
+      executor, literal);
 }
 
 }  // namespace gpu

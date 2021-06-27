@@ -385,7 +385,7 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
   is_shape_tensor_.resize(n_inputs, false);
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   for (int i = 0; i < n_inputs; i++) {
-    const nvinfer1::ITensor* input = network->getInput(i);
+    const ITensorProxyPtr input = network->getInput(i);
     is_shape_tensor_[i] = input->isShapeTensor();
     if (is_shape_tensor_[i]) {
       VLOG(2) << "Found shape tensor " << input->getName() << ' at ' << i;

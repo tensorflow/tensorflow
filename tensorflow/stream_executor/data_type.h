@@ -44,6 +44,10 @@ struct ToDataType<Eigen::half> {
   static constexpr DataType value = DataType::kHalf;
 };
 template <>
+struct ToDataType<Eigen::bfloat16> {
+  static constexpr DataType value = DataType::kBF16;
+};
+template <>
 struct ToDataType<tensorflow::int8> {
   static constexpr DataType value = DataType::kInt8;
 };

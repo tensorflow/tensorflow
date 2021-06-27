@@ -4,12 +4,14 @@ package tensorflow.data;
 
 import "tensorflow/core/framework/graph.proto";
 
+// Next tag: 2
 message DatasetDef {
   // We represent datasets as tensorflow GraphDefs which define the operations
   // needed to create a tf.data dataset.
   GraphDef graph = 1;
 }
 
+// Next tag: 10
 message TaskDef {
   // The dataset to iterate over.
   oneof dataset {
@@ -19,6 +21,10 @@ message TaskDef {
   int64 dataset_id = 3;
   int64 task_id = 4;
   int64 job_id = 5;
+  // In distributed epoch processing mode, we use one split provider for each
+  // source that feeds into the dataset. In parallel_epochs mode,
+  // `num_split_providers` is always zero.
+  int64 num_split_providers = 9;
   // Address of the worker that the task is assigned to.
   string worker_address = 8;
   ProcessingModeDef processing_mode = 6;
@@ -29,6 +35,7 @@ message TaskDef {
   }
 }
 
+// Next tag: 6
 message TaskInfo {
   // The address of the worker processing the task.
   string worker_address = 1;
@@ -43,6 +50,7 @@ message TaskInfo {
   int64 starting_round = 5;
 }
 
+// Next tag: 3
 enum ProcessingModeDef {
   INVALID = 0;
   // Each tf.data worker processes an entire epoch.

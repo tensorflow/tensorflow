@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 
+#include <string>
+
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -33,6 +35,8 @@ typedef struct {
   std::vector<OpSignatureTensorSpec> inputs;
   std::vector<OpSignatureTensorSpec> outputs;
   void* builtin_data;
+  void* custom_initial_data;
+  std::string custom_name;
   union {
     struct {
       bool is_per_channel_quantized;
@@ -68,7 +72,7 @@ typedef struct {
 // WARNING: The caller is responsible to free the allocated
 // OpSignature.builtin_data memory.
 OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
-                           const SubGraph* subgraph);
+                           const SubGraph* subgraph, const Model* model);
 
 // Generate OpSignature with the given TfLiteContext, TfLiteNode and
 // TfLiteRegistration.

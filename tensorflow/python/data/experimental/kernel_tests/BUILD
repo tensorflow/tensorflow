@@ -242,6 +242,7 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:io",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],

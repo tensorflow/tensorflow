@@ -22,7 +22,7 @@ namespace functor {
 
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-DEFINE_BINARY3(div_no_nan, Eigen::half, float, double);
+DEFINE_BINARY5(div_no_nan, Eigen::half, float, double, complex64, complex128);
 #endif
 
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
@@ -31,7 +31,6 @@ DEFINE_BINARY8(div, Eigen::half, float, double, int16, int32, int64, complex64,
 #endif
 
 DEFINE_BINARY2(div, uint8, uint16);
-DEFINE_BINARY2(div_no_nan, complex64, complex128);
 
 }  // namespace functor
 }  // namespace tensorflow

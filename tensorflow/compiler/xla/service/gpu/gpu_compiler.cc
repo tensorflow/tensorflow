@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/async_all_reduce_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
+#include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
@@ -98,7 +99,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -150,6 +150,55 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+class GpuBfloat16Support : public BFloat16Support {
+ public:
+  explicit GpuBfloat16Support(bool supports_matrix_multiplication,
+                              se::StreamExecutor* stream_exec)
+      : supports_matrix_multiplication_(supports_matrix_multiplication),
+        stream_exec_(stream_exec) {}
+
+  bool SupportsBF16Operand(const HloInstruction& hlo,
+                           int64 operand_index) const override {
+    return BFloat16Support::SupportsBF16Operand(hlo, operand_index) ||
+           IsSupported(hlo);
+  }
+
+  // Returns whether the backend supports BF16 output for the HLO instruction.
+  bool SupportsBF16Output(const HloInstruction& hlo) const override {
+    return BFloat16Support::SupportsBF16Output(hlo) || IsSupported(hlo);
+  }
+
+ private:
+  bool IsSupported(const HloInstruction& hlo) const {
+    return hlo.opcode() == HloOpcode::kBitcast ||
+           (supports_matrix_multiplication_ &&
+            gpu::IsMatrixMultiplication(hlo)) ||
+           (IsConvBF16Supported() && hlo.opcode() == HloOpcode::kConvolution);
+  }
+
+  bool IsConvBF16Supported() const {
+    if (se::dnn::DnnSupport* dnn = stream_exec_->AsDnn()) {
+      se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
+          dnn->GetVersion();
+      return cudnn_version.ok() &&
+             (cudnn_version->major_version() > 8 ||
+              (cudnn_version->major_version() == 8 &&
+               cudnn_version->minor_version() >= 2)) &&
+             stream_exec_->GetDeviceDescription()
+                 .cuda_compute_capability()
+                 .IsAtLeast(se::CudaComputeCapability::AMPERE);
+    }
+    return false;
+  }
+
+  bool supports_matrix_multiplication_;
+  se::StreamExecutor* stream_exec_;
+};
+
+}  // end anonymous namespace
+
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
     : platform_id_(platform_id),
@@ -170,7 +219,9 @@ Status GpuCompiler::OptimizeHloModule(
 
     OpExpanderPass::PatternExtraFilter upcaster_filter =
         [&](const HloInstruction* instr) {
-          return !IsVoltaOrLater(*stream_exec) ||
+          return !stream_exec->GetDeviceDescription()
+                      .cuda_compute_capability()
+                      .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
                  !gpu::IsMatrixMultiplication(*instr);
         };
 
@@ -205,10 +256,10 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
-    // Convert BF16 operations to F32 operations so that the GPU backend can
-    // support BF16 operations without directly implementing a BF16 lowering for
-    // most ops.
-    pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
+
+    GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/true,
+                            stream_exec);
+    pipeline.AddPass<BFloat16Normalization>(&bf16);
 
     // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
     // where possible.  Not every batchnorm op can be implemented as a call to
@@ -491,6 +542,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Rewrite GEMMs into custom calls.
   pipeline.AddPass<GemmRewriter>();
 
+  // Run conversion again, to catch those matrix multiplications which were not
+  // rewritten into cuBLAS calls.
+  GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
+                          stream_exec);
+  pipeline.AddPass<BFloat16Normalization>(&bf16);
+
   // Choose the fastest algorithm for each conv.
   //
   // We pick the algorithm before fusion so we can generate better HLO. After
@@ -607,7 +664,7 @@ static Status CompileModuleToLlvmIrImpl(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
-    absl::optional<CudaComputeCapability> cuda_compute_capability,
+    se::CudaComputeCapability cuda_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, const HloProfileIndexMap* profile_index_map,
     CompileModuleResults* results) {
@@ -640,8 +697,7 @@ static Status CompileModuleToLlvmIrImpl(
   VLOG(1) << "Buffer Assignment Stats "
           << results->buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
-                         absl::StrCat("sm_", cuda_compute_capability->cc_major,
-                                      ".", cuda_compute_capability->cc_minor,
+                         absl::StrCat("sm_", cuda_compute_capability.ToString(),
                                       "_gpu_after_optimizations"));
 
   mlir::MLIRContext mlir_context;
@@ -915,17 +971,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
-  absl::optional<CudaComputeCapability> cuda_compute_capability =
-      [&]() -> absl::optional<CudaComputeCapability> {
-    CudaComputeCapability cuda_compute_capability;
-    stream_exec->GetDeviceDescription().cuda_compute_capability(
-        &cuda_compute_capability.cc_major, &cuda_compute_capability.cc_minor);
-    if (cuda_compute_capability.cc_major == -1) {
-      return absl::nullopt;
-    }
-    return cuda_compute_capability;
-  }();
-
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
   std::unique_ptr<HloProfilePrinterData> profile_printer;
 
@@ -945,7 +990,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   CompileModuleResults compile_module_results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       module.get(), &llvm_context, target_triple_, data_layout_,
-      stream_exec->platform()->Name(), gpu_device_info, cuda_compute_capability,
+      stream_exec->platform()->Name(), gpu_device_info,
+      stream_exec->GetDeviceDescription().cuda_compute_capability(),
       GetCanShareBuffer(), pointer_size_, profile_index_map.get(),
       &compile_module_results));
 
@@ -1030,8 +1076,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
-    absl::optional<CudaComputeCapability> cuda_compute_capability,
-    int pointer_size) {
+    se::CudaComputeCapability cuda_compute_capability, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,

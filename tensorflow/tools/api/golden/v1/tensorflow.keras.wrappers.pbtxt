@@ -1,7 +1,0 @@
-path: "tensorflow.keras.wrappers"
-tf_module {
-  member {
-    name: "scikit_learn"
-    mtype: "<type \'module\'>"
-  }
-}

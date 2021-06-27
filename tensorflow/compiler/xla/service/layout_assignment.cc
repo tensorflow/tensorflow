@@ -692,16 +692,19 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // Find the conditional branch with the most instructions and force all
       // other computations to match that layout. A potentially better decision
       // could count the number FLOPs or how constrained the layouts are.
-      int64 largest_branch = 0;
-      int64 largest_instruction_count =
-          instruction->branch_computation(0)->instruction_count();
-      for (int j = 1; j < instruction->branch_count(); ++j) {
+      int64 largest_branch = -1;
+      int64 largest_instruction_count = 0;
+      for (int j = 0; j < instruction->branch_count(); ++j) {
         const int64 instruction_count =
             instruction->branch_computation(j)->instruction_count();
-        if (instruction_count > largest_instruction_count) {
+        if (instruction_count > largest_instruction_count &&
+            !ShapeUtil::IsEmptyTuple(instruction->operand(j + 1)->shape())) {
           largest_branch = j;
           largest_instruction_count = instruction_count;
         }
+      }
+      if (largest_branch == -1) {
+        largest_branch = 0;
       }
       ComputationLayout& best_branch_computation_layout =
           FindOrDie(computation_layouts_,
@@ -1642,8 +1645,8 @@ Status LayoutAssignment::PropagateBufferConstraint(
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(
-      PropagateBufferConstraintToUses(buffer_constraint, constraints));
-  return PropagateBufferConstraintToOperands(buffer_constraint, constraints);
+      PropagateBufferConstraintToOperands(buffer_constraint, constraints));
+  return PropagateBufferConstraintToUses(buffer_constraint, constraints);
 }
 
 Status LayoutAssignment::PropagateBufferConstraintToUses(

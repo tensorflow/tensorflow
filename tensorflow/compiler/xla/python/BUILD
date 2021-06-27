@@ -113,6 +113,22 @@ py_test(
 )
 
 cc_library(
+    name = "status_casters",
+    hdrs = ["status_casters.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
@@ -124,6 +140,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":absl_casters",
+        ":status_casters",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -207,7 +224,10 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:transpose",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
@@ -262,7 +282,6 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
-        ":lru_cache",
         ":py_client",
         ":python_ref_manager",
         ":pytree",
@@ -272,6 +291,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/pjrt:lru_cache",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
@@ -556,26 +576,4 @@ pybind_extension(
         ],
         "//conditions:default": [],
     }),
-)
-
-cc_library(
-    name = "lru_cache",
-    hdrs = ["lru_cache.h"],
-    deps = [
-        "//tensorflow/core/platform:logging",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-tf_cc_test(
-    name = "lru_cache_test",
-    srcs = ["lru_cache_test.cc"],
-    deps = [
-        ":lru_cache",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:logging",
-    ],
 )

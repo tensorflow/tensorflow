@@ -18,29 +18,16 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
-namespace {
 
 using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
-
-constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
-    LowerFunctionalOpsConstants::kLowerAsMultiDeviceFunctionAttr;
-
-bool LowerAsMultiDeviceFunction(const Node* n) {
-  if (n->IsPartitionedCall()) return true;
-
-  bool match;
-  bool found =
-      TryGetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
-  return found && match;
-}
-
-}  // namespace
 
 Status RewriteFunctionCallNode(Node* n, Graph* g,
                                const FunctionLibraryDefinition& flib_def,
@@ -56,7 +43,8 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
                                         ? KeepCallerNode::kFetchable
                                         : KeepCallerNode::kTargetable;
 
-  if (LowerAsMultiDeviceFunction(n)) {
+  FunctionCallInlinePolicy policy = GetFunctionCallInlinePolicy(n);
+  if (policy == FunctionCallInlinePolicy::kMultiDevicePlacer) {
     // Multi-device function calls (PartitionedCall or StatefulPartitionedCall
     // ops) can execute on multiple devices and accept DT_RESOURCE inputs that
     // belong to different devices. This type of functions was added in
@@ -65,13 +53,15 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
     inline_options.output_control_src = OutputControlSrc::kControlOutputs;
     inline_options.inlined_function_body_placer =
         InlinedFunctionBodyPlacer::MultiDevice();
-  } else {
+  } else if (policy == FunctionCallInlinePolicy::kSingleDevicePlacer) {
     // Native function call (node.type_string() is the function name). These
     // functions are always executed on a single-device, which is the device of
     // the function call node.
     inline_options.output_control_src = OutputControlSrc::kDataOutputs;
     inline_options.inlined_function_body_placer =
         InlinedFunctionBodyPlacer::SingleDevice();
+  } else {
+    return errors::InvalidArgument("Unsupported function inlining policy");
   }
 
   const FunctionDef* fdef;

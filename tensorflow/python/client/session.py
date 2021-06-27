@@ -1566,6 +1566,15 @@ class Session(BaseSession):
       allow_soft_placement=True,
       log_device_placement=True))
   ```
+
+  @compatibility(TF2)
+  `Session` does not work with either eager execution or `tf.function`, and you
+  should not invoke it directly. To migrate code that uses sessions to TF2,
+  rewrite the code without it. See the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls.
+  @end_compatibility
   """
 
   def __init__(self, target='', graph=None, config=None):

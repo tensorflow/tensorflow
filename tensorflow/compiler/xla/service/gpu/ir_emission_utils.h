@@ -226,7 +226,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    absl::optional<CudaComputeCapability> cuda_compute_capability);
+    se::CudaComputeCapability cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,

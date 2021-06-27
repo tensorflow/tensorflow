@@ -55,6 +55,8 @@ std::string GetEventName(PyObject* co_filename, PyObject* co_name,
 }
 
 string GetEventName(PyCFunctionObject* py_cfunc) {
+  // Python stack does not have a filename/line_no for native calls.
+  // Use module name and function/method name instead.
   PyObject* module = py_cfunc->m_module;
   string filename;
   bool filename_ok;
@@ -187,7 +189,9 @@ void PythonHookContext::CollectData(XPlane* raw_plane) {
       }
     }
   }
+  PyGILState_STATE gil_state = PyGILState_Ensure();
   entries_.clear();
+  PyGILState_Release(gil_state);
 }
 
 void PythonHookContext::Finalize(XSpace* space) {
@@ -282,15 +286,15 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
     }
     case PyTrace_C_RETURN:
     case PyTrace_C_EXCEPTION: {
-      if (!thread_traces.active.empty()) {
-        auto& entry = thread_traces.active.top();
-        entry.end_time_ns = now;
-        thread_traces.completed.emplace_back(std::move(entry));
-        thread_traces.active.pop();
-      } else if (options_.include_incomplete_events) {
-        // Only the end of the events is recorded, use profiler start as start.
-        if (PyCFunction_Check(arg)) {
-          // Python stack does not have a filename/line_no for native calls.
+      if (PyCFunction_Check(arg)) {
+        if (!thread_traces.active.empty()) {
+          auto& entry = thread_traces.active.top();
+          entry.end_time_ns = now;
+          thread_traces.completed.emplace_back(std::move(entry));
+          thread_traces.active.pop();
+        } else if (options_.include_incomplete_events) {
+          // Only the end of the events is recorded, use profiler start as
+          // start timestamp of the new event.
           auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
           entries_[thread_id].completed.emplace_back(start_timestamp_ns_, now,
                                                      func);

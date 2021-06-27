@@ -3577,7 +3577,15 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
         *const_instr.mutable_literal() = literal.ToProto();
         *const_instr.mutable_shape() = literal.shape().ToProto();
       } else {
-        *const_instr.mutable_literal() = instr_proto->literal();
+        if (instr_proto->literal().shape().element_type() == TUPLE) {
+          *const_instr.mutable_literal() =
+              // First literal of SetBound contains bounds, second literal
+              // contains dynamism indicators.
+              instr_proto->literal().tuple_literals(0);
+        } else {
+          *const_instr.mutable_literal() = instr_proto->literal();
+        }
+
         *const_instr.mutable_shape() = instr_proto->shape();
       }
       *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);

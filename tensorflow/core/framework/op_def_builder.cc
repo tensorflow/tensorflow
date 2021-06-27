@@ -614,6 +614,11 @@ OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput() {
   return *this;
 }
 
+OpDefBuilder& OpDefBuilder::SetIsDistributedCommunication() {
+  op_def()->set_is_distributed_communication(true);
+  return *this;
+}
+
 OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   if (op_def()->has_deprecation()) {
     errors_.push_back(

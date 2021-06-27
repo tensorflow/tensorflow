@@ -378,7 +378,8 @@ class StreamExecutor {
       std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans);
 
   port::Status GetFusedConvolveExecutionPlans(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+      dnn::ConvolutionKind kind, dnn::DataType element_type,
+      double conv_input_scale, double side_input_scale, Stream *stream,
       const dnn::BatchDescriptor &input_descriptor,
       const dnn::FilterDescriptor &filter_descriptor,
       const dnn::BatchDescriptor &bias_descriptor,
@@ -392,9 +393,9 @@ class StreamExecutor {
       gpu::CudnnSupport *cudnn_dnn =
           dynamic_cast<gpu::CudnnSupport *>(dnn_support);
       return cudnn_dnn->GetFusedConvolveExecutionPlans(
-          kind, element_type, stream, input_descriptor, filter_descriptor,
-          bias_descriptor, output_descriptor, convolution_descriptor,
-          out_exec_plans);
+          kind, element_type, conv_input_scale, side_input_scale, stream,
+          input_descriptor, filter_descriptor, bias_descriptor,
+          output_descriptor, convolution_descriptor, out_exec_plans);
 #endif  // GOOGLE_CUDA
     }
     return port::UnimplementedError("DNN library is not found.");

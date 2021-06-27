@@ -108,15 +108,6 @@ struct FusedBatchNormFreezeGrad<GPUDevice, T, U> {
 template struct FusedBatchNormFreezeGrad<GPUDevice, float, float>;
 template struct FusedBatchNormFreezeGrad<GPUDevice, Eigen::half, float>;
 
-template <class T>
-void SetNanFunctor<T>::operator()(const Eigen::GpuDevice& d,
-                                  typename TTypes<T>::Flat out) {
-  To32Bit(out).device(d) =
-      To32Bit(out).constant(Eigen::NumTraits<T>::quiet_NaN());
-}
-
-template class SetNanFunctor<float>;
-
 // -------------------------------------------------------------------------- //
 // FusedBatchNormInferenceFunctor implementation.                             //
 // -------------------------------------------------------------------------- //

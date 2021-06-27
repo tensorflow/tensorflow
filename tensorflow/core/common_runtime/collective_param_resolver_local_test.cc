@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -49,29 +50,26 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name_, &devices));
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
-    ResetParamResolver();
+    ResetParamResolver(ConfigProto());
   }
 
-  void ResetParamResolver() {
-    ConfigProto cp;
-    prl_.reset(new CollectiveParamResolverLocal(cp, device_mgr_.get(),
-                                                drl_.get(), task_name_));
+  void ResetParamResolver(const ConfigProto& config) {
+    prl_.reset(new CollectiveParamResolverLocal(
+        config, device_mgr_.get(), drl_.get(), /*nccl_communicator*/ nullptr,
+        task_name_));
   }
 
   void RunCompleteDefaultRanking(
       CollGroupParams group, const std::vector<DeviceAttributes>& attributes,
       const std::vector<int32>& gpu_ring_order,
       const std::vector<string>& expected_device_order) {
+    ConfigProto config;
     if (!gpu_ring_order.empty()) {
-      group.gpu_ring_order = "";
-      for (int i = 0; i < static_cast<int32>(gpu_ring_order.size() - 1); ++i) {
-        group.gpu_ring_order =
-            strings::StrCat(group.gpu_ring_order, gpu_ring_order[i], ",");
-      }
-      group.gpu_ring_order =
-          strings::StrCat(group.gpu_ring_order, gpu_ring_order.back());
+      config.mutable_gpu_options()
+          ->mutable_experimental()
+          ->set_collective_ring_order(absl::StrJoin(gpu_ring_order, ","));
     }
-    VLOG(2) << "gpu_ring_order " << group.gpu_ring_order;
+    ResetParamResolver(config);
     prl_->CompleteDefaultRanking(attributes, &group);
     EXPECT_EQ(group.device_names, expected_device_order);
   }
@@ -490,7 +488,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
     Env::Default()->SleepForMicroseconds(delay_ms);
     prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
     done.Wait();
-    ResetParamResolver();
+    ResetParamResolver(ConfigProto());
   }
   // There should be at least a few successes, otherwise the delay may be too
   // short and may not cover certain stages of param resolution.

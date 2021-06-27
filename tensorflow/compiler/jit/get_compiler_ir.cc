@@ -102,9 +102,14 @@ StatusOr<std::string> GetCompilerIr(
       }));
   core::ScopedUnref cache_ref(cache);
 
+  se::Stream* stream = nullptr;
+  if (const DeviceBase::GpuDeviceInfo* gpu_device_info =
+          dev->tensorflow_gpu_device_info()) {
+    stream = gpu_device_info->stream;
+  }
+
   XlaCompiler::Options options =
-      GenerateCompilerOptions(*cache, *flr, dev,
-                              /*stream=*/nullptr, platform_info,
+      GenerateCompilerOptions(*cache, *flr, dev, stream, platform_info,
                               /*has_ref_vars=*/false);
 
   XlaCompiler::CompileOptions compile_options;

@@ -445,11 +445,10 @@ static inline bool CheckForOverflow(double as_double, T* out) {
 }
 
 // There is no `std::isinf` that takes `Eigen::half` as argument but Eigen
-// provides `Eigen::half_impl::isinf` instead.
+// provides `Eigen::numext::isinf` instead.
 template <>
 inline bool CheckForOverflow<Eigen::half>(double as_double, Eigen::half* out) {
-  return (sizeof(Eigen::half) < sizeof(double) &&
-          Eigen::half_impl::isinf(*out) && std::isfinite(as_double));
+  return (Eigen::numext::isinf(*out) && std::isfinite(as_double));
 }
 
 template <class T>

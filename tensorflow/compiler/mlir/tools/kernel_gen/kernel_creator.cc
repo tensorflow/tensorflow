@@ -326,8 +326,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // end up on the device, whereas allocations for shape computation and host
   // side things remain on the host.
   // Longer term, this should be handled by proper device placement.
-  pm.addPass(mlir::kernel_gen::tf_framework::
-                 CreateEmbedTFFrameworkFunctionAndAllocPass());
+  pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   // Now lower the shape computations, bufferize all remaining ops and insert
   // deallocs.
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
@@ -366,8 +365,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addPass(::mlir::createLowerToCFGPass());
   if (cpu_codegen) pm.addPass(::mlir::createConvertVectorToLLVMPass());
   // Map asserts to the tensorflow framework.
-  pm.addPass(
-      mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkAssertPass());
+  pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (embed_memref_prints) {
     pm.addNestedPass<::mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());

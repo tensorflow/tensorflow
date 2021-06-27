@@ -17,74 +17,201 @@
 This module contains:
 
 1. tf.data server implementations for running the tf.data service.
-2. A `distribute` dataset transformation that moves a dataset's preprocessing
-   to happen in the tf.data service.
+2. APIs for registering datasets with the tf.data service and reading from
+   the registered datasets.
 
-The tf.data service offers a way to improve training speed when the host
-attached to a training device can't keep up with the data consumption of the
-model. For example, suppose a host can generate 100 examples/second, but the
-model can process 200 examples/second. Training speed could be doubled by using
-the tf.data service to generate 200 examples/second.
+The tf.data service provides the following benefits:
 
-## Before using the tf.data service
+- Horizontal scaling of tf.data input pipeline processing to solve input
+  bottlenecks.
+- Data coordination for distributed training. Coordinated reads
+  enable all replicas to train on similar-length examples across each global
+  training step, improving step times in synchronous training.
+- Dynamic balancing of data across training replicas.
 
-There are a few things to do before using the tf.data service to speed up
-training.
+>>> dispatcher = tf.data.experimental.service.DispatchServer()
+>>> dispatcher_address = dispatcher.target.split("://")[1]
+>>> worker = tf.data.experimental.service.WorkerServer(
+...     tf.data.experimental.service.WorkerConfig(
+...         dispatcher_address=dispatcher_address))
+>>> dataset = tf.data.Dataset.range(10)
+>>> dataset = dataset.apply(tf.data.experimental.service.distribute(
+...     processing_mode="parallel_epochs", service=dispatcher.target))
+>>> print(list(dataset.as_numpy_iterator()))
+[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
-### Understand processing_mode
+## Setup
 
-The tf.data service uses a cluster of workers to prepare data for training your
-model. The `processing_mode` argument to
-`tf.data.experimental.service.distribute` describes how to leverage multiple
-workers to process the input dataset. Currently, there are two processing modes
-to choose from: "distributed_epoch" and "parallel_epochs".
+This section goes over how to set up the tf.data service.
 
-"distributed_epoch" means that the dataset will be split across all tf.data
-service workers. The dispatcher produces "splits" for the dataset and sends them
-to workers for further processing. For example, if a dataset begins with a list
-of filenames, the dispatcher will iterate through the filenames and send the
-filenames to tf.data workers, which will perform the rest of the dataset
-transformations on those files. "distributed_epoch" is useful when your model
-needs to see each element of the dataset exactly once, or if it needs to see the
-data in a generally-sequential order. "distributed_epoch" only works for
-datasets with splittable sources, such as `Dataset.from_tensor_slices`,
-`Dataset.list_files`, or `Dataset.range`.
+### Run tf.data servers
 
-"parallel_epochs" means that the entire input dataset will be processed
+The tf.data service consists of one dispatch server and `n` worker servers.
+tf.data servers should be brought up alongside your training jobs, then brought
+down when the jobs are finished.
+Use `tf.data.experimental.service.DispatchServer` to start a dispatch server,
+and `tf.data.experimental.service.WorkerServer` to start worker servers. Servers
+can be run in the same process for testing purposes, or scaled up on separate
+machines.
+
+See https://github.com/tensorflow/ecosystem/tree/master/data_service for an
+example of using Google Kubernetes Engine (GKE) to manage the tf.data service.
+Note that the server implementation in
+[tf_std_data_server.py](https://github.com/tensorflow/ecosystem/blob/master/data_service/tf_std_data_server.py)
+is not GKE-specific, and can be used to run the tf.data service in other
+contexts.
+
+### Custom ops
+
+If your dataset uses custom ops, these ops need to be made available to tf.data
+servers by calling
+[load_op_library](https://www.tensorflow.org/api_docs/python/tf/load_op_library)
+from the dispatcher and worker processes at startup.
+
+## Usage
+
+Users interact with tf.data service by programmatically registering their
+datasets with tf.data service, then creating datasets that read from the
+registered datasets. The
+[register_dataset](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service/register_dataset)
+function registers a dataset, then the
+[from_dataset_id](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service/from_dataset_id)
+function creates a new dataset which reads from the registered dataset.
+The
+[distribute](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service/distribute)
+function wraps `register_dataset` and `from_dataset_id` into a single convenient
+transformation which registers its input dataset and then reads from it.
+`distribute` enables tf.data service to be used with a one-line code change.
+However, it assumes that the dataset is created and consumed by the same entity
+and this assumption might not always be valid or desirable. In particular, in
+certain scenarios, such as distributed training, it might be desirable to
+decouple the creation and consumption of the dataset (via `register_dataset`
+and `from_dataset_id` respectively) to avoid having to create the dataset on
+each of the training workers.
+
+### Example
+
+#### `distribute`
+
+To use the `distribute` transformation, apply the transformation after the
+prefix of your input pipeline that you would like to be executed using tf.data
+service (typically at the end).
+
+```
+dataset = ...  # Define your dataset here.
+# Move dataset processing from the local machine to the tf.data service
+dataset = dataset.apply(
+    tf.data.experimental.service.distribute(
+        processing_mode="parallel_epochs",
+        service=FLAGS.tf_data_service_address,
+        job_name="shared_job"))
+# Any transformations added after `distribute` will be run on the local machine.
+dataset = dataset.prefetch(1)
+```
+
+The above code will create a tf.data service "job", which iterates through the
+dataset to generate data. To share the data from a job across multiple clients
+(e.g. when using TPUStrategy or MultiWorkerMirroredStrategy), set a common
+`job_name` across all clients.
+
+#### `register_dataset` and `from_dataset_id`
+
+`register_dataset` registers a dataset with the tf.data service, returning a
+dataset id for the registered dataset. `from_dataset_id` creates a dataset that
+reads from the registered dataset. These APIs can be used to reduce dataset
+building time for distributed training. Instead of building the dataset on all
+training workers, we can build the dataset just once and then register the
+dataset using `register_dataset`. Then all workers can call `from_dataset_id`
+without needing to build the dataset themselves.
+
+```
+dataset = ...  # Define your dataset here.
+dataset_id = tf.data.experimental.service.register_dataset(
+    service=FLAGS.tf_data_service_address,
+    dataset=dataset)
+# Use `from_dataset_id` to create per-worker datasets.
+per_worker_datasets = {}
+for worker in workers:
+  per_worker_datasets[worker] = tf.data.experimental.service.from_dataset_id(
+      processing_mode="parallel_epochs",
+      service=FLAGS.tf_data_service_address,
+      dataset_id=dataset_id,
+      job_name="shared_job"))
+```
+
+### Processing Modes
+
+tf.data service supports two processing modes: `"parallel_epochs"` and
+`"distributed_epoch"`. `"parallel_epochs"` is suitable for training which
+does not require visitation guarantees (i.e. clean separation of epoch
+boundaries), while "distributed_epoch" is suitable for training which require
+clean
+separation of epoch boundaries, where instead of processing multiple epochs of
+data in a parallel fashion the aim is to process a single epoch of data in a
+distributed fashion. "parallel_epochs" mode is in general more performant,
+because it requires less coordination. "parallel_epochs" mode also supports a
+wider range of input pipelines, not requiring splittability like
+"distributed_epoch" mode.
+
+#### Parallel Epochs
+
+In "parallel_epochs" mode, the entire input dataset will be processed
 independently by each of the tf.data service workers. For this
 reason, it is important to shuffle data (e.g. filenames) non-deterministically,
 so that each worker will process the elements of the dataset in a different
 order. "parallel_epochs" can be used to distribute datasets that aren't
 splittable.
 
-### Measure potential impact
+#### Distributed Epoch
 
-Before using the tf.data service, it is useful to first measure the potential
-performance improvement. To do this, add
+In distributed epoch mode, tf.data service divides the dataset into two
+components: a source component that generates "splits" such as filenames, and a
+processing component that takes in splits and outputs dataset elements. The
+source component is executed in a centralized fashion by the tf.data service
+dispatcher, which generates different splits of input data. The processing
+component is executed in a parallel fashion by the tf.data service workers,
+each operating on a different set of input data splits.
+
+For example, consider the following dataset:
 
 ```
-dataset = dataset.take(1).cache().repeat()
+dataset = tf.data.Dataset.from_tensor_slices(filenames)
+dataset = dataset.interleave(TFRecordDataset)
+dataset = dataset.map(preprocess_fn)
+dataset = dataset.batch(batch_size)
+dataset = dataset.apply(
+    tf.data.experimental.service.distribute(
+        processing_mode="distributed_epochs", ...)
 ```
 
-at the end of your dataset, and see how it affects your model's step time.
-`take(1).cache().repeat()` will cache the first element of your dataset and
-produce it repeatedly. This should make the dataset very fast, so that the model
-becomes the bottleneck and you can identify the ideal model speed. With enough
-workers, the tf.data service should be able to achieve similar speed.
+The `from_tensor_slices` will be run on the dispatcher, while the `interleave`,
+`map`, and `batch` will be run on tf.data service workers. The workers will pull
+filenames from the dispatcher for processing. To process a dataset with
+distributed epoch mode, the dataset must have a splittable source, and all of
+its transformations must be compatible with splitting. While most source and
+transformations support splitting, there are exceptions, such as `zip` or
+`sample_from_datasets`. Please file a Github issue if you would like to use
+distributed epoch processing for a currently unsupported dataset source or
+transformation.
 
-## Running the tf.data service
+### Jobs
 
-tf.data servers should be brought up alongside your training jobs, and brought
-down when the jobs are finished. The tf.data service uses one `DispatchServer`
-and any number of `WorkerServers`. See
-https://github.com/tensorflow/ecosystem/tree/master/data_service for an example
-of using Google Kubernetes Engine (GKE) to manage the tf.data service. The
-server implementation in
-[tf_std_data_server.py](https://github.com/tensorflow/ecosystem/blob/master/data_service/tf_std_data_server.py)
-is not GKE-specific, and can be used to run the tf.data service in other
-contexts.
+A tf.data service "job" refers to the process of reading from a dataset managed
+by the tf.data service, using one or more data consumers. Jobs are created when
+iterating over datasets that read from tf.data service. The data produced by a
+job is determined by (1) dataset associated with the job and (2) the job's
+processing mode. For example, if a job is created for the dataset
+`Dataset.range(5)`, and the processing mode is `"parallel_epochs"`, each tf.data
+worker will produce the elements `{0, 1, 2, 3, 4}` for the job, resulting in the
+job producing `5 * num_workers` elements. If the processing mode is
+`"distributed_epoch"`, the job will only produce `5` elements.
 
-### Fault tolerance
+One or more consumers can consume data from a job. By default, jobs are
+"anonymous", meaning that only the consumer which created the job can read from
+it. To share the output of a job across multiple consumers, you can set a common
+`job_name`.
+
+### Fault Tolerance
 
 By default, the tf.data dispatch server stores its state in-memory, making it a
 single point of failure during training. To avoid this, pass
@@ -98,39 +225,125 @@ WorkerServers may be freely restarted, added, or removed during training. At
 startup, workers will register with the dispatcher and begin processing all
 outstanding jobs from the beginning.
 
-## Using the tf.data service from your training job
+### Visitation Guarantees
 
-Once you have a tf.data service cluster running, take note of the dispatcher IP
-address and port. To connect to the service, you will use a string in the format
-"grpc://<dispatcher_address>:<dispatcher_port>".
+If no workers are restarted during training, "distributed_epoch" mode will visit
+every example exactly once. If workers are restarted during training, the splits
+they were processing will not be fully visited. The dispatcher maintains a
+cursor through the dataset's splits. Assuming fault tolerance is enabled (See
+"Fault Tolerance" above), the dispatcher will store cursor state in write-ahead
+logs so that the cursor can be restored in case the dispatcher is restarted
+mid-training. This provides an at-most-once visitation guarantee in the presence
+of server restarts.
+
+"parallel_epochs" mode provides no visitation guarantees. It is expected that
+the dataset will contain random shuffling, so added or restarted workers will
+instantiate a new copy of the dataset and begin producing data from the
+beginning.
+
+### Usage with tf.distribute
+
+tf.distribute is the TensorFlow API for distributed training. There are
+several ways to use tf.data with tf.distribute:
+`strategy.experimental_distribute_dataset`,
+`strategy.distribute_datasets_from_function`, and (for PSStrategy)
+`coordinator.create_per_worker_dataset`. The following sections give code
+examples for each.
+
+In general we recommend using
+`tf.data.experimental.service.{register_dataset,from_dataset_id}` over
+`tf.data.experimental.sevice.distribute` for two reasons:
+
+- The dataset only needs to be constructed and optimized once, instead of once
+  per worker. This can significantly reduce startup time, because the current
+  `experimental_distribute_dataset` and `distribute_datasets_from_function`
+  implementations create and optimize worker datasets sequentially.
+- If a dataset depends on lookup tables or variables that are only present on
+  one host, the dataset needs to be registered from that host. Typically this
+  only happens when resources are placed on the chief or worker 0. Registering
+  the dataset from the chief will avoid issues with depending on remote
+  resources.
+
+#### strategy.experimental_distribute_dataset
+
+Nothing special is required when using
+`strategy.experimental_distribute_dataset`, just apply `register_dataset` and
+`from_dataset_id` as above, making sure to specify a `job_name` so that all
+workers consume from the same tf.data service job.
 
 ```
-# Create the dataset however you were before using the tf.data service.
-dataset = your_dataset_factory()
+dataset = ...  # Define your dataset here.
+dataset_id = tf.data.experimental.service.register_dataset(
+    service=FLAGS.tf_data_service_address,
+    dataset=dataset)
+dataset = tf.data.experimental.service.from_dataset_id(
+    processing_mode="parallel_epochs",
+    service=FLAGS.tf_data_service_address,
+    dataset_id=dataset_id,
+    job_name="shared_job"))
 
-service = "grpc://{}:{}".format(dispatcher_address, dispatcher_port)
-# This will register the dataset with the tf.data service cluster so that
-# tf.data workers can run the dataset to produce elements. The dataset returned
-# from applying `distribute` will fetch elements produced by tf.data workers.
-dataset = dataset.apply(tf.data.experimental.service.distribute(
-    processing_mode="parallel_epochs", service=service))
+dataset = strategy.experimental_distribute_dataset(dataset)
 ```
 
-Below is a toy example that you can run yourself.
+#### strategy.distribute_datasets_from_function
 
->>> dispatcher = tf.data.experimental.service.DispatchServer()
->>> dispatcher_address = dispatcher.target.split("://")[1]
->>> worker = tf.data.experimental.service.WorkerServer(
-...     tf.data.experimental.service.WorkerConfig(
-...         dispatcher_address=dispatcher_address))
->>> dataset = tf.data.Dataset.range(10)
->>> dataset = dataset.apply(tf.data.experimental.service.distribute(
-...     processing_mode="parallel_epochs", service=dispatcher.target))
->>> print(list(dataset.as_numpy_iterator()))
-[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+First, make sure the dataset produced by the `dataset_fn` does not depend on the
+`input_context` for the training worker on which it is run. Instead of each
+worker building its own (sharded) dataset, one worker should register an
+unsharded dataset, and the remaining workers should consume data from that
+dataset.
 
-See the documentation of `tf.data.experimental.service.distribute` for more
-details about using the `distribute` transformation.
+```
+dataset = dataset_fn()
+dataset_id = tf.data.experimental.service.register_dataset(
+    service=FLAGS.tf_data_service_address,
+    dataset=dataset)
+
+def new_dataset_fn(input_context):
+  del input_context
+  return tf.data.experimental.service.from_dataset_id(
+      processing_mode="parallel_epochs",
+      service=FLAGS.tf_data_service_address,
+      dataset_id=dataset_id,
+      job_name="shared_job"))
+
+dataset = strategy.distribute_datasets_from_function(new_dataset_fn)
+```
+
+#### coordinator.create_per_worker_dataset
+
+`create_per_worker_dataset` works the same as
+`distribute_datasets_from_function`.
+
+```
+dataset = dataset_fn()
+dataset_id = tf.data.experimental.service.register_dataset(
+    service=FLAGS.tf_data_service_address,
+    dataset=dataset)
+
+def new_dataset_fn(input_context):
+  del input_context
+  return tf.data.experimental.service.from_dataset_id(
+      processing_mode="parallel_epochs",
+      service=FLAGS.tf_data_service_address,
+      dataset_id=dataset_id,
+      job_name="shared_job"))
+
+dataset = coordinator.create_per_worker_dataset(new_dataset_fn)
+```
+
+## Limitations
+
+- Python-based data processing: Datasets which use Python-based data processing
+  (e.g. `tf.py_function`, `tf.numpy_function`, or
+  `tf.data.Dataset.from_generator`) are currently not supported.
+- Non-Serializable Resources: Datasets may only depend on TF resources that
+  support serialization. Serialization is currently supported for lookup
+  tables and variables. If your dataset depends on a TF resource that cannot be
+  serialized, please file a Github issue.
+- Remote Resources: If a dataset depends on a resource, the dataset must be
+  registered from the same process that created the resource (e.g. the "chief"
+  job of ParameterServerStrategy).
 """
 
 from __future__ import absolute_import

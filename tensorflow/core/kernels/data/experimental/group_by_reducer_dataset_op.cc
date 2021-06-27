@@ -370,6 +370,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
               state.resize(state_size);
               for (int j = 0; j < state_size; ++j) {
                 TF_RETURN_IF_ERROR(reader->ReadTensor(
+                    ctx->flr(),
                     full_name(
                         strings::StrCat("states[", idx, "]->state[", j, "]")),
                     &state[j]));

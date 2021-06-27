@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -626,11 +627,11 @@ Status DatasetOpsTestBase::CheckSplitProviderFullIteration(
     const DatasetParams& params, const std::vector<Tensor>& expected_outputs) {
   std::unique_ptr<TestDataset> dataset;
   TF_RETURN_IF_ERROR(MakeDataset(params, &dataset));
-  std::unique_ptr<SplitProvider> split_provider;
-  TF_RETURN_IF_ERROR(dataset->dataset()->MakeSplitProvider(&split_provider));
+  std::vector<std::unique_ptr<SplitProvider>> split_providers;
+  TF_RETURN_IF_ERROR(dataset->dataset()->MakeSplitProviders(&split_providers));
   std::unique_ptr<TestIterator> iterator;
   TF_RETURN_IF_ERROR(
-      MakeIterator(params, *dataset, std::move(split_provider), &iterator));
+      MakeIterator(params, *dataset, std::move(split_providers), &iterator));
   TF_RETURN_IF_ERROR(CheckIteratorGetNext(iterator.get(), expected_outputs,
                                           /*compare_order=*/true));
   return Status::OK();
@@ -641,15 +642,18 @@ Status DatasetOpsTestBase::CheckSplitProviderShardedIteration(
     const std::vector<Tensor>& expected_outputs) {
   std::unique_ptr<TestDataset> dataset;
   TF_RETURN_IF_ERROR(MakeDataset(params, &dataset));
-  std::unique_ptr<SplitProvider> split_provider;
-  TF_RETURN_IF_ERROR(dataset->dataset()->MakeSplitProvider(&split_provider));
-  split_provider = absl::make_unique<ShardingSplitProvider>(
-      num_shards, shard_index, std::move(split_provider));
+  std::vector<std::unique_ptr<SplitProvider>> split_providers;
+  TF_RETURN_IF_ERROR(dataset->dataset()->MakeSplitProviders(&split_providers));
+  for (int i = 0; i < split_providers.size(); ++i) {
+    split_providers[i] = std::make_unique<ShardingSplitProvider>(
+        num_shards, shard_index, std::move(split_providers[i]));
+  }
   std::unique_ptr<IteratorContext> iterator_ctx;
   TF_RETURN_IF_ERROR(
       CreateIteratorContext(dataset->op_kernel_context(), &iterator_ctx));
   IteratorContext::Params iterator_params(iterator_ctx.get());
-  iterator_params.split_provider = std::move(split_provider);
+  std::move(split_providers.begin(), split_providers.end(),
+            std::back_inserter(iterator_params.split_providers));
   iterator_ctx = absl::make_unique<IteratorContext>(iterator_params);
   int mid_breakpoint = expected_outputs.size() / 2;
   int near_end_breakpoint = expected_outputs.size() - 1;
@@ -857,13 +861,15 @@ Status DatasetOpsTestBase::MakeDataset(
 
 Status DatasetOpsTestBase::MakeIterator(
     const DatasetParams& dataset_params, const TestDataset& dataset,
-    std::unique_ptr<SplitProvider> split_provider,
+    std::vector<std::unique_ptr<SplitProvider>> split_providers,
     std::unique_ptr<TestIterator>* iterator) {
   std::unique_ptr<IteratorContext> iterator_ctx;
   TF_RETURN_IF_ERROR(
       CreateIteratorContext(dataset.op_kernel_context(), &iterator_ctx));
   IteratorContext::Params iterator_params(iterator_ctx.get());
-  iterator_params.split_provider = std::move(split_provider);
+  std::move(split_providers.begin(), split_providers.end(),
+            std::back_inserter(iterator_params.split_providers));
+
   iterator_ctx = absl::make_unique<IteratorContext>(iterator_params);
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset.dataset()->MakeIterator(
@@ -877,7 +883,7 @@ Status DatasetOpsTestBase::MakeIterator(
 Status DatasetOpsTestBase::MakeIterator(
     const DatasetParams& dataset_params, const TestDataset& dataset,
     std::unique_ptr<TestIterator>* iterator) {
-  return MakeIterator(dataset_params, dataset, /*split_provider=*/nullptr,
+  return MakeIterator(dataset_params, dataset, /*split_providers=*/{},
                       iterator);
 }
 

@@ -426,7 +426,6 @@ cc_library(
     name = "android_tensorflow_image_op",
     srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
-    features = ["-no_undefined"],
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [

@@ -479,7 +479,7 @@ using flatbuffers::Vector;
 
 bool VerifyOperators(const Vector<Offset<Operator>>& operators,
                      ErrorReporter* error_reporter) {
-  for (const auto& op : operators) {
+  for (const auto* op : operators) {
     if (!op->inputs()) {
       ReportError(error_reporter, "Missing 'inputs' for operator.");
       return false;
@@ -593,7 +593,7 @@ bool VerifySubGraphs(const Model& model, ErrorReporter* error_reporter) {
     ReportError(error_reporter, "Missing 'subgraphs' section.");
     return false;
   }
-  for (const auto& subgraph : *model.subgraphs()) {
+  for (const auto* subgraph : *model.subgraphs()) {
     if (!subgraph->operators()) {
       ReportError(error_reporter, "Missing 'operators' section in subgraph.");
       return false;
@@ -620,11 +620,11 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
     return false;
   }
 
-  for (const auto& subgraph : *model.subgraphs()) {
+  for (const auto* subgraph : *model.subgraphs()) {
     if (!subgraph->tensors()) {
       continue;
     }
-    for (const auto& tensor : *subgraph->tensors()) {
+    for (const auto* tensor : *subgraph->tensors()) {
       if (!tensor->buffer()) {
         continue;
       }
@@ -669,7 +669,7 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
   // as they will be run with a custom resolver.
   absl::flat_hash_set<int> regular_code_indices;
   absl::flat_hash_set<int> validation_code_indices;
-  for (const auto& subgraph : *model.subgraphs()) {
+  for (const auto* subgraph : *model.subgraphs()) {
     if (!subgraph->operators()) {
       continue;
     }
@@ -678,7 +678,7 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
         validation_code_indices.insert(op->opcode_index());
       }
     } else {
-      for (const auto& op : *(subgraph->operators())) {
+      for (const auto* op : *(subgraph->operators())) {
         regular_code_indices.insert(op->opcode_index());
       }
     }

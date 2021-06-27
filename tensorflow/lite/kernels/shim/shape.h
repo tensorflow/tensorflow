@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_SHIM_SHAPE_H_
 
 #include <initializer_list>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"

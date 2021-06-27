@@ -32,6 +32,7 @@ tf_cc_test(
         ":error_collector",
         ":types_util",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/stream_executor/lib",
         "@com_google_googletest//:gtest_main",
@@ -49,6 +50,7 @@ cc_library(
     hdrs = ["types_util.h"],
     deps = [
         "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_cc",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -212,9 +212,6 @@ cc_library(
     hdrs = ["client_library_test_base.h"],
     deps = [
         ":manifest_checking_test",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
@@ -238,12 +235,10 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-    ] + select({
-        "//tensorflow/compiler/xla/service/gpu:is_bef_thunk_enabled": [
-            "//tensorflow/compiler/xla/service/gpu/tests:tfrt_exec_ctx_injector",
-        ],
-        "//conditions:default": [],
-    }),
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(
@@ -2777,7 +2772,6 @@ xla_test(
     srcs = ["cholesky_test.cc"],
     real_hardware_only = True,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [
