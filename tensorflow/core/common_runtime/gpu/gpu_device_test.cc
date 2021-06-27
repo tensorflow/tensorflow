@@ -109,40 +109,6 @@ class GPUDeviceTest : public ::testing::Test {
   }
 };
 
-<<<<<<< HEAD
-#if !defined(TENSORFLOW_USE_ROCM)
-
-TEST_F(GPUDeviceTest, CudaMallocAsync) {
-  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {},
-                                           /*use_cuda_malloc_async=*/true);
-  std::vector<std::unique_ptr<Device>> devices;
-  Status status;
-  int number_instantiated =
-      GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
-  {  // The new scope is to trigger the destruction of the object.
-    status = DeviceFactory::GetFactory("GPU")->CreateDevices(
-        opts, kDeviceNamePrefix, &devices);
-    EXPECT_EQ(devices.size(), 1);
-    Device* device = devices[0].get();
-    auto* device_info = device->tensorflow_gpu_device_info();
-    EXPECT_NE(device_info, nullptr);
-
-    AllocatorAttributes allocator_attributes = AllocatorAttributes();
-    allocator_attributes.set_gpu_compatible(true);
-    Allocator* allocator = devices[0]->GetAllocator(allocator_attributes);
-    void* ptr = allocator->AllocateRaw(Allocator::kAllocatorAlignment, 1024);
-    EXPECT_NE(ptr, nullptr);
-    allocator->DeallocateRaw(ptr);
-  }
-  EXPECT_EQ(number_instantiated + 1,
-            GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
-  EXPECT_EQ(status.code(), error::OK);
-}
-
-#endif
-
-=======
->>>>>>> google_upstream/r2.6
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,abc");
   std::vector<std::unique_ptr<Device>> devices;
