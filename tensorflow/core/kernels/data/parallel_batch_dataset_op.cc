@@ -519,8 +519,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       result->call_finished = reader->Contains(
           full_name(strings::StrCat(batch_prefix, "_", kCallFinished)));
 
-      TF_RETURN_IF_ERROR(ReadBatch(dataset()->batch_size_, prefix(),
-                                   batch_prefix, ctx, reader, &result->output));
+      TF_RETURN_IF_ERROR(ReadBatch(ctx, reader, dataset()->batch_size_,
+                                   prefix(), batch_prefix, &result->output));
       TF_RETURN_IF_ERROR(ReadStatus(prefix(),
                                     strings::StrCat(batch_prefix, "_", kStatus),
                                     reader, &result->status));

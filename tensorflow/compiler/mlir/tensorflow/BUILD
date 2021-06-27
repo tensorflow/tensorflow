@@ -18,6 +18,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
+        "//tensorflow/cc/...",
         "//tensorflow/python/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
@@ -31,6 +32,7 @@ package_group(
         "//learning/serving/contrib/tfrt/mlir/...",
         "//platforms/darwinn/contrib/waymo/...",
         "//platforms/xla/sparse_core/...",
+        "//waymo/ml/compiler/...",
     ]),
 )
 
@@ -1032,23 +1034,23 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "tf_saved_model_test_pass_inc_gen",
+    name = "tf_test_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
-                "-name=TensorFlowSavedModelTest",
+                "-name=TensorFlowTest",
             ],
-            "transforms/tf_saved_model_test_passes.h.inc",
+            "transforms/test_passes.h.inc",
         ),
         (
             ["-gen-pass-doc"],
-            "g3doc/includes/tf_saved_model_test_passes.md",
+            "g3doc/includes/tf_test_passes.md",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/tf_saved_model_test_passes.td",
+    td_file = "transforms/tf_test_passes.td",
     td_srcs = [
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
@@ -1068,6 +1070,7 @@ cc_library(
         "transforms/cluster_tf_ops_pass.cc",
         "transforms/collection_ops_util.cc",
         "transforms/constant_op_device_assignment.cc",
+        "transforms/convert_launch_func_to_tf_call.cc",
         "transforms/cross_host_transfer.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_attribute_to_launch.cc",
@@ -1245,14 +1248,14 @@ cc_library(
         "transforms/init_text_file_to_import_test_pass.cc",
         "transforms/initialize_variables_in_session_init_test_pass.cc",
         "transforms/lift_variables_test_pass.cc",
-        "transforms/lower_tf_pass.cc",
+        "transforms/lower_tf_test_pass.cc",
         "transforms/mark_initialized_variables_test_pass.cc",
+        "transforms/test_passes.h.inc",
         "transforms/tf_saved_model_freeze_variables_test_pass.cc",
     ],
     hdrs = [
         "transforms/test_passes.h",
         "transforms/test_passes_detail.h",
-        "transforms/tf_saved_model_test_passes.h.inc",
     ],
     deps = [
         ":fake_session",
@@ -1261,7 +1264,7 @@ cc_library(
         ":mark_initialized_variables_lib",
         ":tensorflow",
         ":tf_saved_model_passes",
-        ":tf_saved_model_test_pass_inc_gen",
+        ":tf_test_passes_inc_gen",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",

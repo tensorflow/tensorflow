@@ -439,8 +439,6 @@ class MirroredVariableCreationTest(test.TestCase):
         _ = distribution.extended.call_for_each_replica(model_fn, args=(names,))
 
   def testSyncOnReadVariable(self, distribution):
-    if context.executing_eagerly():
-      self.skipTest("Skip the test due to b/137400477.")
 
     all_v_sum = {}
     all_v_mean = {}
@@ -544,8 +542,6 @@ class MirroredVariableCreationTest(test.TestCase):
         self.assertStartsWith(v1._op.name, "replica_1/")
 
   def testSyncOnReadVariableUpdate(self, distribution):
-    if context.executing_eagerly():
-      self.skipTest("Skip the test due to b/137400477.")
 
     def model_fn():
       v_sum = variable_scope.variable(

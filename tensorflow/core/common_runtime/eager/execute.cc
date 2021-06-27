@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/logging.h"
@@ -79,6 +79,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#endif
 
 namespace tensorflow {
 
@@ -754,6 +758,18 @@ Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     for (const auto& attr : opdef.attr()) {
       (*ndef->mutable_attr())[attr.name()].set_placeholder(attr.name());
     }
+
+#ifdef INTEL_MKL
+    if (IsMklEnabled() &&
+        absl::StartsWith(op->Name(), mkl_op_registry::kMklOpPrefix)) {
+      // All MKL eager ops have `_kernel` private attribute that needs to be set
+      // to a fixed label.
+      AttrValue attr_kernel;
+      attr_kernel.set_s(mkl_op_registry::kMklNameChangeOpLabel);
+      (*ndef->mutable_attr()).insert({"_kernel", attr_kernel});
+    }
+#endif  // INTEL_MKL
+
     // Set `ret` map.
     TF_RETURN_IF_ERROR(
         PopulateRetMap(&fdef, op_attrs, op, opdef, signature, ndef->name()));

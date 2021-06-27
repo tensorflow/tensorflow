@@ -124,3 +124,7 @@ def flex_portable_tensorflow_deps():
 def tflite_copts_extra():
     """Defines extra compile time flags for tflite_copts(). Currently empty."""
     return []
+
+def tflite_extra_arm_config_settings():
+    """Defines extra ARM CPU config_setting targets. Currently empty."""
+    return []

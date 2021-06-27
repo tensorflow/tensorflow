@@ -254,3 +254,28 @@ There are two ways to test the code in the docstring locally:
     ```
 
     The `--module` is relative to `tensorflow.python`.
+
+#### Debug builds
+
+When [building Tensorflow](https://www.tensorflow.org/install/source), passing
+`--config=dbg` to Bazel will build with debugging information and without
+optimizations, allowing you to use GDB or other debuggers to debug C++ code. For
+example, you can build the pip package with debugging information by running:
+
+```bash
+bazel build --config=dbg //tensorflow/tools/pip_package:build_pip_package
+```
+
+TensorFlow kernels and TensorFlow's dependencies are still not built with
+debugging information with `--config=dbg`, as issues occur on Linux if
+there is too much debug info (see [this GitHub
+issue](https://github.com/tensorflow/tensorflow/issues/48919) for context). If
+you want to debug a kernel, you can compile specific files with `-g` using the
+`--per_file_copt` bazel option. For example, if you want to debug the Identity
+op, which are in files starting with `identity_op`, you can run
+
+```bash
+bazel build --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g //tensorflow/tools/pip_package:build_pip_package
+```
+
+Note that the `--config=dbg` option is not officially supported.

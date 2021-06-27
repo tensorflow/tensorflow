@@ -111,7 +111,8 @@ class FusedBatchNormOp : public XlaOpKernel {
       // Apply Bessel's correction.
       int total_input_size = ctx->InputShape(0).num_elements();
       int total_scale_size = ctx->InputShape(1).num_elements();
-      int sample_size = total_input_size / total_scale_size;
+      int sample_size =
+          total_scale_size > 0 ? total_input_size / total_scale_size : 0;
       int sample_size_minus_one = std::max(1, sample_size - 1);
       double factor = static_cast<double>(sample_size) /
                       static_cast<double>(sample_size_minus_one);

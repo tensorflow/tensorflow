@@ -1366,6 +1366,18 @@ func @NotReorderAddWithConstantOn5D(%arg0: tensor<2x2x2x2x2xf32>) -> tensor<2x2x
   // CHECK: tfl.add
 }
 
+func @NotReorderAddWithUnranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %cst_1 = constant dense<2.0> : tensor<2x2xf32>
+  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<2x2xf32>) -> tensor<*xf32>
+  %1 = "tfl.add"(%0, %cst_1) {fused_activation_function = "NONE"} : (tensor<*xf32>, tensor<2x2xf32>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+
+  // CHECK-LABEL: NotReorderAddWithUnranked
+  // CHECK: tfl.add
+  // CHECK: tfl.add
+}
+
 func @RemoveCast(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %1 = "tfl.cast"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %1 : tensor<2x2xf32>

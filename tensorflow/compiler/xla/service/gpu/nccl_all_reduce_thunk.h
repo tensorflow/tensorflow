@@ -36,6 +36,9 @@ struct NcclAllReduceConfig {
 // GPU-based replicas.
 class NcclAllReduceThunkBase : public NcclCollectiveThunk {
  public:
+  template <typename OpT>
+  static absl::optional<ReductionKind> MatchReductionComputation(OpT op);
+
   NcclAllReduceThunkBase(Kind kind, ThunkInfo thunk_info,
                          NcclAllReduceConfig config,
                          std::vector<Buffer> buffers);

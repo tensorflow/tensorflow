@@ -185,9 +185,10 @@ int main(int argc, char **argv) {
     }
     std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
                                           custom_opdefs.end());
-    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, extra_opdefs, exported_names,
-                                          specs, &context, &bundle);
+    module = tensorflow::ImportSavedModel(
+        input_file_name, saved_model_version, tags, extra_opdefs,
+        exported_names, specs, /*enable_variable_lifting=*/true, &context,
+        &bundle);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,

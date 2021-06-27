@@ -225,7 +225,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         if (slice_number_ % dataset()->num_replicas_ != 0) {
           for (int i = 0; i < input_descriptors_.size(); ++i) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat("tensors[", i, "]")),
+                ctx->flr(), full_name(strings::StrCat("tensors[", i, "]")),
                 &input_descriptors_[i].whole_tensor));
             input_descriptors_[i].original_batch_dim =
                 input_descriptors_[i].whole_tensor.dim_size(0);
@@ -568,7 +568,8 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
           tensors_.resize(dataset()->output_dtypes().size());
           for (int i = 0; i < tensors_.size(); ++i) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat("tensors[", i, "]")), &tensors_[i]));
+                ctx->flr(), full_name(strings::StrCat("tensors[", i, "]")),
+                &tensors_[i]));
           }
         }
         return Status::OK();

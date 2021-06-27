@@ -124,15 +124,14 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
                          first_output_classes,
                          dataset_ops.get_legacy_output_classes(data_input)))
 
-    output_shapes = dataset_ops.get_legacy_output_shapes(self._data_inputs[0])
+    spec = self._data_inputs[0].element_spec
     for data_input in self._data_inputs[1:]:
-      output_shapes = nest.pack_sequence_as(output_shapes, [
-          ts1.most_specific_compatible_shape(ts2) for (ts1, ts2) in zip(
-              nest.flatten(output_shapes),
-              nest.flatten(dataset_ops.get_legacy_output_shapes(data_input)))
+      spec = nest.pack_sequence_as(spec, [
+          x.most_specific_compatible_type(y) for (x, y) in zip(
+              nest.flatten(spec),
+              nest.flatten(data_input.element_spec))
       ])
-    self._element_spec = structure.convert_legacy_structure(
-        first_output_types, output_shapes, first_output_classes)
+    self._element_spec = spec
 
     # pylint: disable=protected-access
     variant_tensor = (

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -105,10 +106,13 @@ class DispatcherState {
   };
 
   struct DistributedEpochState {
-    // The current repetition.
-    int64 repetition = 0;
-    // Number of splits produced so far by the current split provider.
-    int64 split_provider_index = 0;
+    explicit DistributedEpochState(int64 num_split_providers)
+        : repetitions(num_split_providers), indices(num_split_providers) {}
+
+    // The current repetition for each split provider.
+    std::vector<int64> repetitions;
+    // Number of splits produced so far by each split provider.
+    std::vector<int64> indices;
   };
 
   struct Task;
@@ -130,6 +134,7 @@ class DispatcherState {
   // A job for processing a dataset.
   struct Job {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
+                 int64 num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
                  absl::optional<int64> num_consumers)
         : job_id(job_id),
@@ -138,7 +143,7 @@ class DispatcherState {
           named_job_key(named_job_key),
           num_consumers(num_consumers) {
       if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
-        distributed_epoch_state = DistributedEpochState();
+        distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
     }
 

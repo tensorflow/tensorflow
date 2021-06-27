@@ -38,7 +38,6 @@ package_group(
     name = "friends",
     includes = [":internal"],
     packages = [
-        "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
         "//tensorflow_models/...",
         "//third_party/mlir_edge/model_curriculum/iree/...",

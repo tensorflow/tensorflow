@@ -2834,6 +2834,9 @@ bool IsAllAllowedTensors(TfLiteContext* context,
     int tensor_idx = tensor_indices->data[i];
     if (tensor_idx == kTfLiteOptionalTensor) continue;
     const TfLiteTensor* t = &context->tensors[tensor_idx];
+    if (t->dims && t->dims->size >= 5) {
+      return false;
+    }
     bool type_supported = false;
     for (auto allowed_type : allowed_types) {
       if (t->type == allowed_type) {
@@ -3066,7 +3069,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
         *unsupported_details =
-            "OP is supported, but tensor type doesn't match.";
+            "OP is supported, but tensor type/shape doesn't supported.";
       }
       return false;
     }

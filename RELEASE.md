@@ -50,15 +50,38 @@
     *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
         `tf.distribute.InputOptions` for specific options when used with
         distribution.
+    *   `tf.keras.experimental.SidecarEvaluator` is now available for a program
+        intended to be run on an evaluator task, which is commonly used to
+        supplement a training cluster running with
+        `tf.distribute.experimental.ParameterServerStrategy` (see
+        https://www.tensorflow.org/tutorials/distribute/parameter_server_training).
+        It can also be used with single-worker training or other strategies.
+        See docstring for more info.
+    *   Preprocessing layers moved from experimental to core.
+        *   Import paths moved from
+            `tf.keras.layers.preprocessing.experimental` to `tf.keras.layers`.
     *   Updates to Preprocessing layers API for consistency and clarity:
         *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
             to `None`. This matches the default masking behavior of `Hashing`
             and `Embedding` layers. To keep existing behavior, pass
             `mask_token=""` during layer creation.
+        *   Renamed `"binary"` output mode to `"multi_hot"` for
+            `CategoryEncoding`, `StringLookup`, `IntegerLookup`, and
+            `TextVectorization`. Multi-hot encoding will no longer
+            automatically uprank rank 1 inputs, so these layers can now
+            multi-hot encode unbatched multi-dimensional samples.
+        *   Added a new output mode `"one_hot"` for `CategoryEncoding`,
+            `StringLookup`, `IntegerLookup`, which will encode each element in
+            an input batch individually, and automatically append a new output
+            dimension if necessary. Use this mode on rank 1 inputs for the old
+            `"binary"` behavior of one-hot encoding a batch of scalars.
+        *   `Normalization` will no longer automatically uprank rank 1 inputs,
+            allowing normalization of unbatched multi-dimensional samples.
 
 * `tf.lite`:
     *   The recommended Android NDK version for building TensorFlow Lite has
         been changed from r18b to r19c.
+    *   Supports int64 for mul.
 * `tf.saved_model`:
     *   SavedModels can now save custom gradients. Use the option
         `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
@@ -169,6 +192,9 @@
         methods to skip the cached function and generate a new one. This is
 	useful to regenerate in a single call the compiled training function
 	when any `.trainable` attribute of any model's layer has changed.
+    *   Models now have a `save_spec` property which contains the `TensorSpec`
+        specs for calling the model. This spec is automatically saved when
+        the model is called for the first time.
 *   `tf.linalg`:
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
@@ -179,6 +205,10 @@
         *    `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
         *    `setNumThreads` - Use `Interpreter.Options.setNumThreads`
     *   Add Conv3DTranspose as a builtin op.
+*   `tf.summary`:
+    *   Fix `tf.summary.should_record_summaries()` so it correctly reflects when
+        summaries will be written, even when `tf.summary.record_if()` is not
+        in effect, by returning True tensor if default writer is present.
 *   `Grappler`:
     *   Disable default Grappler optimization timeout to make the optimization
         pipeline deterministic. This may lead to increased model loading time,

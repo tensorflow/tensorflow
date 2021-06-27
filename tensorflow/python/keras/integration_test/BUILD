@@ -8,6 +8,7 @@ load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = [
+        "//learning/brain/testing/tpu:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
     licenses = ["notice"],

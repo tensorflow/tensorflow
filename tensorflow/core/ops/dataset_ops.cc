@@ -34,27 +34,25 @@ namespace tensorflow {
 // (i.e. ops that output a dataset and do not take one as input) are
 // marked as "do not optimize".
 
+// TODO(mrry): Validate that `components` have shapes compatible with
+// `output_shapes`.
 REGISTER_OP("TensorDataset")
     .Input("components: Toutput_types")
     .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
-    .SetShapeFn(shape_inference::ScalarShape);  // TODO(mrry): Validate that
-                                                // `components` have shapes
-                                                // compatible with
-                                                // `output_shapes`.
+    .SetShapeFn(shape_inference::ScalarShape);
 
+// TODO(mrry): Validate that the dim-0 slices of `components` have shapes
+// compatible with `output_shapes`.
 REGISTER_OP("TensorSliceDataset")
     .Input("components: Toutput_types")
     .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
-    .SetShapeFn(shape_inference::ScalarShape);  // TODO(mrry): Validate that the
-                                                // dim-0 slices of `components`
-                                                // have shapes compatible with
-                                                // `output_shapes`.
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SparseTensorSliceDataset")
     .Input("indices: int64")
@@ -295,6 +293,14 @@ REGISTER_OP("WindowDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
+
+REGISTER_OP("Window")
+    .Input("inputs: Tinputs")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("Tinputs: list(type) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("BatchDataset")
     .Input("input_dataset: variant")

@@ -39,6 +39,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+// TODO(prakalps): Delete these old metrics after modifying the retention
+// policy.
 auto* mlir_function_pass_failed_fallback = monitoring::Counter<0>::New(
     "/tensorflow/core/mlir_pass_failed_fallback",
     "Failure count of MLIR pass runs when fallback used");
@@ -46,6 +48,25 @@ auto* mlir_function_pass_failed_fallback = monitoring::Counter<0>::New(
 auto* mlir_function_pass_succeeded_fallback = monitoring::Counter<0>::New(
     "/tensorflow/core/mlir_pass_succeeded_fallback",
     "Success count of MLIR pass runs when fallback enabled");
+
+auto* mlir_function_pass_fallback_count = monitoring::Counter<1>::New(
+    /* metric name */ "/tensorflow/core/mlir_function_pass_fallback_count",
+    /* metric description */
+    "Track success/failure of MLIR pass runs when fallback used",
+    /* metric field */ "status");
+
+auto* mlir_graph_optimization_pass_fallback_count = monitoring::Counter<1>::New(
+    /* metric name */
+    "/tensorflow/core/mlir_graph_optimization_pass_fallback_count",
+    /* metric description */
+    "Track success/failure of MLIR graph optimization pass runs when fallback "
+    "used",
+    /* metric field */ "status");
+
+// The status metric field is used to record success/failure of mlir
+// function/graph optimization passes.
+constexpr char kSuccess[] = "kSuccess";
+constexpr char kFailure[] = "kFailure";
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -238,13 +259,13 @@ Status MlirFunctionOptimizationPass::Run(
         LOG(WARNING) << StringRefToView(name)
                      << " pass failed, continuing without the pass because the "
                         "pass has fallback enabled";
-        mlir_function_pass_failed_fallback->GetCell()->IncrementBy(1);
+        mlir_function_pass_fallback_count->GetCell(kFailure)->IncrementBy(1);
       } else if (pass_state == MlirOptimizationPassState::Enabled) {
         return pass_status;
       }
     } else {
       if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-        mlir_function_pass_succeeded_fallback->GetCell()->IncrementBy(1);
+        mlir_function_pass_fallback_count->GetCell(kSuccess)->IncrementBy(1);
       }
     }
 
@@ -334,12 +355,14 @@ Status MlirV1CompatGraphOptimizationPass::Run(
       LOG(WARNING) << StringRefToView(name)
                    << " pass failed, continuing without the pass because the "
                       "pass has fallback enabled";
-      mlir_function_pass_failed_fallback->GetCell()->IncrementBy(1);
+      mlir_graph_optimization_pass_fallback_count->GetCell(kFailure)
+          ->IncrementBy(1);
       return Status::OK();
     }
   } else {
     if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-      mlir_function_pass_succeeded_fallback->GetCell()->IncrementBy(1);
+      mlir_graph_optimization_pass_fallback_count->GetCell(kSuccess)
+          ->IncrementBy(1);
     }
   }
 

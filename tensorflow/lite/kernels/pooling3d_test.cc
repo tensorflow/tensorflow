@@ -28,12 +28,16 @@ namespace tflite {
 
 using ::testing::ElementsAreArray;
 
+enum PoolType {
+  kAverage,
+  kMax,
+};
+
 template <typename T>
 class BasePoolingOpModel : public SingleOpModel {
  public:
-  BasePoolingOpModel(const std::string& pool_op_name, TensorData input,
-                     int filter_d, int filter_h, int filter_w,
-                     TensorData output,
+  BasePoolingOpModel(PoolType pool_type, TensorData input, int filter_d,
+                     int filter_h, int filter_w, TensorData output,
                      TfLitePadding padding = kTfLitePaddingValid,
                      int stride_d = 2, int stride_h = 2, int stride_w = 2) {
     if (input.type == TensorType_FLOAT32) {
@@ -46,7 +50,13 @@ class BasePoolingOpModel : public SingleOpModel {
 
     std::vector<uint8_t> custom_option = CreateCustomOptions(
         stride_d, stride_h, stride_w, filter_d, filter_h, filter_w, padding);
-    SetCustomOp(pool_op_name, custom_option, ops::custom::Register_AVG_POOL_3D);
+    if (pool_type == kAverage) {
+      SetCustomOp("AveragePool3D", custom_option,
+                  ops::custom::Register_AVG_POOL_3D);
+    } else {
+      SetCustomOp("MaxPool3D", custom_option,
+                  ops::custom::Register_MAX_POOL_3D);
+    }
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -112,7 +122,7 @@ std::vector<float> BasePoolingOpModel<float>::GetOutput() {
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(AveragePoolingOpTest, InvalidDimSize) {
   EXPECT_DEATH(BasePoolingOpModel<float> m(
-                   "AveragePool3D",
+                   kAverage,
                    /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
                    /*filter_d=*/2,
                    /*filter_h=*/2, /*filter_w=*/2,
@@ -124,7 +134,7 @@ TEST(AveragePoolingOpTest, InvalidDimSize) {
 
 TEST(AveragePoolingOpTest, ZeroStride) {
   EXPECT_DEATH(BasePoolingOpModel<float> m(
-                   "AveragePool3D",
+                   kAverage,
                    /*input=*/{TensorType_FLOAT32, {1, 2, 2, 4, 1}},
                    /*filter_d=*/2,
                    /*filter_h=*/2, /*filter_w=*/2,
@@ -147,7 +157,7 @@ TYPED_TEST_SUITE(MaxPoolingOpTest, DataTypes);
 
 TYPED_TEST(AveragePoolingOpTest, AveragePool) {
   BasePoolingOpModel<TypeParam> m(
-      "AveragePool3D",
+      kAverage,
       /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
@@ -159,7 +169,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePool) {
 
 TYPED_TEST(AveragePoolingOpTest, AveragePoolFilterH1) {
   BasePoolingOpModel<TypeParam> m(
-      "AveragePool3D",
+      kAverage,
       /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
       /*filter_d=*/2,
       /*filter_h=*/1, /*filter_w=*/2,
@@ -171,7 +181,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolFilterH1) {
 
 TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingSameStride1) {
   BasePoolingOpModel<TypeParam> m(
-      "AveragePool3D",
+      kAverage,
       /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
@@ -188,7 +198,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingSameStride1) {
 
 TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
   BasePoolingOpModel<TypeParam> m(
-      "AveragePool3D",
+      kAverage,
       /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
       /*filter_d=*/2,
       /*filter_h=*/2, /*filter_w=*/2,
@@ -199,6 +209,61 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2.875, 4.125, 4.5}));
+}
+
+TYPED_TEST(MaxPoolingOpTest, MaxPool) {
+  BasePoolingOpModel<TypeParam> m(
+      kMax,
+      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
+      /*filter_d=*/2,
+      /*filter_h=*/2, /*filter_w=*/2,
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
+  m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6.0, 10.0}));
+}
+
+TYPED_TEST(MaxPoolingOpTest, MaxPoolFilterH1) {
+  BasePoolingOpModel<TypeParam> m(
+      kMax,
+      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
+      /*filter_d=*/2,
+      /*filter_h=*/1, /*filter_w=*/2,
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
+  m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 10}));
+}
+
+TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingSameStride1) {
+  BasePoolingOpModel<TypeParam> m(
+      kMax,
+      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
+      /*filter_d=*/2,
+      /*filter_h=*/2, /*filter_w=*/2,
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375},
+      kTfLitePaddingSame,
+      /*stride_d=*/1, /*stride_h=*/1,
+      /*stride_w=*/1);
+  m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 10, 10, 7, 5, 5, 4, 4, 3, 10,
+                                               10, 7, 3, 2, 4, 4}));
+}
+
+TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingValidStride1) {
+  BasePoolingOpModel<TypeParam> m(
+      kMax,
+      /*input=*/{GetTensorType<TypeParam>(), {1, 2, 2, 4, 1}, 0, 15.9375},
+      /*filter_d=*/2,
+      /*filter_h=*/2, /*filter_w=*/2,
+      /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375},
+      kTfLitePaddingValid,
+      /*stride_d=*/1, /*stride_h=*/1,
+      /*stride_w=*/1);
+  m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6.0, 10.0, 10.0}));
 }
 
 }  // namespace tflite

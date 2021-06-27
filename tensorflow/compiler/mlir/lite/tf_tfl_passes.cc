@@ -92,6 +92,13 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
 
+  // TODO(b/149099381): Remove after handling WhileRegion in favor of later
+  // instance.
+  if (session.hasValue()) {
+    pass_manager->addPass(
+        mlir::tf_saved_model::CreateFreezeVariablesPass(session.getValue()));
+  }
+
   // Keep this pass after the shape inference pass, which couldn't do shape
   // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {
@@ -113,6 +120,12 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   // during which resources dont get frozen in the python layer.
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  // Try freezing again read only vars post resource decomposition.
+  if (session.hasValue()) {
+    pass_manager->addPass(
+        mlir::tf_saved_model::CreateFreezeVariablesPass(session.getValue()));
+  }
 
   // Note:
   // We need to fuse composite ops before LowerStaticTensorList pass.
@@ -223,9 +236,8 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
     if (pass_config.enable_tflite_variables) {
-      pass_manager->addPass(mlir::TFL::CreateInitializeVariablesPass());
+      pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
       pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
-      pass_manager->addPass(mlir::TFL::CreateRemoveArgsAndGlobalTensors());
     }
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
     pass_manager->addNestedPass<mlir::FuncOp>(

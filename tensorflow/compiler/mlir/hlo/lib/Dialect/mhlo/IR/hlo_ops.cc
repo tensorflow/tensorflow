@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -641,11 +642,33 @@ void DynamicIotaOp::getCanonicalizationPatterns(
   results.insert<DynamicIotaBroadcast>(context);
 }
 
+static Value castToIndexTensor(OpBuilder& builder, Location loc,
+                               Value shape_op) {
+  ShapedType result_ty = shape::getExtentTensorType(
+      builder.getContext(),
+      shape_op.getType().cast<ShapedType>().getDimSize(0));
+  if (shape_op.getType() == result_ty) return shape_op;  // Nothing to do.
+  // index_cast is not defined on tensors, so emit a tensor.generate instead.
+  return builder.create<tensor::GenerateOp>(
+      loc, result_ty,
+      result_ty.hasStaticShape()
+          ? ValueRange{}
+          : ValueRange{builder.create<memref::DimOp>(loc, shape_op, 0)},
+      [&](OpBuilder& b, Location loc, ValueRange args) {
+        Value dim = args.front();
+        Value extent = b.create<tensor::ExtractOp>(loc, shape_op, dim);
+        Value casted =
+            b.create<IndexCastOp>(loc, extent, result_ty.getElementType());
+        b.create<tensor::YieldOp>(loc, casted);
+      });
+}
+
 LogicalResult DynamicIotaOp::reifyReturnTypeShapes(
-    OpBuilder&, ValueRange operands,
+    OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   DynamicIotaOp::Adaptor adaptor(operands);
-  reifiedReturnShapes.push_back(adaptor.output_shape());
+  reifiedReturnShapes.push_back(
+      castToIndexTensor(builder, getLoc(), adaptor.output_shape()));
   return success();
 }
 
@@ -1191,10 +1214,11 @@ void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
 }
 
 LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
-    OpBuilder&, ValueRange operands,
+    OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   DynamicBroadcastInDimOp::Adaptor adaptor(operands);
-  reifiedReturnShapes.push_back(adaptor.output_dimensions());
+  reifiedReturnShapes.push_back(
+      castToIndexTensor(builder, getLoc(), adaptor.output_dimensions()));
   return success();
 }
 
@@ -1626,10 +1650,11 @@ static LogicalResult Verify(DynamicReshapeOp op) {
 }
 
 LogicalResult DynamicReshapeOp::reifyReturnTypeShapes(
-    OpBuilder&, ValueRange operands,
+    OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   DynamicReshapeOp::Adaptor adaptor(operands);
-  reifiedReturnShapes.push_back(adaptor.output_shape());
+  reifiedReturnShapes.push_back(
+      castToIndexTensor(builder, getLoc(), adaptor.output_shape()));
   return success();
 }
 
@@ -3560,6 +3585,56 @@ static LogicalResult Verify(SortOp op) {
   }
 
   return success();
+}
+
+/// Drops the operands if the results are not used and they are not used in
+/// op.comparator().
+static LogicalResult SortDropEmptyUseArgs(SortOp op,
+                                          PatternRewriter& rewriter) {
+  DenseSet<unsigned> erased_args;
+  unsigned num_operands = op.getNumOperands();
+  for (unsigned i = 0; i < num_operands; ++i) {
+    if (!op.getResult(i).use_empty()) continue;
+    Block& block = op.comparator().front();
+    if (!block.getArgument(i * 2).use_empty()) continue;
+    if (!block.getArgument(i * 2 + 1).use_empty()) continue;
+    erased_args.insert(i);
+  }
+  if (erased_args.empty()) return failure();
+
+  SmallVector<Value> new_operands;
+  SmallVector<unsigned> erased_block_args;
+  for (auto en : llvm::enumerate(op.operands())) {
+    if (erased_args.contains(en.index())) {
+      erased_block_args.push_back(en.index() * 2);
+      erased_block_args.push_back(en.index() * 2 + 1);
+    } else {
+      new_operands.push_back(en.value());
+    }
+  }
+
+  auto new_op = rewriter.create<SortOp>(op.getLoc(), new_operands,
+                                        op.dimension(), op.is_stable());
+  Region& region = new_op.comparator();
+  rewriter.inlineRegionBefore(op.comparator(), region, region.end());
+  region.front().eraseArguments(erased_block_args);
+
+  SmallVector<Value> results;
+  for (unsigned i = 0, j = 0; i < num_operands; ++i) {
+    if (erased_args.contains(i)) {
+      results.push_back({});
+    } else {
+      results.push_back(new_op.getResult(j++));
+    }
+  }
+  rewriter.replaceOp(op, results);
+
+  return success();
+}
+
+void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* /*context*/) {
+  results.insert(SortDropEmptyUseArgs);
 }
 
 //===----------------------------------------------------------------------===//

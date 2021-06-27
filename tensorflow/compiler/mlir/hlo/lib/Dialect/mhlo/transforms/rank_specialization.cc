@@ -340,6 +340,7 @@ SmallVector<Value, 8> MaterializeRankedOperations(
       yield_op.results(), [&](Value v) { return bvm.lookup(v); }));
 }
 
+// TODO(frgossen): Use shape reification.
 SmallVector<Value, 8> MaterializeFinalReshape(
     OpBuilder &b, Location loc, chlo::RankSpecializationClusterOp op,
     ValueRange unshaped_results, llvm::Optional<Value> shape = {}) {
@@ -718,8 +719,6 @@ Value MaterializeDefaultRankSpecialization(OpBuilder &b, Location loc,
 }
 
 // This is a very limited form of shape inference. It is correct but incomplete.
-// TODO(frgossen): Infer shape equalities from surrounding shape constraints
-// when these are generated.
 SmallVector<SmallVector<Value, 4>, 4> FindNonScalarShapeEquivalences(
     chlo::RankSpecializationClusterOp op) {
   llvm::EquivalenceClasses<Value> eqs;
@@ -743,13 +742,42 @@ SmallVector<SmallVector<Value, 4>, 4> FindNonScalarShapeEquivalences(
     }
   }
 
+  // Find shape equalities through surrounding constraints.
+  if (auto assuming_op = op->getParentOfType<shape::AssumingOp>()) {
+    SmallVector<Operation *, 8> queue;
+    auto append_if_not_null = [&](Operation *op) {
+      if (op != nullptr) queue.push_back(op);
+    };
+    append_if_not_null(assuming_op.witness().getDefiningOp());
+    while (!queue.empty()) {
+      Operation *it = queue.pop_back_val();
+      if (auto assuming_all_op = llvm::dyn_cast<shape::AssumingAllOp>(it)) {
+        for (Value v : assuming_all_op.inputs())
+          append_if_not_null(v.getDefiningOp());
+      } else if (auto cstr_eq_op = llvm::dyn_cast<shape::CstrEqOp>(it)) {
+        Value ref_arg;
+        for (Value v : cstr_eq_op.shapes()) {
+          if (auto shape_of_op =
+                  dyn_cast_or_null<shape::ShapeOfOp>(v.getDefiningOp())) {
+            if (!ref_arg) {
+              ref_arg = shape_of_op.arg();
+            } else {
+              eqs.unionSets(ref_arg, shape_of_op.arg());
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Find equalities through special knowledge of ops.
+  // TODO(frgossen): Remove this when these shape equalities can be inferred
+  // from surrounding shape constraints.
   for (Operation &nested_op : op.getBody()->without_terminator()) {
     if (auto select_op = llvm::dyn_cast<mhlo::SelectOp>(nested_op)) {
       union_sets(
           {select_op.on_true(), select_op.on_false(), select_op.getResult()});
-    }
-    if (auto clamp_op = llvm::dyn_cast<mhlo::ClampOp>(nested_op)) {
+    } else if (auto clamp_op = llvm::dyn_cast<mhlo::ClampOp>(nested_op)) {
       union_sets({clamp_op.operand(), clamp_op.getResult()});
     }
   }

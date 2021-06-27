@@ -1490,8 +1490,26 @@ gentbl_cc_library(
 
 cc_library(
     name = "SparseTensor",
-    srcs = glob(["lib/Dialect/SparseTensor/IR/*.cpp"]),
+    srcs = glob([
+        "lib/Dialect/SparseTensor/IR/*.cpp",
+    ]),
     hdrs = ["include/mlir/Dialect/SparseTensor/IR/SparseTensor.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":SideEffectInterfaces",
+        ":SparseTensorAttrDefsIncGen",
+        ":SparseTensorOpsIncGen",
+        ":SparseTensorUtils",
+        ":StandardOps",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SparseTensorUtils",
+    srcs = glob(["lib/Dialect/SparseTensor/Utils/*.cpp"]),
+    hdrs = glob(["include/mlir/Dialect/SparseTensor/Utils/*.h"]),
     includes = ["include"],
     deps = [
         ":IR",
@@ -1518,6 +1536,7 @@ cc_library(
         ":SCFDialect",
         ":SparseTensor",
         ":SparseTensorPassIncGen",
+        ":SparseTensorUtils",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":TensorDialect",
@@ -1541,7 +1560,6 @@ td_library(
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
         ":VectorInterfacesTdFiles",
-        ":ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -2160,11 +2178,7 @@ cc_library(
             "lib/Dialect/StandardOps/IR/*.h",
             "lib/Dialect/StandardOps/Utils/*.cpp",
         ],
-    ) +
-    # TODO: Stop depending on MemRefOps.
-    [
-        "include/mlir/Dialect/MemRef/IR/MemRef.h",
-    ],
+    ),
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
         "include/mlir/Dialect/StandardOps/Utils/*.h",
@@ -2175,16 +2189,11 @@ cc_library(
         ":CastOpInterfaces",
         ":CommonFolders",
         ":ControlFlowInterfaces",
-        ":CopyOpInterface",  # TODO: Stop depending on MemRefOps.
         ":IR",
-        ":MemRefBaseIncGen",  # TODO: Stop depending on MemRefOps.
-        ":MemRefOpsIncGen",  # TODO: Stop depending on MemRefOps.
         ":SideEffectInterfaces",
         ":StandardOpsIncGen",
         ":Support",
-        ":TensorDialect",
         ":VectorInterfaces",
-        ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -2215,7 +2224,7 @@ cc_library(
     deps = [
         ":Affine",
         ":IR",
-        ":MemRefDialect",
+        ":MemRefDialect",  # TODO: Remove dependency on MemRef dialect
         ":Pass",
         ":SCFDialect",
         ":StandardOps",
@@ -2703,6 +2712,7 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":MathDialect",
+        ":MemRefDialect",
         ":NVVMDialect",
         ":Pass",
         ":StandardToLLVM",
@@ -3612,6 +3622,7 @@ td_library(
         ":ControlFlowInterfacesTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
+        ":ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -3655,8 +3666,10 @@ cc_library(
         ":ControlFlowInterfaces",
         ":IR",
         ":SideEffectInterfaces",
+        ":StandardOps",
         ":Support",
         ":TensorOpsIncGen",
+        ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4344,13 +4357,13 @@ cc_library(
         "lib/Target/LLVMIR/DebugTranslation.cpp",
         "lib/Target/LLVMIR/DebugTranslation.h",
         "lib/Target/LLVMIR/ModuleTranslation.cpp",
-        "lib/Target/LLVMIR/TypeTranslation.cpp",
+        "lib/Target/LLVMIR/TypeToLLVM.cpp",
     ],
     hdrs = [
         "include/mlir/Target/LLVMIR/Export.h",
         "include/mlir/Target/LLVMIR/LLVMTranslationInterface.h",
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
-        "include/mlir/Target/LLVMIR/TypeTranslation.h",
+        "include/mlir/Target/LLVMIR/TypeToLLVM.h",
     ],
     includes = ["include"],
     deps = [
@@ -4549,8 +4562,12 @@ cc_library(
     name = "FromLLVMIRTranslation",
     srcs = [
         "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
+        "lib/Target/LLVMIR/TypeFromLLVM.cpp",
     ],
-    hdrs = ["include/mlir/Target/LLVMIR/Import.h"],
+    hdrs = [
+        "include/mlir/Target/LLVMIR/Import.h",
+        "include/mlir/Target/LLVMIR/TypeFromLLVM.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
@@ -6015,6 +6032,7 @@ cc_library(
         ":QuantOps",
         ":SideEffectInterfaces",
         ":StandardOps",
+        ":TensorDialect",
         ":TosaDialectIncGen",
         ":TosaInterfacesIncGen",
         ":TosaPassIncGen",

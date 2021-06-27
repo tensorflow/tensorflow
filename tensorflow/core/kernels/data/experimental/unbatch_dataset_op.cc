@@ -12,9 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -132,10 +136,12 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             out_tensors->clear();
             out_tensors->reserve(tensors_.size());
             for (int i = 0; i < tensors_.size(); ++i) {
-              out_tensors->emplace_back(ctx->allocator({}), tensors_[i].dtype(),
-                                        shapes_[i]);
-              TF_RETURN_IF_ERROR(batch_util::MaybeMoveSliceToElement(
-                  &tensors_[i], &out_tensors->back(), current_index_));
+              Tensor slice = tensors_[i].SubSlice(current_index_);
+              if (slice.IsAligned()) {
+                out_tensors->push_back(std::move(slice));
+              } else {
+                out_tensors->push_back(tensor::DeepCopy(std::move(slice)));
+              }
             }
             ++current_index_;
             *end_of_sequence = false;
@@ -224,7 +230,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         if (current_index_ < current_batch_size_) {
           for (size_t i = 0; i < tensors_.size(); ++i) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat("tensors[", i, "]")), &tensors_[i]));
+                ctx->flr(), full_name(strings::StrCat("tensors[", i, "]")),
+                &tensors_[i]));
             shapes_[i] = tensors_[i].shape();
             shapes_[i].RemoveDim(0);
           }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
@@ -410,15 +411,27 @@ string TimestampFor(const HloModule& module) {
   return std::to_string(timestamp_emplace.first->second);
 }
 
-static string FilenameFor(int unique_id, string_view prefix,
-                          string_view suffix) {
-  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
-                   unique_id, suffix);
+static string FilenameFor(int unique_id, string_view module_name,
+                          string_view prefix, string_view suffix) {
+  string filename;
+  if (!prefix.empty()) {
+    absl::StrAppend(&filename, prefix, ".");
+  }
+  absl::StrAppendFormat(&filename, "module_%04d", unique_id);
+  if (!module_name.empty()) {
+    absl::StrAppend(&filename, ".", module_name);
+  }
+  absl::StrAppend(&filename, ".", suffix);
+  // Skip the module name if the resulting length is too long.
+  if (!module_name.empty() && filename.size() > 255) {
+    return FilenameFor(unique_id, "", prefix, suffix);
+  }
+  return filename;
 }
 
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
-  return FilenameFor(module.unique_id(), prefix, suffix);
+  return FilenameFor(module.unique_id(), module.name(), prefix, suffix);
 }
 
 void DumpToFileInDir(const HloModule& module, string_view file_prefix,
@@ -435,10 +448,11 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
 }
 
 void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
-                             string_view file_prefix, string_view file_suffix,
-                             string_view contents) {
-  DumpToFileInDirOrStdoutImpl(FilenameFor(unique_id, file_prefix, file_suffix),
-                              contents, CanonicalDebugOptions(debug_options));
+                             string_view module_name, string_view file_prefix,
+                             string_view file_suffix, string_view contents) {
+  DumpToFileInDirOrStdoutImpl(
+      FilenameFor(unique_id, module_name, file_prefix, file_suffix), contents,
+      CanonicalDebugOptions(debug_options));
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
