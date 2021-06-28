@@ -35,7 +35,7 @@ typedef struct {
   std::vector<OpSignatureTensorSpec> inputs;
   std::vector<OpSignatureTensorSpec> outputs;
   void* builtin_data;
-  void* custom_initial_data;
+  const void* custom_initial_data;
   std::string custom_name;
   union {
     struct {
