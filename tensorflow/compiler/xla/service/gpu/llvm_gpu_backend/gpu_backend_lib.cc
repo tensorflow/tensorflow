@@ -560,13 +560,8 @@ StatusOr<string> CompileToPtx(
 namespace {
 
 // Gets the ROCm-Device-Libs filenames for a particular AMDGPU version.
-<<<<<<< HEAD
-static std::vector<string> GetROCDLPaths(std::string amdgpu_version,
-                                         const string& rocdl_dir_path) {
-=======
 std::vector<string> GetROCDLPaths(std::string amdgpu_version,
                                   const string& rocdl_dir_path) {
->>>>>>> upstream/master
   // AMDGPU version-neutral bitcodes.
 #if TF_ROCM_VERSION >= 30900
   static std::vector<string>* rocdl_filenames = new std::vector<string>(
@@ -589,14 +584,9 @@ std::vector<string> GetROCDLPaths(std::string amdgpu_version,
 
   // Add AMDGPU version-specific bitcodes.
   std::vector<std::string> tokens = absl::StrSplit(amdgpu_version, ':');
-<<<<<<< HEAD
-  if(tokens.size()>=1 && tokens[0].size()>=3)
-    amdgpu_version=tokens[0].substr(3);
-=======
   if (!tokens.empty() && tokens[0].size() >= 3) {
     amdgpu_version = tokens[0].substr(3);
   }
->>>>>>> upstream/master
   result.push_back(tensorflow::io::JoinPath(
       rocdl_dir_path,
 #if TF_ROCM_VERSION >= 30900
@@ -801,13 +791,8 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     return xla::InternalError(
         "Incompatible AMD GCN ISA version was specified.");
   }
-<<<<<<< HEAD
-  TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, *amdgpu_version,
-                                          device_bitcode_dir_path));
-=======
   TF_RETURN_IF_ERROR(
       LinkROCDLIfNecessary(module, *amdgpu_version, device_bitcode_dir_path));
->>>>>>> upstream/master
 
   // For rocm, we always enable flush to zero. (for cuda, this is determined
   // via environemnt variables). This deceision was based on the observation
@@ -855,10 +840,7 @@ std::string MapGCNArchNameTokenToFeatureStr(const std::string& token) {
 std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
     const std::string& gcn_arch_name) {
   std::string feature_str;
-<<<<<<< HEAD
-=======
 
->>>>>>> upstream/master
   std::string gfx = gcn_arch_name;
 #if TF_ROCM_VERSION < 30900
   // For ROCm versions older than 3.9, hardcode it to "+code-object-v3"
@@ -872,12 +854,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
   // feature str, based on the underlying GPU HW to get max performance.
   std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
   std::vector<std::string> mapped_tokens;
-<<<<<<< HEAD
-  if(tokens.size()>0)
-    gfx=tokens[0];
-=======
   if (tokens.size() > 0) gfx = tokens[0];
->>>>>>> upstream/master
   for (auto it = tokens.begin(); it != tokens.end(); it++) {
     // Skip the first token, that is the gfxNNN str
     // The rest of the tokens are the feature/targetid strings
@@ -890,11 +867,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
   feature_str = absl::StrJoin(mapped_tokens, ",");
 #endif
 
-<<<<<<< HEAD
-  return make_pair(gfx, feature_str);
-=======
   return std::make_pair(gfx, feature_str);
->>>>>>> upstream/master
 }
 
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
