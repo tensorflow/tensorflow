@@ -81,7 +81,7 @@ static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
       std::ostringstream oss;                                            \
       oss << ToString(_status) << "\nin " << __FILE__ << "(" << __LINE__ \
           << "): '" << #expr << "'";                                     \
-      return port::Status(port::error::UNKNOWN, oss.str().c_str());      \
+      return port::Status(port::error::UNKNOWN, oss.str());              \
     }                                                                    \
   } while (false)
 
@@ -92,19 +92,15 @@ static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
       std::ostringstream oss;                                            \
       oss << ToString(_status) << "\nin " << __FILE__ << "(" << __LINE__ \
           << "): '" << #expr << "' " << expr.get_error();                \
-      return port::Status(port::error::UNKNOWN, oss.str().c_str());      \
+      return port::Status(port::error::UNKNOWN, oss.str());              \
     }                                                                    \
   } while (false)
 
-#define RETURN_FALSE_IF_CUDNN_ERROR(expr)                                \
-  do {                                                                   \
-    cudnnStatus_t _status = expr.get_status();                           \
-    if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {             \
-      std::ostringstream oss;                                            \
-      oss << ToString(_status) << "\nin " << __FILE__ << "(" << __LINE__ \
-          << "): '" << #expr << "' " << expr.get_error();                \
-      return false;                                                      \
-    }                                                                    \
+#define RETURN_FALSE_IF_CUDNN_ERROR(expr)                              \
+  do {                                                                 \
+    if (!SE_PREDICT_TRUE(expr.get_status() == CUDNN_STATUS_SUCCESS)) { \
+      return false;                                                    \
+    }                                                                  \
   } while (false)
 
 // Converts (via narrowing) a type T value to a type U, and checks that the
@@ -1530,8 +1526,7 @@ class CudnnRnnSequenceTensorDescriptor
         data_type_(data_type),
         handle_(std::move(handle)),
         rnn_data_handle_(std::move(data_handle)),
-        handles_(max_seq_length, handle_.get()) {
-  }
+        handles_(max_seq_length, handle_.get()) {}
 
  public:
   CudnnRnnSequenceTensorDescriptor(CudnnRnnSequenceTensorDescriptor&&) =
@@ -1551,8 +1546,7 @@ class CudnnRnnSequenceTensorDescriptor
         /*nbDims=*/sizeof(dims) / sizeof(dims[0]), /*dimA=*/dims,
         /*strideA=*/strides));
     return CudnnRnnSequenceTensorDescriptor(parent, max_seq_length, batch_size,
-                                            data_size, data_type,
-                                            nullptr,
+                                            data_size, data_type, nullptr,
                                             std::move(tensor_desc));
   }
 
@@ -1599,9 +1593,7 @@ class CudnnRnnSequenceTensorDescriptor
   int max_seq_length() const { return max_seq_length_; }
   int batch_size() const { return batch_size_; }
   int data_size() const { return data_size_; }
-  bool is_var_seq_lengths() const {
-    return rnn_data_handle_ != nullptr;
-  }
+  bool is_var_seq_lengths() const { return rnn_data_handle_ != nullptr; }
 
  private:
   int max_seq_length_;
@@ -3947,9 +3939,7 @@ port::Status CudnnSupport::DoConvolve(
     return port::Status::OK();
   };
 
-  auto get_bwd_data_bugs = [&]() -> port::Status {
-    return port::Status::OK();
-  };
+  auto get_bwd_data_bugs = [&]() -> port::Status { return port::Status::OK(); };
 
   const auto get_bwd_filter_bugs = [&]() -> port::Status {
     return port::Status::OK();
