@@ -556,7 +556,7 @@ cc_library(
     name = "kernels_hdrs",
     hdrs = [
         "kernels.h",
-        "kernels_experimental.h"
+        "kernels_experimental.h",
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
