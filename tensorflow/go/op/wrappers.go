@@ -41794,39 +41794,43 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 	return op.Output(0), op.Output(1)
 }
 
-// Scatter `updates` into a new tensor according to `indices`.
+// Scatters `updates` into a tensor of shape `shape` according to `indices`.
 //
-// Creates a new tensor by applying sparse `updates` to individual values or
-// slices within a tensor (initially zero for numeric, empty for string) of
-// the given `shape` according to indices.  This operator is the inverse of the
-// `tf.gather_nd` operator which extracts values or slices from a given tensor.
+// Update the input tensor by scattering sparse `updates` according to individual values at the specified `indices`.
+// This op returns an `output` tensor with the `shape` you specify. This op is the
+// inverse of the `tf.gather_nd` operator which extracts values or slices from a
+// given tensor.
 //
-// This operation is similar to tensor_scatter_add, except that the tensor is
-// zero-initialized. Calling `tf.scatter_nd(indices, values, shape)` is identical
-// to `tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`
+// This operation is similar to `tf.tensor_scatter_add`, except that the tensor is
+// zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+// is identical to calling
+// `tf.tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`.
 //
-// If `indices` contains duplicates, then their updates are accumulated (summed).
+// If `indices` contains duplicates, the duplicate `values` are accumulated
+// (summed).
 //
 // **WARNING**: The order in which updates are applied is nondeterministic, so the
-// output will be nondeterministic if `indices` contains duplicates -- because
-// of some numerical approximation issues, numbers summed in different order
-// may yield different results.
+// output will be nondeterministic if `indices` contains duplicates;
+// numbers summed in different order may yield different results because of some
+// numerical approximation issues.
 //
-// `indices` is an integer tensor containing indices into a new tensor of shape
-// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+// `indices` is an integer tensor of shape `shape`. The last dimension
+// of `indices` can be at most the rank of `shape`:
 //
 //     indices.shape[-1] <= shape.rank
 //
-// The last dimension of `indices` corresponds to indices into elements
+// The last dimension of `indices` corresponds to indices of elements
 // (if `indices.shape[-1] = shape.rank`) or slices
 // (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
-// `shape`.  `updates` is a tensor with shape
+// `shape`.
+//
+// `updates` is a tensor with shape:
 //
 //     indices.shape[:-1] + shape[indices.shape[-1]:]
 //
-// The simplest form of scatter is to insert individual elements in a tensor by
-// index. For example, say we want to insert 4 scattered elements in a rank-1
-// tensor with 8 elements.
+// The simplest form of the scatter op is to insert individual elements in
+// a tensor by index. Consider an example where you want to insert 4 scattered
+// elements in a rank-1 tensor with 8 elements.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
@@ -41846,9 +41850,9 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 //
 //     [0, 11, 0, 10, 9, 0, 0, 12]
 //
-// We can also, insert entire slices of a higher rank tensor all at once. For
-// example, if we wanted to insert two slices in the first dimension of a
-// rank-3 tensor with two matrices of new values.
+// You can also insert entire slices of a higher rank tensor all at once. For
+// example, you can insert two slices in the first dimension of a rank-3 tensor
+// with two matrices of new values.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
@@ -41878,9 +41882,9 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 // On GPU, if an out of bound index is found, the index is ignored.
 //
 // Arguments:
-//	indices: Index tensor.
-//	updates: Updates to scatter into output.
-//	shape: 1-D. The shape of the resulting tensor.
+//	indices: Tensor of indices.
+//	updates: Values to scatter into the output tensor.
+//	shape: 1-D. The shape of the output tensor.
 //
 // Returns A new tensor with the given shape and updates applied according
 // to the indices.
