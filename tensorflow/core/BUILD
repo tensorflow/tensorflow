@@ -1439,7 +1439,6 @@ cc_library(
         "//tensorflow/core/platform:stringprintf",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:subprocess",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:threadpool_interface",
@@ -1454,7 +1453,10 @@ cc_library(
         "@zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
-    ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
+    ] + select({
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["//tensorflow/core/platform:subprocess"],
+    }) + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
