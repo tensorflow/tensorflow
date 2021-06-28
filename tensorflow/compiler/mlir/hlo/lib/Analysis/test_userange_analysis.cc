@@ -17,7 +17,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
-#include "mlir/Analysis/BufferAliasAnalysis.h"
+#include "mlir/Analysis/BufferViewFlowAnalysis.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/BufferUtils.h"
 
@@ -33,7 +33,7 @@ struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
   void runOnFunction() override {
     llvm::outs() << "Testing : " << getFunction().getName() << "\n";
     UserangeAnalysis(getFunction(), BufferPlacementAllocs(getFunction()),
-                     BufferAliasAnalysis(getFunction()))
+                     BufferViewFlowAnalysis(getFunction()))
         .dump(llvm::outs());
   }
 };

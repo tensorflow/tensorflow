@@ -102,6 +102,6 @@ func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 //      CHECK:  Value: %4 {{ *}}
 // CHECK-NEXT:  Userange: {(22, 22)}
 //      CHECK:  Value: <block argument> of type 'memref<2xf32>' at index: 0
-// CHECK-NEXT:  Userange: {(14, 16)}
+// CHECK-SAME:  Userange: {(14, 16)}
 //      CHECK:  Value: <block argument> of type 'memref<2xf32>' at index: 0
-// CHECK-NEXT:  Userange: {(26, 26)}
+// CHECK-SAME:  Userange: {(26, 26)}

@@ -1382,7 +1382,6 @@ cc_library(
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
         ":broadcast_propagation",
-        ":mlir_buffer_transforms_pass_inc_gen",
         ":transforms_pass_inc_gen",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
@@ -1413,13 +1412,16 @@ cc_library(
     ],
 )
 
-gentbl(
+gentbl_cc_library(
     name = "transforms_pass_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-pass-decls -name LMHLOTransforms",
+            [
+                "-gen-pass-decls",
+                "-name=LMHLOTransforms",
+            ],
             "include/mlir-hlo/Transforms/passes.h.inc",
         ),
     ],

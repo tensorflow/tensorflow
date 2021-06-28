@@ -37,7 +37,7 @@ public:
   using IntervalVector = SmallVector<UseInterval, 8>;
 
   UserangeAnalysis(Operation *op, const BufferPlacementAllocs &allocs,
-                   const BufferAliasAnalysis &aliases);
+                   const BufferViewFlowAnalysis &aliases);
 
   /// Returns the index of the first operation that uses the given value.
   /// Returns an empty Optional if the value has no uses.
@@ -59,7 +59,7 @@ public:
   void dump(raw_ostream &os);
 
 private:
-  using ValueSetT = BufferAliasAnalysis::ValueSetT;
+  using ValueSetT = BufferViewFlowAnalysis::ValueSetT;
   using OperationListT = Liveness::OperationListT;
 
   /// Builds an IntervalVector corresponding to the given OperationList.
@@ -106,7 +106,7 @@ private:
   DenseMap<Value, OperationListT> aliasUseranges;
 
   /// Cache the alias lists for all values to avoid recomputation.
-  BufferAliasAnalysis::ValueMapT aliasCache;
+  BufferViewFlowAnalysis::ValueMapT aliasCache;
 
   /// The current liveness info.
   Liveness liveness;

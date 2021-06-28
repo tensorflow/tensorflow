@@ -26,7 +26,7 @@ namespace {
 /// information includes all operations that are within the userange.
 struct UserangeInfoBuilder {
   using OperationListT = Liveness::OperationListT;
-  using ValueSetT = BufferAliasAnalysis::ValueSetT;
+  using ValueSetT = BufferViewFlowAnalysis::ValueSetT;
 
 public:
   /// Constructs an Userange builder.
@@ -240,7 +240,7 @@ private:
 
 UserangeAnalysis::UserangeAnalysis(Operation *op,
                                    const BufferPlacementAllocs &allocs,
-                                   const BufferAliasAnalysis &aliases)
+                                   const BufferViewFlowAnalysis &aliases)
     : liveness(op) {
   // Walk over all operations and map them to an ID.
   op->walk([&](Operation *operation) {
