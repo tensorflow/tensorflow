@@ -1,11 +1,5 @@
 # Release 2.6.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
-
-# Release 2.6.0
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
 ## Breaking Changes
 
 * `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
@@ -21,14 +15,7 @@
   `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
   recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
 
-*<DOCUMENT BREAKING CHANGES HERE>
-*<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
 ## Known Caveats
-
-*<CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-*<ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-*<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
 * TF Core:
     * A longstanding bug in `tf.while_loop`, which caused it to execute
@@ -39,9 +26,6 @@
       prior behavior.
 
 ## Major Features and Improvements
-
-*<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 * `tf.keras`:
     *   Keras has been split into a separate PIP package (`keras`),
@@ -112,9 +96,6 @@
 
 ## Bug Fixes and Other Changes
 
-*<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-*<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-*<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
     *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
         generic mutable hash table implementation.
@@ -185,7 +166,8 @@
         *   `tf.data.experimental.MapVectorizationOptions.*`
         *   `tf.data.experimental.OptimizationOptions.filter_with_random_uniform_fusion`
         *   `tf.data.experimental.OptimizationOptions.hoist_random_uniform`
-        *   `tf.data.experimental.OptimizationOptions.map_vectorization`                 *   `tf.data.experimental.OptimizationOptions.reorder_data_discarding_ops`
+        *   `tf.data.experimental.OptimizationOptions.map_vectorization`
+        *   `tf.data.experimental.OptimizationOptions.reorder_data_discarding_ops`
 *   `tf.keras`:
     *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
         inputs are `RaggedTensor` objects.
