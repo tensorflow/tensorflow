@@ -2006,6 +2006,7 @@ cc_library(
     hdrs = ["include/mlir/Interfaces/ViewLikeInterface.h"],
     includes = ["include"],
     deps = [
+        ":DialectUtils",
         ":IR",
         ":ViewLikeInterfaceIncGen",
     ],
@@ -3664,6 +3665,7 @@ cc_library(
     deps = [
         ":CastOpInterfaces",
         ":ControlFlowInterfaces",
+        ":DialectUtils",
         ":IR",
         ":SideEffectInterfaces",
         ":StandardOps",
@@ -4115,6 +4117,7 @@ cc_library(
         ":Analysis",
         ":ConversionPassIncGen",
         ":DataLayoutInterfaces",
+        ":DialectUtils",
         ":IR",
         ":LLVMDialect",
         ":MathDialect",
@@ -6454,6 +6457,7 @@ cc_library(
     deps = [
         ":ControlFlowInterfaces",
         ":CopyOpInterface",
+        ":DialectUtils",
         ":IR",
         ":InferTypeOpInterface",
         ":MemRefBaseIncGen",
