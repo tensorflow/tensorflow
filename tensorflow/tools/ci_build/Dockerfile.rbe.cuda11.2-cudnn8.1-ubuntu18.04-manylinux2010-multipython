@@ -93,3 +93,5 @@ RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9"
 ENV CLANG_VERSION="r7f6f9f4cf966c78a315d15d6e913c43cfa45c47c"
 COPY install/install_latest_clang.sh /install/
 RUN /install/install_latest_clang.sh
+
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda-11.1/lib64"
