@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 
+#include <string>
+
 namespace tflite {
 namespace gpu {
 namespace cl {
@@ -144,20 +146,6 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
 }
 }  // namespace
 
-ClOperation::ClOperation(ClOperation&& operation)
-    : operation_(std::move(operation.operation_)),
-      kernel_(std::move(operation.kernel_)),
-      cl_args_(std::move(operation.cl_args_)) {}
-
-ClOperation& ClOperation::operator=(ClOperation&& operation) {
-  if (this != &operation) {
-    operation_ = std::move(operation.operation_);
-    kernel_ = std::move(operation.kernel_);
-    cl_args_ = std::move(operation.cl_args_);
-  }
-  return *this;
-}
-
 absl::Status ClOperation::AddOperation(ClOperation* operation) {
   return operation_->AddOperation(operation->operation_.get());
 }
@@ -200,18 +188,23 @@ absl::Status ClOperation::Compile(const CreationContext& creation_context) {
       creation_context.context, &operation_->args_, &operation_->code_));
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       operation_->code_, "main_function", operation_->compiler_options_,
-      *creation_context.context, *creation_context.device, &kernel_));
+      *creation_context.context, *creation_context.device, &kernel_,
+      &kernel_fingerprint_));
   return operation_->PostCompileCheck(creation_context.GetGpuInfo(),
                                       kernel_.info_);
 }
 
-absl::Status ClOperation::CompileDeserialized(
+absl::Status ClOperation::InitFromCache(uint64_t fingerprint,
+                                        const ProgramCache& program_cache) {
+  kernel_fingerprint_ = fingerprint;
+  return program_cache.GetKernel(kernel_fingerprint_, "main_function",
+                                 &kernel_);
+}
+
+absl::Status ClOperation::RestoreDeserialized(
     const CreationContext& creation_context) {
-  RETURN_IF_ERROR(cl_args_.Init(creation_context.GetGpuInfo(),
-                                &operation_->args_, creation_context.context));
-  return creation_context.cache->GetOrCreateCLKernel(
-      operation_->code_, "main_function", operation_->compiler_options_,
-      *creation_context.context, *creation_context.device, &kernel_);
+  return cl_args_.Init(creation_context.GetGpuInfo(), &operation_->args_,
+                       creation_context.context);
 }
 
 absl::Status ClOperation::Tune(TuningType tuning_type, const GpuInfo& gpu_info,
