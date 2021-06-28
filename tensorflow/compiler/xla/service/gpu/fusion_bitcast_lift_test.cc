@@ -18,8 +18,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/filecheck.h"
 
 namespace xla {
 namespace gpu {
@@ -70,21 +72,25 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
   EXPECT_TRUE(FusionBitcastLift().Run(module.get()).ValueOrDie());
-
-  auto* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(HloOpcode::kFusion, root->opcode());
-
-  // The fusion should have 1 input and it should be a bitcast with 2d output.
-  EXPECT_EQ(1, root->operands().size());
-  EXPECT_EQ(HloOpcode::kBitcast, root->operand(0)->opcode());
-  EXPECT_EQ(2, root->operand(0)->shape().rank());
-
-  // No bitcast should be left inside the fusion.
-  for (HloInstruction* instr : root->fused_instructions()) {
-    EXPECT_NE(HloOpcode::kBitcast, instr->opcode());
-  }
+  // Remove the old fusion not used anymore.
+  EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  StatusOr<bool> filecheck_result =
+      RunFileCheck(module->ToString(),
+                    R"(
+; CHECK-LABEL: %fused_computation
+; CHECK:         f16[392,672]{1,0} parameter(0)
+; CHECK-NOT:     parameter
+; CHECK-NOT:     bitcast
+; CHECK-LABEL: ENTRY %main
+; CHECK-NEXT:    %param_0.0 = f16[2,14,14,672]{3,2,1,0} parameter(0)
+; CHECK-NEXT:    bitcast(
+; CHECK-NEXT:    ROOT %fusion.21_4d.bitcast
+      )");
+  EXPECT_TRUE(filecheck_result.status().ok());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
 // Tests that we lift bitcast outside the fusion when scalar broadcasting are
@@ -130,28 +136,30 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
   EXPECT_TRUE(FusionBitcastLift().Run(module.get()).ValueOrDie());
-
-  auto* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(HloOpcode::kFusion, root->opcode());
-
-  // The fusion should have 2 inputs and the first one should be a
-  // bitcast with 2d output.
-  EXPECT_EQ(2, root->operands().size());
-  EXPECT_EQ(HloOpcode::kBitcast, root->operand(0)->opcode());
-  EXPECT_EQ(2, root->operand(0)->shape().rank());
-
-  // Inside the fusion, there is 1 bitcast left after the broadcast.
-  EXPECT_EQ(HloOpcode::kBroadcast, root->fused_instructions_computation()
-                                       ->parameter_instruction(1)
-                                       ->users()[0]
-                                       ->opcode());
-  EXPECT_EQ(HloOpcode::kBitcast, root->fused_instructions_computation()
-                                     ->parameter_instruction(1)
-                                     ->users()[0]
-                                     ->users()[0]
-                                     ->opcode());
+  // Remove the old fusion not used anymore.
+  EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  StatusOr<bool> filecheck_result =
+      RunFileCheck(module->ToString(),
+                    R"(
+; CHECK-LABEL: %fused_computation
+; CHECK:         f16[392,672]{1,0} parameter(0)
+; CHECK:         f32[] parameter(1)
+; CHECK-NOT:     parameter
+; CHECK-NOT:     bitcast
+; CHECK:         %broadcast.1 =
+; CHECK-NEXT:    bitcast(f32[2,14,14,672]{3,2,1,0} %broadcast.1)
+; CHECK-NOT:     bitcast(
+; CHECK-LABEL: ENTRY %main
+; CHECK-NEXT:    %param_0.0 = f16[2,14,14,672]{3,2,1,0} parameter(0)
+; CHECK-NEXT:    bitcast(
+; CHECK-NEXT:    %param_1.1 = f32[] parameter(1)
+; CHECK-NEXT:    ROOT %fusion.21_4d.bitcast
+      )");
+  EXPECT_TRUE(filecheck_result.status().ok());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
 TEST_F(FusionBitcastLiftTest, RowBroadcastTest) {
@@ -186,28 +194,30 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
   EXPECT_TRUE(FusionBitcastLift().Run(module.get()).ValueOrDie());
-
-  auto* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(HloOpcode::kFusion, root->opcode());
-
-  // The fusion should have 2 inputs and the first one should be a
-  // bitcast with 2d output.
-  EXPECT_EQ(2, root->operands().size());
-  EXPECT_EQ(HloOpcode::kBitcast, root->operand(0)->opcode());
-  EXPECT_EQ(2, root->operand(0)->shape().rank());
-
-  // Inside the fusion, there is 1 bitcast left after the broadcast.
-  EXPECT_EQ(HloOpcode::kBroadcast, root->fused_instructions_computation()
-                                       ->parameter_instruction(1)
-                                       ->users()[0]
-                                       ->opcode());
-  EXPECT_EQ(HloOpcode::kBitcast, root->fused_instructions_computation()
-                                     ->parameter_instruction(1)
-                                     ->users()[0]
-                                     ->users()[0]
-                                     ->opcode());
+  // Remove the old fusion not used anymore.
+  EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  StatusOr<bool> filecheck_result =
+      RunFileCheck(module->ToString(),
+                    R"(
+; CHECK-LABEL: %fused_computation
+; CHECK:         f16[392,672]{1,0} parameter(0)
+; CHECK:         f32[672]{0} parameter(1)
+; CHECK-NOT:     parameter
+; CHECK-NOT:     bitcast
+; CHECK:         %broadcast.1
+; CHECK:         bitcast(f32[2,14,14,672]{3,2,1,0} %broadcast.1)
+; CHECK-NOT:     bitcast(
+; CHECK-LABEL: ENTRY %main
+; CHECK-NEXT:    %param_0.0 = f16[2,14,14,672]{3,2,1,0} parameter(0)
+; CHECK-NEXT:    bitcast(
+; CHECK-NEXT:    %param_1.1 = f32[672]{0} parameter(1)
+; CHECK-NEXT:    ROOT %fusion.21_4d.bitcast
+      )");
+  EXPECT_TRUE(filecheck_result.status().ok());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
 }  // namespace
