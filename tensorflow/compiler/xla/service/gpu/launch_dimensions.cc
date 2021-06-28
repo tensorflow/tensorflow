@@ -70,9 +70,8 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
       (shape.dimensions().back() % 256) != 0 &&
       // Do not trigger the row vectorized codepath if this create too
       // small block size as this hurt performance.
-      (threads_per_block_row_vectorized >= 128 &&
-       threads_per_block_row_vectorized <=
-           gpu_device_info.threads_per_block_limit)) {
+      threads_per_block_row_vectorized <=
+          gpu_device_info.threads_per_block_limit) {
     return threads_per_block_row_vectorized;
   }
   return -1;
@@ -101,12 +100,20 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   // TODO(jlebar): Investigate this further, and tune this heuristic so we can
   // run faster on the few benchmarks where smaller block size helps.
   int64_t threads_per_block = ThreadsPerBlockLimit(gpu_device_info);
+  int64_t threads_per_block_y = 1;
   int64_t threads_per_block_row_vectorized =
       ThreadsPerBlockRowVectorized(shape, gpu_device_info, dim_config);
   if (threads_per_block_row_vectorized > 0) {
+    CHECK(dim_config.row_vectorized);
     threads_per_block = threads_per_block_row_vectorized;
-    VLOG(2) << "Update # of threads per block to (" << threads_per_block
+    if (threads_per_block < 128 && num_elements > 128) {
+      // This case happens for small row size.
+      threads_per_block_y =
+          CeilOfRatio((int64_t)128, threads_per_block);
+    VLOG(2) << "Update # of threads per block to (.x=" << threads_per_block
+            << ", .y=" << threads_per_block_y
             << ") to be row_vectorized.";
+    }
   } else {
     CHECK(!dim_config.row_vectorized);
     // We unroll kernels to make use of vectorized loads/stores. This means we
@@ -122,27 +129,27 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     }
   }
 
-  int64_t block_count = CeilOfRatio(num_elements, threads_per_block);
+  int64_t block_count = CeilOfRatio(num_elements,
+                                  threads_per_block * threads_per_block_y);
   if (dim_config.few_waves && !dim_config.row_vectorized) {
     int64_t capped_threads_per_block =
         std::min<int64_t>(threads_per_block, 128);
     int64_t capped_block_count =
         gpu_device_info.core_count *
-        (gpu_device_info.threads_per_core_limit / capped_threads_per_block);
+        (gpu_device_info.threads_per_core_limit /
+         (capped_threads_per_block * threads_per_block_y));
     if (capped_block_count < block_count) {
       threads_per_block = capped_threads_per_block;
       block_count = capped_block_count;
+      VLOG(2) << "Update the # of blocks to " << block_count
+              << " and the # of threads per blocks to "
+              << threads_per_block << " as the few waves mode is enabled.";
     }
   } else if (dim_config.few_waves && dim_config.row_vectorized) {
-    int64_t capped_threads_per_block =
-        std::min<int64_t>(threads_per_block, 128);
-    if (dim_config.row_vectorized) {
-      // Keep the threads_per_block found for row_vectorized.
-      capped_threads_per_block = threads_per_block;
-    }
     int64_t min_block_count =
         gpu_device_info.core_count *
-        (gpu_device_info.threads_per_core_limit / capped_threads_per_block);
+        (gpu_device_info.threads_per_core_limit /
+         (threads_per_block * threads_per_block_y));
     int64_t capped_block_count = block_count;
     // This multiple of 32 was tuned to not cause regression on multiple
     // benchmarks.  It isn't a value that is optimal for all
@@ -154,7 +161,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     // Do not increase the number of blocks. This can happens for
     // small num_elements.
     if (capped_block_count < block_count) {
-      threads_per_block = capped_threads_per_block;
+      VLOG(2) << "Update # of blocks to block_count as few_waves is enabled.";
       block_count = capped_block_count;
     }
   }
@@ -167,11 +174,11 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   }
 
   VLOG(2) << absl::StrFormat(
-      "Initialized the block count to ceil(# of elements / threads per "
-      "block) = ceil(%d/%d) = %d",
-      num_elements, threads_per_block, block_count);
-
-  return LaunchDimensions(block_count, threads_per_block);
+      "Initialized the block count to %d, the block size .x=%d and .y=%d"
+      " for %d elements in the tensor.",
+      block_count, threads_per_block, threads_per_block_y, num_elements);
+  return LaunchDimensions({block_count, 1, 1},
+                          {threads_per_block, threads_per_block_y, 1});
 }
 
 }  // namespace gpu

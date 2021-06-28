@@ -25,6 +25,29 @@ ENTRY main {
 
 // -----
 
+HloModule SimpleAddSmallRowBroadcasting
+
+%fused_computation.0 (param_0: f32[48], param_1: f32[512,14,14,48]) -> f32[512,14,14,48]{
+  %param_0 = f32[48]{0} parameter(0)
+  %broadcast = f32[512,14,14,48]{3,2,1,0} broadcast(%param_0), dimensions={3}
+  %param_1 = f32[512,14,14,48]{3,2,1,0} parameter(1)
+  ROOT %add = f32[512,14,14,48]{3,2,1,0} add(%broadcast, %param_1)
+}
+
+ENTRY main {
+  %param_0 = f32[48]{0} parameter(0)
+  %param_1 = f32[512,14,14,48]{3,2,1,0} parameter(1)
+
+  ROOT %fusion.0_small = f32[512,14,14,48]{3,2,1,0} fusion(%param_0, %param_1), kind=kLoop, calls=%fused_computation.0
+}
+
+// CHECK-LABEL: fusion_0_small
+// CHECK: .reqntid 12, 11, 1
+// CHECK-NOT: ld.global.nc.f
+// CHECK-NOT: ld.global.nc.b
+
+// -----
+
 // This test an BatchNorm fused kernel found in EfficientNet.
 HloModule EfficientNetSwish
 

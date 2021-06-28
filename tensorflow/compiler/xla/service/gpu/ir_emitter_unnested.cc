@@ -174,6 +174,26 @@ void AnnotateThunkLaunchDimensions(const LaunchDimensions& launch_dims,
       {llvm::ConstantAsMetadata::get(ir_kernel),
        llvm::MDString::get(llvm_context, "reqntidx"),
        llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
+  if (launch_dims.thread_counts_per_block().y > 1) {
+    threads_per_block_ir_value = llvm::ConstantInt::get(
+        llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
+        launch_dims.thread_counts_per_block().y);
+    nvvm_annotations_node->addOperand(llvm::MDNode::get(
+        llvm_context,
+        {llvm::ConstantAsMetadata::get(ir_kernel),
+         llvm::MDString::get(llvm_context, "reqntidy"),
+         llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
+  }
+  if (launch_dims.thread_counts_per_block().z > 1) {
+    threads_per_block_ir_value = llvm::ConstantInt::get(
+        llvm::IntegerType::get(llvm_context, /*NumBits=*/32),
+        launch_dims.thread_counts_per_block().z);
+    nvvm_annotations_node->addOperand(llvm::MDNode::get(
+        llvm_context,
+        {llvm::ConstantAsMetadata::get(ir_kernel),
+         llvm::MDString::get(llvm_context, "reqntidz"),
+         llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
+  }
 }
 
 bool BinarySearchDenseElementsAttr(mlir::DenseIntElementsAttr elements,
