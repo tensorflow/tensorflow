@@ -45,4 +45,5 @@ bazel test \
       //tensorflow/... \
       -//tensorflow/python/integration_testing/... \
       -//tensorflow/core/tpu/... \
+      -//tensorflow/java/... \
       -//tensorflow/lite/... \
