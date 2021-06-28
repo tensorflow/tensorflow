@@ -758,7 +758,8 @@ int GetPowerOfTwoScale(float min, float max) {
   const float range = std::max(std::abs(min), std::abs(max));
   int pot = 0;
   for (int i = 0; i < 10; i++) {
-    if (std::pow(2, pot) < range) {
+    // NOTE: use std::pow() for bitwise accuracy.
+    if (std::pow(2, pot) < range) {  // NOLINT
       pot++;
     }
   }

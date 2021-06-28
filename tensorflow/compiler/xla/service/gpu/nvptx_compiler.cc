@@ -171,6 +171,11 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
   if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::BF16,
+                                            /*pad_to_multiple_of=*/8);
+  }
+  if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
           se::CudaComputeCapability::VOLTA)) {
     // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
     pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::S8,

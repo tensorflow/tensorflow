@@ -350,10 +350,10 @@ class LayoutAssignment : public HloModulePass {
   // Backends can override these methods with backend-specific propagation
   // rules.
   virtual Status PropagateBufferConstraint(
-      const BufferLayoutConstraint& layout_constraint,
+      const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints);
   virtual Status PropagateOperandConstraint(
-      const OperandLayoutConstraint& layout_constraint,
+      const OperandLayoutConstraint& operand_constraint,
       LayoutConstraints* constraints);
   virtual Status PropagateResultConstraint(
       const ResultLayoutConstraint& layout_constraint,
@@ -370,7 +370,7 @@ class LayoutAssignment : public HloModulePass {
 
   // Propagates a buffer layout constraint into the operands that use it.
   Status PropagateBufferConstraintToUses(
-      const BufferLayoutConstraint& layout_constraint,
+      const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints);
 
   // Propagates a layout constraint on the use of the result of the given

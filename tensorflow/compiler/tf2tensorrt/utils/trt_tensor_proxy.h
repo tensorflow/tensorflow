@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_TENSOR_PROXY_H
 
 #include <cassert>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>

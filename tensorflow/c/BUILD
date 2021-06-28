@@ -554,7 +554,10 @@ tf_cuda_library(
 
 cc_library(
     name = "kernels_hdrs",
-    hdrs = ["kernels.h"],
+    hdrs = [
+        "kernels.h",
+        "kernels_experimental.h",
+    ],
     visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api_internal",

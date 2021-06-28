@@ -1671,23 +1671,6 @@ cc_library(
 )
 
 cc_library(
-    name = "decode_constant_pass",
-    srcs = [
-        "transforms/decode_constant.cc",
-    ],
-    hdrs = [
-        "transforms/decode_constant.h",
-    ],
-    deps = [
-        ":convert_tensor",
-        ":tensorflow",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "tf_dialect_passes",
     srcs = [
         "transforms/constant_fold.cc",
@@ -1698,7 +1681,6 @@ cc_library(
     ],
     deps = [
         ":convert_tensor",
-        ":decode_constant_pass",
         ":eval_util",
         ":tensorflow",
         ":tensorflow_traits",

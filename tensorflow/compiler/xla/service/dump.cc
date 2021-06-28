@@ -51,7 +51,8 @@ struct CanonicalDebugOptions {
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_module_metadata(opts.xla_dump_module_metadata()),
-        dump_compress_protos(opts.xla_dump_compress_protos()) {
+        dump_compress_protos(opts.xla_dump_compress_protos()),
+        dump_hlo_metadata(!opts.xla_dump_disable_metadata()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -151,6 +152,7 @@ struct CanonicalDebugOptions {
   int64 dump_max_hlo_modules;
   bool dump_module_metadata;
   bool dump_compress_protos;
+  bool dump_hlo_metadata;
 };
 
 Status WriteStringToFile(tensorflow::Env* env, const string& fname,
@@ -265,10 +267,11 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
   std::vector<absl::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
+    HloPrintOptions print_options;
+    print_options.set_print_backend_config(true);
+    print_options.set_print_metadata(opts.dump_hlo_metadata);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-        StrCat(filename, ".txt"),
-        module.ToString(HloPrintOptions().set_print_backend_config(true)),
-        opts));
+        StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
           StrCat(filename, "-buffer-assignment.txt"),

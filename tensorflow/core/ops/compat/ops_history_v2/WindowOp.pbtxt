@@ -1,5 +1,5 @@
 op {
-  name: "Window"
+  name: "WindowOp"
   input_arg {
     name: "inputs"
     type_list_attr: "Tinputs"

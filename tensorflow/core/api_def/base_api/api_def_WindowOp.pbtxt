@@ -1,4 +1,4 @@
 op {
-  graph_op_name: "Window"
+  graph_op_name: "WindowOp"
   visibility: HIDDEN
 }

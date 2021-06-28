@@ -1582,19 +1582,17 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
     int num_cores_per_replica, bool enable_spmd_xla_partitioning) {
   // Currently variable deduplication is not supported for XLA SPMD
   // partitioning. It is possible that it could be supported in the future.
-  const bool enable_variable_deduplication =
+  bool enable_variable_deduplication =
       runtime_params_.enable_variable_deduplication;
-  if (enable_spmd_xla_partitioning && num_cores_per_replica > 1 &&
-      enable_variable_deduplication) {
+  if (enable_spmd_xla_partitioning && num_cores_per_replica > 1) {
     // If enable_spmd_xla_partitioning is true, the user set the
     // enable_auto_xla_input_sharding flag. Warn them that only one of the flags
     // can be set safely when num_cores_per_replica > 1. If
     // num_cores_per_replica==1, enable_spmd_xla_partitioning is effectively a
     // no-op so we can skip this check.
-    return errors::InvalidArgument(
-        "The following flags are incompatible when num_cores_per_replica > 1: "
-        "enable_auto_xla_input_sharding and enable_variable_deduplication. "
-        "Only enable one of the flags.");
+    LOG(WARNING) << "Disabling variable deduplication because it is not "
+                    "compatible with enable_auto_xla_input_sharding.";
+    enable_variable_deduplication = false;
   }
   std::vector<Node*> tpu_resource_args;
   std::vector<int> arg_indices;

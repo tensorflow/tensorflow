@@ -77,7 +77,7 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(c, !already_cancelled,
                       errors::Cancelled("op cancelled ", name_), done);
 
-    auto deregister_and_done = [c, col_exec, token, done = std::move(done)]() {
+    auto deregister_and_done = [c, token, done = std::move(done)]() {
       // Once done() is called, StartAbort() won't have any effect, so we
       // don't need to block on the deregistration. Also StartAbort() may call
       // done() and DeregisterCallback may deadlock.

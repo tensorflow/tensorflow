@@ -4434,7 +4434,7 @@ dimension of size 1 added.}]>:$output
   ];
 }
 
-def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes `exp(x) - 1` element-wise.";
 
   let description = [{
@@ -4462,6 +4462,14 @@ i.e. `exp(x) - 1` or `e^(x) - 1`, where `x` is the input tensor.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
+
 }
 
 def TF_ExtractImagePatchesOp : TF_Op<"ExtractImagePatches", [NoSideEffect]> {

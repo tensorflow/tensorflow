@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <string>
 
 #include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -3098,6 +3101,35 @@ static LogicalResult Verify(TransposeOp op) {
   }
 
   return success();
+}
+
+static void BuildTransposeOp(OpBuilder *builder, OperationState &result,
+                             Value input, Value perm) {
+  // Output size is only known if input is ranked and perm is a constant.
+  auto input_type = input.getType().cast<TensorType>();
+  DenseIntElementsAttr perm_const;
+  if (!input_type.hasRank() || !matchPattern(perm, m_Constant(&perm_const)) ||
+      perm_const.getIntValues().empty()) {
+    TFL::TransposeOp::build(
+        *builder, result, UnrankedTensorType::get(input_type.getElementType()),
+        input, perm);
+    return;
+  }
+
+  const auto perm_value_it = perm_const.getIntValues().begin();
+
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  SmallVector<int64_t, 4> output_shape(input_shape.size());
+
+  for (int i = 0; i < output_shape.size(); ++i) {
+    const APInt perm_val = perm_value_it[i];
+    output_shape[i] = input_shape[perm_val.getSExtValue()];
+  }
+
+  TFL::TransposeOp::build(
+      *builder, result,
+      RankedTensorType::get(output_shape, input_type.getElementType()), input,
+      perm);
 }
 
 //===----------------------------------------------------------------------===//

@@ -44,12 +44,23 @@ class ProgramCache {
   absl::Status GetOrCreateCLKernel(
       const std::string& code, const std::string& function_name,
       const std::vector<CompilerOptions>& compiler_options,
-      const CLContext& context, const CLDevice& device, CLKernel* result);
+      const CLContext& context, const CLDevice& device, CLKernel* result,
+      uint64_t* kernel_fingerprint = nullptr);
 
   absl::Status GetOrCreateCLKernel(const std::string& code,
                                    const std::string& function_name,
                                    const CLContext& context,
-                                   const CLDevice& device, CLKernel* result);
+                                   const CLDevice& device, CLKernel* result,
+                                   uint64_t* kernel_fingerprint = nullptr);
+
+  absl::Status GetKernel(uint64_t fingerprint, const std::string& function_name,
+                         CLKernel* result) const;
+
+  absl::Status AddProgramBinary(const CLContext& context,
+                                const CLDevice& device, uint64_t fingerprint,
+                                absl::Span<const uint8_t> binary);
+  absl::Status GetProgramBinary(uint64_t fingerprint,
+                                std::vector<uint8_t>* program_binary) const;
 
   absl::Status AddSerializedCache(const CLContext& context,
                                   const CLDevice& device,

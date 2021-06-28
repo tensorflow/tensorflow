@@ -639,7 +639,6 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tflite_portable_logging",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

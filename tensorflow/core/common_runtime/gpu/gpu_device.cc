@@ -1837,9 +1837,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
                     "if you would like to use GPU. Follow the guide at "
                     "https://www.tensorflow.org/install/gpu for how to "
                     "download and setup the required libraries for your "
-                    "platform.\nSkipping registering "
-                    "GPU devices...";
-    return Status::OK();
+                    "platform.\n";
+    return handle_or;
   }
 #endif
 
