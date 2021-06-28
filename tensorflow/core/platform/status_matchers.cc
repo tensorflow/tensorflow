@@ -25,21 +25,21 @@ namespace tensorflow {
 namespace testing {
 namespace internal_status {
 
-void TfStatusIsMatcherCommonImpl::DescribeTo(std::ostream* os) const {
+void StatusIsMatcherCommonImpl::DescribeTo(std::ostream* os) const {
   *os << "has a status code that ";
   code_matcher_.DescribeTo(os);
   *os << ", and has an error message that ";
   message_matcher_.DescribeTo(os);
 }
 
-void TfStatusIsMatcherCommonImpl::DescribeNegationTo(std::ostream* os) const {
+void StatusIsMatcherCommonImpl::DescribeNegationTo(std::ostream* os) const {
   *os << "has a status code that ";
   code_matcher_.DescribeNegationTo(os);
   *os << ", or has an error message that ";
   message_matcher_.DescribeNegationTo(os);
 }
 
-bool TfStatusIsMatcherCommonImpl::MatchAndExplain(
+bool StatusIsMatcherCommonImpl::MatchAndExplain(
     const Status& status,
     ::testing::MatchResultListener* result_listener) const {
   ::testing::StringMatchResultListener inner_listener;

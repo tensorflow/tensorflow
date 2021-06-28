@@ -33,6 +33,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import type_spec as type_spec_lib
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -113,15 +114,33 @@ class RemoteValue(object):
   """
 
   def fetch(self):
-    """Wait for the result of `RemoteValue` to be ready and return the result.
+    """Wait for the result of `RemoteValue` and return the numpy result.
 
     This makes the value concrete by copying the remote value to local.
 
     Returns:
-      The actual output of the `tf.function` associated with this `RemoteValue`,
-      previously by a
+      The numpy array structure of the actual output of the `tf.function`
+      associated with this `RemoteValue`, previously returned by a
       `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` call.
       This can be a single value, or a structure of values, depending on the
+      output of the `tf.function`.
+
+    Raises:
+      tf.errors.CancelledError: If the function that produces this `RemoteValue`
+        is aborted or cancelled due to failure.
+    """
+    raise NotImplementedError("Must be implemented in subclasses.")
+
+  def get(self):
+    """Wait for the result of `RemoteValue` and return the tensor result.
+
+    This makes the value concrete by copying the remote tensor to local.
+
+    Returns:
+      The actual output (in the form of `tf.Tensor`s) of the `tf.function`
+      associated with this `RemoteValue`, previously returned by a
+      `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` call.
+      This can be a single Tensor, or a structure of Tensors, depending on the
       output of the `tf.function`.
 
     Raises:
@@ -145,7 +164,9 @@ class RemoteValueImpl(RemoteValue):
     self._closure = closure
     self._type_spec = type_spec
     self._values = None
-    self._fetched_numpys = None
+    self._has_fetched_to_local = False
+    self._has_fetched_to_local_lock = threading.Lock()
+    self._fetched_tensors = None
     self._error = None
     self._status_available_event = threading.Event()
     self._status = RemoteValueStatus.NOT_READY
@@ -183,7 +204,7 @@ class RemoteValueImpl(RemoteValue):
     self._status_available_event.wait()
     return self._error
 
-  def fetch(self):
+  def _wait_and_maybe_error(self):
     self._status_available_event.wait()
     if self._status is RemoteValueStatus.ABORTED:
       raise errors.CancelledError(
@@ -192,10 +213,37 @@ class RemoteValueImpl(RemoteValue):
           "function.")
     if self._error is not None:
       raise self._error
-    if self._fetched_numpys is None:
-      self._fetched_numpys = nest.map_structure(
-          lambda x: x.numpy() if hasattr(x, "numpy") else x, self._values)
-    return self._fetched_numpys
+
+  def fetch(self):
+    # TODO(rchao): Discuss the possibility of letting users perform `numpy`
+    # themselves at API graduation.
+    return nest.map_structure(
+        lambda x: x.numpy() if hasattr(x, "numpy") else x, self.get())
+
+  def get(self):
+    self._wait_and_maybe_error()
+
+    with self._has_fetched_to_local_lock:
+      if not self._has_fetched_to_local:
+
+        def copy_tensor(composite_tensor_obj):
+          """Copy a remote tensor to local (coordinator)."""
+          if isinstance(composite_tensor_obj, input_lib.DistributedIterator):
+            # A DistributedIterator cannot be copied to local; users should not
+            # access that anyway.
+            return composite_tensor_obj
+
+          with ops.device("/job:%s" % context.get_server_def().job_name):
+            # Copying to local (the coordinator) with `tf.device`.
+            return array_ops.identity(composite_tensor_obj)
+
+        if self._values is not None:
+          # When `self._values` is `None`, it indicates the associated function
+          # does not have a return value.
+          self._fetched_tensors = nest.map_structure(copy_tensor, self._values)
+        self._has_fetched_to_local = True
+
+    return self._fetched_tensors
 
 
 @tf_export("distribute.experimental.coordinator.PerWorkerValues", v1=[])

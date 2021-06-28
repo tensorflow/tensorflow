@@ -302,6 +302,57 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   let constructor = "TFDevice::CreateClusterOutliningPass()";
 }
 
+def LaunchOutliningPass : Pass<"tf-device-launch-outlining", "ModuleOp"> {
+  let summary = "Outlines regions of tf_device.launch operations";
+
+  let description = [{
+    This pass outlines the body of a `tf_device.launch` into a function and
+    replaces the `tf_device.launch` op with an equivalent `tf_device.launch_func`
+    op. Implicit operands will be captured and materialized as explicit arguments to
+    the newly created functions and associated `tf_device.launch_func` ops. The
+    `device` attribute from the `launch` op is transferred to `launch_func`.
+
+    For example, the following:
+
+    ```mlir
+    func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+      %launch = "tf_device.launch"() ( {
+        %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+        tf_device.return %identity : tensor<i32>
+      }) {device = "some_device"} : () -> (tensor<i32>)
+      return %launch : tensor<i32>
+    }
+    ```
+
+    will be transformed into:
+
+    ```mlir
+    func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+      %launch = "tf_device.launch_func"(%arg0) {device = "some_device", func = @_func} : (tensor<i32>) -> tensor<i32>
+      return %launch : tensor<i32>
+    }
+
+    func @_func(%arg0: tensor<i32>) -> tensor<i32> {
+      %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+      return %identity : tensor<i32>
+    }
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateLaunchOutliningPass()";
+}
+
+def ConvertLaunchFuncToTFCallPass : Pass<"tf-device-convert-launch-func-to-tf-call", "ModuleOp"> {
+  let summary = "Rewrites tf_device::LaunchFuncOp to TF::PartitionedCallOp";
+
+  let description = [{
+    This pass converts tf_device::LaunchFuncOp into an equivalent
+    TF::PartitionedCallOp so that it can be exported to TensorFlow GraphDef.
+  }];
+
+  let constructor = "TFDevice::CreateConvertLaunchFuncToTFCallPass()";
+}
+
 def MarkInputOutputAliasesPass : Pass<"tf-device-mark-input-output-aliases", "ModuleOp"> {
   let summary = "Marks device cluster inputs-output pairs that read/write to the same variable as aliases";
 
@@ -890,6 +941,7 @@ def TensorArrayOpsDecompositionPass : Pass<"tf-tensor-array-ops-decomposition", 
     or that can be inferred from a later write, and 3) all elements have the same
     shape.
   }];
+  let dependentDialects = ["tensor::TensorDialect"];
 
   let constructor = "TF::CreateTensorArrayOpsDecompositionPass()";
 }
@@ -948,7 +1000,7 @@ def PromoteVarHandlesToArgsPass : Pass<"tf-promote-var-handles-to-args", "Module
   let constructor = "TF::CreatePromoteVarHandlesToArgsPass()";
 }
 
-def TPUMergeVariablesWithExecutePass : FunctionPass<"tf-tpu-merge-variables-with-execute"> {
+def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute", "ModuleOp"> {
   let summary = "Merges device variable reads and updates into TPU execute ops";
 
   let description = [{

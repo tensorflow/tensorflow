@@ -36,10 +36,6 @@ namespace tflite {
 // Forward declaration for op kernels.
 namespace ops {
 namespace custom {
-
-TfLiteRegistration* Register_ASSIGN_VARIABLE();
-TfLiteRegistration* Register_READ_VARIABLE();
-
 namespace random_int {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -409,7 +405,7 @@ void SubgraphBuilder::BuildAssignRandomValueToVariableSubgraph(
                                   &node_index);
   subgraph->AddNodeWithParameters(
       {kConstResourceId, kRandomValue}, {}, {}, nullptr, 0, nullptr,
-      ::tflite::ops::custom::Register_ASSIGN_VARIABLE(), &node_index);
+      ::tflite::ops::builtin::Register_ASSIGN_VARIABLE(), &node_index);
 }
 
 void SubgraphBuilder::BuildCallOnceAndReadVariableSubgraph(Subgraph* subgraph) {
@@ -440,7 +436,7 @@ void SubgraphBuilder::BuildCallOnceAndReadVariableSubgraph(Subgraph* subgraph) {
                                   &node_index);
   subgraph->AddNodeWithParameters(
       {kConstResourceId}, {kOutput}, {}, nullptr, 0, nullptr,
-      ::tflite::ops::custom::Register_READ_VARIABLE(), &node_index);
+      ::tflite::ops::builtin::Register_READ_VARIABLE(), &node_index);
 }
 
 void SubgraphBuilder::BuildLessEqualCondSubgraphWithDynamicTensor(

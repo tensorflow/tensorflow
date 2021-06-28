@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/tfrt/gpu/gpu_shared_context.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
@@ -34,11 +37,14 @@ limitations under the License.
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
+#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace xla {
@@ -47,6 +53,12 @@ namespace gpu {
 bool IsBefThunkEnabled() { return true; }
 
 namespace {
+
+struct CoreRuntimeAndWorkQueue {
+  tfrt::CoreRuntime* core_runtime;
+  tensorflow::tfrt_stub::WorkQueueInterface* work_queue;
+};
+
 class BefThunk : public Thunk {
  public:
   BefThunk(Thunk::Kind kind, ThunkInfo thunk_info,
@@ -68,7 +80,11 @@ class BefThunk : public Thunk {
   tfrt::BefBuffer bef_buffer_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
 };
+
 }  // namespace
+
+static const char kDefaultHostDeviceName[] =
+    "/job:localhost/replica:0/task:0/device:CPU:0";
 
 static const char kFuncName[] = "main";
 
@@ -123,15 +139,45 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
       "Operation is not supported by BefThunk.");
 }
 
-// TODO(hanbinyoon): Pass in ExecutionContext at construction time when TF/XLA
-// can depend on TFRT in OSS.
-static const tfrt::ExecutionContext* bef_thunk_exec_ctx = nullptr;
-void SetExecutionContext(const tfrt::ExecutionContext* exec_ctx) {
-  bef_thunk_exec_ctx = exec_ctx;
-}
-static StatusOr<const tfrt::ExecutionContext*> GetExecutionContext() {
-  if (bef_thunk_exec_ctx != nullptr) return bef_thunk_exec_ctx;
-  return FailedPrecondition("BefThunk ExecutionContext has not been set");
+static StatusOr<CoreRuntimeAndWorkQueue> GetCoreRuntimeAndWorkQueue() {
+  // TODO(hanbinyoon): Make these configurable.
+  int tfrt_num_threads = tensorflow::port::MaxParallelism();
+  int tfrt_num_blocking_threads = 16;
+
+  static StatusOr<CoreRuntimeAndWorkQueue>* runtime_and_queue_or =
+      [&](int num_threads, int num_blocking_threads) {
+        // Create work queue.
+        auto work_queue = tensorflow::tfrt_stub::WrapDefaultWorkQueue(
+            tfrt::CreateMultiThreadedWorkQueue(num_threads,
+                                               num_blocking_threads));
+        if (work_queue == nullptr) {
+          auto status =
+              tensorflow::errors::Internal("Failed to create TFRT work queue.");
+          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
+        }
+        auto* work_queue_ptr = work_queue.get();
+
+        // Create core runtime.
+        auto expected_core_runtime = tfrt::CoreRuntime::Create(
+            [](const tfrt::DecodedDiagnostic& diag) {
+              LOG(ERROR) << diag.message;
+            },
+            tfrt::CreateMallocAllocator(), std::move(work_queue),
+            kDefaultHostDeviceName);
+        if (!expected_core_runtime) {
+          auto error = expected_core_runtime.takeError();
+          auto status =
+              tensorflow::errors::Internal(llvm::toString(std::move(error)));
+          return new StatusOr<CoreRuntimeAndWorkQueue>(status);
+        }
+
+        auto runtime_and_queue = CoreRuntimeAndWorkQueue{
+            expected_core_runtime->release(), work_queue_ptr};
+        return new StatusOr<CoreRuntimeAndWorkQueue>(runtime_and_queue);
+      }(tfrt_num_threads, tfrt_num_blocking_threads);
+
+  TF_RETURN_IF_ERROR(runtime_and_queue_or->status());
+  return runtime_and_queue_or->ValueOrDie();
 }
 
 StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
@@ -142,8 +188,8 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
   auto module = CreateModule(op);
   TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef_buffer, ConvertToBef(*module));
 
-  TF_ASSIGN_OR_RETURN(const auto* exec_ctx, GetExecutionContext());
-  tfrt::HostContext* host = exec_ctx->host();
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  tfrt::HostContext* host = runtime_and_queue.core_runtime->GetHostContext();
   auto bef_file = tfrt::BEFFile::Open(bef_buffer, host->GetKernelRegistry(),
                                       host->diag_handler(), host->allocator());
   if (!bef_file)
@@ -195,13 +241,29 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
                                         "' function.");
   }
 
-  TF_ASSIGN_OR_RETURN(const auto* exec_ctx, GetExecutionContext());
+  // Create execution context.
+  TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
+  tfrt::RequestContextBuilder request_context_builder(
+      runtime_and_queue.core_runtime->GetHostContext(),
+      /*resource_context=*/nullptr);
+  tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
+  TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
+      &request_context_builder, &intra_op_threadpool));
+  request_context_builder.context_data().emplace<tensorflow::GpuSharedContext>(
+      params.run_id, params.device_assn, params.gpu_global_device_ids,
+      params.nccl_unique_id_callback,
+      /*compiled_code=*/nullptr);
+  auto expected_req_ctx = std::move(request_context_builder).build();
+  if (!expected_req_ctx) {
+    auto error = expected_req_ctx.takeError();
+    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+  }
+  tfrt::ExecutionContext exec_ctx(std::move(*expected_req_ctx));
 
   // Create owning handles for arguments and add pointer to them to 'args'.
   tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
-  tfrt::AsyncValueRef<tfrt::Chain> chain =
-      tfrt::GetReadyChain(exec_ctx->host());
+  tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain(exec_ctx.host());
   args.push_back(chain.GetAsyncValue());
   tfrt::gpu::BorrowedGpuStream stream = CreateGpuStream(params);
   args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
@@ -225,10 +287,10 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
     return tensorflow::errors::Internal("Unexpected result count.");
 
   // Execute the function.
-  function->Execute(*exec_ctx, args, {result});
+  function->Execute(exec_ctx, args, {result});
 
   // Wait for async execution to complete.
-  tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
+  tfrt::Await(exec_ctx, llvm::makeArrayRef(result));
 
   // Report error if any.
   if (auto* error = result->GetErrorIfPresent())
@@ -243,8 +305,6 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
 namespace xla {
 
 bool gpu::IsBefThunkEnabled() { return false; }
-
-void gpu::SetExecutionContext(const tfrt::ExecutionContext*) {}
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefThunk(
     Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,

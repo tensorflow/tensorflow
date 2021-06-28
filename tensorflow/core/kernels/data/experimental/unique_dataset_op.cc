@@ -142,7 +142,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
       for (int64 i = 0; i < num_unique_elements; ++i) {
         Tensor unique_element;
         TF_RETURN_IF_ERROR(reader->ReadTensor(
-            full_name(strings::StrCat("unique_elements[", i, "]")),
+            ctx->flr(), full_name(strings::StrCat("unique_elements[", i, "]")),
             &unique_element));
         auto insert_result = unique_elements_.insert(unique_element);
         if (!insert_result.second) {

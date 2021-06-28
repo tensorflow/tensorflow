@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/data/root_dataset.h"
@@ -113,12 +114,14 @@ std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
   dataset->Ref();
   auto unref_dataset = [dataset] { dataset->Unref(); };
   return absl::make_unique<InitializerSerializer>(
-      [dataset, resource_manager = ctx->resource_manager()](
+      [dataset, resource_manager = ctx->resource_manager(),
+       device_name = ctx->device()->attributes().name()](
           GraphDefBuilder* builder, Node* table, Node** out) {
         data::DatasetBase::DatasetGraphDefBuilder db(builder);
         data::SerializationContext::Params params;
-        params.serialize_data_tensors = true;
         params.resource_mgr = resource_manager;
+        params.device_name = device_name;
+        params.serialize_data_tensors = true;
         data::SerializationContext serialization_ctx(params);
         Node* dataset_node;
         TF_RETURN_IF_ERROR(

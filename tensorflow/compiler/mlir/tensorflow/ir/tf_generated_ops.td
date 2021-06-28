@@ -3753,12 +3753,12 @@ def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape, 
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$x,
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

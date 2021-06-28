@@ -21,12 +21,12 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/internal/gpu/nvtx_utils.h"
@@ -304,43 +304,32 @@ void CUPTIAPI ApiCallback(void *user_data, CUpti_CallbackDomain domain,
 // Allocates an empty aligned-memory buffer. The buffer is used by CUPTI as a
 // ring buffer where device maintains activity profiles that have been
 // collected.
-void CUPTIAPI AllocCuptiActivityBuffer(uint8_t **buffer, size_t *size,
-                                       size_t *maxNumRecords) {
-  // Buffer size and alignment, 32K and 8 as in CUPTI samples.
-  constexpr size_t kBufferSize = 32 * 1024;
-  constexpr int kBufferAlignSize = 8;
-  *buffer = reinterpret_cast<uint8_t *>(
-      port::AlignedMalloc(kBufferSize, kBufferAlignSize));
-  if (*buffer == nullptr) {
-    LOG(WARNING)
-        << "Cupti Buffer not allocated, activity records will be dropped";
-    return;
-  }
-  *size = kBufferSize;
-  *maxNumRecords = 0;  // Cupti to fill as many records as fit in the buffer.
-  VLOG(3) << "Allocated Cupti Buffer, buffer=" << std::hex
+void CUPTIAPI RequestCuptiActivityBuffer(uint8_t **buffer, size_t *size,
+                                         size_t *maxNumRecords) {
+  CuptiTracer::GetCuptiTracerSingleton()->RequestActivityBuffer(buffer, size);
+  VLOG(3) << "Requested CUPTI Buffer, buffer=" << std::hex
           << reinterpret_cast<uintptr_t>(*buffer) << std::dec
           << " size=" << *size;
+  // Request CUPTI to fill as many records as possible in the buffer.
+  *maxNumRecords = 0;
 }
 
 // Callback which is invoked when a buffer containing activity records is
-// available from CUPTI. Frees the buffer after reading activity records from
-// it.
-void CUPTIAPI FreeCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
-                                      uint8_t *buffer, size_t size,
-                                      size_t valid_size) {
-  VLOG(3) << "Freeing Cupti Buffer, buffer:" << std::hex
+// available from CUPTI. Processes the buffer after reading activity records
+// from it.
+void CUPTIAPI ProcessCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
+                                         uint8_t *buffer, size_t size,
+                                         size_t valid_size) {
+  VLOG(3) << "Processing CUPTI Buffer, buffer:" << std::hex
           << reinterpret_cast<uintptr_t>(buffer) << std::dec
           << " size: " << size << " valid_size: " << valid_size;
+  VLOG(3) << "Activity profile for stream " << stream_id;
 
-  if (valid_size > 0) {
-    VLOG(3) << "Activity profile for stream " << stream_id;
-
-    CuptiTracer *cupti_tracer = CuptiTracer::GetCuptiTracerSingleton();
-    cupti_tracer->ProcessActivityBuffer(context, stream_id, buffer, valid_size)
-        .IgnoreError();
+  Status status = CuptiTracer::GetCuptiTracerSingleton()->ProcessActivityBuffer(
+      context, stream_id, buffer, valid_size);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
   }
-  port::AlignedFree(buffer);
 }
 
 void AddKernelEventUponApiExit(CuptiTraceCollector *collector, uint32 device_id,
@@ -1599,6 +1588,11 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
   }
 }
 
+CuptiTracer::CuptiTracer(CuptiInterface *cupti_interface)
+    : num_gpus_(NumGpus()),
+      cupti_interface_(cupti_interface),
+      buffer_pool_(kBufferSizeInBytes) {}
+
 /* static */ CuptiTracer *CuptiTracer::GetCuptiTracerSingleton() {
   static auto *singleton = new CuptiTracer(GetCuptiInterface());
   return singleton;
@@ -1719,7 +1713,7 @@ Status CuptiTracer::EnableActivityTracing() {
     // Initialize callback functions for Cupti Activity API.
     VLOG(1) << "Registering CUPTI activity callbacks";
     RETURN_IF_CUPTI_ERROR(cupti_interface_->ActivityRegisterCallbacks(
-        AllocCuptiActivityBuffer, FreeCuptiActivityBuffer));
+        RequestCuptiActivityBuffer, ProcessCuptiActivityBuffer));
 
     VLOG(1) << "Enabling activity tracing for "
             << option_->activities_selected.size() << " activities";
@@ -1798,7 +1792,7 @@ Status CuptiTracer::HandleNVTXCallback(CUpti_CallbackId cbid,
 Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *cbdata) {
-  if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
+  if (!api_tracing_enabled_) return Status::OK();    // already unsubscribed.
   if (!cupti_driver_api_hook_) return Status::OK();  // already unsubscribed.
   if (domain == CUPTI_CB_DOMAIN_NVTX) return HandleNVTXCallback(cbid, cbdata);
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
@@ -1880,10 +1874,26 @@ void CuptiTracer::ConfigureActivityUnifiedMemoryCounter(bool enable) {
   }
 }
 
+void CuptiTracer::RequestActivityBuffer(uint8_t **buffer, size_t *size) {
+  *buffer = buffer_pool_.GetOrCreateBuffer();
+  if (*buffer == nullptr) {
+    LOG(WARNING)
+        << "CUPTI Buffer not allocated, activity records will be dropped";
+    *size = 0;
+    return;
+  }
+  *size = buffer_pool_.GetBufferSizeInBytes();
+}
+
 Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
                                           uint8_t *buffer, size_t size) {
+  auto buffer_cleanup =
+      gtl::MakeCleanup([&]() { buffer_pool_.ReclaimBuffer(buffer); });
+  if (size == 0) {
+    return Status::OK();
+  }
   if (!activity_tracing_enabled_) {
-    LOG(WARNING) << "CUPTI activity buffer is freed after flush.";
+    LOG(WARNING) << "CUPTI activity buffer is reclaimed after flush.";
     return Status::OK();
   }
   if (cupti_interface_->Disabled()) return errors::Internal("Disabled.");

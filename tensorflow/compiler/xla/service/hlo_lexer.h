@@ -63,10 +63,8 @@ enum class TokKind {
   kw_replicated,
   kw_manual,
   kw_last_tile_dim_replicate,
-  kw_nan,
   kw_inf,
 
-  kNegNan,  // -nan
   kNegInf,  // -inf
 
   // Typed tokens.
@@ -112,7 +110,7 @@ class HloLexer {
     }
   }
   int64 GetInt64Val() const {
-    CHECK(GetKind() == TokKind::kInt);
+    CHECK(GetKind() == TokKind::kInt) << TokKindToString(GetKind());
     return token_state_.int64_val;
   }
   double GetDecimalVal() const {
@@ -163,6 +161,8 @@ class HloLexer {
   TokKind LexConstant();
   TokKind LexNumberOrPattern();
   TokKind LexString();
+
+  absl::optional<int64> LexNanPayload(absl::string_view& consumable);
 
   const absl::string_view buf_;
   const char* current_ptr_;

@@ -248,10 +248,10 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
         /*max_bcast_rank=*/4);
   }
 
-  // Allows I32, QI16 and F32 outputs when the operands have valid shapes, which
-  // are broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsQI16Type(element_type) ||
-      element_type.isF32()) {
+  // Allows I32, I64, QI16 and F32 outputs when the operands have valid shapes,
+  // which are broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type) || IsI64Type(element_type) ||
+      IsQI16Type(element_type) || element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -1737,9 +1737,40 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
   }
 };
 
+// Replace PackOp with a reshape when there is only one operand.
+struct ReplacePackWithReshape : public RewritePattern {
+  explicit ReplacePackWithReshape(MLIRContext *context)
+      : RewritePattern(PackOp::getOperationName(), 2, context) {}
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    TFL::PackOp pack_op = cast<TFL::PackOp>(op);
+    if (pack_op.getNumOperands() != 1) return failure();
+
+    Location loc = pack_op.getLoc();
+    auto output_type = pack_op.getType().cast<ShapedType>();
+    if (!output_type.hasStaticShape()) return failure();
+
+    // This is to workaround the unnecessary cast i64 -> i32.
+    SmallVector<int32_t, 4> new_shape_array;
+    for (auto size : output_type.getShape()) {
+      new_shape_array.push_back(static_cast<int32_t>(size));
+    }
+
+    auto new_shape = rewriter.create<TFL::ConstOp>(
+        loc, DenseIntElementsAttr::get(
+                 RankedTensorType::get(new_shape_array.size(),
+                                       rewriter.getIntegerType(32)),
+                 new_shape_array));
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, output_type,
+                                           pack_op.getOperand(0), new_shape);
+    return success();
+  }
+};
+
 void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  results.insert<RemoveRedundantUnpackPack>(context);
+  results.insert<RemoveRedundantUnpackPack, ReplacePackWithReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//

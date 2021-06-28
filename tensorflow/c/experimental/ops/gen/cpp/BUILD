@@ -32,11 +32,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cpp_controller_test",
+    name = "cpp_generator_test",
     size = "small",
-    srcs = ["cpp_controller_test.cc"],
+    srcs = ["cpp_generator_test.cc"],
     data = ["//tensorflow/c/experimental/ops/gen/cpp/golden"],
-    tags = ["no_windows"],  # new line escape sequence: windows uses'\r\n' while linux uses '\n'.
     deps = [
         ":cpp",
         "//tensorflow/core:core_cpu",

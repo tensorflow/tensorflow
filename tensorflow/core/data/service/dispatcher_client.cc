@@ -102,12 +102,14 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
 }
 
 Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
+                                             int64 split_provider_index,
                                              Tensor& split,
                                              bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetSplitRequest req;
   req.set_job_id(job_id);
   req.set_repetition(repetition);
+  req.set_split_provider_index(split_provider_index);
   GetSplitResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetSplit(&client_ctx, req, &resp);

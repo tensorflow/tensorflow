@@ -28,11 +28,11 @@ class DeviceMgr;
 
 class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
  public:
-  CollectiveParamResolverDistributed(const ConfigProto& config,
-                                     const DeviceMgr* dev_mgr,
-                                     DeviceResolverDistributed* dev_resolver,
-                                     WorkerCacheInterface* worker_cache,
-                                     const string& task_name);
+  CollectiveParamResolverDistributed(
+      const ConfigProto& config, const DeviceMgr* dev_mgr,
+      DeviceResolverDistributed* dev_resolver,
+      NcclCommunicatorInterface* nccl_communicator,
+      WorkerCacheInterface* worker_cache, const string& task_name);
 
   void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/data_service_ops.h"
 
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -55,13 +57,25 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, !protocol.empty(),
               errors::InvalidArgument(kProtocol, " must be non-empty."));
 
-  SerializationContext::Params params;
-  params.resource_mgr = ctx->resource_manager();
+  SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
   SerializationContext serialization_ctx(params);
   GraphDef graph_def;
-  OP_REQUIRES_OK(
-      ctx, AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def));
+  Status s = AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def);
+  if (!s.ok()) {
+    OP_REQUIRES_OK(
+        ctx,
+        errors::FailedPrecondition(
+            "Serialization error while trying to register a dataset with "
+            "tf.data service. "
+            "The dataset may depend on a resource located on a different "
+            "device. "
+            "To address this, call `register_dataset` from the device with the "
+            "resource, then use `from_dataset_id` to create per-device "
+            "datasets. "
+            "Original error: ",
+            s));
+  }
 
   DataServiceDispatcherClient client(address, protocol);
   int64 dataset_id;

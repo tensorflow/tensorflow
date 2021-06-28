@@ -272,6 +272,7 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
+        ":ps_values",
         ":reduce_util",
         ":sharded_variable",
         ":shared_variable_creator",
@@ -1137,7 +1138,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "notsan",  # b/173031470
         "no_rocm" # flaky/timeout with 4.1
     ],
     deps = [

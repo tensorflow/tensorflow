@@ -98,19 +98,29 @@ inline bool IsTFDataFunction(const FunctionDef& func) {
 // Read*(key, val) vs Read*(name, key, val).
 class IteratorStateReader {
  public:
-  virtual Status ReadScalar(StringPiece key, int64* val) const = 0;
-  virtual Status ReadScalar(StringPiece key, tstring* val) const = 0;
-  virtual Status ReadTensor(StringPiece key, Tensor* val) const = 0;
-
-  virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            int64* val) const = 0;
-  virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            tstring* val) const = 0;
-  virtual Status ReadTensor(StringPiece name, StringPiece key,
-                            Tensor* val) const = 0;
-
+  // Determines whether the iterator state contains the given key.
   virtual bool Contains(StringPiece key) const = 0;
   virtual bool Contains(StringPiece name, StringPiece key) const = 0;
+
+  // Reads an integer for the given key.
+  virtual Status ReadScalar(StringPiece key, int64* val) const = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            int64* val) const = 0;
+
+  // Reads a string for the given key.
+  virtual Status ReadScalar(StringPiece key, tstring* val) const = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            tstring* val) const = 0;
+
+  // Reads a tensor for the given key.
+  // TODO(jsimsa): Remove non-FLR overrides once all callers are updated.
+  virtual Status ReadTensor(StringPiece key, Tensor* val) const = 0;
+  virtual Status ReadTensor(FunctionLibraryRuntime* flr, StringPiece key,
+                            Tensor* val) const = 0;
+  virtual Status ReadTensor(StringPiece name, StringPiece key,
+                            Tensor* val) const = 0;
+  virtual Status ReadTensor(FunctionLibraryRuntime* flr, StringPiece name,
+                            StringPiece key, Tensor* val) const = 0;
 
   virtual ~IteratorStateReader() {}
 };
@@ -126,14 +136,18 @@ class IteratorStateReader {
 // into more manageable chunks.
 class IteratorStateWriter {
  public:
+  // Writes an integer for the given key.
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
-  virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
-  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
-
   virtual Status WriteScalar(StringPiece name, StringPiece key,
                              const int64 val) = 0;
+
+  // Writes a string for the given key.
+  virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
   virtual Status WriteScalar(StringPiece name, StringPiece key,
                              const tstring& val) = 0;
+
+  // Writes a tensor for the given key.
+  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
   virtual Status WriteTensor(StringPiece name, StringPiece key,
                              const Tensor& val) = 0;
 
@@ -223,36 +237,41 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-  Status AddDataset(const DatasetBase* dataset,
-                    const std::vector<Node*>& inputs, Node** output) {
-    return AddDataset(dataset, inputs, {}, output);
-  }
-
-  // Adds a node corresponding to the `DatasetType` to the Graph.
-  // Return value of `DatasetType::type_string()` is used as the op type for the
-  // node.
-  // Values for the output_types and output_shapes node attributes are also
-  // written if those attributes are defined in the OpDef.
+  // Adds a node for the given dataset to the `Graph`. The value of
+  // `DatasetBase::type_string()` is used as the op type for the node. Values
+  // for the `output_types` and `output_shapes` node attributes are also written
+  // if those attributes are defined in the `OpDef`.
+  //
+  // If `use_dataset_name` is set, the value of `DatasetBase::node_name()` is
+  // used as the op name for the node. This argument should only be set when
+  // serializing `DatasetBase` instances which might not have been created
+  // through op kernel execution to make sure the dataset op name is preserved
+  // across serialization boundaries, which is in turn needed to make sure
+  // iterator checkpoints are valid across serialization boundaries. When
+  // `use_dataset_name` is set, the caller is responsible for making sure that
+  // the op name is unique across the graph.
+  //
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
-  // non-null if the method returns with an OK status.
-  // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
+  // non-null if the method returns with an OK status. The returned `Node`
+  // pointer is owned by the backing `Graph` of `GraphDefBuilder`.
+  Status AddDataset(const DatasetBase* dataset,
+                    const std::vector<Node*>& inputs, Node** output);
   Status AddDataset(const DatasetBase* dataset,
                     const std::vector<Node*>& inputs,
                     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
-                    Node** output) {
-    std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
-    for (size_t i = 0; i < inputs.size(); i++) {
-      enumerated_inputs[i] = std::make_pair(i, inputs[i]);
-    }
-    return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
-  }
-
+                    Node** output);
   Status AddDataset(
       const DatasetBase* dataset,
       const std::vector<std::pair<size_t, Node*>>& inputs,
       const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
       const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
       Node** output);
+  Status AddDataset(
+      const DatasetBase* dataset,
+      const std::vector<std::pair<size_t, Node*>>& inputs,
+      const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+      const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+      bool use_dataset_name, Node** output);
 
   // Adds a user-defined function with name `function_name` to the graph and
   // recursively adds all functions it references. If a function with a matching
@@ -367,7 +386,7 @@ class IteratorContext {
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
-          split_provider(ctx->split_provider()),
+          split_providers(ctx->split_providers()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
           thread_pool(ctx->thread_pool()) {}
@@ -435,8 +454,9 @@ class IteratorContext {
     // Number of threads used for executing user-defined functions.
     int32 runner_threadpool_size = 0;
 
-    // An optional split provider indicating which splits to process.
-    std::shared_ptr<SplitProvider> split_provider = nullptr;
+    // Split providers indicating which splits to process. May be empty,
+    // indicating that the iterator should process all splits.
+    std::vector<std::shared_ptr<SplitProvider>> split_providers;
 
     // The `StatsAggregator` object to record statistics about the iterator.
     //
@@ -487,8 +507,8 @@ class IteratorContext {
 
   int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
 
-  std::shared_ptr<SplitProvider> split_provider() {
-    return params_.split_provider;
+  std::vector<std::shared_ptr<SplitProvider>> split_providers() {
+    return params_.split_providers;
   }
 
   std::shared_ptr<StatsAggregator> stats_aggregator() {
@@ -567,6 +587,12 @@ class SerializationContext {
   }
 
   struct Params {
+    explicit Params() {}
+
+    explicit Params(OpKernelContext* ctx)
+        : resource_mgr(ctx->resource_manager()),
+          device_name(ctx->device()->attributes().name()) {}
+
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
     // Indicates what to do if the dataset depends on external state.
@@ -594,6 +620,9 @@ class SerializationContext {
 
     // A resource manager for looking up resources during serialization.
     ResourceMgr* resource_mgr;
+
+    // The name of the device doing the serialization.
+    std::string device_name;
   };
 
   explicit SerializationContext(Params params) : params_(params) {}
@@ -612,7 +641,9 @@ class SerializationContext {
 
   bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
 
-  ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
+  const ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
+
+  const std::string& device_name() const { return params_.device_name; }
 
  private:
   Params params_;
@@ -843,13 +874,12 @@ class DatasetBase : public core::RefCounted {
   // the graph.
   const string& node_name() const { return node_name_; }
 
-  // Merges options from inputs to this dataset. If there is a conflict in a
-  // field value, the options set on this dataset takes precedence over those in
-  // the inputs. The order of precedence on the inputs is in the same order as
-  // how they appear for this dataset.
-  Status MergeOptionsFromInputs();
+  // Initializes the dataset.
+  void Initialize();
 
   const Options& options() const { return options_; }
+
+  int64 num_sources() const { return num_sources_; }
 
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
@@ -894,8 +924,8 @@ class DatasetBase : public core::RefCounted {
   // Returns a split provider which partitions the dataset's data into splits
   // and provides them in a sequence. The split provider is stored in
   // `*split_provider`.
-  virtual Status MakeSplitProvider(
-      std::unique_ptr<SplitProvider>* split_provider) const;
+  virtual Status MakeSplitProviders(
+      std::vector<std::unique_ptr<SplitProvider>>* split_providers) const;
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -978,9 +1008,22 @@ class DatasetBase : public core::RefCounted {
   void set_options(const Options& options) { options_ = options; }
 
  private:
+  // Computes the number of source datasets feeding into this dataset. A source
+  // dataset is a leaf in the subtree of dataset inputs.
+  Status ComputeNumSources();
+
+  // Merges options from inputs to this dataset. If there is a conflict in a
+  // field value, the options set on this dataset takes precedence over those in
+  // the inputs. The order of precedence on the inputs is in the same order as
+  // how they appear for this dataset.
+  Status MergeOptionsFromInputs();
+
   const string type_string_;
   const string node_name_;
   Options options_;
+  // The number of source datasets feeding into the dataset. A source dataset is
+  // a leaf in the subtree of dataset inputs.
+  int64 num_sources_ = -1;
 };
 
 // Represents an iterator that is associated with a particular dataset.

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_STANDALONE_H_
 #define TENSORFLOW_CORE_DATA_STANDALONE_H_
 
+#include <functional>
 #include <memory>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -100,11 +101,13 @@ class Dataset {
   // Creates an iterator for this dataset.
   Status MakeIterator(std::unique_ptr<Iterator>* result);
   // Creates an iterator, optionally with a split provider.
-  Status MakeIterator(std::unique_ptr<SplitProvider> split_provider,
-                      std::unique_ptr<Iterator>* result);
+  Status MakeIterator(
+      std::vector<std::unique_ptr<SplitProvider>> split_providers,
+      std::unique_ptr<Iterator>* result);
 
-  // Creates a split provider for this dataset.
-  Status MakeSplitProvider(std::unique_ptr<SplitProvider>* result);
+  // Creates split providers for this dataset.
+  Status MakeSplitProviders(
+      std::vector<std::unique_ptr<SplitProvider>>* result);
   // Returns a pointer to the underlying dataset.
   const DatasetBase* Get() const;
 

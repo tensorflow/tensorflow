@@ -704,7 +704,8 @@ struct LhloLegalizeToParallelLoopsPass
     : public LhloLegalizeToParallelLoopsPassBase<
           LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<StandardOpsDialect, scf::SCFDialect>();
+    registry
+        .insert<StandardOpsDialect, memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnFunction() override {

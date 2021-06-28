@@ -66,6 +66,7 @@ tf_py_test(
     size = "medium",
     srcs = ["distributed_epoch_test.py"],
     shard_count = 16,
+    tags = ["no_oss"],  #b/192075410
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
@@ -115,6 +116,24 @@ tf_py_test(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:errors",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "multi_device_test",
+    size = "small",
+    srcs = ["multi_device_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )
 

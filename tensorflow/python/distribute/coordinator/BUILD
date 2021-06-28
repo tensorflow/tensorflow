@@ -90,7 +90,7 @@ tf_py_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
     python_version = "PY3",
-    shard_count = 27,
+    shard_count = 36,
     tags = [
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)

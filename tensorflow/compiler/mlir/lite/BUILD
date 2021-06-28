@@ -168,6 +168,23 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "tensorflow_lite_legalize_variables_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_legalize_variables.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/legalize_variables.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
     name = "tensorflow_lite_optimize_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -291,6 +308,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
     ],
@@ -474,6 +492,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
     ],
 )
 
@@ -500,10 +519,10 @@ cc_library(
         "transforms/analyze_variables.cc",
         "transforms/dilated_conv.cc",
         "transforms/generated_legalize_tf.inc",
+        "transforms/generated_legalize_variables.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
         "transforms/get_arithmetic_count.cc",
-        "transforms/initialize_variables.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
         "transforms/legalize_tf.cc",
@@ -514,7 +533,6 @@ cc_library(
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/raise_custom_ops.cc",
-        "transforms/remove_unused_func_args_tensors.cc",
         "transforms/runtime_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
@@ -605,6 +623,7 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_quantize",
     srcs = [
+        "transforms/decompose_hybrid_quantization.cc",
         "transforms/default_quant_params.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",

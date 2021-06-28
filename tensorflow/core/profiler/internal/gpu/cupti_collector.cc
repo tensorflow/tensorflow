@@ -213,48 +213,47 @@ class PerDeviceCollector {
                event.type == CuptiTracerEventType::MemcpyD2D ||
                event.type == CuptiTracerEventType::MemcpyP2P ||
                event.type == CuptiTracerEventType::MemcpyOther) {
-      VLOG(7) << "Add Memcpy stat.";
       const auto& memcpy_info = event.memcpy_info;
-      std::string memcpy_details = absl::StrCat(
+      std::string value = absl::StrCat(
           "kind_src:", GetMemoryKindName(event.memcpy_info.src_mem_kind),
           " kind_dst:", GetMemoryKindName(event.memcpy_info.dst_mem_kind),
           " size:", memcpy_info.num_bytes, " dest:", memcpy_info.destination,
           " async:", memcpy_info.async);
-      xevent.AddStatValue(
-          *plane->GetOrCreateStatMetadata(
-              GetStatTypeStr(StatType::kMemcpyDetails)),
-          *plane->GetOrCreateStatMetadata(std::move(memcpy_details)));
+      VLOG(7) << "Add Memcpy stat. " << value;
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kMemcpyDetails)),
+                          *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::MemoryAlloc) {
-      VLOG(7) << "Add MemAlloc stat";
       std::string value =
           absl::StrCat("kind:", GetMemoryKindName(event.memalloc_info.mem_kind),
                        " num_bytes:", event.memalloc_info.num_bytes);
+      VLOG(7) << "Add MemAlloc stat. " << value;
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kMemallocDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::MemoryFree) {
-      VLOG(7) << "Add MemFree stat";
       std::string value =
           absl::StrCat("kind:", GetMemoryKindName(event.memfree_info.mem_kind),
                        " num_bytes:", event.memfree_info.num_bytes);
+      VLOG(7) << "Add MemFree stat. " << value;
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kMemFreeDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::Memset) {
-      VLOG(7) << "Add Memset stat";
-      auto value =
+      std::string value =
           absl::StrCat("kind:", GetMemoryKindName(event.memset_info.mem_kind),
                        " num_bytes:", event.memset_info.num_bytes,
                        " async:", event.memset_info.async);
+      VLOG(7) << "Add Memset stat. " << value;
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kMemsetDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::MemoryResidency) {
-      VLOG(7) << "Add MemoryResidency stat";
       std::string value = absl::StrCat(
           "kind:", GetMemoryKindName(event.memory_residency_info.mem_kind),
-          " num_bytes:", event.memory_residency_info.num_bytes,
-          " addr:", event.memory_residency_info.address);
+          " num_bytes:", event.memory_residency_info.num_bytes, " addr:0x",
+          absl::Hex(event.memory_residency_info.address, absl::kZeroPad16));
+      VLOG(7) << "Add MemoryResidency stat. " << value;
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
                               StatType::kMemoryResidencyDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));

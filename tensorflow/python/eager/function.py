@@ -1860,6 +1860,7 @@ class ConcreteFunction(core.ConcreteFunction):
     arg_pieces = nest.flatten(arg, expand_composites=True)
     spec_pieces = nest.flatten(spec, expand_composites=True)
     for (arg_piece, spec_piece) in zip(arg_pieces, spec_pieces):
+      # TODO(mdan): Use consistent error messages.
       if isinstance(spec_piece, tensor_spec.DenseSpec):
         # TODO(edloper): Consider calling convert_to_tensor on non-tensor
         # values here.  That would match the behavior of
@@ -1872,12 +1873,18 @@ class ConcreteFunction(core.ConcreteFunction):
               "{} expected a Tensor in {}, but got {} value {}".format(
                   self._structured_signature_summary(), name,
                   type(arg_piece).__name__, arg_piece))
-      elif arg_piece is not _BOUND_VALUE and arg_piece != spec_piece:
-        raise TypeError("ConcreteFunction {} was constructed with {} value "
-                        "{} in {}, but was called with {} value {}".format(
-                            self._structured_signature_summary(),
-                            type(spec_piece).__name__, spec_piece, name,
-                            type(arg_piece).__name__, arg_piece))
+      elif arg_piece is not _BOUND_VALUE:
+        try:
+          arg_matches_spec = bool(arg_piece == spec_piece)
+        except (ValueError, TypeError):
+          logging.vlog(1, "Error matching value with spec", exc_info=True)
+          arg_matches_spec = False
+        if not arg_matches_spec:
+          raise TypeError("ConcreteFunction {} was constructed with {} value "
+                          "{} in {}, but was called with {} value {}".format(
+                              self._structured_signature_summary(),
+                              type(spec_piece).__name__, spec_piece, name,
+                              type(arg_piece).__name__, arg_piece))
 
   def _call_flat(self, args, captured_inputs, cancellation_manager=None):
     """Executes the wrapped function.

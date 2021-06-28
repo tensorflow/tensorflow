@@ -1594,13 +1594,13 @@ def _MaximumMinimumGrad(op, grad, selector_op):
 
 @ops.RegisterGradient("Maximum")
 def _MaximumGrad(op, grad):
-  """Returns grad*(x > y, x <= y) with type of grad."""
+  """Returns grad*(x >= y, x < y) with type of grad."""
   return _MaximumMinimumGrad(op, grad, math_ops.greater_equal)
 
 
 @ops.RegisterGradient("Minimum")
 def _MinimumGrad(op, grad):
-  """Returns grad*(x < y, x >= y) with type of grad."""
+  """Returns grad*(x <= y, x > y) with type of grad."""
   return _MaximumMinimumGrad(op, grad, math_ops.less_equal)
 
 

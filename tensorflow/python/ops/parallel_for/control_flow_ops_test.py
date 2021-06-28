@@ -1259,6 +1259,32 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_loop_variant_scatter_indices(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 10, dtypes.int32)
+      handle = list_ops.tensor_list_scatter(
+          [[1, i], [i + 1, 2]],
+          [i, i + 5], input_handle=handle)
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_scatter_duplicate_indices(self):
+    if test_util.is_gpu_available():
+      self.skipTest(
+          "Flaky in some GPU configurations due to TensorScatterNdUpdate "
+          "nondeterminism.")
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve([2], 10, dtypes.int32)
+      handle = list_ops.tensor_list_scatter(
+          [[1, i], [1, i + 1], [i + 2, 3]],
+          [i, i, i + 2], input_handle=handle)
+      return list_ops.tensor_list_stack(handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 5)
+
   def test_create_outside_and_gather(self):
     handle = list_ops.tensor_list_reserve([2], 2, dtypes.int32)
     handle = list_ops.tensor_list_scatter([[2, 3]], [0], input_handle=handle)
@@ -1866,6 +1892,20 @@ class WhileV2Test(PForTestCase):
     theoretical, numerical = gradient_checker_v2.compute_gradient(
         v_log_prob, (x,), delta=1e-3)
     self.assertAllClose(theoretical, numerical, rtol=1e-2)
+
+  def test_scan_captured_variable(self):
+    if not context.executing_eagerly():
+      self.skipTest("Test only written for 2.x")
+    v = variables.Variable(math_ops.range(10, dtype=dtypes.float32))
+
+    def loop_fn(idx):
+      del idx
+      return functional_ops.scan_v2(lambda _, i: array_ops.gather(v, i),
+                                    elems=math_ops.range(v.shape[0]),
+                                    initializer=0.0)
+    with backprop.GradientTape() as tape:
+      result = pfor_control_flow_ops.pfor(loop_fn, 2)
+    self.assertAllClose([2.] * 10, tape.gradient(result, v))
 
 
 @test_util.run_all_in_graph_and_eager_modes
