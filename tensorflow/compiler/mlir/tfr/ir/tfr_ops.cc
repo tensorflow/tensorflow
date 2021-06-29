@@ -100,8 +100,18 @@ struct TFRInlinerInterface : public DialectInlinerInterface {
   Operation *materializeCallConversion(OpBuilder &builder, Value input,
                                        Type result_type,
                                        Location conversion_loc) const final {
-    if (!result_type.isa<IntegerType>()) return nullptr;
-    return builder.create<TruncateIOp>(conversion_loc, result_type, input);
+    if (!input.getType().isa<IntegerType>() ||
+        !result_type.isa<IntegerType>()) {
+      return nullptr;
+    }
+    auto input_itype = input.getType().cast<IntegerType>();
+    auto result_itype = result_type.cast<IntegerType>();
+    if (input_itype.getWidth() == result_itype.getWidth()) return nullptr;
+    if (input_itype.getWidth() > result_itype.getWidth()) {
+      return builder.create<TruncateIOp>(conversion_loc, result_type, input);
+    } else {
+      return builder.create<SignExtendIOp>(conversion_loc, result_type, input);
+    }
   }
 };
 }  // namespace

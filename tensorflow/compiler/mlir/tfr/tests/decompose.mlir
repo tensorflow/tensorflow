@@ -35,6 +35,19 @@ tfr.func @tf__fused_n(
 // CHECK-NEXT: tfr.return %[[bl]] : !tfr.tensor_list
 }
 
+// CHECK-LABEL: @tf__my_max_pool
+tfr.func @tf__my_max_pool(%input_: !tfr.tensor, %stride_w: i64{tfr.name="stride_w"}, %stride_h: i64{tfr.name="stride_h"}) -> (!tfr.tensor) {
+  %cst_1 = constant 1 : i64
+  %stride = "tfr.build_list"(%cst_1, %stride_w, %stride_h, %cst_1) : (i64, i64, i64, i64) -> !tfr.attr
+  %filter = tfr.constant [1, 2, 2, 1] -> !tfr.attr
+  %padding = tfr.constant "VALID" -> !tfr.attr
+  %explicit_paddings = tfr.constant [] -> !tfr.attr
+  %data_format = tfr.constant "NHWC" -> !tfr.attr
+  %MaxPool = tfr.call @tf__max_pool(%input_, %stride, %filter, %padding, %explicit_paddings, %data_format) : (!tfr.tensor, !tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr) -> (!tfr.tensor)
+  tfr.return %MaxPool : !tfr.tensor
+// CHECK: tf__max_pool
+}
+
 //------------------------
 
 // CHECK-LABEL: decompose_tf_no_op
@@ -104,6 +117,16 @@ func @attribute_propagate(%arg0: tensor<1x2x3x4x!tf.string>, %arg1: tensor<f32>,
 // CHECK-NEXT: %[[id1:.*]] = tfr.call @tf__risc(%[[in1]]) {_tpu_replicate, device = "hello"}
 // CHECK-NEXT: %[[back:.*]] = "tfr.cast"(%[[id1]]) : (!tfr.tensor) -> tensor<f32>
 // CHECK-NEXT: return %[[back]] : tensor<f32>
+}
+
+// CHECK: attribute_cast
+func @attribute_cast(%arg0: tensor<1x4x4x1xf32>) -> tensor<1x2x2x1xf32> {
+  %0 = "tfr.cast"(%arg0) : (tensor<1x4x4x1xf32>) -> !tfr.tensor
+  %stride_i32 = constant 2 : i32
+  %1 = tfr.call @tf__my_max_pool(%0, %stride_i32, %stride_i32) : (!tfr.tensor, i32, i32) -> !tfr.tensor
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<1x2x2x1xf32>
+  return %2 : tensor<1x2x2x1xf32>
+// CHECK: tf__max_pool
 }
 
 // CHECK-LABEL: no_tf_canonicalization
