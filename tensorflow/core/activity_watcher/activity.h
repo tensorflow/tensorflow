@@ -32,6 +32,17 @@ enum ActivityCategory {
   kMisc = 2,
 };
 
+static tensorflow::string ToString(ActivityCategory category) {
+  switch (category) {
+    case ActivityCategory::kCollective:
+      return "Collective";
+    case ActivityCategory::kRemoteFunction:
+      return "Remote Function";
+    case ActivityCategory::kMisc:
+      return "Miscellaneous";
+  }
+}
+
 struct Activity {
   tensorflow::string title;
   ActivityCategory category;
