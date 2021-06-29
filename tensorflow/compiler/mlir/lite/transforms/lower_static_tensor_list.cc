@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -416,7 +417,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     // Here we assume that the element_shape won't be changed before calling
     // the first `TensorListSetItemOp`.
     if (auto shaped_type = element_shape.getType().dyn_cast<ShapedType>()) {
-      if (shaped_type.getRank() == 0) {
+      if (shaped_type.hasRank() && shaped_type.getRank() == 0) {
         bool element_shape_acquired = false;
         auto uses = op.getResult().getUses();
         for (auto &use : llvm::make_early_inc_range(uses)) {
