@@ -31,7 +31,6 @@ StatusOr<bool> AllReduceScatterCreator::Run(HloModule *module) {
   int64 next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
-  int c = 0;
   for (HloComputation *computation : module->MakeNonfusionComputations()) {
     for (HloInstruction *instruction :
          computation->MakeInstructionPostOrder()) {
@@ -84,7 +83,6 @@ StatusOr<bool> AllReduceScatterCreator::Run(HloModule *module) {
       TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(result));
       TF_RETURN_IF_ERROR(ar->parent()->RemoveInstructionAndUnusedOperands(ds));
       changed = true;
-      c++;
     }
   }
 
