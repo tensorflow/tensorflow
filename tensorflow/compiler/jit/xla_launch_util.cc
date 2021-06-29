@@ -262,7 +262,8 @@ XlaComputationLaunchContext::PopulateInputs(
         is_resource_variable &&
         absl::c_any_of(compilation_result->resource_updates,
                        [&](const XlaCompiler::ResourceUpdate& update) {
-                         return update.input_index == i && update.modified;
+                         return update.input_index == arg_num &&
+                                update.modified;
                        });
 
     const Tensor* t = is_resource_variable
