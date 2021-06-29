@@ -88,7 +88,6 @@ StatusOr<bool> AllReduceScatterCreator::Run(HloModule *module) {
     }
   }
 
-  std::cerr << "Created " << c << " ars\n";
   return changed;
 }
 
