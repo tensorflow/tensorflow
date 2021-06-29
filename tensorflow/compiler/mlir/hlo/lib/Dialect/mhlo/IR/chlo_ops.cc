@@ -376,6 +376,13 @@ LogicalResult ConstantLikeOp::inferReturnTypeComponents(
   return success();
 }
 
+LogicalResult ConstantLikeOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return ::mlir::mhlo::deriveShapeFromOperand(
+      &builder, getOperation(), operands.front(), &reifiedReturnShapes);
+}
+
 struct ConstantLikeToConstant : public OpRewritePattern<ConstantLikeOp> {
   using OpRewritePattern<ConstantLikeOp>::OpRewritePattern;
 
