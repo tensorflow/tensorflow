@@ -1373,6 +1373,7 @@ cc_library(
         ":cudnn_batchnorm_rewriter",
         ":fusion_merger",
         ":gemm_rewriter",
+        ":gpu_all_reduce_scatter_creator",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_copy_insertion",
