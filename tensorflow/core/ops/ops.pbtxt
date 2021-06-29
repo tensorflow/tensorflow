@@ -36159,6 +36159,41 @@ op {
   is_stateful: true
 }
 op {
+  name: "ReadVariableXlaSplitND"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "outputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_splits"
+    type: "list(int)"
+  }
+  attr {
+    name: "paddings"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "ReaderNumRecordsProduced"
   input_arg {
     name: "reader_handle"
@@ -59180,6 +59215,40 @@ op {
     type: "string"
   }
   is_stateful: true
+}
+op {
+  name: "XlaSplitND"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "outputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_splits"
+    type: "list(int)"
+  }
+  attr {
+    name: "paddings"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "Xlog1py"
