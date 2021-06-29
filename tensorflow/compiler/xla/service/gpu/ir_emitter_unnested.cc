@@ -239,6 +239,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
         case HloOpcode::kCos:
         case HloOpcode::kPower:
         case HloOpcode::kAtan2:
+        case HloOpcode::kConcatenate:
           return true;
         case HloOpcode::kReduce:
           if (instr.getNumResults() > 1) {
