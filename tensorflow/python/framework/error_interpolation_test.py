@@ -231,7 +231,6 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       self.assertEqual(one_tag_string, interpolated_string)
 
   def testTwoTagsNoSeps(self):
-    defined_at = r"\(defined at .*error_interpolation_test\.py:[0-9]+\)"
     with ops.Graph().as_default():
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
@@ -239,12 +238,11 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       two_tags_no_seps = "{{node One}}{{node Three}}"
       interpolated_string = error_interpolation.interpolate(
           two_tags_no_seps, ops.get_default_graph())
-      # Fragments the expression to avoid matching the pattern itself.
-      expected_regex = re.compile(defined_at + r".*" + defined_at, re.DOTALL)
-      self.assertRegex(interpolated_string, expected_regex)
+      self.assertRegex(
+          interpolated_string, r"error_interpolation_test\.py:[0-9]+."
+          r"*error_interpolation_test\.py:[0-9]+")
 
   def testTwoTagsWithSeps(self):
-    defined_at = r"\(defined at .*error_interpolation_test\.py:[0-9]+\)"
     with ops.Graph().as_default():
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
@@ -252,28 +250,24 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
       two_tags_with_seps = ";;;{{node Two}},,,{{node Three}};;;"
       interpolated_string = error_interpolation.interpolate(
           two_tags_with_seps, ops.get_default_graph())
-      # Fragments the expression to avoid matching the pattern itself.
-      expected_regex = re.compile(
-          (r"^;;;.*" + defined_at + r".*" + r",,,.*" + defined_at + r".*;;;$"),
-          re.DOTALL)
+      expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
+                        r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
       self.assertRegex(interpolated_string, expected_regex)
 
   def testNewLine(self):
-    defined_at = r"\(defined at .*error_interpolation_test\.py:[0-9]+\)"
     with ops.Graph().as_default():
       constant_op.constant(1, name="One")
       constant_op.constant(2, name="Two")
-      newline = "\n\n;;;{{node One}};;;"
+      newline = "\n\n{{node One}}"
       interpolated_string = error_interpolation.interpolate(
           newline, ops.get_default_graph())
-      expected_regex = re.compile(r".*;;;.*" + defined_at + r".*;;;", re.DOTALL)
-      self.assertRegex(interpolated_string, expected_regex)
+      self.assertRegex(interpolated_string,
+                       r"error_interpolation_test\.py:[0-9]+.*")
 
 
 class InputNodesTest(test.TestCase):
 
   def testNoInputs(self):
-    defined_at = r"\(defined at .*error_interpolation_test\.py:[0-9]+\)"
     with ops.Graph().as_default():
       one = constant_op.constant(1, name="One")
       two = constant_op.constant(2, name="Two")
@@ -281,14 +275,11 @@ class InputNodesTest(test.TestCase):
       two_tags_with_seps = ";;;{{node One}},,,{{node Two}};;;"
       interpolated_string = error_interpolation.interpolate(
           two_tags_with_seps, ops.get_default_graph())
-      # Fragments the expression to avoid matching the pattern itself.
-      expected_regex = re.compile(
-          r"^;;;.*" + defined_at + r".*" + r",,,.*" + defined_at + r".*;;;$",
-          re.DOTALL)
+      expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
+                        r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
       self.assertRegex(interpolated_string, expected_regex)
 
   def testBasicInputs(self):
-    defined_at = r"\(defined at .*error_interpolation_test\.py:[0-9]+\)"
     with ops.Graph().as_default():
       one = constant_op.constant(1, name="One")
       two = constant_op.constant(2, name="Two")
@@ -296,25 +287,9 @@ class InputNodesTest(test.TestCase):
       tag = ";;;{{node Three}};;;"
       interpolated_string = error_interpolation.interpolate(
           tag, ops.get_default_graph())
-      # Fragments the expression to avoid matching the pattern itself.
       expected_regex = re.compile(
-          r"^;;;.*" + defined_at + r".*" + r";;;.*Input.*" + defined_at +
-          r".*$", re.DOTALL)
-      self.assertRegex(interpolated_string, expected_regex)
-
-  def testOperatorInputs(self):
-    defined_at = r"\(defined at .*error_interpolation_test\.py:[0-9]+\)"
-    with ops.Graph().as_default():
-      one = constant_op.constant(1, name="One")
-      two = constant_op.constant(2, name="Two")
-      _ = math_ops.add(one, two, name="Three")
-      tag = ";;;{{node Three}};;;"
-      interpolated_string = error_interpolation.interpolate(
-          tag, ops.get_default_graph())
-      # Fragments the expression to avoid matching the pattern itself.
-      expected_regex = re.compile(
-          r"In\[0\] One " + defined_at + r".*"
-          r"In\[1\] Two " + defined_at + r".*", re.DOTALL)
+          r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
+          r";;;.*Input.*error_interpolation_test\.py:[0-9]+\)", re.DOTALL)
       self.assertRegex(interpolated_string, expected_regex)
 
 

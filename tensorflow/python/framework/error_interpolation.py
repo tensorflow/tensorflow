@@ -269,29 +269,6 @@ def _find_index_of_defining_frame(traceback):
   return 0
 
 
-def _get_source_context(frame, before=1, after=1):
-  """Returns a list of source code lines near a frame."""
-  context = []
-  try:
-    context.append("....\n")
-    # TODO(feyu): look into inspect.getsource(), which can consume a code
-    # object.
-    with open(frame.filename, "r") as fp:
-      for i, line in enumerate(fp):
-        lineno = i + 1
-        if lineno > frame.lineno + after:
-          break
-        elif lineno == frame.lineno:
-          context.append(">>>>    " + line)
-        elif lineno >= frame.lineno - before:
-          context.append("        " + line)
-    context.append("....\n")
-  except (IOError, UnicodeDecodeError):
-    context = [f"<Could not read source file for {frame}>"]
-
-  return context
-
-
 def _get_defining_frame(traceback):
   """Find and return stack frame where op was defined."""
   frame_index = _find_index_of_defining_frame(traceback)
@@ -379,12 +356,12 @@ def create_graph_debug_info_def(func_named_operations):
 
 
 def _compute_field_dict(op, strip_file_prefix=""):
-  r"""Return a dictionary mapping interpolation tokens to values.
+  """Return a dictionary mapping interpolation tokens to values.
 
   Args:
     op: op.Operation object having a _traceback member.
     strip_file_prefix: The common path in the stacktrace. We remove the prefix
-      from the file names.
+    from the file names.
 
   Returns:
     A dictionary mapping string tokens to string values.  The keys are shown
@@ -393,7 +370,6 @@ def _compute_field_dict(op, strip_file_prefix=""):
       "file": "tool_utils.py",
       "line": "124",
       "defined_at": " (defined at tool_utils.py:124)",
-      "context": ["...\n", "line-1\n", ">>>current line\n", "line1\n", "...\n"],
       "colocations":
           '''Node-device colocations active during op creation:
                with tf.compat.v1.colocate_with(test_node_1): <test_1.py:27>
@@ -424,14 +400,11 @@ def _compute_field_dict(op, strip_file_prefix=""):
     filename = "<unknown>"
     lineno = 0
     defined_at = " (defined at <unknown>)"
-    context = ["<no source file>"]
   else:
     frame = _get_defining_frame(traceback)
-    context = _get_source_context(frame)
-    if strip_file_prefix:
-      filename = os.path.relpath(frame.filename, strip_file_prefix)
-    else:
-      filename = frame.filename
+    filename = frame.filename
+    if filename.startswith(strip_file_prefix):
+      filename = filename[len(strip_file_prefix):]
     lineno = frame.lineno
     defined_at = " (defined at %s:%d)" % (filename, lineno)
 
@@ -440,7 +413,6 @@ def _compute_field_dict(op, strip_file_prefix=""):
       "devices": device_summary,
       "devs_and_colocs": combined_summary,
       "defined_at": defined_at,
-      "context": context,
       "file": filename,
       "line": lineno,
   }
@@ -450,58 +422,52 @@ def _compute_field_dict(op, strip_file_prefix=""):
 def traceback_files_common_prefix(all_ops):
   """Determines the common prefix from the paths of the stacktrace of 'all_ops'.
 
-  For example, if the paths are '/foo/bar/baz/' and '/foo/ba/car', this would
-  return '/foo/'.
+  For example, if the paths are '/foo/bar/baz/' and '/foo/car', this would
+  return '/foo'.
 
   Args:
-    all_ops: A list of Ops.
+    all_ops: All the input nodes in the form of a list of lists of ops.
 
   Returns:
     The common prefix.
   """
   files = set()
-  for op in all_ops:
-    if op is None:
+  for ops in all_ops:
+    if ops is None:
       continue
-    # TODO(slebedev): switch to .filename once 2.X support is dropped.
-    for filename, _, _, _ in op.traceback:
-      if "<embedded" not in filename:
-        files.add(os.path.abspath(filename))
-  if files:
-    return os.path.commonpath(list(files))
-  else:
-    return ""
+    for op in ops:
+      # TODO(slebedev): switch to .filename once 2.X support is dropped.
+      for filename, _, _, _ in op.traceback:
+        if "<embedded" not in filename:
+          files.add(filename)
+  return os.path.split(os.path.commonprefix(list(files)))[0]
 
 
-def _get_input_ops_for_op(op, graph):
-  """Gets the input ops for op.
-
-  We do a best effort and may not always find all input Ops.
+def _sources_for_node(node, graph):
+  """Gets the input op nodes for 'node'.
 
   Args:
-    op: The op node.
+    node: The node.
     graph: The graph containing the node.
 
   Returns:
-    A list of (ind_inp, op_inp).
-    ind_inp: index in the input list.
-    op_inp: op_inp, the input Op at ind_inp in the input list.
+    The unique input nodes.
   """
-  inputs = []
-  for ind_inp, name in enumerate(op.node_def.input):
+  inputs = set()
+  for name in node.node_def.input:
     if name.startswith("^"):
       name = name[1:]
     try:
       tensor = graph.get_tensor_by_name(name)
-      op_inp = tensor.op
+      op = tensor.op
     except (KeyError, ValueError):
       try:
-        op_inp = graph.get_operation_by_name(name)
+        op = graph.get_operation_by_name(name)
       except KeyError:
         continue
-    inputs.append((ind_inp, op_inp))
+    inputs.add(op)
 
-  return inputs
+  return list(inputs)
 
 
 def _build_error_message(op, input_ops, common_prefix):
@@ -517,18 +483,16 @@ def _build_error_message(op, input_ops, common_prefix):
     includes the information about the input sources for the given op.
   """
   field_dict = _compute_field_dict(op, common_prefix)
-  msg = "node %s%s:\n%s" % (op.name, field_dict["defined_at"], "".join(
-      field_dict["context"]))
+  msg = "node %s%s " % (op.name, field_dict["defined_at"])
   input_debug_info = []
   # This stores the line numbers that we have already printed.
   done = set()
   done.add(field_dict["defined_at"])
-  for ind_inp, op_inp in input_ops:
+  for op_inp in input_ops:
     field_dict_inp = _compute_field_dict(op_inp, common_prefix)
     if field_dict_inp["defined_at"] not in done:
       input_debug_info.append(
-          "In[%d] %s%s:" % (ind_inp, op_inp.name, field_dict_inp["defined_at"]))
-      input_debug_info.append("".join(field_dict_inp["context"]))
+          " %s%s" % (op_inp.name, field_dict_inp["defined_at"]))
       done.add(field_dict_inp["defined_at"])
   if input_debug_info:
     end_msg = ("\nInput Source operations connected to node %s:\n") % (op.name)
@@ -557,7 +521,6 @@ def interpolate(error_message, graph):
   subs = []
   end_msg = collections.defaultdict(list)
   tagged_ops = []
-  all_ops = []
 
   for t in tags:
     try:
@@ -565,25 +528,22 @@ def interpolate(error_message, graph):
     except KeyError:
       op = None
     if op is None:
-      tagged_ops.append((None, None))
+      tagged_ops.append(None)
     else:
-      op_inps = _get_input_ops_for_op(op, graph)
-      tagged_ops.append((op, op_inps))
-      for _, op_inp in op_inps:
-        all_ops.append(op_inp)
+      tagged_ops.append([op] + _sources_for_node(op, graph))
 
-  common_prefix = traceback_files_common_prefix(all_ops)
-  for tag, (op, op_inps), in zip(tags, tagged_ops):
+  common_prefix = traceback_files_common_prefix(tagged_ops)
+  for tag, ops in zip(tags, tagged_ops):
     msg = "{{%s %s}}" % (tag.type, tag.name)
-    if op is not None:
+    if ops is not None:
       if tag.type == "node":
-        msg, source_msg = _build_error_message(op, op_inps, common_prefix)
+        msg, source_msg = _build_error_message(ops[0], ops[1:], common_prefix)
         if source_msg:
           end_msg["source_nodes"].append(source_msg)
       elif tag.type == "colocation_node":
-        field_dict = _compute_field_dict(op, common_prefix)
+        field_dict = _compute_field_dict(ops[0], common_prefix)
         msg = "node %s%s placed on device %s " % (
-            op.name, field_dict["defined_at"], field_dict["devices"])
+            ops[0].name, field_dict["defined_at"], field_dict["devices"])
         end_msg["colocations"].append(field_dict["devs_and_colocs"])
     if tag.type == "function_node":
       msg = ""
