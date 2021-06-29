@@ -1010,6 +1010,7 @@ filegroup(
         "tpu_outfeed_ops_op_lib",
         "tpu_ordinal_selector_ops_op_lib",
         "tpu_replication_ops_op_lib",
+        "tpu_sharding_util_ops_op_lib",
         "training_ops_op_lib",
         "word2vec_ops",
     ]
