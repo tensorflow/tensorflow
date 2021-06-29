@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
@@ -25,13 +26,18 @@ REGISTER4(BinaryOp, CPU, "FloorMod", functor::floor_fmod, Eigen::half, bfloat16,
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("FloorMod")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_floor_mod<int32>>);
+
+#define REGISTER_KERNELS(T)                             \
+  REGISTER_KERNEL_BUILDER(                              \
+      Name("FloorMod")                                  \
+          .Device(DEVICE_GPU)                           \
+          .HostMemory("x")                              \
+          .HostMemory("y")                              \
+          .HostMemory("z")                              \
+          .TypeConstraint<T>("T"),                      \
+      BinaryOp<CPUDevice, functor::safe_floor_mod<T>>)
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
 #endif
 
 REGISTER_KERNEL_BUILDER(Name("FloorMod")
