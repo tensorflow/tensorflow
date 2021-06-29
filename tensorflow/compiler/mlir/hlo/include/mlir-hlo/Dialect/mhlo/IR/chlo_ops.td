@@ -709,7 +709,7 @@ def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
     HLOClient_Broadcasting,
     HLO_BroadcastingElementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-    "inferReturnTypeComponents"]>]> {
+    "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{

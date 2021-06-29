@@ -48,33 +48,36 @@ bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
                     broadcast_dims.getIntValues().begin());
 }
 
-Value ComputeBinaryElementwiseBroadcastingResultExtents(
-    Location loc, Value lhs, Value rhs, OpBuilder& builder,
-    bool unsafe_as_extent_tensor) {
-  auto lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
-  auto rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
-  if (!lhs_type || !rhs_type) {
-    emitError(loc) << "shape computation for broadcasting elementwise ops "
-                   << "is only implemented for ranked tensors";
-    return nullptr;
+Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
+                                                        Value rhs,
+                                                        OpBuilder& builder) {
+  return ComputeNaryElementwiseBroadcastingResultExtents(
+      loc, ValueRange{lhs, rhs}, builder);
+}
+
+Value ComputeNaryElementwiseBroadcastingResultExtents(Location loc,
+                                                      ValueRange operands,
+                                                      OpBuilder& builder) {
+  auto shapes = llvm::to_vector<4>(llvm::map_range(operands, [&](Value v) {
+    return builder.createOrFold<shape::ShapeOfOp>(loc, v);
+  }));
+
+  int64_t result_rank = 0;
+  for (Value s : shapes) {
+    auto ty = s.getType().cast<RankedTensorType>();
+    assert(ty.getRank() == 1 && "expect extent tensor type");
+    if (ty.isDynamicDim(0)) {
+      result_rank = ShapedType::kDynamicSize;
+      break;
+    } else {
+      result_rank = std::max(result_rank, ty.getDimSize(0));
+    }
   }
+  Type extent_tensor_ty =
+      shape::getExtentTensorType(builder.getContext(), result_rank);
 
-  Value lhs_shape_v = builder.createOrFold<shape::ShapeOfOp>(loc, lhs);
-  Value rhs_shape_v = builder.createOrFold<shape::ShapeOfOp>(loc, rhs);
-
-  if (unsafe_as_extent_tensor) {
-    int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
-    Value result_shape_v = builder.createOrFold<shape::BroadcastOp>(
-        loc, shape::getExtentTensorType(builder.getContext()), lhs_shape_v,
-        rhs_shape_v, nullptr /* error */);
-    return builder.createOrFold<tensor::CastOp>(
-        loc, RankedTensorType::get({result_rank}, builder.getIndexType()),
-        result_shape_v);
-  }
-
-  return builder.createOrFold<shape::BroadcastOp>(
-      loc, builder.getType<shape::ShapeType>(), lhs_shape_v, rhs_shape_v,
-      nullptr /* error */);
+  return builder.createOrFold<shape::BroadcastOp>(loc, extent_tensor_ty, shapes,
+                                                  /*error=*/nullptr);
 }
 
 }  // namespace hlo
