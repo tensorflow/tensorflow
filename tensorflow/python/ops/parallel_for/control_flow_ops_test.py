@@ -585,6 +585,8 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_loop_variant_roll_shift(self):
+    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
+                  "addressed.")
     x = random_ops.random_uniform([3, 5, 6, 7])
 
     def loop_fn(i):
@@ -594,6 +596,8 @@ class NNTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_loop_variant_roll_scalar_shift(self):
+    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
+                  "addressed.")
     x = random_ops.random_uniform([5, 5, 6])
 
     def loop_fn(i):
