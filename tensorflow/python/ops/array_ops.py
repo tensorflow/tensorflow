@@ -4582,9 +4582,10 @@ def where(condition, x=None, y=None, name=None):
 
   @compatibility(TF2)
 
-  This API is compatible with eager execution and `tf.function`. When migrating
-  to TF2, please replace its usage with `tf.where` instead, which is fully
-  backwards compatible with `tf.compat.v1.where`.
+  This API is compatible with eager execution and `tf.function`. However, this
+  is still a legacy API endpoint originally designed for TF1. To migrate to
+  fully-native TF2, please replace its usage with `tf.where` instead, which is
+  directly backwards compatible with `tf.compat.v1.where`.
 
   However,`tf.compat.v1.where` is more restrictive than `tf.where`, requiring
   `x` and `y` to have the same shape, and returning a `Tensor` with the same
