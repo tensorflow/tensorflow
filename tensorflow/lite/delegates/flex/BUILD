@@ -130,6 +130,7 @@ cc_library(
         ":delegate_only_runtime",
         "//tensorflow/lite/c:c_api_types",
     ],
+    alwayslink = 1,
 )
 
 # Delegate implementation that does *not* pull in the standard set of TensorFlow

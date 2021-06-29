@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/metric_util.h"
 
-#include "absl/container/flat_hash_map.h"
+#include <algorithm>
+#include <string>
+
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -25,11 +27,7 @@ namespace tensorflow {
 
 namespace {
 
-using NodeType = string;
 using NamePatterns = std::vector<string>;
-
-static auto* kMetricTriggers = new absl::flat_hash_map<NodeType, NamePatterns>(
-    {{kTpuExecuteStagingOp, {kTpuExecuteStagingNodeName}}});
 
 bool NameSubstrMatch(const NamePatterns& list, const string& name) {
   return std::find_if(list.begin(), list.end(), [&](const string& s) {
@@ -40,9 +38,8 @@ bool NameSubstrMatch(const NamePatterns& list, const string& name) {
 }  // namespace
 
 bool ShouldLogLatencyMetrics(const NodeDef& ndef) {
-  const auto& it = kMetricTriggers->find(ndef.op());
-  return (it != kMetricTriggers->end()) &&
-         NameSubstrMatch(it->second, ndef.name());
+  return (ndef.op() == kTpuExecuteStagingOp &&
+          NameSubstrMatch({kTpuExecuteStagingNodeName}, ndef.name()));
 }
 
 void LogLatencyMetrics(const NodeDef& ndef, const int64 cur_time_usecs,

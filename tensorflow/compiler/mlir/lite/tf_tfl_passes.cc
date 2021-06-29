@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -170,9 +169,6 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   // function inliner interface.
   pass_manager->addPass(mlir::createInlinerPass());
 
-  // TODO(jpienaar): Revise post dialect constants.
-  pass_manager->addNestedPass<mlir::FuncOp>(
-      mlir::TF::CreateDecodeConstantPass());
   // Canonicalization includes const folding, which is utilized here to optimize
   // away ops that can't get constant folded after PrepareTF pass. For example,
   // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
@@ -325,7 +321,6 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   pm.addPass(mlir::createInlinerPass());
 
   // Canonicalize, CSE etc.
-  pm.addPass(mlir::TF::CreateDecodeConstantPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   // DCE for private symbols.

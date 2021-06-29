@@ -8379,53 +8379,6 @@ func ParseExample(scope *Scope, serialized tf.Output, names tf.Output, sparse_ke
 	return sparse_indices, sparse_values, sparse_shapes, dense_values
 }
 
-// DecodeCompressedAttr is an optional argument to DecodeCompressed.
-type DecodeCompressedAttr func(optionalAttr)
-
-// DecodeCompressedCompressionType sets the optional compression_type attribute to value.
-//
-// value: A scalar containing either (i) the empty string (no
-// compression), (ii) "ZLIB", or (iii) "GZIP".
-// If not specified, defaults to ""
-func DecodeCompressedCompressionType(value string) DecodeCompressedAttr {
-	return func(m optionalAttr) {
-		m["compression_type"] = value
-	}
-}
-
-// Decompress strings.
-//
-// This op decompresses each element of the `bytes` input `Tensor`, which
-// is assumed to be compressed using the given `compression_type`.
-//
-// The `output` is a string `Tensor` of the same shape as `bytes`,
-// each element containing the decompressed data from the corresponding
-// element in `bytes`.
-//
-// Arguments:
-//	bytes: A Tensor of string which is compressed.
-//
-// Returns A Tensor with the same shape as input `bytes`, uncompressed
-// from bytes.
-func DecodeCompressed(scope *Scope, bytes tf.Output, optional ...DecodeCompressedAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeCompressed",
-		Input: []tf.Input{
-			bytes,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr is an optional argument to QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize.
 type QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr func(optionalAttr)
 
@@ -23246,48 +23199,6 @@ func RebatchDataset(scope *Scope, input_dataset tf.Output, num_replicas tf.Outpu
 	return op.Output(0)
 }
 
-// ExperimentalRebatchDatasetAttr is an optional argument to ExperimentalRebatchDataset.
-type ExperimentalRebatchDatasetAttr func(optionalAttr)
-
-// ExperimentalRebatchDatasetUseFallback sets the optional use_fallback attribute to value.
-// If not specified, defaults to true
-func ExperimentalRebatchDatasetUseFallback(value bool) ExperimentalRebatchDatasetAttr {
-	return func(m optionalAttr) {
-		m["use_fallback"] = value
-	}
-}
-
-// Creates a dataset that changes the batch size.
-//
-// Creates a dataset that changes the batch size of the dataset to current batch
-// size // num_replicas.
-//
-// Arguments:
-//	input_dataset: A variant tensor representing the input dataset.
-//	num_replicas: A scalar representing the number of replicas to distribute this batch across. As
-// a result of this transformation the current batch size would end up being
-// divided  by this parameter.
-//
-//
-func ExperimentalRebatchDataset(scope *Scope, input_dataset tf.Output, num_replicas tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ExperimentalRebatchDatasetAttr) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ExperimentalRebatchDataset",
-		Input: []tf.Input{
-			input_dataset, num_replicas,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Creates a dataset that contains the unique elements of `input_dataset`.
 func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -23497,6 +23408,29 @@ func ExperimentalRandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, ou
 		Type: "ExperimentalRandomDataset",
 		Input: []tf.Input{
 			seed, seed2,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that uses a custom thread pool to compute `input_dataset`.
+//
+// Arguments:
+//
+//	num_threads: Identifies the number of threads to use for the private threadpool.
+//
+//
+func PrivateThreadPoolDataset(scope *Scope, input_dataset tf.Output, num_threads tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "PrivateThreadPoolDataset",
+		Input: []tf.Input{
+			input_dataset, num_threads,
 		},
 		Attrs: attrs,
 	}
@@ -28617,6 +28551,95 @@ func BatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, o
 	return op.Output(0)
 }
 
+// ExperimentalRebatchDatasetAttr is an optional argument to ExperimentalRebatchDataset.
+type ExperimentalRebatchDatasetAttr func(optionalAttr)
+
+// ExperimentalRebatchDatasetUseFallback sets the optional use_fallback attribute to value.
+// If not specified, defaults to true
+func ExperimentalRebatchDatasetUseFallback(value bool) ExperimentalRebatchDatasetAttr {
+	return func(m optionalAttr) {
+		m["use_fallback"] = value
+	}
+}
+
+// Creates a dataset that changes the batch size.
+//
+// Creates a dataset that changes the batch size of the dataset to current batch
+// size // num_replicas.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	num_replicas: A scalar representing the number of replicas to distribute this batch across. As
+// a result of this transformation the current batch size would end up being
+// divided  by this parameter.
+//
+//
+func ExperimentalRebatchDataset(scope *Scope, input_dataset tf.Output, num_replicas tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ExperimentalRebatchDatasetAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalRebatchDataset",
+		Input: []tf.Input{
+			input_dataset, num_replicas,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DecodeCompressedAttr is an optional argument to DecodeCompressed.
+type DecodeCompressedAttr func(optionalAttr)
+
+// DecodeCompressedCompressionType sets the optional compression_type attribute to value.
+//
+// value: A scalar containing either (i) the empty string (no
+// compression), (ii) "ZLIB", or (iii) "GZIP".
+// If not specified, defaults to ""
+func DecodeCompressedCompressionType(value string) DecodeCompressedAttr {
+	return func(m optionalAttr) {
+		m["compression_type"] = value
+	}
+}
+
+// Decompress strings.
+//
+// This op decompresses each element of the `bytes` input `Tensor`, which
+// is assumed to be compressed using the given `compression_type`.
+//
+// The `output` is a string `Tensor` of the same shape as `bytes`,
+// each element containing the decompressed data from the corresponding
+// element in `bytes`.
+//
+// Arguments:
+//	bytes: A Tensor of string which is compressed.
+//
+// Returns A Tensor with the same shape as input `bytes`, uncompressed
+// from bytes.
+func DecodeCompressed(scope *Scope, bytes tf.Output, optional ...DecodeCompressedAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeCompressed",
+		Input: []tf.Input{
+			bytes,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // SetSizeAttr is an optional argument to SetSize.
 type SetSizeAttr func(optionalAttr)
 
@@ -33613,182 +33636,6 @@ func TensorArraySplitV2(scope *Scope, handle tf.Output, value tf.Output, lengths
 	return op.Output(0)
 }
 
-// Creates a dataset that uses a custom thread pool to compute `input_dataset`.
-//
-// Arguments:
-//
-//	num_threads: Identifies the number of threads to use for the private threadpool.
-//
-//
-func PrivateThreadPoolDataset(scope *Scope, input_dataset tf.Output, num_threads tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "PrivateThreadPoolDataset",
-		Input: []tf.Input{
-			input_dataset, num_threads,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the diagonal part of the tensor.
-//
-// This operation returns a tensor with the `diagonal` part
-// of the `input`. The `diagonal` part is computed as follows:
-//
-// Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
-// tensor of rank `k` with dimensions `[D1,..., Dk]` where:
-//
-// `diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
-//
-// For example:
-//
-// ```
-// # 'input' is [[1, 0, 0, 0]
-//               [0, 2, 0, 0]
-//               [0, 0, 3, 0]
-//               [0, 0, 0, 4]]
-//
-// tf.diag_part(input) ==> [1, 2, 3, 4]
-// ```
-//
-// Arguments:
-//	input: Rank k tensor where k is even and not zero.
-//
-// Returns The extracted diagonal.
-func DiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DiagPart",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CudnnRNNParamsToCanonicalAttr is an optional argument to CudnnRNNParamsToCanonical.
-type CudnnRNNParamsToCanonicalAttr func(optionalAttr)
-
-// CudnnRNNParamsToCanonicalRnnMode sets the optional rnn_mode attribute to value.
-// If not specified, defaults to "lstm"
-func CudnnRNNParamsToCanonicalRnnMode(value string) CudnnRNNParamsToCanonicalAttr {
-	return func(m optionalAttr) {
-		m["rnn_mode"] = value
-	}
-}
-
-// CudnnRNNParamsToCanonicalInputMode sets the optional input_mode attribute to value.
-// If not specified, defaults to "linear_input"
-func CudnnRNNParamsToCanonicalInputMode(value string) CudnnRNNParamsToCanonicalAttr {
-	return func(m optionalAttr) {
-		m["input_mode"] = value
-	}
-}
-
-// CudnnRNNParamsToCanonicalDirection sets the optional direction attribute to value.
-// If not specified, defaults to "unidirectional"
-func CudnnRNNParamsToCanonicalDirection(value string) CudnnRNNParamsToCanonicalAttr {
-	return func(m optionalAttr) {
-		m["direction"] = value
-	}
-}
-
-// CudnnRNNParamsToCanonicalDropout sets the optional dropout attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNParamsToCanonicalDropout(value float32) CudnnRNNParamsToCanonicalAttr {
-	return func(m optionalAttr) {
-		m["dropout"] = value
-	}
-}
-
-// CudnnRNNParamsToCanonicalSeed sets the optional seed attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNParamsToCanonicalSeed(value int64) CudnnRNNParamsToCanonicalAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// CudnnRNNParamsToCanonicalSeed2 sets the optional seed2 attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNParamsToCanonicalSeed2(value int64) CudnnRNNParamsToCanonicalAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Retrieves CudnnRNN params in canonical form.
-//
-// Retrieves a set of weights from the opaque params buffer that can be saved and
-// restored in a way compatible with future runs.
-//
-// Note that the params buffer may not be compatible across different GPUs. So any
-// save and restoration should be converted to and from the canonical weights and
-// biases.
-//
-// num_layers: Specifies the number of layers in the RNN model.
-// num_units: Specifies the size of the hidden state.
-// input_size: Specifies the size of the input state.
-// num_params: number of parameter sets for all layers.
-//     Each layer may contain multiple parameter sets, with each set consisting of
-//     a weight matrix and a bias vector.
-// weights: the canonical form of weights that can be used for saving
-//     and restoration. They are more likely to be compatible across different
-//     generations.
-// biases: the canonical form of biases that can be used for saving
-//     and restoration. They are more likely to be compatible across different
-//     generations.
-// rnn_mode: Indicates the type of the RNN model.
-// input_mode: Indicate whether there is a linear projection between the input and
-//     The actual computation before the first layer. 'skip_input' is only allowed
-//     when input_size == num_units; 'auto_select' implies 'skip_input' when
-//     input_size == num_units; otherwise, it implies 'linear_input'.
-// direction: Indicates whether a bidirectional model will be used.
-//     dir = (direction == bidirectional) ? 2 : 1
-// dropout: dropout probability. When set to 0., dropout is disabled.
-// seed: the 1st part of a seed to initialize dropout.
-// seed2: the 2nd part of a seed to initialize dropout.
-func CudnnRNNParamsToCanonical(scope *Scope, num_layers tf.Output, num_units tf.Output, input_size tf.Output, params tf.Output, num_params int64, optional ...CudnnRNNParamsToCanonicalAttr) (weights []tf.Output, biases []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_params": num_params}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CudnnRNNParamsToCanonical",
-		Input: []tf.Input{
-			num_layers, num_units, input_size, params,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if weights, idx, err = makeOutputList(op, idx, "weights"); err != nil {
-		scope.UpdateErr("CudnnRNNParamsToCanonical", err)
-		return
-	}
-	if biases, idx, err = makeOutputList(op, idx, "biases"); err != nil {
-		scope.UpdateErr("CudnnRNNParamsToCanonical", err)
-		return
-	}
-	return weights, biases
-}
-
 // Computes the number of elements in the given queue.
 //
 // Arguments:
@@ -35602,6 +35449,159 @@ func TensorArraySizeV3(scope *Scope, handle tf.Output, flow_in tf.Output) (size 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Returns the diagonal part of the tensor.
+//
+// This operation returns a tensor with the `diagonal` part
+// of the `input`. The `diagonal` part is computed as follows:
+//
+// Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+// tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+//
+// `diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+//
+// For example:
+//
+// ```
+// # 'input' is [[1, 0, 0, 0]
+//               [0, 2, 0, 0]
+//               [0, 0, 3, 0]
+//               [0, 0, 0, 4]]
+//
+// tf.diag_part(input) ==> [1, 2, 3, 4]
+// ```
+//
+// Arguments:
+//	input: Rank k tensor where k is even and not zero.
+//
+// Returns The extracted diagonal.
+func DiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DiagPart",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// CudnnRNNParamsToCanonicalAttr is an optional argument to CudnnRNNParamsToCanonical.
+type CudnnRNNParamsToCanonicalAttr func(optionalAttr)
+
+// CudnnRNNParamsToCanonicalRnnMode sets the optional rnn_mode attribute to value.
+// If not specified, defaults to "lstm"
+func CudnnRNNParamsToCanonicalRnnMode(value string) CudnnRNNParamsToCanonicalAttr {
+	return func(m optionalAttr) {
+		m["rnn_mode"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalInputMode sets the optional input_mode attribute to value.
+// If not specified, defaults to "linear_input"
+func CudnnRNNParamsToCanonicalInputMode(value string) CudnnRNNParamsToCanonicalAttr {
+	return func(m optionalAttr) {
+		m["input_mode"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalDirection sets the optional direction attribute to value.
+// If not specified, defaults to "unidirectional"
+func CudnnRNNParamsToCanonicalDirection(value string) CudnnRNNParamsToCanonicalAttr {
+	return func(m optionalAttr) {
+		m["direction"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalDropout sets the optional dropout attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNParamsToCanonicalDropout(value float32) CudnnRNNParamsToCanonicalAttr {
+	return func(m optionalAttr) {
+		m["dropout"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalSeed sets the optional seed attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNParamsToCanonicalSeed(value int64) CudnnRNNParamsToCanonicalAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// CudnnRNNParamsToCanonicalSeed2 sets the optional seed2 attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNParamsToCanonicalSeed2(value int64) CudnnRNNParamsToCanonicalAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Retrieves CudnnRNN params in canonical form.
+//
+// Retrieves a set of weights from the opaque params buffer that can be saved and
+// restored in a way compatible with future runs.
+//
+// Note that the params buffer may not be compatible across different GPUs. So any
+// save and restoration should be converted to and from the canonical weights and
+// biases.
+//
+// num_layers: Specifies the number of layers in the RNN model.
+// num_units: Specifies the size of the hidden state.
+// input_size: Specifies the size of the input state.
+// num_params: number of parameter sets for all layers.
+//     Each layer may contain multiple parameter sets, with each set consisting of
+//     a weight matrix and a bias vector.
+// weights: the canonical form of weights that can be used for saving
+//     and restoration. They are more likely to be compatible across different
+//     generations.
+// biases: the canonical form of biases that can be used for saving
+//     and restoration. They are more likely to be compatible across different
+//     generations.
+// rnn_mode: Indicates the type of the RNN model.
+// input_mode: Indicate whether there is a linear projection between the input and
+//     The actual computation before the first layer. 'skip_input' is only allowed
+//     when input_size == num_units; 'auto_select' implies 'skip_input' when
+//     input_size == num_units; otherwise, it implies 'linear_input'.
+// direction: Indicates whether a bidirectional model will be used.
+//     dir = (direction == bidirectional) ? 2 : 1
+// dropout: dropout probability. When set to 0., dropout is disabled.
+// seed: the 1st part of a seed to initialize dropout.
+// seed2: the 2nd part of a seed to initialize dropout.
+func CudnnRNNParamsToCanonical(scope *Scope, num_layers tf.Output, num_units tf.Output, input_size tf.Output, params tf.Output, num_params int64, optional ...CudnnRNNParamsToCanonicalAttr) (weights []tf.Output, biases []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_params": num_params}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CudnnRNNParamsToCanonical",
+		Input: []tf.Input{
+			num_layers, num_units, input_size, params,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if weights, idx, err = makeOutputList(op, idx, "weights"); err != nil {
+		scope.UpdateErr("CudnnRNNParamsToCanonical", err)
+		return
+	}
+	if biases, idx, err = makeOutputList(op, idx, "biases"); err != nil {
+		scope.UpdateErr("CudnnRNNParamsToCanonical", err)
+		return
+	}
+	return weights, biases
 }
 
 // Creates a sequence of numbers.
@@ -41794,39 +41794,43 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 	return op.Output(0), op.Output(1)
 }
 
-// Scatter `updates` into a new tensor according to `indices`.
+// Scatters `updates` into a tensor of shape `shape` according to `indices`.
 //
-// Creates a new tensor by applying sparse `updates` to individual values or
-// slices within a tensor (initially zero for numeric, empty for string) of
-// the given `shape` according to indices.  This operator is the inverse of the
-// `tf.gather_nd` operator which extracts values or slices from a given tensor.
+// Update the input tensor by scattering sparse `updates` according to individual values at the specified `indices`.
+// This op returns an `output` tensor with the `shape` you specify. This op is the
+// inverse of the `tf.gather_nd` operator which extracts values or slices from a
+// given tensor.
 //
-// This operation is similar to tensor_scatter_add, except that the tensor is
-// zero-initialized. Calling `tf.scatter_nd(indices, values, shape)` is identical
-// to `tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`
+// This operation is similar to `tf.tensor_scatter_add`, except that the tensor is
+// zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+// is identical to calling
+// `tf.tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`.
 //
-// If `indices` contains duplicates, then their updates are accumulated (summed).
+// If `indices` contains duplicates, the duplicate `values` are accumulated
+// (summed).
 //
 // **WARNING**: The order in which updates are applied is nondeterministic, so the
-// output will be nondeterministic if `indices` contains duplicates -- because
-// of some numerical approximation issues, numbers summed in different order
-// may yield different results.
+// output will be nondeterministic if `indices` contains duplicates;
+// numbers summed in different order may yield different results because of some
+// numerical approximation issues.
 //
-// `indices` is an integer tensor containing indices into a new tensor of shape
-// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+// `indices` is an integer tensor of shape `shape`. The last dimension
+// of `indices` can be at most the rank of `shape`:
 //
 //     indices.shape[-1] <= shape.rank
 //
-// The last dimension of `indices` corresponds to indices into elements
+// The last dimension of `indices` corresponds to indices of elements
 // (if `indices.shape[-1] = shape.rank`) or slices
 // (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
-// `shape`.  `updates` is a tensor with shape
+// `shape`.
+//
+// `updates` is a tensor with shape:
 //
 //     indices.shape[:-1] + shape[indices.shape[-1]:]
 //
-// The simplest form of scatter is to insert individual elements in a tensor by
-// index. For example, say we want to insert 4 scattered elements in a rank-1
-// tensor with 8 elements.
+// The simplest form of the scatter op is to insert individual elements in
+// a tensor by index. Consider an example where you want to insert 4 scattered
+// elements in a rank-1 tensor with 8 elements.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
@@ -41846,9 +41850,9 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 //
 //     [0, 11, 0, 10, 9, 0, 0, 12]
 //
-// We can also, insert entire slices of a higher rank tensor all at once. For
-// example, if we wanted to insert two slices in the first dimension of a
-// rank-3 tensor with two matrices of new values.
+// You can also insert entire slices of a higher rank tensor all at once. For
+// example, you can insert two slices in the first dimension of a rank-3 tensor
+// with two matrices of new values.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
@@ -41878,9 +41882,9 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 // On GPU, if an out of bound index is found, the index is ignored.
 //
 // Arguments:
-//	indices: Index tensor.
-//	updates: Updates to scatter into output.
-//	shape: 1-D. The shape of the resulting tensor.
+//	indices: Tensor of indices.
+//	updates: Values to scatter into the output tensor.
+//	shape: 1-D. The shape of the output tensor.
 //
 // Returns A new tensor with the given shape and updates applied according
 // to the indices.

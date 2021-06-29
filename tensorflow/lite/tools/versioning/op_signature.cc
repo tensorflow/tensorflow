@@ -210,6 +210,7 @@ OpSignature GetOpSignature(const TfLiteContext* context,
   OpSignature op_sig = {
       static_cast<BuiltinOperator>(registration->builtin_code)};
   op_sig.builtin_data = tflite_node->builtin_data;
+  op_sig.custom_initial_data = tflite_node->custom_initial_data;
   std::memset(&op_sig.ext_options, 0, sizeof(op_sig.ext_options));
 
   op_sig.inputs =

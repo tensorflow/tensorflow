@@ -396,6 +396,7 @@ cc_library(
         ":environment",
         ":gpu_object",
         ":opencl_wrapper",
+        ":program_cache",
         ":recordable_queue_builder",
         ":serialization_cc_fbs",
         ":tensor",

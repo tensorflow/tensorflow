@@ -691,8 +691,9 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   std::unordered_set<int> checked_node_ids;
   tools::ProvidedDelegateList delegate_providers(&params_);
   auto created_delegates = delegate_providers.CreateAllRankedDelegates();
-  TFLITE_LOG(INFO) << "Going to apply " << created_delegates.size()
-                   << " delegates one after another.";
+  TFLITE_MAY_LOG(INFO, (created_delegates.size() >= 2))
+      << "Going to apply " << created_delegates.size()
+      << " delegates one after another.";
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
     tools::TfLiteDelegatePtr delegate = std::move(created_delegate.delegate);
