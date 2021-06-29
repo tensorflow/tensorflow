@@ -21,11 +21,14 @@ from __future__ import print_function
 import copy
 import weakref
 
+import numpy as np
+
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -435,6 +438,25 @@ class CachingVariable(variables_lib.Variable, core.Tensor):
   @property
   def constraint(self):
     return self._v.constraint
+
+  def __array__(self):
+    return np.asarray(self.numpy())
+
+  def __complex__(self):
+    return complex(self.value().numpy())
+
+  def __int__(self):
+    return int(self.value().numpy())
+
+  def __float__(self):
+    return float(self.value().numpy())
+
+  def numpy(self):
+    if context.executing_eagerly():
+      return self.read_value().numpy()
+    else:
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
 
   def __str__(self):
     return str(self._v)
