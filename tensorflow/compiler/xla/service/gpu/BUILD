@@ -607,6 +607,8 @@ cc_library(
     ]),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
+    ]) + if_nccl([
+        "GOOGLE_XCCL=1",
     ]) + select({
         ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
         "//conditions:default": [],
@@ -685,12 +687,17 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_bef_thunk_enabled": [
+            ":virtual_nccl",
+            ":virtual_nccl_utils",
+            ":virtual_rccl",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
             "//tensorflow/compiler/mlir/hlo:lhlo",
             # copybara:uncomment_begin(target not open-sourced yet)
             # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            # "//tensorflow/compiler/mlir/xla:attribute_exporter",
+            # "//tensorflow/compiler/xla/service:collective_ops_utils",
             # "//tensorflow/core/tfrt/gpu:gpu_shared_context",
             # "//tensorflow/core/tfrt/runtime:work_queue_interface",
             # copybara:uncomment_end
