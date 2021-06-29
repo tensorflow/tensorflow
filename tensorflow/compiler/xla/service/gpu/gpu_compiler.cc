@@ -358,7 +358,7 @@ Status GpuCompiler::OptimizeHloModule(
       spmd_pipeline.AddPass<GpuSpmdPartitioner>(
           num_partitions, hlo_module->config().replica_count());
     } else {
-      // Remove redudant sharding ops when partition_count == 1.
+      // Remove redundant sharding ops when partition_count == 1.
       spmd_pipeline.AddPass<ShardingRemover>();
       spmd_pipeline.AddPass<HloDCE>();
     }
