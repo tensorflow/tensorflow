@@ -1,9 +1,24 @@
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 // This file canonicalize reduction ops in hlo dialect to match the
-// capacity of codgen backend.
+// capacity of codegen backend.
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/BlockAndValueMapping.h"
 
 namespace mlir {
 namespace mhlo {
@@ -107,12 +122,14 @@ struct HloCanonicalizeReductionPass
 
       // empty reduction is just a no-op, thus no need to do codegen.
       if (dims_to_reduce.empty()) return;
+      
+      // suppose reduce input is a ranked tensor
       auto ty = op.getOperand(0).getType().dyn_cast<RankedTensorType>();
-      assert(ty && ty.hasRank() && "suppose reduce input is a ranked tensor");
+      if(!ty) return signalPassFailure();
       int rank = ty.getRank();
       int ndims_to_reduce = dims_to_reduce.size();
       auto elem_ty = ty.getElementType();
-      std::sort(dims_to_reduce.begin(), dims_to_reduce.end());
+      llvm::sort(dims_to_reduce);
 
       // skip case d) form since we don't support it.
       if ((dims_to_reduce.back() - dims_to_reduce[0]) !=
@@ -161,7 +178,7 @@ struct HloCanonicalizeReductionPass
         // Suppose nelems = ProdutionOp(ShapeOp(I)), We convert I into
         // shape `[nelems, 1]`.
         // TODO(disc): this may have performance issue. Implements a reduce to
-        // scalar schedule if necessnary.
+        // scalar schedule if necessary.
         new_operand_dims.push_back(nelem_to_reduce);
         new_operand_dims.push_back(nelem_to_keep);
         attr = DenseIntElementsAttr::get(
@@ -173,7 +190,7 @@ struct HloCanonicalizeReductionPass
         attr = DenseIntElementsAttr::get(
             RankedTensorType::get({1}, b.getIntegerType(64)), {0ll});
       } else {
-        // case b) raw reduction
+        // case b) row reduction
         new_operand_dims.push_back(nelem_to_keep);
         new_operand_dims.push_back(nelem_to_reduce);
         attr = DenseIntElementsAttr::get(
@@ -195,8 +212,7 @@ struct HloCanonicalizeReductionPass
       }
       auto new_op =
           b.create<ReduceOp>(loc, new_operands, op.init_values(), attr);
-      BlockAndValueMapping mapping;
-      op.body().cloneInto(&new_op.body(), new_op.body().end(), mapping);
+      new_op.body().takeBody(op.body());
 
       SmallVector<Value, 4> new_results;
       if (dims_to_keep.empty()) {
@@ -219,7 +235,6 @@ struct HloCanonicalizeReductionPass
               loc, std::get<0>(e).getType(), std::get<1>(e), result_shape));
         }
       }
-
       for (auto&& e : llvm::zip(op.getResults(), new_results)) {
         std::get<0>(e).replaceAllUsesWith(std::get<1>(e));
       }
