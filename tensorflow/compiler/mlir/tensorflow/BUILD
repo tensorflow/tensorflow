@@ -1086,7 +1086,6 @@ cc_library(
         "transforms/collection_ops_util.cc",
         "transforms/constant_op_device_assignment.cc",
         "transforms/convert_launch_func_to_tf_call.cc",
-        "transforms/cross_host_transfer.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_attribute_to_launch.cc",
         "transforms/device_index_selector.cc",
