@@ -53,20 +53,31 @@ static OwningModuleRef FlatBufferFileToMlirTranslation(
 
 }  // namespace
 
-std::string FlatBufferFileToMlir(const std::string& inputFilename) {
+std::string FlatBufferFileToMlir(const std::string& model_file_or_buffer,
+                                 bool input_is_filepath) {
   // referred logic from mlir::mlirTranslateMain().
   int argc = 2;
   const char* argv_array[2];
   const char** argv = argv_array;
   argv[0] = "flatbuffer_to_mlir";
-  argv[1] = inputFilename.c_str();
+  argv[1] = input_is_filepath ? model_file_or_buffer.c_str() : "flatbuffer";
   llvm::InitLLVM y(argc, argv);
 
   std::string errorMessage;
-  auto input = mlir::openInputFile(inputFilename, &errorMessage);
-  if (!input) {
-    llvm::errs() << errorMessage << "\n";
-    return "";
+  std::unique_ptr<llvm::MemoryBuffer> input;
+  if (input_is_filepath) {
+    input = mlir::openInputFile(model_file_or_buffer, &errorMessage);
+    if (!input) {
+      llvm::errs() << errorMessage << "\n";
+      return "";
+    }
+  } else {
+    input = llvm::MemoryBuffer::getMemBuffer(model_file_or_buffer, "flatbuffer",
+                                             false);
+    if (!input) {
+      llvm::errs() << "Can't get llvm::MemoryBuffer\n";
+      return "";
+    }
   }
 
   mlir::MLIRContext context;
