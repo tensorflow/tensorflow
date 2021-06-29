@@ -122,10 +122,10 @@ struct HloCanonicalizeReductionPass
 
       // empty reduction is just a no-op, thus no need to do codegen.
       if (dims_to_reduce.empty()) return;
-      
+
       // suppose reduce input is a ranked tensor
       auto ty = op.getOperand(0).getType().dyn_cast<RankedTensorType>();
-      if(!ty) return signalPassFailure();
+      if (!ty) return signalPassFailure();
       int rank = ty.getRank();
       int ndims_to_reduce = dims_to_reduce.size();
       auto elem_ty = ty.getElementType();
