@@ -971,8 +971,10 @@ def tf_gen_op_wrappers_cc(
 #     starting characters are treated as comments and ignored.
 #   generated_target_name: name of the generated target (overrides the
 #     "name" arg)
-#   op_whitelist: if not empty, only op names in this list will be wrapped. It
+#   op_whitelist: [DEPRECATED] if not empty, only op names in this list will be wrapped. It
 #     is invalid to specify both "hidden" and "op_whitelist".
+#   op_allowlist: if not empty, only op names in this list will be wrapped. It
+#     is invalid to specify both "hidden" and "op_allowlist".
 #   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
 #     specified ops.
 
@@ -986,11 +988,18 @@ def tf_gen_op_wrapper_py(
         hidden_file = None,
         generated_target_name = None,
         op_whitelist = [],
+        op_allowlist = [],
         cc_linkopts = lrt_if_needed(),
         api_def_srcs = [],
         compatible_with = [],
         testonly = False):
     _ = require_shape_functions  # Unused.
+    if op_whitelist and op_allowlist:
+        fail("op_whitelist is deprecated. Only use op_allowlist.")
+    if op_whitelist:
+        print("op_whitelist is deprecated. Use op_allowlist.")  # buildifier: disable=print
+    if op_allowlist:
+        op_whitelist = op_allowlist
 
     if (hidden or hidden_file) and op_whitelist:
         fail("Cannot pass specify both hidden and op_whitelist.")
