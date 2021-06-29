@@ -796,6 +796,73 @@ gentbl_cc_library(
 )
 
 ##---------------------------------------------------------------------------##
+# EmitC dialect.
+##---------------------------------------------------------------------------##
+
+td_library(
+    name = "EmitCTdFiles",
+    srcs = [
+        "include/mlir/Dialect/EmitC/IR/EmitC.td",
+        "include/mlir/Dialect/EmitC/IR/EmitCAttributes.td",
+        "include/mlir/Dialect/EmitC/IR/EmitCBase.td",
+        "include/mlir/Dialect/EmitC/IR/EmitCTypes.td",
+    ],
+    includes = ["include"],
+    deps = [
+        ":OpBaseTdFiles",
+        ":SideEffectInterfacesTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "EmitCAttributesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["--gen-attrdef-decls"],
+            "include/mlir/Dialect/EmitC/IR/EmitCAttributes.h.inc",
+        ),
+        (
+            ["--gen-attrdef-defs"],
+            "include/mlir/Dialect/EmitC/IR/EmitCAttributes.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/EmitC/IR/EmitCAttributes.td",
+    deps = [":EmitCTdFiles"],
+)
+
+gentbl_cc_library(
+    name = "EmitCOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-dialect-decls"],
+            "include/mlir/Dialect/EmitC/IR/EmitCDialect.h.inc",
+        ),
+        (
+            ["-gen-op-decls"],
+            "include/mlir/Dialect/EmitC/IR/EmitC.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir/Dialect/EmitC/IR/EmitC.cpp.inc",
+        ),
+        (
+            ["-gen-typedef-decls"],
+            "include/mlir/Dialect/EmitC/IR/EmitCTypes.h.inc",
+        ),
+        (
+            ["-gen-typedef-defs"],
+            "include/mlir/Dialect/EmitC/IR/EmitCTypes.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/EmitC/IR/EmitC.td",
+    deps = [":EmitCTdFiles"],
+)
+
+##---------------------------------------------------------------------------##
 # Async dialect.
 ##---------------------------------------------------------------------------##
 
@@ -1423,8 +1490,26 @@ gentbl_cc_library(
 
 cc_library(
     name = "SparseTensor",
-    srcs = glob(["lib/Dialect/SparseTensor/IR/*.cpp"]),
+    srcs = glob([
+        "lib/Dialect/SparseTensor/IR/*.cpp",
+    ]),
     hdrs = ["include/mlir/Dialect/SparseTensor/IR/SparseTensor.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":SideEffectInterfaces",
+        ":SparseTensorAttrDefsIncGen",
+        ":SparseTensorOpsIncGen",
+        ":SparseTensorUtils",
+        ":StandardOps",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SparseTensorUtils",
+    srcs = glob(["lib/Dialect/SparseTensor/Utils/*.cpp"]),
+    hdrs = glob(["include/mlir/Dialect/SparseTensor/Utils/*.h"]),
     includes = ["include"],
     deps = [
         ":IR",
@@ -1451,6 +1536,7 @@ cc_library(
         ":SCFDialect",
         ":SparseTensor",
         ":SparseTensorPassIncGen",
+        ":SparseTensorUtils",
         ":StandardOps",
         ":StandardOpsTransforms",
         ":TensorDialect",
@@ -1474,7 +1560,6 @@ td_library(
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
         ":VectorInterfacesTdFiles",
-        ":ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -1562,6 +1647,25 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "EmitC",
+    srcs = glob([
+        "lib/Dialect/EmitC/IR/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/EmitC/IR/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":Dialect",
+        ":EmitCAttributesIncGen",
+        ":EmitCOpsIncGen",
+        ":IR",
+        ":SideEffectInterfaces",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1902,6 +2006,7 @@ cc_library(
     hdrs = ["include/mlir/Interfaces/ViewLikeInterface.h"],
     includes = ["include"],
     deps = [
+        ":DialectUtils",
         ":IR",
         ":ViewLikeInterfaceIncGen",
     ],
@@ -2074,11 +2179,7 @@ cc_library(
             "lib/Dialect/StandardOps/IR/*.h",
             "lib/Dialect/StandardOps/Utils/*.cpp",
         ],
-    ) +
-    # TODO: Stop depending on MemRefOps.
-    [
-        "include/mlir/Dialect/MemRef/IR/MemRef.h",
-    ],
+    ),
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
         "include/mlir/Dialect/StandardOps/Utils/*.h",
@@ -2089,16 +2190,11 @@ cc_library(
         ":CastOpInterfaces",
         ":CommonFolders",
         ":ControlFlowInterfaces",
-        ":CopyOpInterface",  # TODO: Stop depending on MemRefOps.
         ":IR",
-        ":MemRefBaseIncGen",  # TODO: Stop depending on MemRefOps.
-        ":MemRefOpsIncGen",  # TODO: Stop depending on MemRefOps.
         ":SideEffectInterfaces",
         ":StandardOpsIncGen",
         ":Support",
-        ":TensorDialect",
         ":VectorInterfaces",
-        ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -2129,7 +2225,7 @@ cc_library(
     deps = [
         ":Affine",
         ":IR",
-        ":MemRefDialect",
+        ":MemRefDialect",  # TODO: Remove dependency on MemRef dialect
         ":Pass",
         ":SCFDialect",
         ":StandardOps",
@@ -2617,6 +2713,7 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":MathDialect",
+        ":MemRefDialect",
         ":NVVMDialect",
         ":Pass",
         ":StandardToLLVM",
@@ -3526,6 +3623,7 @@ td_library(
         ":ControlFlowInterfacesTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
+        ":ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -3567,10 +3665,13 @@ cc_library(
     deps = [
         ":CastOpInterfaces",
         ":ControlFlowInterfaces",
+        ":DialectUtils",
         ":IR",
         ":SideEffectInterfaces",
+        ":StandardOps",
         ":Support",
         ":TensorOpsIncGen",
+        ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4016,6 +4117,7 @@ cc_library(
         ":Analysis",
         ":ConversionPassIncGen",
         ":DataLayoutInterfaces",
+        ":DialectUtils",
         ":IR",
         ":LLVMDialect",
         ":MathDialect",
@@ -4258,13 +4360,13 @@ cc_library(
         "lib/Target/LLVMIR/DebugTranslation.cpp",
         "lib/Target/LLVMIR/DebugTranslation.h",
         "lib/Target/LLVMIR/ModuleTranslation.cpp",
-        "lib/Target/LLVMIR/TypeTranslation.cpp",
+        "lib/Target/LLVMIR/TypeToLLVM.cpp",
     ],
     hdrs = [
         "include/mlir/Target/LLVMIR/Export.h",
         "include/mlir/Target/LLVMIR/LLVMTranslationInterface.h",
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
-        "include/mlir/Target/LLVMIR/TypeTranslation.h",
+        "include/mlir/Target/LLVMIR/TypeToLLVM.h",
     ],
     includes = ["include"],
     deps = [
@@ -4463,8 +4565,12 @@ cc_library(
     name = "FromLLVMIRTranslation",
     srcs = [
         "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
+        "lib/Target/LLVMIR/TypeFromLLVM.cpp",
     ],
-    hdrs = ["include/mlir/Target/LLVMIR/Import.h"],
+    hdrs = [
+        "include/mlir/Target/LLVMIR/Import.h",
+        "include/mlir/Target/LLVMIR/TypeFromLLVM.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
@@ -4606,6 +4712,7 @@ cc_library(
         ":ComplexToLLVM",
         ":ConversionPasses",
         ":DLTIDialect",
+        ":EmitC",
         ":GPUDialect",
         ":GPUPassIncGen",
         ":GPUToGPURuntimeTransforms",
@@ -5928,6 +6035,7 @@ cc_library(
         ":QuantOps",
         ":SideEffectInterfaces",
         ":StandardOps",
+        ":TensorDialect",
         ":TosaDialectIncGen",
         ":TosaInterfacesIncGen",
         ":TosaPassIncGen",
@@ -6349,6 +6457,7 @@ cc_library(
     deps = [
         ":ControlFlowInterfaces",
         ":CopyOpInterface",
+        ":DialectUtils",
         ":IR",
         ":InferTypeOpInterface",
         ":MemRefBaseIncGen",
@@ -6390,11 +6499,13 @@ cc_library(
     deps = [
         ":Affine",
         ":IR",
+        ":InferTypeOpInterface",
         ":MemRefDialect",
         ":MemRefPassIncGen",
         ":Pass",
         ":StandardOps",
         ":Support",
+        ":TensorDialect",
         ":Transforms",
         ":VectorOps",
         "@llvm-project//llvm:Support",

@@ -41,6 +41,7 @@
 #     asan:             Build with the clang address sanitizer
 #     msan:             Build with the clang memory sanitizer
 #     ubsan:            Build with the clang undefined behavior sanitizer
+#     dbg:              Build with debug info
 #
 #
 # TF version options;
@@ -127,11 +128,6 @@ build --define=grpc_no_ares=true
 # TODO: Remove this line once TF doesn't depend on Bazel wrapping all library
 # archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
-
-# These are bazel 2.0's incompatible flags. Tensorflow needs to use bazel 2.0.0
-# to use cc_shared_library, as part of the Tensorflow Build Improvements RFC:
-# https://github.com/tensorflow/community/pull/179
-build --noincompatible_prohibit_aapt1
 
 build --enable_platform_specific_config
 
@@ -353,6 +349,8 @@ build:windows --verbose_failures
 
 # On windows, we never cross compile
 build:windows --distinct_host_configuration=false
+# On linux, don't cross compile by default
+build:linux --distinct_host_configuration=false
 
 # Configure short or long logs
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
@@ -502,8 +500,8 @@ build:rbe_linux_py3 --python_path="/usr/bin/python3"
 build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-manylinux2010-py3_config_python"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_06152021:toolchain"
-build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_06152021:cc-toolchain-x64_windows"
+build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_06242021:toolchain"
+build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_06242021:cc-toolchain-x64_windows"
 build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
 build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
 build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"

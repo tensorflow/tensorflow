@@ -146,6 +146,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_MUL, 2}, "1.14.0"},
               {{BuiltinOperator_MUL, 3}, "1.15.0"},
               {{BuiltinOperator_MUL, 4}, "2.3.0"},
+              {{BuiltinOperator_MUL, 5}, "2.6.0"},
               {{BuiltinOperator_NON_MAX_SUPPRESSION_V4, 1}, "2.1.0"},
               {{BuiltinOperator_NON_MAX_SUPPRESSION_V5, 1}, "2.1.0"},
               {{BuiltinOperator_PAD, 1}, "1.5.0"},
@@ -353,6 +354,9 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_HASHTABLE_SIZE, 1}, "2.5.0"},
               {{BuiltinOperator_REDUCE_ALL, 1}, "2.6.0"},
               {{BuiltinOperator_CONV_3D_TRANSPOSE, 1}, "2.6.0"},
+              {{BuiltinOperator_VAR_HANDLE, 1}, "2.6.0"},
+              {{BuiltinOperator_READ_VARIABLE, 1}, "2.6.0"},
+              {{BuiltinOperator_ASSIGN_VARIABLE, 1}, "2.6.0"},
           });
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};

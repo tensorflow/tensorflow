@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/op_implementation_renderer.h"
 
-#include "tensorflow/c/experimental/ops/gen/common/renderer_util.h"
+#include "tensorflow/c/experimental/ops/gen/common/view_util.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/arg_view.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/attr_view.h"
@@ -70,14 +70,15 @@ void OpImplementationRenderer::RenderExecutionListOp() {
 void OpImplementationRenderer::RenderExecutionSingleOutput() {
   ArgView output_arg = op_.OnlyOutput();
   Statement("int num_retvals = 1");
-  Statement("return op_ptr->Execute(absl::MakeSpan($0, 1), &num_retvals)",
-            output_arg.VariableName());
+  Statement("return $0->Execute(absl::MakeSpan($1, 1), &num_retvals)",
+            op_.VariableName(), output_arg.VariableName());
 }
 
 void OpImplementationRenderer::RenderExecutionMultipleOutputs() {
   Statement("int num_retvals = $0", op_.NumOutputs());
   Statement("AbstractTensorHandle* temp_outputs[$0]", op_.NumOutputs());
-  Statement("Status status = op_ptr->Execute(temp_outputs, &num_retvals)");
+  Statement("Status status = $0->Execute(temp_outputs, &num_retvals)",
+            op_.VariableName());
 
   for (const ArgView& arg : op_.Outputs()) {
     Statement("*$0 = temp_outputs[$1]", arg.VariableName(), arg.Position());
@@ -88,8 +89,7 @@ void OpImplementationRenderer::RenderExecutionMultipleOutputs() {
 
 void OpImplementationRenderer::RenderExecutionZeroOutputs() {
   Statement("int num_retvals = 0");
-  Statement("AbstractTensorHandle* dummy_output[1]");
-  Statement("return op_ptr->Execute(dummy_output, &num_retvals)");
+  Statement("return $0->Execute(nullptr, &num_retvals)", op_.VariableName());
 }
 
 }  // namespace cpp

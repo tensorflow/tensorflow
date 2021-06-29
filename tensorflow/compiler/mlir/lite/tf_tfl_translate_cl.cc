@@ -71,6 +71,12 @@ opt<bool> output_mlir(
     llvm::cl::desc(
         "Output MLIR rather than FlatBuffer for the generated TFLite model"),
     llvm::cl::init(false));
+// NOLINTNEXTLINE
+opt<bool> allow_all_select_tf_ops(
+    "allow-all-select-tf-ops",
+    llvm::cl::desc("Allow automatic pass through of TF ops (outside the flex "
+                   "allowlist) as select Tensorflow ops"),
+    llvm::cl::init(false));
 
 // The following approach allows injecting opdefs in addition
 // to those that are already part of the global TF registry  to be linked in

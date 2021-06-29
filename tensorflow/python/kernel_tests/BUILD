@@ -138,6 +138,7 @@ tf_py_test(
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
     tags = [
+        "no_windows",  # TODO(b/192259628)
         "noasan",  # TODO(b/164696004)
         "notsan",  # TODO(b/164696004)
     ],
@@ -954,6 +955,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:memory_checker",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
@@ -1489,6 +1491,9 @@ cuda_py_test(
     name = "unique_op_test",
     size = "small",
     srcs = ["unique_op_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/192259045)
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3062,7 +3067,6 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
-        "nogpu",  # TODO(b/153763253); flaky
         "optonly",  # times out
     ],
     deps = [
@@ -3270,6 +3274,20 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "sparse_tensor_dense_matmul_op_deterministic_test",
+    size = "small",
+    srcs = ["sparse_tensor_dense_matmul_op_deterministic_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
     ],
 )

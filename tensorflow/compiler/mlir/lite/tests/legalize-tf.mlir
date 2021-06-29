@@ -95,6 +95,16 @@ func @dynamicReshapeI64Fold(%arg0: tensor<*xf32>) -> tensor<1x2xf32> {
 // CHECK-NEXT:  return %[[reshape]] : tensor<1x2xf32>
 }
 
+func @dynamicReshapeI64Unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xi64>) -> tensor<*xf32> {
+  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xi64>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+
+// CHECK-LABEL: dynamicReshapeI64Unranked
+// CHECK-NEXT:  %[[cast:.*]] = "tfl.cast"(%arg1) : (tensor<*xi64>) -> tensor<*xi32>
+// CHECK-NEXT:  %[[reshape:.*]] = "tfl.reshape"(%arg0, %[[cast]]) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+// CHECK-NEXT:  return %[[reshape]] : tensor<*xf32>
+}
+
 func @avgPool2D(%arg0: tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // OK
   %0 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
@@ -2148,4 +2158,13 @@ func @conv3d_transpose_unsupported_strides(%arg0: tensor<2x5x6x8x2xf32>, %arg1: 
   return %0 : tensor<?x?x?x?x?xf32>
   // CHECK-LABEL: conv3d_transpose_unsupported_strides
   // CHECK: "tf.Conv3DBackpropInputV2"
+}
+
+func @mul_i64(%arg0: tensor<14xi64>, %arg1: tensor<14xi64>) -> tensor<14xi64> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xi64>, tensor<14xi64>) -> tensor<14xi64>
+  return %0: tensor<14xi64>
+
+// CHECK-LABEL: mul_i64
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xi64>
+// CHECK:  return
 }

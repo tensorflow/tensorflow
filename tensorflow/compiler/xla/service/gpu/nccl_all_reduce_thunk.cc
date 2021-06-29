@@ -35,11 +35,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace impl {
-
 // Attempts to match computation to one of the possible cases in ReductionKind.
 template <typename OpT>
-absl::optional<ReductionKind> MatchReductionComputation(OpT op) {
+absl::optional<ReductionKind> NcclAllReduceThunkBase::MatchReductionComputation(
+    OpT op) {
   mlir::Block& block = op.computation().front();
   if (!llvm::hasSingleElement(block.without_terminator())) return absl::nullopt;
   // The single operation should use both block arguments and produce a single
@@ -88,9 +87,11 @@ absl::optional<ReductionKind> MatchReductionComputation(OpT op) {
   }
 }
 
+namespace impl {
+
 template <typename OpT>
 NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
-  auto reduction_kind = MatchReductionComputation(op);
+  auto reduction_kind = NcclAllReduceThunkBase::MatchReductionComputation(op);
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
@@ -108,7 +109,8 @@ bool CanImplement(OpT op) {
         return LayoutUtil::IsDenseArray(shape) &&
                IsTypeSupportedByNccl(shape.element_type());
       });
-  return operands_are_supported && MatchReductionComputation(op).has_value();
+  return operands_are_supported &&
+         NcclAllReduceThunkBase::MatchReductionComputation(op).has_value();
 }
 
 template <typename OpT>

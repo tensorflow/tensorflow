@@ -331,6 +331,7 @@ _UNARY_ELEMENTWISE_OPS = [
     math_ops.rsqrt,
     math_ops.saturate_cast,
     math_ops.sign,
+    math_ops.sigmoid,
     math_ops.sin,
     math_ops.sinh,
     math_ops.sqrt,

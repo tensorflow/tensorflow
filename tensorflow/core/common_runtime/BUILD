@@ -7,6 +7,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
     "tf_openmp_copts",
+    "tf_openmp_lopts",
 )
 
 # buildifier: disable=same-origin-load
@@ -124,6 +125,28 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "collective_test_util",
+    testonly = 1,
+    srcs = ["collective_test_util.cc"],
+    hdrs = ["collective_test_util.h"],
+    copts = tf_copts(),
+    deps = [
+        ":device_resolver_local",
+        ":process_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Public Android targets
 
@@ -168,6 +191,7 @@ filegroup(
         "graph_optimizer.h",
         "graph_runner.h",
         "inline_function_utils.h",
+        "lower_function_call_inline_policy.h",
         "metrics.h",
         "process_function_library_runtime.h",
         "scoped_allocator.h",
@@ -340,12 +364,15 @@ cc_library(
     deps = [
         ":base_collective_executor",
         ":build_graph_options",
+        ":collective_param_resolver_local",
         ":collective_rma_local",
         ":device_mgr",
+        ":device_resolver_local",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -612,7 +639,6 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tflite_portable_logging",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -929,6 +955,7 @@ cc_library(
         ":function_body",
         ":function_utils",
         ":graph_constructor",
+        ":lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1006,6 +1033,16 @@ cc_library(
 )
 
 cc_library(
+    name = "lower_function_call_inline_policy",
+    srcs = ["lower_function_call_inline_policy.cc"],
+    hdrs = ["lower_function_call_inline_policy.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+    ],
+)
+
+cc_library(
     name = "lower_function_call_op",
     srcs = ["lower_function_call_op.cc"],
     hdrs = ["lower_function_call_op.h"],
@@ -1013,6 +1050,7 @@ cc_library(
     deps = [
         ":function_def_utils",
         ":inline_function_utils",
+        ":lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1294,6 +1332,7 @@ cc_library(
     srcs = ["process_util.cc"],
     hdrs = ["process_util.h"],
     copts = tf_copts() + tf_openmp_copts(),
+    linkopts = tf_openmp_lopts(),
     deps = [
         ":session_options",
         "//tensorflow/core:framework",
@@ -1618,6 +1657,7 @@ cc_library(
     srcs = ["threadpool_device.cc"],
     hdrs = ["threadpool_device.h"],
     copts = tf_copts() + tf_openmp_copts(),
+    linkopts = tf_openmp_lopts(),
     deps = [
         ":device_factory",
         ":local_device",
@@ -2007,6 +2047,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2033,6 +2074,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2059,6 +2101,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2085,6 +2128,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2099,6 +2143,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

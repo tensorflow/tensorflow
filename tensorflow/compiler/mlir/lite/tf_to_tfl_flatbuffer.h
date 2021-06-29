@@ -53,7 +53,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
-    mlir::MLIRContext* context,
+    bool enable_variable_lifting, mlir::MLIRContext* context,
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
@@ -66,7 +66,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
 // result is exported in MLIR text format, otherwise exported in flat buffer.
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops,
+    bool emit_select_tf_ops, bool emit_custom_ops, bool allow_all_select_tf_ops,
     const std::unordered_set<std::string>& select_user_tf_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,

@@ -208,6 +208,7 @@ HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
 HLO_MATCHER(AllGather);
 HLO_MATCHER(AllReduce);
+HLO_MATCHER(AllReduceScatter);
 HLO_MATCHER(AllToAll);
 HLO_MATCHER(And);
 HLO_MATCHER(BatchNormGrad);

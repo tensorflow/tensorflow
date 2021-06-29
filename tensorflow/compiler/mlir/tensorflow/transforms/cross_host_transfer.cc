@@ -58,6 +58,16 @@ std::string GetHost(const std::string &device) {
 struct CrossHostTransferPass
     : public PassWrapper<CrossHostTransferPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-cross-host-transfer";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "This pass inserts tf_device.send and tf_device.receive ops to make "
+           "sure any argument of any op is on the same host of the op itself.";
+  }
 
  private:
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -154,10 +164,7 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateCrossHostTransferPass() {
   return std::make_unique<CrossHostTransferPass>();
 }
 
-static PassRegistration<CrossHostTransferPass> pass(
-    "tf-cross-host-transfer",
-    "This pass inserts tf_device.send and tf_device.receive ops to make sure "
-    "any argument of any op is on the same host of the op itself.");
+static PassRegistration<CrossHostTransferPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

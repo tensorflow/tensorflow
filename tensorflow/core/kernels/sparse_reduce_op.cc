@@ -320,7 +320,9 @@ class SparseReduceSparseOp : public OpKernel {
                             &out_shape_t));
     auto out_shape_flat = out_shape_t->flat<int64>();
     auto out_dim_sizes = reduction.reduced_shape.dim_sizes();
-    std::copy(out_dim_sizes.begin(), out_dim_sizes.end(), &out_shape_flat(0));
+    if (!out_dim_sizes.empty()) {
+      std::copy(out_dim_sizes.begin(), out_dim_sizes.end(), &out_shape_flat(0));
+    }
   }
 
  private:

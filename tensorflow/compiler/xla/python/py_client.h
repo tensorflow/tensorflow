@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -90,6 +91,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
   explicit PyClient(std::unique_ptr<PjRtClient> pjrt_client);
   explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
+  ~PyClient();
 
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
   std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
@@ -116,6 +118,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
   std::vector<pybind11::object> LiveBuffers();
+  std::vector<pybind11::object> LiveBuffersOnDevice(PjRtDevice* device);
 
   // Returns a vector of live PyExecutable objects.
   // note: must return std::shared_ptr instead of raw ptrs
@@ -151,6 +154,24 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<pybind11::bytes> HeapProfile();
 
+  // Adds code to `builder` to call Python host function `callable` with
+  // `operands`, returning a result of `result_shape`. If desired, the operand
+  // layouts can be constrained by `operand_layouts`. Returns a pair of the
+  // output XlaOp, together with an object that must be kept alive as long as
+  // the Python callback may be called. Typically the callback may be kept
+  // alive by attaching it to the executable built from this computation.
+  //
+  // Callable receives as arguments NumPy arrays for arguments with array types,
+  // and None for Token argument. The callable must return a tuple of either
+  // arrays or None values.
+  //
+  // This is a method of PyClient since different platforms may implement this
+  // functionality in different ways.
+  StatusOr<std::pair<XlaOp, pybind11::object>> EmitPythonCallback(
+      pybind11::function callable, XlaBuilder& builder,
+      absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
+      absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect);
+
  private:
   friend class PyBuffer;
   friend class PyExecutable;
@@ -160,7 +181,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // Pointers to intrusive doubly-linked lists of buffers and executables, used
   // to iterate over all known objects when heap profiling. The list structure
   // is protected by the GIL.
-  PyBuffer* buffers_ = nullptr;
+
+  // buffers_ is a per-device list, indexed by device->id().
+  std::vector<PyBuffer*> buffers_;
   PyExecutable* executables_ = nullptr;
 };
 

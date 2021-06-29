@@ -2338,11 +2338,11 @@ def TFL_MulOp : TFL_Op<"mul", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$lhs,
-    TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$rhs,
+    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 
@@ -3036,8 +3036,7 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
     BinaryOpSameElementTypeConstraint,
     TFL_SameFirstOperandAndFirstResultElementType,
     ResultsBroadcastableShape,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Squared difference operator";
 
   let description = [{
@@ -3183,6 +3182,11 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   let verifier = [{ return Verify(*this); }];
 
   let hasFolder = 1;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input, "Value":$perm),
+    [{ BuildTransposeOp(&$_builder, $_state, input, perm); }]>
+  ];
 }
 
 def TFL_UnpackOp : TFL_Op<"unpack", [
@@ -3369,12 +3373,12 @@ def TFL_SplitOp : TFL_Op<"split", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$split_dim,
-    TFL_TensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$value,
+    TFL_TensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$value,
     Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
+    TFL_VariadicTensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -4748,7 +4752,7 @@ the dimension is padded with zeros.
   );
 }
 
-def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
+def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   let summary = "Returns a handle to a variable resource from its name.";
 
   let description = [{
@@ -4763,6 +4767,8 @@ def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
   );
 
   let results = (outs TFL_ResourceTensor:$resource_handle);
+
+  let hasOptions = 1;
 }
 
 def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
@@ -4774,9 +4780,7 @@ this value or a subsequent newer value of the variable.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id,
+    TFL_ResourceTensor:$resource_id,
     TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$value
   );
 
@@ -4791,9 +4795,7 @@ Read variable data identified by 'resource_id'.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id
+    TFL_ResourceTensor:$resource_id
   );
 
   let results = (outs TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$result);

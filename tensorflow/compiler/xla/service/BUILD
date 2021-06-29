@@ -70,6 +70,15 @@ filegroup(
 )
 
 cc_library(
+    name = "all_reduce_scatter_utils",
+    srcs = ["all_reduce_scatter_utils.cc"],
+    hdrs = ["all_reduce_scatter_utils.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+    ],
+)
+
+cc_library(
     name = "async_all_reduce_creator",
     srcs = ["async_all_reduce_creator.cc"],
     hdrs = ["async_all_reduce_creator.h"],
@@ -1305,6 +1314,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -5345,6 +5355,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",

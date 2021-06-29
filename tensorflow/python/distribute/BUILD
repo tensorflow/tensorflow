@@ -272,6 +272,7 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
+        ":ps_values",
         ":reduce_util",
         ":sharded_variable",
         ":shared_variable_creator",
@@ -1136,7 +1137,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "notsan",  # b/173031470
     ],
     deps = [
         ":collective_util",
@@ -1969,6 +1969,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/171349346, b/181878817): Frequent timeouts. Do not re-enable until rewritten
+        "no_tsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
         ":multi_worker_test_base",

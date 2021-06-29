@@ -17,6 +17,9 @@ limitations under the License.
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
 #if !defined(IS_MOBILE_PLATFORM)
+
+#include <algorithm>
+
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"

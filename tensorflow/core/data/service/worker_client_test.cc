@@ -30,22 +30,25 @@ limitations under the License.
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-using ::testing::HasSubstr;
+using ::testing::MatchesRegex;
 
-constexpr const char kProtocol[] = "grpc+local";
+constexpr const char kProtocol[] = "grpc";
 
 class WorkerClientTest : public ::testing::Test {
  protected:
@@ -132,12 +135,10 @@ TEST_F(WorkerClientTest, LocalRead) {
   // Remove the local worker from `LocalWorkers`. Since the client reads from a
   // local server, this should cause the request to fail.
   LocalWorkers::Remove(GetWorkerAddress());
-  Status s = GetElement(*client, task_id).status();
-  EXPECT_TRUE(errors::IsCancelled(s));
   EXPECT_THAT(
-      s.error_message(),
-      HasSubstr(absl::Substitute("Worker at address $0 is no longer available",
-                                 GetWorkerAddress())));
+      GetElement(*client, task_id),
+      testing::StatusIs(error::CANCELLED,
+                        MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
@@ -153,12 +154,10 @@ TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
   // Remove the local worker from `LocalWorkers`. Since the client reads from a
   // local server, this should cause the request to fail.
   LocalWorkers::Remove(GetWorkerAddress());
-  Status s = GetElement(*client, task_id).status();
-  EXPECT_TRUE(errors::IsCancelled(s));
   EXPECT_THAT(
-      s.error_message(),
-      HasSubstr(absl::Substitute("Worker at address $0 is no longer available",
-                                 GetWorkerAddress())));
+      GetElement(*client, task_id),
+      testing::StatusIs(error::CANCELLED,
+                        MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, GrpcRead) {
@@ -192,12 +191,10 @@ TEST_F(WorkerClientTest, LocalServerShutsDown) {
 
   // Stopping a worker causes local reads to return Cancelled status.
   test_cluster_->StopWorkers();
-  Status s = GetElement(*client, task_id).status();
-  EXPECT_TRUE(errors::IsCancelled(s));
   EXPECT_THAT(
-      s.error_message(),
-      HasSubstr(absl::Substitute("Worker at address $0 is no longer available",
-                                 GetWorkerAddress())));
+      GetElement(*client, task_id),
+      testing::StatusIs(error::CANCELLED,
+                        MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, CancelClient) {
@@ -208,11 +205,10 @@ TEST_F(WorkerClientTest, CancelClient) {
                           GetWorkerClient(kLocalTransferProtocol));
 
   client->TryCancel();
-  Status s = GetElement(*client, task_id).status();
-  EXPECT_TRUE(errors::IsCancelled(s));
-  EXPECT_THAT(s.error_message(), HasSubstr(absl::Substitute(
-                                     "Client for worker $0 has been cancelled.",
-                                     GetWorkerAddress())));
+  EXPECT_THAT(GetElement(*client, task_id),
+              testing::StatusIs(
+                  error::CANCELLED,
+                  MatchesRegex("Client for worker.*has been cancelled.")));
 }
 
 }  // namespace

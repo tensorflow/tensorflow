@@ -112,6 +112,16 @@ func @RemoveRedundantPack(%arg0: tensor<2x5xf32>) -> (tensor<2x5xf32>, tensor<5x
 
 // -----
 
+// CHECK-LABEL: @ReplacePackWithReshape
+func @ReplacePackWithReshape(%arg0: tensor<5xf32>) -> tensor<1x5xf32> {
+  %1 = "tfl.pack"(%arg0) {axis = 0 : i32, values_count = 1 : i32} : (tensor<5xf32>) -> (tensor<1x5xf32>)
+  // CHECK: reshape
+  // CHECK-NOT: pack
+  return %1: tensor<1x5xf32>
+}
+
+// -----
+
 func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi64>} : () -> tensor<3xi64>
   %1 = "tfl.pseudo_const"() {value = dense<[1, 128, 32]> : tensor<3xi64>} : () -> tensor<3xi64>

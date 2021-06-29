@@ -17,8 +17,6 @@ func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: memref.reshape
   // CHECK: alloc
   // CHECK: linalg.generic
-  // CHECK: alloc
-  // CHECK: scf.parallel
   // CHECK: memref.reshape
   %0 = "tf.Tanh"(%arg0) { } : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>

@@ -52,7 +52,9 @@ FLAGS = flags.FLAGS
 # pylint: disable=g-complex-comprehension
 
 
-def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
+def TestFactory(xla_backend,
+                cloud_tpu=False,
+                tfrt_tpu=False,
                 external_tpu=False):
   tests = []
 
@@ -383,6 +385,69 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
 
   tests.append(ComputationsWithConstantsTest)
 
+  class PythonCallbackTest(ComputationTest):
+
+    def testPythonCallback(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      f = lambda x, y: (x + y, x - y)
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      arg1 = np.array([10, 15, -2, 7], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      shape = shape.with_major_to_minor_layout_if_absent()
+      p0 = ops.Parameter(c, 0, shape)
+      p1 = ops.Parameter(c, 1, shape)
+      out, keepalive = self.backend.emit_python_callback(
+          f, c, [p0, p1], [shape, shape])
+      self._ExecuteAndCompareExact(
+          c, arguments=[arg0, arg1], expected=[arg0 + arg1, arg0 - arg1])
+      del out, keepalive
+
+    def testTokens(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x, y):
+        assert y is None, y
+        return None, x + 1
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      token_shape = xla_client.Shape.token_shape()
+      p0 = ops.Parameter(c, 0, shape)
+      token = ops.CreateToken(c)
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0, token], [token_shape, shape])
+      out = ops.GetTupleElement(out, 1)
+      self._ExecuteAndCompareExact(c, arguments=[arg0], expected=[arg0 + 1])
+      del out, keepalive
+
+    def testStriding(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x):
+        assert x.flags.f_contiguous, x.strides
+        # Force the output array to have C layout, which will require a
+        # transpose back to the expected Fortran layout.
+        return np.ascontiguousarray(x * 2),
+
+      arg0 = np.arange(12, dtype=np.int16).reshape(3, 4)
+      shape_f_layout = xla_client.Shape.array_shape(
+          arg0.dtype, arg0.shape, layout=(0, 1))
+      p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0], [shape_f_layout], [shape_f_layout])
+      self._ExecuteAndCompareExact(c, arguments=[arg0], expected=[arg0 * 2])
+      del out, keepalive
+
+  tests.append(PythonCallbackTest)
+
   class ComputationFromProtoTest(absltest.TestCase):
     """Test computation execution from HLO proto."""
 
@@ -563,6 +628,8 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
       self.assertIs(self.backend.live_buffers()[0], arg2_buffer)
       self.assertIs(self.backend.live_buffers()[1], arg1_buffer)
       self.assertIs(self.backend.live_buffers()[2], arg0_buffer)
+      self.assertEqual(self.backend.devices()[0].live_buffers(),
+                       self.backend.live_buffers())
 
       arg1_buffer.delete()
       self.assertLen(self.backend.live_buffers(), 2)
@@ -1532,8 +1599,10 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
       """Computation (A) -> B that returns a constant 1 for any input."""
       c = self._NewComputation("constant_{}_{}_one".format(
           in_dtype.__name__, out_dtype.__name__))
-      ops.Parameter(c, 0,
-                    xla_client.shape_from_pyval(np.array(0, dtype=in_dtype)))
+      ops.Parameter(
+          c, 0,
+          xla_client.shape_from_pyval(np.array(
+              0, dtype=in_dtype)).with_major_to_minor_layout_if_absent())
       ops.Constant(c, out_dtype(1))
       return c.build()
 
@@ -2071,29 +2140,40 @@ def TestFactory(xla_backend, cloud_tpu=False, tfrt_tpu=False,
       self.backend = xla_backend()
       if self.backend.platform not in ("cpu", "gpu"):
         self.skipTest("DLPack requires CPU or GPU")
+      self.cpu_backend = (
+          self.backend
+          if self.backend.platform == "cpu" else xla_client.make_cpu_client())
+      self.gpu_backend = (
+          self.backend if self.backend.platform == "gpu" else None)
 
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
     @parameterized.named_parameters({
-        "testcase_name": "{}_own={}".format(FormatShapeAndDtype(shape, dtype),
-                                            take_ownership),
+        "testcase_name": "{}_own={}_gpu={}".format(
+            FormatShapeAndDtype(shape, dtype), take_ownership, gpu),
         "dtype": dtype,
         "shape": shape,
-        "take_ownership": take_ownership
+        "take_ownership": take_ownership,
+        "gpu": gpu
     } for dtype in dlpack_dtypes for shape in testcase_shapes
-                                    for take_ownership in [False, True])
+                                    for take_ownership in [False, True]
+                                    for gpu in [False, True])
     # pyformat: enable
-    def testRoundTrip(self, dtype, shape, take_ownership):
+    def testRoundTrip(self, dtype, shape, take_ownership, gpu):
+      if gpu and self.gpu_backend is None:
+        raise unittest.SkipTest("Test not running with GPU support")
+      backend = self.gpu_backend if gpu else self.cpu_backend
       if dtype == np.bool_:
         x = np.random.randint(0, 2, size=shape).astype(np.bool_)
       else:
         x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
-      buffer = self.backend.buffer_from_pyval(x)
+      buffer = backend.buffer_from_pyval(x)
       dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
           buffer, take_ownership=take_ownership)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
-      y = xla_client._xla.dlpack_managed_tensor_to_buffer(dlt, self.backend)
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
+          dlt, self.cpu_backend, self.gpu_backend)
       np.testing.assert_array_equal(
           x.astype(np.uint8) if dtype == np.bool_ else x, y.to_py())
 

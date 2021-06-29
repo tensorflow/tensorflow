@@ -50,12 +50,23 @@ void dump_node(std::stringstream& out_stream, const int node_no,
   out_stream << "]\n";
 }
 
-std::string model_analyzer(const std::string& model_file_path) {
+std::string model_analyzer(const std::string& model_file_or_buffer,
+                           bool input_is_filepath) {
   std::stringstream out_stream;
-  auto fb_model = FlatBufferModel::BuildFromFile(model_file_path.c_str());
-  if (!fb_model) {
-    out_stream << "Failed to mmap model " << model_file_path;
-    return out_stream.str();
+  std::unique_ptr<FlatBufferModel> fb_model;
+  if (input_is_filepath) {
+    fb_model = FlatBufferModel::BuildFromFile(model_file_or_buffer.c_str());
+    if (!fb_model) {
+      out_stream << "Failed to mmap model " << model_file_or_buffer;
+      return out_stream.str();
+    }
+  } else {
+    fb_model = FlatBufferModel::BuildFromBuffer(model_file_or_buffer.c_str(),
+                                                model_file_or_buffer.size());
+    if (!fb_model) {
+      out_stream << "Failed to mmap the given model buffer.";
+      return out_stream.str();
+    }
   }
   const ::tflite::Model* model = fb_model->GetModel();
   auto* subgraphs = model->subgraphs();

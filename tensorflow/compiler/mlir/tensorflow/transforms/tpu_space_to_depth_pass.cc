@@ -111,6 +111,16 @@ struct BlockArgumentInfo {
 struct TPUSpaceToDepthPass
     : public PassWrapper<TPUSpaceToDepthPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-tpu-space-to-depth-pass";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Adds ops that allow TPU program enable automaic space to depth for "
+           "the convolution determined at JIT compile time.";
+  }
 };
 
 // Updates func argument type to have the updated input shape.
@@ -748,10 +758,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass() {
   return std::make_unique<TPUSpaceToDepthPass>();
 }
 
-static PassRegistration<TPUSpaceToDepthPass> pass(
-    "tf-tpu-space-to-depth-pass",
-    "Adds ops that allow TPU program enable automaic space to depth for the"
-    "convolution determined at JIT compile time.");
+static PassRegistration<TPUSpaceToDepthPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

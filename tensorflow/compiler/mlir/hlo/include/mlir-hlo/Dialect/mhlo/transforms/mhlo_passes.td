@@ -47,6 +47,11 @@ def LegalizeControlFlowToScfPass : FunctionPass<"mhlo-control-flow-to-scf"> {
   let constructor = "createControlFlowToScfPass()";
 }
 
+def LegalizeEinsumToDotGeneralPass : FunctionPass<"mhlo-legalize-einsum-to-dot-general"> {
+  let summary = "Legalizes einsum ops to dot_general ops.";
+  let constructor = "createLegalizeEinsumToDotGeneralPass()";
+}
+
 def LegalizeGatherToTorchIndexSelectPass : FunctionPass<"mhlo-legalize-gather-to-torch-index-select"> {
   let summary = "Legalizes gathers to a torch index select.";
   let constructor = "createLegalizeGatherToTorchIndexSelectPass()";
