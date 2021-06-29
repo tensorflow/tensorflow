@@ -413,7 +413,7 @@ class ITensorProxy {
 
 class ITensorProxyPtr {
  public:
-  ITensorProxyPtr(nullptr_t) : p_(nullptr) {}
+  ITensorProxyPtr(std::nullptr_t) : p_(nullptr) {}
   ITensorProxyPtr(ITensorProxy* p) : p_(p) {}
   ITensorProxyPtr(nvinfer1::ITensor* p) : p_(new ITensorProxy(p)) {}
   ITensorProxyPtr(SimpleITensor* p) : p_(new ITensorProxy(p)) {}
