@@ -63,7 +63,7 @@ Status RunGraph(const Graph& graph,
 }
 
 TEST(ReadVariableXlaSplitNDOpTest, VariableMissing) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
 
   Node* var_handle = nullptr;
   DataType data_type = DataTypeToEnum<int32>::value;
@@ -88,7 +88,7 @@ TEST(ReadVariableXlaSplitNDOpTest, VariableMissing) {
 }
 
 TEST(ReadVariableXlaSplitNDOpTest, DTypeInvalid) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
 
   Node* var_handle = nullptr;
   DataType data_type = DataTypeToEnum<int32>::value;
@@ -195,7 +195,7 @@ struct XlaSplitNDTestParam {
 using XlaSplitNDOpTest = ::testing::TestWithParam<XlaSplitNDTestParam>;
 
 TEST_P(XlaSplitNDOpTest, SplitDimensionNegative) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({1, 1, 1});
   const std::vector<int32> num_splits = {1, -1, 1};
   const std::vector<int32> paddings;
@@ -212,7 +212,7 @@ TEST_P(XlaSplitNDOpTest, SplitDimensionNegative) {
 }
 
 TEST_P(XlaSplitNDOpTest, NumOutputsMismatch) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({2});
   const std::vector<int32> num_splits = {2};
   const std::vector<int> paddings;
@@ -229,7 +229,7 @@ TEST_P(XlaSplitNDOpTest, NumOutputsMismatch) {
 }
 
 TEST_P(XlaSplitNDOpTest, PaddingsLengthMismatch) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({2, 2});
   const std::vector<int32> num_splits = {2, 2};
   const std::vector<int32> paddings = {0};
@@ -245,7 +245,7 @@ TEST_P(XlaSplitNDOpTest, PaddingsLengthMismatch) {
 }
 
 TEST_P(XlaSplitNDOpTest, PaddingsNegative) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({2, 2});
   const std::vector<int32> num_splits = {2, 2};
   const std::vector<int32> paddings = {0, -1};
@@ -262,7 +262,7 @@ TEST_P(XlaSplitNDOpTest, PaddingsNegative) {
 }
 
 TEST_P(XlaSplitNDOpTest, InputRank0) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({});
   const std::vector<int32> num_splits = {2};
   const std::vector<int32> paddings;
@@ -278,7 +278,7 @@ TEST_P(XlaSplitNDOpTest, InputRank0) {
 }
 
 TEST_P(XlaSplitNDOpTest, InputRank9) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({2, 2, 2, 2, 2, 2, 2, 2, 2});
   const std::vector<int32> num_splits(9, 2);
   const std::vector<int32> paddings;
@@ -294,7 +294,7 @@ TEST_P(XlaSplitNDOpTest, InputRank9) {
 }
 
 TEST_P(XlaSplitNDOpTest, InputRankMismatch) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({2, 2});
   const std::vector<int32> num_splits = {2, 2, 2};
   const std::vector<int32> paddings;
@@ -310,7 +310,7 @@ TEST_P(XlaSplitNDOpTest, InputRankMismatch) {
 }
 
 TEST_P(XlaSplitNDOpTest, DimNotEvenlySplit) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({4, 2});
   const std::vector<int32> num_splits = {3, 2};
   const std::vector<int32> paddings;
@@ -326,7 +326,7 @@ TEST_P(XlaSplitNDOpTest, DimNotEvenlySplit) {
 }
 
 TEST_P(XlaSplitNDOpTest, DimWithPaddingNotEvenlySplit) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({4, 2});
   const std::vector<int32> num_splits = {2, 2};
   const std::vector<int32> paddings = {0, 1};
@@ -342,7 +342,7 @@ TEST_P(XlaSplitNDOpTest, DimWithPaddingNotEvenlySplit) {
 }
 
 TEST_P(XlaSplitNDOpTest, NoSplits) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({2, 2, 2});
   const std::vector<int32> num_splits = {1, 1, 1};
   const std::vector<int> paddings;
@@ -361,7 +361,7 @@ TEST_P(XlaSplitNDOpTest, NoSplits) {
 }
 
 TEST_P(XlaSplitNDOpTest, NoSplitsWithPadding) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({2, 1, 1});
   const std::vector<int32> num_splits = {1, 1, 1};
   const std::vector<int> paddings = {0, 1, 1};
@@ -381,7 +381,7 @@ TEST_P(XlaSplitNDOpTest, NoSplitsWithPadding) {
 }
 
 TEST_P(XlaSplitNDOpTest, SliceDimPartialPadding) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({3, 3});
   const std::vector<int32> num_splits = {2, 2};
   const std::vector<int32> paddings = {1, 1};
@@ -409,7 +409,7 @@ TEST_P(XlaSplitNDOpTest, SliceDimPartialPadding) {
 }
 
 TEST_P(XlaSplitNDOpTest, SliceDimCompletePadding) {
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape({2, 1});
   const std::vector<int32> num_splits = {2, 2};
   const std::vector<int32> paddings = {2, 3};
@@ -460,7 +460,7 @@ TEST_P(RankedXlaSplitNDOpTest, TestSubscriptRank) {
   const int rank = GetParam().rank;
   const std::vector<int32> num_splits(rank, 2);
 
-  Graph graph = Graph(OpRegistry::Global());
+  Graph graph(OpRegistry::Global());
   const TensorShape input_shape(std::vector<int64>(rank, 2));
   const std::vector<int32> paddings;
   const int num_outputs = 2 << (rank - 1);

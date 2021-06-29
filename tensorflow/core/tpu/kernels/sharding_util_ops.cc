@@ -331,11 +331,13 @@ class XlaSplitNDBaseOp : public OpKernel {
     }
 
     // Slice shape with optional padding.
-    Eigen::DSizes<Eigen::DenseIndex, Rank> slice_shape;
+    TensorShape output_slice_shape;
     for (int dim = 0; dim < Rank; ++dim) {
-      slice_shape[dim] = (shape[dim] + paddings_[dim]) / num_splits_[dim];
+      output_slice_shape.AddDim((shape[dim] + paddings_[dim]) /
+                                num_splits_[dim]);
     }
-    const TensorShape output_slice_shape(slice_shape.values);
+    const Eigen::DSizes<Eigen::DenseIndex, Rank> base_slice_shape =
+        output_slice_shape.AsEigenDSizes<Rank>();
     functor::Slice<Device, T, Rank> slice_functor;
 
     for (int i = 0; i < num_slices_; ++i) {
@@ -344,11 +346,10 @@ class XlaSplitNDBaseOp : public OpKernel {
                               /*index=*/i, output_slice_shape, &output_slice));
 
       bool pad = false;
-      Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape =
-          slice_shape;
+      TensorShape non_padded_slice_shape;
       Eigen::array<Eigen::IndexPair<int64>, Rank> slice_paddings;
       Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
-          GetSliceIndices<Rank>(num_splits_, slice_shape, i);
+          GetSliceIndices<Rank>(num_splits_, base_slice_shape, i);
 
       // Calculate paddings necessary for shard instead of padding input and
       // slicing subsequently to reduce temporary memory allocation.
@@ -357,34 +358,36 @@ class XlaSplitNDBaseOp : public OpKernel {
         if (slice_indices[dim] >= dim_size) {
           // Complete padding.
           slice_indices[dim] = dim_size;
-          non_padded_slice_shape[dim] = 0;
-          slice_paddings[dim] = {0, slice_shape[dim]};
+          non_padded_slice_shape.AddDim(0);
+          slice_paddings[dim] = {0, base_slice_shape[dim]};
           pad = true;
-        } else if (slice_indices[dim] + slice_shape[dim] >= dim_size) {
+        } else if (slice_indices[dim] + base_slice_shape[dim] >= dim_size) {
           // Partial padding.
-          non_padded_slice_shape[dim] = dim_size - slice_indices[dim];
+          non_padded_slice_shape.AddDim(dim_size - slice_indices[dim]);
           slice_paddings[dim] = {
-              0, slice_shape[dim] - non_padded_slice_shape[dim]};
+              0, base_slice_shape[dim] - non_padded_slice_shape.dim_size(dim)};
           pad = true;
+        } else {
+          non_padded_slice_shape.AddDim(base_slice_shape[dim]);
         }
       }
 
       if (pad) {
         Tensor no_padding_slice;
         OP_REQUIRES_OK(
-            ctx, ctx->allocate_temp(input->dtype(),
-                                    TensorShape(non_padded_slice_shape.values),
+            ctx, ctx->allocate_temp(input->dtype(), non_padded_slice_shape,
                                     &no_padding_slice));
         slice_functor(device, no_padding_slice.tensor<T, Rank>(),
                       input->tensor<T, Rank>(), slice_indices,
-                      non_padded_slice_shape);
+                      non_padded_slice_shape.AsEigenDSizes<Rank>());
         pad_functor(
             device, output_slice->tensor<T, Rank>(),
             const_cast<const Tensor&>(no_padding_slice).tensor<T, Rank>(),
             slice_paddings, T());
       } else {
         slice_functor(device, output_slice->tensor<T, Rank>(),
-                      input->tensor<T, Rank>(), slice_indices, slice_shape);
+                      input->tensor<T, Rank>(), slice_indices,
+                      base_slice_shape);
       }
     }
   }
@@ -399,11 +402,12 @@ class XlaSplitNDBaseOp : public OpKernel {
     const auto& shape = input->shape().dim_sizes();
     const Device& device = ctx->eigen_device<Device>();
 
-    Eigen::DSizes<Eigen::DenseIndex, Rank> slice_shape;
+    TensorShape output_slice_shape;
     for (int dim = 0; dim < Rank; ++dim) {
-      slice_shape[dim] = shape[dim] / num_splits_[dim];
+      output_slice_shape.AddDim(shape[dim] / num_splits_[dim]);
     }
-    const TensorShape output_slice_shape(slice_shape.values);
+    const Eigen::DSizes<Eigen::DenseIndex, Rank> base_slice_shape =
+        output_slice_shape.AsEigenDSizes<Rank>();
     functor::Slice<Device, T, Rank> slice_functor;
 
     for (int i = 0; i < num_slices_; ++i) {
@@ -411,9 +415,9 @@ class XlaSplitNDBaseOp : public OpKernel {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(
                               /*index=*/i, output_slice_shape, &output_slice));
       Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
-          GetSliceIndices<Rank>(num_splits_, slice_shape, i);
+          GetSliceIndices<Rank>(num_splits_, base_slice_shape, i);
       slice_functor(device, output_slice->tensor<T, Rank>(),
-                    input->tensor<T, Rank>(), slice_indices, slice_shape);
+                    input->tensor<T, Rank>(), slice_indices, base_slice_shape);
     }
   }
 
