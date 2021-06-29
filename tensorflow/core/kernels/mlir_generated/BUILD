@@ -918,6 +918,20 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
+gpu_kernel_library(
+    name = "gpu_mul_no_nan_kernels",
+    op = "mul_no_nan",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
+
 # Bitwise operations.
 [
     gpu_kernel_library(
