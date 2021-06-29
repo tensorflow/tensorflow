@@ -88,6 +88,16 @@ struct LowerStaticTensorListPass
     this->allow_tensorlist_pass_through = allow_tensorlist_pass_through;
   }
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-lower-static-tensor-list";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Lower TensorList ops within TensorFlow Lite dialect";
+  }
+
   void runOnOperation() override;
 
   Option<bool> allow_tensorlist_pass_through{
@@ -1437,8 +1447,6 @@ std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
       allow_tensorlist_pass_through);
 }
 
-static PassRegistration<LowerStaticTensorListPass> pass(
-    "tfl-lower-static-tensor-list",
-    "Lower TensorList ops within TensorFlow Lite dialect");
+static PassRegistration<LowerStaticTensorListPass> pass;
 
 }  // namespace mlir

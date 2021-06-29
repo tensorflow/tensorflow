@@ -479,6 +479,15 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
 struct ExecutorIslandCoarsening
     : public PassWrapper<ExecutorIslandCoarsening, FunctionPass> {
   void runOnFunction() override;
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-executor-island-coarsening";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Merges TensorFlow executor dialect IslandOps";
+  }
 };
 
 void ExecutorIslandCoarsening::runOnFunction() {
@@ -504,9 +513,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
   return std::make_unique<ExecutorIslandCoarsening>();
 }
 
-static PassRegistration<ExecutorIslandCoarsening> pass(
-    "tf-executor-island-coarsening",
-    "Merges TensorFlow executor dialect IslandOps");
+static PassRegistration<ExecutorIslandCoarsening> pass;
 
 }  // namespace tf_executor
 }  // namespace mlir

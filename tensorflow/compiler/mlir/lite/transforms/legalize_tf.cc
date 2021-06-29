@@ -86,6 +86,16 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
     run_tfl_runtime_verification_ = run_tfl_runtime_verification;
   }
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-legalize-tf";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize from TensorFlow to TensorFlow Lite dialect";
+  }
+
   /// Performs the lowering to TFLite dialect.
   void runOnFunction() override;
 
@@ -885,8 +895,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
   return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
 }
 
-static PassRegistration<LegalizeTF> pass(
-    "tfl-legalize-tf", "Legalize from TensorFlow to TensorFlow Lite dialect");
+static PassRegistration<LegalizeTF> pass;
 
 }  // namespace TFL
 }  // namespace mlir
