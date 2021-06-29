@@ -255,6 +255,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu/cl:api",
         "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
