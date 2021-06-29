@@ -2,170 +2,74 @@
 
 ## Breaking Changes
 
-* `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as
-  the API only works in graph mode and is not customizable. The function is
-  still accessible under
-  `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it is
-  recommended to use the
-  [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)
-  instead.
+* `tf.train.experimental.enable_mixed_precision_graph_rewrite` is removed, as  the API only works in graph mode and is not customizable. The function is  still accessible under  `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`, but it is  recommended to use the  [Keras mixed precision API](https://www.tensorflow.org/guide/mixed_precision)  instead.
 
 * `tf.lite`:
-  * Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell` and
-  `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
-  recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
+  * Remove `experimental.nn.dynamic_rnn`, `experimental.nn.TfLiteRNNCell` and  `experimental.nn.TfLiteLSTMCell` since they're no longersupported. It's  recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
 
 ## Known Caveats
 
 * TF Core:
-    * A longstanding bug in `tf.while_loop`, which caused it to execute
-      sequentially, even when `parallel_iterations>1`, has now been fixed.
-      However, the increased parallelism may result in increased memory use.
-      Users who experience unwanted regressions should reset their
-      `while_loop`'s `parallel_iterations` value to 1, which is consistent with
-      prior behavior.
+    * A longstanding bug in `tf.while_loop`, which caused it to execute sequentially, even when `parallel_iterations>1`, has now been fixed. However, the increased parallelism may result in increased memory use. Users who experience unwanted regressions should reset their `while_loop`'s `parallel_iterations` value to 1, which is consistent with prior behavior.
 
 ## Major Features and Improvements
 
 * `tf.keras`:
-    *   Keras has been split into a separate PIP package (`keras`),
-        and its code has been moved to the GitHub repository
-        [keras-team/keras](http://github.com/keras-team/keras).
-        The API endpoints for `tf.keras` stay unchanged,
-        but are now backed by the `keras` PIP package. All Keras-related
-        PRs and issues should now be directed to the GitHub repository
-        [keras-team/keras](http://github.com/keras-team/keras).
-    *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
-        `tf.distribute.InputOptions` for specific options when used with
-        distribution.
-    *   `tf.keras.experimental.SidecarEvaluator` is now available for a program
-        intended to be run on an evaluator task, which is commonly used to
-        supplement a training cluster running with
-        `tf.distribute.experimental.ParameterServerStrategy` (see
-        https://www.tensorflow.org/tutorials/distribute/parameter_server_training).
-        It can also be used with single-worker training or other strategies.
-        See docstring for more info.
+    *   Keras has been split into a separate PIP package (`keras`), and its code has been moved to the GitHub repository [keras-team/keras](http://github.com/keras-team/keras).
+        The API endpoints for `tf.keras` stay unchanged, but are now backed by the `keras` PIP package. All Keras-related PRs and issues should now be directed to the GitHub repository [keras-team/keras](http://github.com/keras-team/keras).
+    *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional `tf.distribute.InputOptions` for specific options when used with distribution.
+    *   `tf.keras.experimental.SidecarEvaluator` is now available for a program intended to be run on an evaluator task, which is commonly used to supplement a training cluster running with `tf.distribute.experimental.ParameterServerStrategy` (see `https://www.tensorflow.org/tutorials/distribute/parameter_server_training). It can also be used with single-worker training or other strategies. See docstring for more info.
     *   Preprocessing layers moved from experimental to core.
-        *   Import paths moved from
-            `tf.keras.layers.preprocessing.experimental` to `tf.keras.layers`.
+        *   Import paths moved from `tf.keras.layers.preprocessing.experimental` to `tf.keras.layers`.
     *   Updates to Preprocessing layers API for consistency and clarity:
-        *   `StringLookup` and `IntegerLookup` default for `mask_token` changed
-            to `None`. This matches the default masking behavior of `Hashing`
-            and `Embedding` layers. To keep existing behavior, pass
-            `mask_token=""` during layer creation.
-        *   Renamed `"binary"` output mode to `"multi_hot"` for
-            `CategoryEncoding`, `StringLookup`, `IntegerLookup`, and
-            `TextVectorization`. Multi-hot encoding will no longer
-            automatically uprank rank 1 inputs, so these layers can now
-            multi-hot encode unbatched multi-dimensional samples.
-        *   Added a new output mode `"one_hot"` for `CategoryEncoding`,
-            `StringLookup`, `IntegerLookup`, which will encode each element in
-            an input batch individually, and automatically append a new output
-            dimension if necessary. Use this mode on rank 1 inputs for the old
-            `"binary"` behavior of one-hot encoding a batch of scalars.
-        *   `Normalization` will no longer automatically uprank rank 1 inputs,
-            allowing normalization of unbatched multi-dimensional samples.
+        *   `StringLookup` and `IntegerLookup` default for `mask_token` changed to `None`. This matches the default masking behavior of `Hashing` and `Embedding` layers. To keep existing behavior, pass `mask_token=""` during layer creation.
+        *   Renamed `"binary"` output mode to `"multi_hot"` for `CategoryEncoding`, `StringLookup`, `IntegerLookup`, and `TextVectorization`. Multi-hot encoding will no longer automatically uprank rank 1 inputs, so these layers can now multi-hot encode unbatched multi-dimensional samples.
+        *   Added a new output mode `"one_hot"` for `CategoryEncoding`, `StringLookup`, `IntegerLookup`, which will encode each element in an input batch individually, and automatically append a new output dimension if necessary. Use this mode on rank 1 inputs for the old `"binary"` behavior of one-hot encoding a batch of scalars.
+        *   `Normalization` will no longer automatically uprank rank 1 inputs, allowing normalization of unbatched multi-dimensional samples.
 
 * `tf.lite`:
-    *   The recommended Android NDK version for building TensorFlow Lite has
-        been changed from r18b to r19c.
+    *   The recommended Android NDK version for building TensorFlow Lite has been changed from r18b to r19c.
     *   Supports int64 for mul.
-    *   Supports native variable builtin ops - `ReadVariable`, `AssignVariable`.
+    *   Supports native variable builtin ops - ReadVariable, AssignVariable.
     *   Converter:
-        *  Experimental support for variables in TFLite. To enable through
-           conversion, users need to set
-           `experimental_enable_resource_variables` on `tf.lite.TFLiteConverter`
-           to True.
-           Note: mutable variables is only available using `from_saved_model`
-           in this release, support for other methods is coming soon.
-        *  Old Converter (TOCO) is getting removed from next release.
-           It's been deprecated for few releases already.
+        *  Experimental support for variables in TFLite. To enable through conversion, users need to set `experimental_enable_resource_variables` on tf.lite.TFLiteConverter to True.
+           Note: mutable variables is only available using `from_saved_model` in this release, support for other methods is coming soon.
+        *  Old Converter (TOCO) is getting removed from next release. It's been deprecated for few releases already.
 * `tf.saved_model`:
-    *   SavedModels can now save custom gradients. Use the option
-        `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to
-        enable this feature. The documentation in [Advanced autodiff]
-        (https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients)
-        has been updated.
-    *   Object metadata has now been deprecated and no longer saved to the
-        SavedModel.
+    *   SavedModels can now save custom gradients. Use the option `tf.saved_model.SaveOption(experimental_custom_gradients=True)` to enable this feature. The documentation in [Advanced autodiff](https://www.tensorflow.org/guide/advanced_autodiff#custom_gradients) has been updated.
+    *   Object metadata has now been deprecated and no longer saved to the SavedModel.
 *   TF Core:
-    *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
-        peak memory returned by `tf.config.experimental.get_memory_info`.
+    *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked peak memory returned by `tf.config.experimental.get_memory_info`.
 *  `tf.data`:
-    *   Added `target_workers` param to `data_service_ops.from_dataset_id` and
-        `data_service_ops.distribute`. Users can specify `"AUTO"`, `"ANY"`, or
-        `"LOCAL"` (case insensitive). If `"AUTO"`, tf.data service runtime
-        decides which workers to read from. If `"ANY"`, TF workers read from any
-        tf.data service workers. If `"LOCAL"`, TF workers will only read from
-        local in-processs tf.data service workers. `"AUTO"` works well for most
-        cases, while users can specify other targets. For example, `"LOCAL"`
-        would help avoid RPCs and data copy if every TF worker colocates with a
-        tf.data service worker. Currently, `"AUTO"` reads from any tf.data
-        service workers to preserve existing behavior. The default value is
-        `"AUTO"`.
+    *   Added `target_workers` param to `data_service_ops.from_dataset_id` and `data_service_ops.distribute`. Users can specify `"AUTO"`, `"ANY"`, or `"LOCAL"` (case insensitive). If `"AUTO"`, tf.data service runtime decides which workers to read from. If `"ANY"`, TF workers read from any tf.data service workers. If `"LOCAL"`, TF workers will only read from local in-processs tf.data service workers. `"AUTO"` works well for most cases, while users can specify other targets. For example, `"LOCAL"` would help avoid RPCs and data copy if every TF worker colocates with a  tf.data service worker. Currently, `"AUTO"` reads from any tf.data service workers to preserve existing behavior. The default value is  `"AUTO"`.
 
 ## Bug Fixes and Other Changes
 
 *   TF Core:
-    *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
-        generic mutable hash table implementation.
-        *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
-        lower overall memory usage, and a cleaner API. It does not require
-        specifying a `delete_key` and `empty_key` that cannot be inserted into
-        the table.
-    *   Added support for specifying number of subdivisions in all reduce host
-        collective. This parallelizes work on CPU and speeds up the collective
-        performance. Default behavior is unchanged.
-    *   Add an option `perturb_singular` to `tf.linalg.tridiagonal_solve` that
-        allows solving linear systems with a numerically singular tridiagonal 
-        matrix, e.g. for use in inverse iteration.
-    *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
-        Hermitian tridiagonal matrix.
+    *   Added `tf.lookup.experimental.MutableHashTable`, which provides a generic mutable hash table implementation.
+        *   Compared to `tf.lookup.experimental.DenseHashTable` this offers lower overall memory usage, and a cleaner API. It does not require specifying a `delete_key` and `empty_key` that cannot be inserted into  the table.
+    *   Added support for specifying number of subdivisions in all reduce host collective. This parallelizes work on CPU and speeds up the collective performance. Default behavior is unchanged.
+    *   Add an option `perturb_singular` to `tf.linalg.tridiagonal_solve` that allows solving linear systems with a numerically singular tridiagonal matrix, e.g. for use in inverse iteration.
+    *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a Hermitian tridiagonal matrix.
     *   `tf.constant` now places its output on the current default device.
     *   SavedModel
-        *   Added `tf.saved_model.experimental.TrackableResource`, which allows
-            the creation of custom wrapper objects for resource tensors.
-        *   Added a SavedModel load option to allow restoring partial
-            checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
-  (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions)
-            for details.
-    *   Added a new op `SparseSegmentSumGrad` to match the other sparse segment
-        gradient ops and avoid an extra gather operation that was in the
-        previous gradient implementation.
-    *   Added a new session config setting `internal_fragmentation_fraction`,
-        which controls when the BFC Allocator needs to split an oversized chunk
-        to satisfy an allocation request.
-    *   Added `tf.get_current_name_scope()` which returns the current full name
-        scope string that will be prepended to op names.
+        *   Added `tf.saved_model.experimental.TrackableResource`, which allows the creation of custom wrapper objects for resource tensors.
+        *   Added a SavedModel load option to allow restoring partial checkpoints into the SavedModel. See [`tf.saved_model.LoadOptions`]
+  (https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions) for details.
+    *   Added a new op `SparseSegmentSumGrad` to match the other sparse segment gradient ops and avoid an extra gather operation that was in the previous gradient implementation.
+    *   Added a new session config setting `internal_fragmentation_fraction`, which controls when the BFC Allocator needs to split an oversized chunk to satisfy an allocation request.
+    *   Added `tf.get_current_name_scope()` which returns the current full name scope string that will be prepended to op names.
 *   `tf.data`:
-    *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to
-        `tf.data.Dataset.bucket_by_sequence_length` and deprecating the
-        experimental endpoint.
-    *   Promoting `tf.data.experimental.get_single_element` API to
-        `tf.data.Dataset.get_single_element` and deprecating the experimental
-        endpoint.
-    *   Promoting `tf.data.experimental.group_by_window` API to
-        `tf.data.Dataset.group_by_window` and deprecating the experimental
-        endpoint.
-    *   Promoting `tf.data.experimental.RandomDataset` API to
-        `tf.data.Dataset.random` and deprecating the experimental endpoint.
-    *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan`
-        and deprecating the experimental endpoint.
-    *   Promoting `tf.data.experimental.snapshot` API to
-        `tf.data.Dataset.shapshot` and deprecating the experimental endpoint.
-    *   Promoting `tf.data.experimental.take_while` API to
-        `tf.data.Dataset.take_while` and deprecating the experimental endpoint.
-    *   Promoting `tf.data.experimental.ThreadingOptions` API to
-        `tf.data.ThreadingOptions` and deprecating the experimental endpoint.
-    *   Promoting `tf.data.experimental.unique` API to
-        `tf.data.Dataset.unique` and deprecating the experimental endpoint.
-    *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and
-        `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop
-        sampling if it encounters an empty dataset. This preserves the sampling
-        ratio throughout training. The prior behavior was to continue sampling,
-        skipping over exhausted datasets, until all datasets are exhausted. By
-        default, the original behavior (`stop_on_empty_dataset=False`) is
-        preserved.
+    *   Promoting `tf.data.experimental.bucket_by_sequence_length` API to `tf.data.Dataset.bucket_by_sequence_length` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.get_single_element` API to `tf.data.Dataset.get_single_element` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.group_by_window` API to `tf.data.Dataset.group_by_window` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.RandomDataset` API to `tf.data.Dataset.random` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.scan` API to `tf.data.Dataset.scan` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.snapshot` API to `tf.data.Dataset.shapshot` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.take_while` API to `tf.data.Dataset.take_while` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.ThreadingOptions` API to `tf.data.ThreadingOptions` and deprecating the experimental endpoint.
+    *   Promoting `tf.data.experimental.unique` API to `tf.data.Dataset.unique` and deprecating the experimental endpoint.
+    *   Added `stop_on_empty_dataset` parameter to `sample_from_datasets` and `choose_from_datasets`. Setting `stop_on_empty_dataset=True` will stop sampling if it encounters an empty dataset. This preserves the sampling ratio throughout training. The prior behavior was to continue sampling, skipping over exhausted datasets, until all datasets are exhausted. By default, the original behavior (`stop_on_empty_dataset=False`) is preserved.
     *   Removed previously deprecated tf.data statistics related APIs:
         *   `tf.data.Options.experimental_stats`
         *   `tf.data.experimental.StatsAggregator`
@@ -176,40 +80,26 @@
         *   `tf.data.experimental.MapVectorizationOptions.*`
         *   `tf.data.experimental.OptimizationOptions.filter_with_random_uniform_fusion`
         *   `tf.data.experimental.OptimizationOptions.hoist_random_uniform`
-        *   `tf.data.experimental.OptimizationOptions.map_vectorization`
-        *   `tf.data.experimental.OptimizationOptions.reorder_data_discarding_ops`
+        *   `tf.data.experimental.OptimizationOptions.map_vectorization`                 *   `tf.data.experimental.OptimizationOptions.reorder_data_discarding_ops`
 *   `tf.keras`:
-    *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the
-        inputs are `RaggedTensor` objects.
+    *   Fix usage of `__getitem__` slicing in Keras Functional APIs when the inputs are `RaggedTensor` objects.
     *   Add `keepdims` argument to all `GlobalPooling` layers.
-    *   Add `include_preprocessing` argument to `MobileNetV3` architectures to
-        control the inclusion of `Rescaling` layer in the model.
-    *   Add optional argument (`force`) to `make_(train|test|predict)_funtion`
-        methods to skip the cached function and generate a new one. This is
-	useful to regenerate in a single call the compiled training function
-	when any `.trainable` attribute of any model's layer has changed.
-    *   Models now have a `save_spec` property which contains the `TensorSpec`
-        specs for calling the model. This spec is automatically saved when
-        the model is called for the first time.
+    *   Add `include_preprocessing` argument to `MobileNetV3` architectures to control the inclusion of `Rescaling` layer in the model.
+    *   Add optional argument (`force`) to `make_(train|test|predict)_funtion` methods to skip the cached function and generate a new one. This is useful to regenerate in a single call the compiled training function when any `.trainable` attribute of any model's layer has changed.
+    *   Models now have a `save_spec` property which contains the `TensorSpec` specs for calling the model. This spec is automatically saved when the model is called for the first time.
 *   `tf.linalg`:
     *   Add `CompositeTensor` as a base class to `LinearOperator`.
 *   `tf.lite`:
     *   Fix mean op reference quantization rounding issue.
-    *   Added `framework_stable` BUILD target, which links in only the
-        non-experimental TF Lite APIs.
+    *   Added `framework_stable` BUILD target, which links in only the non-experimental TF Lite APIs.
     *   Remove deprecated Java `Interpreter` methods:
         *    `modifyGraphWithDelegate` - Use `Interpreter.Options.addDelegate`
         *    `setNumThreads` - Use `Interpreter.Options.setNumThreads`
     *   Add Conv3DTranspose as a builtin op.
 *   `tf.summary`:
-    *   Fix `tf.summary.should_record_summaries()` so it correctly reflects when
-        summaries will be written, even when `tf.summary.record_if()` is not
-        in effect, by returning True tensor if default writer is present.
-*   `Grappler`:
-    *   Disable default Grappler optimization timeout to make the optimization
-        pipeline deterministic. This may lead to increased model loading time,
-        because time spent in graph optimizations is now unbounded (was 20
-        minutes).
+    *   Fix `tf.summary.should_record_summaries()` so it correctly reflects when summaries will be written, even when `tf.summary.record_if()` is not n effect, by returning True tensor if default writer is present.
+*   Grappler:
+    *   Disable default Grappler optimization timeout to make the optimization pipeline deterministic. This may lead to increased model loading time, because time spent in graph optimizations is now unbounded (was 20 minutes).
 
 ## Thanks to our Contributors
 
