@@ -1277,12 +1277,6 @@ Status BaseGPUDeviceFactory::CreateDevices(
             "cudaSetDevice() on GPU:", platform_device_id.value(),
             " failed. Status: ", cudaGetErrorString(err));
       }
-      err = cudaFree(nullptr);
-      if (err != cudaSuccess) {
-        return errors::Internal("CUDA runtime implicit initialization on GPU:",
-                                platform_device_id.value(),
-                                " failed. Status: ", cudaGetErrorString(err));
-      }
       int priority_low, priority_high;
       cudaDeviceGetStreamPriorityRange(&priority_low, &priority_high);
       if (err != cudaSuccess) {
