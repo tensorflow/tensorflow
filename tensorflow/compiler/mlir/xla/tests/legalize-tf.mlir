@@ -2731,6 +2731,25 @@ func @slice_variable_start_negative_one_size(%arg0: tensor<3x4xi32>, %arg1: tens
   return %0 : tensor<1x4xi32>
 }
 
+// CHECK-LABEL: slice_real_dynamic_slice
+func @slice_real_dynamic_slice(%arg0: tensor<4xi32>, %arg1: tensor<1xi64>, %arg2: tensor<1xi64>) -> tensor<*xi32> {
+  // CHECK: tensor.extract {{.*}} : tensor<1xi64>
+  // CHECK: tensor.extract {{.*}} : tensor<1xi64>
+  // CHECK: index_cast {{.*}} : index to i64
+  // CHECK: cmpi eq, {{.*}} : i64
+  // CHECK: addi {{.*}} : i64
+  // CHECK: memref.dim {{.*}} : tensor<4xi32>
+  // CHECK: index_cast {{.*}} : index to i64
+  // CHECK: select {{.*}} : i64
+  // CHECK: index_cast {{.*}} : i64 to index
+  // CHECK: index_cast {{.*}} : i64 to index
+  // CHECK: tensor.from_elements {{.*}} : tensor<1xindex>
+  // CHECK: tensor.from_elements {{.*}} : tensor<1xindex>
+  // CHECK: tensor.from_elements {{.*}} : tensor<1xindex>
+  %0 = "tf.Slice"(%arg0, %arg1, %arg2) : (tensor<4xi32>, tensor<1xi64>, tensor<1xi64>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
 //===----------------------------------------------------------------------===//
 // StridedSlice op legalizations.
 //===----------------------------------------------------------------------===//
@@ -3882,7 +3901,16 @@ func @split_not_match_non_const_split_dim(%input: tensor<4x4xf32>, %split_dim: t
 // CHECK-LABEL: @split_not_match_unknown_input_dim
 func @split_not_match_unknown_input_dim(%input: tensor<4x?x4xf32>) -> (tensor<4x?x4xf32>, tensor<4x?x4xf32>) {
   %cst = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: tf.Split
+  // CHECK: memref.dim {{.*}} : tensor<4x?x4xf32>
+  // CHECK: divi_signed {{.*}} : index
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
+  // CHECK: "mhlo.real_dynamic_slice"({{.*}}) : (tensor<4x?x4xf32>, tensor<3xindex>, tensor<3xindex>, tensor<3xindex>) -> tensor<4x?x4xf32>
+  // CHECK: muli {{.*}} : index
+  // CHECK: muli {{.*}} : index
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
+  // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
+  // CHECK: "mhlo.real_dynamic_slice"({{.*}}) : (tensor<4x?x4xf32>, tensor<3xindex>, tensor<3xindex>, tensor<3xindex>) -> tensor<4x?x4xf32>
   %0:2 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x?x4xf32>) -> (tensor<4x?x4xf32>, tensor<4x?x4xf32>)
   return %0#0, %0#1 : tensor<4x?x4xf32>, tensor<4x?x4xf32>
 }
