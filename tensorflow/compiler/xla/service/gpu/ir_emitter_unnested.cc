@@ -192,49 +192,6 @@ bool BinarySearchDenseElementsAttr(mlir::DenseIntElementsAttr elements,
       [](const mlir::APInt& x, const mlir::APInt& y) { return x.slt(y); });
 }
 
-// Returns true if the fusion contains any instruction that is likely
-// translated to complex LLVM IR, such as loops, and prevent vectorization.
-bool MayPreventVectorization(const HloInstruction& hlo) {
-  if (hlo.opcode() == HloOpcode::kFusion) {
-    return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
-                          [](const HloInstruction* instr) {
-                            switch (instr->opcode()) {
-                              case HloOpcode::kReduceWindow:
-                              case HloOpcode::kSort:
-                              case HloOpcode::kDot:
-                              case HloOpcode::kSin:
-                              case HloOpcode::kCos:
-                              case HloOpcode::kPower:
-                              case HloOpcode::kAtan2:
-                                return true;
-                              case HloOpcode::kReduce:
-                                return !instr->shape().IsArray();
-                              default:
-                                return false;
-                            }
-                          });
-  } else if (hlo.IsElementwise()) {
-    // Unfused elementwise operations are usually memory bound, unroll them.
-    switch (hlo.opcode()) {
-        // The following elementwise operation implementations contain branches.
-        // LLVM vectorizer doesn't work in that case.
-        // The unrolled code is faster when it isn't vectorized.
-      case HloOpcode::kSin:
-      case HloOpcode::kCos:
-      case HloOpcode::kPower:
-      case HloOpcode::kAtan2:
-        return true;
-      default:
-        return false;
-    }
-  } else if (hlo.opcode() == HloOpcode::kReduce && hlo.shape().IsArray()) {
-    // TODO(timshen): check if the to_apply() attribute contains instructions
-    // that break LLVM vectorization.
-    return false;
-  }
-  return true;
-}
-
 bool LmhloOpIsElementwise(mlir::Operation* op) {
   CHECK(op->getDialect() ==
         op->getContext()->getLoadedDialect<mlir::lmhlo::LmhloDialect>());
