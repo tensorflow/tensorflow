@@ -259,11 +259,6 @@ if __name__ == "__main__":
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
     for dtype in dtypes_to_test:
-      if test_util.is_xla_enabled() and (dtype == np.int32 or
-                                         dtype == np.int64):
-        # TODO(b/171924639): Enable this test when XLA DOT supports
-        # integer types.
-        continue
       for m in sizes:
         for n in sizes:
           for k in sizes:
