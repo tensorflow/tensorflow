@@ -1070,6 +1070,9 @@ cc_library(
 tf_cc_test(
     name = "sharding_util_ops_test",
     srcs = ["sharding_util_ops_test.cc"],
+    tags = [
+        "no_windows",  # TODO(b/192364318)
+    ],
     deps = [
         ":sharding_util_ops",
         "//tensorflow/core:core_cpu",
