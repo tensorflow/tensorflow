@@ -370,15 +370,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(output), GetTensorData<float>(output),
             zero_points_ptr, row_sums_ptr, &op_data->compute_row_sums);
         return kTfLiteOk;
-        TfLiteTensor* output_temp;
-        TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/1,
-                                                    &output_temp));
       }
       auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
           input->quantization.params);
       auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
           output->quantization.params);
-      TfLiteTensor* output_temp = GetTemporary(context, node, /*index=*/1);
+      TfLiteTensor* output_temp;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, /*index=*/1, &output_temp));
 
       // Currently supports only ReLU.
       // TODO(jianlijianli): support other activations.
