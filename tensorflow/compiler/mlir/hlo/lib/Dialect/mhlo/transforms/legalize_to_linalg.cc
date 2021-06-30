@@ -2017,9 +2017,9 @@ struct ReduceWindowOpOnTensorsConversion
       return rewriter.notifyMatchFailure(op, "require paddings are all zero");
     }
 
-    SmallVector<int64_t, 2> shapes;
-    shapes.push_back(op.window_dimensions().getValue<int64_t>(1));
-    shapes.push_back(op.window_dimensions().getValue<int64_t>(2));
+    SmallVector<int64_t, 2> fake_window_shapes;
+    fake_window_shapes.push_back(op.window_dimensions().getValue<int64_t>(1));
+    fake_window_shapes.push_back(op.window_dimensions().getValue<int64_t>(2));
 
     if (op.window_strides() &&
         (op.window_strides().getValue().getValue<int64_t>(0) != 1 ||
@@ -2067,9 +2067,38 @@ struct ReduceWindowOpOnTensorsConversion
 
       // Create a fake window dimension.
       auto fake_window_dims = rewriter.create<linalg::InitTensorOp>(
-          loc, shapes, result_type.getElementType());
+          loc, fake_window_shapes, result_type.getElementType());
+
+      SmallVector<Value> result_dynamic_dims;
+      for (auto& en : llvm::enumerate(result_type.getShape())) {
+        if (en.value() != ShapedType::kDynamicSize) continue;
+        Value dim_size = rewriter.create<memref::DimOp>(loc, input, en.index());
+        if (en.index() == 0 || en.index() == rank - 1) {
+          // batch dims and channel dims can be derived from input dims
+          // directly.
+          result_dynamic_dims.push_back(dim_size);
+        } else {
+          auto i = en.index() - 1;
+          auto stride =
+              strides.cast<DenseIntElementsAttr>().getValue<int64_t>(i);
+          auto dilation =
+              dilations.cast<DenseIntElementsAttr>().getValue<int64_t>(i);
+          // let j = i * stride
+          // output[i] = reduce( input[j, j + window_size * dilation) )
+          Value offset = rewriter.create<ConstantIndexOp>(
+              loc, fake_window_shapes[i] * dilation);
+          dim_size = rewriter.create<SubIOp>(loc, dim_size, offset);
+          dim_size = rewriter.create<UnsignedDivIOp>(
+              loc, dim_size, rewriter.create<ConstantIndexOp>(loc, stride));
+          dim_size = rewriter.create<AddIOp>(
+              loc, dim_size, rewriter.create<ConstantIndexOp>(loc, 1));
+          result_dynamic_dims.push_back(dim_size);
+        }
+      }
       Value init_tensor = rewriter.create<linalg::InitTensorOp>(
-          loc, result_type.getShape(), result_type.getElementType());
+          loc, result_dynamic_dims, result_type.getShape(),
+          result_type.getElementType());
+
       init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
       Value filled_init_tensor =
           rewriter.create<linalg::FillOp>(loc, init_value, init_tensor)
