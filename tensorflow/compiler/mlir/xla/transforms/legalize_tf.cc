@@ -3626,7 +3626,6 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
       slices.push_back(rewriter.create<RealDynamicSliceOp>(
           loc, op.getOperation()->getResult(i).getType(), input, begin_value,
           end_value, stride_value));
-      slices.back().dump();
     }
 
     rewriter.replaceOp(op, slices);
