@@ -256,6 +256,7 @@ using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_cgemm_strided_batched)	\
   __macro(rocblas_zgemm_strided_batched)	\
   __macro(rocblas_gemm_ex)			\
+  __macro(rocblas_gemm_strided_batched_ex)      \
   __macro(rocblas_create_handle)		\
   __macro(rocblas_destroy_handle)		\
   __macro(rocblas_set_stream)
