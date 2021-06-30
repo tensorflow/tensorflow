@@ -27,13 +27,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_impl
 # The following import is required to register the gradient function
 from tensorflow.python.ops.nn_grad import _FusedBatchNormV3Grad # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class FusedBatchNormalizationDeterministicTest(test.TestCase):
   """Test determinsitic functionality and exceptions for FusedBatchNorm.
 
@@ -76,10 +76,8 @@ class FusedBatchNormalizationDeterministicTest(test.TestCase):
         np.random.normal(size=y_shape), dtype=y_dtype)
     return x, scale, offset, mean, variance, upstream_gradients
 
-  @test_util.run_in_graph_and_eager_modes
   def testForward(self):
     with self.cached_session():
-      np.random.seed(123)
       for data_format in ['NHWC', 'NCHW']:
         for large_batch in [False, True]:
           for x_dtype in [dtypes.float16, dtypes.float32]: # skipping bfloat16
@@ -107,10 +105,8 @@ class FusedBatchNormalizationDeterministicTest(test.TestCase):
                   self.assertAllEqual(running_mean_a, running_mean_b)
                   self.assertAllEqual(running_var_a, running_var_b)
 
-  @test_util.run_in_graph_and_eager_modes
   def testBackward(self):
     with self.cached_session():
-      np.random.seed(456)
       for data_format in ['NHWC', 'NCHW']:
         for large_batch in [False, True]:
           for x_dtype in [dtypes.float16, dtypes.float32]: # skipping bfloat16
@@ -124,18 +120,18 @@ class FusedBatchNormalizationDeterministicTest(test.TestCase):
                       x, scale, offset, mean, variance, data_format=data_format,
                       is_training=is_training, exponential_avg_factor=0.99)
                   gradient_injector_output = op_output[0] * upstream_gradients
-                if (len(config.list_physical_devices('GPU')) > 0 and
-                    is_training == False):
+                if (len(config.list_physical_devices('GPU')) and
+                    not is_training):
                   # Only backprop to offset is nondeterministic (on GPU, when
                   # is_training=False), but backprop to the other parameters is
-                  # calculated using the same same kernel.
+                  # calculated using the same kernel.
                   with self.assertRaisesRegex(
                       errors_impl.UnimplementedError,
                       "A deterministic GPU implementation of fused batch-norm" +
                       " backprop, when training is disabled, is not currently" +
                       " available."):
                     grad = tape.gradient(gradient_injector_output, backprop_to)
-                    grad = self.evaluate(grad)
+                    self.evaluate(grad)
                 else:
                   grad_a = tape.gradient(gradient_injector_output, backprop_to)
                   grad_a = self.evaluate(grad_a)

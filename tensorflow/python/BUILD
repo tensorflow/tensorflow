@@ -2922,10 +2922,8 @@ cuda_py_test(
     size = "small",
     srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
     python_version = "PY3",
-    shard_count = 1,
     tags = ["no_rocm"],
     deps = [
-        ":array_ops",
         ":client_testlib",
         ":config",
         ":constant_op",
