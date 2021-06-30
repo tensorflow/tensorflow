@@ -971,7 +971,8 @@ Status HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->set_sharding(old_instruction->sharding_ptr());
   }
 
-  TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
+  TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWithDifferentShape(
+      new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 

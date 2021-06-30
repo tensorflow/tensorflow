@@ -17,13 +17,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 namespace gpu {
 
 // Returns true if all instructions are supported operations.
-bool AreInstructionSupported(HloComputation* comp) {
-  for (HloInstruction* instr: comp->instructions()) {
+static bool AreInstructionSupported(HloComputation* comp) {
+  for (HloInstruction* instr : comp->instructions()) {
     bool supported =
         HloInstruction::IsOpElementwise(instr->opcode()) ||
         instr->opcode() == HloOpcode::kConstant ||
@@ -35,13 +36,13 @@ bool AreInstructionSupported(HloComputation* comp) {
         (instr->opcode() == HloOpcode::kReduce &&
          (comp->root_instruction() == instr ||
           (instr->users().size() == 1 &&
-           instr->users()[0]->opcode() == HloOpcode::kTuple)))||
+           instr->users()[0]->opcode() == HloOpcode::kTuple))) ||
         instr->opcode() == HloOpcode::kTuple ||
         instr->opcode() == HloOpcode::kParameter ||
         (instr->opcode() == HloOpcode::kBitcast &&
          instr->shape().rank() < instr->operand(0)->shape().rank()) ||
         (instr->opcode() == HloOpcode::kBroadcast &&
-         (instr->dimensions().size() == 0 ||   // scalar broadcasting
+         (instr->dimensions().empty() ||       // scalar broadcasting
           (instr->dimensions().size() == 1 &&  // row broadcasting
            instr->dimensions()[0] == (instr->shape().rank() - 1))));
     if (!supported) {
@@ -59,14 +60,12 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
     // Copy the instruction list as we modify the HloComputation.
     std::vector<HloInstruction*> comp_instruction(comp->instructions().begin(),
                                                   comp->instructions().end());
-    for (auto it = comp_instruction.begin(); it != comp_instruction.end();
-         it++) {
+    for (HloInstruction* instr : comp_instruction) {
       // 1) Is this a fusion that we want to modify.
-      HloInstruction* instr = *it;
-      if (HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(instr)) {
+      if (auto* fusion = DynCast<HloFusionInstruction>(instr)) {
         // 1.1) We only support kInput fusion and some operations.
         if (fusion->fusion_kind() != HloInstruction::FusionKind::kInput ||
-	    !AreInstructionSupported(
+            !AreInstructionSupported(
                 fusion->fused_instructions_computation())) {
           continue;
         }
@@ -87,7 +86,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	  if (fused_instr->opcode() == HloOpcode::kBitcast &&
 	      fused_instr->shape().rank() <
 	      fused_instr->operand(0)->shape().rank()) {
-	    if (bitcasts.size() > 0 && (
+	    if (!bitcasts.empty() && (
                     !ShapeUtil::Equal(fused_instr->shape(),
 				      bitcasts[0]->shape()) ||
                     !ShapeUtil::Equal(bitcasts[0]->operand(0)->shape(),
@@ -108,7 +107,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	std::vector<HloInstruction*> stack(
 					   {cloned_fusion->fused_expression_root()});
 	bool clone_changed = false;
-	while (stack.size() > 0) {
+	while (!stack.empty()) {
 	  HloInstruction* i = stack.back();
 	  stack.pop_back();
 	  if (i->opcode() == HloOpcode::kTuple) {
@@ -133,8 +132,8 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	    for (HloInstruction* param_user : old_users) {
 	      DCHECK(param_user->opcode() == HloOpcode::kBitcast)
 		<< "Expected a bitcast";
-	      param_user->parent()->ReplaceInstructionWithDifferentShape(
-									 param_user, new_parameter);
+	      TF_RETURN_IF_ERROR(param_user->parent()->ReplaceInstructionWithDifferentShape(
+                  param_user, new_parameter));
 	    }
 	    // Replace the corresponding fusion operands with a new bitcast.
 	    HloInstruction* old_outer_parameter =
@@ -142,9 +141,9 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	    HloInstruction* new_op =
 	      old_outer_parameter->parent()->AddInstruction(
                     HloInstruction::CreateBitcast(new_shape,
-						  old_outer_parameter));
-	    cloned_fusion->ReplaceOperandWithDifferentShape(
-                parameter_number, new_op);
+                                                  old_outer_parameter));
+            TF_RETURN_IF_ERROR(cloned_fusion->ReplaceOperandWithDifferentShape(
+                parameter_number, new_op));
 	    clone_changed = true;
 	    changed = true;
 	  } else if (i->opcode() == HloOpcode::kBroadcast) {
@@ -152,7 +151,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	    // and the bitcast, but this doesn't bring benefit in my
 	    // current case.
 	    stack.push_back(i->mutable_operand(0));
-	  } else if (i->users().size() > 0 &&
+	  } else if (!i->users().empty() &&
 		     absl::c_all_of(i->users(), [](HloInstruction* u) {
                          return u->opcode() == HloOpcode::kBitcast;
                        })) {
@@ -162,7 +161,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	    for (HloInstruction* opnd : i->operands()) {
 	      Shape dtyped_new_shape = ShapeUtil::ChangeElementType(
                   new_shape, opnd->shape().element_type());
-	      HloInstruction* new_opnd = opnd->parent()->AddInstruction(
+              HloInstruction* new_opnd = opnd->parent()->AddInstruction(
                   HloInstruction::CreateBitcast(dtyped_new_shape, opnd));
 	      new_operands.push_back(new_opnd);
 	      // Handle the operand right before the inserted bitcast now.
@@ -173,13 +172,13 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	    }
 	    Shape dtyped_new_shape = ShapeUtil::ChangeElementType(
                 new_shape, i->shape().element_type());
-	    HloInstruction* cloned_i = i->parent()->AddInstruction(
+            HloInstruction* cloned_i = i->parent()->AddInstruction(
                 i->CloneWithNewOperands(dtyped_new_shape, new_operands));
 	    // Replace the old bitcasts with the new instruction to
 	    // remove it.
 	    for (HloInstruction* user: i->users()) {
-	      i->parent()->ReplaceInstructionWithDifferentShape(
-                  user, cloned_i);
+	      TF_RETURN_IF_ERROR(i->parent()->ReplaceInstructionWithDifferentShape(
+                  user, cloned_i));
 	    }
 	    clone_changed = true;
 	    changed = true;
@@ -191,10 +190,10 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
 	DCHECK(clone_changed) << "We should have changed the fusion!";
 	if (clone_changed) {
 	  // 3) Replace the old fusion with the new fusion.
-	  fusion->parent()->ReplaceWithNewInstruction(
-              fusion, std::move(cloned_fusion));
-	}
-      } // if fusion
+	  TF_RETURN_IF_ERROR(fusion->parent()->ReplaceWithNewInstruction(
+              fusion, std::move(cloned_fusion)));
+        }
+      }  // if fusion
     }
   }
   XLA_VLOG_LINES(2, "FusionBitcastLift::Run(), after:\n" + module->ToString());
