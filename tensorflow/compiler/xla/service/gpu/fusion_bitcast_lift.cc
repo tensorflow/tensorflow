@@ -164,8 +164,10 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             // For now, do nothing. Later we can merge the broadcast
             // and the bitcast, but this doesn't bring benefit in my
             // current case.
-            stack.push_back(i->mutable_operand(0));
-            set.insert(i->mutable_operand(0));
+            if (set.count(i->mutable_operand(0)) == 0) {
+              stack.push_back(i->mutable_operand(0));
+              set.insert(i->mutable_operand(0));
+            }
           } else if (!i->users().empty() &&
                      absl::c_all_of(i->users(), [](HloInstruction* u) {
                          return u->opcode() == HloOpcode::kBitcast;
@@ -198,10 +200,12 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             clone_changed = true;
             changed = true;
           } else {
-            stack.insert(stack.end(), i->operands().begin(),
-                         i->operands().end());
-            set.insert(i->operands().begin(),
-                       i->operands().end());
+            for(auto* opnd : i->operands()) {
+              if (set.count(opnd) == 0) {
+                stack.push_back(opnd);
+                set.insert(opnd);
+              }
+            }
           }
         }  // while
         DCHECK(clone_changed) << "We should have changed the fusion!";
