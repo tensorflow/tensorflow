@@ -4874,7 +4874,7 @@ def reverse_sequence_v2(input,
                              ("The `validate_indices` argument has no effect. "
                               "Indices are always validated on CPU and never "
                               "validated on GPU."),
-                             "validate_indices")
+                             ("validate_indices", None))
 @dispatch.add_dispatch_support
 def gather(params,
            indices,
