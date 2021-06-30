@@ -952,6 +952,9 @@ cc_library(
     deps = [
         ":hlo",
         ":pass_details",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:TensorDialect",
     ],
 )
 
