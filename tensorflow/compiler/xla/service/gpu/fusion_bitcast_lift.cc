@@ -110,15 +110,23 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
         //       bitcast up across one instruction at a time.
         std::unique_ptr<HloInstruction> cloned_fusion =
           fusion->Clone("bitcast");
+        // The following stack and set always contain the same data.
+        // The stack is used for the order of traversal.
+        // The set is used only as an optimization to search in the set.
         std::vector<HloInstruction*> stack(
-                                           {cloned_fusion->fused_expression_root()});
+            {cloned_fusion->fused_expression_root()});
+        absl::flat_hash_set<HloInstruction*> set(
+            {cloned_fusion->fused_expression_root()});
         bool clone_changed = false;
         while (!stack.empty()) {
           HloInstruction* i = stack.back();
           stack.pop_back();
+          set.erase(i);
           if (i->opcode() == HloOpcode::kTuple) {
             stack.insert(stack.end(), i->operands().begin(),
                          i->operands().end());
+            set.insert(i->operands().begin(),
+                       i->operands().end());
             continue;
           } else if (i->opcode() == HloOpcode::kParameter &&
                      absl::c_all_of(i->users(), [](HloInstruction* u) {
@@ -157,6 +165,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             // and the bitcast, but this doesn't bring benefit in my
             // current case.
             stack.push_back(i->mutable_operand(0));
+            set.insert(i->mutable_operand(0));
           } else if (!i->users().empty() &&
                      absl::c_all_of(i->users(), [](HloInstruction* u) {
                          return u->opcode() == HloOpcode::kBitcast;
@@ -171,9 +180,9 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
                   HloInstruction::CreateBitcast(dtyped_new_shape, opnd));
               new_operands.push_back(new_opnd);
               // Handle the operand right before the inserted bitcast now.
-              if (std::find(stack.begin(), stack.end(), opnd) ==
-                  stack.end()) {
+              if (set.count(opnd) == 0) {
                 stack.push_back(opnd);
+                set.insert(opnd);
               }
             }
             Shape dtyped_new_shape = ShapeUtil::ChangeElementType(
@@ -191,6 +200,8 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
           } else {
             stack.insert(stack.end(), i->operands().begin(),
                          i->operands().end());
+            set.insert(i->operands().begin(),
+                       i->operands().end());
           }
         }  // while
         DCHECK(clone_changed) << "We should have changed the fusion!";
