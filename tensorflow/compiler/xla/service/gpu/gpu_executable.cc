@@ -133,6 +133,9 @@ Status GpuExecutable::ExecuteThunks(
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
 
+  TF_ASSIGN_OR_RETURN(StreamPool::Ptr async_comms_stream,
+                      run_options->BorrowStream(executor->device_ordinal()));
+
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
     LOG(WARNING) << "PROFILING: profiling is enabled";
@@ -182,6 +185,7 @@ Status GpuExecutable::ExecuteThunks(
     Thunk::ExecuteParams thunk_params{
         &buffer_allocations,
         stream,
+        async_comms_stream.get(),
         run_options->run_options().run_id(),
         &profiler,
         run_options->run_options().device_assignment(),
