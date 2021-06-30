@@ -284,48 +284,50 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicPadder>();
 
-    {
-      auto& pass =
-          pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-      pass.AddInvariantCheckerDebug<HloVerifier>(
+    // Build simplification pipeline.  The passes in here are run to a fixed
+    // point.
+    [&pipeline =
+         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
+      pipeline.AddInvariantCheckerDebug<HloVerifier>(
           /*layout_sensitive=*/false,
           /*allow_mixed_precision=*/false);
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
-      pass.AddPass<ZeroSizedHloElimination>();
+      pipeline.AddPass<ZeroSizedHloElimination>();
 
-      pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
-      pass.AddPass<ScatterExpander>(ScatterExpander::kEliminateSimpleScatters);
+      pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+      pipeline.AddPass<ScatterExpander>(
+          ScatterExpander::kEliminateSimpleScatters);
 
       AlgebraicSimplifierOptions options;
       // When transposes appear in a fusion node, we can easily adjust the
-      // multi-dimensional index to create the one needed for the operand. This
-      // is not as easy with bitcasts, because we don't have the information
-      // readily available which dimensions are permuted. In addition to that,
-      // if we have a transpose and a reshape next to each other, they will both
-      // be replaced by a bitcast, and we replace bitcast(bitcast) with one
-      // bitcast. This leads to having to linearize and then delinearize the
-      // index.
+      // multi-dimensional index to create the one needed for the operand.
+      // This is not as easy with bitcasts, because we don't have the
+      // information readily available which dimensions are permuted. In
+      // addition to that, if we have a transpose and a reshape next to each
+      // other, they will both be replaced by a bitcast, and we replace
+      // bitcast(bitcast) with one bitcast. This leads to having to
+      // linearize and then delinearize the index.
       options.set_replace_transpose_with_bitcast(false);
       options.set_enable_conv_operand_swap(false);
-      pass.AddPass<AlgebraicSimplifier>(options);
+      pipeline.AddPass<AlgebraicSimplifier>(options);
       // AlgebraicSimplifier may add contracting dimensions to a dot.
-      pass.AddPass<DotDecomposer>();
-      pass.AddPass<SortSimplifier>();
-      pass.AddPass<TupleSimplifier>();
-      pass.AddPass<WhileLoopConstantSinking>();
-      pass.AddPass<WhileLoopSimplifier>();
+      pipeline.AddPass<DotDecomposer>();
+      pipeline.AddPass<SortSimplifier>();
+      pipeline.AddPass<TupleSimplifier>();
+      pipeline.AddPass<WhileLoopConstantSinking>();
+      pipeline.AddPass<WhileLoopSimplifier>();
 
       // TODO(b/134075051): Re-enable after b/134075051 is fixed.
-      // pass.AddPass<SliceSinker>();
+      // pipeline.AddPass<SliceSinker>();
 
-      pass.AddPass<HloDCE>();
-      pass.AddPass<ReshapeMover>();
-      pass.AddPass<HloConstantFolding>();
-      pass.AddPass<ConditionalSimplifier>();
+      pipeline.AddPass<HloDCE>();
+      pipeline.AddPass<ReshapeMover>();
+      pipeline.AddPass<HloConstantFolding>();
+      pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
-    }
+    }();
 
     pipeline.AddPass<TransposeFolding>(
         [](const HloInstruction& dot,
@@ -420,8 +422,10 @@ Status GpuCompiler::OptimizeHloModule(
                            /*only_fusion_computations=*/true);
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+  }
 
-    HloPassFix<HloPassPipeline> horizontal_fusion("horizontal_fusion");
+  {
+    HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
     horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
@@ -431,42 +435,31 @@ Status GpuCompiler::OptimizeHloModule(
   }
 
   {
-    HloPassPipeline pipeline("all_gather_combiner");
+    HloPassPipeline pipeline("post-fusion optimization");
     pipeline.AddPass<AllGatherCombiner>(
         /*combine_threshold_in_bytes=*/1024 * 1024 * 1024,
         /*combine_threshold_count=*/256);
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  {
-    HloPassPipeline pipeline("all_reduce_combiner");
     pipeline.AddPass<AllReduceCombiner>(
         /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
         /*combine_threshold_count=*/256);
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
 
-  if (hlo_module->config().debug_options().xla_gpu_enable_async_all_reduce()) {
-    HloPassPipeline pipeline("async_all_reduce_creator");
-    pipeline.AddPass<AsyncAllReduceCreator>();
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
+    if (hlo_module->config()
+            .debug_options()
+            .xla_gpu_enable_async_all_reduce()) {
+      pipeline.AddPass<AsyncAllReduceCreator>();
+    }
 
-  {
-    HloPassPipeline pipeline("collectives_schedule_linearizer");
     pipeline.AddPass<CollectivesScheduleLinearizer>();
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
 
-  {
-    // Now we allow to replace any transposes outside of fusions with bitcasts.
-    HloPassPipeline pipeline("final_algebraic_simplifier");
+    // Now we allow replacing any transposes outside of fusions with bitcasts.
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
     pipeline.AddPass<AlgebraicSimplifier>(options);
+
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+
   return Status::OK();
 }
 
