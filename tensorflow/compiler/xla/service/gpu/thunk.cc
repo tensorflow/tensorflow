@@ -84,8 +84,6 @@ StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
       return "kSequential";
     case Thunk::kTriangularSolve:
       return "kTriangularSolve";
-    case Thunk::kTuple:
-      return "kTuple";
     case Thunk::kWhile:
       return "kWhile";
   }

@@ -70,7 +70,6 @@ class Thunk {
     kPartitionId,
     kSequential,
     kTriangularSolve,
-    kTuple,
     kWhile,
   };
 
