@@ -275,6 +275,15 @@ inline std::string MlirToString(mlir::Operation* op) {
   return s;
 }
 
+inline std::string MlirToString(const mlir::Location& loc) {
+  std::string s;
+  {
+    llvm::raw_string_ostream os(s);
+    loc.print(os);
+  }
+  return s;
+}
+
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);

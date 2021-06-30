@@ -436,8 +436,8 @@ class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     }
     LogicalResult reifyReturnTypeShapes(OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-          operands, &reifiedReturnShapes);
+      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
+          operands.front(), &reifiedReturnShapes);
     }
   }];
 }
@@ -576,12 +576,12 @@ def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
   }];
 }
 
-def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
-    [NoSideEffect, HLOClient_Broadcasting, HLO_BroadcastingElementwise,
-     SameOperandsAndResultShape, InferTypeOpInterface,
-     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-         ["inferReturnTypeComponents"]>,
-     NativeOpTrait<"InferTensorType">]> {
+def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
+    HLOClient_Broadcasting, HLO_BroadcastingElementwise,
+    SameOperandsAndResultShape, InferTypeOpInterface,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
+    NativeOpTrait<"InferTensorType">]> {
   let summary = "Constant like operator";
 
   let description = [{
@@ -709,7 +709,7 @@ def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
     HLOClient_Broadcasting,
     HLO_BroadcastingElementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-    "inferReturnTypeComponents"]>]> {
+    "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{

@@ -435,7 +435,7 @@ absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
     int64 dst_per_shard_size =
         padded_dst_shape.dimensions(dim) / dst_shard_count;
 
-    // If src per shard doesn't have redudant data.
+    // If src per shard doesn't have redundant data.
     if (src_per_shard_size <= dst_per_shard_size || dst_shard_count == 1) {
       continue;
     }

@@ -3909,6 +3909,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'path\', \'shard_func_other_args\', \'shard_func\', \'compression\', \'use_shard_func\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\'], "
   }
   member_method {
+    name: "SaveDatasetV2"
+    argspec: "args=[\'input_dataset\', \'path\', \'shard_func_other_args\', \'shard_func\', \'output_types\', \'output_shapes\', \'compression\', \'use_shard_func\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "SaveSlices"
     argspec: "args=[\'filename\', \'tensor_names\', \'shapes_and_slices\', \'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

@@ -863,6 +863,7 @@ tf_py_test(
     tags = [
         "no_tsan",  # TODO(b/191433147): reenable
         "no_windows",  # TODO(b/182379890)
+        "notap",  # TODO(b/192359227)
     ],
     deps = [
         ":checkpoint_test_base",

@@ -2221,13 +2221,19 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
   for (int64 i = 0; i < hlo->shape().rank(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) != hlo->shape().dimensions(i)) {
       slice_dims.push_back(i);
+      int64 slice_size = hlo->operand(1)->shape().dimensions(i);
       if (hlo->sharding().tile_assignment().dim(i) != 1) {
-        if (!hlo->operand(i + 2)->IsConstant()) {
+        if (!hlo->operand(i + 2)->IsConstant() && slice_size != 1) {
           return DefaultAction(hlo);
         }
         partitioned_slice_dims.push_back(i);
-        partitioned_slice_offsets.push_back(
-            hlo->operand(i + 2)->literal().Get<int>({}));
+        // Set partitioned_slice_offsets to -1 when slice_size is 1.
+        if (slice_size == 1) {
+          partitioned_slice_offsets.push_back(-1);
+        } else {
+          partitioned_slice_offsets.push_back(
+              hlo->operand(i + 2)->literal().Get<int>({}));
+        }
       }
     } else if (hlo->sharding().tile_assignment().dim(i) != 1) {
       if (!hlo->operand(i + 2)->IsConstant() ||
@@ -2264,6 +2270,8 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
           hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(dus_sharding,
                                                                    slice_dims);
     }
+
+    // TODO(wangtao): use collective permute for sharded update.
     HloInstruction* replicate_update =
         GetPartitionedHlo(hlo->operand(1)).Reshard(update_sharding).hlo();
 
@@ -2280,9 +2288,13 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
       const int64 per_partition_size = partitioned_shape.dimensions(dim);
 
       // Only update within a single partition is supported.
-      if ((partitioned_slice_offsets[i] / per_partition_size) !=
-          ((partitioned_slice_offsets[i] + update_shape.dimensions(dim) - 1) /
-           per_partition_size)) {
+      // Will ignore this check when slice size is 1 where
+      // partitioned_slice_offsets[i] is -1.
+      if ((partitioned_slice_offsets[i] != -1) &&
+          (partitioned_slice_offsets[i] / per_partition_size) !=
+              ((partitioned_slice_offsets[i] + update_shape.dimensions(dim) -
+                1) /
+               per_partition_size)) {
         return DefaultAction(hlo);
       }
 

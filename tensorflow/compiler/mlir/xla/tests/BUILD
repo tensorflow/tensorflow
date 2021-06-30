@@ -16,12 +16,14 @@ glob_lit_tests(
             "noasan",
             "nomsan",
             "noubsan",
+            "no_cuda_san",
         ],  # b/171751580
         "hlo_to_lhlo_with_xla/ops.mlir": tf_cuda_tests_tags() + [
             "nomsan",
         ],  # b/191025174
         "hlo_to_lhlo_with_xla/passthrough.mlir": tf_cuda_tests_tags() + [
             "nomsan",
+            "no_cuda_san",
         ],  # b/191025174
     },
     test_file_exts = [

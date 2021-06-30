@@ -37,13 +37,16 @@ bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
                                  DenseIntElementsAttr broadcast_dims);
 
 // Emits shape dialect ops to compute the result shape for a broadcasting
-// binary elementwise op which broadcasts according to "numpy" semantics
-// (see above), returning a `shape.shape` or an extent tensor of the resulting
-// shape. The result should only be an extent tensor in contexts that ensure
-// both operands to be broadcastable.
-Value ComputeBinaryElementwiseBroadcastingResultExtents(
-    Location loc, Value lhs, Value rhs, OpBuilder& builder,
-    bool unsafe_as_extent_tensor);
+// binary/n-ary elementwise op which broadcasts according to "numpy" semantics
+// (see above), returning an extent tensor of the resulting shape. The function
+// should only be used in contexts that ensure both operands to be
+// broadcastable.
+Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
+                                                        Value rhs,
+                                                        OpBuilder& builder);
+Value ComputeNaryElementwiseBroadcastingResultExtents(Location loc,
+                                                      ValueRange operands,
+                                                      OpBuilder& builder);
 
 }  // namespace hlo
 }  // namespace mlir

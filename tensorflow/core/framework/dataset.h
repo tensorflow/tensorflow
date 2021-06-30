@@ -382,6 +382,7 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          is_restoring(ctx->is_restoring()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
@@ -441,6 +442,9 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
+    // Marks whether the iterator is restored from a checkpoint.
+    bool is_restoring = false;
+
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
@@ -496,6 +500,8 @@ class IteratorContext {
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
   }
+
+  bool is_restoring() { return params_.is_restoring; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -905,8 +911,10 @@ class DatasetBase : public core::RefCounted {
       IteratorStateReader* reader,
       std::unique_ptr<IteratorBase>* iterator) const {
     std::unique_ptr<IteratorBase> it;
-    TF_RETURN_IF_ERROR(
-        MakeIterator(ctx, /*parent=*/nullptr, output_prefix, &it));
+    IteratorContext::Params params(ctx);
+    params.is_restoring = true;
+    TF_RETURN_IF_ERROR(MakeIterator(IteratorContext(std::move(params)),
+                                    /*parent=*/nullptr, output_prefix, &it));
     TF_RETURN_IF_ERROR(it->Restore(ctx, reader));
     *iterator = std::move(it);
     return Status::OK();

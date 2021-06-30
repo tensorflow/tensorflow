@@ -310,14 +310,39 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/kernels/data:iterator_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "io_ops_test",
+    size = "small",
+    srcs = ["io_ops_test.cc"],
+    deps = [
+        ":io_ops",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:captured_function",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:function_testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels/data:range_dataset_op",
     ],
 )
 

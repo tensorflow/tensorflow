@@ -256,7 +256,10 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite/tools:logging"],
+    deps = [
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_test(

@@ -4579,6 +4579,33 @@ def where(condition, x=None, y=None, name=None):
 
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None.
+
+  @compatibility(TF2)
+
+  This API is compatible with eager execution and `tf.function`. However, this
+  is still a legacy API endpoint originally designed for TF1. To migrate to
+  fully-native TF2, please replace its usage with `tf.where` instead, which is
+  directly backwards compatible with `tf.compat.v1.where`.
+
+  However,`tf.compat.v1.where` is more restrictive than `tf.where`, requiring
+  `x` and `y` to have the same shape, and returning a `Tensor` with the same
+  type and shape as `x`, `y` (if they are both non-None).
+
+  `tf.where` will accept `x`, `y` that are not the same shape as long as they
+  are broadcastable with one another and with `condition`, and will return a
+  `Tensor` with shape broadcast from `condition`, `x`, and `y`.
+
+  For example, the following works with `tf.where` but not `tf.compat.v1.where`:
+
+  >>> tf.where([True, False, False, True], [1,2,3,4], [100])
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   4],
+  dtype=int32)>
+
+  >>> tf.where(True, [1,2,3,4], 100)
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4],
+  dtype=int32)>
+
+  @end_compatibility
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:

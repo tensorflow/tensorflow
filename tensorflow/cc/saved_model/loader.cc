@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/cc/experimental/libexport/metrics.h"
+#include "tensorflow/cc/experimental/libexport/util.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/cc/saved_model/reader.h"
@@ -67,7 +68,7 @@ auto* load_latency_by_stage = monitoring::Sampler<2>::New(
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 // `tensorflow::LoadSavedModel` API label.
-constexpr char kCCLoadV1Label[] = "cc_load";
+constexpr char kCCLoadLabel[] = "cc_load";
 
 uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
   const uint64 end_microseconds = EnvTime::NowMicros();
@@ -274,7 +275,12 @@ Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
                       SavedModelBundle* const bundle) {
-  metrics::ReadApi(kCCLoadV1Label).IncrementBy(1);
+  SavedModel saved_model_proto;
+  if (ReadSavedModel(export_dir, &saved_model_proto).ok()) {
+    std::string version = libexport::GetWriteVersion(saved_model_proto);
+    metrics::ReadApi(kCCLoadLabel, version).IncrementBy(1);
+  }
+
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();
   const Status status = LoadSavedModelInternal(session_options, run_options,

@@ -130,6 +130,7 @@ cc_library(
         ":delegate_only_runtime",
         "//tensorflow/lite/c:c_api_types",
     ],
+    alwayslink = 1,
 )
 
 # Delegate implementation that does *not* pull in the standard set of TensorFlow
@@ -188,7 +189,6 @@ tf_cc_test(
     srcs = ["delegate_test.cc"],
     tags = [
         "no_gpu",  # GPU + flex is not officially supported.
-        "no_mac",  # TODO(b/192099521): Re-enable this test on mac.
     ],
     deps = [
         ":delegate",

@@ -759,7 +759,7 @@ gpu_kernel_library(
     name = "gpu_polygamma_kernels",
     op = "polygamma",
     test_tags = [
-        "no_tsan",  # Frequently times-out.
+        "notsan",  # Frequently times-out. See b/191888012.
     ],
     tile_size = "256",
     types = [
@@ -914,6 +914,20 @@ gpu_kernel_library(
         "i8",
         "i16",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_mul_no_nan_kernels",
+    op = "mul_no_nan",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "4",
 )

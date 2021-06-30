@@ -50,6 +50,8 @@ constexpr char kTestFuzzGeneratedConstWithNoValue[] =
     "cc/saved_model/testdata/fuzz_generated/const_with_no_value";
 constexpr char kTestFuzzGeneratedBadNodeAttr[] =
     "cc/saved_model/testdata/fuzz_generated/bad_node_attr";
+constexpr char kTestCyclicModule[] = "cc/saved_model/testdata/CyclicModule";
+constexpr char kTestSimpleV1Model[] = "cc/saved_model/testdata/SimpleV1Model";
 
 class LoaderTest : public ::testing::Test {
  protected:
@@ -348,21 +350,40 @@ TEST_F(LoaderTest, BadNodeAttr) {
       std::string::npos);
 }
 
-TEST_F(LoaderTest, UpdateMetrics) {
+TEST_F(LoaderTest, UpdateMetricsV2) {
   SavedModelBundle bundle;
   SessionOptions session_options;
   RunOptions run_options;
-  const string kCCLoadV1Label = "cc_load";
+  const string kCCLoadLabel = "cc_load";
 
   const int read_count = metrics::Read().value();
-  const int api_count = metrics::ReadApi(kCCLoadV1Label).value();
+  const int api_count = metrics::ReadApi(kCCLoadLabel, "2").value();
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestCyclicModule);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
 
   EXPECT_EQ(metrics::Read().value(), read_count + 1);
-  EXPECT_EQ(metrics::ReadApi(kCCLoadV1Label).value(), api_count + 1);
+  EXPECT_EQ(metrics::ReadApi(kCCLoadLabel, "2").value(), api_count + 1);
+}
+
+TEST_F(LoaderTest, UpdateMetricsV1) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+  const string kCCLoadLabel = "cc_load";
+
+  const int read_count = metrics::Read().value();
+  const int api_count = metrics::ReadApi(kCCLoadLabel, "1").value();
+  const int api_count_v2 = metrics::ReadApi(kCCLoadLabel, "2").value();
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestSimpleV1Model);
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
+
+  EXPECT_EQ(metrics::Read().value(), read_count + 1);
+  EXPECT_EQ(metrics::ReadApi(kCCLoadLabel, "1").value(), api_count + 1);
+  EXPECT_EQ(metrics::ReadApi(kCCLoadLabel, "2").value(), api_count_v2);
 }
 
 }  // namespace

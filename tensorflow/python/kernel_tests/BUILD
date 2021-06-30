@@ -138,6 +138,7 @@ tf_py_test(
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
     tags = [
+        "no_windows",  # TODO(b/192259628)
         "noasan",  # TODO(b/164696004)
         "notsan",  # TODO(b/164696004)
     ],
@@ -1490,6 +1491,9 @@ cuda_py_test(
     name = "unique_op_test",
     size = "small",
     srcs = ["unique_op_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/192259045)
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

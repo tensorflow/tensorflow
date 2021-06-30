@@ -730,7 +730,7 @@ TfLiteStatus QuantizeOpInput(
           if (tensor_property.extend_to_power_of_two) {
             const int power_of_two_scale = utils::GetPowerOfTwoScale(
                 tensor->quantization->min[0], tensor->quantization->max[0]);
-            range = std::pow(2, power_of_two_scale);
+            range = std::pow(2, power_of_two_scale);  // NOLINT
             quantized_range = 32768.0;
           }
           const float scale = range / quantized_range;

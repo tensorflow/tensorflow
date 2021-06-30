@@ -819,11 +819,16 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         })
     self.assertAllEqual([[[5.0]]] * batch_size, result)
 
+  @parameterized.named_parameters([
+      ("LargeSegmentSize", 7),
+      ("NoMainGraphConversionSegmentSize", -1),
+  ])
   @test_util.deprecated_graph_mode_only
-  def testTrtGraphConverter_MinimumSegmentSize(self):
+  def testTrtGraphConverter_MinimumSegmentSize(self, minimum_segment_size):
     if not is_tensorrt_enabled():
       return
-    output_graph_def = self._ConvertGraphV1(minimum_segment_size=7)
+    output_graph_def = self._ConvertGraphV1(
+        minimum_segment_size=minimum_segment_size)
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
     self.assertEqual(
         {

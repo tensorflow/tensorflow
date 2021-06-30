@@ -2566,8 +2566,9 @@ LogicalResult SelectOp::inferReturnTypeComponents(
 LogicalResult SelectOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return deriveShapeFromFirstOperand(&builder, getOperation(), operands,
-                                     &reifiedReturnShapes);
+  // For `hlo.select`, the first operand may be a scalar.
+  return deriveShapeFromOperand(&builder, getOperation(), operands[1],
+                                &reifiedReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3856,8 +3857,8 @@ LogicalResult CompareOp::inferReturnTypeComponents(
 LogicalResult CompareOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
-  return deriveShapeFromFirstOperand(&builder, getOperation(), operands,
-                                     &reifiedReturnShapes);
+  return deriveShapeFromOperand(&builder, getOperation(), operands.front(),
+                                &reifiedReturnShapes);
 }
 
 template <typename T>
@@ -4206,21 +4207,16 @@ void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
 // Shape inference
 //===----------------------------------------------------------------------===//
 
-LogicalResult deriveShapeFromFirstOperand(
-    OpBuilder* builder, Operation* op, ValueRange operands,
+LogicalResult deriveShapeFromOperand(
+    OpBuilder* builder, Operation* op, Value operand,
     SmallVectorImpl<Value>* reifiedReturnShapes) {
-  Value operand = operands.front();
-  ShapedType operand_type = operand.getType().dyn_cast<ShapedType>();
-  if (!operand_type) {
-    op->emitOpError() << "first operand is not a shaped type";
+  auto shaped_ty = operand.getType().dyn_cast<ShapedType>();
+  if (!shaped_ty) {
+    op->emitOpError() << "operand is not a shaped type";
     return failure();
   }
-  auto loc = op->getLoc();
-  // Some users rely on the result type being a static shape.
-  auto shape_type =
-      RankedTensorType::get(operand_type.getRank(), builder->getIndexType());
   reifiedReturnShapes->assign(
-      {builder->create<shape::ShapeOfOp>(loc, shape_type, operand)});
+      {builder->create<shape::ShapeOfOp>(op->getLoc(), operand)});
   return success();
 }
 

@@ -440,6 +440,11 @@ enum BenchmarkEventType {
   ERROR = 3;
   // Benchmark data has been sent for logging.
   LOGGED = 4;
+  // Benchmark encountered an error but was able to continue. The error is not
+  // related to the model execution but to the mini-benchmark logic. An example
+  // of error is a failure when trying to set the CPU affinity of the benchmark
+  // runner process.
+  RECOVERED_ERROR = 5;
 }
 
 // A correctness metric from a benchmark, for example KL-divergence between

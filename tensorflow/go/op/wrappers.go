@@ -377,6 +377,179 @@ func InfeedEnqueueTuple(scope *Scope, inputs []tf.Output, shapes []tf.Shape, opt
 	return scope.AddOperation(opspec)
 }
 
+// ReadVariableXlaSplitNDAttr is an optional argument to ReadVariableXlaSplitND.
+type ReadVariableXlaSplitNDAttr func(optionalAttr)
+
+// ReadVariableXlaSplitNDPaddings sets the optional paddings attribute to value.
+//
+// value: Optional list of right paddings per dimension of input tensor to apply before
+// splitting. This can be used to make a dimension evenly divisible.
+// If not specified, defaults to <>
+func ReadVariableXlaSplitNDPaddings(value []int64) ReadVariableXlaSplitNDAttr {
+	return func(m optionalAttr) {
+		m["paddings"] = value
+	}
+}
+
+// Splits resource variable input tensor across all dimensions.
+//
+// An op which splits the resource variable input tensor based on the given
+// num_splits attribute, pads slices optionally, and returned the slices. Slices
+// are returned in row-major order.
+//
+// This op may be generated via the TPU bridge.
+//
+// For example, with `input` tensor:
+// ```
+// [[0, 1, 2],
+//  [3, 4, 5],
+//  [6, 7, 8]]
+// ```
+// `num_splits`:
+// ```
+// [2, 2]
+// ```
+// and `paddings`:
+// ```
+// [1, 1]
+// ```
+// the expected `outputs` is:
+// ```
+// [[0, 1],
+//  [3, 4]]
+// [[2, 0],
+//  [5, 0]]
+// [[6, 7],
+//  [0, 0]]
+// [[8, 0],
+//  [0, 0]]
+// ```
+//
+// Arguments:
+//	resource: Resource variable of input tensor to split across all dimensions.
+//   }
+//   out_arg {
+//     name: "outputs"
+//     description: <<END
+// Output slices based on input and num_splits defined, in row-major order.
+//
+//
+//	num_splits: Number of ways to split per dimension. Shape dimensions must be evenly
+// divisible.
+func ReadVariableXlaSplitND(scope *Scope, resource tf.Output, T tf.DataType, N int64, num_splits []int64, optional ...ReadVariableXlaSplitNDAttr) (outputs []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"T": T, "N": N, "num_splits": num_splits}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ReadVariableXlaSplitND",
+		Input: []tf.Input{
+			resource,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
+		scope.UpdateErr("ReadVariableXlaSplitND", err)
+		return
+	}
+	return outputs
+}
+
+// XlaSplitNDAttr is an optional argument to XlaSplitND.
+type XlaSplitNDAttr func(optionalAttr)
+
+// XlaSplitNDPaddings sets the optional paddings attribute to value.
+//
+// value: Optional list of right paddings per dimension of input tensor to apply before
+// splitting. This can be used to make a dimension evenly divisible.
+// If not specified, defaults to <>
+func XlaSplitNDPaddings(value []int64) XlaSplitNDAttr {
+	return func(m optionalAttr) {
+		m["paddings"] = value
+	}
+}
+
+// Splits input tensor across all dimensions.
+//
+// An op which slices the input tensor based on the given num_splits attribute,
+// pads slices optionally, and returned the slices. Slices are returned in
+// row-major order.
+//
+// This op may be generated via the TPU bridge.
+//
+// For example, with `input` tensor:
+// ```
+// [[0, 1, 2],
+//  [3, 4, 5],
+//  [6, 7, 8]]
+// ```
+// `num_splits`:
+// ```
+// [2, 2]
+// ```
+// and `paddings`:
+// ```
+// [1, 1]
+// ```
+// the expected `outputs` is:
+// ```
+// [[0, 1],
+//  [3, 4]]
+// [[2, 0],
+//  [5, 0]]
+// [[6, 7],
+//  [0, 0]]
+// [[8, 0],
+//  [0, 0]]
+// ```
+//
+// Arguments:
+//	input: Input tensor to split across all dimensions.
+//   }
+//   out_arg {
+//     name: "outputs"
+//     description: <<END
+// Output slices based on input and num_splits defined, in row-major order.
+//
+//	num_splits: Number of ways to split per dimension. Shape dimensions must be evenly
+// divisible.
+func XlaSplitND(scope *Scope, input tf.Output, N int64, num_splits []int64, optional ...XlaSplitNDAttr) (outputs []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"N": N, "num_splits": num_splits}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaSplitND",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
+		scope.UpdateErr("XlaSplitND", err)
+		return
+	}
+	return outputs
+}
+
 // Worker heartbeat op.
 //
 // Heartbeats may be sent periodically to indicate the coordinator is still active,
@@ -15374,6 +15547,150 @@ func Digamma(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr is an optional argument to LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug.
+type LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr func(optionalAttr)
+
+// LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugTableName(value string) LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugConfig(value string) LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Load frequency estimator embedding parameters with debug support.
+//
+// An op that loads optimization parameters into HBM for embedding. Must be
+// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+// embedding table configuration. For example, this op is used to install
+// parameters that are loaded from a checkpoint before a training loop is
+// executed.
+//
+// Arguments:
+//	parameters: Value of parameters used in the frequency estimator optimization algorithm.
+//	last_hit_step: Value of last_hit_step used in the frequency estimator optimization algorithm.
+//	gradient_accumulators: Value of gradient_accumulators used in the frequency estimator optimization
+// algorithm.
+//
+//
+//
+// Returns the created operation.
+func LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug(scope *Scope, parameters tf.Output, last_hit_step tf.Output, gradient_accumulators tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug",
+		Input: []tf.Input{
+			parameters, last_hit_step, gradient_accumulators,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Reads the value of a variable.
+//
+// The tensor returned by this operation is immutable.
+//
+// The value returned by this operation is guaranteed to be influenced by all the
+// writes on which this operation depends directly or indirectly, and to not be
+// influenced by any of the writes which depend directly or indirectly on this
+// operation.
+//
+// Arguments:
+//	resource: handle to the resource in which to store the variable.
+//	dtype: the dtype of the value.
+func ReadVariableOp(scope *Scope, resource tf.Output, dtype tf.DataType) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	opspec := tf.OpSpec{
+		Type: "ReadVariableOp",
+		Input: []tf.Input{
+			resource,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes a range that covers the actual values present in a quantized tensor.
+//
+// Given a quantized tensor described by `(input, input_min, input_max)`, outputs a
+// range that covers the actual values present in that tensor. This op is typically
+// used to produce the `requested_output_min` and `requested_output_max` for
+// `Requantize`.
+//
+// Arguments:
+//
+//	input_min: The float value that the minimum quantized input value represents.
+//	input_max: The float value that the maximum quantized input value represents.
+//
+// Returns:
+//	output_min: The computed min output.
+//	output_max: the computed max output.
+func RequantizationRange(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output) (output_min tf.Output, output_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RequantizationRange",
+		Input: []tf.Input{
+			input, input_min, input_max,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// Computes the log of the absolute value of `Gamma(x)` element-wise.
+//
+//   For positive numbers, this function computes log((input - 1)!) for every element in the tensor.
+//   `lgamma(5) = log((5-1)!) = log(4!) = log(24) = 3.1780539`
+//
+// Example:
+//
+// ```python
+// x = tf.constant([0, 0.5, 1, 4.5, -4, -5.6])
+// tf.math.lgamma(x) ==> [inf, 0.5723649, 0., 2.4537368, inf, -4.6477685]
+// ```
+func Lgamma(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Lgamma",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Serializes the tree ensemble to a proto.
 //
 // Arguments:
@@ -22413,23 +22730,6 @@ func CompositeTensorVariantFromComponents(scope *Scope, components []tf.Output, 
 	return op.Output(0)
 }
 
-// Registers a dataset with the tf.data service.
-func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
-	opspec := tf.OpSpec{
-		Type: "RegisterDataset",
-		Input: []tf.Input{
-			dataset, address, protocol,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // DataServiceDatasetAttr is an optional argument to DataServiceDataset.
 type DataServiceDatasetAttr func(optionalAttr)
 
@@ -22687,6 +22987,77 @@ func ExperimentalSqlDataset(scope *Scope, driver_name tf.Output, data_source_nam
 		Type: "ExperimentalSqlDataset",
 		Input: []tf.Input{
 			driver_name, data_source_name, query,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Registers a dataset with the tf.data service.
+func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
+	opspec := tf.OpSpec{
+		Type: "RegisterDataset",
+		Input: []tf.Input{
+			dataset, address, protocol,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// AutoShardDatasetAttr is an optional argument to AutoShardDataset.
+type AutoShardDatasetAttr func(optionalAttr)
+
+// AutoShardDatasetAutoShardPolicy sets the optional auto_shard_policy attribute to value.
+// If not specified, defaults to 0
+func AutoShardDatasetAutoShardPolicy(value int64) AutoShardDatasetAttr {
+	return func(m optionalAttr) {
+		m["auto_shard_policy"] = value
+	}
+}
+
+// AutoShardDatasetNumReplicas sets the optional num_replicas attribute to value.
+// If not specified, defaults to 0
+func AutoShardDatasetNumReplicas(value int64) AutoShardDatasetAttr {
+	return func(m optionalAttr) {
+		m["num_replicas"] = value
+	}
+}
+
+// Creates a dataset that shards the input dataset.
+//
+// Creates a dataset that shards the input dataset by num_workers, returning a
+// sharded dataset for the index-th worker. This attempts to automatically shard
+// a dataset by examining the Dataset graph and inserting a shard op before the
+// inputs to a reader Dataset (e.g. CSVDataset, TFRecordDataset).
+//
+// This dataset will throw a NotFound error if we cannot shard the dataset
+// automatically.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	num_workers: A scalar representing the number of workers to distribute this dataset across.
+//	index: A scalar representing the index of the current worker out of num_workers.
+//
+//
+func AutoShardDataset(scope *Scope, input_dataset tf.Output, num_workers tf.Output, index tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...AutoShardDatasetAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "AutoShardDataset",
+		Input: []tf.Input{
+			input_dataset, num_workers, index,
 		},
 		Attrs: attrs,
 	}
@@ -37958,150 +38329,6 @@ func BoostedTreesBucketize(scope *Scope, float_values []tf.Output, bucket_bounda
 	return buckets
 }
 
-// LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr is an optional argument to LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug.
-type LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr func(optionalAttr)
-
-// LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-func LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugTableName(value string) LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugConfig(value string) LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Load frequency estimator embedding parameters with debug support.
-//
-// An op that loads optimization parameters into HBM for embedding. Must be
-// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
-// embedding table configuration. For example, this op is used to install
-// parameters that are loaded from a checkpoint before a training loop is
-// executed.
-//
-// Arguments:
-//	parameters: Value of parameters used in the frequency estimator optimization algorithm.
-//	last_hit_step: Value of last_hit_step used in the frequency estimator optimization algorithm.
-//	gradient_accumulators: Value of gradient_accumulators used in the frequency estimator optimization
-// algorithm.
-//
-//
-//
-// Returns the created operation.
-func LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug(scope *Scope, parameters tf.Output, last_hit_step tf.Output, gradient_accumulators tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebugAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug",
-		Input: []tf.Input{
-			parameters, last_hit_step, gradient_accumulators,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Reads the value of a variable.
-//
-// The tensor returned by this operation is immutable.
-//
-// The value returned by this operation is guaranteed to be influenced by all the
-// writes on which this operation depends directly or indirectly, and to not be
-// influenced by any of the writes which depend directly or indirectly on this
-// operation.
-//
-// Arguments:
-//	resource: handle to the resource in which to store the variable.
-//	dtype: the dtype of the value.
-func ReadVariableOp(scope *Scope, resource tf.Output, dtype tf.DataType) (value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype}
-	opspec := tf.OpSpec{
-		Type: "ReadVariableOp",
-		Input: []tf.Input{
-			resource,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes a range that covers the actual values present in a quantized tensor.
-//
-// Given a quantized tensor described by `(input, input_min, input_max)`, outputs a
-// range that covers the actual values present in that tensor. This op is typically
-// used to produce the `requested_output_min` and `requested_output_max` for
-// `Requantize`.
-//
-// Arguments:
-//
-//	input_min: The float value that the minimum quantized input value represents.
-//	input_max: The float value that the maximum quantized input value represents.
-//
-// Returns:
-//	output_min: The computed min output.
-//	output_max: the computed max output.
-func RequantizationRange(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output) (output_min tf.Output, output_max tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RequantizationRange",
-		Input: []tf.Input{
-			input, input_min, input_max,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// Computes the log of the absolute value of `Gamma(x)` element-wise.
-//
-//   For positive numbers, this function computes log((input - 1)!) for every element in the tensor.
-//   `lgamma(5) = log((5-1)!) = log(4!) = log(24) = 3.1780539`
-//
-// Example:
-//
-// ```python
-// x = tf.constant([0, 0.5, 1, 4.5, -4, -5.6])
-// tf.math.lgamma(x) ==> [inf, 0.5723649, 0., 2.4537368, inf, -4.6477685]
-// ```
-func Lgamma(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Lgamma",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // ResourceApplyAdadeltaAttr is an optional argument to ResourceApplyAdadelta.
 type ResourceApplyAdadeltaAttr func(optionalAttr)
 
@@ -41794,39 +42021,43 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 	return op.Output(0), op.Output(1)
 }
 
-// Scatter `updates` into a new tensor according to `indices`.
+// Scatters `updates` into a tensor of shape `shape` according to `indices`.
 //
-// Creates a new tensor by applying sparse `updates` to individual values or
-// slices within a tensor (initially zero for numeric, empty for string) of
-// the given `shape` according to indices.  This operator is the inverse of the
-// `tf.gather_nd` operator which extracts values or slices from a given tensor.
+// Update the input tensor by scattering sparse `updates` according to individual values at the specified `indices`.
+// This op returns an `output` tensor with the `shape` you specify. This op is the
+// inverse of the `tf.gather_nd` operator which extracts values or slices from a
+// given tensor.
 //
-// This operation is similar to tensor_scatter_add, except that the tensor is
-// zero-initialized. Calling `tf.scatter_nd(indices, values, shape)` is identical
-// to `tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`
+// This operation is similar to `tf.tensor_scatter_add`, except that the tensor is
+// zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+// is identical to calling
+// `tf.tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`.
 //
-// If `indices` contains duplicates, then their updates are accumulated (summed).
+// If `indices` contains duplicates, the duplicate `values` are accumulated
+// (summed).
 //
 // **WARNING**: The order in which updates are applied is nondeterministic, so the
-// output will be nondeterministic if `indices` contains duplicates -- because
-// of some numerical approximation issues, numbers summed in different order
-// may yield different results.
+// output will be nondeterministic if `indices` contains duplicates;
+// numbers summed in different order may yield different results because of some
+// numerical approximation issues.
 //
-// `indices` is an integer tensor containing indices into a new tensor of shape
-// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+// `indices` is an integer tensor of shape `shape`. The last dimension
+// of `indices` can be at most the rank of `shape`:
 //
 //     indices.shape[-1] <= shape.rank
 //
-// The last dimension of `indices` corresponds to indices into elements
+// The last dimension of `indices` corresponds to indices of elements
 // (if `indices.shape[-1] = shape.rank`) or slices
 // (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
-// `shape`.  `updates` is a tensor with shape
+// `shape`.
+//
+// `updates` is a tensor with shape:
 //
 //     indices.shape[:-1] + shape[indices.shape[-1]:]
 //
-// The simplest form of scatter is to insert individual elements in a tensor by
-// index. For example, say we want to insert 4 scattered elements in a rank-1
-// tensor with 8 elements.
+// The simplest form of the scatter op is to insert individual elements in
+// a tensor by index. Consider an example where you want to insert 4 scattered
+// elements in a rank-1 tensor with 8 elements.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
@@ -41846,9 +42077,9 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 //
 //     [0, 11, 0, 10, 9, 0, 0, 12]
 //
-// We can also, insert entire slices of a higher rank tensor all at once. For
-// example, if we wanted to insert two slices in the first dimension of a
-// rank-3 tensor with two matrices of new values.
+// You can also insert entire slices of a higher rank tensor all at once. For
+// example, you can insert two slices in the first dimension of a rank-3 tensor
+// with two matrices of new values.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
@@ -41878,9 +42109,9 @@ func Unique(scope *Scope, x tf.Output, optional ...UniqueAttr) (y tf.Output, idx
 // On GPU, if an out of bound index is found, the index is ignored.
 //
 // Arguments:
-//	indices: Index tensor.
-//	updates: Updates to scatter into output.
-//	shape: 1-D. The shape of the resulting tensor.
+//	indices: Tensor of indices.
+//	updates: Values to scatter into the output tensor.
+//	shape: 1-D. The shape of the output tensor.
 //
 // Returns A new tensor with the given shape and updates applied according
 // to the indices.
@@ -43600,60 +43831,6 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64, optional ...S
 		Type: "SpaceToDepth",
 		Input: []tf.Input{
 			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// AutoShardDatasetAttr is an optional argument to AutoShardDataset.
-type AutoShardDatasetAttr func(optionalAttr)
-
-// AutoShardDatasetAutoShardPolicy sets the optional auto_shard_policy attribute to value.
-// If not specified, defaults to 0
-func AutoShardDatasetAutoShardPolicy(value int64) AutoShardDatasetAttr {
-	return func(m optionalAttr) {
-		m["auto_shard_policy"] = value
-	}
-}
-
-// AutoShardDatasetNumReplicas sets the optional num_replicas attribute to value.
-// If not specified, defaults to 0
-func AutoShardDatasetNumReplicas(value int64) AutoShardDatasetAttr {
-	return func(m optionalAttr) {
-		m["num_replicas"] = value
-	}
-}
-
-// Creates a dataset that shards the input dataset.
-//
-// Creates a dataset that shards the input dataset by num_workers, returning a
-// sharded dataset for the index-th worker. This attempts to automatically shard
-// a dataset by examining the Dataset graph and inserting a shard op before the
-// inputs to a reader Dataset (e.g. CSVDataset, TFRecordDataset).
-//
-// This dataset will throw a NotFound error if we cannot shard the dataset
-// automatically.
-//
-// Arguments:
-//	input_dataset: A variant tensor representing the input dataset.
-//	num_workers: A scalar representing the number of workers to distribute this dataset across.
-//	index: A scalar representing the index of the current worker out of num_workers.
-//
-//
-func AutoShardDataset(scope *Scope, input_dataset tf.Output, num_workers tf.Output, index tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...AutoShardDatasetAttr) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "AutoShardDataset",
-		Input: []tf.Input{
-			input_dataset, num_workers, index,
 		},
 		Attrs: attrs,
 	}

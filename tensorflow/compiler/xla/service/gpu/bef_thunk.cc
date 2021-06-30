@@ -25,6 +25,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/tfrt/gpu/gpu_shared_context.h"
@@ -46,6 +48,30 @@ limitations under the License.
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/support/error_util.h"  // from @tf_runtime
+
+// Common place for all collective thunks to source nccl/rccl headers.
+// Also, all the RunNcclCollective() functions for various thunks should
+// use XLA_ENABLE_XCCL to guard use NCCL/RCCL usage (and not use GOOGLE_XCCL).
+#if GOOGLE_XCCL
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define XLA_ENABLE_XCCL 1
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_XCCL
+
+#if XLA_ENABLE_XCCL
+#if GOOGLE_CUDA
+#include "third_party/nccl/nccl.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#else
+#error "Neither CUDA nor ROCm enabled but NCCL/RCCL enabled"
+#endif
+
+// Also include this file required by all collective thunks.
+#include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
+
+#endif  // XLA_ENABLE_XCCL
 
 namespace xla {
 namespace gpu {
@@ -65,12 +91,13 @@ class BefThunk : public Thunk {
            std::vector<BufferAllocation::Slice> inputs,
            std::vector<BufferAllocation::Slice> outputs,
            tfrt::BefBuffer bef_buffer,
-           tfrt::RCReference<tfrt::BEFFile> bef_file)
+           tfrt::RCReference<tfrt::BEFFile> bef_file, mlir::Operation* op)
       : Thunk(kind, thunk_info),
         inputs_(std::move(inputs)),
         outputs_(std::move(outputs)),
         bef_buffer_(std::move(bef_buffer)),
-        bef_file_(std::move(bef_file)) {}
+        bef_file_(std::move(bef_file)),
+        op_(op) {}
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -79,6 +106,7 @@ class BefThunk : public Thunk {
   std::vector<BufferAllocation::Slice> outputs_;
   tfrt::BefBuffer bef_buffer_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
+  mlir::Operation* op_;
 };
 
 }  // namespace
@@ -197,7 +225,7 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
 
   return std::unique_ptr<Thunk>(
       new BefThunk(kind, thunk_info, std::move(inputs), std::move(outputs),
-                   std::move(bef_buffer), std::move(bef_file)));
+                   std::move(bef_buffer), std::move(bef_file), op));
 }
 
 // Wrap the GPU stream specified in 'params' (initialized by the StreamExecutor)
@@ -231,6 +259,70 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
       std::move(*buffer));
 }
 
+// TODO(hanbinyoon): Templatize to handle other collective ops.
+static Status CreateCclContext(
+    const Thunk::ExecuteParams& params, mlir::lmhlo::AllReduceOp* src_op,
+    tfrt::RequestContextBuilder* request_context_builder) {
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
+  std::vector<ReplicaGroup> replica_groups =
+      ConvertReplicaGroups(src_op->replica_groups()).ValueOrDie();
+  CollectiveOpGroupMode group_mode =
+      GetCollectiveOpGroupMode(src_op->channel_id().hasValue(),
+                               src_op->use_global_device_ids())
+          .ValueOrDie();
+  TF_ASSIGN_OR_RETURN(
+      std::vector<GlobalDeviceId> participants,
+      GetParticipatingDevices(global_device_id, *params.device_assn,
+                              replica_groups, group_mode));
+  if (IsGlobalNcclConfig() &&
+      (participants.size() != params.device_assn->replica_count())) {
+    return InvalidArgument(
+        "Partial replica groups are not allowed when using NCCL_COMM_ID "
+        "environment configuration.");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<LocalParticipant> local_participants,
+      GetLocalParticipants(participants, params.gpu_global_device_ids));
+  absl::flat_hash_map<tfrt::gpu::GpuSharedContext::LocalDeviceIdentifier, int>
+      local_ids_to_rank;
+  for (const auto& participant : local_participants) {
+    local_ids_to_rank[participant.device_ordinal] = participant.rank;
+  }
+
+  std::vector<int64> gpu_global_device_ids;
+  if (params.gpu_global_device_ids != nullptr) {
+    for (const auto& global_device_id : *params.gpu_global_device_ids) {
+      gpu_global_device_ids.push_back(global_device_id.value());
+    }
+  }
+
+  tfrt::gpu::XcclUniqueIdCallback xccl_unique_id_callback;
+  if (params.nccl_unique_id_callback != nullptr) {
+    xccl_unique_id_callback = [&](const tfrt::gpu::XcclCliqueKey& kernel_key)
+        -> llvm::Expected<std::string> {
+      std::vector<GlobalDeviceId> devices;
+      for (const int64_t device : kernel_key) {
+        devices.push_back(GlobalDeviceId(device));
+      }
+      auto nccl_unique_id_or =
+          (*params.nccl_unique_id_callback)(NcclCliqueKey(devices));
+      if (!nccl_unique_id_or.ok()) {
+        return tfrt::MakeStringError(
+            nccl_unique_id_or.status().error_message());
+      }
+      return nccl_unique_id_or.ValueOrDie();
+    };
+  }
+
+  request_context_builder->context_data().emplace<tfrt::gpu::GpuSharedContext>(
+      params.run_id.ToInt(), std::move(local_ids_to_rank),
+      std::move(gpu_global_device_ids), std::move(xccl_unique_id_callback),
+      /*compiled_code=*/nullptr);
+  return Status::OK();
+}
+
 Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(2) << "Executing BEF thunk.";
 
@@ -249,10 +341,10 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
   TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
       &request_context_builder, &intra_op_threadpool));
-  request_context_builder.context_data().emplace<tensorflow::GpuSharedContext>(
-      params.run_id, params.device_assn, params.gpu_global_device_ids,
-      params.nccl_unique_id_callback,
-      /*compiled_code=*/nullptr);
+  if (auto all_reduce = mlir::dyn_cast<mlir::lmhlo::AllReduceOp>(op_)) {
+    TF_RETURN_IF_ERROR(
+        CreateCclContext(params, &all_reduce, &request_context_builder));
+  }
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
     auto error = expected_req_ctx.takeError();

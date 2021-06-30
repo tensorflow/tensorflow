@@ -86,6 +86,16 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
     run_tfl_runtime_verification_ = run_tfl_runtime_verification;
   }
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-legalize-tf";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize from TensorFlow to TensorFlow Lite dialect";
+  }
+
   /// Performs the lowering to TFLite dialect.
   void runOnFunction() override;
 
@@ -119,11 +129,16 @@ bool HasSameStaticShapes(Operation* op) {
 
 // Util that casts 'val' to Int32 by adding a cast Op.
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
-  auto shape = val.getType().dyn_cast<RankedTensorType>().getShape();
   IntegerType new_ele_type = rewriter.getIntegerType(32);
-  ShapedType new_type = RankedTensorType::get(shape, new_ele_type);
-  return rewriter.createOrFold<TF::CastOp>(loc, new_type, val,
-                                           rewriter.getBoolAttr(false));
+  if (auto shaped_type = val.getType().dyn_cast<RankedTensorType>()) {
+    ShapedType new_type =
+        RankedTensorType::get(shaped_type.getShape(), new_ele_type);
+    return rewriter.createOrFold<TF::CastOp>(loc, new_type, val,
+                                             rewriter.getBoolAttr(false));
+  }
+  return rewriter.createOrFold<TF::CastOp>(
+      loc, UnrankedTensorType::get(new_ele_type), val,
+      rewriter.getBoolAttr(false));
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
@@ -880,8 +895,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
   return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
 }
 
-static PassRegistration<LegalizeTF> pass(
-    "tfl-legalize-tf", "Legalize from TensorFlow to TensorFlow Lite dialect");
+static PassRegistration<LegalizeTF> pass;
 
 }  // namespace TFL
 }  // namespace mlir

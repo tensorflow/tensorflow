@@ -156,7 +156,8 @@ LogicalResult InferBroadcastBinaryOpReturnTypeComponents(
 
 LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
     OpBuilder& builder, Operation* op, ValueRange operands,
-    SmallVectorImpl<Value>& reifiedReturnShapes) {
+    SmallVectorImpl<Value>& result) {
+  assert(operands.size() == 2 && "expect binary op");
   auto loc = op->getLoc();
   auto lhs = operands[0];
   auto rhs = operands[1];
@@ -178,10 +179,8 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
            << "broadcast_dimensions = " << broadcast_dimensions;
   }
 
-  Value computed_shape = hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
-      loc, lhs, rhs, builder, /*unsafe_as_extent_tensor=*/false);
-  if (!computed_shape) return failure();
-  reifiedReturnShapes.push_back(computed_shape);
+  result.push_back(hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
+      loc, lhs, rhs, builder));
   return success();
 }
 }  // namespace
@@ -376,6 +375,13 @@ LogicalResult ConstantLikeOp::inferReturnTypeComponents(
   return success();
 }
 
+LogicalResult ConstantLikeOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  return ::mlir::mhlo::deriveShapeFromOperand(
+      &builder, getOperation(), operands.front(), &reifiedReturnShapes);
+}
+
 struct ConstantLikeToConstant : public OpRewritePattern<ConstantLikeOp> {
   using OpRewritePattern<ConstantLikeOp>::OpRewritePattern;
 
@@ -417,6 +423,13 @@ LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
   Type output = GetBroadcastType(other, pred_type, element_type, nullptr);
 
   inferredReturnShapes.push_back(output);
+  return success();
+}
+
+LogicalResult BroadcastSelectOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands, SmallVectorImpl<Value>& result) {
+  result.push_back(hlo::ComputeNaryElementwiseBroadcastingResultExtents(
+      getLoc(), operands, builder));
   return success();
 }
 

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/graph_view.h"
 #include "tensorflow/core/common_runtime/immutable_executor_state.h"
-#include "tensorflow/core/common_runtime/metric_util.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/propagator_state.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
@@ -698,6 +697,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   } else {
     params.device = device;
   }
+  params.start_time_usecs = start_time_usecs_;
   params.log_memory = log_memory_;
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;
@@ -769,11 +769,6 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
               << SummarizeNodeDef(item.kernel->def())
               << (tagged_node.get_is_dead() ? " is dead" : "")
               << " device: " << device->name();
-    }
-
-    const NodeDef& ndef = item.kernel->def();
-    if (TF_PREDICT_FALSE(ShouldLogLatencyMetrics(ndef))) {
-      LogLatencyMetrics(ndef, EnvTime::NowMicros(), start_time_usecs_);
     }
 
     Entry* first_input = propagator_.GetInputTensors(tagged_node);

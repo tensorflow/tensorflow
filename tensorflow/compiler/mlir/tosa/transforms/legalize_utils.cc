@@ -526,43 +526,6 @@ template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
                                                        ArrayRef<int32_t> vec,
                                                        ArrayRef<int64_t> shape);
 
-static ElementsAttr getDefiningOpConstElementsAttr(Value input) {
-  if (!input.getDefiningOp()) {
-    return nullptr;
-  }
-  if (auto qconst_op = dyn_cast<TFL::QConstOp>(input.getDefiningOp())) {
-    return qconst_op.value().dyn_cast<ElementsAttr>();
-  }
-  if (auto tosa_const_op = dyn_cast<tosa::ConstOp>(input.getDefiningOp())) {
-    return tosa_const_op.value().dyn_cast<ElementsAttr>();
-  }
-  return nullptr;
-}
-
-// Strip off quantization information for bias tensor and return a unquantized
-// bias. This assumes that the input is defined as a constant.
-Value getUnquantizedBias(PatternRewriter& rewriter, Operation* op,
-                         Value input) {
-  auto input_type = input.getType().dyn_cast<mlir::RankedTensorType>();
-  assert(input_type && "bias input is not a RankedTensorType");
-  auto input_element_type = input_type.getElementType();
-  auto input_element_qtype =
-      input_element_type.dyn_cast<mlir::quant::QuantizedType>();
-  ElementsAttr input_value_attr = getDefiningOpConstElementsAttr(input);
-
-  if (input_element_qtype && input_value_attr) {
-    auto output_type = RankedTensorType::get(
-        input_type.getShape(),
-        rewriter.getIntegerType(
-            input_element_qtype.getStorageTypeIntegralWidth()));
-    auto const_op = rewriter.create<tosa::ConstOp>(op->getLoc(), output_type,
-                                                   input_value_attr);
-    return const_op.getResult();
-  }
-
-  return input;
-}
-
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
   return (output_element_type.getStorageTypeIntegralWidth() == 8);

@@ -57,6 +57,16 @@ class GuaranteeAllFuncsOneUse
     }
   }
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-guarantee-all-funcs-one-use";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Guarantee all FuncOp's have only a single use.";
+  }
+
   LogicalResult Run() {
     auto module = getOperation();
 
@@ -113,9 +123,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass() {
   return std::make_unique<GuaranteeAllFuncsOneUse>();
 }
 
-static PassRegistration<GuaranteeAllFuncsOneUse> pass(
-    "tf-guarantee-all-funcs-one-use",
-    "Guarantee all FuncOp's have only a single use.");
+static PassRegistration<GuaranteeAllFuncsOneUse> pass;
 
 }  // namespace TF
 
