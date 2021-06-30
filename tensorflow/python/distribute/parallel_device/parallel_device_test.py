@@ -147,6 +147,19 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
           "First pack non-parallel tensors for each device"):
         a1 + a2  # pylint:disable=pointless-statement
 
+  def test_one_replica_eager_control_flow(self):
+    device = parallel_device.ParallelDevice(components=[
+        "/job:localhost/device:{}:0".format(self.device_type),
+    ])
+    x = constant_op.constant([2, 3, 4])
+    with device:
+      x = device.pack([x])
+      if math_ops.reduce_any(math_ops.equal(x, constant_op.constant(4))):
+        y = constant_op.constant(1)
+      else:
+        y = constant_op.constant(2)
+    self.assertAllEqual([1], device.unpack(y))
+
   def test_string_representation(self):
     x = self.device.pack(
         [constant_op.constant([5., 6.]),
