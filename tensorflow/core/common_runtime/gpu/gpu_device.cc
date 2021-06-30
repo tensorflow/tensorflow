@@ -1062,7 +1062,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
                    << " is invalid. The request will be ignored.";
     } else {
       // Convert MBytes to Bytes.
-      size_t allowable_reserved_memory = reserved_mb * 1024 * 1024;
+      int64 allowable_reserved_memory = reserved_mb * 1024 * 1024;
       // TF_DEVICE_MIN_SYS_MEMORY_IN_MB overrides
       // per_process_gpu_memory_fraction.
       if (allowable_reserved_memory <= available_memory) {
