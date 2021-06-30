@@ -278,8 +278,12 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   });
   tensorflow::SubProcess ptxas_info_dumper;
   std::vector<std::string> ptxas_args = {
-      ptxas_path, ptx_path, "-o", cubin_path,
-      absl::StrCat("-arch=sm_", cc_major, cc_minor)};
+      ptxas_path,
+      ptx_path,
+      "-o",
+      cubin_path,
+      absl::StrCat("-arch=sm_", cc_major, cc_minor),
+      "--warn-on-spills"};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
@@ -316,7 +320,11 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   }
   // Print the verbose output of ptxas.
   if (!stderr_output.empty()) {
-    VLOG(2) << stderr_output;
+    if (absl::StrContains(stderr_output, "warning")) {
+      LOG(INFO) << stderr_output;
+    } else {
+      VLOG(2) << stderr_output;
+    }
   }
 
   // Read in the result of compilation and return it as a byte vector.
