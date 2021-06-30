@@ -445,7 +445,7 @@ def accuracy(labels,
 
   @compatibility(TF2)
   `tf.compat.v1.metrics.accuracy` is not compatible with eager
-  execution and `tf.function`.
+  execution or `tf.function`.
   Please use `tf.keras.metrics.Accuracy` instead for TF2 migration. After
   instantiating a `tf.keras.metrics.Accuracy` object, you can first call the
   `update_state()` method to record the prediction/labels, and then call the
@@ -490,7 +490,7 @@ def accuracy(labels,
   | `label`               | `y_true`        | In `update_state()` method |
   | `predictions`         | `y_true`        | In `update_state()` method |
   | `weights`             | `sample_weight` | In `update_state()` method |
-  | `metrics_collections` | Not supported   | Metrics should be tracked  :
+  | `metrics_collections` | Not supported   | Metrics should be tracked  |
   :                       :                 : explicitly or with Keras   :
   :                       :                 : APIs, for example,         :
   :                       :                 : [add_metric][add_metric],  :
