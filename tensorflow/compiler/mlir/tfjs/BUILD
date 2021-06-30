@@ -37,6 +37,10 @@ gentbl_cc_library(
             "ir/tfjs_dialect.h.inc",
         ),
         (
+            ["-gen-dialect-defs"],
+            "ir/tfjs_dialect.cc.inc",
+        ),
+        (
             ["-gen-dialect-doc"],
             "g3doc/tfjs_dialect.md",
         ),

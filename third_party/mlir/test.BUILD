@@ -78,6 +78,13 @@ gentbl_cc_library(
             "lib/Dialect/Test/TestOpsDialect.h.inc",
         ),
         (
+            [
+                "-gen-dialect-defs",
+                "-dialect=test",
+            ],
+            "lib/Dialect/Test/TestOpsDialect.cpp.inc",
+        ),
+        (
             ["-gen-enum-decls"],
             "lib/Dialect/Test/TestOpEnums.h.inc",
         ),
