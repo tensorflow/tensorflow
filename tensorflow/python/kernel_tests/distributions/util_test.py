@@ -937,15 +937,15 @@ class SoftplusTest(test.TestCase):
     self.assertAllCloseAccordingToType(
         np_features, tf_softplus_inverse,
         atol=0., rtol=rtol)
-    self.assertAllEqual(np.ones_like(tf_softplus).astype(np.bool),
+    self.assertAllEqual(np.ones_like(tf_softplus).astype(np.bool_),
                         tf_softplus > 0)
 
     self.assertShapeEqual(np_softplus, softplus)
     self.assertShapeEqual(np_softplus, softplus_inverse)
 
-    self.assertAllEqual(np.ones_like(tf_softplus).astype(np.bool),
+    self.assertAllEqual(np.ones_like(tf_softplus).astype(np.bool_),
                         np.isfinite(tf_softplus))
-    self.assertAllEqual(np.ones_like(tf_softplus_inverse).astype(np.bool),
+    self.assertAllEqual(np.ones_like(tf_softplus_inverse).astype(np.bool_),
                         np.isfinite(tf_softplus_inverse))
 
   @test_util.run_deprecated_v1
@@ -1004,7 +1004,8 @@ class SoftplusTest(test.TestCase):
       y = du.softplus_inverse(x)
       grads = self.evaluate(gradients_impl.gradients(y, x)[0])
       # Equivalent to `assertAllFalse` (if it existed).
-      self.assertAllEqual(np.zeros_like(grads).astype(np.bool), np.isnan(grads))
+      self.assertAllEqual(np.zeros_like(grads).astype(np.bool_),
+                          np.isnan(grads))
 
   @test_util.run_deprecated_v1
   def testInverseSoftplusGradientFinite(self):
@@ -1016,7 +1017,7 @@ class SoftplusTest(test.TestCase):
       grads = self.evaluate(gradients_impl.gradients(y, x)[0])
       # Equivalent to `assertAllTrue` (if it existed).
       self.assertAllEqual(
-          np.ones_like(grads).astype(np.bool), np.isfinite(grads))
+          np.ones_like(grads).astype(np.bool_), np.isfinite(grads))
 
 
 @test_util.run_all_in_graph_and_eager_modes

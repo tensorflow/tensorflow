@@ -274,7 +274,7 @@ def conv_kernel_mask(input_shape, kernel_shape, strides, padding):
   output_shape = conv_output_shape(input_shape, kernel_shape, strides, padding)
 
   mask_shape = input_shape + output_shape
-  mask = np.zeros(mask_shape, np.bool)
+  mask = np.zeros(mask_shape, np.bool_)
 
   output_axes_ticks = [range(dim) for dim in output_shape]
   for output_position in itertools.product(*output_axes_ticks):

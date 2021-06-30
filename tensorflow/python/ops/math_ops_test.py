@@ -403,7 +403,7 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
     for dtype in [np.float32, np.double]:
       x = np.array([[[[-1, 2.00009999], [-3, 4.01]]]], dtype=dtype)
       y = np.array([[[[-1.001, 2], [-3.00009, 4]]]], dtype=dtype)
-      z = np.array([[[[False, True], [True, False]]]], dtype=np.bool)
+      z = np.array([[[[False, True], [True, False]]]], dtype=np.bool_)
       with test_util.device(use_gpu=True):
         z_tf = self.evaluate(math_ops.approximate_equal(x, y, tolerance=0.0001))
         self.assertAllEqual(z, z_tf)

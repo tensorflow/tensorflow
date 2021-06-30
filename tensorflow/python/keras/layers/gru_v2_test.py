@@ -569,7 +569,7 @@ class GRUV2Test(keras_parameterized.TestCase):
     units = 4
 
     inputs = np.random.randn(batch_size, timestep, units).astype(np.float32)
-    mask = np.ones((batch_size, timestep)).astype(np.bool)
+    mask = np.ones((batch_size, timestep)).astype(np.bool_)
     mask[:, masksteps:] = 0
 
     # Test for V1 behavior.

@@ -136,7 +136,7 @@ class StaticHashTableTest(BaseLookupTableTest):
 
   def testStaticHashTableInitWithNumPyArrays(self):
     default_val = -1
-    keys = np.array(["brain", "salad", "surgery"], dtype=np.str)
+    keys = np.array(["brain", "salad", "surgery"], dtype=np.str_)
     values = np.array([0, 1, 2], dtype=np.int64)
     table = self.getHashTable()(
         lookup_ops.KeyValueTensorInitializer(keys, values), default_val)

@@ -80,7 +80,7 @@ TF_TYPE_INFO = {
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
     tf.int16: (np.int16, "QUANTIZED_INT16"),
     tf.int64: (np.int64, "INT64"),
-    tf.bool: (np.bool, "BOOL"),
+    tf.bool: (np.bool_, "BOOL"),
     tf.string: (np.string_, "STRING"),
 }
 

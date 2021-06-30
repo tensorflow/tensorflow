@@ -360,8 +360,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorNumpyScalar(self):
     x = ops.convert_to_tensor(
-        [np.array(321, dtype=np.int).item(),
-         np.array(16, dtype=np.int).item()])
+        [np.array(321, dtype=np.int64).item(),
+         np.array(16, dtype=np.int64).item()])
     self.assertAllEqual(x, [321, 16])
 
   def testEagerTensorError(self):

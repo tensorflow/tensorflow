@@ -148,7 +148,7 @@ tf_var.assign_add(tnp.square(tf_var))
 Here is a non-exhaustive list of differences:
 
 *   Not all dtypes are currently supported. e.g. `np.float96`, `np.float128`.
-    `np.object`, `np.str`, `np.recarray` types are not supported.
+    `np.object_`, `np.str_`, `np.recarray` types are not supported.
 *   `ndarray` storage is in C order only. Fortran order, views, `stride_tricks`
     are not supported.
 *   Only a subset of functions and modules are supported. This set will be
