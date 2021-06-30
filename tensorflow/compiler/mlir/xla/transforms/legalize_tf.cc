@@ -97,13 +97,10 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
   void runOnFunction() override;
 };
 
-/// Returns if the given TF data format string is the default format.
-static bool IsDefaultDataFormat(StringRef format) { return format == "NHWC"; }
-
 /// Returns the feature dimension for the given format and input type.
-static size_t GetFeatureDimension(StringRef format,
-                                  RankedTensorType inputType) {
-  return IsDefaultDataFormat(format) ? inputType.getRank() - 1 : 1;
+static size_t GetFeatureDimension(tensorflow::TensorFormat format,
+                                  RankedTensorType input_ty) {
+  return GetTensorFeatureDimIndex(input_ty.getRank(), format);
 }
 
 // Gets all integer values from the given attribute and push them to `values`.
@@ -680,7 +677,8 @@ static void CreateWhile32(Location loc, int num_iterations,
 // BatchNorm op utilities.
 //===----------------------------------------------------------------------===//
 
-static IntegerAttr getFeatureDimensionAttr(Builder &b, StringRef format,
+static IntegerAttr getFeatureDimensionAttr(Builder &b,
+                                           tensorflow::TensorFormat format,
                                            Value input) {
   return b.getI64IntegerAttr(
       GetFeatureDimension(format, input.getType().cast<RankedTensorType>()));
@@ -689,6 +687,7 @@ static IntegerAttr getFeatureDimensionAttr(Builder &b, StringRef format,
 //===----------------------------------------------------------------------===//
 // FFT op utilities.
 //===----------------------------------------------------------------------===//
+
 // Returns the 1D i64 elements attribute populated with the inner-most dim of
 // the value.
 static DenseIntElementsAttr GetInnerDimFromValue(ShapedType type,
@@ -1115,8 +1114,12 @@ class ConvertBiasAddOp : public OpRewritePattern<TF::BiasAddOp> {
   LogicalResult matchAndRewrite(TF::BiasAddOp op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
+    tensorflow::TensorFormat data_format;
+    if (!FormatFromString(op.data_format().str(), &data_format))
+      return op.emitOpError("invalid data format");
+
     auto feature_dim = GetFeatureDimension(
-        op.data_format(), op.value().getType().cast<RankedTensorType>());
+        data_format, op.value().getType().cast<RankedTensorType>());
     auto bias_broadcast = Broadcast1DToFeatureDim(loc, op.value(), op.bias(),
                                                   feature_dim, rewriter);
     rewriter.replaceOpWithNewOp<AddOp>(op, op.value(), bias_broadcast);
@@ -1295,7 +1298,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
                                            PatternRewriter &rewriter) const {
     tensorflow::TensorFormat data_format;
     if (!FormatFromString(op.data_format().str(), &data_format))
-      return failure();
+      return op.emitOpError("invalid data format");
 
     tensorflow::Padding padding;
     if (!GetPaddingFromString(op.padding().str(), &padding).ok())
@@ -1454,7 +1457,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
                                 PatternRewriter &rewriter) const override {
     tensorflow::TensorFormat data_format;
     if (!FormatFromString(op.data_format().str(), &data_format))
-      return failure();
+      return op.emitOpError("invalid data format");
 
     tensorflow::Padding padding;
     if (!GetPaddingFromString(op.padding().str(), &padding).ok())
@@ -2427,8 +2430,11 @@ class ConvertFusedBatchNormGradBase
     grad = rewriter.create<ConvertOp>(loc, grad, kernel_type);
     act = rewriter.create<ConvertOp>(loc, act, kernel_type);
 
-    auto feature_dim_attr =
-        getFeatureDimensionAttr(rewriter, op.data_format(), act);
+    tensorflow::TensorFormat data_format;
+    if (!FormatFromString(op.data_format().str(), &data_format))
+      return op.emitOpError("invalid data format");
+
+    auto feature_dim_attr = getFeatureDimensionAttr(rewriter, data_format, act);
     auto feature_dim = feature_dim_attr.getValue().getSExtValue();
 
     // Gets the result values.
@@ -2537,8 +2543,11 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
 
   LogicalResult matchAndRewrite(FusedBatchNormOpT op,
                                 PatternRewriter &rewriter) const override {
-    auto feature_dim =
-        getFeatureDimensionAttr(rewriter, op.data_format(), op.x());
+    tensorflow::TensorFormat data_format;
+    if (!FormatFromString(op.data_format().str(), &data_format))
+      return op.emitOpError("invalid data format");
+
+    auto feature_dim = getFeatureDimensionAttr(rewriter, data_format, op.x());
 
     auto input_type_tensor = op.x().getType().template cast<TensorType>();
     auto input_element_type = input_type_tensor.getElementType();
@@ -2975,7 +2984,7 @@ class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
     Location loc = op.getLoc();
     tensorflow::TensorFormat data_format;
     if (!FormatFromString(op.data_format().str(), &data_format)) {
-      return failure();
+      return op.emitOpError("invalid data format");
     }
     // `out_grad` is the gradient that was propagated via backpropagation from
     // the output layer.
@@ -4996,7 +5005,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
     // Unpack all of the attributes.
     tensorflow::TensorFormat data_format;
     if (!FormatFromString(op.data_format().str(), &data_format))
-      return failure();
+      return op.emitOpError("invalid data format");
 
     tensorflow::Padding padding;
     if (!GetPaddingFromString(op.padding().str(), &padding).ok())
@@ -5179,7 +5188,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
     // Unpack all of the attributes.
     tensorflow::TensorFormat data_format;
     if (!FormatFromString(op.data_format().str(), &data_format))
-      return failure();
+      return op.emitOpError("invalid data format");
 
     tensorflow::Padding padding;
     if (!GetPaddingFromString(op.padding().str(), &padding).ok())
