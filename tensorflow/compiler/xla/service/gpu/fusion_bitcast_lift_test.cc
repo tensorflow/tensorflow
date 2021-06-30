@@ -53,21 +53,21 @@ HloModule mod
   ROOT %add.5 = f32[] add(f32[] %scalar_lhs.1, f32[] %scalar_rhs.1)
 }
 
-%fused_computation.21_4d (param_0.59: f16[2,14,14,672]) -> (f32[672], f32[672]) {
-  %param_0.59 = f16[2,14,14,672] parameter(0)
-  %convert.21 = f32[2,14,14,672] convert(%param_0.59)
-  %bitcast.25 = f32[392,672] bitcast(%convert.21)
-  %constant_84 = f32[] constant(0)
-  %reduce.12 = f32[672]{0} reduce(%bitcast.25, %constant_84), dimensions={0}, to_apply=%scalar_add_computation
-  %multiply.43.clone.1 = f32[2,14,14,672] multiply(%convert.21, %convert.21)
-  %bitcast.24.clone.1 = f32[392,672] bitcast(%multiply.43.clone.1)
-  %reduce.11.clone.1 = f32[672]{0} reduce(%bitcast.24.clone.1, %constant_84), dimensions={0}, to_apply=%scalar_add_computation
-  ROOT %tuple.13 = (f32[672]{0}, f32[672]{0}) tuple(%reduce.12, %reduce.11.clone.1)
+%fused_computation.4d (param_0: f16[2,14,14,672]) -> (f32[672], f32[672]) {
+  %param_0 = f16[2,14,14,672] parameter(0)
+  %convert = f32[2,14,14,672] convert(%param_0)
+  %bitcast.1 = f32[392,672] bitcast(%convert)
+  %constant_0 = f32[] constant(0)
+  %reduce.1 = f32[672]{0} reduce(%bitcast.1, %constant_0), dimensions={0}, to_apply=%scalar_add_computation
+  %multiply = f32[2,14,14,672] multiply(%convert, %convert)
+  %bitcast.2 = f32[392,672] bitcast(%multiply)
+  %reduce.2 = f32[672]{0} reduce(%bitcast.2, %constant_0), dimensions={0}, to_apply=%scalar_add_computation
+  ROOT %tuple = (f32[672]{0}, f32[672]{0}) tuple(%reduce.1, %reduce.2)
 }
 
-ENTRY main {
-  %param_0.59 = f16[2,14,14,672] parameter(0)
-  ROOT %fusion.21_4d = (f32[672]{0}, f32[672]{0}) fusion(%param_0.59), kind=kInput, calls=%fused_computation.21_4d
+ENTRY %main {
+  %param_0 = f16[2,14,14,672] parameter(0)
+  ROOT %fusion.4d = (f32[672]{0}, f32[672]{0}) fusion(%param_0), kind=kInput, calls=%fused_computation.4d
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
@@ -85,9 +85,9 @@ ENTRY main {
 ; CHECK-NOT:     parameter
 ; CHECK-NOT:     bitcast
 ; CHECK-LABEL: ENTRY %main
-; CHECK-NEXT:    %param_0.0 = f16[2,14,14,672]{3,2,1,0} parameter(0)
+; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
-; CHECK-NEXT:    ROOT %fusion.21_4d.bitcast
+; CHECK-NEXT:    ROOT %fusion.4d.bitcast
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -114,24 +114,24 @@ HloModule mod
   ROOT %add.5 = f32[] add(f32[] %scalar_lhs.1, f32[] %scalar_rhs.1)
 }
 
-%fused_computation.21_4d (param_0.59: f16[2,14,14,672], param_1: f32[]) -> (f32[672], f32[672]) {
-  %param_0.59 = f16[2,14,14,672] parameter(0)
-  %convert.21 = f32[2,14,14,672] convert(%param_0.59)
-  %bitcast.25 = f32[392,672] bitcast(%convert.21)
-  %constant_84 = f32[] constant(0)
-  %reduce.12 = f32[672]{0} reduce(%bitcast.25, %constant_84), dimensions={0}, to_apply=%scalar_add_computation
+%fused_computation.4d (param_0: f16[2,14,14,672], param_1: f32[]) -> (f32[672], f32[672]) {
+  %param_0 = f16[2,14,14,672] parameter(0)
+  %convert = f32[2,14,14,672] convert(%param_0)
+  %bitcast.1 = f32[392,672] bitcast(%convert)
+  %constant_0 = f32[] constant(0)
+  %reduce.1 = f32[672]{0} reduce(%bitcast.1, %constant_0), dimensions={0}, to_apply=%scalar_add_computation
   %param_1 = f32[] parameter(1)
   %broadcast = f32[2,14,14,672] broadcast(%param_1), dimensions={}
-  %multiply.43.clone.1 = f32[2,14,14,672] multiply(%convert.21, %broadcast)
-  %bitcast.24.clone.1 = f32[392,672] bitcast(%multiply.43.clone.1)
-  %reduce.11.clone.1 = f32[672]{0} reduce(%bitcast.24.clone.1, %constant_84), dimensions={0}, to_apply=%scalar_add_computation
-  ROOT %tuple.13 = (f32[672]{0}, f32[672]{0}) tuple(%reduce.12, %reduce.11.clone.1)
+  %multiply = f32[2,14,14,672] multiply(%convert, %broadcast)
+  %bitcast.2 = f32[392,672] bitcast(%multiply)
+  %reduce.2 = f32[672]{0} reduce(%bitcast.2, %constant_0), dimensions={0}, to_apply=%scalar_add_computation
+  ROOT %tuple = (f32[672]{0}, f32[672]{0}) tuple(%reduce.1, %reduce.2)
 }
 
-ENTRY main {
-  %param_0.59 = f16[2,14,14,672] parameter(0)
+ENTRY %main {
+  %param_0 = f16[2,14,14,672] parameter(0)
   %param_1 = f32[] parameter(1)
-  ROOT %fusion.21_4d = (f32[672]{0}, f32[672]{0}) fusion(%param_0.59, %param_1), kind=kInput, calls=%fused_computation.21_4d
+  ROOT %fusion.4d = (f32[672]{0}, f32[672]{0}) fusion(%param_0, %param_1), kind=kInput, calls=%fused_computation.4d
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
@@ -153,10 +153,10 @@ ENTRY main {
 ; CHECK-NEXT:    bitcast(f32[2,14,14,672]{3,2,1,0} %broadcast.1)
 ; CHECK-NOT:     bitcast(
 ; CHECK-LABEL: ENTRY %main
-; CHECK-NEXT:    %param_0.0 = f16[2,14,14,672]{3,2,1,0} parameter(0)
+; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
 ; CHECK-NEXT:    %param_1.1 = f32[] parameter(1)
-; CHECK-NEXT:    ROOT %fusion.21_4d.bitcast
+; CHECK-NEXT:    ROOT %fusion.4d.bitcast
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -172,24 +172,24 @@ HloModule mod
   ROOT %add.5 = f32[] add(f32[] %scalar_lhs.1, f32[] %scalar_rhs.1)
 }
 
-%fused_computation.21_4d (param_0.59: f16[2,14,14,672], param_1: f32[672]) -> (f32[672], f32[672]) {
-  %param_0.59 = f16[2,14,14,672] parameter(0)
-  %convert.21 = f32[2,14,14,672] convert(%param_0.59)
-  %bitcast.25 = f32[392,672] bitcast(%convert.21)
-  %constant_84 = f32[] constant(0)
-  %reduce.12 = f32[672]{0} reduce(%bitcast.25, %constant_84), dimensions={0}, to_apply=%scalar_add_computation
+%fused_computation.4d (param_0: f16[2,14,14,672], param_1: f32[672]) -> (f32[672], f32[672]) {
+  %param_0 = f16[2,14,14,672] parameter(0)
+  %convert = f32[2,14,14,672] convert(%param_0)
+  %bitcast.1 = f32[392,672] bitcast(%convert)
+  %constant_0 = f32[] constant(0)
+  %reduce.1 = f32[672]{0} reduce(%bitcast.1, %constant_0), dimensions={0}, to_apply=%scalar_add_computation
   %param_1 = f32[672] parameter(1)
   %broadcast = f32[2,14,14,672] broadcast(%param_1), dimensions={3}
-  %multiply.43.clone.1 = f32[2,14,14,672] multiply(%convert.21, %broadcast)
-  %bitcast.24.clone.1 = f32[392,672] bitcast(%multiply.43.clone.1)
-  %reduce.11.clone.1 = f32[672]{0} reduce(%bitcast.24.clone.1, %constant_84), dimensions={0}, to_apply=%scalar_add_computation
-  ROOT %tuple.13 = (f32[672]{0}, f32[672]{0}) tuple(%reduce.12, %reduce.11.clone.1)
+  %multiply = f32[2,14,14,672] multiply(%convert, %broadcast)
+  %bitcast.2 = f32[392,672] bitcast(%multiply)
+  %reduce.2 = f32[672]{0} reduce(%bitcast.2, %constant_0), dimensions={0}, to_apply=%scalar_add_computation
+  ROOT %tuple = (f32[672]{0}, f32[672]{0}) tuple(%reduce.1, %reduce.2)
 }
 
-ENTRY main {
-  %param_0.59 = f16[2,14,14,672] parameter(0)
+ENTRY %main {
+  %param_0 = f16[2,14,14,672] parameter(0)
   %param_1 = f32[672] parameter(1)
-  ROOT %fusion.21_4d = (f32[672]{0}, f32[672]{0}) fusion(%param_0.59, %param_1), kind=kInput, calls=%fused_computation.21_4d
+  ROOT %fusion.4d = (f32[672]{0}, f32[672]{0}) fusion(%param_0, %param_1), kind=kInput, calls=%fused_computation.4d
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
@@ -211,10 +211,10 @@ ENTRY main {
 ; CHECK:         bitcast(f32[2,14,14,672]{3,2,1,0} %broadcast.1)
 ; CHECK-NOT:     bitcast(
 ; CHECK-LABEL: ENTRY %main
-; CHECK-NEXT:    %param_0.0 = f16[2,14,14,672]{3,2,1,0} parameter(0)
+; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
 ; CHECK-NEXT:    %param_1.1 = f32[672]{0} parameter(1)
-; CHECK-NEXT:    ROOT %fusion.21_4d.bitcast
+; CHECK-NEXT:    ROOT %fusion.4d.bitcast
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
