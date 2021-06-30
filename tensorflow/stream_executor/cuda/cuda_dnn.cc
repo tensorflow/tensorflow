@@ -3775,8 +3775,14 @@ GetFirstWorkingExecutionPlan(
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(fallback);
 
-  auto engine_count = heuristics.getEngineConfigCount();
+  // cuDNN frontend sneakily puts error messages on the object and returns
+  // partially-initialized results when there's an error; make sure to check
+  // them.
+  int64_t engine_count = heuristics.getEngineConfigCount();
+  RETURN_MSG_IF_CUDNN_ERROR(heuristics);
   auto& engine_config = heuristics.getEngineConfig(engine_count);
+  RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+
   auto& fallback_list = fallback.getFallbackList();
 
   cudnn_frontend::EngineConfigList filtered_configs;
@@ -4394,7 +4400,14 @@ bool CudnnSupport::GetConvolveExecutionPlans(
                       .build();
   RETURN_FALSE_IF_CUDNN_ERROR(fallback);
 
-  auto& heur_configs = heur.getEngineConfig(heur.getEngineConfigCount());
+  // cuDNN frontend sneakily puts error messages on the object and returns
+  // partially-initialized results when there's an error; make sure to check
+  // them.
+  int64_t engine_count = heur.getEngineConfigCount();
+  RETURN_FALSE_IF_CUDNN_ERROR(heur);
+  auto& heur_configs = heur.getEngineConfig(engine_count);
+  RETURN_FALSE_IF_CUDNN_ERROR(heur);
+
   auto& fallback_configs = fallback.getFallbackList();
 
   VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size()
@@ -4471,7 +4484,14 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
           .build();
   RETURN_MSG_IF_CUDNN_ERROR(fallback);
 
-  auto& heur_configs = heur.getEngineConfig(heur.getEngineConfigCount());
+  // cuDNN frontend sneakily puts error messages on the object and returns
+  // partially-initialized results when there's an error; make sure to check
+  // them.
+  int64_t engine_count = heur.getEngineConfigCount();
+  RETURN_MSG_IF_CUDNN_ERROR(heur);
+  auto& heur_configs = heur.getEngineConfig(engine_count);
+  RETURN_MSG_IF_CUDNN_ERROR(heur);
+
   auto& fallback_configs = fallback.getFallbackList();
 
   VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size()
