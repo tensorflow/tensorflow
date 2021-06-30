@@ -86,18 +86,17 @@ std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
 
     OpSignatureTensorSpec tensor_spec = {kTfLiteNoType};
     if (tensor_no >= 0) {
-      const TfLiteTensor* tfl_tensor =
-          GetOptionalInputTensor(context, tflite_node, tensor_no);
+      const TfLiteTensor* tfl_tensor;
+      if (context->tensors != nullptr) {
+        tfl_tensor = &context->tensors[tensor_no];
+      } else {
+        tfl_tensor = context->GetTensor(context, tensor_no);
+      }
       if (tfl_tensor != nullptr) {
         tensor_spec.type = tfl_tensor->type;
         tensor_spec.is_const = (tfl_tensor->allocation_type == kTfLiteMmapRo);
-        if (tfl_tensor->dims_signature) {
-          // To handle dynamic shapes. Unknown dimensions are represented as -1.
-          for (int32_t j = 0; j < tfl_tensor->dims_signature->size; ++j) {
-            tensor_spec.dims.push_back(tfl_tensor->dims_signature->data[j]);
-          }
-        } else if (tfl_tensor->dims) {
-          for (int32_t j = 0; i < tfl_tensor->dims->size; ++j) {
+        if (tfl_tensor->dims) {
+          for (int32_t j = 0; j < tfl_tensor->dims->size; ++j) {
             tensor_spec.dims.push_back(tfl_tensor->dims->data[j]);
           }
         }
@@ -204,19 +203,19 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
   return op_sig;
 }
 
-OpSignature GetOpSignature(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
+OpSignature GetOpSignature(const TfLiteContext* context, const TfLiteNode* node,
                            const TfLiteRegistration* registration) {
   OpSignature op_sig = {
       static_cast<BuiltinOperator>(registration->builtin_code)};
-  op_sig.builtin_data = tflite_node->builtin_data;
-  op_sig.custom_initial_data = tflite_node->custom_initial_data;
+  op_sig.builtin_data = node->builtin_data;
+  if (op_sig.op == BuiltinOperator_CUSTOM) {
+    op_sig.custom_name = registration->custom_name;
+    op_sig.custom_initial_data = node->custom_initial_data;
+  }
   std::memset(&op_sig.ext_options, 0, sizeof(op_sig.ext_options));
 
-  op_sig.inputs =
-      GetOpSignatureTensorSpecs(tflite_node->inputs, context, tflite_node);
-  op_sig.outputs =
-      GetOpSignatureTensorSpecs(tflite_node->outputs, context, tflite_node);
+  op_sig.inputs = GetOpSignatureTensorSpecs(node->inputs, context, node);
+  op_sig.outputs = GetOpSignatureTensorSpecs(node->outputs, context, node);
   return op_sig;
 }
 
