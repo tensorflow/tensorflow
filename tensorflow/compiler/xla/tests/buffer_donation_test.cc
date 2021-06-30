@@ -43,7 +43,7 @@ class BufferDonationTest : public HloTestBase {
  public:
   BufferDonationTest() {
     client_ = ClientLibrary::LocalClientOrDie();
-    backend_ = client_->mutable_backend();
+    backend_ = &client_->backend();
     platform_ = backend_->platform();
     executor_ = backend_->default_stream_executor();
     TF_CHECK_OK(executor_->Init());
@@ -52,7 +52,7 @@ class BufferDonationTest : public HloTestBase {
  protected:
   LocalClient* client_;
   se::Platform* platform_;
-  Backend* backend_;
+  const Backend* backend_;
   se::StreamExecutor* executor_;
 
   // If `donate_arguments` is `true` gives up ownership of the buffers used for
@@ -84,8 +84,7 @@ class BufferDonationTest : public HloTestBase {
     ExecutableRunOptions run_options;
     run_options.set_stream(&stream);
     run_options.set_allocator(&memory_allocator);
-    ServiceExecutableRunOptions service_run_options(run_options,
-                                                    backend_->StreamBorrower());
+    ServiceExecutableRunOptions service_run_options(run_options);
 
     std::vector<ExecutionInput> args;
     std::vector<ShapeTree<se::DeviceMemoryBase>> inputs_buffers;

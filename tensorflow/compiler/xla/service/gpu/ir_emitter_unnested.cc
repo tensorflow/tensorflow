@@ -3099,23 +3099,6 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   return Status::OK();
 }
 
-template <typename NcclThunkType>
-Status MaybeAddAllReduceStartThunkToMap(
-    absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>&,
-    mlir::Operation* op, NcclThunkType* thunk) {
-  return Status::OK();
-}
-
-template <>
-Status MaybeAddAllReduceStartThunkToMap(
-    absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>&
-        all_reduce_start_thunks,
-    mlir::Operation* op, NcclAllReduceStartThunk* thunk) {
-  TF_RET_CHECK(all_reduce_start_thunks.emplace(op, thunk).second)
-      << "all-reduce-start with this unique ID already seen";
-  return Status::OK();
-}
-
 template <typename NcclThunkType, typename OpTy>
 Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   OpTy op = mlir::cast<OpTy>(untyped_op);
@@ -3154,16 +3137,9 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     auto nccl_thunk =
         absl::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                          /*buffers=*/std::move(buffers));
-    // Record thunks for all-reduce-start ops as the done ops need them.
-    TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
-        all_reduce_start_thunks_, op, nccl_thunk.get()));
     AddThunkToThunkSequence(std::move(nccl_thunk));
     return Status::OK();
   }
-
-  // Signal that all-reduce-start thunk not created with nullptr.
-  TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
-      all_reduce_start_thunks_, op, static_cast<NcclThunkType*>(nullptr)));
 
   if (!is_degenerate) {
     CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
@@ -3200,24 +3176,6 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         GetThunkInfo(op), std::move(thunks)));
   }
-  return Status::OK();
-}
-
-Status IrEmitterUnnested::EmitAllReduceDone(mlir::Operation* op) {
-  auto done_op = mlir::cast<mlir::lmhlo_gpu::AllReduceDoneOp>(op);
-  auto start_op =
-      done_op.token().getDefiningOp<mlir::lmhlo_gpu::AllReduceStartOp>();
-  auto it = all_reduce_start_thunks_.find(start_op);
-  TF_RET_CHECK(it != all_reduce_start_thunks_.end())
-      << "couldn't find thunk for all-reduce-start op";
-
-  // Can be null if no all-reduce-start thunk was created (e.g. if the start op
-  // is degenerate), in which case there's nothing to do here.
-  if (it->second != nullptr) {
-    AddThunkToThunkSequence(absl::make_unique<NcclAllReduceDoneThunk>(
-        GetThunkInfo(op), *it->second));
-  }
-  all_reduce_start_thunks_.erase(it);
   return Status::OK();
 }
 
@@ -5627,15 +5585,6 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
     return EmitNcclThunk<NcclAllReduceThunk, mlir::lmhlo::AllReduceOp>(op);
-  }
-
-  if (mlir::isa<mlir::lmhlo_gpu::AllReduceStartOp>(op)) {
-    return EmitNcclThunk<NcclAllReduceStartThunk,
-                         mlir::lmhlo_gpu::AllReduceStartOp>(op);
-  }
-
-  if (mlir::isa<mlir::lmhlo_gpu::AllReduceDoneOp>(op)) {
-    return EmitAllReduceDone(op);
   }
 
   if (mlir::isa<mlir::lmhlo::AllReduceScatterOp>(op)) {

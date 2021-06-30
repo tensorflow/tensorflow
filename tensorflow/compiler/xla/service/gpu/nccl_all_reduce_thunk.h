@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -33,9 +32,13 @@ struct NcclAllReduceConfig {
   ReductionKind reduction_kind;
 };
 
-// Thunk that performs a NCCL-based All-Reduce among CUDA GPU-based replicas.
+// Thunk that performs a NCCL-based All-Reduce or All-Reduce-Scatter among CUDA
+// GPU-based replicas.
 class NcclAllReduceThunkBase : public NcclCollectiveThunk {
  public:
+  template <typename OpT>
+  static absl::optional<ReductionKind> MatchReductionComputation(OpT op);
+
   NcclAllReduceThunkBase(Kind kind, ThunkInfo thunk_info,
                          NcclAllReduceConfig config,
                          std::vector<Buffer> buffers);
@@ -43,7 +46,6 @@ class NcclAllReduceThunkBase : public NcclCollectiveThunk {
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
 
- protected:
   const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
 };
@@ -55,6 +57,8 @@ class NcclAllReduceThunk : public NcclAllReduceThunkBase {
 
   static const char* GetName() { return "AllReduce"; }
 
+  // Returns whether the given instruction can be lowered to a nccl all-reduce
+  // call.
   static bool CanImplement(mlir::lmhlo::AllReduceOp op);
   static bool IsDegenerate(mlir::lmhlo::AllReduceOp op, int64 replica_count,
                            int64 partition_count);
@@ -63,44 +67,6 @@ class NcclAllReduceThunk : public NcclAllReduceThunkBase {
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
-};
-
-class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
- public:
-  NcclAllReduceStartThunk(ThunkInfo thunk_info,
-                          mlir::lmhlo_gpu::AllReduceStartOp op,
-                          std::vector<Buffer> buffers);
-
-  static const char* GetName() { return "AllReduceStart"; }
-
-  static bool CanImplement(mlir::lmhlo_gpu::AllReduceStartOp op);
-  static bool IsDegenerate(mlir::lmhlo_gpu::AllReduceStartOp op,
-                           int64 replica_count, int64 partition_count);
-  static CollectiveOpGroupMode GetGroupMode(
-      mlir::lmhlo_gpu::AllReduceStartOp op);
-
-  StatusOr<se::Event> TakeDoneEvent(int device_ordinal)
-      ABSL_LOCKS_EXCLUDED(mu_);
-
- protected:
-  Status RunNcclCollective(const ExecuteParams& params,
-                           ncclComm_t comm) override;
-
- private:
-  absl::Mutex mu_;
-  // Store done events (by device ordinal) for the done thunk to wait on.
-  absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mu_);
-};
-
-class NcclAllReduceDoneThunk : public Thunk {
- public:
-  explicit NcclAllReduceDoneThunk(ThunkInfo thunk_info,
-                                  NcclAllReduceStartThunk& start_thunk);
-
-  Status ExecuteOnStream(const ExecuteParams& params) override;
-
- private:
-  NcclAllReduceStartThunk& start_thunk_;
 };
 
 class NcclAllReduceScatterThunk : public NcclAllReduceThunkBase {
