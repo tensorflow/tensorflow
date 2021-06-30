@@ -766,7 +766,7 @@ Status IrEmitterUnnested::EmitConditional(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(conditional.index()));
   AddThunkToThunkSequence(std::unique_ptr<Thunk>(
-      new ConditionalThunk(GetThunkInfo(op), std::move(config), slice, {})));
+      new ConditionalThunk(GetThunkInfo(op), std::move(config), slice)));
   return Status::OK();
 }
 
