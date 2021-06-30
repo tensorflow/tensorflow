@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 // clang-format on
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
@@ -130,17 +129,6 @@ __global__ void UnsortedSegmentCustomKernel(
         output_segment_index * inner_dim_size + segment_offset;
     KernelReductionFunctor()(output + output_index, ldg(input + input_index));
   }
-}
-
-bool DisableSegmentReductionOpDeterminismExceptions() {
-  static bool cached_disable = [] {
-    bool disable = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_DISABLE_SEGMENT_REDUCTION_OP_DETERMINISM_EXCEPTIONS",
-        /*default_val=*/false, &disable));
-    return disable;
-  }();
-  return cached_disable;
 }
 
 template <typename Tindex, typename Tsegmentids>
@@ -839,90 +827,6 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
             /*output=*/output_flat.data()));
   }
 };
-
-#define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)                           \
-  template struct SegmentReductionFunctor<T, Index, functor::Zero<T>,     \
-                                          functor::NonAtomicSumOpGpu<T>,  \
-                                          functor::AtomicSumOpGpu<T>>;    \
-  template struct SegmentReductionFunctor<T, Index, functor::One<T>,      \
-                                          functor::NonAtomicProdOpGpu<T>, \
-                                          functor::AtomicProdOpGpu<T>>;   \
-  template struct SegmentReductionFunctor<T, Index, functor::Highest<T>,  \
-                                          functor::NonAtomicMinOpGpu<T>,  \
-                                          functor::AtomicMinOpGpu<T>>;    \
-  template struct SegmentReductionFunctor<T, Index, functor::Lowest<T>,   \
-                                          functor::NonAtomicMaxOpGpu<T>,  \
-                                          functor::AtomicMaxOpGpu<T>>;
-
-#define DEFINE_SORTED_GPU_SPECS(T)         \
-  DEFINE_SORTED_GPU_SPECS_INDEX(T, int32); \
-  DEFINE_SORTED_GPU_SPECS_INDEX(T, int64);
-
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
-
-#define DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, Index)                         \
-  template struct UnsortedSegmentFunctor<                                      \
-      GPUDevice, T, Index, functor::Lowest<T>, functor::AtomicMaxOpGpu<T>>;    \
-  template struct UnsortedSegmentFunctor<                                      \
-      GPUDevice, T, Index, functor::Highest<T>, functor::AtomicMinOpGpu<T>>;   \
-  template struct UnsortedSegmentFunctor<GPUDevice, T, Index, functor::One<T>, \
-                                         functor::AtomicProdOpGpu<T>>;
-
-// Sum is the only op that supports all input types currently.
-#define DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, Index) \
-  template struct UnsortedSegmentFunctor<             \
-      GPUDevice, T, Index, functor::Zero<T>, functor::AtomicSumOpGpu<T>>;
-
-#define DEFINE_REAL_GPU_SPECS(T)                  \
-  DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int32); \
-  DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int64);
-
-#define DEFINE_SUM_GPU_SPECS(T)                  \
-  DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, int32); \
-  DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, int64);
-
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_REAL_GPU_SPECS);
-TF_CALL_int32(DEFINE_REAL_GPU_SPECS);
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
-TF_CALL_int32(DEFINE_SUM_GPU_SPECS);
-
-// TODO(rocm): support atomicAdd for complex numbers on ROCm
-#if GOOGLE_CUDA
-TF_CALL_COMPLEX_TYPES(DEFINE_SUM_GPU_SPECS);
-#endif
-
-#undef DEFINE_SORTED_GPU_SPECS_INDEX
-#undef DEFINE_SORTED_GPU_SPECS
-#undef DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX
-#undef DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX
-#undef DEFINE_REAL_GPU_SPECS
-#undef DEFINE_SUM_GPU_SPECS
-
-// TODO(benbarsdell): These kernels are disabled on Windows as a workaround for
-// a CI build error: "formal parameter with requested alignment of 128 won't be
-// aligned". The root cause is suspected to be an aligned type (AlignedVector)
-// being passed to a function by value, possibly inside the CUB library
-// somewhere, but I have not yet been able to reproduce it in isolation outside
-// of the GitHub CI.
-#if !defined(PLATFORM_WINDOWS)
-
-#define DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR(T)                \
-  template struct SparseSegmentReductionFunctor<T, int32, int32>; \
-  template struct SparseSegmentReductionFunctor<T, int32, int64>; \
-  template struct SparseSegmentReductionFunctor<T, int64, int32>; \
-  template struct SparseSegmentReductionFunctor<T, int64, int64>;
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR);
-#undef DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR
-
-#define DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR(T)                           \
-  template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int32>; \
-  template struct SparseSegmentGradFunctor<GPUDevice, T, int32, int64>; \
-  template struct SparseSegmentGradFunctor<GPUDevice, T, int64, int32>; \
-  template struct SparseSegmentGradFunctor<GPUDevice, T, int64, int64>;
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR);
-#undef DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR
-
-#endif  // !defined(PLATFORM_WINDOWS)
 
 }  // namespace functor
 }  // namespace tensorflow
