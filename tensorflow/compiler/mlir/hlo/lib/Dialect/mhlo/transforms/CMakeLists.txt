@@ -57,6 +57,7 @@ add_mlir_library(MhloPasses
   lower_general_dot.cc
   materialize_broadcasts.cc
   materialize_broadcasts_pass.cc
+  mhlo_canonicalize_reduction.cc
   mhlo_fusion.cc
   optimize_mhlo.cc
   optimize_mhlo_pass.cc

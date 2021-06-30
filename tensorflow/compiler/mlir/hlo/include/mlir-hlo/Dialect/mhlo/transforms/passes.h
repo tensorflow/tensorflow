@@ -45,6 +45,9 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
     bool legalize_broadcasts = true, bool expand_compositions = true);
 
+// canonicalize reduction ops to be suitable for codegen.
+std::unique_ptr<FunctionPass> createHloCanonicalizeReductionPass();
+
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(

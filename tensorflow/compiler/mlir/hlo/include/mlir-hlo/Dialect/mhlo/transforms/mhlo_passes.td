@@ -26,6 +26,11 @@ def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
   ];
 }
 
+def HloCanonicalizeReductionPass : FunctionPass<"hlo-canonicalize-reduction"> {
+  let summary = "canonicalize reduction ops to be suitable for codegen.";
+  let constructor = "createHloCanonicalizeReductionPass()";
+}
+
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";

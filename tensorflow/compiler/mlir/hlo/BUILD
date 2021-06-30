@@ -958,6 +958,19 @@ cc_library(
 )
 
 cc_library(
+    name = "mhlo_canonicalize_reduction",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_canonicalize_reduction.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_lhlo.cc"],
     hdrs = [
@@ -1395,6 +1408,7 @@ cc_library(
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
+        ":mhlo_canonicalize_reduction",
         ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
