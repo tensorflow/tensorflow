@@ -289,6 +289,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   OpBuilder builder_;
   // Convenient "cached" access to this widely used MLIR type (i8).
   Type i8_type_;
+
+  // Map all-reduce-start ops to their LHLO op, so we can connect the
+  // all-reduce-done op with the correct token.
+  absl::flat_hash_map<const xla::HloInstruction*, lmhlo_gpu::AllReduceStartOp>
+      all_reduce_start_ops_;
 };
 
 // Populate the MLIR `module` with the computation from the `hlo_module` using
