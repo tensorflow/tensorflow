@@ -1246,6 +1246,10 @@ LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(PrintOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir

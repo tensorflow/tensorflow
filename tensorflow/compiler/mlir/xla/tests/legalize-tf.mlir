@@ -5306,3 +5306,16 @@ func @xladotv2_matmul(%lhs : tensor<64x32xi8>, %rhs : tensor<32x16xi8>) -> tenso
   %res = "tf.XlaDotV2"(%lhs, %rhs) {dimension_numbers = "\0A\01\01\12\01\00", precision_config = ""} : (tensor<64x32xi8>, tensor<32x16xi8>) -> tensor<64x16xi32>
   return %res : tensor<64x16xi32>
 }
+
+//===----------------------------------------------------------------------===//
+// tf.Print legalization
+//===----------------------------------------------------------------------===//
+// CHECK-LABEL: @simple_print
+func @simple_print() -> (tensor<*xi32>) {
+  // CHECK: mhlo.constant dense<1> : tensor<i32>
+  // CHECK: tensor.cast {{.*}} : tensor<i32> to tensor<*xi32>
+  // CHECK: "mhlo.print"({{.*}}) : (tensor<*xi32>) -> tensor<*xi32>
+  %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
+  %print = "tf.Print"(%const) { message = "bla" } : (tensor<*xi32>) -> (tensor<*xi32>)
+  return %print: tensor<*xi32>
+}
