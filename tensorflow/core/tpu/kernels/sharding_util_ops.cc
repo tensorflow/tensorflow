@@ -30,8 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/pad_op.h"
-#include "tensorflow/core/kernels/slice_op.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -314,7 +312,6 @@ class XlaSplitNDBaseOp : public OpKernel {
   void SliceAndPad(OpKernelContext* ctx, const Tensor* input) {
     const auto& shape = input->shape().dim_sizes();
     const Device& device = ctx->eigen_device<Device>();
-    functor::Pad<Device, T, int64, Rank> pad_functor;
     if (num_slices_ == 1) {
       Eigen::array<Eigen::IndexPair<int64>, Rank> tensor_paddings;
       TensorShape output_shape;
@@ -325,8 +322,8 @@ class XlaSplitNDBaseOp : public OpKernel {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_output(/*index=*/0, output_shape, &output));
-      pad_functor(device, output->tensor<T, Rank>(), input->tensor<T, Rank>(),
-                  tensor_paddings, T());
+      output->tensor<T, Rank>().device(device) =
+          input->tensor<T, Rank>().pad(tensor_paddings, T());
       return;
     }
 
@@ -336,9 +333,8 @@ class XlaSplitNDBaseOp : public OpKernel {
       output_slice_shape.AddDim((shape[dim] + paddings_[dim]) /
                                 num_splits_[dim]);
     }
-    const Eigen::DSizes<Eigen::DenseIndex, Rank> base_slice_shape =
+    const Eigen::DSizes<Eigen::DenseIndex, Rank> output_slice_shape_dsizes =
         output_slice_shape.AsEigenDSizes<Rank>();
-    functor::Slice<Device, T, Rank> slice_functor;
 
     for (int i = 0; i < num_slices_; ++i) {
       Tensor* output_slice = nullptr;
@@ -349,7 +345,7 @@ class XlaSplitNDBaseOp : public OpKernel {
       TensorShape non_padded_slice_shape;
       Eigen::array<Eigen::IndexPair<int64>, Rank> slice_paddings;
       Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
-          GetSliceIndices<Rank>(num_splits_, base_slice_shape, i);
+          GetSliceIndices<Rank>(num_splits_, output_slice_shape_dsizes, i);
 
       // Calculate paddings necessary for shard instead of padding input and
       // slicing subsequently to reduce temporary memory allocation.
@@ -359,35 +355,34 @@ class XlaSplitNDBaseOp : public OpKernel {
           // Complete padding.
           slice_indices[dim] = dim_size;
           non_padded_slice_shape.AddDim(0);
-          slice_paddings[dim] = {0, base_slice_shape[dim]};
+          slice_paddings[dim] = {0, output_slice_shape_dsizes[dim]};
           pad = true;
-        } else if (slice_indices[dim] + base_slice_shape[dim] >= dim_size) {
+        } else if (slice_indices[dim] + output_slice_shape_dsizes[dim] >=
+                   dim_size) {
           // Partial padding.
           non_padded_slice_shape.AddDim(dim_size - slice_indices[dim]);
-          slice_paddings[dim] = {
-              0, base_slice_shape[dim] - non_padded_slice_shape.dim_size(dim)};
+          slice_paddings[dim] = {0, output_slice_shape_dsizes[dim] -
+                                        non_padded_slice_shape.dim_size(dim)};
           pad = true;
         } else {
-          non_padded_slice_shape.AddDim(base_slice_shape[dim]);
+          non_padded_slice_shape.AddDim(output_slice_shape_dsizes[dim]);
         }
       }
 
       if (pad) {
-        Tensor no_padding_slice;
-        OP_REQUIRES_OK(
-            ctx, ctx->allocate_temp(input->dtype(), non_padded_slice_shape,
-                                    &no_padding_slice));
-        slice_functor(device, no_padding_slice.tensor<T, Rank>(),
-                      input->tensor<T, Rank>(), slice_indices,
-                      non_padded_slice_shape.AsEigenDSizes<Rank>());
-        pad_functor(
-            device, output_slice->tensor<T, Rank>(),
-            const_cast<const Tensor&>(no_padding_slice).tensor<T, Rank>(),
-            slice_paddings, T());
+        Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes =
+            non_padded_slice_shape.AsEigenDSizes<Rank>();
+        output_slice->flat<T>().device(device) =
+            output_slice->flat<T>().constant(T());
+        output_slice->tensor<T, Rank>()
+            .slice(Eigen::DSizes<Eigen::DenseIndex, Rank>(),
+                   non_padded_slice_shape_dsizes)
+            .device(device) = input->tensor<T, Rank>().slice(
+            slice_indices, non_padded_slice_shape_dsizes);
       } else {
-        slice_functor(device, output_slice->tensor<T, Rank>(),
-                      input->tensor<T, Rank>(), slice_indices,
-                      base_slice_shape);
+        output_slice->tensor<T, Rank>().device(device) =
+            input->tensor<T, Rank>().slice(slice_indices,
+                                           output_slice_shape_dsizes);
       }
     }
   }
@@ -406,18 +401,18 @@ class XlaSplitNDBaseOp : public OpKernel {
     for (int dim = 0; dim < Rank; ++dim) {
       output_slice_shape.AddDim(shape[dim] / num_splits_[dim]);
     }
-    const Eigen::DSizes<Eigen::DenseIndex, Rank> base_slice_shape =
+    const Eigen::DSizes<Eigen::DenseIndex, Rank> output_slice_shape_dsizes =
         output_slice_shape.AsEigenDSizes<Rank>();
-    functor::Slice<Device, T, Rank> slice_functor;
 
     for (int i = 0; i < num_slices_; ++i) {
       Tensor* output_slice = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(
                               /*index=*/i, output_slice_shape, &output_slice));
       Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
-          GetSliceIndices<Rank>(num_splits_, base_slice_shape, i);
-      slice_functor(device, output_slice->tensor<T, Rank>(),
-                    input->tensor<T, Rank>(), slice_indices, base_slice_shape);
+          GetSliceIndices<Rank>(num_splits_, output_slice_shape_dsizes, i);
+      output_slice->tensor<T, Rank>().device(device) =
+          input->tensor<T, Rank>().slice(slice_indices,
+                                         output_slice_shape_dsizes);
     }
   }
 
@@ -473,8 +468,6 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
   DataType dtype_;
 };
 
-}  // anonymous namespace
-
 #define REGISTER_XLA_SPLIT_ND(type)                                    \
   REGISTER_KERNEL_BUILDER(                                             \
       Name("XlaSplitND").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
@@ -495,4 +488,5 @@ TF_CALL_POD_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 TF_CALL_QUANTIZED_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 #undef REGISTER_READ_VARIABLE_XLA_SPLIT_ND
 
+}  // anonymous namespace
 }  // namespace tensorflow

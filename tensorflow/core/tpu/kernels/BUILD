@@ -1054,8 +1054,6 @@ cc_library(
         "//tensorflow/core/framework:kernel_def_proto_cc",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/core/kernels:pad_op",
-        "//tensorflow/core/kernels:slice_op",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",
