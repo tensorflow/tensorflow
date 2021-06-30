@@ -194,6 +194,81 @@ inline PrimitiveType HigherPrecisionType(PrimitiveType a, PrimitiveType b) {
   return a;
 }
 
+// Returns true if a convert from from_type to to_type looses no precision.
+inline bool CastPreservesValues(PrimitiveType from_type,
+                                PrimitiveType to_type) {
+  if (from_type == to_type) {
+    return true;
+  }
+  switch (to_type) {
+    case C128:
+      if (from_type == F64) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case F64:
+      if (from_type == S32 || from_type == U32 || from_type == F32) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case C64:
+      if (from_type == F32) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case F32:
+      if (from_type == F16 || from_type == BF16 || from_type == S16 ||
+          from_type == U16) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case F16:
+    case BF16:
+      return from_type == U8 || from_type == S8 || from_type == PRED;
+    case S64:
+      if (from_type == S32 || from_type == U32) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case S32:
+      if (from_type == S16 || from_type == U16) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case S16:
+      if (from_type == S8 || from_type == U8) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case S8:
+      if (from_type == PRED) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case PRED:
+      return false;
+    case U64:
+      if (from_type == U32) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case U32:
+      if (from_type == U16) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case U16:
+      if (from_type == U8) {
+        return true;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
+    case U8:
+      return from_type == PRED;
+    default:
+      return false;
+  }
+}
+
 // Returns the native type (eg, float) corresponding to the given template
 // parameter XLA primitive type (eg, F32).
 template <PrimitiveType>

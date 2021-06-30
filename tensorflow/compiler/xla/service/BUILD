@@ -5843,6 +5843,9 @@ cc_library(
     deps = [
         ":hlo",
         ":op_expander_pass",
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
