@@ -46,7 +46,7 @@ static bool AreInstructionSupported(HloComputation* comp) {
           (instr->dimensions().size() == 1 &&  // row broadcasting
            instr->dimensions()[0] == (instr->shape().rank() - 1))));
     if (!supported) {
-      VLOG(2) << "NOT SUPPORTED " << instr->ToString();
+      VLOG(2) << "NOT SUPPORTED: " << instr->ToString();
       return false;
     }
   }
@@ -79,22 +79,28 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
                          })) {
           continue;
         }
+
         // 1.3) Check that all the bitcast have the same shape pattern.
         //      Multiple bitcast pattern isn't supported/tested.
-        std::vector<HloInstruction*> bitcasts;
+        HloInstruction* bitcast = nullptr;
+        bool same_shape_pattern = true;
         for (HloInstruction* fused_instr : fusion->fused_instructions()) {
           if (fused_instr->opcode() == HloOpcode::kBitcast &&
               fused_instr->shape().rank() <
               fused_instr->operand(0)->shape().rank()) {
-            if (!bitcasts.empty() && (
-                    !ShapeUtil::Equal(fused_instr->shape(),
-                                      bitcasts[0]->shape()) ||
-                    !ShapeUtil::Equal(bitcasts[0]->operand(0)->shape(),
-                                      fused_instr->operand(0)->shape()))) {
-              continue;
+            if (bitcast != nullptr &&
+                (!ShapeUtil::Equal(fused_instr->shape(), bitcast->shape()) ||
+                 !ShapeUtil::Equal(bitcast->operand(0)->shape(),
+                                   fused_instr->operand(0)->shape()))) {
+              same_shape_pattern = false;
+              break;
             }
-            bitcasts.push_back(fused_instr);
+            bitcast = fused_instr;
           }
+        }
+        if (bitcast == nullptr || !same_shape_pattern) {
+          VLOG(2) << "NOT SUPPORTED: Multiple rank-reducing bitcast pattern.";
+          continue;
         }
 
         // 2) Now that we have found a fusion that we want to modify,
