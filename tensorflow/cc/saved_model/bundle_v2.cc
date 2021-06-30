@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace tensorflow {
 namespace {
@@ -98,6 +99,35 @@ Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
 
 }  // namespace
 
+// Swap tensor_content field of Const Op Tensors in the named functions
+static Status SwapTensorContent(MetaGraphDef* meta_graph_def) {
+  GraphDef graph_def = *meta_graph_def->mutable_graph_def();
+  for (auto& function : *meta_graph_def->mutable_graph_def()->mutable_library()->mutable_function()) {
+    for (auto& node : (*function.mutable_node_def())) {
+      if (node.op() == "Const") {
+        auto node_iterator = node.mutable_attr()->find("value");
+        if (node_iterator != node.mutable_attr()->end()) {
+          AttrValue node_value = node_iterator->second;
+          if (node_value.has_tensor()) {
+            auto tsize = node_value.mutable_tensor()->tensor_content().size();
+            auto p_type = node_value.mutable_tensor()->dtype();
+            // Swap only when there is something in tensor_content field
+            if (tsize!=0 && DataTypeCanUseMemcpy(p_type)) {
+              void* copy = tensorflow::port::Malloc(tsize);
+              memcpy(copy, node_value.mutable_tensor()->tensor_content().data(), tsize);
+              TF_RETURN_IF_ERROR(ByteSwapBuffer(copy, tsize, p_type));
+              (*node.mutable_attr())["value"].mutable_tensor()->set_tensor_content(
+                string(reinterpret_cast<const char*>(copy), tsize));
+              tensorflow::port::Free(copy);
+           }
+          }
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status SavedModelV2Bundle::Load(const std::string& export_dir,
                                 SavedModelV2Bundle* const bundle) {
   metrics::ReadApi(kCCLoadBundleV2Label).IncrementBy(1);
@@ -115,6 +145,11 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   }
   bundle->meta_graph_def_ =
       std::move(*saved_model_proto.mutable_meta_graphs(0));
+  
+  // Correct the endiness of Tensor content on big-endian system
+  if (!port::kLittleEndian) {
+    SwapTensorContent(&(bundle->meta_graph_def_));
+  }
 
   // Load GraphDebugInfo.
   TF_RETURN_IF_ERROR(

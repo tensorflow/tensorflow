@@ -108,6 +108,15 @@ Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 // TODO(frreiss): Should this be a member of the Tensor class?
 Status ByteSwapTensor(Tensor *t);
 
+// Byte-swap a buffer in place.
+//
+// Args:
+//  buff: pointer to the buffer to be modified IN PLACE.
+//  size: size of bytes in this buffer.
+//  dtype: type of data in this buffer.
+// Returns: Status::OK() on success, -1 otherwise
+Status ByteSwapBuffer(void* buff, size_t size, DataType dtype);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_H_

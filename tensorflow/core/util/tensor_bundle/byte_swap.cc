@@ -47,6 +47,81 @@ Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
   }
 }
 
+
+Status ByteSwapBuffer(void* buff, size_t size, DataType dtype){
+  size_t array_len = 0;
+  size_t bytes_per_elem = 0;
+
+  switch (dtype) {
+    // Types that don't need byte-swapping
+    case DT_STRING:
+    case DT_QINT8:
+    case DT_QUINT8:
+    case DT_BOOL:
+    case DT_UINT8:
+    case DT_INT8:
+      return Status::OK();
+
+    // 16-bit types
+    case DT_BFLOAT16:
+    case DT_HALF:
+    case DT_QINT16:
+    case DT_QUINT16:
+    case DT_UINT16:
+    case DT_INT16:
+      bytes_per_elem = 2;
+      array_len = size/bytes_per_elem;
+      break;
+
+    // 32-bit types
+    case DT_FLOAT:
+    case DT_INT32:
+    case DT_QINT32:
+    case DT_UINT32:
+      bytes_per_elem = 4;
+      array_len = size/bytes_per_elem;
+      break;
+
+    // 64-bit types
+    case DT_INT64:
+    case DT_DOUBLE:
+    case DT_UINT64:
+      bytes_per_elem = 8;
+      array_len = size/bytes_per_elem;
+      break;
+
+    // Complex types need special handling
+    case DT_COMPLEX64:
+      bytes_per_elem = 4;
+      array_len = size/bytes_per_elem;
+      array_len *= 2;
+      break;
+
+    case DT_COMPLEX128:
+      bytes_per_elem = 8;
+      array_len = size/bytes_per_elem;
+      array_len *= 2;
+      break;
+
+    // Types that ought to be supported in the future
+    case DT_RESOURCE:
+    case DT_VARIANT:
+      return errors::Unimplemented(
+          "Byte-swapping not yet implemented for tensors with dtype ",
+          dtype);
+
+    // Byte-swapping shouldn't make sense for other dtypes.
+    default:
+      return errors::Unimplemented(
+          "Byte-swapping not supported for tensors with dtype ", dtype);
+  }
+
+  char* backing_buffer = (char*)buff;
+  TF_RETURN_IF_ERROR(ByteSwapArray(backing_buffer, bytes_per_elem, array_len));
+  return Status::OK();
+
+}
+
 Status ByteSwapTensor(Tensor* t) {
   size_t bytes_per_elem = 0;
   int array_len = t->NumElements();
