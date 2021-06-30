@@ -88,7 +88,7 @@ class RandomOpsTest(xla_test.XLATestCase):
     for dtype in self._random_types() & self.float_types:
       with self.session():
         with self.test_scope():
-          normal = random_ops.random_normal([1024],
+          normal = random_ops.random_normal([10000000],
                                             dtype=dtype,
                                             mean=2.3,
                                             stddev=2.0)
