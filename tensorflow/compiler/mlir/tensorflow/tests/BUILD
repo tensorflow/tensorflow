@@ -9,7 +9,10 @@ glob_lit_tests(
     tags_override = {
         "optimize.mlir": ["no_rocm"],
         "tf_optimize.mlir": ["no_rocm"],
-        "tf-reduce-identity.mlir": ["no_windows"],
+        "tf-reduce-identity.mlir": [
+            "no_windows",
+            "noasan",
+        ],
     },
     test_file_exts = ["mlir"],
 )
