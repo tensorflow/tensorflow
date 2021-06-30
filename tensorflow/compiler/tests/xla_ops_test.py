@@ -35,7 +35,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test
 
 class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
 
@@ -204,9 +203,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                           dtype=preferred_element_type))
 
   @parameterized.parameters(*PRECISION_VALUES)
-  @test.disable_with_predicate(
-      pred=test.is_built_with_rocm,
-      skip_message='Skipping as ROCm does not support bf16 GEMM ops.')
   def testDotGeneral(self, precision):
     for dtype in self.float_types:
 
