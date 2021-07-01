@@ -53,7 +53,6 @@ tensorflow/third_party/android/android_configure.bzl
 tensorflow/third_party/arm_neon_2_x86_sse.BUILD
 tensorflow/third_party/astor.BUILD
 tensorflow/third_party/astunparse.BUILD
-tensorflow/third_party/backports_weakref.BUILD
 tensorflow/third_party/boringssl/BUILD
 tensorflow/third_party/clang_toolchain/BUILD
 tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl

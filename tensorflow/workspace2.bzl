@@ -517,17 +517,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "org_python_pypi_backports_weakref",
-        build_file = "//third_party:backports_weakref.BUILD",
-        sha256 = "8813bf712a66b3d8b85dc289e1104ed220f1878cf981e2fe756dfaabe9a82892",
-        strip_prefix = "backports.weakref-1.0rc1/src",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
-            "https://pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
         name = "dill_archive",
         build_file = "//third_party:dill.BUILD",
         system_build_file = "//third_party/systemlibs:dill.BUILD",
