@@ -332,6 +332,18 @@ config_setting(
 )
 
 config_setting(
+    name = "fuchsia_x86_64",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "fuchsia"},
+        {},
+    ),
+    values = {
+        "cpu": "x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios_x86_64",
     flag_values = if_google(
         {"//tools/cpp:cc_target_os": "apple"},
