@@ -50,6 +50,16 @@ namespace {
 
 using ::tensorflow::profiler::ScopedAnnotation;
 
+bool NeedsAsyncCommsStream(Thunk& thunk) {
+  switch (thunk.kind()) {
+    case Thunk::Kind::kNcclAllReduceStart:
+    case Thunk::Kind::kNcclAllReduceDone:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -133,8 +143,8 @@ Status GpuExecutable::ExecuteThunks(
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
 
-  TF_ASSIGN_OR_RETURN(StreamPool::Ptr async_comms_stream,
-                      run_options->BorrowStream(executor->device_ordinal()));
+  StatusOr<StreamPool::Ptr> async_comms_stream =
+      run_options->BorrowStream(executor->device_ordinal());
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
@@ -180,12 +190,16 @@ Status GpuExecutable::ExecuteThunks(
 
     VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
             << " on stream " << stream_no;
+
+    TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
+        << "`run_options` must have a stream borrower for async thunks.";
+
     const GpuExecutableRunOptions* gpu_options =
         run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
         &buffer_allocations,
         stream,
-        async_comms_stream.get(),
+        async_comms_stream.ok() ? async_comms_stream->get() : nullptr,
         run_options->run_options().run_id(),
         &profiler,
         run_options->run_options().device_assignment(),
