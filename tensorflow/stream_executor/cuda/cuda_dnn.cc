@@ -3399,6 +3399,11 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
   std::vector<int64_t> input_strides = GetTensorStrides(
       input_descriptor, dnn::DataLayout::kBatchDepthYX, vector_size,
       vector_dim);
+  
+  if (vector_size == 32) {
+    return port::InternalError("cuDNN frontend doesn't support int8x32 at the "
+                               "moment.");
+  }
 
   auto tensor_x = cudnn_frontend::TensorBuilder()
                       .setDim(input_dims.size(), &input_dims[0])
@@ -3539,6 +3544,12 @@ GetCudnnFusedOperationGraph(
   std::vector<int64_t> input_strides = GetTensorStrides(
       input_descriptor, dnn::DataLayout::kBatchDepthYX, vector_size,
       vector_dim);
+
+  if (vector_size == 32) {
+    return port::InternalError("cuDNN frontend doesn't support int8x32 at the "
+                               "moment.");
+  }
+
   auto tensor_x = cudnn_frontend::TensorBuilder()
                       .setDim(input_dims.size(), &input_dims[0])
                       .setStrides(input_dims.size(), &input_strides[0])
