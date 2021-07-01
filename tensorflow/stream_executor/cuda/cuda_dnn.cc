@@ -3479,25 +3479,18 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
                        .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
-  // TODO(kaixih@nvidia): Remove the redundant float/double alpha/beta when the
-  // cudnn frontend can deduce the compute type from the operation.
-  // Alpha is the scaling factor for input.
-  float falpha = 1.0;
-  double dalpha = 1.0;
-  // Beta is the scaling factor for output.
-  float fbeta = 0.0;
-  double dbeta = 0.0;
+  double alpha = 1.0;
+  double beta = 0.0;
 
   // CUDNN Operation
-  auto op_builder = cudnn_frontend::OperationBuilder(conv_mode);
-  op_builder.setxDesc(tensor_x).setyDesc(tensor_y).setwDesc(tensor_w).setcDesc(
-      conv_desc);
-  if (cudnn_type == CUDNN_DATA_DOUBLE) {
-    op_builder.setAlpha(dalpha).setBeta(dbeta);
-  } else {
-    op_builder.setAlpha(falpha).setBeta(fbeta);
-  }
-  auto op = op_builder.build();
+  auto op = cudnn_frontend::OperationBuilder(conv_mode)
+                .setxDesc(tensor_x)
+                .setyDesc(tensor_y)
+                .setwDesc(tensor_w)
+                .setcDesc(conv_desc)
+                .setAlpha(alpha)
+                .setBeta(beta)
+                .build();
   RETURN_MSG_IF_CUDNN_ERROR(op);
 
   // CUDNN OperationGraph
@@ -3684,49 +3677,33 @@ GetCudnnFusedOperationGraph(
                        .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
-  // TODO(kaixih@nvidia): Remove the redundant float/double alpha/beta when the
-  // cudnn frontend can deduce the compute type from the operation.
-  bool use_float_scale = true;
-  if (element_type == dnn::DataType::kDouble) {
-    use_float_scale = false;
-  }
   // Beta is the scaling factor for output.
   double beta = 0.0;
-  float beta_float = 0.0f;
-
-  float alpha_float = static_cast<float>(alpha);
-  float alpha2_float = static_cast<float>(alpha2);
 
   // CUDNN Operation
-  auto conv_op_builder = cudnn_frontend::OperationBuilder(conv_mode);
-  conv_op_builder.setxDesc(tensor_x)
-      .setyDesc(tensor_conv)
-      .setwDesc(tensor_w)
-      .setcDesc(conv_desc);
-  if (use_float_scale) {
-    conv_op_builder.setAlpha(alpha_float).setBeta(beta_float);
-  } else {
-    conv_op_builder.setAlpha(alpha).setBeta(beta);
-  }
-  auto conv_op = conv_op_builder.build();
+  auto conv_op = cudnn_frontend::OperationBuilder(conv_mode)
+                     .setxDesc(tensor_x)
+                     .setyDesc(tensor_conv)
+                     .setwDesc(tensor_w)
+                     .setcDesc(conv_desc)
+                     .setAlpha(alpha)
+                     .setBeta(beta)
+                     .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_op);
 
   auto add_desc = cudnn_frontend::PointWiseDescBuilder()
                       .setMode(CUDNN_POINTWISE_ADD)
                       .setMathPrecision(cudnn_type)
                       .build();
-  auto add_op_builder = cudnn_frontend::OperationBuilder(
-      CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR);
-  add_op_builder.setxDesc(conv_op.getOutputTensor())
-      .setbDesc(tensor_z)
-      .setyDesc(tensor_add)
-      .setpwDesc(add_desc);
-  if (use_float_scale) {
-    add_op_builder.setAlpha(alpha_float).setAlpha2(alpha2_float);
-  } else {
-    add_op_builder.setAlpha(alpha).setAlpha2(alpha2);
-  }
-  auto add_op = add_op_builder.build();
+  auto add_op = cudnn_frontend::OperationBuilder(
+                    CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
+                    .setxDesc(conv_op.getOutputTensor())
+                    .setbDesc(tensor_z)
+                    .setyDesc(tensor_add)
+                    .setpwDesc(add_desc)
+                    .setAlpha(alpha)
+                    .setAlpha2(alpha2)
+                    .build();
   RETURN_MSG_IF_CUDNN_ERROR(add_op);
 
   auto bias_add_desc = cudnn_frontend::PointWiseDescBuilder()
