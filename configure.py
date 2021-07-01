@@ -850,7 +850,8 @@ def set_gcc_host_compiler_path(environ_cp):
       environ_cp,
       var_name='GCC_HOST_COMPILER_PATH',
       var_default=default_gcc_host_compiler_path,
-      ask_for_var='Please specify which gcc should be used by nvcc as the host compiler.',
+      ask_for_var='Please specify which gcc should be used by nvcc as the host '
+                  'compiler.',
       check_success=os.path.exists,
       resolve_symlinks=True,
       error_msg='Invalid gcc path. %s cannot be found.',
