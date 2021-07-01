@@ -424,8 +424,8 @@ public final class Interpreter implements InterpreterApi {
   /**
    * Resizes idx-th input of the native model to the given dims.
    *
-   * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
-   *     model inputs; or if error occurs when resizing the idx-th input.
+   * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
+   *     of model inputs; or if error occurs when resizing the idx-th input.
    */
   @Override
   public void resizeInput(int idx, @NonNull int[] dims) {
@@ -439,9 +439,9 @@ public final class Interpreter implements InterpreterApi {
    * <p>When `strict` is True, only unknown dimensions can be resized. Unknown dimensions are
    * indicated as `-1` in the array returned by `Tensor.shapeSignature()`.
    *
-   * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
-   *     model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
-   *     occurs when attempting to resize a tensor with fixed dimensions when `struct` is True.
+   * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
+   *     of model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
+   *     occurs when attempting to resize a tensor with fixed dimensions when `strict` is True.
    */
   @Override
   public void resizeInput(int idx, @NonNull int[] dims, boolean strict) {
@@ -469,9 +469,9 @@ public final class Interpreter implements InterpreterApi {
   }
 
   /**
-   * Gets the Tensor associated with the provdied input index.
+   * Gets the Tensor associated with the provided input index.
    *
-   * @throws IllegalArgumentException if {@code inputIndex} is negtive or is not smaller than the
+   * @throws IllegalArgumentException if {@code inputIndex} is negative or is not smaller than the
    *     number of model inputs.
    */
   @Override
@@ -564,7 +564,7 @@ public final class Interpreter implements InterpreterApi {
    * that are dependent on input *values*, the output shape may not be fully determined until
    * running inference.
    *
-   * @throws IllegalArgumentException if {@code outputIndex} is negtive or is not smaller than the
+   * @throws IllegalArgumentException if {@code outputIndex} is negative or is not smaller than the
    *     number of model outputs.
    */
   @Override
