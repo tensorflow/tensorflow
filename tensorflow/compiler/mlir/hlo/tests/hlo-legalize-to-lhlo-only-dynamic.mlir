@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo=convert-to-lmhlo-only=true \
+// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo \
 // RUN:  -canonicalize -lhlo-legalize-tensor-load-op %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @dynamic_reshape

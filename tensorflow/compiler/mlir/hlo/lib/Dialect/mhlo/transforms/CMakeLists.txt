@@ -89,6 +89,7 @@ add_mlir_library(MhloToLhloConversion
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRlhlo_opsIncGen
+  MLIRMhloPassIncGen
 
   LINK_COMPONENTS
   Core
@@ -96,6 +97,23 @@ add_mlir_library(MhloToLhloConversion
   LINK_LIBS PUBLIC
   MhloDialect
   LmhloDialect
+  MLIRIR
+  MLIRPass
+  MLIRMath
+)
+
+add_mlir_library(MhloToMemrefConversion
+  hlo_legalize_to_memref.cc
+
+  DEPENDS
+  MLIRhlo_opsIncGen
+  MLIRMhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MhloDialect
   MLIRIR
   MLIRPass
   MLIRMath
@@ -182,6 +200,7 @@ target_link_libraries(AllMhloPasses INTERFACE
   DiscRalPasses
   MhloPasses
   MhloToLhloConversion
+  MhloToMemrefConversion
   MhloToStandard
   MhloLhloToLinalg
   LmhloPasses

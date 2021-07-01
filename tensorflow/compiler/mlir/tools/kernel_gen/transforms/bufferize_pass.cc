@@ -124,8 +124,8 @@ struct ComputeOpAndFuncBufferizePass
 
     CustomBufferizeTypeConverter converter;
     // Configure bufferize pattern for functions and lhlo.
-    mhlo::populateDynamicHLOToLHLOOrMemRefConversionPattern(
-        &context, &converter, &patterns, /*insert_copy=*/false);
+    mhlo::populateHLOToMemrefConversionPattern(&converter, &patterns,
+                                               /*enforce_identity_map=*/false);
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
