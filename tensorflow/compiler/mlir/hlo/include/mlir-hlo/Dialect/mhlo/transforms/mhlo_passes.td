@@ -26,6 +26,11 @@ def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
   ];
 }
 
+def HloCanonicalizeReductionPass : FunctionPass<"hlo-canonicalize-reduction"> {
+  let summary = "canonicalize reduction ops to be suitable for codegen.";
+  let constructor = "createHloCanonicalizeReductionPass()";
+}
+
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";
@@ -45,6 +50,11 @@ def LegalizeControlFlowPass : FunctionPass<"mhlo-legalize-control-flow"> {
 def LegalizeControlFlowToScfPass : FunctionPass<"mhlo-control-flow-to-scf"> {
   let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createControlFlowToScfPass()";
+}
+
+def LegalizeEinsumToDotGeneralPass : FunctionPass<"mhlo-legalize-einsum-to-dot-general"> {
+  let summary = "Legalizes einsum ops to dot_general ops.";
+  let constructor = "createLegalizeEinsumToDotGeneralPass()";
 }
 
 def LegalizeGatherToTorchIndexSelectPass : FunctionPass<"mhlo-legalize-gather-to-torch-index-select"> {
@@ -115,12 +125,6 @@ def SinkConstantsToControlFlowPass : FunctionPass<"mhlo-sink-constants-to-contro
 def TestInferShapedTypeMethodsPass : FunctionPass<"mhlo-test-infer-shaped-type-methods"> {
   let summary = "Uses test ops to invoke InferShapedTypeOpInterface methods.";
   let constructor = "createTestInferShapedTypeMethodsPass()";
-}
-
-
-def TransformUnrankedHloPass : FunctionPass<"mhlo-transform-unranked-hlo"> {
-  let summary = "Realize element-wise operations on ranked tensors where possible.";
-  let constructor = "createTransformUnrankedHloPass()";
 }
 
 def BroadcastPropagationPass : FunctionPass<"mhlo-broadcast-propagation"> {

@@ -47,7 +47,7 @@ namespace se = ::stream_executor;
 
 // List of parameters for lowering Mlir to HLO IR.
 struct MlirToHloArgs {
-  const std::string& mlir_module;
+  absl::string_view mlir_module;
   ConfigProto::Experimental::MlirBridgeRollout rollout_state =
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
 };

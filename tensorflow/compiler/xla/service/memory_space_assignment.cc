@@ -23,14 +23,12 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 namespace xla {
 
+namespace memory_space_assignment {
+
 namespace {
 // Define a dummy chunk for chunks that will be allocated in the default memory
 // space and for keeping track of number of asynchronous copies.
 const HeapSimulator::Chunk kDummyChunk{-1, -1};
-// This variable is used by the cost analysis in estimating how many times each
-// while loop will execute. Nested loops will be assumed to have executed
-// pow(kWhileExecutionCount, nesting_level) times.
-const int kWhileExecutionCount = 5;
 
 bool LooksLikeAnActivation(const HloInstruction* inst) {
   for (HloInstruction* user : inst->users()) {
@@ -63,8 +61,8 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
   return false;
 }
 
-bool IsCrossProgramPrefetchCandidate(
-    const HloValue& value, const MemorySpaceAssignment::Options& options) {
+bool IsCrossProgramPrefetchCandidate(const HloValue& value,
+                                     const Options& options) {
   return value.instruction()->parent() ==
              value.instruction()->GetModule()->entry_computation() &&
          value.instruction()->opcode() == HloOpcode::kParameter &&
@@ -93,9 +91,9 @@ bool IsCrossProgramPrefetchCandidate(
 }
 
 absl::optional<MemorySpaceAssignment::BufferInterval>
-FindCrossProgramPrefetchCandidate(
-    const HloAliasAnalysis& alias_analysis, const HloLiveRange& hlo_live_range,
-    const MemorySpaceAssignment::Options& options) {
+FindCrossProgramPrefetchCandidate(const HloAliasAnalysis& alias_analysis,
+                                  const HloLiveRange& hlo_live_range,
+                                  const Options& options) {
   std::vector<MemorySpaceAssignment::BufferInterval> candidates;
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
@@ -147,18 +145,16 @@ FindCrossProgramPrefetchCandidate(
 }  // namespace
 
 /*static*/ StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>>
-MemorySpaceAssignmentCostAnalysis::Create(
-    const HloCostAnalysis& cost_analysis,
-    float async_copy_bandwidth_bytes_per_second,
-    float alternate_mem_bandwidth_bytes_per_second, const HloModule& module) {
+MemorySpaceAssignmentCostAnalysis::Create(const HloCostAnalysis& cost_analysis,
+                                          const Options& options,
+                                          const HloModule& module) {
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
   TF_ASSIGN_OR_RETURN(auto hlo_live_range,
                       HloLiveRange::Run(module.schedule(), *alias_analysis,
                                         module.entry_computation()));
   auto call_graph = CallGraph::Build(&module);
   return absl::WrapUnique(new MemorySpaceAssignmentCostAnalysis(
-      cost_analysis, async_copy_bandwidth_bytes_per_second,
-      alternate_mem_bandwidth_bytes_per_second, std::move(alias_analysis),
+      cost_analysis, options, std::move(alias_analysis),
       std::move(hlo_live_range), std::move(call_graph)));
 }
 
@@ -179,14 +175,14 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
         while_nest_multiplier = it->second;
       } else {
         while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
-            kWhileExecutionCount,
+            options_.xla_tpu_memory_space_assignment_while_execution_count,
             CalculateComputationNestLevel(&instruction,
                                           /*while_only=*/true));
         cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
       }
     } else {
       while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
-          kWhileExecutionCount,
+          options_.xla_tpu_memory_space_assignment_while_execution_count,
           CalculateComputationNestLevel(&instruction,
                                         /*while_only=*/true));
     }
@@ -292,7 +288,7 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
   }
   float elapsed_due_to_alternate_mem =
       bytes_accessed_from_alternate_mem /
-      alternate_mem_bandwidth_bytes_per_second_;
+      options().alternate_mem_bandwidth_bytes_per_second;
   float elapsed_due_to_default_mem =
       (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
       cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
@@ -319,7 +315,7 @@ float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
     const Shape& shape) const {
   int64 size_in_bytes = cost_analysis_.GetShapeSize(shape);
   return static_cast<float>(size_in_bytes) /
-         async_copy_bandwidth_bytes_per_second_;
+         options().async_copy_bandwidth_bytes_per_second;
 }
 
 int64 MemorySpaceAssignmentCostAnalysis::GetScheduleEndTime() const {
@@ -398,9 +394,9 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
       &cost_analysis_.hlo_live_range().instruction_schedule();
 
   // Create a vector of elapsed times and while nesting levels of HLO
-  // instructions. The elapsed times are multiplied by pow(kWhileExecutionCount,
-  // nest_level) to account for executing the HLOs multiple times in while
-  // loops.
+  // instructions. The elapsed times are multiplied by
+  // pow(while_execution_count, nest_level) to account for executing the HLOs
+  // multiple times in while loops.
   std::vector<float> instructions_elapsed_time(instruction_schedule_->size(),
                                                0.0);
   for (const auto& instruction_and_logical_time : *instruction_schedule_) {
@@ -425,8 +421,11 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     float elapsed_time = cost_analysis_.GetInstructionElapsed(
         *instruction_and_logical_time.first);
     instructions_elapsed_time[logical_time] =
-        elapsed_time * tensorflow::MathUtil::IPow<float>(kWhileExecutionCount,
-                                                         while_nest_level);
+        elapsed_time *
+        tensorflow::MathUtil::IPow<float>(
+            cost_analysis_.options()
+                .xla_tpu_memory_space_assignment_while_execution_count,
+            while_nest_level);
   }
   // As an optimization, create a cumulative sum vector of elapsed time.
   float cumsum = 0.0;
@@ -687,8 +686,10 @@ float CostAnalysisPrefetchIntervalPicker::GetLogicalIntervalElapsed(
   int interval_while_nest_level = GetMinWhileNestLevel(start_time, end_time);
   return (elapsed_time_cumsum_[end_time - 1] -
           elapsed_time_cumsum_[start_time]) /
-         tensorflow::MathUtil::IPow<float>(kWhileExecutionCount,
-                                           interval_while_nest_level);
+         tensorflow::MathUtil::IPow<float>(
+             cost_analysis_.options()
+                 .xla_tpu_memory_space_assignment_while_execution_count,
+             interval_while_nest_level);
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
@@ -854,25 +855,22 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
 }
 
 void AlternateMemoryBestFitHeap::FindAliases(
-    std::vector<AllocationValue>* allocation_values,
-    bool skip_values_with_no_uses) const {
-  absl::flat_hash_map<const HloInstruction*, const AllocationValue*>
+    std::vector<AllocationValue>* allocation_values) const {
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<const AllocationValue*>>
       values_by_defining_inst;
   for (AllocationValue& value : *allocation_values) {
-    // Skip the value if it doesn't have any uses.
-    if (value.uses().empty() && skip_values_with_no_uses) {
-      continue;
-    }
-    CHECK_EQ(values_by_defining_inst.count(value.defining_instruction()), 0);
-    values_by_defining_inst[value.defining_instruction()] = &value;
+    values_by_defining_inst[value.defining_instruction()].push_back(&value);
   }
   auto maybe_add_alias_with_instruction = [&](const HloInstruction* instruction,
                                               AllocationValue::Use* use) {
-    auto aliased_value_it = values_by_defining_inst.find(instruction);
-    if (aliased_value_it != values_by_defining_inst.end()) {
-      VLOG(3) << "Adding aliasing for use " << use->hlo_use.ToString() << " to "
-              << aliased_value_it->second->ToShortString();
-      use->aliases.push_back(aliased_value_it->second->defining_position());
+    auto aliased_values_it = values_by_defining_inst.find(instruction);
+    if (aliased_values_it != values_by_defining_inst.end()) {
+      for (const AllocationValue* aliased_value : aliased_values_it->second) {
+        VLOG(3) << "Adding aliasing for use " << use->hlo_use.ToString()
+                << " to " << aliased_value->ToShortString();
+        use->aliases.push_back(aliased_value->defining_position());
+      }
     }
   };
 
@@ -1323,7 +1321,38 @@ void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
   for (const auto& colocated_interval : colocated_intervals) {
     CreateAllocationValues(*colocated_interval, allocation_values);
   }
-  FindAliases(&allocation_values, /*skip_values_with_no_uses=*/true);
+  // Go through the AllocationValues and delete the ones that have the identical
+  // defining instruction and use instructions. This is useful for async
+  // operations that can read and write to the same buffer, e.g., in-place
+  // asynchronous collective permute. The AllocationValues that corresponds to
+  // collective-permute-start{0} (the input) and collective-permute-start{1}
+  // (the output) refer to the same buffer by definition (since they are created
+  // from colocated intervals). If we don't delete one of these buffers, then
+  // when we try to allocate the AllocationValue, we would think they overlap.
+  auto create_instruction_vector = [](const AllocationValue& allocation_value) {
+    std::vector<const HloInstruction*> instruction_vector;
+    instruction_vector.push_back(allocation_value.defining_instruction());
+    for (const AllocationValue::Use& use : allocation_value.uses()) {
+      instruction_vector.push_back(use.hlo_use.instruction);
+    }
+    return instruction_vector;
+  };
+  for (int i = 0; i < allocation_values.size() - 1; ++i) {
+    for (int j = i + 1; j < allocation_values.size(); ++j) {
+      const AllocationValue& allocation_value_1 = allocation_values[i];
+      const AllocationValue& allocation_value_2 = allocation_values[j];
+      if (create_instruction_vector(allocation_value_1) ==
+          create_instruction_vector(allocation_value_2)) {
+        VLOG(3) << "Allocation values " << allocation_value_1.ToShortString()
+                << " and " << allocation_value_2.ToShortString()
+                << " are equivalent, deleting the second one.";
+        allocation_values.erase(allocation_values.begin() + j);
+        --j;
+      }
+    }
+  }
+
+  FindAliases(&allocation_values);
 }
 
 AlternateMemoryBestFitHeap::Result
@@ -1497,10 +1526,53 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
                                      aliased_allocation);
       }
 
-      // Special case for while loops since the root offset must agree with
-      // other offsets: remember the preferred offset for the while loop body.
       if (hlo_use.instruction->opcode() == HloOpcode::kWhile &&
           aliased_allocation->memory_space() == MemorySpace::kAlternate) {
+        // For while uses that are allocated in the alternate memory space, if
+        // they also have an allocation in the default memory space in their
+        // allocation sequence, create a "parent" allocation that mirrors this
+        // default memory space allocation. When we process the parent
+        // allocation, we add an additional parameter to the while that is a
+        // reference to the buffer in the default memory space. With parent
+        // allocations, we don't need to unnecessarily evict buffers since they
+        // already have a copy in the default memory space. We search backwards
+        // (latest to earliest in execution time) for a suitable allocation in
+        // order to find the most recent one.
+        auto allocation_sequence = allocation_value.allocation_sequence();
+        auto prev_allocation_in_default_mem_it = std::find_if(
+            allocation_sequence->rbegin(), allocation_sequence->rend(),
+            [&](const auto& allocation) {
+              return allocation->memory_space() == MemorySpace::kDefault &&
+                     allocation->defining_position() ==
+                         allocation_value.defining_position();
+            });
+        if (prev_allocation_in_default_mem_it != allocation_sequence->rend()) {
+          VLOG(3) << "Found a prev allocation in default mem for while use: "
+                  << (*prev_allocation_in_default_mem_it)->ToString();
+          auto body_allocation_value_it = absl::c_find_if(
+              allocation_values, [&](const AllocationValue& value) {
+                return value.computation() ==
+                           hlo_use.instruction->while_body() &&
+                       value.defining_instruction()->opcode() ==
+                           HloOpcode::kParameter;
+              });
+          CHECK_NE(body_allocation_value_it, allocation_values.end());
+          VLOG(3) << "Body allocation value: "
+                  << body_allocation_value_it->ToShortString();
+          int64_t body_parameter_time = instruction_schedule.at(
+              body_allocation_value_it->defining_instruction());
+          body_allocation_value_it->allocation_sequence()->push_back(
+              absl::make_unique<MemorySpaceAssignment::ParentAllocation>(
+                  **prev_allocation_in_default_mem_it, hlo_use.instruction,
+                  body_allocation_value_it->defining_position(),
+                  body_parameter_time));
+          VLOG(3) << "Created: "
+                  << body_allocation_value_it->allocation_sequence()
+                         ->back()
+                         ->ToString();
+        }
+        // Special case for while loops since the root offset must agree with
+        // other offsets: remember the preferred offset for the while loop body.
         preferred_offset_for_computation[hlo_use.instruction->while_body()] =
             GetAliasedOffset(*aliased_allocation);
       }
@@ -2127,6 +2199,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   }
 
   if (required_assignment_at_start) {
+    bool needs_required_allocation = true;
     if (!allocation_sequence->empty()) {
       auto prev_allocation_it = std::find_if(
           allocation_sequence->rbegin(), allocation_sequence->rend(),
@@ -2135,9 +2208,12 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
                        required_memory_space_at_start &&
                    allocation->defining_position() == defining_position;
           });
-      CHECK(prev_allocation_it != allocation_sequence->rend());
-      (*prev_allocation_it)->Extend(request.start_time);
-    } else {
+      if (prev_allocation_it != allocation_sequence->rend()) {
+        (*prev_allocation_it)->Extend(request.start_time);
+        needs_required_allocation = false;
+      }
+    }
+    if (needs_required_allocation) {
       absl::optional<Chunk> aliased_chunk = absl::nullopt;
       if (required_assignment_at_start->memory_space ==
           MemorySpace::kAlternate) {
@@ -2805,7 +2881,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   if (options_.cost_analysis) {
     float estimated_time =
         ComputeEstimatedElapsedTime(hlo_live_range, allocations_);
-    LOG(INFO) << "Estimated elapsed time (sec): " << estimated_time;
+    VLOG(1) << "Estimated elapsed time (sec): " << estimated_time;
   }
 
   TF_RETURN_IF_ERROR(Process());
@@ -2920,7 +2996,7 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
             *instruction, operands_in_alternate_memory,
             outputs_in_alternate_memory);
     float while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
-        kWhileExecutionCount,
+        options_.xla_tpu_memory_space_assignment_while_execution_count,
         options_.cost_analysis->CalculateComputationNestLevel(
             instruction,
             /*while_only=*/true));
@@ -2929,8 +3005,7 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
   return total_elapsed;
 }
 
-Status MemorySpaceAssignment::Allocation::Process(
-    MemorySpaceAssignment* memory_space_assignment) {
+Status MemorySpaceAssignment::Allocation::Process() {
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
     return Status::OK();
@@ -2971,6 +3046,7 @@ StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
 
   HloComputation* computation = new_instruction->parent();
   std::vector<HloInstruction*> tuple_args(tuple_shape.tuple_shapes_size());
+  CHECK_GE(tuple_shape.tuple_shapes_size(), shape_index[0]);
   for (int64 i = 0; i < tuple_shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = tuple_shape.tuple_shapes(i);
     // If tuple is a tuple instruction, we can get the tuple instruction's
@@ -3015,10 +3091,15 @@ StatusOr<HloInstruction*> MemorySpaceAssignment::Allocation::ReplaceTupleWith(
       tuple_args[i] = get_operand();
     }
   }
+  if (shape_index[0] == tuple_shape.tuple_shapes_size()) {
+    // If shape_index[0] is equal to the tuple shape size, add the new
+    // instruction as an additional argument.
+    tuple_args.push_back(new_instruction);
+  }
   return computation->AddInstruction(HloInstruction::CreateTuple(tuple_args));
 }
 
-HloInstruction* MemorySpaceAssignment::Allocation::AddGetTupleElements() {
+HloInstruction* MemorySpaceAssignment::Allocation::AddGetTupleElements() const {
   HloInstruction* producing_instruction = defining_position().instruction;
   CHECK_NE(producing_instruction, nullptr);
 
@@ -3071,8 +3152,13 @@ std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
                       prev_allocation_.ToString());
 }
 
-Status MemorySpaceAssignment::CopyAllocation::Process(
-    MemorySpaceAssignment* memory_space_assignment) {
+std::string MemorySpaceAssignment::ParentAllocation::ToString() const {
+  return absl::StrCat("Parent Allocation mirrored at ",
+                      defining_position_.ToString(), ", originally ",
+                      original_allocation_.ToString());
+}
+
+Status MemorySpaceAssignment::CopyAllocation::Process() {
   // Copy allocations need to insert asynchronous copy nodes.
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
@@ -3116,12 +3202,96 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
   return Status::OK();
 }
 
+Status MemorySpaceAssignment::ParentAllocation::Process() {
+  // Add an additional parameter to the while HLO with a reference to the buffer
+  // in the default memory space.
+  HloInstruction* producing_instruction =
+      original_allocation_.AddGetTupleElements();
+  int64_t new_tuple_index = calling_instruction_->shape().tuple_shapes_size();
+
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_while_operand,
+                      ReplaceTupleWith(producing_instruction,
+                                       calling_instruction_->mutable_operand(0),
+                                       {new_tuple_index}));
+  TF_RETURN_IF_ERROR(calling_instruction_->ReplaceOperandWithDifferentShape(
+      0, new_while_operand));
+  *calling_instruction_->mutable_shape() = new_while_operand->shape();
+  *calling_instruction_->while_condition()
+       ->parameter_instruction(0)
+       ->mutable_shape() = new_while_operand->shape();
+  *calling_instruction_->while_body()
+       ->parameter_instruction(0)
+       ->mutable_shape() = new_while_operand->shape();
+  defining_position_.index = {new_tuple_index};
+  return Allocation::Process();
+}
+
+Status MemorySpaceAssignment::ParentAllocation::PostProcess() {
+  // Update the root of the while body with the new parameter. The reason why we
+  // need a separate post-process for this is because other allocations may have
+  // while body root as a use, so they would update the old root instead of the
+  // new root. Doing the post-process step later ensures the root has been
+  // updated with other changes, and we can safely add the additional parameter.
+  HloComputation* while_body = calling_instruction_->while_body();
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_while_body_root,
+      ReplaceTupleWith(AddGetTupleElements(), while_body->root_instruction(),
+                       defining_position_.index));
+  while_body->set_root_instruction(new_while_body_root,
+                                   /*accept_different_shape=*/true);
+  return Status::OK();
+}
+
+void MemorySpaceAssignment::Allocation::MarkIfNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  MarkNeeded(needed_allocations);
+}
+
+void MemorySpaceAssignment::Allocation::MarkNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  needed_allocations.insert(this);
+}
+
+void MemorySpaceAssignment::CopyAllocation::MarkNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  needed_allocations.insert(this);
+  prev_allocation_.MarkNeeded(needed_allocations);
+}
+
+void MemorySpaceAssignment::ParentAllocation::MarkIfNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  // Parent allocations are only needed if they have any uses or if there is a
+  // copy allocation that copies this value (in that case, the copy allocation
+  // will call this allocation's MarkNeeded function).
+  if (!uses_.empty()) {
+    MarkNeeded(needed_allocations);
+  }
+}
+
+void MemorySpaceAssignment::ParentAllocation::MarkNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  needed_allocations.insert(this);
+  original_allocation_.MarkNeeded(needed_allocations);
+}
+
 Status MemorySpaceAssignment::Process() {
   VLOG(1) << "Processing assigned buffers...";
+  // Since some parent allocations may not be needed (e.g. when they don't have
+  // any uses and if there is no other (non-parent) allocation that depends on
+  // it, before we process the allocations, mark all allocations that are
+  // needed.
+  absl::flat_hash_set<const Allocation*> needed_allocations;
+  for (auto& allocation : allocations_) {
+    allocation->MarkIfNeeded(needed_allocations);
+  }
   // Insert CopyStart/CopyDone pairs.
   for (auto& allocation : allocations_) {
     VLOG(3) << "Processing: " << allocation->ToString();
-    TF_RETURN_IF_ERROR(allocation->Process(this));
+    if (!needed_allocations.contains(allocation.get())) {
+      VLOG(3) << "Allocation not needed.";
+      continue;
+    }
+    TF_RETURN_IF_ERROR(allocation->Process());
     // Add the offset and size of the allocation in the alternate memory to
     // the output map.
     if (allocation->is_scoped_allocation()) {
@@ -3135,6 +3305,15 @@ Status MemorySpaceAssignment::Process() {
           allocation->defining_position(), allocation->chunk());
       alternate_memory_size_ =
           std::max(alternate_memory_size_, allocation->chunk().chunk_end());
+    }
+  }
+  // Post-process allocations. This is only used for parent allocations where we
+  // update the body root with a reference to the buffer in default memory
+  // space.
+  for (auto& allocation : allocations_) {
+    if (needed_allocations.contains(allocation.get())) {
+      VLOG(3) << "Post-Processing: " << allocation->ToString();
+      TF_RETURN_IF_ERROR(allocation->PostProcess());
     }
   }
   return Status::OK();
@@ -3366,8 +3545,6 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
                  std::forward_as_tuple(second->copy_done_schedule_before(),
                                        second->copy_start_schedule_after());
         });
-
-    CopyAllocation* prev_copy_allocation = nullptr;
     for (CopyAllocation* copy_allocation : copy_allocations) {
       // If the copy start doesn't happen to be scheduled at the correct
       // computation, delay it until the correct computation starts.
@@ -3389,7 +3566,6 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
           copy_allocation->copy_start());
       schedule_before_[copy_allocation->copy_done_schedule_before()].push_back(
           copy_allocation->copy_done());
-      prev_copy_allocation = copy_allocation;
     }
   }
 }
@@ -3679,5 +3855,5 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 
   return Status::OK();
 }
-
+}  // namespace memory_space_assignment
 }  // namespace xla

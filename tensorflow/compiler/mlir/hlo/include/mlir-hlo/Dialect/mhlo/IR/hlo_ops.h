@@ -67,9 +67,8 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   using Base::Base;
 };
 
-// Shape derivation function that computes the shape of the result based on
-// the first argument. For a 2-dimensional input tensor, this produces IR of
-// the form
+// Shape derivation function that computes the shape of the result based on an
+// operand. For a 2-dimensional input tensor, this produces IR of the form
 //
 //  %0 = dim %arg0, 0 : memref<?x?xf32>
 //  %1 = index_cast %0 : index to i64
@@ -79,8 +78,8 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
 //    : (i64, i64) -> tensor<2xi64>
 //
 // and returns %4 as the shape value.
-LogicalResult deriveShapeFromFirstOperand(
-    OpBuilder *builder, Operation *op, ValueRange operands,
+LogicalResult deriveShapeFromOperand(
+    OpBuilder *builder, Operation *op, Value operand,
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
 // Type derivation function that returns a tensor type with a new element type.

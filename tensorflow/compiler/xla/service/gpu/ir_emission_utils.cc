@@ -94,9 +94,9 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F16 || output_primitive_type == F32 ||
-       output_primitive_type == F64 || output_primitive_type == C64 ||
-       output_primitive_type == C128) ||
+      (output_primitive_type == F16 || output_primitive_type == BF16 ||
+       output_primitive_type == F32 || output_primitive_type == F64 ||
+       output_primitive_type == C64 || output_primitive_type == C128) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
        lhs_shape.element_type() == S8);
   bool shapes_are_valid =
@@ -128,7 +128,7 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    absl::optional<CudaComputeCapability> cuda_compute_capability) {
+    se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
@@ -139,14 +139,11 @@ std::array<int64, 3> GetReductionTiling(
         0) {
       return {tile_z, 1, 64};
     }
-    int cc_major = 0;
-    if (cuda_compute_capability) {
-      cc_major = cuda_compute_capability->cc_major;
-    }
     int unroll_x = 8;
-    if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
+    if (cuda_compute_capability.major >= 6 && smallest_input_dtype_bits == 16) {
       unroll_x = 16;
-    } else if (cc_major >= 6 && smallest_input_dtype_bits == 8) {
+    } else if (cuda_compute_capability.major >= 6 &&
+               smallest_input_dtype_bits == 8) {
       unroll_x = 64;
     }
     return {tile_z, 1, unroll_x};
@@ -320,14 +317,16 @@ FusionLayoutAnalysis::FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op) {
                    TypeToShape(store.memref().getType()).layout());
       }
     } else if (auto bitcast = mlir::dyn_cast<mlir::mhlo::BitcastOp>(op)) {
-      auto attr = GetLayoutFromMlirHlo(bitcast, "result_layout");
+      auto attr =
+          bitcast->getAttrOfType<mlir::DenseIntElementsAttr>("result_layout");
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
           std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
       add_layout(bitcast, LayoutUtil::MakeLayout(minor_to_major));
 
-      attr = GetLayoutFromMlirHlo(bitcast, "source_layout");
+      attr =
+          bitcast->getAttrOfType<mlir::DenseIntElementsAttr>("source_layout");
       minor_to_major.clear();
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),

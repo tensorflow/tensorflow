@@ -41,13 +41,10 @@ static std::string GetCudaErrorMessage(CUresult result) {
 }
 #endif  // GOOGLE_CUDA
 
-std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
-
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     PlatformDeviceId platform_device_id, size_t pool_size, bool reserve_memory,
     bool compute_stats)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())) {
-  ++number_instantiated_;
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
@@ -195,8 +192,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 #endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
 }
 
-GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
-}
+GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {}
 
 void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                                size_t num_bytes) {
@@ -215,7 +211,6 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                   num_bytes, pool_, cuda_stream_)) {
     size_t free, total;
     cuMemGetInfo(&free, &total);
-    mutex_lock lock(lock_);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes
                << ": " << GetCudaErrorMessage(result)
                << "\n Free memory/Total memory: " << free << "/" << total;

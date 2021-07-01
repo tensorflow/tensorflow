@@ -159,7 +159,7 @@ def model_to_estimator(
   """
 
   try:
-    from tensorflow_estimator.python.estimator import keras as keras_lib  # pylint: disable=g-import-not-at-top
+    from tensorflow_estimator.python.estimator import keras_lib  # pylint: disable=g-import-not-at-top
   except ImportError:
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
@@ -347,7 +347,7 @@ def model_to_estimator_v2(keras_model=None,
   """
 
   try:
-    from tensorflow_estimator.python.estimator import keras as keras_lib  # pylint: disable=g-import-not-at-top
+    from tensorflow_estimator.python.estimator import keras_lib  # pylint: disable=g-import-not-at-top
   except ImportError:
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
@@ -363,4 +363,4 @@ def model_to_estimator_v2(keras_model=None,
       use_v2_estimator=True,
       metric_names_map=metric_names_map,
       export_outputs=export_outputs)
-# LINT.ThenChange(//tensorflow_estimator/python/estimator/keras.py)
+# LINT.ThenChange(//tensorflow_estimator/python/estimator/keras_lib.py)

@@ -802,8 +802,8 @@ struct ApplyAdamNonCuda {
     // v     == n
     // var   == θ
 
-    auto shard = [this, var_ptr, m_ptr, v_ptr, g_ptr, alpha, beta1, beta2,
-                  epsilon, use_nesterov, packet_size](int begin, int end) {
+    auto shard = [var_ptr, m_ptr, v_ptr, g_ptr, alpha, beta1, beta2, epsilon,
+                  use_nesterov, packet_size](int begin, int end) {
       int t_size = (end - begin) * packet_size;
       begin = begin * packet_size;
       auto var = typename TTypes<T>::UnalignedTensor(var_ptr + begin, t_size);

@@ -78,6 +78,13 @@ gentbl_cc_library(
             "lib/Dialect/Test/TestOpsDialect.h.inc",
         ),
         (
+            [
+                "-gen-dialect-defs",
+                "-dialect=test",
+            ],
+            "lib/Dialect/Test/TestOpsDialect.cpp.inc",
+        ),
+        (
             ["-gen-enum-decls"],
             "lib/Dialect/Test/TestOpEnums.h.inc",
         ),
@@ -232,6 +239,7 @@ cc_library(
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],

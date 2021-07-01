@@ -3753,12 +3753,12 @@ def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape, 
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$x,
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4434,7 +4434,7 @@ dimension of size 1 added.}]>:$output
   ];
 }
 
-def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes `exp(x) - 1` element-wise.";
 
   let description = [{
@@ -4462,6 +4462,14 @@ i.e. `exp(x) - 1` or `e^(x) - 1`, where `x` is the input tensor.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
+
 }
 
 def TF_ExtractImagePatchesOp : TF_Op<"ExtractImagePatches", [NoSideEffect]> {
@@ -17964,6 +17972,11 @@ On GPU, if an out of bound index is found, the index is ignored.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [
+    OpBuilder<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
+    [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]>
+  ];
 }
 
 def TF_TensorScatterMaxOp : TF_Op<"TensorScatterMax", [NoSideEffect]> {

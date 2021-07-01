@@ -98,26 +98,21 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   stream_executor::PlatformKind platform_kind =
       main_stream->parent()->platform_kind();
   if (platform_kind == stream_executor::PlatformKind::kROCm) {
-    int stream_isa_version;
-    main_stream->parent()->GetDeviceDescription().rocm_amdgpu_isa_version(
-        &stream_isa_version);
-    int gpu_exec_isa_version =
-        absl::get<std::pair<int, std::string>>(gpu_version_).first;
-    TF_RET_CHECK(stream_isa_version == gpu_exec_isa_version)
-        << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_isa_version
-        << ", but was " << stream_isa_version;
+    std::string stream_arch = main_stream->parent()
+                                  ->GetDeviceDescription()
+                                  .rocm_amdgpu_gcn_arch_name();
+    std::string gpu_exec_arch = absl::get<std::string>(gpu_version_);
+    TF_RET_CHECK(stream_arch == gpu_exec_arch)
+        << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
+        << ", but was " << stream_arch;
   } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
-    std::pair<int, int> stream_compute_compatibility;
-    main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
-        &stream_compute_compatibility.first,
-        &stream_compute_compatibility.second);
-    GpuVersion nvidia_compute_compatibility = stream_compute_compatibility;
-    TF_RET_CHECK(nvidia_compute_compatibility == gpu_version_)
+    GpuVersion cc = main_stream->GetCudaComputeCapability();
+    TF_RET_CHECK(absl::get<se::CudaComputeCapability>(cc) ==
+                 absl::get<se::CudaComputeCapability>(gpu_version_))
         << "Compute capability mismatch; expected {"
-        << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
-        << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
-        << stream_compute_compatibility.first << ", "
-        << stream_compute_compatibility.second << "}";
+        << absl::get<se::CudaComputeCapability>(gpu_version_).ToString()
+        << "}, but was {" << absl::get<se::CudaComputeCapability>(cc).ToString()
+        << "}";
   } else {
     return InternalError("Unknown platform: %d", platform_kind);
   }
@@ -137,6 +132,9 @@ Status GpuExecutable::ExecuteThunks(
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
+
+  TF_ASSIGN_OR_RETURN(StreamPool::Ptr async_comms_stream,
+                      run_options->BorrowStream(executor->device_ordinal()));
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
@@ -187,6 +185,7 @@ Status GpuExecutable::ExecuteThunks(
     Thunk::ExecuteParams thunk_params{
         &buffer_allocations,
         stream,
+        async_comms_stream.get(),
         run_options->run_options().run_id(),
         &profiler,
         run_options->run_options().device_assignment(),

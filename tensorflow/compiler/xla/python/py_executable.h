@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_EXECUTABLE_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -81,6 +82,9 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
     return fingerprint_;
   }
 
+  // Keep `obj` alive as long as PyExecutable.
+  void KeepAlive(pybind11::object obj);
+
  private:
   friend class PyClient;
 
@@ -95,6 +99,9 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
 
   // The options to pass to `executable_.Execute`.
   ExecuteOptions options_;
+
+  // Python objects to keep alive as requested by user.
+  std::vector<pybind11::object> keepalives_;
 
   // Doubly-linked list of all executables known to the client. Protected by the
   // GIL.

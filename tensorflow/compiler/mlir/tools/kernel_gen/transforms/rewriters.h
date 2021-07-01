@@ -30,17 +30,13 @@ namespace kernel_gen {
 namespace tf_framework {
 
 /// Collects a set of patterns to convert from the TF Framework dialect to LLVM.
-void PopulateTFFrameworkToLLVMConversionPatterns(
-    LLVMTypeConverter *converter, RewritePatternSet *patterns);
+void PopulateTFFrameworkToLLVMConversionPatterns(LLVMTypeConverter *converter,
+                                                 RewritePatternSet *patterns);
 
 /// Collects a set of patterns to rewrite functions for use with TF framework
-/// and also replace `alloc` and correspondign free operations with .
-void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
-    MLIRContext *context, RewritePatternSet *patterns);
-
-/// Collects a set of patterns to embed TF Framework.
-void PopulateEmbedTFFrameworkAssertConversionPatterns(
-    MLIRContext *context, RewritePatternSet *patterns);
+/// and also replace `alloc`, `dealloc` and `assert`.
+void PopulateEmbedTFFrameworkPatterns(RewritePatternSet *patterns);
+void PopulateEmbedTFFrameworkAssertPattern(RewritePatternSet *patterns);
 
 }  // namespace tf_framework
 

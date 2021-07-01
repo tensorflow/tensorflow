@@ -38,6 +38,10 @@ void PopulateComplexLoweringPatterns(MLIRContext *context,
 void PopulateOptimizeMHLOPatterns(MLIRContext *context,
                                   OwningRewritePatternList *patterns);
 
+// Rewrite patterns for einsum to equivalent dot_general legalization.
+void PopulateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
+                                        OwningRewritePatternList *patterns);
+
 // Rewrite patterns for gather to equivalent torch index select legalization.
 void PopulateGatherToTorchIndexSelectPatterns(
     mlir::MLIRContext *context, OwningRewritePatternList *patterns);
@@ -80,10 +84,6 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
 // attributes to equivalent sequences of ops.
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns);
-
-// Sets up legality definitions for element-wise operations on ranked tensors.
-void SetupTransformUnrankedHloLegality(MLIRContext *context,
-                                       ConversionTarget *conversionTarget);
 
 // Populates a collection of rewrite patterns to realize element-wise operations
 // on ranked tensors where possible.

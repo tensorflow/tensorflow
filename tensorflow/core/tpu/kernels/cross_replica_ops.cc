@@ -127,8 +127,8 @@ class CollectivePermuteOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("AllToAll").CompileTimeConstantInput("group_assignment"),
                 AllToAllOp);
 REGISTER_XLA_OP(Name("CollectivePermute")
-                    .TypeConstraint("T", {DT_FLOAT, DT_BFLOAT16, DT_INT32,
-                                          DT_COMPLEX64})
+                    .TypeConstraint("T", {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16,
+                                          DT_INT32, DT_COMPLEX64})
                     .CompileTimeConstantInput("source_target_pairs"),
                 CollectivePermuteOp);
 REGISTER_XLA_OP(

@@ -74,6 +74,33 @@ def scalar(name, tensor, collections=None, family=None):
 
   Raises:
     ValueError: If tensor has the wrong shape or type.
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution or `tf.function`. To migrate
+  to TF2, please use `tf.summary.scalar` instead. Please check
+  [Migrating tf.summary usage to
+  TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
+  steps for migration. `tf.summary.scalar` can also log training metrics in
+  Keras, you can check [Logging training metrics in
+  Keras](https://www.tensorflow.org/tensorboard/scalars_and_keras) for detials.
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name  | TF2 Arg Name    | Note                                   |
+  | :------------ | :-------------- | :------------------------------------- |
+  | `name`        | `name`          | -                                      |
+  | `tensor`      | `data`          | -                                      |
+  | -             | `step`          | Explicit int64-castable monotonic step |
+  :               :                 : value. If omitted, this defaults to    :
+  :               :                 : `tf.summary.experimental.get_step()`.  :
+  | `collections` | Not Supported   | -                                      |
+  | `family`      | Removed         | Please use `tf.name_scope` instead to  |
+  :               :                 : manage summary name prefix.            :
+  | -             | `description`   | Optional long-form `str` description   |
+  :               :                 : for the summary. Markdown is supported.:
+  :               :                 : Defaults to empty.                     :
+
+  @end_compatibility
   """
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
@@ -129,6 +156,32 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, please use `tf.summary.image` instead. Please check
+  [Migrating tf.summary usage to
+  TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
+  steps for migration.
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name  | TF2 Arg Name    | Note                                   |
+  | :------------ | :-------------- | :------------------------------------- |
+  | `name`        | `name`          | -                                      |
+  | `tensor`      | `data`          | -                                      |
+  | -             | `step`          | Explicit int64-castable monotonic step |
+  :               :                 : value. If omitted, this defaults to    :
+  :               :                 : `tf.summary.experimental.get_step()`.  :
+  | `max_outputs` | `max_outputs`   | -                                      |
+  | `collections` | Not Supported   | -                                      |
+  | `family`      | Removed         | Please use `tf.name_scope` instead     |
+  :               :                 : to manage summary name prefix.         :
+  | -             | `description`   | Optional long-form `str` description   |
+  :               :                 : for the summary. Markdown is supported.:
+  :               :                 : Defaults to empty.                     :
+
+  @end_compatibility
   """
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
@@ -169,6 +222,33 @@ def histogram(name, values, collections=None, family=None):
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, please use `tf.summary.histogram` instead. Please check
+  [Migrating tf.summary usage to
+  TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
+  steps for migration.
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name  | TF2 Arg Name    | Note                                   |
+  | :------------ | :-------------- | :------------------------------------- |
+  | `name`        | `name`          | -                                      |
+  | `values`      | `data`          | -                                      |
+  | -             | `step`          | Explicit int64-castable monotonic step |
+  :               :                 : value. If omitted, this defaults to    :
+  :               :                 : `tf.summary.experimental.get_step()`   :
+  | -             | `buckets`       | Optional positive `int` specifying     |
+  :               :                 : the histogram bucket number.           :
+  | `collections` | Not Supported   | -                                      |
+  | `family`      | Removed         | Please use `tf.name_scope` instead     |
+  :               :                 : to manage summary name prefix.         :
+  | -             | `description`   | Optional long-form `str` description   |
+  :               :                 : for the summary. Markdown is supported.:
+  :               :                 : Defaults to empty.                     :
+
+  @end_compatibility
   """
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')

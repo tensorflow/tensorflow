@@ -65,8 +65,12 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   }
 
   const HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
-  const bool init_cublas_data =
-      hlo_module_config.debug_options().xla_gpu_autotune_level() > 1;
+  const int32 cublas_autotune_level =
+      gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
+  const bool init_cublas_data = cublas_autotune_level >= 2;
+  const bool reinit_cublas_data = cublas_autotune_level >= 3;
+  const bool check_cublas = cublas_autotune_level >= 4;
+
   se::RedzoneAllocator input_output_allocator(
       stream, allocator, PtxOptsFromConfig(hlo_module_config),
       /*memory_limit=*/std::numeric_limits<int64>::max());
@@ -102,10 +106,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
   GemmBackendConfig backend_config =
       gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-  const int32 cublas_autotune_level =
-      gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
-  const bool reinit_cublas_data = cublas_autotune_level > 2;
-  const bool check_cublas = cublas_autotune_level > 3;
 
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
 

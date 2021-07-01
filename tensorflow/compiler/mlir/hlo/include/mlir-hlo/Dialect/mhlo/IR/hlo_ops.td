@@ -146,9 +146,9 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-                                                       operands,
-                                                       &reifiedReturnShapes);
+      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                  operands.front(),
+                                                  &reifiedReturnShapes);
     }
     bool inferInputOutputShapeEquality(int input, int output) {
       return true;
@@ -461,9 +461,9 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-                                                       operands,
-                                                       &reifiedReturnShapes);
+      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                  operands.front(),
+                                                  &reifiedReturnShapes);
     }
     bool inferInputsShapeEquality(int lhs, int rhs) {
       return true;
@@ -1838,6 +1838,8 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
 
   // TODO(b/129422361): SortOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",
@@ -2322,6 +2324,23 @@ def HLO_D2HOp: HLO_Op<"d2h", [NoSideEffect, SameOperandsAndResultType]> {
   }];
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+  
+def HLO_PrintOp : HLO_Op<"print", []> {
+  let summary = "Print operation";
+  let description = [{
+    PrintOp is used to print tensor, which can be used to debug.
+  }];
+  
+  let arguments = (ins
+      HLO_Tensor:$input
+  );
+
+  let results = (outs
+    HLO_Tensor:$output
+  );
+
   let hasCustomHLOConverter = 1;
 }
 

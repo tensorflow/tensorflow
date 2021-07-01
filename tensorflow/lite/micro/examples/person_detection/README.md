@@ -13,6 +13,7 @@ This uses the experimental int8 quantized version of the person detection model.
 -   [Running on ESP32](#running-on-esp32)
 -   [Running on HIMAX WE1 EVB](#running-on-himax-we1-evb)
 -   [Running on SparkFun Edge](#running-on-sparkfun-edge)
+-   [Running on Sony Spresense](#running-on-sony-spresense)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Debugging image capture](#debugging-image-capture)
 -   [Training your own model](#training-your-own-model)
@@ -581,6 +582,93 @@ screen ${DEVICENAME} 115200
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
+
+## Running on Sony Spresense
+
+The following instructions will help you to build and deploy this example to
+[Sony Spresense](https://developer.sony.com/develop/spresense/) board.
+
+![Spresense Products](../hello_world/images/spresense_product_boards.png)
+
+### Initial Setup
+
+To build and execute this example on the Spresense, The Spresense SDK build
+system is required. Follow the instructions on the \
+[Spresense SDK Getting Started Guide:EN](https://developer.sony.com/develop/spresense/docs/sdk_set_up_en.html)
+\
+[Spresense SDK Getting Started Guide:JA](https://developer.sony.com/develop/spresense/docs/sdk_set_up_ja.html)
+\
+[Spresense SDK Getting Started Guide:CN](https://developer.sony.com/develop/spresense/docs/sdk_set_up_zh.html)
+\
+to get and install all required tools for work with Sony Spresense.
+
+And after setup the build system, download
+[Spresense repository](https://github.com/sonydevworld/spresense).
+
+```
+git clone --recursive https://github.com/sonydevworld/spresense.git
+```
+
+You can also see
+[TensoFlow Tutorials](https://developer.sony.com/develop/spresense/docs/sdk_tutorials_en.html#_tensorflow_tutorials)
+on Spresense developer document site for this example.
+
+### Configure Spresense for this example
+
+The Spresense SDK uses Kconfig mechanism for configuration of software
+components. So at first, you need to configure it for this example. Spresense
+SDK provides some default configurations, and there is a default config to build
+this Person detection example.
+
+1.  Go to sdk/ directory in the repository.
+
+    ```
+    cd spresense/sdk
+    ```
+
+2.  Execute config.py to configure for this example.
+
+    ```
+    ./tools/config.py examples/tf_example_persondetect
+    ```
+
+This command creates .config file in spesense/nuttx directory.
+
+### Build and Flash the binary into Spresense Main board
+
+After configured, execute make and then flash built image.
+
+1.  Execute "make" command in the same directory you configured.
+
+    ```
+    make
+    ```
+
+2.  Flash built image into Spresense main board. If the build is successful, a
+    file named nuttx.spk will be created in the current directory, and flash it
+    into Spresense Main board. Make sure USB cable is connected between the
+    board and your PC. The USB will be recognized as USB/serial device like
+    /dev/ttyUSB0 in your PC. In this explanation, we will assume that the device
+    is recognized as /dev/ttyUSB0.
+
+    ```
+    ./tools/flash.sh -c /dev/ttyUSB0 nuttx.spk
+    ```
+
+### How to run
+
+To run the example, connect to the device with a terminal soft like "minicom".
+Then you can see a "nsh>" prompt on it. (If you can't see the prompt, try to
+press enter.)
+
+1.  Execute tf_example command on the prompt.
+
+    ```
+    nsh> tf_example
+    ```
+
+2.  Put a person's face in the camera image. Rate which is a face or not will
+    print on the terminal as a result of the detection.
 
 ## Run the tests on a development machine
 

@@ -73,6 +73,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":device_tracer",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
@@ -142,6 +143,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/internal/cpu:annotation_stack",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/profiler/utils:buffer_pool",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",

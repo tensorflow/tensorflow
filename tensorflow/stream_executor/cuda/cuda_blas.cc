@@ -488,6 +488,10 @@ cudaDataType_t GetCUDADataType(blas::DataType ty) {
   switch (ty) {
     case blas::DataType::kHalf:
       return CUDA_R_16F;
+#if CUDA_VERSION >= 11000
+    case blas::DataType::kBF16:
+      return CUDA_R_16BF;
+#endif
     case blas::DataType::kFloat:
       return CUDA_R_32F;
     case blas::DataType::kDouble:
@@ -1752,10 +1756,8 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
 #else
   if (dtype == blas::DataType::kFloat) {
     math_type = CUBLAS_TF32_TENSOR_OP_MATH;
-    int cc_major, cc_minor;
-    if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-            &cc_major, &cc_minor) &&
-        cc_major >= 8) {
+    if (stream->GetCudaComputeCapability().IsAtLeast(
+            CudaComputeCapability::AMPERE)) {
       // TODO(reedwm): Remove or make this VLOG(1) once TensorFloat-32 is more
       // well tested.
       if (tensorflow::tensor_float_32_execution_enabled()) {
@@ -1816,6 +1818,16 @@ port::Status CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
           b.opaque(), SE_CUDA_DATA_HALF, ldb, static_cast<const float *>(beta),
           c->opaque(), SE_CUDA_DATA_HALF, ldc);
     }
+#if CUDA_VERSION > 11000
+    case blas::DataType::kBF16: {
+      return DoBlasInternalImpl(
+          cublasSgemmEx, stream, true /* = pointer_mode_host */, math_type,
+          CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+          static_cast<const float *>(alpha), a.opaque(), CUDA_R_16BF, lda,
+          b.opaque(), CUDA_R_16BF, ldb, static_cast<const float *>(beta),
+          c->opaque(), CUDA_R_16BF, ldc);
+    }
+#endif
     case dnn::kFloat:
       return DoBlasInternalImpl(
           cublasSgemm, stream, true /* = pointer_mode_host */, math_type,
@@ -2045,21 +2057,19 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
   }
 
   // GPUs < sm_50 don't support cublasGemmEx.
-  int cc_major, cc_minor;
-  if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-          &cc_major, &cc_minor) &&
-      cc_major < 5) {
+  CudaComputeCapability cc = stream->GetCudaComputeCapability();
+  if (cc.major < 5) {
     return port::InternalError(absl::StrCat(
-        "sm_", cc_major, " does not support explicit gemm algorithms."));
+        "sm_", cc.major, " does not support explicit gemm algorithms."));
   }
 
   bool algo_uses_tensor_ops = UsesTensorOps(algorithm);
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
   if (algo_uses_tensor_ops) {
-    if (cc_major < 7) {
+    if (cc.major < 7) {
       return port::InternalError(absl::StrCat(
           "Algorithm ", algorithm,
-          " uses tensor ops, but tensor ops are not available in sm", cc_major,
+          " uses tensor ops, but tensor ops are not available in sm", cc.major,
           "X devices."));
     } else if (type_a == blas::DataType::kFloat) {
 #if CUDA_VERSION < 11000
@@ -2067,11 +2077,11 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
           "Algorithm ", algorithm,
           " uses tensor ops, but tensor ops are not available for fp32"));
 #else
-      if (cc_major < 8) {
+      if (cc.major < 8) {
         return port::InternalError(absl::StrCat(
             "Algorithm ", algorithm,
             " uses tensor ops, but tensor ops are not available in sm",
-            cc_major, "X devices for float input types."));
+            cc.major, "X devices for float input types."));
       } else if (!tensorflow::tensor_float_32_execution_enabled()) {
         return port::InternalError(absl::StrCat(
             "Algorithm ", algorithm,
@@ -2177,6 +2187,33 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
                                       stream, parent_, output_profile_result));
 
   cudaDataType_t cuda_in_type = GetCUDADataType(type_a);
+
+#if CUDA_VERSION >= 11000
+  // Workaround CUDA bug where batched GEMM is erroneously marked as
+  // unsupported by manually unbatching it on Pascal.
+  if (cuda_in_type == CUDA_R_16BF &&
+      !stream->GetCudaComputeCapability().IsAtLeast(7)) {
+    for (int batch = 0; batch < batch_count; ++batch) {
+      const auto *a_matrix = reinterpret_cast<const __nv_bfloat16 *>(
+          static_cast<const Eigen::bfloat16 *>(a.opaque()) + batch * stride_a);
+      const auto *b_matrix = reinterpret_cast<const __nv_bfloat16 *>(
+          static_cast<const Eigen::bfloat16 *>(b.opaque()) + batch * stride_b);
+      auto *c_matrix = reinterpret_cast<__nv_bfloat16 *>(
+          static_cast<Eigen::bfloat16 *>(c->opaque()) + batch * stride_c);
+      TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+          AS_LAMBDA(cublasGemmEx), stream, /*pointer_mode_host=*/true,
+          math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n,
+          k, static_cast<const float *>(alpha), a_matrix, CUDA_R_16BF, lda,
+          b_matrix, CUDA_R_16BF, ldb, static_cast<const float *>(beta),
+          c_matrix, CUDA_R_16BF, ldc, CUDAComputationType(computation_type),
+          static_cast<cublasGemmAlgo_t>(algorithm)));
+    }
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
+                                                output_profile_result, stream));
+    return port::Status::OK();
+  }
+#endif
+
   TF_RETURN_IF_ERROR(DoBlasInternalImpl(
       AS_LAMBDA(cublasGemmStridedBatchedEx), stream, /*pointer_mode_host=*/true,
       math_type, CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
@@ -2337,10 +2374,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   cudaDataType_t data_type = CUDADataType<T>::type;
 
 #if CUDA_VERSION >= 9010
-  int cc_major, cc_minor;
-  if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-          &cc_major, &cc_minor) &&
-      cc_major >= 5) {
+  if (stream->GetCudaComputeCapability().IsAtLeast(5)) {
     cublasMath_t math_type;
     cublasGemmAlgo_t algo;
     if (data_type == CUDA_R_16F) {
@@ -2511,14 +2545,48 @@ port::Status CUDABlas::DoBlasGemmStridedBatched(
 #endif
 
   switch (dtype) {
+#if CUDA_VERSION >= 11000
+    case dnn::kBF16: {
+      CudaComputeCapability cc = stream->GetCudaComputeCapability();
+      if (cc.IsAtLeast(7)) {
+        cublasGemmAlgo_t algo =
+            (cc.major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+        return DoBlasInternalImpl(
+            AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
+            true /* = pointer_mode_host */, math_type,
+            CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+            alpha, a.opaque(), CUDA_R_16BF, lda, stride_a, b.opaque(),
+            CUDA_R_16BF, ldb, stride_b, beta, c->opaque(), CUDA_R_16BF, ldc,
+            stride_c, batch_count,
+            /*compute_type=*/CUDA_R_32F, algo);
+      }
+      // Fall back to a loop.
+      for (int batch = 0; batch < batch_count; ++batch) {
+        const auto *a_matrix = reinterpret_cast<const __nv_bfloat16 *>(
+            static_cast<const Eigen::bfloat16 *>(a.opaque()) +
+            batch * stride_a);
+        const auto *b_matrix = reinterpret_cast<const __nv_bfloat16 *>(
+            static_cast<const Eigen::bfloat16 *>(b.opaque()) +
+            batch * stride_b);
+        auto *c_matrix = reinterpret_cast<__nv_bfloat16 *>(
+            static_cast<Eigen::bfloat16 *>(c->opaque()) + batch * stride_c);
+        TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+            cublasSgemmEx, stream, true /* = pointer_mode_host */,
+            CUBLAS_DEFAULT_MATH, CUDABlasTranspose(transa),
+            CUDABlasTranspose(transb), m, n, k,
+            static_cast<const float *>(alpha), a_matrix, CUDA_R_16BF, lda,
+            b_matrix, CUDA_R_16BF, ldb, static_cast<const float *>(beta),
+            c_matrix, CUDA_R_16BF, ldc));
+      }
+      return port::Status::OK();
+    }
+#endif
     case dnn::kHalf: {
 #if CUDA_VERSION >= 9010
-      int cc_major, cc_minor;
-      if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-              &cc_major, &cc_minor) &&
-          cc_major >= 5) {
+      CudaComputeCapability cc = stream->GetCudaComputeCapability();
+      if (cc.major >= 5) {
         cublasGemmAlgo_t algo =
-            (cc_major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
+            (cc.major >= 7 ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
         return DoBlasInternalImpl(
             AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
             true /* = pointer_mode_host */, math_type,

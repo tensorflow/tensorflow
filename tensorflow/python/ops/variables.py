@@ -3263,6 +3263,11 @@ def variables_initializer(var_list, name="init"):
   If `var_list` is empty, however, the function still returns an Op that can
   be run. That Op just has no effect.
 
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
+
   Args:
     var_list: List of `Variable` objects to initialize.
     name: Optional name for the returned operation.
@@ -3289,6 +3294,11 @@ def global_variables_initializer():
 
   This is just a shortcut for `variables_initializer(global_variables())`
 
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
+
   Returns:
     An Op that initializes global variables in the graph.
   """
@@ -3310,6 +3320,11 @@ def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
   This is just a shortcut for `variables_initializer(local_variables())`
+
+  @compatibility(TF2)
+  In TF2, variables are initialized immediately when they are created. There is
+  no longer a need to run variable initializers before using them.
+  @end_compatibility
 
   Returns:
     An Op that initializes all local variables in the graph.

@@ -3204,6 +3204,11 @@ class ReplicaContextBase(object):
     # found in b/184009754.
     if self._strategy.extended._use_merge_call():  # pylint: disable=protected-access
       # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
+      if isinstance(value, ops.IndexedSlices):
+        return nest.pack_sequence_as(
+            value,
+            self.merge_call(batch_all_reduce, args=nest.flatten(value)))
+
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):
         ys = self.merge_call(batch_all_reduce, args=xs)
@@ -3211,6 +3216,11 @@ class ReplicaContextBase(object):
         return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
       return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
     else:
+      if isinstance(value, ops.IndexedSlices):
+        return nest.pack_sequence_as(
+            value,
+            self._strategy.extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
+                reduce_op, nest.flatten(value), options))
 
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):

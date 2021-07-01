@@ -44,7 +44,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4) {
                   custom_call_target="__cudnn$convForward"
   })")
                     .ValueOrDie();
-  CudnnVectorizeConvolutions pass({7, 5});
+  CudnnVectorizeConvolutions pass(se::CudaComputeCapability{7, 5});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 

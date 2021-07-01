@@ -1495,7 +1495,8 @@ static Status ParseDeviceAssignmentAttr(
 static Status BuildFullMeshDeviceAssignment(
     int num_replicas, const std::vector<std::vector<Device*>>& tpu_devices,
     int num_tasks, int num_tpus_per_task,
-    std::vector<std::vector<string>>* tf_device_assignment) {
+    std::vector<std::vector<string>>* tf_device_assignment,
+    std::vector<int>* devices_to_lock) {
   // Assign TensorFlow devices to replicas arbitrarily.
   for (int i = 0; i < num_replicas; ++i) {
     int task = i / num_tpus_per_task;
@@ -1506,6 +1507,7 @@ static Status BuildFullMeshDeviceAssignment(
     // We don't actually know which TF device corresponds to which physical
     // device, but it doesn't matter—they're all identical.
     (*tf_device_assignment)[i] = {tpu_devices[task][device]->name()};
+    devices_to_lock->push_back(i);
   }
   return Status::OK();
 }
@@ -1519,6 +1521,7 @@ static Status BuildGeneralDeviceAssignment(
     const xla::Array2D<tpu::TpuCoreLocationExternal>& device_assignment,
     const xla::Array4D<std::pair<int, int>>& topology,
     std::vector<std::vector<string>>* tf_device_assignment,
+    std::vector<int>* devices_to_lock,
     std::unique_ptr<xla::DeviceAssignment>* xla_device_assignment) {
   // Assign TensorFlow devices to each computation's replicas according to
   // device_assignment and 'topology'.
@@ -1546,6 +1549,7 @@ static Status BuildGeneralDeviceAssignment(
       TF_RET_CHECK(device >= 0 && device < tpu_devices[task].size());
       (*tf_device_assignment)[replica].push_back(
           tpu_devices[task][device]->name());
+      devices_to_lock->push_back((task * tpu_devices[task].size()) + device);
     }
   }
   return Status::OK();
@@ -1557,6 +1561,7 @@ static Status BuildGeneralDeviceAssignment(
     int num_cores_per_replica, const string& topology_attr,
     absl::Span<const int> device_assignment_attr,
     std::vector<std::vector<string>>* tf_device_assignment,
+    std::vector<int>* devices_to_lock,
     std::unique_ptr<xla::DeviceAssignment>* xla_device_assignment) {
   const int num_tasks = tpu_devices.size();
   const int num_tpu_devices = num_tasks * num_tpus_per_task;
@@ -1584,6 +1589,9 @@ static Status BuildGeneralDeviceAssignment(
 
   tf_device_assignment->clear();
   tf_device_assignment->resize(num_replicas);
+
+  devices_to_lock->clear();
+  devices_to_lock->reserve(num_replicas * num_cores_per_replica);
 
   // Special case: we allow the user to omit the topology and device assignment
   // information in two cases:
@@ -1623,6 +1631,7 @@ static Status BuildGeneralDeviceAssignment(
     // communicate with any other cores.
     if (num_replicas == 1) {
       (*tf_device_assignment)[0] = {tpu_devices[0][0]->name()};
+      devices_to_lock->push_back(0);
       return Status::OK();
     }
 
@@ -1631,7 +1640,7 @@ static Status BuildGeneralDeviceAssignment(
     // the topology to do so because all cores are identical.
     return BuildFullMeshDeviceAssignment(num_replicas, tpu_devices, num_tasks,
                                          num_tpus_per_task,
-                                         tf_device_assignment);
+                                         tf_device_assignment, devices_to_lock);
     // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
   }
 
@@ -1648,7 +1657,7 @@ static Status BuildGeneralDeviceAssignment(
 
   return BuildGeneralDeviceAssignment(
       num_replicas, num_cores_per_replica, tpu_devices, device_assignment,
-      topology, tf_device_assignment, xla_device_assignment);
+      topology, tf_device_assignment, devices_to_lock, xla_device_assignment);
 }
 
 Status DistributedTPURewritePass::GetComputationForTPUReplicateOp(
@@ -2927,7 +2936,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
     const std::vector<xla::OpSharding>& retval_shardings,
     const std::vector<std::vector<string>>& tpu_device_names,
     Node* compile_node, const std::vector<Node*>& variable_reads,
-    Node* control_predecessor, Node* control_successor,
+    Node* control_predecessor, Node* control_successor, Node* multilock_acquire,
     std::vector<VariableWrite>* variable_writes, Graph* graph) {
   VLOG(1) << "BuildExecuteNodes " << replicate_node.DebugString();
   TF_RET_CHECK(params_info.NumReplicas() == tpu_device_names.size());
@@ -3076,6 +3085,29 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   // output_index_of_copy_node).
   absl::flat_hash_map<string, std::vector<NodeOut>> per_host_var_copies;
 
+  Node* execute_successor = control_successor;
+
+  int num_total_cores = params_info.NumReplicas() * num_cores_per_replica;
+  if (enable_multicore_locking_ && num_total_cores > 1) {
+    // Add a node to release exclusive access once all the cores have finished
+    // execution.
+    NodeDef lock_def;
+    lock_def.set_name(graph->NewName(
+        strings::StrCat(compile_node->name(), "/", "tpu_release_multilock")));
+    lock_def.set_op("ConsumeTpuMultilock");
+    MergeDebugInfo(NodeDebugInfo(replicate_node.def()), &lock_def);
+    Status status;
+    Node* multilock_release = graph->AddNode(lock_def, &status);
+    TF_RETURN_IF_ERROR(status);
+    multilock_release->set_assigned_device_name(
+        compile_node->assigned_device_name());
+    TF_RET_CHECK(multilock_acquire != nullptr);
+    graph->AddEdge(multilock_acquire, 0, multilock_release, 0);
+    graph->AddControlEdge(multilock_release, control_successor);
+    // Make sure all execute Ops happen before the multilock_release.
+    execute_successor = multilock_release;
+  }
+
   // Mapping from original resource arg number to a second level map. Second
   // level map is from core id to output index of updated variable value.
   absl::flat_hash_map<int, absl::flat_hash_map<int, int>>
@@ -3140,12 +3172,12 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       node->set_assigned_device_name(tpu_device_names[replica][core]);
 
       // Add control edges to ensure that execution happens after
-      // `control_predecessor`, happens before `control_successor`, and is
+      // `control_predecessor`, happens before `execute_successor`, and is
       // triggered by evaluating any operator that depends on the original
       // TPUReplicate operator. See the comment at the top of the header file
       // for more details.
       graph->AddControlEdge(control_predecessor, node);
-      graph->AddControlEdge(node, control_successor);
+      graph->AddControlEdge(node, execute_successor);
 
       // Add data input edges.
       for (int64 i = 0; i < core_arg_nums[core].size(); ++i) {
@@ -3478,7 +3510,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           }
 
           // If this is a replicated variable, outputs on all cores will be the
-          // same, and we only take the output from core 0 for the varialbe
+          // same, and we only take the output from core 0 for the variable
           // update.
           if (sharding.type() == xla::OpSharding::REPLICATED && core != 0) {
             continue;
@@ -3958,6 +3990,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
     const DeviceSet& device_set, const Node& replicate_node, int* num_replicas,
     int* num_cores_per_replica, int* num_tasks,
     std::vector<std::vector<string>>* tf_device_assignment,
+    std::vector<int>* devices_to_lock,
     std::unique_ptr<xla::DeviceAssignment>* xla_device_assignment,
     string* tpu_compilation_device) {
   TF_RETURN_IF_ERROR(
@@ -4003,7 +4036,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   TF_RETURN_IF_ERROR(BuildDeviceAssignment(
       tpu_topology, num_tpus_per_task, tpu_devices, *num_replicas,
       *num_cores_per_replica, topology, device_assignment, tf_device_assignment,
-      xla_device_assignment));
+      devices_to_lock, xla_device_assignment));
 
   return Status::OK();
 }
@@ -4153,8 +4186,9 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
 
 /* static */ Status
 DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
-    Node* replicate_node, Node* compile_node, Node** control_after_compilation,
-    Graph* graph) {
+    Node* replicate_node, Node* compile_node,
+    absl::Span<const int> devices_to_lock, Node** control_after_compilation,
+    Node** multilock_acquire, Graph* graph) {
   const Edge* compilation_edge = nullptr;
   for (const auto* e : replicate_node->out_edges()) {
     if (e->IsControlEdge() &&
@@ -4201,13 +4235,62 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
   TF_RETURN_IF_ERROR(status);
   graph->AddEdge(compile_node, 0, compile_succeeded, 0);
 
+  Node* last_node_before_sequencer = compile_succeeded;
+
+  if (enable_multicore_locking_ && devices_to_lock.size() > 1) {
+    // Add a lock node to acquire exclusive access to all the cores that will
+    // execute this program. The lock is required to prevent deadlock or
+    // incorrect results when running concurrent multi-core programs in the
+    // same distributed runtime when there is no direct graph dependency
+    // between the programs (either because they are run from different sessions
+    // or because they are in the same graph, but have no control or data
+    // dependencies to sequence them). Consider the case of two multi-core
+    // computations A and B whose cores overlap and include cores X and Y. With
+    // no locking and no graph dependencies it is possible that A's program
+    // gets enqueued before B's on core X, while B's program gets enqueued
+    // before A's on core Y. This will lead either to deadlock or to
+    // incorrect results, since the runtime has no mechanism to re-sequence
+    // the programs on the cores. By adding a multi-lock acquisition for all the
+    // before any TPUExecute ops are run, and releasing it after they complete,
+    // we ensure that the programs are enqueued on the cores in a consistent
+    // order.
+    //
+    // There is a risk when computations are in the same graph, and include a
+    // data dependency, that the lock acquisition could provoke deadlock.
+    // Suppose that A must happen before B because B's input depends on A's
+    // output. Then it is obviously necessary that A's lock acquisition must
+    // happen before B's lock acquisition, and so we must ensure that there is
+    // a graph dependency causing B's lock acquisition to be sequenced after A's
+    // lock acquisition. Right now that dependency is satisfied because the
+    // shape inference code cannot determine the shape of A's outputs, and so
+    // B's compilation, which precedes B's lock acquisition, is always sequenced
+    // after A's execution. If the shape inference is improved it will be
+    // necessary to add an explicit control edge between dependent lock
+    // acquisition ops.
+    NodeDef lock_def;
+    lock_def.set_name(graph->NewName(
+        strings::StrCat(compile_node->name(), "/", "tpu_acquire_multilock")));
+    lock_def.set_op("TpuMultilock");
+    AddNodeAttr("lock_list", devices_to_lock, &lock_def);
+    MergeDebugInfo(NodeDebugInfo(replicate_node->def()), &lock_def);
+    Status status;
+    *multilock_acquire = graph->AddNode(lock_def, &status);
+    TF_RETURN_IF_ERROR(status);
+    (*multilock_acquire)
+        ->set_assigned_device_name(compile_node->assigned_device_name());
+    graph->AddControlEdge(compile_succeeded, *multilock_acquire);
+    last_node_before_sequencer = *multilock_acquire;
+  } else {
+    *multilock_acquire = nullptr;
+  }
+
   // Build a sequencing node for when compilation has completed.
   TF_RETURN_IF_ERROR(
       BuildNoopNode(*replicate_node,
                     graph->NewName(strings::StrCat(compile_node->name(), "/",
                                                    "after_compilation")),
                     /*device=*/"", graph, control_after_compilation));
-  graph->AddControlEdge(compile_succeeded, *control_after_compilation);
+  graph->AddControlEdge(last_node_before_sequencer, *control_after_compilation);
 
   return Status::OK();
 }
@@ -4265,12 +4348,13 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
   int num_cores_per_replica;
   int num_tasks;  // Number of tasks.
   std::vector<std::vector<string>> tf_device_assignment;
+  std::vector<int> devices_to_lock;
   std::unique_ptr<xla::DeviceAssignment> xla_device_assignment;
   string tpu_compilation_device;
   TF_RETURN_IF_ERROR(GetDeviceTopology(
       device_set, *replicate_node, &num_replicas, &num_cores_per_replica,
-      &num_tasks, &tf_device_assignment, &xla_device_assignment,
-      &tpu_compilation_device));
+      &num_tasks, &tf_device_assignment, &devices_to_lock,
+      &xla_device_assignment, &tpu_compilation_device));
 
   TF_RETURN_IF_ERROR(UpdateHeadTailOutsideCompilation(
       tf_device_assignment, head_tail_outside_compilation_nodes));
@@ -4370,15 +4454,18 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
   graph->AddControlEdge(control_before, compile_node);
 
   Node* control_after_compilation;
+  Node* multilock_acquire;
   TF_RETURN_IF_ERROR(BuildCompilationStatusReturnNodes(
-      replicate_node, compile_node, &control_after_compilation, graph));
+      replicate_node, compile_node, devices_to_lock, &control_after_compilation,
+      &multilock_acquire, graph));
 
   std::vector<VariableWrite> variable_writes;
   TF_RETURN_IF_ERROR(BuildExecuteNodes(
       params_info, num_tasks, num_cores_per_replica, *replicate_node, arg_names,
       arg_types, arg_shapes, retval_types, arg_sharding, retval_sharding,
       tf_device_assignment, compile_node, variable_reads,
-      control_after_compilation, control_after, &variable_writes, graph));
+      control_after_compilation, control_after, multilock_acquire,
+      &variable_writes, graph));
   bool contains_resource_write_op =
       ContainsResourceWriteOp(*graph, reachable_functions);
 
@@ -4511,6 +4598,15 @@ Status DistributedTPURewritePass::Run(
   TF_RETURN_IF_ERROR(FindHostComputeKeyPlaceholderNodes(
       graph, replicate_nodes, &host_compute_key_placeholder_map));
 
+  // This shape inference pass does not compute the shapes of outputs of
+  // TPU computations. The concurrent multi-core locking implementation
+  // *relies* on this behavior because it ensures that, if TPU computation B's
+  // inputs depend on TPU computation A's outputs, then computation B's
+  // compilation will be sequenced after A's execution, and this ensures that
+  // locks are acquired in the correct order. If the shape inference is improved
+  // to compute shapes of TPU computation outputs, it will be necessary to add
+  // an explicit control edge between lock acquisitions for dependent
+  // computations in order to avoid deadlock.
   GraphShapeInfo shape_info;
   TF_RETURN_IF_ERROR(InferShapes(graph, /*arg_shapes=*/{},
                                  flr->GetFunctionLibraryDefinition(),
@@ -4582,12 +4678,14 @@ bool DistributedTPURewritePass::
     enable_cross_replica_sharding_mirrored_variables_ = true;
 bool DistributedTPURewritePass::enable_automatic_model_parallelism_ = false;
 bool DistributedTPURewritePass::enable_xla_param_broadcast_ = false;
+bool DistributedTPURewritePass::enable_multicore_locking_ = false;
 
 /*static*/ void DistributedTPURewritePass::SetDistributedTpuRewritePassOptions(
     bool distribute_vars, bool allow_xla_spmd_partition,
     bool replicate_inputs_outputs_by_default_for_xla_spmd,
     bool enable_cross_replica_sharding_mirrored_variables,
-    bool enable_automatic_model_parallelism, bool enable_xla_param_broadcast) {
+    bool enable_automatic_model_parallelism, bool enable_xla_param_broadcast,
+    bool enable_multicore_locking) {
   distribute_vars_ = distribute_vars;
   allow_xla_spmd_partition_ = allow_xla_spmd_partition;
   replicate_inputs_outputs_by_default_for_xla_spmd_ =
@@ -4596,6 +4694,7 @@ bool DistributedTPURewritePass::enable_xla_param_broadcast_ = false;
       enable_cross_replica_sharding_mirrored_variables;
   enable_automatic_model_parallelism_ = enable_automatic_model_parallelism;
   enable_xla_param_broadcast_ = enable_xla_param_broadcast;
+  enable_multicore_locking_ = enable_multicore_locking;
 }
 
 }  // namespace tensorflow

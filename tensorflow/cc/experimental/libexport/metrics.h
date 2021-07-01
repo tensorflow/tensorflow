@@ -32,17 +32,21 @@ monitoring::CounterCell& Write();
 // successfully read.
 monitoring::CounterCell& Read();
 
-// Returns "/tensorflow/core/saved_model/write/api" cell belonging to field
-// with name api_label. This metric has 1 field "api_label", where each field
-// value is a string name for a SavedModel writing API. The cell for `foo`
+// Returns "/tensorflow/core/saved_model/write/api" cell belonging to fields
+// (api_label, write_version). The "api_label" field corresponds to a SavedModel
+// write API, and the "write_version" field is equal to
+// tensorflow::libexport::GetWriteVersion of the protobuf. The cell for (foo, #)
 // should be incremented when the write API `foo` is called.
-monitoring::CounterCell& WriteApi(const std::string& api_label);
+monitoring::CounterCell& WriteApi(const std::string& api_label,
+                                  const std::string& write_version);
 
-// Returns "/tensorflow/core/saved_model/read/api" cell belonging to field
-// with name api_label. This metric has 1 field "api_label", where each field
-// value is a string name for a SavedModel reading API. The cell for `foo`
+// Returns "/tensorflow/core/saved_model/read/api" cell belonging to fields
+// (api_label, write_version). The "api_label" field corresponds to a SavedModel
+// read API, and the "write_version" field is equal to
+// tensorflow::libexport::GetWriteVersion of the protobuf. The cell for (foo, #)
 // should be incremented when the read API `foo` is called.
-monitoring::CounterCell& ReadApi(const std::string& api_label);
+monitoring::CounterCell& ReadApi(const std::string& api_label,
+                                 const std::string& write_version);
 
 }  // namespace metrics
 }  // namespace libexport

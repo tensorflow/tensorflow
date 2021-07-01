@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
+#include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
@@ -94,7 +95,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -336,7 +336,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 operations to F32 operations so that the CPU backend can
   // support BF16 operations without directly implementing a BF16 lowering for
   // most ops.
-  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
+  BFloat16Support bf16;
+  pipeline.AddPass<BFloat16Normalization>(&bf16);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
@@ -360,37 +361,40 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<DynamicPadder>();
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
-  {
-    auto& pass =
-        pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
-                                               /*allow_mixed_precision=*/false);
 
-    pass.AddPass<TreeReductionRewriter>();
+  // Run the following passes to a fixed point.
+  [&pipeline =
+       pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
+    pipeline.AddInvariantCheckerDebug<HloVerifier>(
+        /*layout_sensitive=*/false,
+        /*allow_mixed_precision=*/false);
+
+    pipeline.AddPass<TreeReductionRewriter>();
     AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
-    pass.AddPass<AlgebraicSimplifier>(options);
-    pass.AddPass<SortSimplifier>();
-    pass.AddPass<HloDCE>();
-    pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<SortSimplifier>();
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
-    pass.AddPass<ZeroSizedHloElimination>();
+    pipeline.AddPass<ZeroSizedHloElimination>();
 
-    pass.AddPass<WhileLoopInvariantCodeMotion>();
-    pass.AddPass<TupleSimplifier>();
-    pass.AddPass<WhileLoopConstantSinking>();
-    pass.AddPass<WhileLoopSimplifier>();
+    pipeline.AddPass<WhileLoopInvariantCodeMotion>();
+    pipeline.AddPass<TupleSimplifier>();
+    pipeline.AddPass<WhileLoopConstantSinking>();
+    pipeline.AddPass<WhileLoopSimplifier>();
 
     // TODO(b/134075051): Re-enable after b/134075051 is fixed.
-    // pass.AddPass<SliceSinker>();
+    // pipeline.AddPass<SliceSinker>();
 
-    pass.AddPass<HloDCE>();
-    pass.AddPass<ReshapeMover>();
-    pass.AddPass<HloConstantFolding>();
-    pass.AddPass<ConditionalSimplifier>();
-  }
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<ReshapeMover>();
+    pipeline.AddPass<HloConstantFolding>();
+    pipeline.AddPass<ConditionalSimplifier>();
+  }();
+
   pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64) {
     return sort->operand(0)->shape().element_type() == F32;
   });
@@ -431,20 +435,20 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  {
-    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "simplification after layout assignment");
-    pass.AddInvariantCheckerDebug<HloVerifier>(
+  // Run this to a fixed point.
+  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+       "simplification after layout assignment")] {
+    pipeline.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
-    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
-    pass.AddPass<HloDCE>();
-    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-  }
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  }();
 
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =

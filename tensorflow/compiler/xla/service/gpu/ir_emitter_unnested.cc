@@ -124,9 +124,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -154,11 +154,13 @@ const auto kStridedLinearIndexingX =
 // efficient.
 const int64 kMinDimensionToTransposeTiled = 16;
 
+constexpr char kDefaultLayoutAttrName[] = "minor_to_major";
+
 // Updates the launch dimensions in "thunk" and annotate the launch dimensions
 // of the corresponding IR kernel in "llvm_module".
 // Precondition: "thunk" must be a KernelThunk.
-void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
-                            llvm::Module* llvm_module) {
+void SetThunkLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
+                              llvm::Module* llvm_module) {
   CHECK(Thunk::Kind::kKernel == thunk->kind());
   KernelThunk* kernel_thunk = static_cast<KernelThunk*>(thunk);
   kernel_thunk->SetLaunchDimensions(launch_dims);
@@ -188,49 +190,6 @@ bool BinarySearchDenseElementsAttr(mlir::DenseIntElementsAttr elements,
   return std::binary_search(
       elements.begin(), elements.end(), value,
       [](const mlir::APInt& x, const mlir::APInt& y) { return x.slt(y); });
-}
-
-// Returns true if the fusion contains any instruction that is likely
-// translated to complex LLVM IR, such as loops, and prevent vectorization.
-bool MayPreventVectorization(const HloInstruction& hlo) {
-  if (hlo.opcode() == HloOpcode::kFusion) {
-    return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
-                          [](const HloInstruction* instr) {
-                            switch (instr->opcode()) {
-                              case HloOpcode::kReduceWindow:
-                              case HloOpcode::kSort:
-                              case HloOpcode::kDot:
-                              case HloOpcode::kSin:
-                              case HloOpcode::kCos:
-                              case HloOpcode::kPower:
-                              case HloOpcode::kAtan2:
-                                return true;
-                              case HloOpcode::kReduce:
-                                return !instr->shape().IsArray();
-                              default:
-                                return false;
-                            }
-                          });
-  } else if (hlo.IsElementwise()) {
-    // Unfused elementwise operations are usually memory bound, unroll them.
-    switch (hlo.opcode()) {
-        // The following elementwise operation implementations contain branches.
-        // LLVM vectorizer doesn't work in that case.
-        // The unrolled code is faster when it isn't vectorized.
-      case HloOpcode::kSin:
-      case HloOpcode::kCos:
-      case HloOpcode::kPower:
-      case HloOpcode::kAtan2:
-        return true;
-      default:
-        return false;
-    }
-  } else if (hlo.opcode() == HloOpcode::kReduce && hlo.shape().IsArray()) {
-    // TODO(timshen): check if the to_apply() attribute contains instructions
-    // that break LLVM vectorization.
-    return false;
-  }
-  return true;
 }
 
 bool LmhloOpIsElementwise(mlir::Operation* op) {
@@ -280,6 +239,7 @@ bool MayPreventVectorization(mlir::Operation* op) {
         case HloOpcode::kCos:
         case HloOpcode::kPower:
         case HloOpcode::kAtan2:
+        case HloOpcode::kConcatenate:
           return true;
         case HloOpcode::kReduce:
           if (instr.getNumResults() > 1) {
@@ -806,7 +766,7 @@ Status IrEmitterUnnested::EmitConditional(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(conditional.index()));
   AddThunkToThunkSequence(std::unique_ptr<Thunk>(
-      new ConditionalThunk(GetThunkInfo(op), std::move(config), slice, {})));
+      new ConditionalThunk(GetThunkInfo(op), std::move(config), slice)));
   return Status::OK();
 }
 
@@ -925,8 +885,8 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
                       CalculateLaunchDimensions(
                           input_shape, ir_emitter_context_->gpu_device_info(),
                           {unroll_factor}));
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
                           {unroll_factor})
@@ -1048,8 +1008,8 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
                       CalculateLaunchDimensions(
                           input_shape, ir_emitter_context_->gpu_device_info(),
                           {unroll_factor}));
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
 
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
@@ -1093,11 +1053,11 @@ Status IrEmitterUnnested::EmitCustomCall(mlir::Operation* op) {
     return EmitBatchNormThunk(op);
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
     return EmitCholeskyThunk(op);
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        MlirToString(op));
@@ -1557,7 +1517,7 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
   return Unimplemented("Unsupported batch norm operation");
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   auto cholesky_op = mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(op);
 
@@ -1603,7 +1563,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
 
   return Status::OK();
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
   auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
@@ -1800,7 +1760,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     auto arg = region->addArgument(load.getType());
     load.replaceAllUsesWith(arg);
     Shape shape = TypeToShape(load.getType());
-    if (auto attr = mlir::GetLayoutFromMlirHlo(load)) {
+    if (auto attr = load->getAttrOfType<mlir::DenseIntElementsAttr>(
+            kDefaultLayoutAttrName)) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
@@ -1817,7 +1778,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   std::vector<mlir::Value> returned_values;
   for (auto store : stores) {
     Shape shape = TypeToShape(store.memref().getType());
-    if (auto attr = mlir::GetLayoutFromMlirHlo(store)) {
+    if (auto attr = store->getAttrOfType<mlir::DenseIntElementsAttr>(
+            kDefaultLayoutAttrName)) {
       std::vector<int64> minor_to_major;
       absl::c_transform(
           attr, std::back_inserter(minor_to_major),
@@ -1935,8 +1897,8 @@ Status IrEmitterUnnested::EmitLoopFusion(
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
                           launch_config));
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk,
+                           ir_emitter_context_->llvm_module());
   llvm::Type* index_type =
       GetIndexTypeForKernel(fusion, launch_dimensions.launch_bound(), &b_);
 
@@ -2031,8 +1993,8 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
           CalculateLaunchDimensions(element_shape,
                                     ir_emitter_context_->gpu_device_info(),
                                     {unroll_factor, /*few_waves=*/false}));
-      UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
-                             ir_emitter_context_->llvm_module());
+      SetThunkLaunchDimensions(launch_dimensions, thunks.back().get(),
+                               ir_emitter_context_->llvm_module());
       TF_RETURN_IF_ERROR(
           ParallelLoopEmitter(generator, ir_arrays.back(), launch_dimensions,
                               &b_, {unroll_factor})
@@ -2139,8 +2101,8 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
         LaunchDimensions launch_dimensions,
         CalculateLaunchDimensions(update_shape,
                                   ir_emitter_context_->gpu_device_info()));
-    UpdateLaunchDimensions(launch_dimensions, fusion_thunk.get(),
-                           ir_emitter_context_->llvm_module());
+    SetThunkLaunchDimensions(launch_dimensions, fusion_thunk.get(),
+                             ir_emitter_context_->llvm_module());
     AddThunkToThunkSequence(std::move(fusion_thunk));
 
     FusedIrEmitter fused_emitter(&elemental_emitter);
@@ -2464,7 +2426,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
         *scatter_computation, output_value_address, source_value_address);
   };
 
-  UpdateLaunchDimensions(
+  SetThunkLaunchDimensions(
       launch_dimensions,
       // IrEmitterUnnested implements kSelectAndScatter as a SequentialThunk
       // consisting of two thunks, an initializer KernelThunk that initializes
@@ -2762,8 +2724,8 @@ Status IrEmitterUnnested::EmitScatter(const ScatterDescriptor& desc,
       LaunchDimensions launch_dimensions,
       CalculateLaunchDimensions(desc.updates_shape,
                                 ir_emitter_context_->gpu_device_info()));
-  UpdateLaunchDimensions(launch_dimensions, thunk,
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, thunk,
+                           ir_emitter_context_->llvm_module());
 
   return ParallelLoopEmitter(loop_body_emitter, desc.updates_shape,
                              launch_dimensions, &b_)
@@ -3032,8 +2994,8 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
-    UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
-                           ir_emitter_context_->llvm_module());
+    SetThunkLaunchDimensions(launch_dimensions, thunks.back().get(),
+                             ir_emitter_context_->llvm_module());
     std::vector<IrArray> values_arrays;
     values_arrays.reserve(context.operand_shapes.size());
     for (int64 i = 0; i < context.operand_shapes.size(); ++i) {
@@ -3137,6 +3099,23 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   return Status::OK();
 }
 
+template <typename NcclThunkType>
+Status MaybeAddAllReduceStartThunkToMap(
+    absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>&,
+    mlir::Operation* op, NcclThunkType* thunk) {
+  return Status::OK();
+}
+
+template <>
+Status MaybeAddAllReduceStartThunkToMap(
+    absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>&
+        all_reduce_start_thunks,
+    mlir::Operation* op, NcclAllReduceStartThunk* thunk) {
+  TF_RET_CHECK(all_reduce_start_thunks.emplace(op, thunk).second)
+      << "all-reduce-start with this unique ID already seen";
+  return Status::OK();
+}
+
 template <typename NcclThunkType, typename OpTy>
 Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   OpTy op = mlir::cast<OpTy>(untyped_op);
@@ -3175,9 +3154,16 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     auto nccl_thunk =
         absl::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                          /*buffers=*/std::move(buffers));
+    // Record thunks for all-reduce-start ops as the done ops need them.
+    TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
+        all_reduce_start_thunks_, op, nccl_thunk.get()));
     AddThunkToThunkSequence(std::move(nccl_thunk));
     return Status::OK();
   }
+
+  // Signal that all-reduce-start thunk not created with nullptr.
+  TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
+      all_reduce_start_thunks_, op, static_cast<NcclThunkType*>(nullptr)));
 
   if (!is_degenerate) {
     CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
@@ -3214,6 +3200,24 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         GetThunkInfo(op), std::move(thunks)));
   }
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::EmitAllReduceDone(mlir::Operation* op) {
+  auto done_op = mlir::cast<mlir::lmhlo_gpu::AllReduceDoneOp>(op);
+  auto start_op =
+      done_op.token().getDefiningOp<mlir::lmhlo_gpu::AllReduceStartOp>();
+  auto it = all_reduce_start_thunks_.find(start_op);
+  TF_RET_CHECK(it != all_reduce_start_thunks_.end())
+      << "couldn't find thunk for all-reduce-start op";
+
+  // Can be null if no all-reduce-start thunk was created (e.g. if the start op
+  // is degenerate), in which case there's nothing to do here.
+  if (it->second != nullptr) {
+    AddThunkToThunkSequence(absl::make_unique<NcclAllReduceDoneThunk>(
+        GetThunkInfo(op), *it->second));
+  }
+  all_reduce_start_thunks_.erase(it);
   return Status::OK();
 }
 
@@ -3511,8 +3515,8 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           dest_shape, ir_emitter_context_->gpu_device_info()));
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
 
   std::string name = mlir::GetNameFromLoc(op->getLoc());
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
@@ -3554,8 +3558,8 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           dest_shape, ir_emitter_context_->gpu_device_info()));
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
 
   const HloComputation* fused_computation =
       *GetOrCreateSubComputationFromRegion(&fusion.region(),
@@ -4657,8 +4661,8 @@ void IrEmitterUnnested::EmitHlo021Tile(
       };
 
   EmitTilingKernel(mapping_scheme, index_type, tile_generator);
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk,
+                           ir_emitter_context_->llvm_module());
 }
 
 namespace {
@@ -5036,22 +5040,18 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   bool tile_fit = reduction_dimensions.dimensions[kDimX] %
                       (reduction_tiling[2] * num_threads_x) ==
                   0;
-
-  int cc_major = 0;
-  if (ir_emitter_context_->cuda_compute_capability()) {
-    cc_major = ir_emitter_context_->cuda_compute_capability()->cc_major;
-  }
+  se::CudaComputeCapability cc = ir_emitter_context_->cuda_compute_capability();
 
   int num_partial_results = 1;
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
     if (reduction_dimensions.is_row_reduction &&
         // P100, only try to vectorize+coales memory access when the
         // tile size fits exactly and dtypes <= 32 bits
-        ((cc_major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
+        ((cc.major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
          // On V100, only try to vectorize+coales memory access for
          // rows of even size.  For odd row sizes, every other row
          // isn't aligned, so it can't be vectorized.
-         (cc_major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
+         (cc.major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
       return kStridedLinearIndexingX;
     } else if (!reduction_dimensions.is_row_reduction &&
                IsUnrollingColumnReductionBeneficial(
@@ -5383,8 +5383,8 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
           << mlir::GetNameFromLoc(unnested_hlo->getLoc())
           << ": number of blocks: " << mapping_scheme.GetNumberOfBlocks()
           << " - threads per block: " << mapping_scheme.GetThreadsPerBlock();
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
 
   thunks.push_back(std::move(kernel_thunk));
   std::unique_ptr<SequentialThunk> sequential_thunk =
@@ -5507,8 +5507,8 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
                           {unroll_factor}));
-  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                         ir_emitter_context_->llvm_module());
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
 
   Status emit_status =
       ParallelLoopEmitter(
@@ -5565,7 +5565,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     return EmitBatchNormThunk(op);
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
     return EmitCholeskyThunk(op);
   }
@@ -5627,6 +5627,15 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   if (mlir::isa<mlir::lmhlo::AllReduceOp>(op)) {
     return EmitNcclThunk<NcclAllReduceThunk, mlir::lmhlo::AllReduceOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllReduceStartOp>(op)) {
+    return EmitNcclThunk<NcclAllReduceStartThunk,
+                         mlir::lmhlo_gpu::AllReduceStartOp>(op);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::AllReduceDoneOp>(op)) {
+    return EmitAllReduceDone(op);
   }
 
   if (mlir::isa<mlir::lmhlo::AllReduceScatterOp>(op)) {

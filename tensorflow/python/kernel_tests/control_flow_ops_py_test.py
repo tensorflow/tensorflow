@@ -1406,6 +1406,16 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
       self.assertAllEqual(0.0, sess.run(result))
 
+  def testCondTensorDeps(self):
+    t = array_ops.identity(1.)
+
+    @def_function.function
+    def f():
+      with ops.control_dependencies([t]):
+        return array_ops.identity(2.)
+
+    f.get_concrete_function()
+
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
     if test_util.is_gpu_available():

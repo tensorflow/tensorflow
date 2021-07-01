@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -26,6 +25,7 @@ limitations under the License.
 #include "grpcpp/support/channel_arguments.h"
 #include "grpcpp/support/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
@@ -102,12 +102,14 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
 }
 
 Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
+                                             int64 split_provider_index,
                                              Tensor& split,
                                              bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetSplitRequest req;
   req.set_job_id(job_id);
   req.set_repetition(repetition);
+  req.set_split_provider_index(split_provider_index);
   GetSplitResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetSplit(&client_ctx, req, &resp);

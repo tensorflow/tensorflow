@@ -45,7 +45,7 @@ this Hello World example.
 2.  Execute config.py to configure for this example.
 
     ```
-    ./tools/config.py examples/tf_example_hello_world
+    ./tools/config.py examples/tf_example_helloworld
     ```
 
 This command creates .config file in spesense/nuttx directory.

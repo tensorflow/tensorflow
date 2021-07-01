@@ -216,7 +216,7 @@ tensorflow::ImportFunction
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
-tensorflow::AttrValue  # tf_text
+tensorflow::AttrValue::vftable  # tf_text
 
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
@@ -370,7 +370,7 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
-[//tensorflow/cc/experimental/libexport:metrics] # SavedModel metrics
+[//tensorflow/cc/experimental/libexport:metrics_impl] # SavedModel metrics
 tensorflow::libexport::metrics::Write
 tensorflow::libexport::metrics::Read
 tensorflow::libexport::metrics::WriteApi

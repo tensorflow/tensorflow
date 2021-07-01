@@ -391,7 +391,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 full_name(strings::StrCat("groups_[", idx, "]->key")), &key));
             std::vector<std::vector<Tensor>> group;
             TF_RETURN_IF_ERROR(RestoreGroup(
-                reader, full_name(strings::StrCat("groups_[", idx, "]")),
+                ctx, reader, full_name(strings::StrCat("groups_[", idx, "]")),
                 &group));
             groups_[key] = group;
           }
@@ -450,7 +450,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreGroup(IteratorStateReader* reader, const string& name,
+      Status RestoreGroup(IteratorContext* ctx, IteratorStateReader* reader,
+                          const string& name,
                           std::vector<std::vector<Tensor>>* group)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         int64 group_size;
@@ -464,7 +465,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           group->at(i).resize(vector_size);
           for (int j = 0; j < vector_size; j++) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                strings::StrCat(name, "[", i, "][", j, "]"), &group->at(i)[j]));
+                ctx->flr(), strings::StrCat(name, "[", i, "][", j, "]"),
+                &group->at(i)[j]));
           }
         }
         return Status::OK();
@@ -473,9 +475,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       Status StartFlushingGroup(IteratorContext* ctx, int64 key)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DatasetBase* group_dataset;
-        TF_RETURN_IF_ERROR(NewWindowDataset(
-            groups_[key], dataset()->input_->output_dtypes(),
-            dataset()->input_->output_shapes(), &group_dataset));
+        TF_RETURN_IF_ERROR(
+            NewWindow(groups_[key], dataset()->input_->output_dtypes(),
+                      dataset()->input_->output_shapes(), &group_dataset));
 
         Tensor key_arg(DT_INT64, TensorShape({}));
         key_arg.scalar<int64>()() = key;

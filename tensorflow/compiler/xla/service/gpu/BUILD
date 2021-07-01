@@ -25,6 +25,10 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
+load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
@@ -95,6 +99,8 @@ cc_library(
     name = "gpu_types",
     hdrs = ["gpu_types.h"],
     deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/stream_executor:device_description",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -455,6 +461,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/mlir/xla:attribute_exporter",
@@ -527,6 +534,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor/lib",
     ]) + if_nccl([
         ":virtual_nccl",
@@ -571,7 +579,7 @@ cc_library(
         "thunk_schedule.cc",
         "triangular_solve_thunk.cc",
         "while_thunk.cc",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
         "cholesky_thunk.cc",
     ]),
     hdrs = [
@@ -595,11 +603,13 @@ cc_library(
         "thunk_schedule.h",
         "triangular_solve_thunk.h",
         "while_thunk.h",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
         "cholesky_thunk.h",
     ]),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
+    ]) + if_nccl([
+        "GOOGLE_XCCL=1",
     ]) + select({
         ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
         "//conditions:default": [],
@@ -678,21 +688,31 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_bef_thunk_enabled": [
+            ":virtual_nccl",
+            ":virtual_nccl_utils",
+            ":virtual_rccl",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
             "//tensorflow/compiler/mlir/hlo:lhlo",
             # copybara:uncomment_begin(target not open-sourced yet)
             # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            # "//tensorflow/compiler/mlir/xla:attribute_exporter",
+            # "//tensorflow/compiler/xla/service:collective_ops_utils",
+            # "//tensorflow/core/tfrt/gpu:gpu_shared_context",
+            # "//tensorflow/core/tfrt/runtime:work_queue_interface",
             # copybara:uncomment_end
             "//tensorflow/stream_executor/cuda:cublas_plugin",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
+            "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             # copybara:uncomment_begin(breaks bazel query)
+            # "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
             # "@tf_runtime//backends/gpu:gpu_types",
             # copybara:uncomment_end
         ],
@@ -938,13 +958,9 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-    srcs = if_cuda_is_configured(["cusolver_context.cc"]),
+    srcs = if_gpu_is_configured(["cusolver_context.cc"]),
     hdrs = ["cusolver_context.h"],
     deps = [
-        # LINT.IfChange
-        "@local_config_cuda//cuda:cublas_headers",
-        "@local_config_cuda//cuda:cusolver_headers",
-        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -952,16 +968,24 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
     ] + if_cuda_is_configured([
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        "@local_config_cuda//cuda:cusolver_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+        "@local_config_rocm//rocm:rocblas",
     ]),
 )
 
 cc_library(
     name = "cusolver_rewriter",
-    srcs = if_cuda_is_configured(["cusolver_rewriter.cc"]),
-    hdrs = if_cuda_is_configured(["cusolver_rewriter.h"]),
-    deps = if_cuda_is_configured([
+    srcs = if_gpu_is_configured(["cusolver_rewriter.cc"]),
+    hdrs = if_gpu_is_configured(["cusolver_rewriter.h"]),
+    deps = if_gpu_is_configured([
         ":cusolver_context",
         ":ir_emission_utils",
         "@com_google_absl//absl/types:optional",
@@ -1320,6 +1344,19 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_all_reduce_scatter_creator",
+    srcs = ["gpu_all_reduce_scatter_creator.cc"],
+    hdrs = ["gpu_all_reduce_scatter_creator.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:all_reduce_scatter_utils",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_query",
+    ],
+)
+
+cc_library(
     name = "gpu_spmd_partitioner",
     srcs = ["gpu_spmd_partitioner.cc"],
     hdrs = ["gpu_spmd_partitioner.h"],
@@ -1344,6 +1381,7 @@ cc_library(
         ":cudnn_batchnorm_rewriter",
         ":fusion_merger",
         ":gemm_rewriter",
+        ":gpu_all_reduce_scatter_creator",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_copy_insertion",
@@ -1387,6 +1425,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:async_all_reduce_creator",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
+        "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:collectives_schedule_linearizer",
@@ -1407,7 +1446,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_dce",
-        "//tensorflow/compiler/xla/service:hlo_element_type_converter",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
@@ -1546,24 +1584,25 @@ tf_cc_test(
 
 cc_library(
     name = "amdgpu_compiler",
-    srcs = [
+    srcs = if_rocm_is_configured([
         "amdgpu_compiler_registration.cc",
-    ],
-    deps = [
+    ]),
+    deps = if_rocm_is_configured([
         ":amdgpu_compiler_impl",
-    ],
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 
 cc_library(
     name = "amdgpu_compiler_impl",
-    srcs = [
+    srcs = if_rocm_is_configured([
         "amdgpu_compiler.cc",
-    ],
-    hdrs = [
+    ]),
+    hdrs = if_rocm_is_configured([
         "amdgpu_compiler.h",
-    ],
-    deps = [
+    ]),
+    deps = if_rocm_is_configured([
+        ":cusolver_rewriter",
         ":gemm_rewriter",
         ":gpu_compiler",
         ":gpu_conv_algorithm_picker",
@@ -1587,7 +1626,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core/platform:rocm_rocdl_path",
-    ],
+    ]),
 )
 
 cc_library(

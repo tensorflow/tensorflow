@@ -52,7 +52,7 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
       ConversionPatternRewriter &rewriter) const override {
     auto result_ty = op.getType().cast<ShapedType>();
 
-    // Unranked uses are not supported.  Consider `mhlo-transform-unranked-hlo`.
+    // Unranked uses are not supported.
     if (!result_ty.hasRank()) return failure();
 
     // Lower to MHLO constant if statically shaped.
@@ -1307,8 +1307,8 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 
     int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
     Value result_extents =
-        hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
-            loc, lhs, rhs, rewriter, /*unsafe_as_extent_tensor=*/true);
+        hlo::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
+                                                               rewriter);
 
     // Note that we unconditionally emit DynamicBroadcastInDim ops and let
     // downstream canonicalizations fold them away if possible. This is

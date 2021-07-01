@@ -16,10 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_CLIENT_H_
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -60,9 +60,10 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // definition in `dataset_def`.
   Status GetDatasetDef(int64 dataset_id, DatasetDef& dataset_def);
 
-  // Gets the next split for the specified job id and repetition.
-  Status GetSplit(int64 job_id, int64 repetition, Tensor& split,
-                  bool& end_of_splits);
+  // Gets the next split for the specified job id, repetition, and split
+  // provider index.
+  Status GetSplit(int64 job_id, int64 repetition, int64 split_provider_index,
+                  Tensor& split, bool& end_of_splits);
 
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.

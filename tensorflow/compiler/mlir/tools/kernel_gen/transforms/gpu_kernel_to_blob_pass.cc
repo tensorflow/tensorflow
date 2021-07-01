@@ -112,14 +112,9 @@ class GpuKernelToBlobPass
         return InternalError(
             "Could not parse ROCm architecture prefix (expected gfx)");
       }
-      uint32_t arch;
-      if (!absl::SimpleAtoi(consumable_arch, &arch)) {
-        return InternalError("Could not parse ROCm architecture number");
-      }
-
       std::string libdevice_dir = tensorflow::RocdlRoot();
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
-      xla::gpu::GpuVersion gpu_version{std::make_pair(arch, arch_str)};
+      xla::gpu::GpuVersion gpu_version{arch_str};
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
           llvm_module_copy.get(), gpu_version, config, libdevice_dir);
       if (!hsaco_or.ok()) {
@@ -182,15 +177,16 @@ class GpuKernelToBlobPass
         return InternalError("Could not parse cuda architecture number");
       }
 
-      uint32_t cc_major = arch / 10;
-      uint32_t cc_minor = arch % 10;
+      int cc_major = arch / 10;
+      int cc_minor = arch % 10;
       // Module may be changed by CompileToPtx.
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
       TF_ASSIGN_OR_RETURN(
           std::string ptx,
-          xla::gpu::nvptx::CompileToPtx(llvm_module_copy.get(),
-                                        std::make_pair(cc_major, cc_minor),
-                                        config, libdevice_dir, enable_fusion));
+          xla::gpu::nvptx::CompileToPtx(
+              llvm_module_copy.get(),
+              tensorflow::se::CudaComputeCapability{cc_major, cc_minor}, config,
+              libdevice_dir, enable_fusion));
 
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"

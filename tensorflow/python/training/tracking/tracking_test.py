@@ -180,7 +180,7 @@ class ResourceTrackerTest(test.TestCase):
 
     self.assertEqual(1, len(resource_tracker1.resources))
     self.assertEqual("test1", resource_tracker1.resources[0].resource_handle)
-    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual(1, len(resource_tracker2.resources))
     self.assertEqual("test2", resource_tracker2.resources[0].resource_handle)
 
   def testNestedScopesScopes(self):
@@ -196,7 +196,7 @@ class ResourceTrackerTest(test.TestCase):
 
     self.assertEqual(1, len(resource_tracker1.resources))
     self.assertEqual("test1", resource_tracker1.resources[0].resource_handle)
-    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual(1, len(resource_tracker2.resources))
     self.assertEqual("test2", resource_tracker2.resources[0].resource_handle)
     self.assertEqual(2, len(resource_tracker.resources))
     self.assertEqual("test1", resource_tracker.resources[0].resource_handle)

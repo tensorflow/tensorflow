@@ -695,6 +695,19 @@ cc_library(
 )
 
 cc_library(
+    name = "status_matchers",
+    testonly = 1,
+    srcs = ["status_matchers.cc"],
+    hdrs = ["status_matchers.h"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "statusor",
     srcs = [
         "statusor.cc",
@@ -1210,6 +1223,21 @@ tf_cc_test(
         ":tstring",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "status_matchers_test",
+    size = "small",
+    srcs = ["status_matchers_test.cc"],
+    deps = [
+        ":status_matchers",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 

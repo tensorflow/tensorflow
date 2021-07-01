@@ -23,14 +23,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr const char kProtocol[] = "grpc+local";
+constexpr const char kProtocol[] = "grpc";
 
 TEST(DataService, ParseParallelEpochsProcessingMode) {
   ProcessingMode mode;
@@ -46,8 +48,8 @@ TEST(DataService, ParseDistributedEpochProcessingMode) {
 
 TEST(DataService, ParseInvalidProcessingMode) {
   ProcessingMode mode;
-  Status s = ParseProcessingMode("invalid", mode);
-  EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_THAT(ParseProcessingMode("invalid", mode),
+              testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST(DataService, ProcessingModeToString) {
@@ -58,25 +60,25 @@ TEST(DataService, ProcessingModeToString) {
 }
 
 TEST(DataService, ParseTargetWorkers) {
-  TF_ASSERT_OK_AND_ASSIGN(TargetWorkers target_workers,
-                          ParseTargetWorkers("AUTO"));
-  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
-  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("Auto"));
-  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
-  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("ANY"));
-  EXPECT_EQ(target_workers, TargetWorkers::ANY);
-  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("any"));
-  EXPECT_EQ(target_workers, TargetWorkers::ANY);
-  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("LOCAL"));
-  EXPECT_EQ(target_workers, TargetWorkers::LOCAL);
-  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers("local"));
-  EXPECT_EQ(target_workers, TargetWorkers::LOCAL);
-  TF_ASSERT_OK_AND_ASSIGN(target_workers, ParseTargetWorkers(""));
-  EXPECT_EQ(target_workers, TargetWorkers::AUTO);
+  EXPECT_THAT(ParseTargetWorkers("AUTO"),
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
+  EXPECT_THAT(ParseTargetWorkers("Auto"),
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
+  EXPECT_THAT(ParseTargetWorkers("ANY"),
+              testing::IsOkAndHolds(TargetWorkers::ANY));
+  EXPECT_THAT(ParseTargetWorkers("any"),
+              testing::IsOkAndHolds(TargetWorkers::ANY));
+  EXPECT_THAT(ParseTargetWorkers("LOCAL"),
+              testing::IsOkAndHolds(TargetWorkers::LOCAL));
+  EXPECT_THAT(ParseTargetWorkers("local"),
+              testing::IsOkAndHolds(TargetWorkers::LOCAL));
+  EXPECT_THAT(ParseTargetWorkers(""),
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
 }
 
 TEST(DataService, ParseInvalidTargetWorkers) {
-  EXPECT_TRUE(errors::IsInvalidArgument(ParseTargetWorkers("UNSET").status()));
+  EXPECT_THAT(ParseTargetWorkers("UNSET"),
+              testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST(DataService, TargetWorkersToString) {

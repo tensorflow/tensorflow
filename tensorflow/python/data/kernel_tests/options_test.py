@@ -153,15 +153,12 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.autotune_cpu_budget = 10
     options.experimental_optimization.autotune_ram_budget = 20
     options.experimental_optimization.filter_fusion = True
-    options.experimental_optimization.filter_with_random_uniform_fusion = True
-    options.experimental_optimization.hoist_random_uniform = True
     options.experimental_optimization.map_and_batch_fusion = True
     options.experimental_optimization.map_and_filter_fusion = True
     options.experimental_optimization.map_fusion = True
     options.experimental_optimization.map_parallelization = True
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.parallel_batch = True
-    options.experimental_optimization.reorder_data_discarding_ops = True
     options.experimental_optimization.shuffle_and_repeat_fusion = True
     options.experimental_slack = True
     options.threading.max_intra_op_parallelism = 30

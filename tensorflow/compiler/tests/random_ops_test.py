@@ -88,7 +88,7 @@ class RandomOpsTest(xla_test.XLATestCase):
     for dtype in self._random_types() & self.float_types:
       with self.session():
         with self.test_scope():
-          normal = random_ops.random_normal([1024],
+          normal = random_ops.random_normal([10000000],
                                             dtype=dtype,
                                             mean=2.3,
                                             stddev=2.0)
@@ -108,8 +108,9 @@ class RandomOpsTest(xla_test.XLATestCase):
           x = random_ops.random_uniform(
               shape=[1000], dtype=dtype, minval=-2, maxval=33)
         y = self.evaluate(x)
-        self.assertTrue((y >= -2).sum() == 1000)
-        self.assertTrue((y < 33).sum() == 1000)
+        msg = str(y) + str(dtype)
+        self.assertEqual((y >= -2).sum(), 1000, msg)
+        self.assertEqual((y < 33).sum(), 1000, msg)
 
   def testTruncatedNormalIsNotConstant(self):
 
@@ -254,5 +255,5 @@ class RandomOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(set(result.flatten()), set(expected))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   googletest.main()
