@@ -1670,7 +1670,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             the generator as they can't be passed easily to children processes.
 
     See the discussion of `Unpacking behavior for iterator-like inputs` for
-    `Model.fit`. Note that Model.predict uses the same interpretation rules as
+    `Model.fit`. Note that `Model.predict` uses the same interpretation rules as
     `Model.fit` and `Model.evaluate`, so inputs must be unambiguous for all
     three methods.
 
@@ -1967,7 +1967,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                     initial_epoch=0):
     """Fits the model on data yielded batch-by-batch by a Python generator.
 
-    DEPRECATED:
+    Warning: THIS API IS DEPRECATED.
       `Model.fit` now supports generators, so there is no longer any need to use
       this endpoint.
     """
@@ -2000,7 +2000,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                          verbose=0):
     """Evaluates the model on a data generator.
 
-    DEPRECATED:
+    Warning: THIS API IS DEPRECATED.
       `Model.evaluate` now supports generators, so there is no longer any need
       to use this endpoint.
     """
@@ -2028,7 +2028,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                         verbose=0):
     """Generates predictions for the input samples from a data generator.
 
-    DEPRECATED:
+    Warning: THIS API IS DEPRECATED.
       `Model.predict` now supports generators, so there is no longer any need
       to use this endpoint.
     """
