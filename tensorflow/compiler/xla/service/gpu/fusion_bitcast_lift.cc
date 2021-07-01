@@ -127,7 +127,6 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
                          i->operands().end());
             set.insert(i->operands().begin(),
                        i->operands().end());
-            continue;
           } else if (i->opcode() == HloOpcode::kParameter &&
                      absl::c_all_of(i->users(), [](HloInstruction* u) {
                          return u->opcode() == HloOpcode::kBitcast;
