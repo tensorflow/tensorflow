@@ -119,7 +119,7 @@ ENTRY entry {
     channel_id=0
   cp2 = s32[1,8]{1,0} collective-permute(rshp2), source_target_pairs={{0,1},{1,0}},
     channel_id=1
-  ROOT tuple = (s32[2,8]{1,0}, s32[2,8]{1,0}) tuple(cp1, cp2)
+  ROOT tuple = (s32[1,8]{1,0}, s32[1,8]{1,0}) tuple(cp1, cp2)
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
@@ -163,7 +163,7 @@ ENTRY entry {
     channel_id=0, use_global_device_ids=true
   ag2 = s32[1,16]{1,0} all-gather(param0), replica_groups={{0,1}},
     dimensions={1}, channel_id=1, use_global_device_ids=true
-  ROOT tuple = (s32[1,16]{1,0}, s32[2,8,1,1]{3,2,1,0}) tuple(ag1, ag2)
+  ROOT tuple = (s32[1,16]{1,0}, s32[1,16]{1,0}) tuple(ag1, ag2)
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
@@ -186,7 +186,7 @@ ENTRY entry {
     channel_id=0, use_global_device_ids=true
   ag2 = s32[1,16]{1,0} all-gather(rshp2), replica_groups={{0,1}},
     dimensions={1}, channel_id=1, use_global_device_ids=true
-  ROOT tuple = (s32[1,16]{1,0}, s32[2,8,1,1]{3,2,1,0}) tuple(ag1, ag2)
+  ROOT tuple = (s32[1,16]{1,0}, s32[1,16]{1,0}) tuple(ag1, ag2)
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());

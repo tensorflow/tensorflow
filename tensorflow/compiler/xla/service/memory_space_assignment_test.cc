@@ -4570,7 +4570,7 @@ ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s3
   %copy.11 = s32[] copy(s32[] %constant.1)
   %constant = f32[] constant(0)
   %broadcast = f32[3,3,3] broadcast(f32[] %constant), dimensions={}
-  %tuple.8 = (s32[], f32[3,10,5], s32[3,1], f32[3,3,3]) tuple(s32[] %copy.11, f32[3,3,3] %broadcast)
+  %tuple.8 = (s32[], f32[3,3,3]) tuple(s32[] %copy.11, f32[3,3,3] %broadcast)
   %while = (s32[], f32[3,3,3]) while(%tuple.8), condition=%while_cond, body=%while_body
   %get-tuple-element.7 = f32[3,3,3] get-tuple-element(%while), index=1
   ROOT %bitcast.1 = f32[3,3,3] bitcast(f32[3,3,3] %get-tuple-element.7)
