@@ -420,6 +420,8 @@ class Sequential(functional.Functional):
 
     Warning: THIS API IS DEPRECATED.
 
+    Use `Model.predict`.
+
     Args:
         x: input data, as a Numpy array or list of Numpy arrays
             (if the model has multiple inputs).
