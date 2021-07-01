@@ -1054,8 +1054,8 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
       std::getenv("TF_DEVICE_MIN_SYS_MEMORY_IN_MB");
   if (force_device_reserved_bytes != nullptr &&
       strcmp(force_device_reserved_bytes, "") != 0) {
-    int32 reserved_mb;
-    if (!strings::safe_strto32(force_device_reserved_bytes, &reserved_mb) ||
+    int64 reserved_mb;
+    if (!strings::safe_strto64(force_device_reserved_bytes, &reserved_mb) ||
         reserved_mb < 0) {
       LOG(WARNING) << "The requested reserved device memory "
                    << force_device_reserved_bytes
