@@ -22,7 +22,7 @@ namespace generator {
 
 string Call(const string &function, std::vector<string> arguments);
 string Call(const string &object, const string &method,
-            std::vector<string> arguments);
+            std::vector<string> arguments, const char *oper = "->");
 string Quoted(const string &s);
 
 }  // namespace generator

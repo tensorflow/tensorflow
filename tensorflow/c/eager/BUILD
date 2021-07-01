@@ -415,6 +415,7 @@ cc_library(
 
 cc_library(
     name = "abstract_operation",
+    srcs = ["abstract_operation.cc"],
     hdrs = ["abstract_operation.h"],
     visibility = [
         "//tensorflow:internal",
