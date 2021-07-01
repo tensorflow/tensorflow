@@ -418,6 +418,8 @@ class Sequential(functional.Functional):
 
     The input samples are processed batch by batch.
 
+    Warning: THIS API IS DEPRECATED.
+
     Args:
         x: input data, as a Numpy array or list of Numpy arrays
             (if the model has multiple inputs).
@@ -442,6 +444,14 @@ class Sequential(functional.Functional):
     """Generate class predictions for the input samples.
 
     The input samples are processed batch by batch.
+
+    Warning: THIS API IS DEPRECATED.
+
+    Use `Model.predict` for multi-class classification (e.g.
+    `np.argmax(model.predict(x), axis=-1)` if your model uses a `softmax`
+    last-layer activation) and binary classification (e.g.
+    `(model.predict(x) > 0.5).astype("int32")` if your model uses a `sigmoid`
+    last-layer activation).
 
     Args:
         x: input data, as a Numpy array or list of Numpy arrays
