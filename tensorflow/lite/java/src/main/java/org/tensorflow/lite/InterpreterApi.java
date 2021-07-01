@@ -119,7 +119,7 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * <p>Warning: The API is more efficient if a {@code Buffer} (preferably direct, but not required)
    * is used as the input/output data type. Please consider using {@code Buffer} to feed and fetch
-   * primitive data for better performance. The following concrete {@link Buffer} types are
+   * primitive data for better performance. The following concrete {@code Buffer} types are
    * supported:
    *
    * <ul>
@@ -159,7 +159,7 @@ public interface InterpreterApi extends AutoCloseable {
    * Runs model inference if the model takes multiple inputs, or returns multiple outputs.
    *
    * <p>Warning: The API is more efficient if {@code Buffer}s (preferably direct, but not required)
-   * are used as the input/output data types. Please consider using {@link Buffer} to feed and fetch
+   * are used as the input/output data types. Please consider using {@code Buffer} to feed and fetch
    * primitive data for better performance. The following concrete {@code Buffer} types are
    * supported:
    *
@@ -183,7 +183,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     input path. When {@code Buffer} is used, its content should remain unchanged until model
    *     inference is done, and the caller must ensure that the {@code Buffer} is at the appropriate
    *     read position.
-   * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
+   * @param outputs a map mapping output indices to multidimensional arrays of output data or {@code
    *     Buffer}s of primitive types including int, float, long, and byte. It only needs to keep
    *     entries for the outputs to be used. When a {@code Buffer} is used, the caller must ensure
    *     that it is set the appropriate write position. The map may be empty for cases where either
