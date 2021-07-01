@@ -127,10 +127,12 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
                          i->operands().end());
             set.insert(i->operands().begin(),
                        i->operands().end());
+            VLOG(3) << "kTuple: " << i->ToString();
           } else if (i->opcode() == HloOpcode::kParameter &&
                      absl::c_all_of(i->users(), [](HloInstruction* u) {
                          return u->opcode() == HloOpcode::kBitcast;
                        })) {
+            VLOG(3) << "kParameter: " << i->ToString();
             // Replace the parameter inside the fusion.
             Shape new_shape = i->users()[0]->shape();
             int64 parameter_number = i->parameter_number();
@@ -160,6 +162,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             clone_changed = true;
             changed = true;
           } else if (i->opcode() == HloOpcode::kBroadcast) {
+            VLOG(3) << "kBroadcast: " << i->ToString();
             // For now, do nothing. Later we can merge the broadcast
             // and the bitcast, but this doesn't bring benefit in my
             // current case.
@@ -167,10 +170,20 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
               stack.push_back(i->mutable_operand(0));
               set.insert(i->mutable_operand(0));
             }
+          } else if (i->opcode() == HloOpcode::kConstant &&
+                     !i->users().empty() &&
+                     absl::c_all_of(i->users(), [](HloInstruction* u) {
+                         return u->opcode() == HloOpcode::kBitcast;
+                       })) {
+            VLOG(3) << "kConstant: " << i->ToString();
+            Shape new_shape = i->users()[0]->shape();
+            TF_RETURN_IF_ERROR(i->parent()->ReplaceWithNewInstruction(
+                i, i->CloneWithNewOperands(new_shape, {})));
           } else if (!i->users().empty() &&
                      absl::c_all_of(i->users(), [](HloInstruction* u) {
                          return u->opcode() == HloOpcode::kBitcast;
                        })) {
+            VLOG(3) << "All User bitcast: " << i->ToString();
             // All users are bitcast, so lift the bitcast.
             Shape new_shape = i->users()[0]->shape();
             std::vector<HloInstruction*> new_operands;
@@ -201,6 +214,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             clone_changed = true;
             changed = true;
           } else {
+            VLOG(3) << "Else: " << i->ToString();
             for(auto* opnd : i->operands()) {
               if (set.count(opnd) == 0) {
                 stack.push_back(opnd);

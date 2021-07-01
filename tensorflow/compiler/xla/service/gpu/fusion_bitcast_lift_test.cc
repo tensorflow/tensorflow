@@ -323,6 +323,60 @@ ENTRY %main {
   EXPECT_FALSE(FusionBitcastLift().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(FusionBitcastLiftTest, ConstantBitcastTest) {
+  const char* hlo_text = R"(
+HloModule mod
+
+%scalar_add_computation (scalar_lhs.1: f32[], scalar_rhs.1: f32[]) -> f32[] {
+  %scalar_lhs.1 = f32[] parameter(0)
+  %scalar_rhs.1 = f32[] parameter(1)
+  ROOT %add.5 = f32[] add(f32[] %scalar_lhs.1, f32[] %scalar_rhs.1)
+}
+
+%fused_computation (param_0: f16[392,672], param_1: f32[1]) -> (f32[672], f32[672]) {
+  %param_0 = f16[392,672] parameter(0)
+  %convert = f32[392,672] convert(%param_0)
+
+  %param_1 = f32[1] parameter(1)
+  %constant_0 = f32[1] constant({1.2})
+  %add = f32[1] add(%constant_0, %param_1)
+  %bitcast.2 = f32[] bitcast(%add)
+
+  %reduce.1 = f32[672]{0} reduce(%convert, %bitcast.2), dimensions={0}, to_apply=%scalar_add_computation
+  %multiply = f32[392,672] multiply(%convert, %convert)
+  %reduce.2 = f32[672]{0} reduce(%multiply, %bitcast.2), dimensions={0}, to_apply=%scalar_add_computation
+  ROOT %tuple = (f32[672]{0}, f32[672]{0}) tuple(%reduce.1, %reduce.2)
+}
+
+ENTRY %main {
+  %param_0 = f16[392,672] parameter(0)
+  %param_1 = f32[1] parameter(1)
+  ROOT %fusion = (f32[672]{0}, f32[672]{0}) fusion(%param_0, %param_1), kind=kInput, calls=%fused_computation
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  EXPECT_TRUE(FusionBitcastLift().Run(module.get()).ValueOrDie());
+  // Remove the old fusion not used anymore.
+  EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  StatusOr<bool> filecheck_result =
+      RunFileCheck(module->ToString(),
+                    R"(
+; CHECK-LABEL: %fused_computation
+; CHECK:         f16[392,672]{1,0} parameter(0)
+; CHECK-COUNT-1: bitcast
+; CHECK-LABEL: ENTRY %main
+; CHECK-NEXT:    f16[392,672]{1,0} parameter(0)
+; CHECK-NEXT:    f32[1]{0} parameter(1)
+; CHECK-NEXT:    bitcast(
+; CHECK-NEXT:    ROOT %fusion.bitcast
+      )");
+  EXPECT_TRUE(filecheck_result.status().ok());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
