@@ -296,6 +296,42 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution or `tf.function`. To migrate
+  to TF2, please use `tf.summary.audio` instead. Please check
+  [Migrating tf.summary usage to
+  TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
+  steps for migration.
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name  | TF2 Arg Name    | Note                                   |
+  | :------------ | :-------------- | :------------------------------------- |
+  | `name`        | `name`          | -                                      |
+  | `tensor`      | `data`          | Input for this argument now must be    |
+  :               :                 : three-dimensional `[k, t, c]`, where   :
+  :               :                 : `k` is the number of audio clips, `t`  :
+  :               :                 : is the number of frames, and `c` is    :
+  :               :                 : the number of channels. Two-dimensional:
+  :               :                 : input is no longer supported.          :
+  | `sample_rate` | `sample_rate`   | -                                      |
+  | -             | `step`          | Explicit int64-castable monotonic step |
+  :               :                 : value. If omitted, this defaults to    :
+  :               :                 : `tf.summary.experimental.get_step()`.  :
+  | `max_outputs` | `max_outputs`   | -                                      |
+  | `collections` | Not Supported   | -                                      |
+  | `family`      | Removed         | Please use `tf.name_scope` instead to  |
+  :               :                 : manage summary name prefix.            :
+  | -             | `encoding`      | Optional constant str for the desired  |
+  :               :                 : encoding. Check the docs for           :
+  :               :                 : `tf.summary.audio` for latest supported:
+  :               :                 : audio formats.                         :
+  | -             | `description`   | Optional long-form `str` description   |
+  :               :                 : for the summary. Markdown is supported.:
+  :               :                 : Defaults to empty.                     :
+
+  @end_compatibility
   """
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
@@ -336,6 +372,29 @@ def text(name, tensor, collections=None):
 
   Raises:
     ValueError: If tensor has the wrong type.
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution or `tf.function`. To migrate
+  to TF2, please use `tf.summary.text` instead. Please check
+  [Migrating tf.summary usage to
+  TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
+  steps for migration.
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name  | TF2 Arg Name    | Note                                   |
+  | :------------ | :-------------- | :------------------------------------- |
+  | `name`        | `name`          | -                                      |
+  | `tensor`      | `data`          | -                                      |
+  | -             | `step`          | Explicit int64-castable monotonic step |
+  :               :                 : value. If omitted, this defaults to    :
+  :               :                 : `tf.summary.experimental.get_step()`.  :
+  | `collections` | Not Supported   | -                                      |
+  | -             | `description`   | Optional long-form `str` description   |
+  :               :                 : for the summary. Markdown is supported.:
+  :               :                 : Defaults to empty.                     :
+
+  @end_compatibility
   """
   if tensor.dtype != _dtypes.string:
     raise ValueError('Expected tensor %s to have dtype string, got %s' %
