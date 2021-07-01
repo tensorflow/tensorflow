@@ -35,7 +35,6 @@ class RegisterDatasetOp : public OpKernel {
   static constexpr const char* const kProtocol = "protocol";
   static constexpr const char* const kExternalStatePolicy =
       "external_state_policy";
-  static constexpr const char* const kElementSpec = "element_spec";
   static constexpr const char* const kTimeoutMs = "timeout_ms";
 
   explicit RegisterDatasetOp(OpKernelConstruction* ctx);
@@ -44,7 +43,6 @@ class RegisterDatasetOp : public OpKernel {
 
  private:
   SerializationContext::ExternalStatePolicy external_state_policy_;
-  absl::optional<std::string> element_spec_;
 };
 
 }  // namespace data

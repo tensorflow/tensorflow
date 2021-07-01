@@ -67,9 +67,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.
-  Status RegisterDataset(const GraphDef& dataset,
-                         const absl::optional<std::string>& element_spec,
-                         int64& dataset_id);
+  Status RegisterDataset(const GraphDef& dataset, int64& dataset_id);
 
   // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
   // absent or no matching job is found, creates a new job. The resulting job
@@ -96,9 +94,6 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // Queries the dispatcher for its registered workers. The worker info will be
   // stored in `workers`.
   Status GetWorkers(std::vector<WorkerInfo>& workers);
-
-  // Returns element spec for the registered dataset.
-  Status GetElementSpec(int64 dataset_id, std::string& element_spec);
 
  protected:
   Status EnsureInitialized() override;
