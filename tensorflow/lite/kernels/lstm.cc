@@ -2073,25 +2073,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             CpuBackendContext::GetFromContext(context));
       }
       const int num_intermediate_tensors = node->intermediates->size;
+      TfLiteTensor* scratch0;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 0, &scratch0));
+      TfLiteTensor* scratch1;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 1, &scratch1));
+      TfLiteTensor* scratch2;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 2, &scratch2));
+      TfLiteTensor* scratch3;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 3, &scratch3));
+      TfLiteTensor* scratch4;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 4, &scratch4));
+      TfLiteTensor* scratch5;
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 5, &scratch5));
       if (num_intermediate_tensors == 5) {
-        TfLiteTensor* scratch0;
-        TF_LITE_ENSURE_OK(context,
-                          GetTemporarySafe(context, node, 0, &scratch0));
-        TfLiteTensor* scratch1;
-        TF_LITE_ENSURE_OK(context,
-                          GetTemporarySafe(context, node, 1, &scratch1));
-        TfLiteTensor* scratch2;
-        TF_LITE_ENSURE_OK(context,
-                          GetTemporarySafe(context, node, 2, &scratch2));
-        TfLiteTensor* scratch3;
-        TF_LITE_ENSURE_OK(context,
-                          GetTemporarySafe(context, node, 3, &scratch3));
-        TfLiteTensor* scratch4;
-        TF_LITE_ENSURE_OK(context,
-                          GetTemporarySafe(context, node, 4, &scratch4));
-        TfLiteTensor* scratch5;
-        TF_LITE_ENSURE_OK(context,
-                          GetTemporarySafe(context, node, 5, &scratch5));
         return lstm_eval::EvalInteger8x8_16(
             input, input_to_input_weights, input_to_forget_weights,
             input_to_cell_weights, input_to_output_weights,
@@ -2107,30 +2101,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             cell_state, output, scratch0, scratch1, scratch2, scratch3,
             scratch4, scratch5, CpuBackendContext::GetFromContext(context));
       }
-      TfLiteTensor* scratch0;
-      TF_LITE_ENSURE_OK(context,
-                        GetTemporarySafe(context, node, 0, &scratch0));
-      TfLiteTensor* scratch1;
-      TF_LITE_ENSURE_OK(context,
-                        GetTemporarySafe(context, node, 1, &scratch1));
-      TfLiteTensor* scratch2;
-      TF_LITE_ENSURE_OK(context,
-                        GetTemporarySafe(context, node, 2, &scratch2));
-      TfLiteTensor* scratch3;
-      TF_LITE_ENSURE_OK(context,
-                        GetTemporarySafe(context, node, 3, &scratch3));
-      TfLiteTensor* scratch4;
-      TF_LITE_ENSURE_OK(context,
-                        GetTemporarySafe(context, node, 4, &scratch4));
-      TfLiteTensor* scratch5;
-      TF_LITE_ENSURE_OK(context,
-                        GetTemporarySafe(context, node, 5, &scratch5));
       TfLiteTensor* scratch6;
-      TF_LITE_ENSURE_OK(context,
-                        GetTemporarySafe(context, node, 6, &scratch6));
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 6, &scratch6));
       TfLiteTensor* scratch7;
-      TF_LITE_ENSURE_OK(context,
-                        GetTemporarySafe(context, node, 7, &scratch7));
+      TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, 7, &scratch7));
       return lstm_eval::EvalInteger8x8_8(
           input, input_to_input_weights, input_to_forget_weights,
           input_to_cell_weights, input_to_output_weights,

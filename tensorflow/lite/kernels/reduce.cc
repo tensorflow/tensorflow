@@ -623,7 +623,6 @@ TfLiteStatus EvalType<bool>(TfLiteContext* context, TfLiteNode* node,
                              [](const bool current, const bool in) -> bool {
                                return in && current;
                              });
-      break;
     default:
       return kTfLiteError;
   }
