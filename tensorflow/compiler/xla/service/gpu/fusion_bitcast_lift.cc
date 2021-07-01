@@ -193,7 +193,9 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
                 i->CloneWithNewOperands(dtyped_new_shape, new_operands));
             // Replace the old bitcasts with the new instruction to
             // remove it.
-            for (HloInstruction* user: i->users()) {
+            // Copy the vector as it will be modified while we iterate on it.
+            const std::vector<HloInstruction*> users = i->users();
+            for (HloInstruction* user: users) {
               TF_RETURN_IF_ERROR(i->parent()->ReplaceInstructionWithDifferentShape(
                   user, cloned_i));
             }
