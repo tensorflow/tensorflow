@@ -364,8 +364,8 @@ int64 PersistentCompilationCache::CreateKey(
   }
 
   int64 key = tensorflow::Hash64(llvm_str);
-  key = tensorflow::Hash64Combine(key, compute_capability.first);
-  key = tensorflow::Hash64Combine(key, compute_capability.second);
+  key = tensorflow::Hash64Combine(key, compute_capability.major);
+  key = tensorflow::Hash64Combine(key, compute_capability.minor);
   key = tensorflow::Hash64Combine(key, tensorflow::Hash64(ptx_options));
 
   VLOG(3) << "Created key " << key << ".";
@@ -469,7 +469,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    bool relocatable,
                                    const HloModule* debug_module) {
   const se::CudaComputeCapability &compute_capability =
-    absl::get<se::CudaComputeCapability>(gpu_version)
+    absl::get<se::CudaComputeCapability>(gpu_version);
 
   bool use_cache = persistent_compilation_cache_.InUse();
   bool have_ptx = false;
