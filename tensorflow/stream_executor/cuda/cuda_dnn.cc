@@ -2970,6 +2970,9 @@ port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
 
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
 dnn::DataType GetConvAccumulatorType(dnn::DataType data_type);
+#if CUDNN_VERSION >= 8100
+cudnnBackendHeurMode_t GetCudnnFrontendHeurMode();
+#endif // CUDNN_VERSION >= 8100
 
 port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
@@ -3335,6 +3338,16 @@ dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
 }
+
+#if CUDNN_VERSION >= 8100
+cudnnBackendHeurMode_t GetCudnnFrontendHeurMode() {
+#if CUDNN_VERSION >= 8200
+  return CUDNN_HEUR_MODE_B;
+#else
+  return CUDNN_HEUR_MODE_INSTANT;
+#endif // CUDNN_VERSION >= 8200
+}
+#endif // CUDNN_VERSION >= 8100
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 cudnnBackendDescriptorType_t GetCudnnConvolutionType(
@@ -3815,7 +3828,7 @@ GetFirstWorkingExecutionPlan(
     ScratchAllocator* scratch_allocator) {
   auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
                         .setOperationGraph(*op_graph)
-                        .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
+                        .setHeurMode(GetCudnnFrontendHeurMode())
                         .build();
   RETURN_MSG_IF_CUDNN_ERROR(heuristics);
 
@@ -4567,7 +4580,7 @@ port::Status CudnnSupport::GetConvolveRunners(
     DeviceMemoryBase /*filter_data*/,
     const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase /*output_data*/,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     ScratchAllocator* /*scratch_allocator*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
   if (!use_cudnn_frontend) {
@@ -4626,31 +4639,6 @@ port::Status CudnnSupport::GetConvolveRunners(
                              filter_descriptor, output_descriptor,
                              convolution_descriptor, cudnn));
 
-  auto heur = cudnn_frontend::EngineHeuristicsBuilder()
-                  .setOperationGraph(*op_graph)
-                  .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
-                  .build();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-
-  auto fallback = cudnn_frontend::EngineFallbackListBuilder()
-                      .setOperationGraph(*op_graph)
-                      .setOperation(GetCudnnConvolutionType(kind))
-                      .build();
-  RETURN_MSG_IF_CUDNN_ERROR(fallback);
-
-  // cuDNN frontend sneakily puts error messages on the object and returns
-  // partially-initialized results when there's an error; make sure to check
-  // them.
-  int64_t engine_count = heur.getEngineConfigCount();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-  auto& heur_configs = heur.getEngineConfig(engine_count);
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-
-  auto& fallback_configs = fallback.getFallbackList();
-
-  VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size()
-          << "\nFallback engine configs size: " << fallback_configs.size();
-
   cudnn_frontend::EngineConfigList filtered_configs;
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
     return GenericEngineFilter(
@@ -4660,14 +4648,43 @@ port::Status CudnnSupport::GetConvolveRunners(
         /*disable_tensor_core*/ !IsTensorMathEnabled(stream, input_type));
   };
 
-  cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
-  cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
+  if (!use_fallback) {
+    auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
+                          .setOperationGraph(*op_graph)
+                          .setHeurMode(GetCudnnFrontendHeurMode())
+                          .build();
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+
+    // cuDNN frontend sneakily puts error messages on the object and returns
+    // partially-initialized results when there's an error; make sure to check
+    // them.
+    int64_t engine_count = heuristics.getEngineConfigCount();
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+    auto& heuristics_configs = heuristics.getEngineConfig(engine_count);
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+    VLOG(4) << "\nHeuristics engine configs size: "
+            << heuristics_configs.size();
+
+    cudnn_frontend::filter(heuristics_configs, filtered_configs,
+                           generic_filter_fn);
+  } else {
+    auto fallback = cudnn_frontend::EngineFallbackListBuilder()
+                        .setOperationGraph(*op_graph)
+                        .setOperation(GetCudnnConvolutionType(kind))
+                        .build();
+    RETURN_MSG_IF_CUDNN_ERROR(fallback);
+
+    auto& fallback_configs = fallback.getFallbackList();
+    VLOG(4) << "\nFallback engine configs size: " << fallback_configs.size();
+
+    cudnn_frontend::filter(fallback_configs, filtered_configs,
+                           generic_filter_fn);
+  }
+  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   auto fn = []() { return true; };
   auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
   auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
-
-  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
   for (int i = 0; i < filtered_configs.size(); i++) {
@@ -5207,7 +5224,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
 
   auto heur = cudnn_frontend::EngineHeuristicsBuilder()
                   .setOperationGraph(*op_graph)
-                  .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
+                  .setHeurMode(GetCudnnFrontendHeurMode())
                   .build();
   RETURN_MSG_IF_CUDNN_ERROR(heur);
 

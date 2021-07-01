@@ -291,7 +291,7 @@ port::Status StreamExecutor::GetConvolveRunners(
     const dnn::FilterDescriptor &filter_descriptor,
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor &output_descriptor,
     DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::ConvolutionDescriptor &convolution_descriptor, bool use_fallback,
     ScratchAllocator *scratch_allocator,
     std::vector<std::unique_ptr<const dnn::ConvRunner>> *out_exec_plans) {
   dnn::DnnSupport *dnn_support = AsDnn();
@@ -301,8 +301,8 @@ port::Status StreamExecutor::GetConvolveRunners(
   return dnn_support->GetConvolveRunners(
       use_cudnn_frontend, kind, input_type, output_type, stream,
       input_descriptor, input_data, filter_descriptor, filter_data,
-      output_descriptor, output_data, convolution_descriptor, scratch_allocator,
-      out_exec_plans);
+      output_descriptor, output_data, convolution_descriptor, use_fallback,
+      scratch_allocator, out_exec_plans);
 }
 
 port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>

@@ -120,6 +120,7 @@ port::Status DnnSupport::GetConvolveRunners(
     const dnn::BatchDescriptor& /*output_descriptor*/,
     DeviceMemoryBase /*output_data*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    bool /*use_fallback*/,
     ScratchAllocator* /*scratch_allocator*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
   return port::UnimplementedError("GetConvolveRunners not implemented.");
