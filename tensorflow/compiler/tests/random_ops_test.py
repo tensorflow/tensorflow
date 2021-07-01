@@ -81,7 +81,7 @@ class RandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       'stddev': 2.0
   })
   def testRandomNormal(self, mean, stddev):
-    num_elts = 10000000
+    num_elts = 1000000
     for dtype in self._random_types() & self.float_types:
       with self.session():
         with self.test_scope():
@@ -156,7 +156,7 @@ class RandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     if x.dtype == dtypes.bfloat16:
       atol = rtol = 1e-1
     else:
-      atol = rtol = 2e-3
+      atol = rtol = 2e-2
     self.assertAllClose(actual_mean, expected_mean, atol=atol, rtol=rtol)
 
     expected_median = mu + probit(
