@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
@@ -53,11 +55,13 @@ def initialize_tpu_system(cluster_resolver=None):
     NotFoundError: If no TPU devices found in eager mode.
   """
 
-  # Clear out the eager context caches before initialize tpu system to
-  # deallocate all tpu buffers.
-  logging.info("Clearing out eager caches")
+  # Deallocate all TPU buffers by clearing out eager context caches and
+  # triggering garbage collection to avoid keeping invalid tpu buffer around
+  # after reinitialized tpu system.
+  logging.info("Deallocate tpu buffers before initializing tpu system.")
   context.context()._clear_caches()  # pylint: disable=protected-access
   context.context().clear_kernel_cache()
+  gc.collect()
 
   job = None
   if cluster_resolver is None:
