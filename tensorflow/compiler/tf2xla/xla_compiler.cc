@@ -816,7 +816,7 @@ Status XlaCompiler::CompileFunction(
         /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
   }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    VLOG(1) << "Using MLIR bridge";
+    VLOG(1) << "Using MLIR bridge to compile the function";
     GraphDebugInfo debug_info;
 
     std::vector<std::string> valid_control_rets =
@@ -828,6 +828,7 @@ Status XlaCompiler::CompileFunction(
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
         debug_info, options_.shape_representation_fn, result));
   } else {
+    VLOG(1) << "Using the old bridge to compile the function";
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
   }

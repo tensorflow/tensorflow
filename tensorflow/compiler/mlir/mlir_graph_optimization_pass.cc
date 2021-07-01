@@ -172,16 +172,21 @@ Status MlirFunctionOptimizationPass::Run(
                              /*record_stats=*/true);
 
   if (overall_state == MlirOptimizationPassState::Disabled) {
-    LOG_FIRST_N(INFO, 1) << "None of the MLIR Optimization Passes are enabled "
-                         << "(registered " << registry_->passes().size() << ")";
+    if (VLOG_IS_ON(1)) {
+      LOG_FIRST_N(INFO, 1)
+          << "None of the MLIR Optimization Passes are enabled "
+          << "(registered " << registry_->passes().size() << ")";
+    }
     return Status::OK();
   }
 
-  LOG_FIRST_N(INFO, 1) << "MLIR Graph Optimization Passes."
-                       << " Enabled: " << num_passes_enabled
-                       << ", Disabled: " << num_passes_disabled
-                       << ", FallbackEnabled: " << num_passes_fallback_enabled
-                       << ", Total: " << registry_->passes().size();
+  if (VLOG_IS_ON(1)) {
+    LOG_FIRST_N(INFO, 1) << "MLIR Graph Optimization Passes."
+                         << " Enabled: " << num_passes_enabled
+                         << ", Disabled: " << num_passes_disabled
+                         << ", FallbackEnabled: " << num_passes_fallback_enabled
+                         << ", Total: " << registry_->passes().size();
+  }
 
   GraphDebugInfo debug_info;
   mlir::DialectRegistry registry;
