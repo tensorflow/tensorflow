@@ -76,9 +76,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         "Failed to get device attribute: " << GetCudaErrorMessage(status);
   if (!cuda_malloc_async_supported)
     LOG(FATAL)  // Crash OK.
-        << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported."
-        << " Possible causes: device not supported, driver too old, "
-        << " OS not supported, CUDA version too old.";
+        << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported on "
+        << "GPU id " << platform_device_id.value() << ":"
+        << " Possible causes: device not supported (request SM60+), driver too old, "
+        << " OS not supported, CUDA version too old(request CUDA11.2+).";
 
   if (auto status =
           cuDeviceGetDefaultMemPool(&pool_, platform_device_id.value()))
@@ -131,7 +132,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
             &canAccessPeer, platform_device_id.value(), map.location.id)) {
       pool_ = nullptr;
       LOG(FATAL)  // Crash OK.
-          << "cuDeviceCanAccessPeer failed: " << GetCudaErrorMessage(status);
+          << "cuDeviceCanAccessPeer failed to know if GPU id "
+          << map.location.id
+          << " can access GPU id " << platform_device_id.value()
+          << ": " << GetCudaErrorMessage(status);
     }
     if (canAccessPeer == 1) {
       if (auto status = cuMemPoolSetAccess(pool_, &map, 1)) {
