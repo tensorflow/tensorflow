@@ -175,11 +175,17 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
                      absl::c_all_of(i->users(), [](HloInstruction* u) {
                          return u->opcode() == HloOpcode::kBitcast;
                        })) {
+            // Handling this case is optional for correctness, but
+            // handling it clean up the graph.
             VLOG(3) << "kConstant: " << i->ToString();
             Shape new_shape = i->users()[0]->shape();
             TF_RETURN_IF_ERROR(i->parent()->ReplaceWithNewInstruction(
                 i, i->CloneWithNewOperands(new_shape, {})));
           } else if (!i->users().empty() &&
+                     // If 0 operands, we can't lift the bitcast.  It
+                     // must be handled manually as kConstant and
+                     // kParameter.
+                     i->operands().size() > 0 &&
                      absl::c_all_of(i->users(), [](HloInstruction* u) {
                          return u->opcode() == HloOpcode::kBitcast;
                        })) {
