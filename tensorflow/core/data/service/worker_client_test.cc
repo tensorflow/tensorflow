@@ -64,8 +64,9 @@ class WorkerClientTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(test_util::GraphDefTestCase graph_def_test_case,
                         test_util::map_test_case(range));
     int64 dataset_id = 0;
+    absl::optional<std::string> element_spec;
     TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-        graph_def_test_case.graph_def, dataset_id));
+        graph_def_test_case.graph_def, element_spec, dataset_id));
     return dataset_id;
   }
 

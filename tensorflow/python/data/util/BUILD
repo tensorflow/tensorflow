@@ -207,6 +207,7 @@ py_test(
         ":traverse",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/data/experimental/kernel_tests/service:test_base",
         "//tensorflow/python/data/experimental/ops:dataset_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",

@@ -49,6 +49,16 @@ Status RegisterDataset(int64 id, DispatcherState& state) {
   return RegisterDataset(id, /*fingerprint=*/1, state);
 }
 
+Status SetElementSpec(int64 dataset_id, const std::string& element_spec,
+                      DispatcherState& state) {
+  Update update;
+  SetElementSpecUpdate* set_element_spec = update.mutable_set_element_spec();
+  set_element_spec->set_dataset_id(dataset_id);
+  set_element_spec->set_element_spec(element_spec);
+  TF_RETURN_IF_ERROR(state.Apply(update));
+  return Status::OK();
+}
+
 Status RegisterWorker(std::string worker_address, DispatcherState& state) {
   Update update;
   update.mutable_register_worker()->set_worker_address(worker_address);
@@ -122,6 +132,23 @@ Status FinishTask(int64 task_id, DispatcherState& state) {
   return Status::OK();
 }
 }  // namespace
+
+TEST(DispatcherState, SetElementSpec) {
+  int64 dataset_id = 325;
+  DispatcherState state;
+  std::string element_spec = "test_element_spec";
+  TF_EXPECT_OK(SetElementSpec(dataset_id, element_spec, state));
+  std::string result;
+  TF_EXPECT_OK(state.GetElementSpec(dataset_id, result));
+  EXPECT_EQ(element_spec, result);
+}
+
+TEST(DispatcherState, MissingElementSpec) {
+  DispatcherState state;
+  std::string element_spec;
+  Status s = state.GetElementSpec(31414, element_spec);
+  EXPECT_EQ(s.code(), error::NOT_FOUND);
+}
 
 TEST(DispatcherState, RegisterDataset) {
   uint64 fingerprint = 20;

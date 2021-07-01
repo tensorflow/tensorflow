@@ -41,6 +41,12 @@ RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
       ctx, ctx->GetAttr(kExternalStatePolicy, &external_state_policy_int));
   external_state_policy_ =
       SerializationContext::ExternalStatePolicy(external_state_policy_int);
+
+  if (ctx->HasAttr(kElementSpec)) {
+    tstring element_spec;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kElementSpec, &element_spec));
+    element_spec_.emplace(element_spec);
+  }
 }
 
 void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
@@ -82,7 +88,10 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   int64 deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
-               [&]() { return client.RegisterDataset(graph_def, dataset_id); },
+               [&]() {
+                 return client.RegisterDataset(graph_def, element_spec_,
+                                               dataset_id);
+               },
                /*description=*/
                strings::StrCat("register dataset with dispatcher at ", address),
                deadline_micros));
