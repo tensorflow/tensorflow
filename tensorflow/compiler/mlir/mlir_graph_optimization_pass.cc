@@ -39,16 +39,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(prakalps): Delete these old metrics after modifying the retention
-// policy.
-auto* mlir_function_pass_failed_fallback = monitoring::Counter<0>::New(
-    "/tensorflow/core/mlir_pass_failed_fallback",
-    "Failure count of MLIR pass runs when fallback used");
-
-auto* mlir_function_pass_succeeded_fallback = monitoring::Counter<0>::New(
-    "/tensorflow/core/mlir_pass_succeeded_fallback",
-    "Success count of MLIR pass runs when fallback enabled");
-
 auto* mlir_function_pass_fallback_count = monitoring::Counter<1>::New(
     /* metric name */ "/tensorflow/core/mlir_function_pass_fallback_count",
     /* metric description */
