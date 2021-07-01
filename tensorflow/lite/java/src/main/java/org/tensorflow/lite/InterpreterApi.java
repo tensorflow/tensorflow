@@ -15,7 +15,6 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
-import java.nio.ByteBuffer;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -103,7 +102,7 @@ public interface InterpreterApi extends AutoCloseable {
     /**
      * Advanced: Set if the interpreter is able to be cancelled.
      *
-     * @see #setCancelled(boolean).
+     * @see Interpreter#setCancelled(boolean).
      */
     public Options setCancellable(boolean allow) {
       this.allowCancellation = allow;
@@ -118,38 +117,37 @@ public interface InterpreterApi extends AutoCloseable {
   /**
    * Runs model inference if the model takes only one input, and provides only one output.
    *
-   * <p>Warning: The API is more efficient if a {@link java.nio.Buffer} (preferably direct, but not
-   * required) is used as the input/output data type. Please consider using {@link java.nio.Buffer}
-   * to feed and fetch primitive data for better performance. The following concrete {@link
-   * java.nio.Buffer} types are supported:
+   * <p>Warning: The API is more efficient if a {@code Buffer} (preferably direct, but not required)
+   * is used as the input/output data type. Please consider using {@code Buffer} to feed and fetch
+   * primitive data for better performance. The following concrete {@link Buffer} types are
+   * supported:
    *
    * <ul>
-   *   <li>{@link ByteBuffer} - compatible with any underlying primitive Tensor type.
-   *   <li>{@link java.nio.FloatBuffer} - compatible with float Tensors.
-   *   <li>{@link java.nio.IntBuffer} - compatible with int32 Tensors.
-   *   <li>{@link java.nio.LongBuffer} - compatible with int64 Tensors.
+   *   <li>{@code ByteBuffer} - compatible with any underlying primitive Tensor type.
+   *   <li>{@code FloatBuffer} - compatible with float Tensors.
+   *   <li>{@code IntBuffer} - compatible with int32 Tensors.
+   *   <li>{@code LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
-   * Note that boolean types are only supported as arrays, not {@link java.nio.Buffer}s, or as
-   * scalar inputs.
+   * Note that boolean types are only supported as arrays, not {@code Buffer}s, or as scalar inputs.
    *
-   * @param input an array or multidimensional array, or a {@link java.nio.Buffer} of primitive
-   *     types including int, float, long, and byte. {@link java.nio.Buffer} is the preferred way to
-   *     pass large input data for primitive types, whereas string types require using the
-   *     (multi-dimensional) array input path. When a {@link java.nio.Buffer} is used, its content
-   *     should remain unchanged until model inference is done, and the caller must ensure that the
-   *     {@link java.nio.Buffer} is at the appropriate read position. A {@code null} value is
-   *     allowed only if the caller is using a {@link Delegate} that allows buffer handle interop,
-   *     and such a buffer has been bound to the input {@link Tensor}.
-   * @param output a multidimensional array of output data, or a {@link java.nio.Buffer} of
-   *     primitive types including int, float, long, and byte. When a {@link java.nio.Buffer} is
-   *     used, the caller must ensure that it is set the appropriate write position. A null value is
-   *     allowed, and is useful for certain cases, e.g., if the caller is using a {@link Delegate}
-   *     that allows buffer handle interop, and such a buffer has been bound to the output {@link
-   *     Tensor} (see also {@link Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or if
-   *     the graph has dynamically shaped outputs and the caller must query the output {@link
-   *     Tensor} shape after inference has been invoked, fetching the data directly from the output
-   *     tensor (via {@link Tensor#asReadOnlyBuffer()}).
+   * @param input an array or multidimensional array, or a {@code Buffer} of primitive types
+   *     including int, float, long, and byte. {@code Buffer} is the preferred way to pass large
+   *     input data for primitive types, whereas string types require using the (multi-dimensional)
+   *     array input path. When a {@code Buffer} is used, its content should remain unchanged until
+   *     model inference is done, and the caller must ensure that the {@code Buffer} is at the
+   *     appropriate read position. A {@code null} value is allowed only if the caller is using a
+   *     {@link Delegate} that allows buffer handle interop, and such a buffer has been bound to the
+   *     input {@link Tensor}.
+   * @param output a multidimensional array of output data, or a {@code Buffer} of primitive types
+   *     including int, float, long, and byte. When a {@code Buffer} is used, the caller must ensure
+   *     that it is set the appropriate write position. A null value is allowed, and is useful for
+   *     certain cases, e.g., if the caller is using a {@link Delegate} that allows buffer handle
+   *     interop, and such a buffer has been bound to the output {@link Tensor} (see also {@link
+   *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or if the graph has dynamically
+   *     shaped outputs and the caller must query the output {@link Tensor} shape after inference
+   *     has been invoked, fetching the data directly from the output tensor (via {@link
+   *     Tensor#asReadOnlyBuffer()}).
    * @throws IllegalArgumentException if {@code input} is null or empty, or if an error occurs when
    *     running inference.
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
@@ -160,37 +158,36 @@ public interface InterpreterApi extends AutoCloseable {
   /**
    * Runs model inference if the model takes multiple inputs, or returns multiple outputs.
    *
-   * <p>Warning: The API is more efficient if {@link java.nio.Buffer}s (preferably direct, but not
-   * required) are used as the input/output data types. Please consider using {@link
-   * java.nio.Buffer} to feed and fetch primitive data for better performance. The following
-   * concrete {@link java.nio.Buffer} types are supported:
+   * <p>Warning: The API is more efficient if {@code Buffer}s (preferably direct, but not required)
+   * are used as the input/output data types. Please consider using {@link Buffer} to feed and fetch
+   * primitive data for better performance. The following concrete {@code Buffer} types are
+   * supported:
    *
    * <ul>
-   *   <li>{@link ByteBuffer} - compatible with any underlying primitive Tensor type.
-   *   <li>{@link java.nio.FloatBuffer} - compatible with float Tensors.
-   *   <li>{@link java.nio.IntBuffer} - compatible with int32 Tensors.
-   *   <li>{@link java.nio.LongBuffer} - compatible with int64 Tensors.
+   *   <li>{@code ByteBuffer} - compatible with any underlying primitive Tensor type.
+   *   <li>{@code FloatBuffer} - compatible with float Tensors.
+   *   <li>{@code IntBuffer} - compatible with int32 Tensors.
+   *   <li>{@code LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
-   * Note that boolean types are only supported as arrays, not {@link java.nio.Buffer}s, or as
-   * scalar inputs.
+   * Note that boolean types are only supported as arrays, not {@code Buffer}s, or as scalar inputs.
    *
    * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
    * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
    * such a buffer has been bound to the corresponding input or output {@link Tensor}(s).
    *
    * @param inputs an array of input data. The inputs should be in the same order as inputs of the
-   *     model. Each input can be an array or multidimensional array, or a {@link java.nio.Buffer}
-   *     of primitive types including int, float, long, and byte. {@link java.nio.Buffer} is the
-   *     preferred way to pass large input data, whereas string types require using the
-   *     (multi-dimensional) array input path. When {@link java.nio.Buffer} is used, its content
-   *     should remain unchanged until model inference is done, and the caller must ensure that the
-   *     {@link java.nio.Buffer} is at the appropriate read position.
+   *     model. Each input can be an array or multidimensional array, or a {@code Buffer} of
+   *     primitive types including int, float, long, and byte. {@code Buffer} is the preferred way
+   *     to pass large input data, whereas string types require using the (multi-dimensional) array
+   *     input path. When {@code Buffer} is used, its content should remain unchanged until model
+   *     inference is done, and the caller must ensure that the {@code Buffer} is at the appropriate
+   *     read position.
    * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
-   *     java.nio.Buffer}s of primitive types including int, float, long, and byte. It only needs to
-   *     keep entries for the outputs to be used. When a {@link java.nio.Buffer} is used, the caller
-   *     must ensure that it is set the appropriate write position. The map may be empty for cases
-   *     where either buffer handles are used for output tensor data (see {@link
+   *     Buffer}s of primitive types including int, float, long, and byte. It only needs to keep
+   *     entries for the outputs to be used. When a {@code Buffer} is used, the caller must ensure
+   *     that it is set the appropriate write position. The map may be empty for cases where either
+   *     buffer handles are used for output tensor data (see {@link
    *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}), or cases where the outputs are
    *     dynamically shaped and the caller must query the output {@link Tensor} shape after
    *     inference has been invoked, fetching the data directly from the output tensor (via {@link
