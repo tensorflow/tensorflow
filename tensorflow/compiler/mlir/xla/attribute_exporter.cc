@@ -102,8 +102,8 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     for (int64 element_idx = 0; element_idx < type.getDimSize(1);
          ++element_idx, ++replica_group_values_it) {
       // For replica group attribute, -1 indicates padding added by
-      // ConvertReplicaGroups. This show always be at the end and can be dropped
-      // when converting back to XLA HLO ReplicaGroups.
+      // HloFunctionImporter::ConvertReplicaGroups. This should always be at the
+      // end and can be dropped when converting back to XLA HLO ReplicaGroups.
       if (*replica_group_values_it != -1) {
         group.add_replica_ids(*replica_group_values_it);
       }
