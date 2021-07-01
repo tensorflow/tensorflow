@@ -264,6 +264,195 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
   }
 };
 
+class ConvertConvBackpropInputOp : public OpConversionPattern<mhlo::ConvOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConvOp conv_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    if (IsSupportedConvOp(conv_op, rewriter).failed()) {
+      return rewriter.notifyMatchFailure(
+          conv_op, "doesn't support to convert to ConvBackpropInputOp");
+    }
+
+    // Constructs strides array from lhs_dilation.
+    // For example, [2, 3] -> [1, 2, 3, 1].
+    SmallVector<int64_t, 4> strides({1});
+    strides.append(
+        conv_op.lhs_dilation().getValue().getValues<int64_t>().begin(),
+        conv_op.lhs_dilation().getValue().getValues<int64_t>().end());
+    strides.emplace_back(1);
+
+    // Constructs dilation array.
+    SmallVector<int64_t, 4> dilation;
+    if (auto rhs_dilation = conv_op.rhs_dilation()) {
+      // For example, [2, 3] -> [1, 2, 3, 1].
+      dilation.emplace_back(1);
+      dilation.append(rhs_dilation.getValue().getValues<int64_t>().begin(),
+                      rhs_dilation.getValue().getValues<int64_t>().end());
+      dilation.emplace_back(1);
+    } else {
+      // Default value
+      dilation = {1, 1, 1, 1};
+    }
+
+    std::string padding;
+    if (!conv_op.padding().hasValue() ||
+        (conv_op.padding().getValue().isSplat() &&
+         conv_op.padding()->getSplatValue<int64_t>() == 0)) {
+      padding = "VALID";
+    } else {
+      const int num_spatial_dims = conv_op.dimension_numbers()
+                                       .input_spatial_dimensions()
+                                       .getNumElements();
+      if (!IsSamePadding(conv_op, num_spatial_dims, strides)) {
+        return rewriter.notifyMatchFailure(
+            conv_op, "requires padding to be SAME or VALID");
+      }
+      padding = "SAME";
+    }
+
+    // Converts int64_t to int32_t.
+    llvm::SmallVector<int, 4> input_shape;
+    for (int64_t dim : conv_op.getType().cast<RankedTensorType>().getShape()) {
+      input_shape.push_back(dim);
+    }
+    auto input_sizes = rewriter.create<ConstOp>(
+        conv_op.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({static_cast<int64_t>(input_shape.size())},
+                                  rewriter.getI32Type()),
+            input_shape));
+    // Mirror the filter in the spatial dimensions.
+    auto filter = rewriter.create<mhlo::ReverseOp>(
+        conv_op.getLoc(), conv_op.rhs(),
+        conv_op.dimension_numbers().kernel_spatial_dimensions());
+    rewriter.replaceOpWithNewOp<Conv2DBackpropInputOp>(
+        conv_op, conv_op.getType(), input_sizes, filter, conv_op.lhs(),
+        rewriter.getI64ArrayAttr(strides),
+        /*use_cudnn_on_gpu=*/rewriter.getBoolAttr(true),
+        /*padding=*/rewriter.getStringAttr(padding),
+        /*explicit_paddings=*/rewriter.getI64ArrayAttr({}),
+        /*data_format=*/rewriter.getStringAttr("NHWC"),
+        /*dilations=*/rewriter.getI64ArrayAttr(dilation));
+    return success();
+  };
+
+ private:
+  bool IsSamePadding(mhlo::ConvOp conv_op, int num_spatial_dims,
+                     ArrayRef<int64_t> strides) const {
+    for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
+      int dim = i + 1;
+      int stride = strides[dim];
+      int input_size = conv_op.getType().cast<ShapedType>().getDimSize(dim);
+      int output_size =
+          conv_op.lhs().getType().cast<ShapedType>().getDimSize(dim);
+      if (output_size != (input_size + stride - 1) / stride) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  LogicalResult IsSupportedConvOp(mhlo::ConvOp conv_op,
+                                  ConversionPatternRewriter &rewriter) const {
+    if (!conv_op.lhs().getType().cast<ShapedType>().hasStaticShape() ||
+        !conv_op.rhs().getType().cast<ShapedType>().hasStaticShape() ||
+        !conv_op.getType().cast<ShapedType>().hasStaticShape())
+      return rewriter.notifyMatchFailure(conv_op, "requires static shape");
+
+    const int input_feature_dimension =
+        conv_op.dimension_numbers().input_feature_dimension().getInt();
+    const int input_channels =
+        conv_op.lhs().getType().cast<ShapedType>().getDimSize(
+            input_feature_dimension);
+    int feature_group_count = conv_op.feature_group_count();
+
+    if (feature_group_count != 1 && feature_group_count != input_channels) {
+      // Group convolution is not supported yet.
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "doesn't support group convolution");
+    }
+
+    // Checks lhs_dilation is non-trivial.
+    if (!conv_op.lhs_dilation().hasValue()) {
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "requires lhs_dilation attribute");
+    }
+    auto lhs_dilation = conv_op.lhs_dilation().getValue();
+    if (lhs_dilation.isSplat() && lhs_dilation.getSplatValue<int64_t>() == 1)
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "requires non-trivial lhs_dilation");
+
+    if (!conv_op.window_strides().hasValue() || conv_op.window_strides()
+                                                        .getValue()
+                                                        .getType()
+                                                        .cast<ShapedType>()
+                                                        .getRank() != 1)
+      return rewriter.notifyMatchFailure(
+          conv_op, "requires window_strides to equal to one");
+
+    int num_spatial_dims =
+        conv_op.dimension_numbers().input_spatial_dimensions().getNumElements();
+    // TODO(chhe): Currently we don't support 3D Convolution.
+    if (num_spatial_dims != 2)
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "doesn't support more than 2D");
+
+    // TODO(chhe): To support more data formats other than "NHWC".
+    // Checks format [b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f].
+    if (conv_op.dimension_numbers().input_batch_dimension().getInt() != 0 ||
+        conv_op.dimension_numbers().input_feature_dimension().getInt() !=
+            num_spatial_dims + 1)
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "requires input format [b, 0, 1, f]");
+    DenseIntElementsAttr input_spatial_dimensions =
+        conv_op.dimension_numbers().input_spatial_dimensions();
+    for (auto p :
+         llvm::enumerate(input_spatial_dimensions.getValues<int64_t>())) {
+      if (p.value() != p.index() + 1)
+        return rewriter.notifyMatchFailure(
+            conv_op, "requires input format [b, 0, 1, f]");
+    }
+
+    // Checks output dimensions.
+    if (conv_op.dimension_numbers().output_batch_dimension().getInt() != 0 ||
+        conv_op.dimension_numbers().output_feature_dimension().getInt() !=
+            num_spatial_dims + 1)
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "requires output format [b, 0, 1, f]");
+    DenseIntElementsAttr output_spatial_dimensions =
+        conv_op.dimension_numbers().output_spatial_dimensions();
+    for (auto p :
+         llvm::enumerate(output_spatial_dimensions.getValues<int64_t>())) {
+      if (p.value() != p.index() + 1)
+        return rewriter.notifyMatchFailure(
+            conv_op, "requires output format [0, 1, o, i]");
+    }
+
+    // Checks kernel dimensions.
+    if (conv_op.dimension_numbers().kernel_input_feature_dimension().getInt() !=
+            num_spatial_dims + 1 ||
+        conv_op.dimension_numbers()
+                .kernel_output_feature_dimension()
+                .getInt() != num_spatial_dims)
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "requires kernel format [b, 0, 1, f]");
+    DenseIntElementsAttr kernal_spatial_dimensions =
+        conv_op.dimension_numbers().kernel_spatial_dimensions();
+    for (auto p :
+         llvm::enumerate(kernal_spatial_dimensions.getValues<int64_t>())) {
+      if (p.value() != p.index())
+        return rewriter.notifyMatchFailure(
+            conv_op, "requires kernel format [0, 1, o, i]");
+    }
+
+    return success();
+  }
+};
+
 class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -1577,13 +1766,14 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertDynamicSliceOp,
-                   ConvertGatherOp, ConvertMaxPoolOp, ConvertScatterAddOp,
-                   ConvertScatterMaxOp, ConvertScatterMinOp,
-                   ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-                   ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-                   ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-                   ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns
+      ->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertConvBackpropInputOp,
+               ConvertDynamicSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
+               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
+               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(*patterns);
 }
 
