@@ -17,6 +17,13 @@
   `experimental.nn.TfLiteLSTMCell` since they're no longer supported. It's
   recommended to just use [keras lstm](https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM) instead.
 
+* Keras been split into a separate PIP package (`keras`), and its code has been
+  moved to the GitHub repository[keras-team/keras](http://github.com/keras-team/keras).
+  The API endpoints for `tf.keras` stay unchanged, but are now backed by the
+  `keras` PIP package. The existing code in tensorflow/python/keras is a staled
+  copy and will be removed in future release (2.7). Please remove any imports
+  to `tensorflow.python.keras` and replace them with public tf.keras API instead.
+
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 

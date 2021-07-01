@@ -205,6 +205,33 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
       std::move(fingerprint));
 }
 
+StatusOr<py::bytes> PyClient::SerializeExecutable(
+    const PyExecutable& executable) const {
+  return pjrt_client_->SerializeExecutable(executable.pjrt_executable());
+}
+
+StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
+    const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
+    CompileOptions options) {
+  std::unique_ptr<PjRtExecutable> executable;
+  absl::optional<std::string> fingerprint;
+  {
+    py::gil_scoped_release gil_release;
+    std::unique_ptr<HloModule> unique_module_copy =
+        hlo_module->Clone(hlo_module->config(), /*suffix=*/"");
+    TF_ASSIGN_OR_RETURN(
+        executable,
+        pjrt_client_->DeserializeExecutable(
+            serialized, std::move(unique_module_copy), std::move(options)));
+    TF_ASSIGN_OR_RETURN(fingerprint,
+                        pjrt_client_->ExecutableFingerprint(*executable));
+  }
+  auto traceback = Traceback::Get();
+  return std::make_shared<PyExecutable>(
+      shared_from_this(), std::move(executable), std::move(traceback),
+      std::move(fingerprint));
+}
+
 class ProfileBuilder {
  public:
   ProfileBuilder();

@@ -143,6 +143,15 @@ def initialize_tpu_system(cluster_resolver=None):
   return tpu_topology
 
 
+def get_initialized_tpu_systems():
+  """Returns all currently initialized tpu systems.
+
+  Returns:
+     A dictionary, with tpu name as the key and the tpu topology as the value.
+  """
+  return _INITIALIZED_TPU_SYSTEMS.copy()
+
+
 @tf_export("tpu.experimental.shutdown_tpu_system")
 def shutdown_tpu_system(cluster_resolver=None):
   """Shuts down the TPU devices.
