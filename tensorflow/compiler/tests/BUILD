@@ -1103,7 +1103,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
