@@ -376,7 +376,6 @@ enum BuiltinOperator : int32 {
   VAR_HANDLE = 142,
   READ_VARIABLE = 143,
   ASSIGN_VARIABLE = 144,
-  TABLE = 145,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -495,7 +494,6 @@ union BuiltinOptions {
   VarHandleOptions,
   ReadVariableOptions,
   AssignVariableOptions,
-  TableOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -1079,9 +1077,6 @@ table ReadVariableOptions {
 }
 
 table AssignVariableOptions {
-}
-
-table TableOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

@@ -385,9 +385,6 @@ struct ReadVariableOptionsT;
 struct AssignVariableOptions;
 struct AssignVariableOptionsT;
 
-struct TableOptions;
-struct TableOptionsT;
-
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -856,12 +853,11 @@ enum BuiltinOperator {
   BuiltinOperator_VAR_HANDLE = 142,
   BuiltinOperator_READ_VARIABLE = 143,
   BuiltinOperator_ASSIGN_VARIABLE = 144,
-  BuiltinOperator_TABLE = 145,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_TABLE
+  BuiltinOperator_MAX = BuiltinOperator_ASSIGN_VARIABLE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[146] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[145] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1007,14 +1003,13 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[146] {
     BuiltinOperator_CONV_3D_TRANSPOSE,
     BuiltinOperator_VAR_HANDLE,
     BuiltinOperator_READ_VARIABLE,
-    BuiltinOperator_ASSIGN_VARIABLE,
-    BuiltinOperator_TABLE
+    BuiltinOperator_ASSIGN_VARIABLE
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[147] = {
+  static const char * const names[146] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1160,14 +1155,13 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "VAR_HANDLE",
     "READ_VARIABLE",
     "ASSIGN_VARIABLE",
-    "TABLE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_TABLE)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_ASSIGN_VARIABLE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1287,12 +1281,11 @@ enum BuiltinOptions {
   BuiltinOptions_VarHandleOptions = 111,
   BuiltinOptions_ReadVariableOptions = 112,
   BuiltinOptions_AssignVariableOptions = 113,
-  BuiltinOptions_TableOptions = 114,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_TableOptions
+  BuiltinOptions_MAX = BuiltinOptions_AssignVariableOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[115] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[114] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1407,14 +1400,13 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[115] {
     BuiltinOptions_HashtableSizeOptions,
     BuiltinOptions_VarHandleOptions,
     BuiltinOptions_ReadVariableOptions,
-    BuiltinOptions_AssignVariableOptions,
-    BuiltinOptions_TableOptions
+    BuiltinOptions_AssignVariableOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[116] = {
+  static const char * const names[115] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1529,14 +1521,13 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "VarHandleOptions",
     "ReadVariableOptions",
     "AssignVariableOptions",
-    "TableOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_TableOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_AssignVariableOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1995,10 +1986,6 @@ template<> struct BuiltinOptionsTraits<tflite::ReadVariableOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::AssignVariableOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_AssignVariableOptions;
-};
-
-template<> struct BuiltinOptionsTraits<tflite::TableOptions> {
-  static const BuiltinOptions enum_value = BuiltinOptions_TableOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2936,14 +2923,6 @@ struct BuiltinOptionsUnion {
   const tflite::AssignVariableOptionsT *AsAssignVariableOptions() const {
     return type == BuiltinOptions_AssignVariableOptions ?
       reinterpret_cast<const tflite::AssignVariableOptionsT *>(value) : nullptr;
-  }
-  tflite::TableOptionsT *AsTableOptions() {
-    return type == BuiltinOptions_TableOptions ?
-      reinterpret_cast<tflite::TableOptionsT *>(value) : nullptr;
-  }
-  const tflite::TableOptionsT *AsTableOptions() const {
-    return type == BuiltinOptions_TableOptions ?
-      reinterpret_cast<const tflite::TableOptionsT *>(value) : nullptr;
   }
 };
 
@@ -10361,46 +10340,6 @@ inline flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(
 
 flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(flatbuffers::FlatBufferBuilder &_fbb, const AssignVariableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
-struct TableOptionsT : public flatbuffers::NativeTable {
-  typedef TableOptions TableType;
-  TableOptionsT() {
-  }
-};
-
-struct TableOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef TableOptionsT NativeTableType;
-  bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           verifier.EndTable();
-  }
-  TableOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(TableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<TableOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
-};
-
-struct TableOptionsBuilder {
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  explicit TableOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  TableOptionsBuilder &operator=(const TableOptionsBuilder &);
-  flatbuffers::Offset<TableOptions> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<TableOptions>(end);
-    return o;
-  }
-};
-
-inline flatbuffers::Offset<TableOptions> CreateTableOptions(
-    flatbuffers::FlatBufferBuilder &_fbb) {
-  TableOptionsBuilder builder_(_fbb);
-  return builder_.Finish();
-}
-
-flatbuffers::Offset<TableOptions> CreateTableOptions(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
-
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code;
@@ -10890,9 +10829,6 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::AssignVariableOptions *builtin_options_as_AssignVariableOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_AssignVariableOptions ? static_cast<const tflite::AssignVariableOptions *>(builtin_options()) : nullptr;
   }
-  const tflite::TableOptions *builtin_options_as_TableOptions() const {
-    return builtin_options_type() == tflite::BuiltinOptions_TableOptions ? static_cast<const tflite::TableOptions *>(builtin_options()) : nullptr;
-  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -11379,10 +11315,6 @@ template<> inline const tflite::ReadVariableOptions *Operator::builtin_options_a
 
 template<> inline const tflite::AssignVariableOptions *Operator::builtin_options_as<tflite::AssignVariableOptions>() const {
   return builtin_options_as_AssignVariableOptions();
-}
-
-template<> inline const tflite::TableOptions *Operator::builtin_options_as<tflite::TableOptions>() const {
-  return builtin_options_as_TableOptions();
 }
 
 struct OperatorBuilder {
@@ -15405,29 +15337,6 @@ inline flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(fl
       _fbb);
 }
 
-inline TableOptionsT *TableOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
-  auto _o = new TableOptionsT();
-  UnPackTo(_o, _resolver);
-  return _o;
-}
-
-inline void TableOptions::UnPackTo(TableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
-  (void)_o;
-  (void)_resolver;
-}
-
-inline flatbuffers::Offset<TableOptions> TableOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
-  return CreateTableOptions(_fbb, _o, _rehasher);
-}
-
-inline flatbuffers::Offset<TableOptions> CreateTableOptions(flatbuffers::FlatBufferBuilder &_fbb, const TableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
-  (void)_rehasher;
-  (void)_o;
-  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const TableOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  return tflite::CreateTableOptions(
-      _fbb);
-}
-
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -16358,10 +16267,6 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::AssignVariableOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case BuiltinOptions_TableOptions: {
-      auto ptr = reinterpret_cast<const tflite::TableOptions *>(obj);
-      return verifier.VerifyTable(ptr);
-    }
     default: return true;
   }
 }
@@ -16832,10 +16737,6 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::AssignVariableOptions *>(obj);
       return ptr->UnPack(resolver);
     }
-    case BuiltinOptions_TableOptions: {
-      auto ptr = reinterpret_cast<const tflite::TableOptions *>(obj);
-      return ptr->UnPack(resolver);
-    }
     default: return nullptr;
   }
 }
@@ -17294,10 +17195,6 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::AssignVariableOptionsT *>(value);
       return CreateAssignVariableOptions(_fbb, ptr, _rehasher).Union();
     }
-    case BuiltinOptions_TableOptions: {
-      auto ptr = reinterpret_cast<const tflite::TableOptionsT *>(value);
-      return CreateTableOptions(_fbb, ptr, _rehasher).Union();
-    }
     default: return 0;
   }
 }
@@ -17754,10 +17651,6 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_AssignVariableOptions: {
       value = new tflite::AssignVariableOptionsT(*reinterpret_cast<tflite::AssignVariableOptionsT *>(u.value));
-      break;
-    }
-    case BuiltinOptions_TableOptions: {
-      value = new tflite::TableOptionsT(*reinterpret_cast<tflite::TableOptionsT *>(u.value));
       break;
     }
     default:
@@ -18329,11 +18222,6 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_AssignVariableOptions: {
       auto ptr = reinterpret_cast<tflite::AssignVariableOptionsT *>(value);
-      delete ptr;
-      break;
-    }
-    case BuiltinOptions_TableOptions: {
-      auto ptr = reinterpret_cast<tflite::TableOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -20,6 +20,11 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
+namespace ops {
+namespace custom {
+
+TfLiteRegistration* Register_TABLE();
+
 namespace {
 
 using ::testing::ElementsAreArray;
@@ -31,8 +36,7 @@ class TableOpModel : public SingleOpModel {
     input_ = AddInput(input);
     table_ = AddInput(table);
     output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_TABLE, BuiltinOptions_TableOptions,
-                 CreateSubOptions(builder_).Union());
+    SetCustomOp("Table", {}, Register_TABLE);
     BuildInterpreter({GetShape(input_), GetShape(table_)});
   }
 
@@ -139,4 +143,6 @@ TEST(TableOpTest, Int16ToInt8WithExpLUT) {
 }
 
 }  // namespace
+}  // namespace custom
+}  // namespace ops
 }  // namespace tflite

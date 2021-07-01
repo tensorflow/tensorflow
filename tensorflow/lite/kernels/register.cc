@@ -28,6 +28,7 @@ TfLiteRegistration* Register_NUMERIC_VERIFY();
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
+TfLiteRegistration* Register_TABLE();
 
 }  // namespace custom
 
@@ -325,7 +326,6 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_VAR_HANDLE, Register_VAR_HANDLE());
   AddBuiltin(BuiltinOperator_READ_VARIABLE, Register_READ_VARIABLE());
   AddBuiltin(BuiltinOperator_ASSIGN_VARIABLE, Register_ASSIGN_VARIABLE());
-  AddBuiltin(BuiltinOperator_TABLE, Register_TABLE());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
@@ -334,6 +334,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
+  AddCustom("Table", tflite::ops::custom::Register_TABLE());
   // By definition, all of the ops added above are not user-defined ops,
   // since they are supported by BuiltinOpResolver.
   may_directly_contain_user_defined_ops_ = false;

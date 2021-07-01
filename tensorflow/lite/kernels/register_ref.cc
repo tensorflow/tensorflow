@@ -29,6 +29,7 @@ TfLiteRegistration* Register_NUMERIC_VERIFY_REF();
 TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
+TfLiteRegistration* Register_TABLE();
 
 }  // namespace custom
 
@@ -163,7 +164,6 @@ TfLiteRegistration* Register_IMAG();
 TfLiteRegistration* Register_REAL();
 TfLiteRegistration* Register_COMPLEX_ABS();
 TfLiteRegistration* Register_CONV_3D_TRANSPOSE_REF();
-TfLiteRegistration* Register_TABLE();
 
 namespace {
 
@@ -475,7 +475,6 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_COMPLEX_ABS, Register_COMPLEX_ABS());
   AddBuiltin(BuiltinOperator_CONV_3D_TRANSPOSE,
              Register_CONV_3D_TRANSPOSE_REF());
-  AddBuiltin(BuiltinOperator_TABLE, Register_TABLE());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
@@ -485,6 +484,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
+  AddCustom("Table", tflite::ops::custom::Register_TABLE());
 }
 
 }  // namespace builtin

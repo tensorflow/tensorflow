@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace builtin {
+namespace custom {
 namespace table {
 
 constexpr int kInputTensor = 0;
@@ -124,6 +124,6 @@ TfLiteRegistration* Register_TABLE() {
   return &r;
 }
 
-}  // namespace builtin
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite

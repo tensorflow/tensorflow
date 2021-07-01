@@ -159,7 +159,6 @@ TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_SUB();
 TfLiteRegistration* Register_SUM();
 TfLiteRegistration* Register_SVDF();
-TfLiteRegistration* Register_TABLE();
 TfLiteRegistration* Register_TANH();
 TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_TOPK_V2();

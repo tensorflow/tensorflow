@@ -172,7 +172,6 @@ typedef enum {
   kTfLiteBuiltinVarHandle = 142,
   kTfLiteBuiltinReadVariable = 143,
   kTfLiteBuiltinAssignVariable = 144,
-  kTfLiteBuiltinTable = 145,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
