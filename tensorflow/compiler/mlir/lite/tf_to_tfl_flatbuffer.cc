@@ -171,7 +171,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
-    return Status::OK();
+    return statusHandler.ConsumeStatus();
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
