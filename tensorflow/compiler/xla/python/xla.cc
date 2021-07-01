@@ -235,6 +235,8 @@ PYBIND11_MODULE(xla_extension, m) {
                PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
+      .def("serialize_executable", &PyClient::SerializeExecutable)
+      .def("deserialize_executable", &PyClient::DeserializeExecutable)
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)

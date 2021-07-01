@@ -269,6 +269,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/tpu:tpu_executable",
         "//tensorflow/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_interface",
