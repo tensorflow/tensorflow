@@ -86,9 +86,8 @@ class Window : public DatasetBase {
                             Node** output) const override {
     if (!ctx->serialize_data_tensors()) {
       // If data tensors are not to be serialized (e.g. when the serialization
-      // is done for the sake of graph optimizations) and errors::Unimplemented
-      // is handled gracefully, we return `errors::Unimplemented` to
-      // short-circuit the computation.
+      // is done for the sake of graph optimizations), we return
+      // `errors::Unimplemented` to short-circuit the computation.
       return errors::Unimplemented(DebugString(),
                                    " does not support serialization");
     }
