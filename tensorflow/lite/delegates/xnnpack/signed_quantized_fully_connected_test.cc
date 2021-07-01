@@ -25,7 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(QuantizedFullyConnected, 1D) {
+TEST(SignedQuantizedFullyConnected, 1D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -50,7 +50,7 @@ TEST(QuantizedFullyConnected, 1D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, 1DKeepDims) {
+TEST(SignedQuantizedFullyConnected, 1DKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -76,7 +76,7 @@ TEST(QuantizedFullyConnected, 1DKeepDims) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, 2D) {
+TEST(SignedQuantizedFullyConnected, 2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -104,7 +104,7 @@ TEST(QuantizedFullyConnected, 2D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, 2DKeepDims) {
+TEST(SignedQuantizedFullyConnected, 2DKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -133,7 +133,7 @@ TEST(QuantizedFullyConnected, 2DKeepDims) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, 3D) {
+TEST(SignedQuantizedFullyConnected, 3D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -162,7 +162,7 @@ TEST(QuantizedFullyConnected, 3D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, 3DReshape) {
+TEST(SignedQuantizedFullyConnected, 3DReshape) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -191,7 +191,7 @@ TEST(QuantizedFullyConnected, 3DReshape) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, 3DKeepDims) {
+TEST(SignedQuantizedFullyConnected, 3DKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -221,7 +221,7 @@ TEST(QuantizedFullyConnected, 3DKeepDims) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, 4D) {
+TEST(SignedQuantizedFullyConnected, 4D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -251,7 +251,7 @@ TEST(QuantizedFullyConnected, 4D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, 4DKeepDims) {
+TEST(SignedQuantizedFullyConnected, 4DKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -282,7 +282,7 @@ TEST(QuantizedFullyConnected, 4DKeepDims) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, NoBias) {
+TEST(SignedQuantizedFullyConnected, NoBias) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -311,7 +311,7 @@ TEST(QuantizedFullyConnected, NoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, ReluActivation) {
+TEST(SignedQuantizedFullyConnected, ReluActivation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -340,7 +340,7 @@ TEST(QuantizedFullyConnected, ReluActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, Relu6Activation) {
+TEST(SignedQuantizedFullyConnected, Relu6Activation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -369,7 +369,7 @@ TEST(QuantizedFullyConnected, Relu6Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, ReluMinus1To1Activation) {
+TEST(SignedQuantizedFullyConnected, ReluMinus1To1Activation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -398,7 +398,7 @@ TEST(QuantizedFullyConnected, ReluMinus1To1Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedFullyConnected, MultiThreading) {
+TEST(SignedQuantizedFullyConnected, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
