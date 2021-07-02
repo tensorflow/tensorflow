@@ -20,11 +20,13 @@ glob_lit_tests(
         ],  # b/171751580
         "hlo_to_lhlo_with_xla/ops.mlir": tf_cuda_tests_tags() + [
             "nomsan",
-        ],  # b/191025174
+            "no_cuda_asan",
+        ],  # b/191025174, b/192521861
         "hlo_to_lhlo_with_xla/passthrough.mlir": tf_cuda_tests_tags() + [
             "nomsan",
             "no_cuda_san",
-        ],  # b/191025174
+            "no_cuda_asan",
+        ],  # b/191025174, b/192521861
     },
     test_file_exts = [
         "mlir",
