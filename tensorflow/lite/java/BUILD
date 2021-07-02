@@ -139,13 +139,13 @@ android_library_with_tflite(
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     tflite_deps = [
-        ":tensorflowlite_stable",
-        ":tensorflowlite_experimental_java_with_stable_native",
         ":tensorflowlite_native",
     ],
-    tflite_exports = [
-        ":tensorflowlite_experimental_java_with_stable_native",
-        ":tensorflowlite_stable",
+    exports = [
+        ":tensorflowlite_javalib",
+    ],
+    deps = [
+        ":tensorflowlite_javalib",
     ],
 )
 
