@@ -768,6 +768,17 @@ cc_library(
 )
 
 cc_library(
+    name = "type_conversion",
+    srcs = ["lib/Dialect/mhlo/transforms/type_conversion.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "map_lmhlo_to_scalar_op",
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"],
     deps = [
@@ -849,6 +860,7 @@ cc_library(
         ":lhlo",
         ":map_lmhlo_to_scalar_op",
         ":pass_details",
+        ":type_conversion",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",

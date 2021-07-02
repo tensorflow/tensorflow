@@ -102,6 +102,16 @@ add_mlir_library(MhloToLhloConversion
   MLIRMath
 )
 
+add_mlir_library(MhloTypeConversion
+  type_conversion.cc
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+)
+
 add_mlir_library(MhloToMemrefConversion
   hlo_legalize_to_memref.cc
 
@@ -114,6 +124,7 @@ add_mlir_library(MhloToMemrefConversion
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MhloTypeConversion
   MLIRIR
   MLIRPass
   MLIRMath
@@ -128,6 +139,7 @@ add_mlir_library(MhloToStandard
   MLIRhlo_opsIncGen
   MLIRlhlo_opsIncGen
   MLIRMhloLegalizeToStandardIncGen
+  MhloTypeConversion
 
   LINK_COMPONENTS
   Core
@@ -150,6 +162,7 @@ add_mlir_library(MhloLhloToLinalg
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MhloTypeConversion
   MLIRComplex
   MLIRIR
   MLIRPass
