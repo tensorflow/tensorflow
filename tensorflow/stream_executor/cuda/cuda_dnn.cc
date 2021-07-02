@@ -3202,6 +3202,26 @@ namespace {
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
+absl::optional<int64_t> GetEngineId(cudnnBackendDescriptor_t engine_config) {
+  int64_t count;
+  int64_t engine_id;
+  cudnn_frontend::ManagedOpaqueDescriptor managed_engine =
+      cudnn_frontend::make_shared_backend_pointer(
+          CUDNN_BACKEND_ENGINE_DESCRIPTOR);
+  cudnnBackendDescriptor_t engine = managed_engine->get_backend_descriptor();
+  if (cudnnBackendGetAttribute(engine_config, CUDNN_ATTR_ENGINECFG_ENGINE,
+                               CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &count,
+                               &engine) != CUDNN_STATUS_SUCCESS) {
+    return absl::nullopt;
+  }
+  if (cudnnBackendGetAttribute(engine, CUDNN_ATTR_ENGINE_GLOBAL_INDEX,
+                               CUDNN_TYPE_INT64, 1, &count,
+                               &engine_id) != CUDNN_STATUS_SUCCESS) {
+    return absl::nullopt;
+  }
+  return engine_id;
+}
+
 bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
                          bool disable_winograd, bool disable_nondeterminism,
                          bool disable_tensor_core) {
@@ -3222,6 +3242,11 @@ bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
   if (disable_tensor_core) {
     ret |= cudnn_frontend::hasNumericalNote<CUDNN_NUMERICAL_NOTE_TENSOR_CORE>(
         engine_config);
+  }
+
+  auto maybe_engine_id = GetEngineId(engine_config);
+  if (maybe_engine_id.has_value()) {
+    ret |= *maybe_engine_id == 0;
   }
 
   return ret;
