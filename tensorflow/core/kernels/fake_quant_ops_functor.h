@@ -87,15 +87,13 @@ struct FakeQuantWithMinMaxArgsFunctor {
     float nudged_min, nudged_max, nudged_scale;
     Nudge(min, max, quant_min, quant_max, &nudged_min, &nudged_max,
           &nudged_scale);
-
     const float inv_nudged_scale = 1.0f / nudged_scale;
-    const float quant_zero = floor(-nudged_min * inv_nudged_scale + 0.5f);
 
     auto clamped = inputs.cwiseMin(nudged_max).cwiseMax(nudged_min);
     auto clamped_shifted = clamped - nudged_min;
     outputs.device(d) =
-        (clamped_shifted * inv_nudged_scale - quant_zero + 0.5f).floor() *
-        nudged_scale;
+        (clamped_shifted * inv_nudged_scale + 0.5f).floor() * nudged_scale +
+        nudged_min;
   }
 };
 
@@ -140,17 +138,13 @@ struct FakeQuantWithMinMaxVarsFunctor {
     float nudged_min, nudged_max, nudged_scale;
     Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
           &nudged_scale);
-
-    const float inv_nudged_scale = 1.0f / nudged_scale;
-    const float quant_zero = floor(-nudged_min * inv_nudged_scale + 0.5f);
     const auto nudged_scale_repl = inputs.constant(nudged_scale);
-    const auto inv_nudged_scale_repl = inputs.constant(inv_nudged_scale);
 
     const auto clamped = inputs.cwiseMin(nudged_max).cwiseMax(nudged_min);
     const auto clamped_shifted = clamped - nudged_min;
-    outputs.device(d) =
-        (clamped_shifted * inv_nudged_scale_repl - quant_zero + 0.5f).floor() *
-        nudged_scale_repl;
+    outputs.device(d) = (clamped_shifted / nudged_scale_repl + 0.5f).floor() *
+                            nudged_scale_repl +
+                        nudged_min;
   }
 };
 
@@ -218,17 +212,13 @@ struct FakeQuantWithMinMaxVarsPerChannelFunctor {
       float nudged_min, nudged_max, nudged_scale;
       Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
             &nudged_scale);
-
-      const float inv_nudged_scale = 1.0f / nudged_scale;
-      const float quant_zero = floor(-nudged_min * inv_nudged_scale + 0.5f);
-
       const auto clamped =
           inputs.chip<1>(i).cwiseMin(nudged_max).cwiseMax(nudged_min);
       const auto clamped_shifted = clamped - nudged_min;
 
       outputs.chip<1>(i).device(d) =
-          (clamped_shifted * inv_nudged_scale - quant_zero + 0.5f).floor() *
-          nudged_scale;
+          (clamped_shifted / nudged_scale + 0.5f).floor() * nudged_scale +
+          nudged_min;
     }
   }
 };
