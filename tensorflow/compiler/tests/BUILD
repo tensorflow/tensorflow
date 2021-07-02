@@ -1674,6 +1674,7 @@ cuda_py_test(
     srcs = ["jit_test.py"],
     #shard_count = 5,
     tags = [
+        "no_cuda_asan",  # Times out.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     xla_enable_strict_auto_jit = False,
