@@ -15,6 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <functional>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -286,7 +287,10 @@ class XlaSplitNDBaseOp : public OpKernel {
   }
 
  protected:
-  void ComputeInternal(OpKernelContext* ctx, const Tensor* input) {
+  void ComputeInternal(
+      OpKernelContext* ctx,
+      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const Tensor* input) {
     absl::string_view input_name = Resource ? kResourceName : kTensorName;
     const int rank = input->shape().dims();
 
@@ -334,21 +338,21 @@ class XlaSplitNDBaseOp : public OpKernel {
     }
 
     if (rank == 1) {
-      Slice<1>(ctx, input);
+      Slice<1>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 2) {
-      Slice<2>(ctx, input);
+      Slice<2>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 3) {
-      Slice<3>(ctx, input);
+      Slice<3>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 4) {
-      Slice<4>(ctx, input);
+      Slice<4>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 5) {
-      Slice<5>(ctx, input);
+      Slice<5>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 6) {
-      Slice<6>(ctx, input);
+      Slice<6>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 7) {
-      Slice<7>(ctx, input);
+      Slice<7>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 8) {
-      Slice<8>(ctx, input);
+      Slice<8>(ctx, assign_or_copy_value_fn, input);
     }
   }
 
@@ -437,9 +441,12 @@ class XlaSplitNDBaseOp : public OpKernel {
   }
 
   template <int Rank>
-  void Slice(OpKernelContext* ctx, const Tensor* input) {
+  void Slice(
+      OpKernelContext* ctx,
+      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const Tensor* input) {
     if (num_slices_ == 1) {
-      ctx->set_output(0, *input);
+      OP_REQUIRES_OK(ctx, assign_or_copy_value_fn(*input));
       return;
     }
 
@@ -479,7 +486,13 @@ class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, false> {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    this->ComputeInternal(ctx, &input);
+
+    auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
+      ctx->set_output(/*index=*/0, input);
+      return Status::OK();
+    };
+
+    this->ComputeInternal(ctx, assign_or_copy_value_fn, &input);
   }
 };
 
@@ -510,7 +523,20 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
                     "') dtype ", DataTypeString(input->dtype()), ", but got ",
                     DataTypeString(dtype_), "."));
 
-    this->ComputeInternal(ctx, input);
+    auto assign_or_copy_value_fn = [&ctx,
+                                    &variable](const Tensor& input) -> Status {
+      if (variable->copy_on_read_mode.load()) {
+        Tensor* output;
+        TF_RETURN_IF_ERROR(
+            ctx->allocate_output(/*index=*/0, input.shape(), &output));
+        output->flat<T>().device(ctx->eigen_device<Device>()) = input.flat<T>();
+      } else {
+        ctx->set_output(/*index=*/0, input);
+      }
+      return Status::OK();
+    };
+
+    this->ComputeInternal(ctx, assign_or_copy_value_fn, input);
   }
 
  private:
