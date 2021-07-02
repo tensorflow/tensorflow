@@ -1962,7 +1962,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_tsan",  # Tsan failure doesn't seem to be caused by TF.
+        "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
         ":multi_worker_test_base",
