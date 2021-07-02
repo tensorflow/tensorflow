@@ -27,6 +27,9 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 /**
  * Driver class to drive model inference with TensorFlow Lite.
  *
+ * <p>Note: If you don't need access to any of the "experimental" API features below, prefer to use
+ * InterpreterApi and InterpreterFactory rather than using Interpreter directly.
+ *
  * <p>A {@code Interpreter} encapsulates a pre-trained TensorFlow Lite model, in which operations
  * are executed for model inference.
  *
@@ -81,7 +84,22 @@ public final class Interpreter implements InterpreterApi {
 
   /** An options class for controlling runtime interpreter behavior. */
   public static class Options extends InterpreterApi.Options {
-    public Options() {}
+    public Options() {
+      delegates = new ArrayList<>();
+    }
+
+    public Options(InterpreterApi.Options options) {
+      super(options);
+      delegates = new ArrayList<>();
+    }
+
+    public Options(Options other) {
+      super(other);
+      delegates = new ArrayList<>(other.delegates);
+      allowFp16PrecisionForFp32 = other.allowFp16PrecisionForFp32;
+      allowBufferHandleOutput = other.allowBufferHandleOutput;
+      useXNNPACK = other.useXNNPACK;
+    }
 
     /**
      * Sets the number of threads to be used for ops that support multi-threading.
@@ -189,7 +207,7 @@ public final class Interpreter implements InterpreterApi {
     // Note: the initial "null" value indicates default behavior which may mean XNNPACK
     // delegate will be applied by default.
     Boolean useXNNPACK;
-    final List<Delegate> delegates = new ArrayList<>();
+    final List<Delegate> delegates;
   }
 
   /**

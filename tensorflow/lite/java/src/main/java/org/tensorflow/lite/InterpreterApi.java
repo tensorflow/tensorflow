@@ -80,6 +80,12 @@ public interface InterpreterApi extends AutoCloseable {
   public static class Options {
     public Options() {}
 
+    public Options(Options other) {
+      this.numThreads = other.numThreads;
+      this.useNNAPI = other.useNNAPI;
+      this.allowCancellation = other.allowCancellation;
+    }
+
     /**
      * Sets the number of threads to be used for ops that support multi-threading.
      *
@@ -296,4 +302,8 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if the model is not initialized by the {@link Interpreter}.
    */
   public Long getLastNativeInferenceDurationNanoseconds();
+
+  /** Release resources associated with the {@code InterpreterApi} instance. */
+  @Override
+  public void close();
 }
