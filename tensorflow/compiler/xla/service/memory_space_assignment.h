@@ -433,7 +433,6 @@ class MemorySpaceAssignment {
 
   // Forward declaration for Allocation.
   class Allocation;
-  class ParentAllocation;
 
   // This class represents an allocation that might either be in the default or
   // alternate memory. An HloValue might live in multiple different allocations
@@ -467,8 +466,6 @@ class MemorySpaceAssignment {
   //   - CopyAllocation(memory_space=kDefault, start_time=12, end_time=25)
   //   - CopyAllocation(memory_space=kAlternate, start_time=22, end_time=25)
   class Allocation {
-    friend class ParentAllocation;
-
    public:
     Allocation(HloPosition defining_position, MemorySpace memory_space,
                absl::optional<Chunk> chunk, int64 start_time, int64 end_time,
@@ -494,22 +491,7 @@ class MemorySpaceAssignment {
     // After all of the time ranges for the allocations have been assigned,
     // Process morphs the instructions affected to assign the memory spaces and
     // insert asynchronous copy instructions if necessary.
-    virtual Status Process();
-
-    // An optional post-process step that will be called after all allocations
-    // have been processed.
-    virtual Status PostProcess() { return Status::OK(); }
-
-    // Marks (adds this allocation to needed_allocations) if this allocation is
-    // needed. Allocation and CopyAllocations are always needed and
-    // ParentAllocations are needed if they have any uses or if other
-    // CopyAllocation or ParentAllocations depend on them.
-    virtual void MarkIfNeeded(
-        absl::flat_hash_set<const Allocation*>& needed_allocations) const;
-
-    // Marks this allocation as needed.
-    virtual void MarkNeeded(
-        absl::flat_hash_set<const Allocation*>& needed_allocations) const;
+    virtual Status Process(MemorySpaceAssignment* memory_space_assignment);
 
     // Returns the defining position for this allocation.
     virtual HloPosition defining_position() const { return defining_position_; }
@@ -539,7 +521,7 @@ class MemorySpaceAssignment {
 
     // Recursively create kGetTupleElement instructions if the defining position
     // shape is not an array. Returns the new instruction that has array shape.
-    HloInstruction* AddGetTupleElements() const;
+    HloInstruction* AddGetTupleElements();
 
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
@@ -569,10 +551,7 @@ class MemorySpaceAssignment {
 
     bool is_copy_allocation() const override { return true; }
 
-    Status Process() override;
-
-    void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
-        const override;
+    Status Process(MemorySpaceAssignment* memory_space_assignment) override;
 
     HloPosition defining_position() const override {
       // Unless explicitly set, the defining position of a copy allocation in
@@ -625,35 +604,6 @@ class MemorySpaceAssignment {
     bool is_cross_program_prefetch_;
     HloInstruction* copy_start_;
     HloInstruction* copy_done_;
-  };
-
-  // An allocation in default memory space that is defined in the parent
-  // computation. If a value has a copy in the default memory space in the
-  // parent computation, we don't need to evict this buffer in a while loop.
-  class ParentAllocation : public Allocation {
-   public:
-    ParentAllocation(const Allocation& original_allocation,
-                     HloInstruction* calling_instruction, HloPosition position,
-                     int64 time)
-        : Allocation(position, MemorySpace::kDefault,
-                     original_allocation.chunk(), /*start_time=*/time,
-                     /*end_time=*/time, /*is_scoped_allocation=*/false),
-          original_allocation_(original_allocation),
-          calling_instruction_(calling_instruction) {}
-
-    Status Process() override;
-    Status PostProcess() override;
-
-    void MarkIfNeeded(absl::flat_hash_set<const Allocation*>&
-                          needed_allocations) const override;
-    void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
-        const override;
-
-    std::string ToString() const override;
-
-   private:
-    const Allocation& original_allocation_;
-    HloInstruction* calling_instruction_;
   };
 
   using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
