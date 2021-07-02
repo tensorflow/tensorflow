@@ -60,6 +60,9 @@ typedef struct {
     struct {
       bool input_quantized;
     } abs;
+    struct {
+      bool is_per_channel_quantized;
+    } dequantize;
   } ext_options;
 } OpSignature;
 
