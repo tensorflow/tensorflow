@@ -369,14 +369,16 @@ tf_kernel_library(
 tf_kernel_library(
     name = "gpu_relu_op",
     srcs = if_mlir_generated_experimental_kernels_enabled([
-        "gpu_op_relu.cc",
         "gpu_op_elu.cc",
+        "gpu_op_relu.cc",
+        "gpu_op_selu.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_experimental_kernels_enabled([
         ":base_gpu_op",
         ":gpu_elu_kernels",
         ":gpu_relu_kernels",
+        ":gpu_selu_kernels",
         "//third_party/eigen3",
     ]),
 )
