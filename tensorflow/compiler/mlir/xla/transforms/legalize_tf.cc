@@ -31,7 +31,6 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -1183,7 +1182,7 @@ class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
               rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
         } else {
           slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
-              loc, rewriter.create<memref::DimOp>(loc, params, dim_idx),
+              loc, rewriter.create<tensor::DimOp>(loc, params, dim_idx),
               indices_ty.getElementType()));
         }
       }
@@ -1342,7 +1341,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
       return rewriter.create<mlir::ConstantIntOp>(loc, val, shape_scalar_type);
     };
     auto get_dim_value = [&](Value val, int64_t dim) {
-      Value dim_value = rewriter.create<memref::DimOp>(loc, val, dim);
+      Value dim_value = rewriter.create<tensor::DimOp>(loc, val, dim);
       return rewriter.create<IndexCastOp>(loc, dim_value, shape_scalar_type);
     };
 
@@ -1701,7 +1700,7 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
               rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
         } else {
           slice_sizes_vals.push_back(rewriter.create<IndexCastOp>(
-              loc, rewriter.create<memref::DimOp>(loc, params, i),
+              loc, rewriter.create<tensor::DimOp>(loc, params, i),
               indices_ty.getElementType()));
         }
       }
@@ -3326,7 +3325,7 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
                                                   size_value, minus_one);
       Value end_value = rewriter.create<AddIOp>(loc, begin_value, size_value);
       auto dim_value = rewriter.create<IndexCastOp>(
-          loc, rewriter.create<memref::DimOp>(loc, input, i),
+          loc, rewriter.create<tensor::DimOp>(loc, input, i),
           shape_scalar_type);
       end_value = rewriter.create<mlir::SelectOp>(loc, is_minus_one, dim_value,
                                                   end_value);
@@ -3598,7 +3597,7 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     if (!TensorType::isDynamic(c_input_dim_size)) return failure();
 
     Value input_dim_size =
-        rewriter.create<memref::DimOp>(loc, input, dim_index);
+        rewriter.create<tensor::DimOp>(loc, input, dim_index);
     // Calculate the dimension size for each slice along the split dimension.
     int num_splits = op.getNumResults();
     Value num_splits_value =
@@ -3614,7 +3613,7 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     end_indices.reserve(input_rank);
     SmallVector<Value, 4> strides(input_rank, one);
     for (int i = 0; i < input_rank; ++i) {
-      end_indices.push_back(rewriter.create<memref::DimOp>(loc, input, i));
+      end_indices.push_back(rewriter.create<tensor::DimOp>(loc, input, i));
     }
 
     // All HLO d_slice results used to replace the original tf.Split op.
@@ -4877,7 +4876,7 @@ class ConvertTileOpDynamic : public OpRewritePattern<TF::TileOp> {
       auto dim_size = input_ty.getDimSize(i);
       if (dim_size == ShapedType::kDynamicSize) {
         input_shape_values.push_back(
-            rewriter.create<memref::DimOp>(loc, input, i));
+            rewriter.create<tensor::DimOp>(loc, input, i));
       } else {
         input_shape_values.push_back(
             rewriter.create<ConstantOp>(loc, rewriter.getIndexAttr(dim_size)));
@@ -5826,7 +5825,7 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
       int64_t dim_size = value_type.getDimSize(dim_idx);
       if (dim_size == ShapedType::kDynamicSize) {
         Value dim_i = rewriter.create<IndexCastOp>(
-            loc, rewriter.create<memref::DimOp>(loc, op.getOperand(), dim_idx),
+            loc, rewriter.create<tensor::DimOp>(loc, op.getOperand(), dim_idx),
             shape_scalar_type);
         end_indices.push_back(dim_i);
         if (dim_idx != axis) {
@@ -7457,10 +7456,6 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<CallOp>();
-  // TODO(disc): replace by tensor::DimOp if it implemented.
-  // See:
-  // https://llvm.discourse.group/t/rfc-split-the-memref-dialect-from-std/2667/6
-  target.addLegalOp<memref::DimOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.

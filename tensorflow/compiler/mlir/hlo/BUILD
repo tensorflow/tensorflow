@@ -977,7 +977,6 @@ cc_library(
         ":hlo",
         ":pass_details",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:TensorDialect",
     ],
 )
