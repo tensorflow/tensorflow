@@ -27,9 +27,11 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -43,15 +45,18 @@ namespace {
 
 // Find and combine identical constants. Constants are identical if they have
 // the same type and value.
+//
+// While we're here, also combine identical iota instructions, since they need
+// similar treatment.
 StatusOr<bool> CombineConstants(HloComputation* computation,
                                 bool is_layout_sensitive) {
   TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
-  // Map from ShortDebugString of the layoutless shape of the constant to the
-  // set of constant instructions with that shape. Layoutless shape is used to
-  // bin possible common constants together to reduce number of constant
+  // Map from ShortDebugString of the layoutless shape of the constant/iota to
+  // the set of constant instructions with that shape. Layoutless shape is used
+  // to bin possible common constants together to reduce number of constant
   // comparisons. If we end up having too many constant comparisons, a more
   // precise binning might have to be used.
-  std::multimap<string, HloInstruction*> constants;
+  std::multimap<string, HloInstruction*> instrs;
   int64 combined = 0;
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
@@ -61,25 +66,31 @@ StatusOr<bool> CombineConstants(HloComputation* computation,
     // invalidated due to deletion.
     ++inst_it;
 
-    if (instruction->opcode() == HloOpcode::kConstant) {
+    if (instruction->opcode() == HloOpcode::kConstant ||
+        instruction->opcode() == HloOpcode::kIota) {
       Shape shape = instruction->shape();
       if (!is_layout_sensitive) {
         LayoutUtil::ClearLayout(&shape);
       }
       string shape_string = shape.ShortDebugString();
 
-      // Compare against all constants with the same shape
-      auto range = constants.equal_range(shape_string);
+      // Compare against all iotas/constants with the same shape.
       HloInstruction* match = nullptr;
+      auto range = instrs.equal_range(shape_string);
       for (auto it = range.first; it != range.second; ++it) {
-        if (instruction->literal() == it->second->literal() &&
-            domain_map->InSameDomain(it->second, instruction)) {
+        if (instruction->opcode() == it->second->opcode() &&
+            domain_map->InSameDomain(it->second, instruction) &&
+            ((instruction->opcode() == HloOpcode::kConstant &&
+              instruction->literal() == it->second->literal()) ||
+             (instruction->opcode() == HloOpcode::kIota &&
+              Cast<HloIotaInstruction>(instruction)->iota_dimension() ==
+                  Cast<HloIotaInstruction>(it->second)->iota_dimension()))) {
           match = it->second;
           break;
         }
       }
       if (match == nullptr) {
-        constants.emplace(shape_string, instruction);
+        instrs.emplace(shape_string, instruction);
       } else {
         // Match found, replace this instruction with the one in the multimap.
         TF_CHECK_OK(instruction->ReplaceAllUsesWith(match));
@@ -88,8 +99,8 @@ StatusOr<bool> CombineConstants(HloComputation* computation,
       }
     }
   }
-  VLOG(4) << "Combined " << combined << " constants in " << computation->name()
-          << " computation";
+  VLOG(4) << "Combined " << combined << " constants and iotas in "
+          << computation->name() << " computation";
   return combined > 0;
 }
 
@@ -137,7 +148,6 @@ int64 CseHash(const HloInstruction* instruction) {
     case HloOpcode::kConcatenate:
     case HloOpcode::kBroadcast:
     case HloOpcode::kTranspose:
-    case HloOpcode::kIota:
     case HloOpcode::kReduce:
       return tensorflow::Hash64Combine(hash, c_hash(instruction->dimensions()));
     default:
