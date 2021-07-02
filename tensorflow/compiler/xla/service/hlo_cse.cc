@@ -117,8 +117,6 @@ int64 CseHash(const HloInstruction* instruction) {
                   static_cast<int64>(c->root_instruction()->opcode())));
   }
   switch (instruction->opcode()) {
-    case HloOpcode::kConstant:
-      return tensorflow::Hash64Combine(hash, instruction->literal().Hash());
     case HloOpcode::kSlice:
       return tensorflow::Hash64Combine(
           tensorflow::Hash64Combine(hash, c_hash(instruction->slice_starts())),
