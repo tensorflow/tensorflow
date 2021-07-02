@@ -3282,6 +3282,14 @@ cuda_py_test(
     name = "sparse_tensor_dense_matmul_op_deterministic_test",
     size = "small",
     srcs = ["sparse_tensor_dense_matmul_op_deterministic_test.py"],
+    tags = [
+        "no_cuda_asan",
+        "noasan",
+        "notsan",
+    ],  # b/192492331
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],  # b/192492331
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
