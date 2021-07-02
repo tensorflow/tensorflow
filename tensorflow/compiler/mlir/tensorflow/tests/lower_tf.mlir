@@ -1243,7 +1243,7 @@ func @selu(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> {
     // CHECK-NEXT:  %[[SCALED_FEATURES:.*]] = "tf.Mul"(%[[FEATURES]], %[[SCALE]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  %[[ELU_VAL:.*]] = "tf.Expm1"(%[[FEATURES]]) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  %[[SELU_VAL:.*]] = "tf.Mul"(%[[ELU_VAL]], %[[SCALED_ALPHA]]) : (tensor<1x4x4x3xf32>, tensor<f32>) -> tensor<1x4x4x3xf32>
-    // CHECK-NEXT:  %[[RES:.*]] = "tf.Select"(%[[PRED]], %[[SCALED_FEATURES]], %[[SELU_VAL]]) : (tensor<1x4x4x3xi1>, tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+    // CHECK-NEXT:  %[[RES:.*]] = "tf.SelectV2"(%[[PRED]], %[[SCALED_FEATURES]], %[[SELU_VAL]]) : (tensor<1x4x4x3xi1>, tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  return %[[RES]] : tensor<1x4x4x3xf32>
     %0 = "tf.Selu"(%arg0) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
     return %0 : tensor<1x4x4x3xf32>
@@ -1259,7 +1259,7 @@ func @selu_grad(%gradients: tensor<4x8xf32>, %features: tensor<4x8xf32>) -> tens
     // CHECK-NEXT:  %[[SCALED_GRADIENTS:.*]] = "tf.Mul"(%[[GRADIENTS]], %[[SCALE]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xf32>
     // CHECK-NEXT:  %[[FEATURES_PLUS_SCALED_ALPHA:.*]] = "tf.Add"(%[[FEATURES]], %[[SCALED_ALPHA]]) : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xf32>
     // CHECK-NEXT:  %[[SELU_GRAD_VALUE:.*]] = "tf.Mul"(%[[GRADIENTS]], %[[FEATURES_PLUS_SCALED_ALPHA]]) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
-    // CHECK-NEXT:  %[[RES:.*]] = "tf.Select"(%[[PRED]], %[[SCALED_GRADIENTS]], %[[SELU_GRAD_VALUE]]) : (tensor<4x8xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
+    // CHECK-NEXT:  %[[RES:.*]] = "tf.SelectV2"(%[[PRED]], %[[SCALED_GRADIENTS]], %[[SELU_GRAD_VALUE]]) : (tensor<4x8xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
     // CHECK-NEXT:  return %[[RES]] : tensor<4x8xf32>
     %2 = "tf.SeluGrad"(%gradients, %features) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
     return %2 : tensor<4x8xf32>

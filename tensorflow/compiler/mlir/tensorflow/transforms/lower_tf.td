@@ -500,8 +500,8 @@ def getScaledAlpha : NativeCodeCall<
 // scale is taken as a constant 1.0507009873554804934193349852946 and
 // scaledAlpha  is taken as a constant 1.7580993408473768599402175208123.
 
-def LowerSeluOp : Pat<(TF_SeluOp: $src_op TF_FloatTensor:$features),
-                  (TF_SelectOp
+def LowerSeluOp : Pat<(TF_SeluOp TF_FloatTensor:$features),
+                  (TF_SelectV2Op
                     (TF_GreaterOp
                       $features,
                       (TF_ConstOp (GetScalarOfType<0> $features))),
@@ -517,9 +517,9 @@ def LowerSeluOp : Pat<(TF_SeluOp: $src_op TF_FloatTensor:$features),
 // constant 1.0507009873554804934193349852946 and scaledAlpha is taken
 // as a constant 1.7580993408473768599402175208123.
 
-def LowerSeluGradOp : Pat<(TF_SeluGradOp:$src_op AnyStaticShapeTensor:$gradients, 
+def LowerSeluGradOp : Pat<(TF_SeluGradOp AnyStaticShapeTensor:$gradients,
                           TF_FloatTensor:$features),
-                      (TF_SelectOp
+                      (TF_SelectV2Op
                         (TF_GreaterOp
                           $features,
                           (TF_ConstOp (GetScalarOfType<0> $features))),
