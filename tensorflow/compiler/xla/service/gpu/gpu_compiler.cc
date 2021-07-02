@@ -1166,8 +1166,7 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
       }
 
       mlir::BlockArgument arg = func.getArgument(i);
-      sub_shapes.push_back(
-          std::make_pair(shape_index, TypeToShape(arg.getType())));
+      sub_shapes.push_back(std::make_pair(shape_index, GetShape(arg)));
     }
   }
   // Expects result_xla_shape as a XLA shape in string form.
