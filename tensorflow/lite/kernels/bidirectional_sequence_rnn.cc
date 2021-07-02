@@ -833,7 +833,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       context->ReportError(context, "Type not currently supported.");
       return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 
 }  // namespace bidirectional_sequence_rnn
