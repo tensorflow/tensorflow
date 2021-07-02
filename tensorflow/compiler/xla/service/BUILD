@@ -4387,7 +4387,6 @@ cc_library(
     hdrs = ["hlo_cse.h"],
     deps = [
         ":hlo",
-        ":hlo_casting_utils",
         ":hlo_domain_map",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
