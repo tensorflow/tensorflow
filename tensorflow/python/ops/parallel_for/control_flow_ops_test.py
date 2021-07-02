@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import sys
 import time
 
 from absl.testing import parameterized
@@ -952,16 +953,20 @@ class LoggingTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_print_v2(self):
-    x = random_ops.random_uniform([3, 5])
+    x = constant_op.constant([1, 2, 3])
 
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
       with ops.control_dependencies([
           logging_ops.print_v2(
-              x1, [x1, "x1", array_ops.shape(x1)], summarize=10)]):
-        return x1
+              x1, "x1", array_ops.shape(x1), summarize=10)]):
+        return array_ops.identity(x1)
 
     self._test_loop_fn(loop_fn, 3)
+
+    with self.captureWritesToStream(sys.stderr) as printed:
+      self.evaluate(pfor_control_flow_ops.pfor(loop_fn, 3))
+    self.assertIn("[1 2 3] x1 []", printed.contents())
 
   def test_assert(self):
 
