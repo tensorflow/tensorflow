@@ -278,6 +278,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
 
+  void ResetGlobalRendezvousForFunction() override {
+    mutex_lock l(global_rendezvous_mu_);
+    global_rendezvous_for_functions_ =
+        core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  }
+
   // Returns a function which maps from step_id to rendezvous. This closure
   // respects the value of `SetReuseRendezvousForFunctions` at the time the
   // closure was created, which allows the setting to be toggled around async op
