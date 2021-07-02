@@ -136,10 +136,12 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
 }  // namespace chlo
 
 class LLVMTypeConverter;
+class SymbolTable;
 
 namespace disc_ral {
 
 void populateDiscRalToLLVMConversionPatterns(LLVMTypeConverter* converter,
+                                             SymbolTable* symbol_table,
                                              RewritePatternSet* patterns);
 
 }  // namespace disc_ral
