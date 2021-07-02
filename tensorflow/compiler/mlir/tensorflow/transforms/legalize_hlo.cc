@@ -110,27 +110,33 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
         conv_op.dimension_numbers().input_spatial_dimensions().getNumElements();
     const bool is_depthwise_conv = input_channels == feature_group_count;
     std::string padding;
+    SmallVector<int64_t, 8> explicit_padding;
     if (!conv_op.padding().hasValue() ||
         (conv_op.padding().getValue().isSplat() &&
          conv_op.padding()->getSplatValue<int64_t>() == 0)) {
       padding = "VALID";
     } else {
-      // Check if padding is "SAME".
-      // TODO(chhe): To support "EXPLICIT" padding.
-      SmallVector<int64_t, 8> padding_array;
+      SmallVector<int64_t, 4> padding_array;
       for (const auto v : conv_op.padding().getValue().getValues<int64_t>()) {
         padding_array.emplace_back(v);
       }
 
-      if (!IsSamePadding(conv_op, num_spatial_dims, strides, dilation,
-                         padding_array))
-        return failure();
-
-      padding = "SAME";
+      if (IsSamePadding(conv_op, num_spatial_dims, strides, dilation,
+                        padding_array)) {
+        // Check if padding is "SAME".
+        padding = "SAME";
+      } else {
+        padding = "EXPLICIT";
+        explicit_padding.push_back(0);
+        explicit_padding.push_back(0);
+        explicit_padding.append(padding_array);
+        explicit_padding.push_back(0);
+        explicit_padding.push_back(0);
+      }
     }
 
-    CreateConvOp(conv_op, strides, padding, dilation, is_depthwise_conv,
-                 input_channels, num_spatial_dims, rewriter);
+    CreateConvOp(conv_op, strides, padding, explicit_padding, dilation,
+                 is_depthwise_conv, input_channels, num_spatial_dims, rewriter);
     return success();
   };
 
@@ -232,9 +238,9 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
   }
 
   void CreateConvOp(mhlo::ConvOp conv_op, ArrayRef<int64_t> strides,
-                    StringRef padding, ArrayRef<int64_t> dilation,
-                    bool is_depthwise_conv, int input_channels,
-                    int num_spatial_dims,
+                    StringRef padding, ArrayRef<int64_t> explicit_padding,
+                    ArrayRef<int64_t> dilation, bool is_depthwise_conv,
+                    int input_channels, int num_spatial_dims,
                     ConversionPatternRewriter &rewriter) const {
     // Transposes lhs and rhs if their formats are not NHWC.
     Value lhs = FormatToNHWC(
@@ -299,7 +305,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
           conv_op.getLoc(), conv_output_type, lhs, reshaped_filter,
           rewriter.getI64ArrayAttr(strides),
           /*padding=*/rewriter.getStringAttr(padding),
-          /*explicit_paddings=*/rewriter.getI64ArrayAttr({}),
+          /*explicit_paddings=*/rewriter.getI64ArrayAttr(explicit_padding),
           /*data_format=*/rewriter.getStringAttr("NHWC"),
           /*dilations=*/rewriter.getI64ArrayAttr(dilation));
     } else {
@@ -308,7 +314,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
           rewriter.getI64ArrayAttr(strides),
           /*use_cudnn_on_gpu=*/rewriter.getBoolAttr(true),
           /*padding=*/rewriter.getStringAttr(padding),
-          /*explicit_paddings=*/rewriter.getI64ArrayAttr({}),
+          /*explicit_paddings=*/rewriter.getI64ArrayAttr(explicit_padding),
           /*data_format=*/rewriter.getStringAttr("NHWC"),
           /*dilations=*/rewriter.getI64ArrayAttr(dilation));
     }
