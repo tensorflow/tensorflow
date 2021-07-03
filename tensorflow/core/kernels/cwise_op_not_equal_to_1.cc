@@ -50,5 +50,4 @@ REGISTER_KERNEL_BUILDER(Name("NotEqual")
                         BinaryOp<CPUDevice, functor::not_equal_to<int32>>);
 #endif
 
-
 }  // namespace tensorflow
