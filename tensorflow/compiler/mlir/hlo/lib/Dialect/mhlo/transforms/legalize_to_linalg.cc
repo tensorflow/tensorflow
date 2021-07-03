@@ -1257,13 +1257,12 @@ class SliceConverter : public OpConversionPattern<OpTy> {
 
     SmallVector<OpFoldResult, 3> offsets, sizes, strides;
     for (int i = 0, e = arg_type.getRank(); i < e; ++i) {
-      offsets.push_back(rewriter.getI64IntegerAttr(
-          slice_op.start_indices().template getValue<int64_t>(i)));
-      sizes.push_back(rewriter.getI64IntegerAttr(
-          slice_op.limit_indices().template getValue<int64_t>(i) -
-          slice_op.start_indices().template getValue<int64_t>(i)));
-      strides.push_back(rewriter.getI64IntegerAttr(
-          slice_op.strides().template getValue<int64_t>(i)));
+      auto start = slice_op.start_indices().template getValue<int64_t>(i);
+      auto limit = slice_op.limit_indices().template getValue<int64_t>(i);
+      auto stride = slice_op.strides().template getValue<int64_t>(i);
+      offsets.push_back(rewriter.getI64IntegerAttr(start));
+      sizes.push_back(rewriter.getI64IntegerAttr((limit - start) / stride));
+      strides.push_back(rewriter.getI64IntegerAttr(stride));
     }
     if (isLHLO) {
       auto linalg_op = rewriter.create<memref::SubViewOp>(loc, args[0], offsets,
