@@ -20,7 +20,7 @@ REGISTER8(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
           float, Eigen::half, double, bfloat16, int32, int64, complex64,
           complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
           float, Eigen::half, double, int64);
 #endif
@@ -32,6 +32,15 @@ REGISTER4(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
 REGISTER_KERNEL_BUILDER(
     Name("SquaredDifference")
         .Device(DEVICE_GPU)
+        .HostMemory("x")
+        .HostMemory("y")
+        .HostMemory("z")
+        .TypeConstraint<int32>("T"),
+    BinaryOp<CPUDevice, functor::squared_difference<int32>>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("SquaredDifference")
+        .Device(DEVICE_DEFAULT)
         .HostMemory("x")
         .HostMemory("y")
         .HostMemory("z")

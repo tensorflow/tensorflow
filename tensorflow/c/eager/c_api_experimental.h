@@ -655,6 +655,34 @@ TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
                                                     const char* prefix,
                                                     TF_Status* status);
 
+// Set configuration key and value using coordination service.
+// If coordination service is enabled, the key-value will be stored on the
+// leader and become accessible to all workers in the cluster.
+// Currently, a config key can only be set with one value, and subsequently
+// setting the same key will lead to errors.
+//
+// Note that the key-values are only expected to be used for cluster
+// configuration data, and should not be used for storing large amount of data
+// or being accessed very frequently.
+TF_CAPI_EXPORT extern void TFE_SetConfigKeyValue(TFE_Context* ctx,
+                                                 const char* key,
+                                                 const char* value,
+                                                 TF_Status* status);
+
+// Get configuration key and value using coordination service.
+// The config key must be set before getting its value. Getting value of
+// non-existing config keys will result in errors.
+TF_CAPI_EXPORT extern void TFE_GetConfigKeyValue(TFE_Context* ctx,
+                                                 const char* key,
+                                                 TF_Buffer* value_buf,
+                                                 TF_Status* status);
+
+// Delete configuration key-value. If `key` is a directory, recursively clean up
+// all key-values under the path specified by `key`.
+TF_CAPI_EXPORT extern void TFE_DeleteConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -493,6 +493,7 @@ cc_library(
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h",
         "include/mlir-hlo/utils/broadcast_utils.h",
         "include/mlir-hlo/utils/hlo_utils.h",
     ],
@@ -513,6 +514,7 @@ cc_library(
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:SideEffects",
@@ -528,16 +530,13 @@ cc_library(
 cc_library(
     name = "lhlo",
     srcs = [
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
-        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h.inc",
         "lib/Dialect/mhlo/IR/lhlo_ops.cc",
         "lib/Dialect/mhlo/IR/lhlo_ops_structs.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h",
+        "include/mlir-hlo/utils/lhlo_utils.h",
     ],
     includes = ["include"],
     deps = [
@@ -582,6 +581,7 @@ cc_library(
         ":hlo_ops_base_structs",
         ":hlo_ops_common",
         ":infer_fusibility_op_interface",
+        ":lhlo",
         ":lhlo_gpu_ops_enums",
         ":lhlo_gpu_ops_inc_gen",
         ":lhlo_gpu_ops_structs",
@@ -603,11 +603,126 @@ cc_library(
     alwayslink = 1,
 )
 
+gentbl_cc_library(
+    name = "DiscRalPassIncGen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=RAL",
+            ],
+            "include/mlir-hlo/Dialect/mhlo/transforms/disc_ral_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/transforms/disc_ral_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "disc_ral_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+cc_library(
+    name = "disc_ral",
+    srcs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h.inc",
+        "lib/Dialect/mhlo/IR/disc_ral_ops.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":disc_ral_ops_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:CopyOpInterface",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:ViewLikeInterface",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "ral_inject_execution_context",
+    srcs = ["lib/Dialect/mhlo/transforms/ral_inject_execution_context.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":disc_ral",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "ral_lower_to_library_call",
+    srcs = ["lib/Dialect/mhlo/transforms/ral_lower_to_library_call.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":disc_ral",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TensorTransforms",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "hlo_dialect_registration",
     srcs = ["lib/Dialect/mhlo/IR/init.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
     deps = [
+        ":disc_ral",
         ":hlo",
         ":lhlo",
         ":lhlo_gpu",
@@ -641,6 +756,7 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
     deps = [
         ":hlo",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -648,6 +764,17 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_library(
+    name = "type_conversion",
+    srcs = ["lib/Dialect/mhlo/transforms/type_conversion.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -692,6 +819,7 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_lmhlo_to_scalar_op",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
@@ -707,6 +835,7 @@ cc_library(
     srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_parallel_loops.cc"],
     deps = [
         ":lhlo",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
@@ -730,6 +859,8 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_lmhlo_to_scalar_op",
+        ":pass_details",
+        ":type_conversion",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
@@ -747,8 +878,8 @@ cc_library(
 )
 
 cc_library(
-    name = "transform_unranked_hlo",
-    srcs = ["lib/Dialect/mhlo/transforms/transform_unranked_hlo.cc"],
+    name = "broadcast_propagation",
+    srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
@@ -756,28 +887,7 @@ cc_library(
     deps = [
         ":hlo",
         ":map_chlo_to_hlo_op",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "move_up_dynamic_broadcasts_for_fusion",
-    srcs = ["lib/Dialect/mhlo/transforms/move_up_dynamic_broadcasts_for_fusion.cc"],
-    hdrs = [
-        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
-        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
-    ],
-    deps = [
-        ":hlo",
-        ":map_chlo_to_hlo_op",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -821,6 +931,7 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_lmhlo_to_scalar_op",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:GPUDialect",
@@ -841,6 +952,7 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
     deps = [
         ":lhlo",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
@@ -858,6 +970,18 @@ cc_library(
 )
 
 cc_library(
+    name = "mhlo_canonicalize_reduction",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_canonicalize_reduction.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_lhlo.cc"],
     hdrs = [
@@ -868,6 +992,31 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_hlo_to_lhlo_op",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeTransforms",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardOpsTransforms",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "hlo_legalize_to_memref",
+    srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_memref.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
         ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -912,6 +1061,7 @@ cc_library(
     deps = [
         ":cycle_detector",
         ":hlo",
+        ":pass_details",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -947,6 +1097,7 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
     deps = [
         ":hlo",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -965,12 +1116,33 @@ cc_library(
         ":hlo",
         ":legalize_to_standard_inc_gen",
         ":legalize_trigonometric_to_approximation",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "legalize_einsum_to_dot_general",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_einsum_to_dot_general.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -984,6 +1156,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1003,6 +1176,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MathDialect",
@@ -1047,6 +1221,7 @@ cc_library(
     deps = [
         ":hlo",
         ":lower_complex_inc_gen",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -1099,6 +1274,7 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
     deps = [
         ":lhlo",
+        ":pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
@@ -1109,6 +1285,53 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
+)
+
+cc_library(
+    name = "fusion_utils",
+    srcs = ["lib/Dialect/mhlo/transforms/fusion_utils.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/fusion_utils.h"],
+    deps = [
+        ":lhlo",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_fusion",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_fusion.cc"],
+    deps = [
+        ":cycle_detector",
+        ":fusion_utils",
+        ":lhlo",
+        ":pass_details",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_fusion_inliner",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_fusion_inliner.cc"],
+    deps = [
+        ":lhlo",
+        ":pass_details",
+        "@llvm-project//mlir:Pass",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1153,6 +1376,8 @@ cc_library(
         "//visibility:private",  # This target is a private detail of pass implementations
     ],
     deps = [
+        ":DiscRalPassIncGen",
+        ":LmhloPassIncGen",
         ":MhloPassIncGen",
         "@llvm-project//mlir:Pass",
     ],
@@ -1162,6 +1387,7 @@ cc_library(
     name = "test_passes",
     srcs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+        "lib/Analysis/test_userange_analysis.cc",
         "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_pass.cc",
         "lib/Dialect/mhlo/transforms/materialize_broadcasts_pass.cc",
         "lib/Dialect/mhlo/transforms/optimize_mhlo_pass.cc",
@@ -1174,7 +1400,10 @@ cc_library(
         ":lhlo",
         ":materialize_broadcasts",  # build-cleaner: keep
         ":pass_details",
+        ":transforms_pass_details",
         ":unfuse_batch_norm",  # build-cleaner: keep
+        ":userange_analysis",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LLVMDialect",
@@ -1194,16 +1423,21 @@ cc_library(
     name = "all_passes",
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h",
+        "include/mlir-hlo/Transforms/register_passes.h",
     ],
     visibility = [
         ":friends",
     ],
     deps = [
+        ":DiscRalPassIncGen",
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
+        ":broadcast_propagation",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
+        ":hlo_legalize_to_memref",
         ":legalize_control_flow",
+        ":legalize_einsum_to_dot_general",
         ":legalize_gather_to_torch_index_select",
         ":legalize_tensor_load_op",
         ":legalize_to_linalg",
@@ -1211,18 +1445,77 @@ cc_library(
         ":legalize_trigonometric_to_approximation",
         ":lhlo",
         ":lhlo_fuse_linalg",
+        ":lhlo_fusion",
+        ":lhlo_fusion_inliner",
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
+        ":mhlo_canonicalize_reduction",
         ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
-        ":move_up_dynamic_broadcasts_for_fusion",
+        ":ral_inject_execution_context",
+        ":ral_lower_to_library_call",
         ":rank_specialization",
         ":sink_constants_to_control_flow",
         ":test_passes",
-        ":transform_unranked_hlo",
+        ":transforms_pass_details",
+        ":transforms_pass_inc_gen",
+        ":userange_analysis",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+gentbl_cc_library(
+    name = "transforms_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=LMHLOTransforms",
+            ],
+            "include/mlir-hlo/Transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Transforms/passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "transforms_pass_details",
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    visibility = [
+        "//visibility:private",  # This target is a private detail of pass implementations
+    ],
+    deps = [
+        ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "userange_analysis",
+    srcs = ["lib/Analysis/userange_analysis.cc"],
+    hdrs = [
+        "include/mlir-hlo/Analysis/userange_analysis.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -1233,6 +1526,7 @@ cc_binary(
     ],
     deps = [
         ":all_passes",
+        ":disc_ral",
         ":hlo",
         ":lhlo",
         ":lhlo_gpu",

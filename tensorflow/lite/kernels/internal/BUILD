@@ -2,7 +2,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
@@ -242,7 +242,7 @@ selects.config_setting_group(
         ":ios_arm64e",
         ":darwin_arm64",
         ":raspberry_pi_with_neon",
-    ],
+    ] + tflite_extra_arm_config_settings(),
 )
 
 cc_library(
@@ -349,7 +349,6 @@ cc_library(
     name = "optimized_eigen",
     hdrs = [
         "optimized/eigen_spatial_convolutions.h",
-        "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -1110,8 +1109,6 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-
-exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
 
 filegroup(
     name = "optimized_op_headers",

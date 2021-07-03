@@ -120,12 +120,12 @@ struct ComputeOpAndFuncBufferizePass
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect, math::MathDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<SubTensorOp, SubTensorInsertOp>();
+    target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
 
     CustomBufferizeTypeConverter converter;
     // Configure bufferize pattern for functions and lhlo.
-    mhlo::populateDynamicHLOToLHLOOrMemRefConversionPattern(
-        &context, &converter, &patterns, /*insert_copy=*/false);
+    mhlo::populateHLOToMemrefConversionPattern(&converter, &patterns,
+                                               /*enforce_identity_map=*/false);
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
@@ -158,9 +158,9 @@ struct ComputeOpAndFuncBufferizePass
 struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, scf::SCFDialect, shape::ShapeDialect,
-                    tensor::TensorDialect, tf_framework::TFFrameworkDialect,
-                    lmhlo::LmhloDialect>();
+    registry.insert<AffineDialect, memref::MemRefDialect, scf::SCFDialect,
+                    shape::ShapeDialect, tensor::TensorDialect,
+                    tf_framework::TFFrameworkDialect, lmhlo::LmhloDialect>();
   }
 
  public:
@@ -177,7 +177,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
-                        tensor::FromElementsOp, tensor::CastOp,
+                        tensor::FromElementsOp, tensor::CastOp, tensor::DimOp,
                         chlo::MinimumBroadcastShapesOp, memref::TensorLoadOp,
                         memref::BufferCastOp, linalg::TensorExpandShapeOp,
                         linalg::TensorCollapseShapeOp>();
@@ -186,8 +186,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<ConstantOp, memref::DimOp, IndexCastOp, RankOp,
-                                 SelectOp>(typesAreLegal);
+    target.addDynamicallyLegalOp<ConstantOp, IndexCastOp, RankOp, SelectOp>(
+        typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
     linalg::populateLinalgBufferizePatterns(converter, patterns);

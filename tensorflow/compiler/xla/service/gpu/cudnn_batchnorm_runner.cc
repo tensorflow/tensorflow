@@ -132,7 +132,7 @@ void AssignCommonParams(const CudnnBatchNormConfig& config,
 template <typename ElemType>
 void RunCudnnBatchNormForwardInferenceImpl(
     CudnnBatchNormForwardInferenceParams* params, se::Stream* stream) {
-  se::DeviceMemory<float> null_device_ptr(nullptr);
+  se::DeviceMemory<ElemType> null_device_ptr(nullptr);
   auto output_buf = se::DeviceMemory<ElemType>(params->output);
   stream->ThenBatchNormalizationForward(
       se::DeviceMemory<ElemType>(params->common.operand),
@@ -161,6 +161,7 @@ template <typename ElemType>
 void RunCudnnBatchNormForwardTrainingImpl(
     CudnnBatchNormForwardTrainingParams* params, se::Stream* stream) {
   se::DeviceMemory<float> null_device_ptr(nullptr);
+  se::DeviceMemory<ElemType> null_elem_device_ptr(nullptr);
   auto output_data = se::DeviceMemory<ElemType>(params->output_data);
   stream->ThenBatchNormalizationForward(
       se::DeviceMemory<ElemType>(params->common.operand),
@@ -168,7 +169,7 @@ void RunCudnnBatchNormForwardTrainingImpl(
       params->offset,                          //
       /*estimated_mean=*/null_device_ptr,      //
       /*estimated_variance=*/null_device_ptr,  //
-      /*side_input=*/null_device_ptr,          //
+      /*side_input=*/null_elem_device_ptr,     //
       params->common.operand_desc,             //
       params->common.scale_offset_desc,        //
       params->common.epsilon,                  //

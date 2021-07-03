@@ -51,8 +51,8 @@ pip2 install --upgrade markdown==2.6.8
 pip3 install --upgrade markdown==2.6.8
 
 # Install protobuf.
-pip2 install --upgrade protobuf==3.6.1
-pip3 install --upgrade protobuf==3.6.1
+pip2 install --upgrade protobuf==3.16.0
+pip3 install --upgrade protobuf==3.16.0
 
 pip2 install --upgrade numpy==1.14.5
 pip3 install --upgrade numpy~=1.19.2
@@ -99,6 +99,8 @@ pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
 
 # Keras
+pip2 install keras-nightly --no-deps
+pip3 install keras-nightly --no-deps
 pip2 install keras_preprocessing==1.0.5 --no-deps
 pip3 install keras_preprocessing==1.0.5 --no-deps
 pip2 install --upgrade h5py==2.8.0

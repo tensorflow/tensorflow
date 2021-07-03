@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -98,7 +99,7 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
   config.operand_count = op.operands().size();
   config.operand_element_type.reserve(config.operand_count);
   for (int i = 0; i < config.operand_count; i++) {
-    const Shape shape = TypeToShape(op.operands()[i].getType());
+    const Shape shape = GetShape(op.operands()[i]);
     config.operand_element_type.push_back(shape.element_type());
   }
   config.replica_groups =

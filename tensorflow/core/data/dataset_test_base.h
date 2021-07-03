@@ -574,11 +574,11 @@ class DatasetOpsTestBase : public ::testing::Test {
                      std::unique_ptr<TestDataset>* dataset);
 
   // Creates an iterator for the given dataset, using the specified split
-  // provider.
-  Status MakeIterator(const DatasetParams& dataset_params,
-                      const TestDataset& dataset,
-                      std::unique_ptr<SplitProvider> split_provider,
-                      std::unique_ptr<TestIterator>* iterator);
+  // providers.
+  Status MakeIterator(
+      const DatasetParams& dataset_params, const TestDataset& dataset,
+      std::vector<std::unique_ptr<SplitProvider>> split_providers,
+      std::unique_ptr<TestIterator>* iterator);
   // Creates an iterator for the given dataset.
   Status MakeIterator(const DatasetParams& dataset_params,
                       const TestDataset& dataset,

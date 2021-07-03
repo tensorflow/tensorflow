@@ -339,7 +339,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         for (size_t j = 0; j < num_return_values; j++) {
           result.return_values.emplace_back();
           TF_RETURN_IF_ERROR(reader->ReadTensor(
-              element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+              ctx->flr(), element_prefix, absl::StrCat(kComponent, "[", j, "]"),
               &result.return_values.back()));
         }
         result.end_of_input = reader->Contains(element_prefix, kEndOfInput);
@@ -724,7 +724,11 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                           &captured_func));
 
   if (num_parallel_calls == model::kAutotune) {
-    metrics::RecordTFDataAutotune(kDatasetType);
+    if (GetExperiments().contains("max_parallelism")) {
+      num_parallel_calls = port::NumSchedulableCPUs();
+    } else {
+      metrics::RecordTFDataAutotune(kDatasetType);
+    }
   }
 
   *output =

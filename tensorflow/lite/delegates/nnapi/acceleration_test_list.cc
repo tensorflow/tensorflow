@@ -318,7 +318,8 @@ PowOpModel/.+,29
 QuantizedLstmTest/BasicQuantizedLstmTest/29
 
 # quantized_lstm op test
-IntegerLstmOpTest/NoCifg_NoPeephole_Projection_LayerNorm,30
+# Temporary disabled due to b/188515203
+//IntegerLstmOpTest/NoCifg_NoPeephole_Projection_LayerNorm,30
 
 # quantize_test
 QuantizeOpTest/UINT8,29

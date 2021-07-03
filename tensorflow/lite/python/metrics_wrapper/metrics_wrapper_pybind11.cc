@@ -39,10 +39,10 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_metrics_wrapper, m) {
       .def("ExportMetrics", [](MetricsWrapper& self) {
         return tensorflow::PyoOrThrow(self.ExportMetrics());
       });
-  m.def("GetCollectedErrors", []() {
+  m.def("RetrieveCollectedErrors", []() {
     py::list serialized_message_list;
     for (const auto& error_data :
-         tflite::metrics_wrapper::GetCollectedErrors()) {
+         tflite::metrics_wrapper::RetrieveCollectedErrors()) {
       serialized_message_list.append(py::bytes(error_data));
     }
     return serialized_message_list;

@@ -1298,8 +1298,18 @@ class DataHandler(object):
     # TODO(b/150292341): Allow multiple async steps here.
     return self._inferred_steps is None
 
+  def _log_indefinite_training_warning(self):
+    logging.warning("The training loop will run indefinitely since you have "
+                    "set `steps_per_epoch=-1`. Please use batch-level "
+                    "callbacks to save checkpoints or log training progress, "
+                    "etc")
+
   def _infer_steps(self, steps, dataset):
     """Infers steps_per_epoch needed to loop through a dataset."""
+    if steps == -1:
+      self._log_indefinite_training_warning()
+      return None
+
     if steps is not None:
       return steps
 
@@ -1309,8 +1319,12 @@ class DataHandler(object):
 
     size = cardinality.cardinality(dataset)
     if size == cardinality.INFINITE and steps is None:
-      raise ValueError("When passing an infinitely repeating dataset, you "
-                       "must specify how many steps to draw.")
+      raise ValueError(
+          "When passing an infinitely repeating dataset, please specify a "
+          "`steps_per_epoch` value so that epoch level "
+          "callbacks continue to work. The value can be arbitrary, or a number "
+          "that you think correctly defines the size of an epoch. "
+          "Epoch-level callbacks will then be called at this interval.")
     if size >= 0:
       return size.numpy().item()
     return None
@@ -1369,10 +1383,12 @@ class _ClusterCoordinatorDataHandler(DataHandler):
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)
-    if steps_per_epoch is None:
-      raise ValueError(
-          "`steps_per_epoch` must be specified with `ParameterServerStrategy`.")
-    self._inferred_steps = steps_per_epoch
+
+    if steps_per_epoch == -1:
+      self._inferred_steps = None
+      self._log_indefinite_training_warning()
+    else:
+      self._inferred_steps = steps_per_epoch
 
   def sync(self):
     self._model._cluster_coordinator.join()  # pylint: disable=protected-access

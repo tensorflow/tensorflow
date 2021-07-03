@@ -13,6 +13,7 @@ tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
+tensorflow/lite/core/shims/cc/create_op_resolver.h
 tensorflow/lite/core/shims/cc/experimental/acceleration/configuration/delegate_registry.h
 tensorflow/lite/core/shims/cc/interpreter.h
 tensorflow/lite/core/shims/cc/interpreter_builder.h
@@ -26,7 +27,8 @@ tensorflow/lite/core/shims/cc_library_with_tflite.bzl
 tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
-tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h
+tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl
 tensorflow/lite/java/src/main/native/BUILD
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
@@ -52,7 +54,6 @@ tensorflow/third_party/android/android_configure.bzl
 tensorflow/third_party/arm_neon_2_x86_sse.BUILD
 tensorflow/third_party/astor.BUILD
 tensorflow/third_party/astunparse.BUILD
-tensorflow/third_party/backports_weakref.BUILD
 tensorflow/third_party/boringssl/BUILD
 tensorflow/third_party/clang_toolchain/BUILD
 tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
@@ -231,21 +232,8 @@ tensorflow/third_party/tflite_mobilenet_quant.BUILD
 tensorflow/third_party/tflite_ovic_testdata.BUILD
 tensorflow/third_party/tflite_smartreply.BUILD
 tensorflow/third_party/toolchains/BUILD
-tensorflow/third_party/toolchains/cpus/arm/BUILD
-tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
-tensorflow/third_party/toolchains/cpus/arm/cc_config.bzl.tpl
-tensorflow/third_party/toolchains/cpus/py/BUILD
-tensorflow/third_party/toolchains/cpus/py3/BUILD
-tensorflow/third_party/toolchains/embedded/README.md
-tensorflow/third_party/toolchains/embedded/arm-linux/BUILD
-tensorflow/third_party/toolchains/embedded/arm-linux/README.md
-tensorflow/third_party/toolchains/embedded/arm-linux/aarch64-linux-toolchain.BUILD
-tensorflow/third_party/toolchains/embedded/arm-linux/arm_linux_toolchain_configure.bzl
-tensorflow/third_party/toolchains/embedded/arm-linux/armhf-linux-toolchain.BUILD
-tensorflow/third_party/toolchains/embedded/arm-linux/cc_config.bzl.tpl
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
-tensorflow/third_party/toolchains/preconfig/generate/containers.bzl
 tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_config.bzl
@@ -269,6 +257,9 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/win/BUILD
 tensorflow/third_party/toolchains/preconfig/win/bazel_211/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_06152021/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_06212021/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_06242021/BUILD
 tensorflow/third_party/toolchains/preconfig/win/tf_win_08062020/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD

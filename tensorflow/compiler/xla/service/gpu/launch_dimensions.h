@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -57,6 +58,14 @@ class LaunchDimensions {
            thread_counts_per_block_.z;
   }
 
+  std::string ToString() const {
+    return absl::StrCat("blocks: {", block_counts_.x, ", ", block_counts_.y,
+                        ", ", block_counts_.z, "}, threads/block: {",
+                        thread_counts_per_block_.x, ", ",
+                        thread_counts_per_block_.y, ", ",
+                        thread_counts_per_block_.z, "}");
+  }
+
  private:
   Dim3D block_counts_;
   Dim3D thread_counts_per_block_;
@@ -80,6 +89,12 @@ struct LaunchDimensionsConfig {
   // `hlo.shape().dimensions().back()/unroll_factor`.
   // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;
+
+  std::string ToString() {
+    return absl::StrCat("unroll_factor=", unroll_factor,
+                        ", few_waves=", few_waves,
+                        ", row_vectorized=", row_vectorized);
+  }
 };
 
 // Returns -1 if the shape doesn't allows the row vectorization code path.

@@ -9,8 +9,8 @@ load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
-load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//third_party/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
+load("@tf_toolchains//toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
+load("@tf_toolchains//toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
@@ -103,7 +103,7 @@ def _tf_toolchains():
     # Point //external/local_config_arm_compiler to //external/arm_compiler
     arm_compiler_configure(
         name = "local_config_arm_compiler",
-        build_file = "//third_party/toolchains/cpus/arm:BUILD",
+        build_file = "@tf_toolchains//toolchains/cpus/arm:BUILD",
         remote_config_repo_arm = "../arm_compiler",
         remote_config_repo_aarch64 = "../aarch64_compiler",
     )
@@ -111,7 +111,7 @@ def _tf_toolchains():
     # TFLite crossbuild toolchain for embeddeds Linux
     arm_linux_toolchain_configure(
         name = "local_config_embedded_arm",
-        build_file = "//third_party/toolchains/embedded/arm-linux:BUILD",
+        build_file = "@tf_toolchains//toolchains/embedded/arm-linux:BUILD",
         aarch64_repo = "../aarch64_linux_toolchain",
         armhf_repo = "../armhf_linux_toolchain",
     )
@@ -127,11 +127,11 @@ def _tf_repositories():
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "5482fb0fcdc1df8b4842f8edf944443ea67ffe712a5cd846f0af484abe4f9a79",
-        strip_prefix = "XNNPACK-8f15372eb67ffab0d54cfe3752acaf8f8415af17",
+        sha256 = "96d81ea94cfcd7a6d8a0424af60198b731f660b7f720ffdc99e0a98b86eabd55",
+        strip_prefix = "XNNPACK-75d1b7977fd4e732d17d9948bab2f071632b0414",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/8f15372eb67ffab0d54cfe3752acaf8f8415af17.zip",
-            "https://github.com/google/XNNPACK/archive/8f15372eb67ffab0d54cfe3752acaf8f8415af17.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/75d1b7977fd4e732d17d9948bab2f071632b0414.zip",
+            "https://github.com/google/XNNPACK/archive/75d1b7977fd4e732d17d9948bab2f071632b0414.zip",
         ],
     )
 
@@ -159,11 +159,11 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = "//third_party:cudnn_frontend_header_fix.patch",
-        sha256 = "498f908ced41bbf524af6b89dc4229d5cc89311bfaaed1e3794981e858629196",
-        strip_prefix = "cudnn-frontend-360d6e7164dfb7c802493fd1c0464f0d815b852a",
+        sha256 = "60b085e1412144e0b24f8b01809857d3a4491c9b2b1c58f0766f673b791d05ca",
+        strip_prefix = "cudnn-frontend-51e60d891b689d618e7a623509a779c422a420f7",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVIDIA/cudnn-frontend/archive/360d6e7164dfb7c802493fd1c0464f0d815b852a.zip",
-            "https://github.com/NVIDIA/cudnn-frontend/archive/360d6e7164dfb7c802493fd1c0464f0d815b852a.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVIDIA/cudnn-frontend/archive/51e60d891b689d618e7a623509a779c422a420f7.zip",
+            "https://github.com/NVIDIA/cudnn-frontend/archive/51e60d891b689d618e7a623509a779c422a420f7.zip",
         ],
     )
 
@@ -181,11 +181,11 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "4d655c0751ee6439584ef5e3d465953fe0c2f4ee2700bc02699bdc1d1572af0d",
-        strip_prefix = "oneDNN-2.2",
+        sha256 = "82795714f11649b2a3f797d99bd07d117cde97215f55654b028ca00f3b33e0cb",
+        strip_prefix = "oneDNN-2.3-rc2",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
         ],
     )
 
@@ -239,7 +239,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "aarch64_linux_toolchain",
-        build_file = "//third_party/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
+        build_file = "@tf_toolchains//toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
         sha256 = "8ce3e7688a47d8cd2d8e8323f147104ae1c8139520eca50ccf8a7fa933002731",
         strip_prefix = "gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu",
         urls = [
@@ -250,7 +250,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "armhf_linux_toolchain",
-        build_file = "//third_party/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
+        build_file = "@tf_toolchains//toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
         sha256 = "d4f6480ecaa99e977e3833cc8a8e1263f9eecd1ce2d022bb548a24c4f32670f5",
         strip_prefix = "gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf",
         urls = [
@@ -517,17 +517,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "org_python_pypi_backports_weakref",
-        build_file = "//third_party:backports_weakref.BUILD",
-        sha256 = "8813bf712a66b3d8b85dc289e1104ed220f1878cf981e2fe756dfaabe9a82892",
-        strip_prefix = "backports.weakref-1.0rc1/src",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
-            "https://pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
         name = "dill_archive",
         build_file = "//third_party:dill.BUILD",
         system_build_file = "//third_party/systemlibs:dill.BUILD",
@@ -570,6 +559,7 @@ def _tf_repositories():
         system_build_file = "//third_party/systemlibs:protobuf.BUILD",
         system_link_files = {
             "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
+            "//third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
         },
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",

@@ -93,7 +93,7 @@ bool CanTriviallyChangeShape(const HloInstruction* instruction) {
 // Returns true iff `instruction` is a reshape/transpose instruction for which
 // a shape change is nontrivial.
 bool IsNontrivialReshape(const HloInstruction* instruction) {
-  return !ShapeUtil::IsScalar(instruction->shape()) &&
+  return !ShapeUtil::IsEffectiveScalar(instruction->shape()) &&
          IsReshapeOrTranspose(instruction) &&
          !CanTriviallyChangeShape(instruction->operand(0));
 }
@@ -392,8 +392,8 @@ StatusOr<bool> TryReshapeMoveOnCandidates(
 
 StatusOr<bool> ReshapeMover::Run(HloModule* module) {
   bool changed = false;
-  VLOG(2) << "Pre ReshapeMover HLO:";
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(6) << "Pre ReshapeMover HLO:";
+  XLA_VLOG_LINES(6, module->ToString());
   for (auto* comp : module->MakeNonfusionComputations()) {
     HloInstructionSet reshape_candidates;
     for (HloInstruction* instruction : comp->instructions()) {
@@ -405,8 +405,8 @@ StatusOr<bool> ReshapeMover::Run(HloModule* module) {
                         TryReshapeMoveOnCandidates(&reshape_candidates));
     changed |= did_change;
   }
-  VLOG(2) << "Post ReshapeMover HLO:";
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(6) << "Post ReshapeMover HLO:";
+  XLA_VLOG_LINES(6, module->ToString());
   return changed;
 }
 

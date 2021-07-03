@@ -371,6 +371,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # TODO(b/182391774)
+        "no_oss",  # TODO(b/191770103)
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "noguitar",  # TODO(b/172354344)

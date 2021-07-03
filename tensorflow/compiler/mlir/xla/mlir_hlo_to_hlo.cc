@@ -28,9 +28,11 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -84,6 +86,7 @@ constexpr char kRepicationAttr[] = "mhlo.is_same_data_across_replicas";
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
 constexpr char kLayoutAttr[] = "layout";
+constexpr char kDefaultLayoutAttrName[] = "minor_to_major";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -185,9 +188,10 @@ static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
   return xla::ConvertTranspose(transpose_str).ValueOrDie();
 }
 
-static xla::Layout ExtractLayout(mlir::Operation* op, int rank,
-                                 llvm::StringRef attr_name = "minor_to_major") {
-  if (auto attr = GetLayoutFromMlirHlo(op, attr_name)) {
+static xla::Layout ExtractLayout(
+    mlir::Operation* op, int rank,
+    llvm::StringRef attr_name = kDefaultLayoutAttrName) {
+  if (auto attr = op->getAttrOfType<mlir::DenseIntElementsAttr>(attr_name)) {
     llvm::SmallVector<int64, 4> minor_to_major;
     DCHECK_EQ(rank, attr.size());
     minor_to_major.reserve(attr.size());
@@ -626,6 +630,31 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   value_map[op] = xla::AllReduce(operand, computation,
                                  Convert_replica_groups(op.replica_groups()),
                                  Convert_channel_handle(op.channel_handle()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(AllReduceScatterOp op, OpLoweringContext ctx) {
+  auto& valueMap = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
+  TensorType operandType = op.operand().getType().cast<TensorType>();
+  TensorType resultType = op.getType();
+  if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+    return failure();
+  auto scatterDim = op.scatter_dimension();
+  int64_t shardCount =
+      operandType.getDimSize(scatterDim) / resultType.getDimSize(scatterDim);
+
+  xla::XlaComputation computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
+                                                     &computation))) {
+    return failure();
+  }
+
+  valueMap[op] =
+      xla::AllReduceScatter(operand, computation, scatterDim, shardCount,
+                            Convert_replica_groups(op.replica_groups()),
+                            Convert_channel_handle(op.channel_handle()));
   return success();
 }
 
@@ -1119,6 +1148,9 @@ LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
+  // TODO(jpienaar): Support multi-operand while op.
+  if (op.getNumResults() != 1)
+    return op.emitError("nyi: unable to export multi-result While op");
   xla::XlaComputation condition;
   xla::XlaComputation body;
   auto& value_map = *ctx.values;
@@ -1128,9 +1160,11 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   }
 
   xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+  // TODO(jpienaar): Support multi-operand while op.
+  Value val = op->getResult(0);
+  if (failed(GetXlaOp(op->getOperand(0), value_map, &operand, op)))
     return failure();
-  value_map[op] = xla::While(condition, body, operand);
+  value_map[val] = xla::While(condition, body, operand);
   return success();
 }
 
@@ -1209,6 +1243,10 @@ LogicalResult ExportXlaOp(DynamicGatherOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
+  return failure();
+}
+
+LogicalResult ExportXlaOp(PrintOp op, OpLoweringContext ctx) {
   return failure();
 }
 
@@ -1973,15 +2011,6 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   }
 
   return Status::OK();
-}
-
-DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op,
-                                          llvm::StringRef attr_name) {
-  CHECK((op->getDialect() ==
-             op->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() ||
-         mlir::isa<mlir::ConstantOp, mlir::memref::TensorLoadOp,
-                   mlir::memref::TensorStoreOp>(op)));
-  return op->getAttrOfType<mlir::DenseIntElementsAttr>(attr_name);
 }
 
 }  // namespace mlir

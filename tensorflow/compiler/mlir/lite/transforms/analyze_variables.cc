@@ -32,6 +32,11 @@ bool IsSupportedTFLiteResourceOp(Operation* op) {
                    TF::LookupTableFindV2Op, TF::LookupTableImportV2Op,
                    TF::LookupTableSizeV2Op>(op);
 }
+
+// Returns true if 'op' is a TFLite control flow operation.
+bool IsTFLiteControlFlowOp(Operation* op) {
+  return llvm::isa<TFL::WhileOp, TFL::IfOp, TFL::CallOnceOp>(op);
+}
 }  // namespace
 
 // Pass which analyzes the variables in the graph and add an attribute whether
@@ -44,6 +49,16 @@ class AnalyzeVariablesPass
   AnalyzeVariablesPass() = default;
   AnalyzeVariablesPass(const AnalyzeVariablesPass&) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-analyze-variables-pass";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Analyze variables in the graph.";
+  }
+
   void runOnOperation() override {
     auto* context = &getContext();
     auto module = getOperation();
@@ -52,10 +67,19 @@ class AnalyzeVariablesPass
     module.walk([&](Operation* op) {
       // Skip ops that are supported natively by TFLite.
       if (IsSupportedTFLiteResourceOp(op)) return WalkResult::advance();
-      // Check for ops that are not legalized to TFLite.
-      if (op->getDialect()->getNamespace() != "tf") {
+
+      // Check for ops that are legalized to TFLite.
+      if (op->getDialect()->getNamespace() == "tfl") {
+        // TODO(b/189370197): Enable control flow ops after updating
+        // checks to handle them.
+        if (IsTFLiteControlFlowOp(op)) {
+          legalize_to_tfl = false;
+          return WalkResult::interrupt();
+        }
         return WalkResult::advance();
       }
+      // Check for ops that are not legalized to TFLite.
+
       // If any of the operands is a resource type, then we break
       // and mark the module as not valid for TFLite legalization.
       // Note: this might disable native variables in more than needed cases.
@@ -77,8 +101,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass() {
   return std::make_unique<AnalyzeVariablesPass>();
 }
 
-static PassRegistration<AnalyzeVariablesPass> pass(
-    "tfl-analyze-variables-pass", "Analyze variables in the graph.");
+static PassRegistration<AnalyzeVariablesPass> pass([] {
+  return CreateAnalyzeVariablesPass();
+});
 
 }  // namespace TFL
 }  // namespace mlir

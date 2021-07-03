@@ -184,7 +184,24 @@ class QuantizedDepthwiseConv2DTester {
     return *this;
   }
 
-  inline float KernelScale() const { return kernel_scale_; }
+  inline float KernelScale() const {
+    EXPECT_FALSE(ChannelWise());
+    return kernel_scale_;
+  }
+
+  inline QuantizedDepthwiseConv2DTester& KernelScales(
+      const std::vector<float>& kernel_scales) {
+    EXPECT_GT(kernel_scales.size(), 0);
+    kernel_scales_ = kernel_scales;
+    return *this;
+  }
+
+  inline const std::vector<float>& KernelScales() const {
+    EXPECT_TRUE(ChannelWise());
+    return kernel_scales_;
+  }
+
+  inline bool ChannelWise() const { return !kernel_scales_.empty(); }
 
   inline QuantizedDepthwiseConv2DTester& OutputScale(float output_scale) {
     output_scale_ = output_scale;
@@ -244,6 +261,7 @@ class QuantizedDepthwiseConv2DTester {
   int8_t output_zero_point_ = 0;
   float input_scale_ = 0.8f;
   float kernel_scale_ = 0.75f;
+  std::vector<float> kernel_scales_;
   float output_scale_ = 1.5f;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =

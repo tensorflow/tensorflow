@@ -142,7 +142,10 @@ cc_library(
 cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
-    hdrs = ["model_builder.h"],
+    hdrs = [
+        "model_builder.h",
+        "model_builder_internal.h",
+    ],
     deps = [
         ":data_type",
         ":lstm_parser",
@@ -178,6 +181,7 @@ cc_test(
     deps = [
         ":data_type",
         ":model_builder",
+        ":operation_parser",
         ":shape",
         ":tensor",
         "//tensorflow/lite:framework",
@@ -241,6 +245,7 @@ cc_library(
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "@FP16",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],

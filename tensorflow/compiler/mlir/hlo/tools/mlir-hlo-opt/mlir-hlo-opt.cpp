@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "mlir-hlo/Transforms/register_passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Support/MlirOptMain.h"
@@ -26,6 +28,8 @@ int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
+  mlir::disc_ral::registerAllDiscRalPasses();
+  mlir::registerAllTransformPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -33,6 +37,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::chlo::HloClientDialect>();
   registry.insert<mlir::lmhlo::LmhloDialect>();
   registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
+  registry.insert<mlir::disc_ral::RalDialect>();
 
   return failed(mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n",
                                   registry,

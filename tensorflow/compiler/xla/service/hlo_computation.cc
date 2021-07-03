@@ -419,8 +419,10 @@ void HloComputation::ComputeInstructionPostOrder(
         [](HloInstruction* inst) -> absl::optional<int64> {
       switch (inst->opcode()) {
         case HloOpcode::kRecvDone:
-          return inst->channel_id();
         case HloOpcode::kAllReduce:
+        case HloOpcode::kAllReduceScatter:
+        case HloOpcode::kAllGather:
+        case HloOpcode::kAllToAll:
           return inst->channel_id();
         default:
           return absl::nullopt;
@@ -476,7 +478,10 @@ HloComputation::ComputeChannelDependencies() const {
     switch (instruction->opcode()) {
       case HloOpcode::kSend:
       case HloOpcode::kRecvDone:
-      case HloOpcode::kAllReduce: {
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllReduceScatter:
+      case HloOpcode::kAllGather:
+      case HloOpcode::kAllToAll: {
         auto channel_id = instruction->channel_id();
         if (channel_id) {
           channel_dependency_group[channel_id.value()].push_back(

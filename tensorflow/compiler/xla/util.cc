@@ -20,8 +20,10 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
@@ -110,24 +112,44 @@ string Reindent(absl::string_view original,
   });
 }
 
+template <typename IntT, typename FloatT>
+static void RoundTripNanPayload(FloatT value, std::string* result) {
+  const int kPayloadBits = NanPayloadBits<FloatT>();
+  if (std::isnan(value) && kPayloadBits > 0) {
+    auto rep = absl::bit_cast<IntT>(value);
+    auto payload = rep & NanPayloadBitMask<FloatT>();
+    if (payload != QuietNanWithoutPayload<FloatT>()) {
+      absl::StrAppendFormat(result, "(0x%x)", payload);
+    }
+  }
+}
+
 string RoundTripFpToString(tensorflow::bfloat16 value) {
-  return absl::StrFormat("%.4g", static_cast<float>(value));
+  std::string result = absl::StrFormat("%.4g", static_cast<float>(value));
+  RoundTripNanPayload<uint16_t>(value, &result);
+  return result;
 }
 
 string RoundTripFpToString(Eigen::half value) {
-  return absl::StrFormat("%.5g", static_cast<float>(value));
+  std::string result = absl::StrFormat("%.5g", static_cast<float>(value));
+  RoundTripNanPayload<uint16_t>(value, &result);
+  return result;
 }
 
 string RoundTripFpToString(float value) {
   char buffer[tensorflow::strings::kFastToBufferSize];
   tensorflow::strings::FloatToBuffer(value, buffer);
-  return buffer;
+  std::string result = buffer;
+  RoundTripNanPayload<uint32_t>(value, &result);
+  return result;
 }
 
 string RoundTripFpToString(double value) {
   char buffer[tensorflow::strings::kFastToBufferSize];
   tensorflow::strings::DoubleToBuffer(value, buffer);
-  return buffer;
+  std::string result = buffer;
+  RoundTripNanPayload<uint64_t>(value, &result);
+  return result;
 }
 
 PaddingConfig MakeNoPaddingConfig(int64 rank) {

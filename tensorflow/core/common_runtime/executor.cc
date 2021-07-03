@@ -344,6 +344,8 @@ class ExecutorState {
   const bool log_memory_;
 
   int64 step_id_;
+  int64 start_time_usecs_ = 0;
+
   // Not owned.
   RendezvousInterface* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
@@ -394,6 +396,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
     : vlog_(VLOG_IS_ON(1)),
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
+      start_time_usecs_(args.start_time_usecs),
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
@@ -694,6 +697,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   } else {
     params.device = device;
   }
+  params.start_time_usecs = start_time_usecs_;
   params.log_memory = log_memory_;
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;
@@ -991,6 +995,9 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
                 "to RunOptions for current allocation info. This isn't "
                 "available when running in Eager mode.\n"));
       }
+    } else if (s.code() == error::UNAVAILABLE &&
+               !item.is_distributed_communication) {
+      s = errors::ReplaceErrorFromNonCommunicationOps(s, item.kernel->name());
     }
     return s;
   }

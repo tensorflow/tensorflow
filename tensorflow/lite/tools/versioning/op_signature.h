@@ -15,33 +15,39 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 
+#include <string>
+
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
-const auto kTensorTypeNone = static_cast<::tflite::TensorType>(-1);
-
 // OpSignature contains operator parameters for version functions.
 typedef struct {
+  TfLiteType type;
+  std::vector<int32_t> dims;
+  bool is_const;
+} OpSignatureTensorSpec;
+
+typedef struct {
   BuiltinOperator op;
-  std::vector<TensorType> input_types;
-  std::vector<TensorType> output_types;
+  std::vector<OpSignatureTensorSpec> inputs;
+  std::vector<OpSignatureTensorSpec> outputs;
+  void* builtin_data;
+  const void* custom_initial_data;
+  std::string custom_name;
   union {
     struct {
-      int32_t dilation_w_factor;
-      int32_t dilation_h_factor;
+      bool is_per_channel_quantized;
+    } conv_2d;
+    struct {
       bool is_per_channel_quantized;
     } depthwise_conv_2d;
     struct {
-      bool narrow_range;
-    } fakequant;
-    struct {
-      bool keep_num_dims;
-      FullyConnectedOptionsWeightsFormat weights_format;
       // TODO(b/156530611): Make this global when more ops support sparse
       // computation.
       bool sparse_weight;
-      bool asymmetric_quantize_inputs;
     } fully_connected;
     struct {
       float input1_scale;
@@ -49,43 +55,15 @@ typedef struct {
       float output_scale;
     } mul;
     struct {
-      LSTMKernelType kernel_type;
-      bool asymmetric_quantize_inputs;
-    } lstm;
-    struct {
-      bool half_pixel_centers;
-      bool align_corners;
-    } resize;
-    struct {
       int32_t num_dims;
-    } single_input_op;
-    struct {
-      int32_t num_dims;
-      bool need_broadcast;
-    } broadcast;
-    struct {
-      bool pot_scale_int16;
-      int32_t num_dims;
-      bool need_broadcast;
-    } addsub;
-    struct {
-      bool is_per_channel_quantized;
-    } conv_2d;
-    struct {
-      bool asymmetric_quantize_inputs;
-    } input_quantization;
-    struct {
-      int32_t batch_dims;
-    } gather;
-    struct {
-      int32_t num_dims;
-      int32_t ellipsis_mask;
-      int32_t new_axis_mask;
     } strided_slice;
     struct {
       bool input_quantized;
     } abs;
-  } options;
+    struct {
+      bool is_per_channel_quantized;
+    } dequantize;
+  } ext_options;
 } OpSignature;
 
 // Generate OpSignature with the given OperatorCode, Operator and Tensors (from
@@ -93,8 +71,17 @@ typedef struct {
 // mostly input and output tensor types are enough to figure out op version.
 // But some ops (DEPTHWISE_CONV_2D,  FULLY_CONNECTED, ...) require to pass their
 // options to decide op version.
+//
+// WARNING: The caller is responsible to free the allocated
+// OpSignature.builtin_data memory.
 OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
-                           const SubGraph* subgraph);
+                           const SubGraph* subgraph, const Model* model);
 
+// Generate OpSignature with the given TfLiteContext, TfLiteNode and
+// TfLiteRegistration.
+// The function can be used by a compatibility checker of a delegate such as
+// TFLiteOperationParser::IsSupported() in the GPU delegate.
+OpSignature GetOpSignature(const TfLiteContext* context, const TfLiteNode* node,
+                           const TfLiteRegistration* registration);
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_

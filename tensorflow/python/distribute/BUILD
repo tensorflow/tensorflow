@@ -21,6 +21,7 @@ py_library(
         ":strategy_combinations",
         ":strategy_test_lib",
         ":test_util",
+        ":values_v2",
         "//tensorflow/python/distribute/v1:all_reduce",
     ],
 )
@@ -271,6 +272,7 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
+        ":ps_values",
         ":reduce_util",
         ":sharded_variable",
         ":shared_variable_creator",
@@ -637,6 +639,7 @@ tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
     disable_experimental = True,
+    disable_tfrt = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -654,6 +657,7 @@ tpu_py_test(
     srcs = ["tpu_strategy_compilation_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -776,6 +780,45 @@ py_library(
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/types",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
+    name = "values_v2",
+    srcs = ["values_v2.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":reduce_util",
+        ":tpu_util",
+        ":values",
+        ":values_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/types",
+    ],
+)
+
+distribute_py_test(
+    name = "values_v2_test",
+    srcs = ["values_v2_test.py"],
+    tags = [
+        "no_mac",  # b/190644499
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        ":test_util",
+        ":values_v2",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1094,7 +1137,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "notsan",  # b/173031470
     ],
     deps = [
         ":collective_util",
@@ -1863,6 +1905,7 @@ py_library(
     deps = [
         ":collective_all_reduce_strategy",
         ":multi_process_runner",
+        ":tpu_strategy",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:config",
@@ -1870,6 +1913,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:context",
+        "@absl_py//absl:app",
     ],
 )
 
@@ -1916,10 +1960,9 @@ distribute_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
-    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/171349346, b/181878817): Frequent timeouts. Do not re-enable until rewritten
+        "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
         ":multi_worker_test_base",

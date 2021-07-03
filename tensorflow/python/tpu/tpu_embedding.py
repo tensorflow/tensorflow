@@ -169,7 +169,7 @@ class FeatureConfig(
       `FeatureConfig`.
 
     Raises:
-      ValueError: if `max_sequence_length` non-negative.
+      ValueError: if `max_sequence_length` non-integer or negative.
     """
     if not isinstance(max_sequence_length, int) or max_sequence_length < 0:
       raise ValueError(

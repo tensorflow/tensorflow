@@ -77,6 +77,12 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("replica_groups") = py::list(),
       py::arg("channel_id") = absl::nullopt,
       py::arg("shape_with_layout") = absl::nullopt);
+  ops.def("AllReduceScatter", &AllReduceScatter, py::arg("operand"),
+          py::arg("computation"), py::arg("scatter_dimension"),
+          py::arg("shard_count"), py::arg("replica_groups") = py::list(),
+          py::arg("channel_id") = absl::nullopt,
+          py::arg("layout") = absl::nullopt,
+          py::arg("use_global_device_ids") = absl::nullopt);
   ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),

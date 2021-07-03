@@ -169,6 +169,18 @@ class ProcessFunctionLibraryRuntime {
   Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
                         bool* is_cross_process) const;
 
+  // TODO(iga): Reword
+  // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
+  // corresponding resource lives. This ensures that the Placer assigns ops that
+  // access these resources to the appropriate devices.
+  static Status PinArgsAndRets(const std::vector<string>& input_devices,
+                               const std::vector<string>& output_devices,
+                               const DeviceSet& device_set,
+                               const std::vector<Node*>& arg_nodes,
+                               const std::vector<Node*>& ret_nodes,
+                               const FunctionLibraryDefinition* lib_def,
+                               Device* default_device);
+
   // Delegates to the local FLR that owns state corresponding to `handle` and
   // tells it to release it. If the `handle` isn't needed at all, the local FLR
   // might call RemoveHandle on this to get rid of the state owned by the Proc
@@ -376,17 +388,6 @@ class ProcessFunctionLibraryRuntime {
   FunctionLibraryRuntime::Handle AddMultiDeviceHandle(
       const std::unique_ptr<MultiDeviceFunctionData> data,
       const string& function_key);
-
-  // TODO(iga): Reword
-  // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
-  // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices.
-  Status PinArgsAndRets(const std::vector<string>& input_devices,
-                        const std::vector<string>& output_devices,
-                        const DeviceSet& device_set,
-                        const std::vector<Node*>& arg_nodes,
-                        const std::vector<Node*>& ret_nodes,
-                        Device* default_device) const;
 
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,

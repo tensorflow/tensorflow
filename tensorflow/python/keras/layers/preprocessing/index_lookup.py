@@ -39,6 +39,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -46,6 +47,7 @@ from tensorflow.python.util import compat
 
 INT = "int"
 MULTI_HOT = "multi_hot"
+ONE_HOT = "one_hot"
 COUNT = "count"
 TF_IDF = "tf_idf"
 
@@ -119,12 +121,19 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       map indices to vocabulary items instead of mapping vocabulary items to
       indices. Default to False.
     output_mode: Specification for the output of the layer. Defaults to `"int"`.
-      Values can be `"int"`, `"multi_hot"`, `"count"`, or `"tf_idf"` configuring
-      the layer as follows:
+      Values can be `"int"`, `"one_hot"`, `"multi_hot"`, `"count"`, or
+      `"tf_idf"` configuring the layer as follows:
         - `"int"`: Return the raw integer indices of the input tokens.
-        - `"multi_hot"`: Outputs a single int array per sample, of either
-          vocab_size or max_tokens size, containing 1s in all elements where the
-          token mapped to that index exists at least once in the sample.
+        - `"one_hot"`: Encodes each individual element in the input into an
+          array the same size as the vocabulary, containing a 1 at the element
+          index. If the last dimension is size 1, will encode on that dimension.
+          If the last dimension is not size 1, will append a new dimension for
+          the encoded output.
+        - `"multi_hot"`: Encodes each sample in the input into a single array
+          the same size as the vocabulary, containing a 1 for each vocabulary
+          term present in the sample. Treats the last dimension as the sample
+          dimension, if input shape is (..., sample_length), output shape will
+          be (..., num_tokens).
         - `"count"`: As `"multi_hot"`, but the int array contains a count of the
           number of times the token at that index appeared in the sample.
         - `"tf_idf"`: As `"multi_hot"`, but the TF-IDF algorithm is applied to
@@ -165,10 +174,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       output_mode = MULTI_HOT
     if output_mode == "tf-idf":
       output_mode = TF_IDF
-    # 'output_mode' must be one of (INT, MULTI_HOT, COUNT, TF_IDF)
+    # 'output_mode' must be one of (INT, ONE_HOT, MULTI_HOT, COUNT, TF_IDF)
     layer_utils.validate_string_arg(
         output_mode,
-        allowable_strings=(INT, MULTI_HOT, COUNT, TF_IDF),
+        allowable_strings=(INT, ONE_HOT, MULTI_HOT, COUNT, TF_IDF),
         layer_name=self.__class__.__name__,
         arg_name="output_mode")
 
@@ -373,7 +382,15 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("IndexLookup does not support streaming adapts.")
     super(IndexLookup, self).adapt(data, reset_state)
 
-  def get_vocabulary(self):
+  def get_vocabulary(self, include_special_tokens=True):
+    """Returns the current vocabulary of the layer.
+
+    Args:
+      include_special_tokens: If True, the returned vocabulary will include mask
+        and OOV tokens, and a term's index in the vocabulary will equal the
+        term's index when calling the layer. If False, the returned vocabulary
+        will not include any mask or OOV tokens.
+    """
     if self.vocabulary_size() is None:
       return []
 
@@ -387,6 +404,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     vocab = [lookup[x] for x in range(self.vocabulary_size())]
     if self.mask_token is not None and self.output_mode == INT:
       vocab[0] = self.mask_token
+    if not include_special_tokens:
+      vocab = vocab[self._token_start_index():]
     return vocab
 
   def vocabulary_size(self):
@@ -619,6 +638,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         updates[_VOCAB_NAME], idf_weights=updates[_IDF_WEIGHTS_NAME])
 
   def call(self, inputs):
+    if isinstance(inputs, (list, tuple, np.ndarray)):
+      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
+
     if not self.max_tokens and self._vocab_size is None:
       raise ValueError("You must set the layer's vocabulary before calling it. "
                        "Either pass a `vocabulary` argument to the layer, or "
@@ -653,23 +675,49 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     with ops.control_dependencies(lookup_checks):
       if self.output_mode == INT:
         return array_ops.identity(lookup_result)
-
-      multi_hot_output = (self.output_mode == MULTI_HOT)
-      if self._vocab_size and not self.pad_to_max_tokens:
-        out_depth = self._vocab_size
       else:
-        out_depth = self.max_tokens
-      if self.sparse:
-        bincounts = category_encoding.sparse_bincount(lookup_result, out_depth,
-                                                      multi_hot_output)
+        return self._encode_output(lookup_result)
+
+  def _encode_output(self, lookup_result):
+    def expand_dims(inputs, axis):
+      if tf_utils.is_sparse(inputs):
+        return sparse_ops.sparse_expand_dims(inputs, axis)
       else:
-        bincounts = category_encoding.dense_bincount(lookup_result, out_depth,
-                                                     multi_hot_output)
+        return array_ops.expand_dims(inputs, axis)
 
-      if self.output_mode == TF_IDF:
-        return math_ops.multiply(bincounts, self.tf_idf_weights)
+    original_shape = lookup_result.shape
+    # In all cases, we should uprank scalar input to a single sample.
+    if lookup_result.shape.rank == 0:
+      lookup_result = expand_dims(lookup_result, -1)
+    # One hot will unprank only if the final output dimension is not already 1.
+    if self.output_mode == ONE_HOT:
+      if lookup_result.shape[-1] != 1:
+        lookup_result = expand_dims(lookup_result, -1)
 
-      return bincounts
+    # TODO(b/190445202): remove output rank restriction.
+    if lookup_result.shape.rank > 2:
+      raise ValueError(
+          "Received input shape {}, which would result in output rank {}. "
+          "Currently only outputs up to rank 2 are supported for "
+          "`output_mode={}`.".format(original_shape, lookup_result.shape.rank,
+                                     self.output_mode))
+
+    binary_output = self.output_mode in (MULTI_HOT, ONE_HOT)
+    if self._vocab_size and not self.pad_to_max_tokens:
+      out_depth = self._vocab_size
+    else:
+      out_depth = self.max_tokens
+    if self.sparse:
+      bincounts = category_encoding.sparse_bincount(lookup_result, out_depth,
+                                                    binary_output)
+    else:
+      bincounts = category_encoding.dense_bincount(lookup_result, out_depth,
+                                                   binary_output)
+
+    if self.output_mode == TF_IDF:
+      return math_ops.multiply(bincounts, self.tf_idf_weights)
+
+    return bincounts
 
   def _convert_to_ndarray(self, x):
     return np.array(x) if isinstance(x, (list, tuple)) else x

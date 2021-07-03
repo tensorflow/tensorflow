@@ -200,6 +200,10 @@ def _check_conversion_params(conversion_params, is_v2=False):
         ("precision mode '{}' is not supported."
          "It should be one of {}").format(conversion_params.precision_mode,
                                           supported_precision_modes))
+  if (conversion_params.minimum_segment_size <= 0 and
+      conversion_params.minimum_segment_size != -1):
+    raise ValueError("minimum segment size should be positive or -1 "
+                     "(to disable main graph conversion).")
 
 
 def _check_trt_version_compatibility():
@@ -469,7 +473,8 @@ class TrtGraphConverter(object):
     self._calibration_graph = None
     self._calibration_data_collected = False
     self._need_calibration = (
-        precision_mode == TrtPrecisionMode.INT8 and use_calibration)
+        ((precision_mode == TrtPrecisionMode.INT8) or
+         (precision_mode == TrtPrecisionMode.INT8.lower())) and use_calibration)
     if self._need_calibration and not is_dynamic_op:
       tf_logging.warn(
           "INT8 precision mode with calibration is supported with "
@@ -994,9 +999,10 @@ class TrtGraphConverterV2(object):
         input_saved_model_signature_key or
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
 
-    self._need_calibration = (
-        conversion_params.precision_mode == TrtPrecisionMode.INT8 and
-        conversion_params.use_calibration)
+    self._need_calibration = ((
+        (conversion_params.precision_mode == TrtPrecisionMode.INT8) or
+        (conversion_params.precision_mode == TrtPrecisionMode.INT8.lower())) and
+                              conversion_params.use_calibration)
 
     self._converted = False
     self._build_called_once = False

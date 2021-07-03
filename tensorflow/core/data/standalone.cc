@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/data/standalone.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -118,8 +122,9 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   return Status::OK();
 }  // static
 
-Status Dataset::MakeIterator(std::unique_ptr<SplitProvider> split_provider,
-                             std::unique_ptr<Iterator>* result) {
+Status Dataset::MakeIterator(
+    std::vector<std::unique_ptr<SplitProvider>> split_providers,
+    std::unique_ptr<Iterator>* result) {
   // Create an `IteratorContext`, which bundles together the necessary runtime
   // support to create and get elements from an iterator.
   std::unique_ptr<IteratorContext> ctx;
@@ -130,10 +135,13 @@ Status Dataset::MakeIterator(std::unique_ptr<SplitProvider> split_provider,
       CreateParams(pflr_.get(), device_mgr_.get(), &runner_);
   OpKernelContext op_ctx(&op_params, /*num_outputs=*/0);
   IteratorContext::Params params(&op_ctx);
+  params.cancellation_manager = &cancellation_manager_;
   params.function_handle_cache = function_handle_cache_.get();
   params.resource_mgr = &resource_mgr_;
-  params.cancellation_manager = &cancellation_manager_;
-  params.split_provider = std::move(split_provider);
+  std::move(split_providers.begin(), split_providers.end(),
+            std::back_inserter(params.split_providers));
+  params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+  params.thread_pool = &unbounded_thread_pool_;
   ctx = absl::make_unique<IteratorContext>(std::move(params));
 
   // Create the iterator from the dataset.
@@ -146,11 +154,12 @@ Status Dataset::MakeIterator(std::unique_ptr<SplitProvider> split_provider,
 }
 
 Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
-  return MakeIterator(/*split_provider=*/nullptr, result);
+  return MakeIterator(/*split_providers=*/{}, result);
 }
 
-Status Dataset::MakeSplitProvider(std::unique_ptr<SplitProvider>* result) {
-  return dataset_->MakeSplitProvider(result);
+Status Dataset::MakeSplitProviders(
+    std::vector<std::unique_ptr<SplitProvider>>* result) {
+  return dataset_->MakeSplitProviders(result);
 }
 
 const DatasetBase* Dataset::Get() const { return dataset_; }
@@ -163,8 +172,9 @@ Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
       device_mgr_(device_mgr),
       flib_def_(flib_def),
       pflr_(pflr),
-      pool_(pool),
-      runner_(std::move(runner)) {
+      interop_threadpool_(pool),
+      runner_(std::move(runner)),
+      unbounded_thread_pool_(Env::Default(), "tf_data_standalone") {
   dataset_->Ref();
   function_handle_cache_ =
       absl::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));

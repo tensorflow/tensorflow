@@ -95,12 +95,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return context_id;
   }
 
-  EagerContext(const SessionOptions& opts,
-               ContextDevicePlacementPolicy default_device_placement_policy,
-               bool async, /*const*/ DeviceMgr* device_mgr,
-               bool device_mgr_owned, /*const*/ Rendezvous* rendezvous,
-               DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
-               bool run_eager_op_as_function = false);
+  EagerContext(
+      const SessionOptions& opts,
+      ContextDevicePlacementPolicy default_device_placement_policy, bool async,
+      /*const*/ DeviceMgr* device_mgr, bool device_mgr_owned,
+      /*const*/ Rendezvous* rendezvous,
+      DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
+      CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr,
+      bool run_eager_op_as_function = false);
 
   void Release() override { Unref(); }
 
@@ -275,6 +277,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
+
+  void ResetGlobalRendezvousForFunction() override {
+    mutex_lock l(global_rendezvous_mu_);
+    global_rendezvous_for_functions_ =
+        core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  }
 
   // Returns a function which maps from step_id to rendezvous. This closure
   // respects the value of `SetReuseRendezvousForFunctions` at the time the

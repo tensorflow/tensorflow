@@ -30,10 +30,14 @@ exports_files([
     "rewrite_utils.h",
     "root_dataset.cc",
     "root_dataset.h",
+    "serialization_utils.cc",
+    "serialization_utils.h",
     "split_utils.cc",
     "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
+    "unbounded_thread_pool.cc",
+    "unbounded_thread_pool.h",
 ])
 
 cc_library(
@@ -103,7 +107,9 @@ cc_library(
     hdrs = ["dataset_test_base.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
+        ":serialization_utils",
         ":split_utils",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -114,7 +120,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:function_ops",
         "//third_party/eigen3",
@@ -146,6 +151,7 @@ tf_cc_test(
     deps = [
         ":dataset_test_base",
         ":dataset_utils",
+        ":serialization_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -258,11 +264,32 @@ cc_library(
     srcs = ["serialization_utils.cc"],
     hdrs = ["serialization_utils.h"],
     deps = [
-        ":captured_function",
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/core:status",
+    ],
+)
+
+tf_cc_test(
+    name = "serialization_utils_test",
+    size = "small",
+    srcs = ["serialization_utils_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":serialization_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:str_util",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -282,6 +309,7 @@ tf_cc_test(
     srcs = ["split_utils_test.cc"],
     deps = [
         ":dataset_test_base",
+        ":serialization_utils",
         ":split_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
@@ -329,6 +357,7 @@ cc_library(
     hdrs = ["standalone.h"],
     deps = [
         ":root_dataset",
+        ":unbounded_thread_pool",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -356,5 +385,30 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "unbounded_thread_pool",
+    srcs = ["unbounded_thread_pool.cc"],
+    hdrs = ["unbounded_thread_pool.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "unbounded_thread_pool_test",
+    size = "small",
+    srcs = ["unbounded_thread_pool_test.cc"],
+    deps = [
+        ":unbounded_thread_pool",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

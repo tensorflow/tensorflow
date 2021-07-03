@@ -48,10 +48,8 @@ struct ConditionalThunkConfig {
 // false computation share the same allocation.
 class ConditionalThunk : public Thunk {
  public:
-  ConditionalThunk(
-      ThunkInfo thunk_info, ConditionalThunkConfig config,
-      const BufferAllocation::Slice& branch_index_buffer_index,
-      absl::Span<const BufferAllocation::Slice> branch_operand_buffer_indexes);
+  ConditionalThunk(ThunkInfo thunk_info, ConditionalThunkConfig config,
+                   const BufferAllocation::Slice& branch_index_buffer_index);
 
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
@@ -63,7 +61,6 @@ class ConditionalThunk : public Thunk {
  private:
   const ConditionalThunkConfig config_;
   BufferAllocation::Slice branch_index_buffer_index_;
-  std::vector<BufferAllocation::Slice> branch_operand_buffer_indexes_;
 };
 
 }  // namespace gpu

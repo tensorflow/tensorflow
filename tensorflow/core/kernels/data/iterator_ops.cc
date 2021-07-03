@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -26,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -1073,7 +1077,7 @@ void SerializeIteratorOp::Compute(OpKernelContext* ctx) {
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
   core::ScopedUnref unref_iterator(iterator_resource);
   IteratorVariantSerializer serializer;
-  SerializationContext::Params params;
+  SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;
   SerializationContext serialization_ctx(params);
   OP_REQUIRES_OK(ctx, serializer.InitializeFromIterator(&serialization_ctx,

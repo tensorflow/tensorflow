@@ -16,26 +16,31 @@
 """TensorFlow Lite Python metrics helper TFLiteMetrics check."""
 import gc
 import os
+import tempfile
 import time
 from unittest import mock
 
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import metrics_nonportable as metrics
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import register_custom_opdefs
+from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training.tracking import tracking
@@ -381,6 +386,27 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
     metrics._counter_conversion_success = self._counter_conversion_success
     metrics._gauge_conversion_params = self._gauge_conversion_params
 
+  def convert_and_check_location_info(self,
+                                      converter,
+                                      expected_type,
+                                      expected_sources=None):
+    # The custom attribute of ConverterError can't be accessed with
+    # assertRaises so use try-catch block instead.
+    try:
+      tflite_model = converter.convert()
+      self.assertIsNone(tflite_model)
+    except ConverterError as converter_error:
+      # pylint: disable=g-assert-in-except
+      self.assertEqual(len(converter_error.errors), 1)
+      location = converter_error.errors[0].location
+      self.assertEqual(location.type, expected_type)
+
+      if expected_sources:
+        debug_string = str(location)
+        for source in expected_sources:
+          self.assertIn(source, debug_string)
+      # pylint: enable=g-assert-in-except
+
   def test_failure_at_PrepareCompositeFunctionsPass(self):
 
     class NgramsLayer(tf.keras.layers.Layer):
@@ -400,13 +426,148 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
     model.predict(tf.constant(['test']))
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.allow_custom_ops = True
-    with self.assertRaises(ConverterError):
-      converter.convert()
+    self.convert_and_check_location_info(
+        converter, converter_error_data_pb2.ConverterErrorData.UNKNOWNLOC)
     exported_error = metrics._gauge_conversion_errors.get_cell(
         'CONVERT_TF_TO_TFLITE_MODEL', 'PrepareCompositeFunctionsPass', '',
         'UNKNOWN').value()
     self.assertEqual(exported_error,
                      "\'width\' attribute is not set or not an integer\n")
+
+  def test_need_flex_ops(self):
+
+    def create_graph_with_custom_add(opname='CustomAdd'):
+      custom_opdefs_str = (
+          'name: \'' + opname +
+          '\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
+          'input_arg: {name: \'Input2\' type: DT_FLOAT} output_arg: {name: '
+          '\'Output\' type: DT_FLOAT}')
+
+      # Create a graph that has one add op.
+      new_graph = graph_pb2.GraphDef()
+      with ops.Graph().as_default():
+        with session.Session() as sess:
+          in_tensor = array_ops.placeholder(
+              shape=[1, 16, 16, 3], dtype=dtypes.float32, name='input')
+          out_tensor = in_tensor + in_tensor
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+
+          new_graph.CopyFrom(sess.graph_def)
+
+      # Rename Add op name to opname.
+      for node in new_graph.node:
+        if node.op.startswith('Add'):
+          node.op = opname
+          del node.attr['T']
+
+      # Register custom op defs to import modified graph def.
+      register_custom_opdefs([custom_opdefs_str])
+
+      return (new_graph, inputs, outputs)
+
+    new_graph, inputs, outputs = create_graph_with_custom_add()
+
+    # Import to load the custom opdef.
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        import_graph_def(new_graph, name='')
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    self.convert_and_check_location_info(
+        converter,
+        converter_error_data_pb2.ConverterErrorData.NAMELOC,
+        expected_sources='add')
+    exported_error = metrics._gauge_conversion_errors.get_cell(
+        'CONVERT_TF_TO_TFLITE_MODEL', 'CONVERT_SAVED_MODEL', 'tf.CustomAdd',
+        'ERROR_NEEDS_CUSTOM_OPS').value()
+    self.assertEqual(
+        exported_error,
+        "\'tf.CustomAdd\' op is neither a custom op nor a flex op")
+
+  def test_unsupported_control_flow_v1(self):
+    filename = resource_loader.get_path_to_datafile(
+        'testdata/control_flow_v1_saved_model')
+    converter = lite.TFLiteConverterV2.from_saved_model(filename)
+    self.convert_and_check_location_info(
+        converter, converter_error_data_pb2.ConverterErrorData.UNKNOWNLOC)
+    exported_error = metrics._gauge_conversion_errors.get_cell(
+        'CONVERT_TF_TO_TFLITE_MODEL', 'CONVERT_SAVED_MODEL', '',
+        'ERROR_UNSUPPORTED_CONTROL_FLOW_V1').value()
+    self.assertEqual(
+        exported_error,
+        'Merge only has 4 inputs, while only merge nodes with two inputs '
+        'supported.\n\tFailed to functionalize Control Flow V1 ops. Consider '
+        'using Control Flow V2 ops instead. See https://www.tensorflow.org/'
+        'api_docs/python/tf/compat/v1/enable_control_flow_v2.')
+
+  def test_location_from_concrete_functions(self):
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None, None, 2, 3, 3], dtype=tf.complex64),
+        tf.TensorSpec(shape=[None, None, 1, 3, 3], dtype=tf.complex64),
+    ])
+    def model(a, b):
+      return tf.add(a, b, name='add')
+
+    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [model.get_concrete_function()])
+    self.convert_and_check_location_info(
+        converter,
+        converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
+        expected_sources=[
+            'tensorflow/lite/python/metrics_nonportable_test.py',
+        ])
+
+  def test_location_from_saved_model(self):
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+
+      class Adder(tf.Module):
+
+        @tf.function(input_signature=[
+            tf.TensorSpec(shape=[None, None, 2, 3, 3], dtype=tf.complex64),
+            tf.TensorSpec(shape=[None, None, 1, 3, 3], dtype=tf.complex64),
+        ])
+        def serving_default(self, a, b):
+          return tf.add(a, b, name='add')
+
+      tf.saved_model.save(
+          Adder(),
+          tmp_dir,
+          options=tf.saved_model.SaveOptions(save_debug_info=True))
+
+      converter = tf.lite.TFLiteConverter.from_saved_model(tmp_dir)
+      self.convert_and_check_location_info(
+          converter,
+          converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
+          expected_sources=[
+              'tensorflow/lite/python/metrics_nonportable_test.py',
+          ])
+
+  def test_location_from_keras_model(self):
+    input_tensor1 = tf.keras.layers.Input(
+        shape=[None, None, 2, 3, 3], dtype=tf.complex64)
+    input_tensor2 = tf.keras.layers.Input(
+        shape=[None, None, 2, 3, 3], dtype=tf.complex64)
+    output = tf.keras.layers.Add()([input_tensor1, input_tensor2])
+    model = tf.keras.Model(
+        inputs=[input_tensor1, input_tensor2], outputs=output)
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
+
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    # The location does not contain callsite to the current file.
+    self.convert_and_check_location_info(
+        converter,
+        converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
+        expected_sources=[
+            'keras/engine/functional.py',
+        ])
 
 
 if __name__ == '__main__':

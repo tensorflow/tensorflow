@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/core/shims/c/common.h"
+#include "tensorflow/lite/core/shims/cc/create_op_resolver.h"
 #include "tensorflow/lite/core/shims/cc/interpreter.h"
 #include "tensorflow/lite/core/shims/cc/interpreter_builder.h"
 #include "tensorflow/lite/core/shims/cc/model_builder.h"
@@ -30,11 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
-
-namespace tflite {
-// This is to be provided at link-time by a library.
-extern std::unique_ptr<MutableOpResolver> CreateOpResolver();
-}  // namespace tflite
 
 using tflite::OpResolver;
 using tflite::jni::BufferErrorReporter;
@@ -465,8 +461,10 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: SetAllowFp16PrecisionForFp32");
+  if (allow) {
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                   "Not supported: SetAllowFp16PrecisionForFp32(true)");
+  }
 #else
   interpreter->SetAllowFp16PrecisionForFp32(static_cast<bool>(allow));
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
@@ -476,8 +474,10 @@ JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
     JNIEnv* env, jclass clazz, jlong handle, jboolean allow) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: allowBufferHandleOutput");
+  if (allow) {
+    ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                   "Not supported: allowBufferHandleOutput(true)");
+  }
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;
@@ -565,18 +565,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
                    "Have you added the necessary dependencies?");
   }
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
-}
-
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
-                                                             jclass clazz,
-                                                             jlong handle,
-                                                             jint num_threads) {
-  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return;
-
-  Interpreter* interpreter = convertLongToInterpreter(env, handle);
-  if (interpreter == nullptr) return;
-  interpreter->SetNumThreads(static_cast<int>(num_threads));
 }
 
 JNIEXPORT jlong JNICALL
@@ -668,7 +656,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   BufferErrorReporter* error_reporter =
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return 0;
-  std::unique_ptr<OpResolver> resolver = ::tflite::CreateOpResolver();
+  std::unique_ptr<OpResolver> resolver = tflite_shims::CreateOpResolver();
   InterpreterBuilder interpreter_builder(*model, *resolver);
   interpreter_builder.SetNumThreads(static_cast<int>(num_threads));
   std::unique_ptr<Interpreter> interpreter;

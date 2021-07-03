@@ -1491,7 +1491,7 @@ ENTRY conv {
   %rhs = f32[2,2,1]{2,1,0} parameter(1)
   %conv = f32[3,2,3]{2,1,0} convolution(%lhs, %rhs),
     window={size=1}, dim_labels=bf0_oi0->bf0
-  ROOT %tuple = f32[3,2,3]{2,1,0} tuple(%conv)
+  ROOT %tuple = (f32[3,2,3]{2,1,0}) tuple(%conv)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -1562,7 +1562,7 @@ ENTRY conv {
   %conv = f32[3,512,512] convolution(%lhs, %rhs),
     window={size=2 stride=5},
     dim_labels=f0b_i0o->0bf
-  ROOT %tuple = f32[3,512,512] tuple(%conv)
+  ROOT %tuple = (f32[3,512,512]) tuple(%conv)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -1681,7 +1681,7 @@ ENTRY %entry {
   %copy_b_r = f32[3] copy(%crs_b.replicated),
     sharding={replicated metadata={op_name="b"}}
 
-  ROOT %tuple = (f32[3], f32[3], f32[3], f32[3]) tuple(
+  ROOT %tuple = (f32[3], f32[3], f32[3]) tuple(
     %crs_f.tiled, crs_f.none, %copy_b_r)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -2118,7 +2118,7 @@ ENTRY %conv {
   %copy_back_prop_rhs = f32[8,256,512] copy(%dot_back_prop_rhs),
     sharding={devices=[1,2,2]0,1,2,3 metadata={op_name="c"}}
 
-  ROOT %tuple = (f32[8,256,256], f32[8,256,256], f32[8,256])
+  ROOT %tuple = (f32[8,512,256], f32[8,256,512], f32[8,256], f32[8,256,512])
     tuple(%dot_prop_lhs, %dot_prop_rhs, %dot_mat_vec, %copy_back_prop_rhs)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

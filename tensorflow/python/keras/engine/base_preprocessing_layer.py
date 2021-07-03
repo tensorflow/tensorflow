@@ -203,36 +203,34 @@ class PreprocessingLayer(Layer, metaclass=abc.ABCMeta):
 
     `tf.keras.Model` example with multiple adapts:
 
-    >>> layer = tf.keras.layers.experimental.preprocessing.Normalization()
+    >>> layer = tf.keras.layers.experimental.preprocessing.Normalization(
+    ...     axis=None)
     >>> layer.adapt([0, 2])
     >>> model = tf.keras.Sequential(layer)
     >>> model.predict([0, 1, 2])
-    array([[-1.],
-           [ 0.],
-           [ 1.]], dtype=float32)
+    array([-1.,  0.,  1.], dtype=float32)
     >>> layer.adapt([-1, 1])
     >>> model.compile() # This is needed to re-compile model.predict!
     >>> model.predict([0, 1, 2])
-    array([[0.],
-           [1.],
-           [2.]], dtype=float32)
+    array([0., 1., 2.], dtype=float32)
 
     `tf.data.Dataset` example with multiple adapts:
 
-    >>> layer = tf.keras.layers.experimental.preprocessing.Normalization()
+    >>> layer = tf.keras.layers.experimental.preprocessing.Normalization(
+    ...     axis=None)
     >>> layer.adapt([0, 2])
     >>> input_ds = tf.data.Dataset.range(3)
     >>> normalized_ds = input_ds.map(layer)
     >>> list(normalized_ds.as_numpy_iterator())
-    [array([[-1.]], dtype=float32),
-     array([[0.]], dtype=float32),
-     array([[1.]], dtype=float32)]
+    [array([-1.], dtype=float32),
+     array([0.], dtype=float32),
+     array([1.], dtype=float32)]
     >>> layer.adapt([-1, 1])
     >>> normalized_ds = input_ds.map(layer) # Re-map over the input dataset.
     >>> list(normalized_ds.as_numpy_iterator())
-    [array([[0.]], dtype=float32),
-     array([[1.]], dtype=float32),
-     array([[2.]], dtype=float32)]
+    [array([0.], dtype=float32),
+     array([1.], dtype=float32),
+     array([2.], dtype=float32)]
 
     Arguments:
         data: The data to train on. It can be passed either as a tf.data

@@ -16,11 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
 
 namespace xla {
+
+namespace memory_space_assignment {
+// Forward Declaration of Options.
+class Options;
 
 // This class contains pre-set assignments determined by memory space
 // assignment. It contains two data structures: (1) a chunks vector that maps a
@@ -100,9 +108,8 @@ class MemorySpaceAssignmentCostAnalysis {
   virtual ~MemorySpaceAssignmentCostAnalysis() = default;
 
   static StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>> Create(
-      const HloCostAnalysis& cost_analysis,
-      float async_copy_bandwidth_bytes_per_second,
-      float alternate_mem_bandwidth_bytes_per_second, const HloModule& module);
+      const HloCostAnalysis& cost_analysis, const Options& options,
+      const HloModule& module);
 
   const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
 
@@ -126,14 +133,15 @@ class MemorySpaceAssignmentCostAnalysis {
       const HloInstruction& instruction) const;
 
   // Returns the elapsed time in seconds due to memory only. If
-  // operand_in_alternate_mem is provided or if output_in_alternate_mem is true,
-  // it will assume that operand or output will be in the alternate memory
-  // space. This is useful for calculating the benefit of placing the buffer in
-  // alternate memory.
+  // operands_in_alternate_mem or outputs_in_alternate_mem is provided, it will
+  // assume that the corresponding operands or output will be in the alternate
+  // memory space. This is useful for calculating the benefit of placing the
+  // buffer in alternate memory.
   float GetInstructionElapsedDueToMemory(
       const HloInstruction& instruction,
-      absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
-      bool output_in_alternate_mem = false) const;
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem = {},
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
 
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
@@ -142,12 +150,13 @@ class MemorySpaceAssignmentCostAnalysis {
 
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
-  // memory, except for the operand number that is in the alternate memory, if
-  // provided, or output if output_in_alternate_mem is true.
+  // memory, except for the operands and outputs specified to be in the
+  // alternate memory.
   virtual float GetInstructionElapsedInAlternateMemory(
       const HloInstruction& instruction,
-      absl::optional<int64> operand_in_alternate_mem,
-      bool output_in_alternate_mem) const;
+      absl::Span<const std::pair<int64_t, ShapeIndex>>
+          operands_in_alternate_mem,
+      absl::Span<const ShapeIndex> outputs_in_alternate_mem) const;
 
   // Returns the elapsed time it would take to asynchronously copy the shape
   // from default to alternate memory space (or vice versa).
@@ -162,28 +171,23 @@ class MemorySpaceAssignmentCostAnalysis {
                                     bool while_only) const;
 
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
+  const Options& options() const { return options_; }
 
  protected:
   MemorySpaceAssignmentCostAnalysis(
-      const HloCostAnalysis& cost_analysis,
-      float async_copy_bandwidth_bytes_per_second,
-      float alternate_mem_bandwidth_bytes_per_second,
+      const HloCostAnalysis& cost_analysis, const Options& options,
       std::unique_ptr<HloAliasAnalysis> alias_analysis,
       std::unique_ptr<HloLiveRange> hlo_live_range,
       std::unique_ptr<CallGraph> call_graph)
       : cost_analysis_(cost_analysis),
-        async_copy_bandwidth_bytes_per_second_(
-            async_copy_bandwidth_bytes_per_second),
-        alternate_mem_bandwidth_bytes_per_second_(
-            alternate_mem_bandwidth_bytes_per_second),
+        options_(options),
         alias_analysis_(std::move(alias_analysis)),
         hlo_live_range_(std::move(hlo_live_range)),
         call_graph_(std::move(call_graph)) {}
 
  private:
   const HloCostAnalysis& cost_analysis_;
-  float async_copy_bandwidth_bytes_per_second_;
-  float alternate_mem_bandwidth_bytes_per_second_;
+  const Options& options_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;
   std::unique_ptr<CallGraph> call_graph_;
@@ -309,6 +313,8 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 current_prefetch_time_;
 };
 
+// Forward Declaration of MemorySpaceAssignmentCostAnalysis
+class MemorySpaceAssignmentCostAnalysis;
 // Prefetch interval picker that uses cost analysis to overlap asynchronous
 // copies with independent computation. It uses min/max (asynchronous copy
 // duration) / (independent computation duration) ratios to guide whether the
@@ -427,100 +433,7 @@ class MemorySpaceAssignment {
 
   // Forward declaration for Allocation.
   class Allocation;
-
-  // The different options to be passed to the Run() API.
-  struct Options {
-    // Backend-specific integer value that describes the alternate memory.
-    int64 alternate_memory_space = 0;
-
-    // Maximum size of the alternate memory space.
-    int64 max_size_in_bytes = 0;
-
-    // Memory alignment of the alternate memory space.
-    int64 alignment_in_bytes = 1;
-
-    // If provided, we sort the buffers using this comparison function
-    // otherwise, we use GlobalDecreasingSizeBestFitHeap::kSpatial.
-    absl::optional<BufferIntervalCompare> buffer_interval_compare =
-        absl::nullopt;
-
-    // This object determines how early and how late prefetches can occur.
-    PrefetchIntervalPicker* prefetch_interval_picker = nullptr;
-
-    // Size function for buffer values.
-    BufferValue::SizeFunction size_fn;
-
-    // This function can be used to prevent certain HloValues (e.g., based on
-    // the opcode) to be placed on the alternate memory.
-    IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_fn;
-
-    // This function can be used to prevent certain HloUses (e.g., based on
-    // the opcode) to be placed on the alternate memory.
-    IsUseAllowedInAlternateMemoryFunction is_use_allowed_in_alternate_mem_fn =
-        [](const HloUse&) { return true; };
-
-    // This function returns the amount of scoped memory in bytes that should be
-    // reserved during the execution of this instruction.
-    ReservedScopedMemoryFunction reserved_scoped_memory_fn =
-        [](const HloInstruction*) { return 0; };
-
-    // If true, we allocate the reserved scoped memory at the same offset. This
-    // is useful to enable more deduplication between HLOs that have reserved
-    // scoped memories, but may result in less efficient memory packing.
-    bool allocate_reserved_scoped_memory_at_same_offset = true;
-
-    // Specifies the upper bound for number of outstanding prefetches and
-    // evictions, -1 for unlimited.
-    int64 max_outstanding_prefetches = -1;
-    int64 max_outstanding_evictions = -1;
-
-    // Extra outstanding prefetch limit for while uses (in addition to
-    // max_outstanding_prefetches).
-    int64 while_use_extra_outstanding_prefetch_limit = 0;
-
-    // Specifies the maximum number of times we are willing to move a copy
-    // done of a prefetch earlier due to an asynchronous copy ordering
-    // violation.
-    int64 prefetch_copy_done_reorder_max_retries = 1;
-
-    // Specifies the maximum number of retries that will be performed for each
-    // value in case prefetching failed due to running out of asynchronous
-    // copies or asynchronous copy ordering.
-    int64 max_retries = 1;
-
-    // The maximum number of repacks that we are willing to perform in case we
-    // can't allocate a buffer due to running out of memory. If this value is
-    // greater than 0, repacker must be non-nullptr.
-    int64 max_repacks = 0;
-
-    // The repacking algorithm to reduce fragmentation. Must be non-null if
-    // max_repacks is greater than 0.
-    MemorySpaceAssignmentRepacker* repacker = nullptr;
-
-    // This is only useful for testing, repack after every allocation.
-    bool repack_after_every_allocation = false;
-
-    // If true, tries allocating buffers across (e.g., before and inside a while
-    // loop body) sequential calls (kWhile, kCall, and kConditional).
-    bool allocate_across_sequential_calls = false;
-
-    // If true, verifies the memory space assignment against overlapping
-    // buffers.
-    bool verify = false;
-
-    // If not nullptr, this function is called to dump debugging information.
-    // The first argument is appended to the file name and the second argument
-    // is the contents of the file.
-    std::function<void(absl::string_view, absl::string_view)> dump_fn = nullptr;
-
-    // Enable prefetching buffers into preferred memory across program
-    // boundaries
-    bool enable_cross_program_prefetch = true;
-
-    // If true, use buffer_interval_compare to determine which buffers to
-    // prefetch across program boundaries.
-    bool default_cross_program_prefetch_heuristic = false;
-  };
+  class ParentAllocation;
 
   // This class represents an allocation that might either be in the default or
   // alternate memory. An HloValue might live in multiple different allocations
@@ -554,6 +467,8 @@ class MemorySpaceAssignment {
   //   - CopyAllocation(memory_space=kDefault, start_time=12, end_time=25)
   //   - CopyAllocation(memory_space=kAlternate, start_time=22, end_time=25)
   class Allocation {
+    friend class ParentAllocation;
+
    public:
     Allocation(HloPosition defining_position, MemorySpace memory_space,
                absl::optional<Chunk> chunk, int64 start_time, int64 end_time,
@@ -579,7 +494,22 @@ class MemorySpaceAssignment {
     // After all of the time ranges for the allocations have been assigned,
     // Process morphs the instructions affected to assign the memory spaces and
     // insert asynchronous copy instructions if necessary.
-    virtual Status Process(MemorySpaceAssignment* memory_space_assignment);
+    virtual Status Process();
+
+    // An optional post-process step that will be called after all allocations
+    // have been processed.
+    virtual Status PostProcess() { return Status::OK(); }
+
+    // Marks (adds this allocation to needed_allocations) if this allocation is
+    // needed. Allocation and CopyAllocations are always needed and
+    // ParentAllocations are needed if they have any uses or if other
+    // CopyAllocation or ParentAllocations depend on them.
+    virtual void MarkIfNeeded(
+        absl::flat_hash_set<const Allocation*>& needed_allocations) const;
+
+    // Marks this allocation as needed.
+    virtual void MarkNeeded(
+        absl::flat_hash_set<const Allocation*>& needed_allocations) const;
 
     // Returns the defining position for this allocation.
     virtual HloPosition defining_position() const { return defining_position_; }
@@ -609,7 +539,7 @@ class MemorySpaceAssignment {
 
     // Recursively create kGetTupleElement instructions if the defining position
     // shape is not an array. Returns the new instruction that has array shape.
-    HloInstruction* AddGetTupleElements();
+    HloInstruction* AddGetTupleElements() const;
 
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
@@ -639,7 +569,10 @@ class MemorySpaceAssignment {
 
     bool is_copy_allocation() const override { return true; }
 
-    Status Process(MemorySpaceAssignment* memory_space_assignment) override;
+    Status Process() override;
+
+    void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+        const override;
 
     HloPosition defining_position() const override {
       // Unless explicitly set, the defining position of a copy allocation in
@@ -649,9 +582,8 @@ class MemorySpaceAssignment {
       // original defining position.
       if (defining_position_.instruction == nullptr) {
         return prev_allocation_.defining_position();
-      } else {
-        return defining_position_;
       }
+      return defining_position_;
     }
 
     HloInstruction* copy_start() const { return copy_start_; }
@@ -693,6 +625,35 @@ class MemorySpaceAssignment {
     bool is_cross_program_prefetch_;
     HloInstruction* copy_start_;
     HloInstruction* copy_done_;
+  };
+
+  // An allocation in default memory space that is defined in the parent
+  // computation. If a value has a copy in the default memory space in the
+  // parent computation, we don't need to evict this buffer in a while loop.
+  class ParentAllocation : public Allocation {
+   public:
+    ParentAllocation(const Allocation& original_allocation,
+                     HloInstruction* calling_instruction, HloPosition position,
+                     int64 time)
+        : Allocation(position, MemorySpace::kDefault,
+                     original_allocation.chunk(), /*start_time=*/time,
+                     /*end_time=*/time, /*is_scoped_allocation=*/false),
+          original_allocation_(original_allocation),
+          calling_instruction_(calling_instruction) {}
+
+    Status Process() override;
+    Status PostProcess() override;
+
+    void MarkIfNeeded(absl::flat_hash_set<const Allocation*>&
+                          needed_allocations) const override;
+    void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+        const override;
+
+    std::string ToString() const override;
+
+   private:
+    const Allocation& original_allocation_;
+    HloInstruction* calling_instruction_;
   };
 
   using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
@@ -874,9 +835,9 @@ class MemorySpaceAssignment {
   virtual Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
                                         const HloAliasAnalysis& alias_analysis);
 
-  Options options() const { return options_; }
+  const Options& options() const { return options_; }
 
-  MemorySpaceAssignment(HloModule* module, Options options,
+  MemorySpaceAssignment(HloModule* module, const Options& options,
                         const HloLiveRange& hlo_live_range)
       : module_(module),
         options_(options),
@@ -931,8 +892,14 @@ class MemorySpaceAssignment {
   // alternate_memory_assignments_.
   void RemoveAssignmentForInstruction(const HloInstruction* instruction);
 
+  // Returns the estimated elapsed duration of the hlo module in seconds. It
+  // uses the 'allocations' argument to determine the location (default memory
+  // or alternate memory) of each operand and output of an instruction.
+  float ComputeEstimatedElapsedTime(const HloLiveRange& hlo_live_range,
+                                    const AllocationSequence& allocations);
+
   HloModule* module_;
-  Options options_;
+  const Options& options_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
@@ -945,6 +912,113 @@ class MemorySpaceAssignment {
   // to modify and fix the schedule.
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_after_;
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_before_;
+};
+
+// The different options to be passed to the Run() API.
+struct Options {
+  // Backend-specific integer value that describes the alternate memory.
+  int64 alternate_memory_space = 0;
+
+  // Maximum size of the alternate memory space.
+  int64 max_size_in_bytes = 0;
+
+  // Memory alignment of the alternate memory space.
+  int64 alignment_in_bytes = 1;
+
+  // If provided, we sort the buffers using this comparison function
+  // otherwise, we use GlobalDecreasingSizeBestFitHeap::kSpatial.
+  absl::optional<MemorySpaceAssignment::BufferIntervalCompare>
+      buffer_interval_compare = absl::nullopt;
+
+  // This object determines how early and how late prefetches can occur.
+  PrefetchIntervalPicker* prefetch_interval_picker = nullptr;
+
+  // This object is used to determine the benefit of a particular allocation.
+  MemorySpaceAssignmentCostAnalysis* cost_analysis = nullptr;
+
+  // Size function for buffer values.
+  BufferValue::SizeFunction size_fn;
+
+  // This function can be used to prevent certain HloValues (e.g., based on
+  // the opcode) to be placed on the alternate memory.
+  MemorySpaceAssignment::IsAllowedInAlternateMemoryFunction
+      is_allowed_in_alternate_mem_fn;
+
+  // This function can be used to prevent certain HloUses (e.g., based on
+  // the opcode) to be placed on the alternate memory.
+  MemorySpaceAssignment::IsUseAllowedInAlternateMemoryFunction
+      is_use_allowed_in_alternate_mem_fn = [](const HloUse&) { return true; };
+
+  // This function returns the amount of scoped memory in bytes that should be
+  // reserved during the execution of this instruction.
+  MemorySpaceAssignment::ReservedScopedMemoryFunction
+      reserved_scoped_memory_fn = [](const HloInstruction*) { return 0; };
+
+  // If true, we allocate the reserved scoped memory at the same offset. This
+  // is useful to enable more deduplication between HLOs that have reserved
+  // scoped memories, but may result in less efficient memory packing.
+  bool allocate_reserved_scoped_memory_at_same_offset = true;
+
+  // Specifies the upper bound for number of outstanding prefetches and
+  // evictions, -1 for unlimited.
+  int64 max_outstanding_prefetches = -1;
+  int64 max_outstanding_evictions = -1;
+
+  // Extra outstanding prefetch limit for while uses (in addition to
+  // max_outstanding_prefetches).
+  int64 while_use_extra_outstanding_prefetch_limit = 0;
+
+  // Specifies the maximum number of times we are willing to move a copy
+  // done of a prefetch earlier due to an asynchronous copy ordering
+  // violation.
+  int64 prefetch_copy_done_reorder_max_retries = 1;
+
+  // Specifies the maximum number of retries that will be performed for each
+  // value in case prefetching failed due to running out of asynchronous
+  // copies or asynchronous copy ordering.
+  int64 max_retries = 1;
+
+  // The maximum number of repacks that we are willing to perform in case we
+  // can't allocate a buffer due to running out of memory. If this value is
+  // greater than 0, repacker must be non-nullptr.
+  int64 max_repacks = 0;
+
+  // This variable is used by the cost analysis in estimating how many times
+  // each while loop will execute. Nested loops will be assumed to have
+  // executed pow(while_execution_count, nesting_level) times.
+  uint64 xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
+
+  float async_copy_bandwidth_bytes_per_second = 0.0f;
+
+  float alternate_mem_bandwidth_bytes_per_second = 0.0f;
+
+  // The repacking algorithm to reduce fragmentation. Must be non-null if
+  // max_repacks is greater than 0.
+  MemorySpaceAssignmentRepacker* repacker = nullptr;
+
+  // This is only useful for testing, repack after every allocation.
+  bool repack_after_every_allocation = false;
+
+  // If true, tries allocating buffers across (e.g., before and inside a while
+  // loop body) sequential calls (kWhile, kCall, and kConditional).
+  bool allocate_across_sequential_calls = false;
+
+  // If true, verifies the memory space assignment against overlapping
+  // buffers.
+  bool verify = false;
+
+  // If not nullptr, this function is called to dump debugging information.
+  // The first argument is appended to the file name and the second argument
+  // is the contents of the file.
+  std::function<void(absl::string_view, absl::string_view)> dump_fn = nullptr;
+
+  // Enable prefetching buffers into preferred memory across program
+  // boundaries
+  bool enable_cross_program_prefetch = true;
+
+  // If true, use buffer_interval_compare to determine which buffers to
+  // prefetch across program boundaries.
+  bool default_cross_program_prefetch_heuristic = false;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1003,8 +1077,7 @@ class AlternateMemoryBestFitHeap
 
   AlternateMemoryBestFitHeap(
       MemorySpaceAssignment::AllocationSequence* allocations,
-      const MemorySpaceAssignment::Options& options,
-      const HloAliasAnalysis& alias_analysis,
+      const Options& options, const HloAliasAnalysis& alias_analysis,
       const HloLiveRange& hlo_live_range)
       : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes),
         allocations_(allocations),
@@ -1047,13 +1120,12 @@ class AlternateMemoryBestFitHeap
 
   // Go through all the uses in the AllocationValues and find the aliasing
   // positions.
-  void FindAliases(std::vector<AllocationValue>* allocation_values,
-                   bool skip_values_with_no_uses) const;
+  void FindAliases(std::vector<AllocationValue>* allocation_values) const;
 
   MemorySpaceAssignment::AllocationSequence* allocations() {
     return allocations_;
   }
-  const MemorySpaceAssignment::Options& options() { return options_; }
+  const Options& options() const { return options_; }
   const HloAliasAnalysis& alias_analysis() { return alias_analysis_; }
   const HloLiveRange& hlo_live_range() { return hlo_live_range_; }
 
@@ -1382,7 +1454,7 @@ class AlternateMemoryBestFitHeap
   }
 
   MemorySpaceAssignment::AllocationSequence* allocations_;
-  const MemorySpaceAssignment::Options& options_;
+  const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
   // We use a interval tree to keep track of the number of outstanding
@@ -1414,7 +1486,7 @@ class AlternateMemoryBestFitHeap
   std::string buffer_info_str_;
   std::string allocation_info_str_;
 };
-
+}  // namespace memory_space_assignment
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_

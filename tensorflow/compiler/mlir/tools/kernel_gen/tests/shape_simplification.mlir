@@ -100,7 +100,7 @@ func @all_static_1s_succeeds(%arg0 : tensor<?x1xf64>, %arg1 : tensor<?x1xf64>)
 // CHECK-LABEL: func @single_non_static_1_succeeds
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<?x?xf64>
 // CHECK:        %[[C1:.*]] = constant 1
-// CHECK:        %[[DIM:.*]] = memref.dim %[[ARG0]], %[[C1]]
+// CHECK:        %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK:        return %[[DIM]]
 func @single_non_static_1_succeeds(%arg0 : tensor<?x?xf64>,
                                    %arg1 : tensor<?x1xf64>) -> index {

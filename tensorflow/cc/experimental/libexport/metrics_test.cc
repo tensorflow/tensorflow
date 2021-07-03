@@ -23,9 +23,9 @@ namespace metrics {
 // The value of the cells for each metric persists across tests.
 
 TEST(MetricsTest, TestWrite) {
-  EXPECT_EQ(WriteApi("foo").value(), 0);
-  WriteApi("foo").IncrementBy(1);
-  EXPECT_EQ(WriteApi("foo").value(), 1);
+  EXPECT_EQ(WriteApi("foo", "1").value(), 0);
+  WriteApi("foo", "1").IncrementBy(1);
+  EXPECT_EQ(WriteApi("foo", "1").value(), 1);
 
   EXPECT_EQ(Write().value(), 0);
   Write().IncrementBy(1);
@@ -33,13 +33,13 @@ TEST(MetricsTest, TestWrite) {
 }
 
 TEST(MetricsTest, TestRead) {
-  ReadApi("bar").IncrementBy(1);
-  EXPECT_EQ(ReadApi("bar").value(), 1);
+  ReadApi("bar", "2").IncrementBy(1);
+  EXPECT_EQ(ReadApi("bar", "2").value(), 1);
   Read().IncrementBy(1);
   EXPECT_EQ(Read().value(), 1);
 
-  ReadApi("baz").IncrementBy(1);
-  EXPECT_EQ(ReadApi("baz").value(), 1);
+  ReadApi("baz", "2").IncrementBy(1);
+  EXPECT_EQ(ReadApi("baz", "2").value(), 1);
   Read().IncrementBy(1);
   EXPECT_EQ(Read().value(), 2);
 }

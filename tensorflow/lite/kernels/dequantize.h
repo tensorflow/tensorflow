@@ -38,9 +38,55 @@ enum KernelType {
   kGenericOptimized,
 };
 
+inline bool IsQuantizedPerChannel(const TfLiteTensor* input) {
+  if (input->quantization.type == kTfLiteAffineQuantization &&
+      input->quantization.params) {
+    auto* quant_params =
+        reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
+    return (quant_params->scale && quant_params->scale->size > 1);
+  }
+  return false;
+}
+
+inline TfLiteStatus PerChannelDequantizeImpl(TfLiteContext* context,
+                                             TfLiteNode* node,
+                                             const TfLiteTensor* input,
+                                             TfLiteTensor* output) {
+  const auto* quantization_params =
+      reinterpret_cast<const TfLiteAffineQuantization*>(
+          input->quantization.params);
+  PerChannelDequantizationParams per_channel_op_params;
+  per_channel_op_params.quantized_dimension =
+      quantization_params->quantized_dimension;
+  per_channel_op_params.scale = quantization_params->scale->data;
+  per_channel_op_params.zero_point = quantization_params->zero_point->data;
+  switch (input->type) {
+    case kTfLiteUInt8:
+      reference_ops::PerChannelDequantize<uint8_t>(
+          per_channel_op_params, GetTensorShape(input),
+          GetTensorData<uint8_t>(input), GetTensorShape(output),
+          GetTensorData<float>(output));
+      break;
+    case kTfLiteInt8:
+      reference_ops::PerChannelDequantize<int8_t>(
+          per_channel_op_params, GetTensorShape(input),
+          GetTensorData<int8_t>(input), GetTensorShape(output),
+          GetTensorData<float>(output));
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(context, "Type %d not supported for per-channel.",
+                         input->type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus DequantizeImpl(TfLiteContext* context, TfLiteNode* node,
                             const TfLiteTensor* input, TfLiteTensor* output) {
+  if (IsQuantizedPerChannel(input)) {
+    return PerChannelDequantizeImpl(context, node, input, output);
+  }
   DequantizationParams op_params;
   op_params.zero_point = input->params.zero_point;
   op_params.scale = input->params.scale;
@@ -87,7 +133,7 @@ TfLiteStatus DequantizeImpl(TfLiteContext* context, TfLiteNode* node,
       break;
     }
     default:
-      context->ReportError(context, "Type %d not supported.", input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not supported.", input->type);
       return kTfLiteError;
   }
 

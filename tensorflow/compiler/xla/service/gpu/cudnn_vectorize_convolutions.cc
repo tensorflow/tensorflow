@@ -390,7 +390,7 @@ StatusOr<bool> CudnnVectorizeConvolutions::Run(HloModule* module) {
       // Try to (re)vectorize to int8x32 if this is an sm75+ GPU.  If we can't,
       // fall back to int8x4.
       bool local_changed = false;
-      if (compute_capability_ >= std::make_pair(7, 5)) {
+      if (compute_capability_.IsAtLeast(7, 5)) {
         TF_ASSIGN_OR_RETURN(local_changed, TryRevectorizeConv(conv, 32));
         if (!local_changed) {
           TF_ASSIGN_OR_RETURN(local_changed, TryVectorizeConv(conv, 32));

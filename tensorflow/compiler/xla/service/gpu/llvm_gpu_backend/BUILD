@@ -30,7 +30,6 @@ cc_library(
         "utils.h",
     ],
     deps = [
-        "@llvm-project//llvm:AMDGPUCodeGen",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -60,6 +59,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
+        "@llvm-project//llvm:AMDGPUCodeGen",
     ]),
 )
 

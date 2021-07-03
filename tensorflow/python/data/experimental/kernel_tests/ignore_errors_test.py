@@ -183,10 +183,11 @@ class IgnoreErrorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         distribute_options.ExternalStatePolicy.IGNORE)
     return dataset.with_options(options)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testIgnoreErrorsCore(self):
-    num_outputs = 4
-    self.run_core_tests(self._build_ds, num_outputs)
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(self, self._build_ds, num_outputs=4)
 
 
 if __name__ == "__main__":

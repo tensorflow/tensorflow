@@ -41,6 +41,7 @@
 #     asan:             Build with the clang address sanitizer
 #     msan:             Build with the clang memory sanitizer
 #     ubsan:            Build with the clang undefined behavior sanitizer
+#     dbg:              Build with debug info
 #
 #
 # TF version options;
@@ -127,11 +128,6 @@ build --define=grpc_no_ares=true
 # TODO: Remove this line once TF doesn't depend on Bazel wrapping all library
 # archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
-
-# These are bazel 2.0's incompatible flags. Tensorflow needs to use bazel 2.0.0
-# to use cc_shared_library, as part of the Tensorflow Build Improvements RFC:
-# https://github.com/tensorflow/community/pull/179
-build --noincompatible_prohibit_aapt1
 
 build --enable_platform_specific_config
 
@@ -239,6 +235,14 @@ build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
 
 # Debug config
 build:dbg -c dbg
+# Only include debug info for files under tensorflow/, excluding kernels, to
+# reduce the size of the debug info in the binary. This is because if the debug
+# sections in the ELF binary are too large, errors can occur. See
+# https://github.com/tensorflow/tensorflow/issues/48919.
+# Users can still include debug info for a specific kernel, e.g. with:
+#     --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g
+build:dbg --per_file_copt=+.*,-tensorflow.*@-g0
+build:dbg --per_file_copt=+tensorflow/core/kernels.*@-g0
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
@@ -345,6 +349,8 @@ build:windows --verbose_failures
 
 # On windows, we never cross compile
 build:windows --distinct_host_configuration=false
+# On linux, don't cross compile by default
+build:linux --distinct_host_configuration=false
 
 # Configure short or long logs
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
@@ -408,14 +414,15 @@ build:rbe_linux --host_linkopt=-lrt
 build:rbe_linux --linkopt=-lm
 build:rbe_linux --host_linkopt=-lm
 
+# Use the GPU toolchain until the CPU one is ready.
+# https://github.com/bazelbuild/bazel/issues/13623
 build:rbe_cpu_linux --config=rbe_linux
-build:rbe_cpu_linux --host_crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
-build:rbe_cpu_linux --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
-build:rbe_cpu_linux --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:cc-toolchain-k8"
-build:rbe_cpu_linux --extra_execution_platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
-build:rbe_cpu_linux --extra_execution_platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
-build:rbe_cpu_linux --host_platform="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
-build:rbe_cpu_linux --platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
+build:rbe_cpu_linux --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_cpu_linux --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
 
 build:rbe_linux_cuda_base --config=rbe_linux
 build:rbe_linux_cuda_base --config=cuda
@@ -484,23 +491,19 @@ build:rbe_linux_rocm_py3.7 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CON
 build:rbe_linux_rocm_py3.8 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.8"
 
 # Linux CPU
-build:rbe_linux_py2 --config=rbe_linux
-build:rbe_linux_py2 --repo_env=PYTHON_BIN_PATH="/usr/bin/python2"
-build:rbe_linux_py2 --python_path="/usr/bin/python2"
-build:rbe_linux_py2 --repo_env=TF_PYTHON_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/py"
 
 build:rbe_linux_py3 --config=rbe_linux
-build:rbe_linux_py3 --python_path="/usr/bin/python3"
-build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-manylinux2010-py3_config_python"
+build:rbe_linux_py3 --python_path="/usr/local/bin/python3.9"
+build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_08062020:toolchain"
-build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/tf_win_08062020:cc-toolchain-x64_windows"
-build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
-build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
-build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
-build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
-build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
+build:rbe_win --crosstool_top="@tf_toolchains//toolchains/win/tf_win_06242021:toolchain"
+build:rbe_win --extra_toolchains="@tf_toolchains//toolchains/win/tf_win_06242021:cc-toolchain-x64_windows"
+build:rbe_win --host_javabase="@tf_toolchains//toolchains/win:windows_jdk8"
+build:rbe_win --javabase="@tf_toolchains//toolchains/win:windows_jdk8"
+build:rbe_win --extra_execution_platforms="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
+build:rbe_win --host_platform="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
+build:rbe_win --platforms="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 build:rbe_win --experimental_strict_action_env=true
 
@@ -520,7 +523,7 @@ build:rbe_win_py37 --python_path=C:\\Python37\\python.exe
 build:rbe_win_py38 --config=rbe
 build:rbe_win_py38 --repo_env=PYTHON_BIN_PATH=C:\\Python38\\python.exe
 build:rbe_win_py38 --repo_env=PYTHON_LIB_PATH=C:\\Python38\\lib\\site-packages
-build:rbe_win_py38 --repo_env=TF_PYTHON_CONFIG_REPO=@org_tensorflow//third_party/toolchains/preconfig/win_1803/py38
+build:rbe_win_py38 --repo_env=TF_PYTHON_CONFIG_REPO=@tf_toolchains//toolchains/win_1803/py38
 build:rbe_win_py38 --python_path=C:\\Python38\\python.exe
 
 # These you may need to change for your own GCP project.
@@ -609,7 +612,7 @@ build:msan --linkopt -fsanitize=memory
 # CC=clang bazel build --config ubsan
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
-build:msan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
+build:ubsan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
 build:ubsan --copt -g
 build:ubsan --copt -O3
 build:ubsan --copt -fno-omit-frame-pointer

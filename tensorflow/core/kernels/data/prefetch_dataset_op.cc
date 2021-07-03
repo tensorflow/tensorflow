@@ -292,7 +292,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           for (size_t j = 0; j < value_size; j++) {
             buffer_element.value.emplace_back();
             TF_RETURN_IF_ERROR(
-                reader->ReadTensor(absl::StrCat(prefix(), "::", i),
+                reader->ReadTensor(ctx->flr(), absl::StrCat(prefix(), "::", i),
                                    absl::StrCat(kBuffer, "[", j, "]"),
                                    &buffer_element.value.back()));
           }

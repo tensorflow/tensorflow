@@ -136,6 +136,10 @@ struct ToComputationType<Eigen::half> {
   static constexpr ComputationType value = ComputationType::kF16;
 };
 template <>
+struct ToComputationType<Eigen::bfloat16> {
+  static constexpr ComputationType value = ComputationType::kBF16AsF32;
+};
+template <>
 struct ToComputationType<tensorflow::int32> {
   static constexpr ComputationType value = ComputationType::kI32;
 };

@@ -519,6 +519,22 @@ class SparseSegmentReductionHelper(SegmentReductionHelper):
     return self._segmentReduce(
         segment_indices, x[indices], op1, op2, num_segments=num_segments)
 
+  def _sparseSegmentReduceGrad(self, ygrad, indices, segment_ids, output_dim0,
+                               mode):
+    assert mode in ("sum", "mean", "sqrtn")
+    if mode != "sum":
+      weights = np.zeros(ygrad.shape[0], ygrad.dtype)
+      for segment in segment_ids:
+        weights[segment] += 1
+      weights = 1. / weights if mode == "mean" else 1. / np.sqrt(weights)
+    xgrad = np.zeros([output_dim0, ygrad.shape[1]], ygrad.dtype)
+    for segment, index in zip(segment_ids, indices):
+      if mode == "sum":
+        xgrad[index] += ygrad[segment]
+      else:
+        xgrad[index] += ygrad[segment] * weights[segment]
+    return xgrad
+
 
 class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
 
@@ -539,36 +555,39 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
                  math_ops.sparse_segment_mean)]
 
     n = 400
-    shape = [n, 2]
-    segment_indices = []
-    for i in range(20):
-      for _ in range(i + 1):
-        segment_indices.append(i)
-    num_indices = len(segment_indices)
-    for dtype in dtypes:
-      for index_dtype in index_dtypes:
-        for segment_ids_dtype in segment_ids_dtypes:
-          with self.cached_session(use_gpu=False):
-            tf_indices, np_indices, tf_x, np_x = self._sparse_input(
-                shape, num_indices, dtype=dtype)
-            for np_op1, np_op2, tf_op in ops_list:
-              if (tf_op == math_ops.sparse_segment_mean
-                  and dtype not in mean_dtypes):
-                continue
-              np_ans = self._sparseSegmentReduce(np_x, np_indices,
-                                                 segment_indices, np_op1,
-                                                 np_op2)
-              s = tf_op(
-                  data=tf_x,
-                  indices=math_ops.cast(tf_indices, index_dtype),
-                  segment_ids=math_ops.cast(segment_indices, segment_ids_dtype))
-              tf_ans = self.evaluate(s)
-              self.assertAllClose(np_ans, tf_ans)
-              # NOTE(mrry): The static shape inference that computes
-              # `tf_ans.shape` can only infer that sizes from dimension 1
-              # onwards, because the size of dimension 0 is data-dependent
-              # and may therefore vary dynamically.
-              self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
+    # Note that the GPU implem has different paths for different inner sizes.
+    for inner_size in [1, 2, 3, 32]:
+      shape = [n, inner_size]
+      segment_indices = []
+      for i in range(20):
+        for _ in range(i + 1):
+          segment_indices.append(i)
+      num_indices = len(segment_indices)
+      for dtype in dtypes:
+        for index_dtype in index_dtypes:
+          for segment_ids_dtype in segment_ids_dtypes:
+            with self.cached_session():
+              tf_indices, np_indices, tf_x, np_x = self._sparse_input(
+                  shape, num_indices, dtype=dtype)
+              for np_op1, np_op2, tf_op in ops_list:
+                if (tf_op == math_ops.sparse_segment_mean and
+                    dtype not in mean_dtypes):
+                  continue
+                np_ans = self._sparseSegmentReduce(np_x, np_indices,
+                                                   segment_indices, np_op1,
+                                                   np_op2)
+                s = tf_op(
+                    data=tf_x,
+                    indices=math_ops.cast(tf_indices, index_dtype),
+                    segment_ids=math_ops.cast(segment_indices,
+                                              segment_ids_dtype))
+                tf_ans = self.evaluate(s)
+                self.assertAllClose(np_ans, tf_ans)
+                # NOTE(mrry): The static shape inference that computes
+                # `tf_ans.shape` can only infer that sizes from dimension 1
+                # onwards, because the size of dimension 0 is data-dependent
+                # and may therefore vary dynamically.
+                self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
 
   def testSegmentIdsHole(self):
     tf_x, np_x = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -576,7 +595,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         self._mean_cum_op, self._mean_reduce_op, math_ops.sparse_segment_mean)]
     segment_indices = [0, 2, 2, 2]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for np_op1, np_op2, tf_op in ops_list:
         np_ans = self._sparseSegmentReduce(np_x, tf_indices, segment_indices,
                                            np_op1, np_op2)
@@ -592,7 +611,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     segment_indices = [0, 2, 2, 2]
     tf_indices = [8, 3, 0, 9]
     num_segments = 5
-    with self.session(use_gpu=False):
+    with self.session():
       for np_op1, np_op2, tf_op in ops_list:
         np_ans = self._sparseSegmentReduce(
             np_x,
@@ -618,7 +637,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     segment_indices = []
     tf_indices = []
     num_segments = 5
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(
             data=tf_x,
@@ -648,7 +667,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         self._mean_cum_op, self._mean_reduce_op, math_ops.sparse_segment_mean)]
     segment_indices = [1, 2, 2, 2]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for np_op1, np_op2, tf_op in ops_list:
         np_ans = self._sparseSegmentReduce(np_x, tf_indices, segment_indices,
                                            np_op1, np_op2)
@@ -662,7 +681,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
     segment_indices = [0, 1, 2, 2]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         self.evaluate(s)
@@ -767,7 +786,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     num_segments = 5
     segment_indices = [0, 1, 3, 3]
     tf_indices = [8, 3, 0, 9]
-    with self.session(use_gpu=False):
+    with self.session():
       for tf_op in ops_list:
         s = tf_op(
             data=tf_x,
@@ -861,6 +880,27 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             x_init_value=np_x.astype(np.double),
             delta=1)
       self.assertAllClose(jacob_t, jacob_n)
+
+  def testGradientExplicit(self):
+    # Note that the GPU implem has different paths for different inner sizes.
+    for inner_size in (1, 2, 3, 32):
+      with self.session():
+        tf_ygrad, np_ygrad = self._input([3, inner_size],
+                                         dtype=dtypes_lib.float32)
+        segment_ids = [0, 1, 2, 2, 2]
+        indices = [8, 3, 0, 9, 3]
+        output_dim0 = 10
+        ops_list = [
+            (math_ops.sparse_segment_sum_grad, "sum"),
+            (math_ops.sparse_segment_mean_grad, "mean"),
+            (math_ops.sparse_segment_sqrt_n_grad, "sqrtn"),
+        ]
+        for tf_op, mode in ops_list:
+          np_xgrad = self._sparseSegmentReduceGrad(np_ygrad, indices,
+                                                   segment_ids, output_dim0,
+                                                   mode)
+          tf_xgrad = tf_op(tf_ygrad, indices, segment_ids, output_dim0)
+          self.assertAllClose(tf_xgrad, np_xgrad)
 
   def testGradientValid(self):
     # Baseline for the testGradient*Invalid* methods below.

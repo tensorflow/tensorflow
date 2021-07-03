@@ -376,6 +376,7 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
     EXPECT_EQ(CountPartitionsDelegatedTo(interpreter_.get(), delegate_), 1)
         << "Expecting operation to be accelerated but cannot find a partition "
            "associated to the NNAPI delegate";
+    EXPECT_GT(num_applied_delegates_, 0) << "No delegates were applied.";
   }
 }
 

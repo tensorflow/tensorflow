@@ -37,7 +37,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
-    packages = ["//learning/brain/experimental/tf_runtime/..."],
 )
 
 tf_proto_library(
@@ -71,6 +70,15 @@ filegroup(
 )
 
 cc_library(
+    name = "all_reduce_scatter_utils",
+    srcs = ["all_reduce_scatter_utils.cc"],
+    hdrs = ["all_reduce_scatter_utils.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+    ],
+)
+
+cc_library(
     name = "async_all_reduce_creator",
     srcs = ["async_all_reduce_creator.cc"],
     hdrs = ["async_all_reduce_creator.h"],
@@ -87,6 +95,46 @@ tf_cc_test(
     deps = [
         ":async_all_reduce_creator",
         ":hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_key",
+    srcs = ["all_reduce_key.cc"],
+    hdrs = ["all_reduce_key.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_domain_map",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+cc_library(
+    name = "all_reduce_reassociate",
+    srcs = ["all_reduce_reassociate.cc"],
+    hdrs = ["all_reduce_reassociate.h"],
+    deps = [
+        ":all_reduce_key",
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_domain_map",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "all_reduce_reassociate_test",
+    srcs = ["all_reduce_reassociate_test.cc"],
+    deps = [
+        ":all_reduce_reassociate",
+        ":hlo",
+        ":hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
@@ -1266,6 +1314,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -2428,6 +2477,7 @@ cc_library(
     srcs = ["all_reduce_combiner.cc"],
     hdrs = ["all_reduce_combiner.h"],
     deps = [
+        ":all_reduce_key",
         ":collective_combiner_utils",
         ":hlo",
         ":hlo_casting_utils",
@@ -3857,7 +3907,9 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
     ],
 )
 
@@ -4335,6 +4387,7 @@ cc_library(
     hdrs = ["hlo_cse.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_domain_map",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
@@ -5303,6 +5356,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -5669,6 +5723,7 @@ cc_library(
         ":pattern_matcher",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/core:lib_internal",  # fixdeps: keep
         "@com_google_absl//absl/types:optional",
@@ -5788,6 +5843,9 @@ cc_library(
     deps = [
         ":hlo",
         ":op_expander_pass",
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 

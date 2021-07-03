@@ -22,14 +22,51 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+
 #include "absl/base/macros.h"
 #include "tensorflow/stream_executor/launch_dim.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
 class DeviceDescriptionBuilder;
 }  // namespace internal
+
+// CUDA compute capability, as reported by the device description.
+struct CudaComputeCapability {
+  int major = 0;
+  int minor = 0;
+
+  // MSVC does not like "PASCAL" symbol.
+  enum CudaComputeCapabilities { PASCAL_ = 6, VOLTA = 7, AMPERE = 8 };
+
+  CudaComputeCapability() {}
+  CudaComputeCapability(int major, int minor) {
+    this->major = major;
+    this->minor = minor;
+  }
+
+  bool IsAtLeast(int other_major, int other_minor = 0) const {
+    return !(*this < CudaComputeCapability{other_major, other_minor});
+  }
+
+  bool operator<(const CudaComputeCapability &other) const {
+    return ToPair() < other.ToPair();
+  }
+
+  bool operator==(const CudaComputeCapability &other) const {
+    return ToPair() == other.ToPair();
+  }
+
+  bool operator!=(const CudaComputeCapability &other) const {
+    return !(*this == other);
+  }
+
+  std::string ToString() const { return absl::StrCat(major, ".", minor); }
+
+  std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }
+};
 
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
@@ -130,8 +167,8 @@ class DeviceDescription {
 
   // Returns the CUDA compute capability if we're running on the CUDA platform.
   // If a CUDA compute capability is not available, the major version will be
-  // zero, and the return value will be false.
-  bool cuda_compute_capability(int *major, int *minor) const;
+  // zero.
+  CudaComputeCapability cuda_compute_capability() const;
 
   // Returns the AMDGPU ISA version if we're running on the ROCm platform.
   // If the information is not available, the version is not modified,
@@ -204,8 +241,7 @@ class DeviceDescription {
   float clock_rate_ghz_;
 
   // CUDA "CC" major value, -1 if not available.
-  int cuda_compute_capability_major_;
-  int cuda_compute_capability_minor_;
+  CudaComputeCapability cuda_compute_capability_{-1, -1};
 
   // ROCM AMDGPU ISA version, 0 if not available.
   int rocm_amdgpu_isa_version_;
@@ -296,8 +332,8 @@ class DeviceDescriptionBuilder {
   }
 
   void set_cuda_compute_capability(int major, int minor) {
-    device_description_->cuda_compute_capability_major_ = major;
-    device_description_->cuda_compute_capability_minor_ = minor;
+    device_description_->cuda_compute_capability_ =
+        CudaComputeCapability{major, minor};
   }
 
   void set_rocm_amdgpu_isa_version(int version) {

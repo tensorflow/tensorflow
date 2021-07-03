@@ -15,6 +15,7 @@
 
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist")
 
 package(
     default_visibility = [
@@ -69,11 +70,31 @@ java_lite_proto_library(
     deps = [":configuration_proto"],
 )
 
+# TODO(b/191428000): The automatic generation is temporarily disabled until
+# https://github.com/google/flatbuffers/pull/6486 is landed and tensorflow
+# flatbuffer version updated.
+# Until that time you need to build configuration_for_generation_generated.h
+# and copy the result to configuration_generated.h.
+genrule(
+    name = "copy_configuration_fbs",
+    srcs = ["configuration.fbs"],
+    outs = ["configuration_for_generation.fbs"],
+    cmd = "cp $(<) $(@)",
+)
+
 flatbuffer_cc_library(
-    name = "configuration_fbs",
-    srcs = [":configuration.fbs"],
-    compatible_with = get_compatible_with_portable(),
+    name = "configuration_fbs_for_generation",
+    srcs = [":configuration_for_generation.fbs"],
     flatc_args = DEFAULT_FLATC_ARGS + ["--gen-compare"],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "configuration_fbs",
+    hdrs = ["configuration_generated.h"],
+    compatible_with = get_compatible_with_portable(),
+    linkstatic = True,
+    deps = ["@flatbuffers//:runtime_cc"],
 )
 
 flatbuffer_java_library(
@@ -117,7 +138,7 @@ cc_library(
     name = "nnapi_plugin_impl",
     srcs = ["nnapi_plugin.cc"],
     hdrs = ["nnapi_plugin.h"],
-    visibility = [
+    visibility = nnapi_plugin_impl_visibility_allowlist() + [
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [

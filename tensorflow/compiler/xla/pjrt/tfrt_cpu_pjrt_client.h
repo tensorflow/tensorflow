@@ -135,6 +135,19 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<absl::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override;
 
+  StatusOr<std::string> SerializeExecutable(
+      const PjRtExecutable& executable) const override {
+    return Unimplemented("SerializeExecutable not implemented on %s",
+                         platform_name());
+  }
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
+      CompileOptions options) override {
+    return Unimplemented("DeserializeExecutable not implemented on %s",
+                         platform_name());
+  }
+
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
 
@@ -159,6 +172,12 @@ class TfrtCpuClient final : public PjRtClient {
     LOG(FATAL) << "MakeCrossHostReceiveBuffers not implemented.";
   }
 
+  void MakeCrossHostReceiveBuffersForGather(
+      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
+      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) override {
+    LOG(FATAL) << "MakeCrossHostReceiveBuffersForGather not implemented.";
+  }
+
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback) override;
@@ -173,8 +192,7 @@ class TfrtCpuClient final : public PjRtClient {
     return Unimplemented("CreateHostToDeviceChannelHandle not implemented.");
   }
 
-  Status Defragment(absl::Span<PjRtBuffer* const> buffers,
-                    absl::Span<PjRtExecutable* const> executables) override {
+  Status Defragment() override {
     return Unimplemented("Defragment not implemented.");
   }
 
@@ -397,7 +415,6 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   StatusOr<Shape> logical_on_device_shape() override;
 
-
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
@@ -424,6 +441,12 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override {
     return Unimplemented("CopyToRemoteDevice not implemented.");
+  }
+
+  Status CopyToRemoteDeviceScattered(
+      absl::Span<const std::string> serialized_descriptors,
+      const ScatterDetails& scatter_details) override {
+    return Unimplemented("CopyToRemoteDeviceScattered not implemented.");
   }
 
   Status BlockHostUntilReady() override;
@@ -557,14 +580,14 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 
   void Delete() override;
 
+  bool IsDeleted() override;
+
   StatusOr<absl::optional<std::string>> Fingerprint() const;
 
  private:
   friend class TfrtCpuClient;
 
   Status SetUpDonation(bool tuple_inputs);
-
-  bool MustDonateParameter(int parameter) const;
 
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
@@ -599,9 +622,9 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   // for performance reasons.
   std::vector<int64_t> input_buffer_sizes_in_bytes_;
 
-  // A set of parameters that have any aliased buffers and thus must be donated
-  // when executing the computation.
-  absl::flat_hash_set<int> parameters_that_must_be_donated_;
+  // A sorted vector of parameters that have any aliased buffers and thus must
+  // be donated when executing the computation.
+  std::vector<int> parameters_that_must_be_donated_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all

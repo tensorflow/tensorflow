@@ -55,11 +55,6 @@ class BatchOpRewriter : public ::tensorflow::grappler::CustomGraphOptimizer {
       const ::tensorflow::grappler::GrapplerItem& item,
       ::tensorflow::GraphDef* optimized_graph) override;
 
-  void Feedback(::tensorflow::grappler::Cluster* cluster,
-                const ::tensorflow::grappler::GrapplerItem& item,
-                const ::tensorflow::GraphDef& optimized_graph,
-                double result) override {}
-
  private:
   BatchOpRewriteConfig config_;
 };

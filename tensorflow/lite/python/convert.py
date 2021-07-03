@@ -203,7 +203,10 @@ def mlir_quantize(input_data_str,
                   inference_type=_types_pb2.QUANTIZED_INT8,
                   input_data_type=dtypes.float32,
                   output_data_type=dtypes.float32,
-                  enable_numeric_verify=False):
+                  enable_numeric_verify=False,
+                  enable_whole_model_verify=False,
+                  blocklisted_ops=None,
+                  blocklisted_nodes=None):
   """Quantize `input_data_str` with calibration results.
 
   Args:
@@ -218,7 +221,14 @@ def mlir_quantize(input_data_str,
     output_data_type: Data type for the outputs. The default value is float32.
     enable_numeric_verify: Experimental. Subject to change. Bool indicating
       whether to add NumericVerify ops into the debug mode quantized model.
-
+    enable_whole_model_verify: Experimental. Subject to change. Bool indicating
+    whether to add verification for layer by layer, or on whole model. When
+    disabled (per-layer) float and quantized ops will be run from same input
+    (output of previous quantized layer). When enabled, float and quantized ops
+    will run with respective float and quantized output of previous ops.
+    blocklisted_ops: Experimental. Subject to change. Set of ops to blocklist.
+    blocklisted_nodes: Experimental. Subject to change. Set of notes to
+      blocklist.
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
@@ -227,7 +237,8 @@ def mlir_quantize(input_data_str,
       input_data_str, disable_per_channel, fully_quantize, inference_type,
       convert_tensor_tf_type_to_tflite_type(input_data_type),
       convert_tensor_tf_type_to_tflite_type(output_data_type),
-      enable_numeric_verify)
+      enable_numeric_verify, enable_whole_model_verify, blocklisted_ops,
+      blocklisted_nodes)
 
 
 @convert_phase(Component.OPTIMIZE_TFLITE_MODEL, SubComponent.SPARSIFY)
@@ -297,7 +308,7 @@ def toco_convert_protos(model_flags_str,
       return model_str
     except Exception as e:
       converter_error = ConverterError(str(e))
-      for error_data in _metrics_wrapper.get_collected_errors():
+      for error_data in _metrics_wrapper.retrieve_collected_errors():
         converter_error.append_error(error_data)
       raise converter_error
 
@@ -429,6 +440,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      target_ops=None,
                      conversion_summary_dir=None,
                      select_user_tf_ops=None,
+                     allow_all_select_tf_ops=False,
                      enable_tflite_resource_variables=False,
                      unfold_batchmatmul=True,
                      lower_tensor_list_ops=True,
@@ -451,6 +463,7 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.allow_custom_ops = allow_custom_ops
   if select_user_tf_ops:
     toco.select_user_tf_ops.extend(select_user_tf_ops)
+  toco.allow_all_select_tf_ops = allow_all_select_tf_ops
   toco.post_training_quantize = post_training_quantize
   toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
@@ -503,6 +516,7 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_tags=None,
                               saved_model_exported_names=None,
                               select_user_tf_ops=None,
+                              allow_all_select_tf_ops=False,
                               unfold_batchmatmul=True,
                               lower_tensor_list_ops=True,
                               accumulation_type=None,
@@ -584,6 +598,8 @@ def build_toco_convert_protos(input_tensors,
     select_user_tf_ops: List of user's defined TensorFlow ops need to be
       supported in the TensorFlow Lite runtime. These ops will be supported as
       select TensorFlow ops.
+    allow_all_select_tf_ops: If True, automatically add all TF ops (including
+      custom TF ops) to the converted model as flex ops.
     unfold_batchmatmul: Whether to unfold tf.BatchMatMul to a set of
       tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
     lower_tensor_list_ops: Whether to lower tensor list ops to builtin ops. If
@@ -620,6 +636,7 @@ def build_toco_convert_protos(input_tensors,
       target_ops=target_ops,
       conversion_summary_dir=conversion_summary_dir,
       select_user_tf_ops=select_user_tf_ops,
+      allow_all_select_tf_ops=allow_all_select_tf_ops,
       unfold_batchmatmul=unfold_batchmatmul,
       lower_tensor_list_ops=lower_tensor_list_ops,
       accumulation_type=accumulation_type,

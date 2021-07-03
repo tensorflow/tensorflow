@@ -105,6 +105,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -115,6 +117,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -209,7 +212,15 @@ class ImporterBase {
         debug_info_(debug_info),
         function_name_for_debug_info_(function_name_for_debug_info),
         function_name_uniquifier_(function_name_uniquifier),
-        error_handler_(module.getContext()) {}
+        error_handler_(module.getContext()) {
+    // Log import config.
+    if (VLOG_IS_ON(1)) {
+      LOG(INFO) << "Importing with: " << specs.str();
+      for (auto& it : *tf_name_to_mlir_name) {
+        LOG(INFO) << "\t" << it.first << " -> " << it.second;
+      }
+    }
+  }
 
   // Returns the inferred function signature of the given function body. Input
   // types are unranked tensor of the respective datatype in the function and
@@ -810,19 +821,10 @@ Status ImporterBase::AddNodesToShapeRefiner(
     // We currently have no other way to get shapes from ReadVariableOp's.
     // Some graphs seem to have _output_shapes attributes on them, so use that
     // if possible.
-    // TODO(silvasean): Ideally, we would do this in a separate shape inference
-    // pass to avoid adding complexity to the importer. But right now, we don't
-    // have an MLIR-native shape inference pass, so we need to do this while we
-    // still have the Graph around, i.e. here, in the importer.
+    // Note: _output_shapes are optionally set when the user exports the graph
+    // and it is not guaranteed (nor an error if missing). There is not a
+    // promised contract, so effectively a heuristic.
     if (node->op_def().name() == "ReadVariableOp") {
-      // TODO(silvasean): In some graphs, this seems to be annotated on every
-      // node. Why and by whom?
-      // TODO(b/140588338): We should ideally incorporate that information for
-      // all nodes, but right now, this can result in e.g. an Identity node with
-      // signature such as
-      // `(tensor<?x?xf32>) -> tensor<?x9216xf32>` which fails the verifier
-      // (which checks for exact type equality; _output_shapes results in
-      // us shoehorning in the more-precise type on the output).
       if (const AttrValue* attr = node->attrs().Find("_output_shapes"))
         TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
     }
@@ -1412,6 +1414,9 @@ Status ImporterBase::ConvertFeedsToPlaceholders(
 }
 
 Status ImporterBase::PrepareConvert(const Graph& graph) {
+  VLOG(1) << "Importing: "
+          << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
+                                           &graph_flib_);
   TF_RETURN_IF_ERROR(RemoveBackedges(graph));
   TF_RETURN_IF_ERROR(CopyStackTraces(graph, graph_.get()));
 
@@ -3714,12 +3719,14 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
   std::vector<std::pair<std::string, TensorInfo>> inputs(
       signature_def.inputs().begin(), signature_def.inputs().end());
   llvm::sort(inputs, [](const auto& lhs, const auto& rhs) {
-    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
+    return tensorflow::Fingerprint64(lhs.first) <
+           tensorflow::Fingerprint64(rhs.first);
   });
   std::vector<std::pair<std::string, TensorInfo>> outputs(
       signature_def.outputs().begin(), signature_def.outputs().end());
   llvm::sort(outputs, [](const auto& lhs, const auto& rhs) {
-    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
+    return tensorflow::Fingerprint64(lhs.first) <
+           tensorflow::Fingerprint64(rhs.first);
   });
 
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;

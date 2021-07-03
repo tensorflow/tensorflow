@@ -785,10 +785,11 @@ class ParallelInterleaveCheckpointTest(
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
           combinations.combine(cycle_length=[1, 2], block_length=[1, 3])))
-  def testCore(self, cycle_length, block_length):
-    self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
-                        self.num_outputs)
+  def test(self, verify_fn, cycle_length, block_length):
+    verify_fn(self, lambda: self._build_ds(cycle_length, block_length),
+              self.num_outputs)
 
   @combinations.generate(
       combinations.times(
@@ -805,8 +806,10 @@ class ParallelInterleaveCheckpointTest(
         break_points, self.num_outputs)
     self.assertSequenceEqual(sorted(actual), expected_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparseCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
 
     def _map_fn(i):
       return sparse_tensor.SparseTensorValue(
@@ -820,7 +823,7 @@ class ParallelInterleaveCheckpointTest(
       return dataset_ops.Dataset.range(10).map(_map_fn).apply(
           interleave_ops.parallel_interleave(_interleave_fn, 1))
 
-    self.run_core_tests(_build_dataset, 20)
+    verify_fn(self, _build_dataset, num_outputs=20)
 
 
 if __name__ == "__main__":

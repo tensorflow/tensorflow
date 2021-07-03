@@ -1279,7 +1279,6 @@ py_library(
         ":array_ops",
         ":control_flow_util_v2",
         ":functional_ops_gen",
-        ":gradients",
         ":gradients_util",
         ":handle_data_util",
         ":pywrap_tensorflow",
@@ -1310,6 +1309,7 @@ py_library(
         ":control_flow_util_v2",
         ":functional_ops_gen",
         ":gradients_util",
+        ":handle_data_util",
         ":list_ops",
         ":map_ops",
         ":tensor_array_ops",
@@ -2304,7 +2304,6 @@ py_library(
         ":special_math_ops_gen",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/python/framework:for_generated_wrappers",
-        "@functools32_archive//:functools32",
         "@opt_einsum_archive//:opt_einsum",
     ],
 )
@@ -3214,9 +3213,10 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
-        "//tensorflow/compiler/jit:get_compiler_ir",  #tfe
-        "//tensorflow/core/platform:statusor",  #tfe
-        "//tensorflow/compiler/jit:flags",  #tfe
+        "//tensorflow/cc/experimental/libexport:metrics_impl",  # SavedModel metrics
+        "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
+        "//tensorflow/core/platform:statusor",  # tfe
+        "//tensorflow/compiler/jit:flags",  # tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
@@ -3225,8 +3225,7 @@ filegroup(
         "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
-        "//tensorflow/core:op_gen_lib",  # tf_session
-        "//tensorflow/core:protos_all_cc",  # tf_text
+        "//tensorflow/core:op_gen_lib",  # tf_session, tf_text
         "//tensorflow/core/common_runtime/eager:context",  # tfe
         "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
@@ -3767,7 +3766,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )

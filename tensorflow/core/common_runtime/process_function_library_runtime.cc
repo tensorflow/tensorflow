@@ -423,7 +423,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
     const std::vector<string>& input_devices,
     const std::vector<string>& output_devices, const DeviceSet& device_set,
     const std::vector<Node*>& arg_nodes, const std::vector<Node*>& ret_nodes,
-    Device* default_device) const {
+    const FunctionLibraryDefinition* lib_def, Device* default_device) {
   // If output_devices are not specified, we want to set the output device
   // based on the device of the output producing node. The output producing
   // node can be an arg node because functions can simply return their
@@ -477,7 +477,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
         // retval device assignment empty, and rely on placer to infer correct
         // assignment based on actual output device.
         const bool can_use_src_node_device =
-            !(dtype == DT_RESOURCE && IsFunctionCall(*lib_def_, *src_node));
+            !(dtype == DT_RESOURCE && IsFunctionCall(*lib_def, *src_node));
 
         if (!colocation_group.empty()) {
           AttrValue::ListValue colo_attr;
@@ -744,7 +744,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       SetArgShape(options.input_resource_dtypes_and_shapes, arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(
       options.input_devices, options.output_devices, *dev_set, arg_nodes,
-      ret_nodes,
+      ret_nodes, lib_def_,
       options.config_proto.allow_soft_placement() ? default_device : nullptr));
 
   auto data = absl::make_unique<MultiDeviceFunctionData>(

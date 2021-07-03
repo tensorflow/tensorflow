@@ -33,13 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
-// Needed to build `llvm::EquivalenceClasses` of `mlir::Value`s.
-namespace mlir {
-static bool operator<(const Value &lhs, const Value &rhs) {
-  return lhs.getAsOpaquePointer() < rhs.getAsOpaquePointer();
-}
-}  // namespace mlir
-
 constexpr llvm::StringRef
     mlir::kernel_gen::tf_framework::TFAllocOp::kReuseOutputAttrName;
 constexpr llvm::StringRef

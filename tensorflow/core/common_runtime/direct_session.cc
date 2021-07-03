@@ -548,15 +548,9 @@ Status DirectSession::RunInternal(
       }
     }
     if (!collective_executor_mgr_) {
-      std::unique_ptr<DeviceResolverInterface> drl(
-          new DeviceResolverLocal(device_mgr_.get()));
-      std::unique_ptr<ParamResolverInterface> cprl(
-          new CollectiveParamResolverLocal(options_.config, device_mgr_.get(),
-                                           drl.get(),
-                                           "/job:localhost/replica:0/task:0"));
-      collective_executor_mgr_.reset(new CollectiveExecutorMgr(
-          options_.config, device_mgr_.get(), std::move(drl), std::move(cprl),
-          MaybeCreateNcclCommunicator()));
+      collective_executor_mgr_ = CreateProdLocalCollectiveExecutorMgr(
+          options_.config, device_mgr_.get(),
+          MaybeCreateNcclCommunicator(options_.config));
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
@@ -651,6 +645,7 @@ Status DirectSession::RunInternal(
   args.sync_on_finish = sync_on_finish_;
   args.user_intra_op_threadpool = threadpool_options.intra_op_threadpool;
   args.run_all_kernels_inline = pool == nullptr;
+  args.start_time_usecs = start_time_usecs;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 

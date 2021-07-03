@@ -50,7 +50,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.6.0'
+_VERSION = '2.7.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -82,6 +82,7 @@ REQUIRED_PACKAGES = [
     # Install other dependencies
     'absl-py ~= 0.10',
     'astunparse ~= 1.6.3',
+    'clang ~= 5.0',
     'flatbuffers ~= 1.12.0',
     'google_pasta ~= 0.2',
     'h5py ~= 3.1.0',
@@ -104,7 +105,7 @@ REQUIRED_PACKAGES = [
     'tensorflow_estimator ~= 2.5.0',
     # TODO(scottzhu): OSS keras hasn't been formally released yet.
     # Use keras-nightly at the moment.
-    'keras-nightly ~= 2.5.0.dev',
+    'keras-nightly ~= 2.6.0.dev2021052700',
 ]
 
 
@@ -118,7 +119,7 @@ if 'tf_nightly' in project_name:
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.6.0.a'
     elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.5.0.dev'
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.6.0.dev'
     elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
       REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.6.0.dev'
 

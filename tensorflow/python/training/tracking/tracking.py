@@ -22,6 +22,7 @@ import copy
 import warnings
 
 from absl import logging
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -36,17 +37,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 # global _RESOURCE_TRACKER_STACK
 _RESOURCE_TRACKER_STACK = []
-
-
-class NotTrackable(object):
-  """Marks instances of child classes as unsaveable using an object-based API.
-
-  Useful for marking objects which would otherwise look trackable because
-  of inheritance (e.g. through `Layer`) as not trackable. Inheriting from
-  `NotTrackable` does not prevent an object from being assigned to any
-  attributes, but will throw an error on save/restore.
-  """
-  pass
 
 
 @tf_export("__internal__.tracking.AutoTrackable", v1=[])
@@ -182,7 +172,35 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
-class CapturableResource(base.Trackable):
+def _make_getter(captured_getter, captured_previous):
+  """To avoid capturing loop variables."""
+
+  def getter(*args, **kwargs):
+    return captured_getter(captured_previous, *args, **kwargs)
+
+  return getter
+
+
+class ResourceMetaclass(type):
+  """Metaclass for CapturableResource."""
+
+  def __call__(cls, *args, **kwargs):
+
+    def default_resource_creator(next_creator, *a, **kw):
+      assert next_creator is None
+      obj = cls.__new__(cls, *a, **kw)
+      obj.__init__(*a, **kw)
+      return obj
+
+    previous_getter = lambda *a, **kw: default_resource_creator(None, *a, **kw)
+    resource_creator_stack = ops.get_default_graph()._resource_creator_stack
+    for getter in resource_creator_stack[cls._resource_type()]:
+      previous_getter = _make_getter(getter, previous_getter)
+
+    return previous_getter(*args, **kwargs)
+
+
+class CapturableResource(six.with_metaclass(ResourceMetaclass, base.Trackable)):
   """Holds a Tensor which a tf.function can capture.
 
   `CapturableResource`s are discovered by traversing the graph of object
@@ -206,6 +224,10 @@ class CapturableResource(base.Trackable):
     self._self_destruction_context = (
         context.eager_mode if context.executing_eagerly()
         else ops.get_default_graph().as_default)
+
+  @classmethod
+  def _resource_type(cls):
+    return cls.__name__
 
   @property
   def _destruction_context(self):

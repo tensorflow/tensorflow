@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 39.
+// Next ID to use: 40.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -253,4 +253,8 @@ message TocoFlags {
   // Whether this model supports inference in bfloat16.
   // Note: This is an experimental feature.
   optional bool allow_bfloat16 = 38 [default = false];
+
+  // If true, automatically adds all tf ops into the model as select Tensorflow
+  // ops.
+  optional bool allow_all_select_tf_ops = 39;
 }

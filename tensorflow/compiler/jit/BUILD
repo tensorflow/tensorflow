@@ -941,7 +941,6 @@ tf_cc_test(
         # TODO(b/141643254) Re-enable msan after fixing
         # use-of-uninitialized-value error.
         "nomsan",
-        "no_cuda_asan",  # TODO(b/171317460): re-enable.
     ] + tf_cuda_tests_tags(),
     deps = [
         ":common",
