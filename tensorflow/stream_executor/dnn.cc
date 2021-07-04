@@ -399,8 +399,8 @@ std::vector<int64> BatchDescriptor::vectorized_strides(
   std::vector<int64> phys_dims = vectorized_dims(
                                      this->layout(), vector_size, vector_dim);
   std::vector<int64> phys_strides(phys_dims.size());
-  phys_strides[ndims() + 1] = 1;
-  for (int i = ndims(); i >= 0; i--) {
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);
@@ -612,8 +612,8 @@ std::vector<int64> FilterDescriptor::vectorized_strides(
   std::vector<int64> phys_dims = vectorized_dims(
                                      this->layout(), vector_size, vector_dim);
   std::vector<int64> phys_strides(phys_dims.size());
-  phys_strides[ndims() + 1] = 1;
-  for (int i = ndims(); i >= 0; i--) {
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);
