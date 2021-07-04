@@ -52,10 +52,12 @@ struct PlaceShapeCalcOnHost
     placeShapeCalcSubgraphOnHost();
     // Phase 2: Place any mhlo ops that calculates I32 on Host
     placeI32OpsOnHost();
-    // Phase 3: Add placement attribute for TupleOp and GetTupleElementOp
-    addAttrForTupleAndGTE();
-    // Phase 4: Insert h2d and d2h OP on cross device edges. Host is CPU.
-    // Device is GPU or CPU
+
+    // TODO(disc): Phase 3: Add placement attribute for TupleOp and
+    // GetTupleElementOp.
+
+    // Phase 4: Insert h2d and d2h OP on cross device edges. Host is CPU. Device
+    // is GPU or CPU
     addMemcpyNodes();
   };
 
@@ -64,8 +66,6 @@ struct PlaceShapeCalcOnHost
   void placeShapeCalcSubgraphOnHost();
   // Place any mhlo ops that calculates I32 on Host
   void placeI32OpsOnHost();
-  // Add placement attribute for TupleOp and GetTupleElementOp
-  void addAttrForTupleAndGTE();
   // Insert h2d and d2h OP on cross device edges.
   void addMemcpyNodes();
 
@@ -117,13 +117,6 @@ struct PlaceShapeCalcOnHost
       SmallVector<std::pair<Operation*, size_t>, 4>& d2h_worklist,
       SmallVector<std::pair<Operation*, size_t>, 4>& h2d_worklist);
 
-  // Set placment for control flow and tuple.
-  void processRegion(Region& region);
-
-  LogicalResult setAttrForGTEOp(mhlo::GetTupleElementOp gte);
-  LogicalResult setAttrForTupleOp(mhlo::TupleOp tuple);
-  void setAttrForControlFlowOps(Operation* op, Region& region);
-
   // insert H2D or D2H Op.
   void insertMemcpy(Operation* dst, size_t operand_index, bool is_h2d);
 };
@@ -138,7 +131,7 @@ void PlaceShapeCalcOnHost::placeShapeCalcSubgraphOnHost() {
 
   // Put the i64 Scalar output on Host into shape_calc_ops,
   // This is a optimization for PyTorch,
-  // TODO: revisit this if we have outputs on CPU for TF in the future.
+  // TODO(disc): revisit this if we have outputs on CPU for TF in the future.
   module.walk([&](FuncOp func) {
     if (func.getName() == "main") {
       markI64ReturnedCPUScalarOps(func, shape_calc_ops);
@@ -272,57 +265,6 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
   });
 }
 
-void PlaceShapeCalcOnHost::setAttrForControlFlowOps(Operation* op,
-                                                    Region& region) {
-  auto tuple = region.front().getTerminator()->getOperand(0).getDefiningOp();
-  // TODO: support nested while/condition op
-  assert(isa<mhlo::TupleOp>(tuple) &&
-         "unexpected TupleOp in While/CondOp with TupleType");
-  auto array_attr = tuple->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
-  assert(array_attr && "TupleOp in the body should already be processed");
-  op->setAttr(kPlaceTyAttr, array_attr);
-}
-
-void PlaceShapeCalcOnHost::processRegion(Region& region) {
-  for (Block& block : region) {
-    for (Operation& op : llvm::make_early_inc_range(block)) {
-      if (isa<mhlo::TupleOp>(&op)) {
-        setAttrForTupleOp(cast<mhlo::TupleOp>(&op));
-      } else if (isa<mhlo::GetTupleElementOp>(&op)) {
-        setAttrForGTEOp(cast<mhlo::GetTupleElementOp>(&op));
-      } else if (isa<mhlo::WhileOp>(&op)) {
-        auto while_op = cast<mhlo::WhileOp>(&op);
-        processRegion(while_op.cond());
-        processRegion(while_op.body());
-        Value operand = while_op.getOperand(0);
-        auto defining_op = operand.getDefiningOp();
-        // Here we assume that while's operand always from a tupleOp.
-        assert(defining_op && isa<mhlo::TupleOp>(defining_op));
-        // We set placment attr of while_op to its operand's placement since
-        // we require that all inputs and outputs of while_op should have the
-        // same placement. This is further ensured in the `addMemcpyNodes`
-        // phase.
-        while_op.getOperation()->setAttr(
-            kPlaceTyAttr, defining_op->getAttrOfType<ArrayAttr>(kPlaceTyAttr));
-      } else if (isa<mhlo::IfOp>(&op)) {
-        auto if_op = cast<mhlo::IfOp>(&op);
-        processRegion(if_op.true_branch());
-        processRegion(if_op.false_branch());
-        if (if_op.getType().isa<TupleType>()) {
-          setAttrForControlFlowOps(&op, if_op.true_branch());
-        }
-      }
-    }
-  }
-}
-
-// Add placement attribute for TupleOp and GetTupleElementOp
-void PlaceShapeCalcOnHost::addAttrForTupleAndGTE() {
-  ModuleOp module = getOperation();
-  module.walk(
-      [&](mlir::FuncOp func) { processRegion(*func.getCallableRegion()); });
-}
-
 void PlaceShapeCalcOnHost::enforceOutputPlacement(
     Operation* dst, FuncOp main_func,
     SmallVector<std::pair<Operation*, size_t>, 4>& d2h_worklist,
@@ -401,8 +343,8 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
         Value operand = return_op->getOperand(0);
         auto defining_op = operand.getDefiningOp();
 
-        // TODO: support while_op with single tensor input once we finish the
-        // refactor the placement pass.
+        // TODO(disc): support while_op with single tensor input once we finish
+        // the refactor the placement pass.
         assert(defining_op && "unsupported while_op with single tensor input");
 
         if (getOpPlacement(defining_op) == PlacementType::kDevice) {
@@ -412,8 +354,8 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
 
       // outputs and inputs of the while's body func should have the same
       // placement.
-      // TODO: this is a workaround and should be removed once we refactor the
-      // pass.
+      // TODO(disc): this is a workaround and should be removed once we refactor
+      // the pass.
       {
         auto ensure_input_output_having_same_output = [&]() {
           assert(while_op.body().getBlocks().size() == 1 &&
@@ -428,8 +370,8 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
           if (!defining_op) return;
 
           auto tp = operand.getType().dyn_cast<TupleType>();
-          // TODO: support while_op with single tensor input once we finish
-          // the refactor the placement pass.
+          // TODO(disc): support while_op with single tensor input once we
+          // finish the refactor the placement pass.
           if (!tp) {
             return;
           }
@@ -611,7 +553,7 @@ void PlaceShapeCalcOnHost::markShapeCalculationOps(
         }
       }
     }
-    // TODO: 3. If the operand of the op is a nested FuncOp, mark the
+    // TODO(disc): 3. If the operand of the op is a nested FuncOp, mark the
     //    associated producer in the nested FuncOp
   });
 }
@@ -652,8 +594,6 @@ PlacementType PlaceShapeCalcOnHost::getTensorPlacement(Operation* dst,
   return PlacementType::kDevice;
 }
 
-// TODO: Currently, we put H2DOp and D2HOp in mhlo dialect. They should be put
-// into a separate dedicated dialect.
 void PlaceShapeCalcOnHost::insertMemcpy(Operation* dst, size_t operand_index,
                                         bool is_h2d) {
   OpBuilder b(dst);
@@ -668,118 +608,6 @@ void PlaceShapeCalcOnHost::insertMemcpy(Operation* dst, size_t operand_index,
     copy_result = new_copy.getResult();
   }
   dst->setOperand(operand_index, copy_result);
-}
-
-LogicalResult PlaceShapeCalcOnHost::setAttrForTupleOp(mhlo::TupleOp tuple) {
-  auto tuple_ty = tuple.getResult().getType().dyn_cast<TupleType>();
-  auto tuple_size = tuple_ty.size();
-  SmallVector<Attribute, 4> attrs;
-  OpBuilder builder(tuple);
-  auto parent = tuple->getParentOp();
-  for (size_t operand_idx = 0; operand_idx < tuple_size; ++operand_idx) {
-    auto operand = tuple.getOperation()->getOperand(operand_idx);
-    auto operand_op = operand.getDefiningOp();
-    // in case the operand is a block argument
-    if (!operand_op) {
-      if (isa<mlir::FuncOp>(parent)) {
-        if (getArgumentPlacement(operand) == PlacementType::kHost) {
-          attrs.push_back(builder.getStringAttr(kTypeHost));
-        } else {
-          attrs.push_back(builder.getStringAttr(kTypeDevice));
-        }
-      } else if (isa<mhlo::WhileOp>(parent)) {
-        auto while_operand = parent->getOperand(0).getDefiningOp();
-        assert(isa<mhlo::TupleOp>(while_operand));
-        auto parent_array_attr =
-            while_operand->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
-        assert(parent_array_attr &&
-               "tuple in the parent block should already be processed");
-        attrs.push_back(parent_array_attr[operand_idx].cast<StringAttr>());
-      } else if (isa<mhlo::IfOp>(parent)) {
-        // if in true_region, map to operand(1) of IfOp
-        // if in false_region, map to operand(2) of IfOp
-        auto cond = cast<mhlo::IfOp>(parent);
-        Operation* def_op = (tuple->getParentRegion() == &cond.true_branch())
-                                ? cond.true_arg().getDefiningOp()
-                                : cond.false_arg().getDefiningOp();
-        PlacementType operand_placement = getOpPlacement(def_op);
-        if (operand_placement == PlacementType::kDevice) {
-          attrs.push_back(builder.getStringAttr(kTypeDevice));
-        } else if (operand_placement == PlacementType::kHost) {
-          attrs.push_back(builder.getStringAttr(kTypeHost));
-        } else {
-          tuple.emitError("Unexpected PlacementType");
-          return failure();
-        }
-      } else {
-        tuple.emitError("!nexpected tuple");
-        return failure();
-      }
-
-      continue;
-    }
-
-    // in case the tuple_operand is a ordinary op
-    PlacementType operand_placement = getOpPlacement(operand_op);
-    if (operand_placement == PlacementType::kDevice) {
-      attrs.push_back(builder.getStringAttr(kTypeDevice));
-    } else if (operand_placement == PlacementType::kHost) {
-      attrs.push_back(builder.getStringAttr(kTypeHost));
-    } else {
-      tuple.emitError("Unexpected PlacementType");
-      return failure();
-    }
-  }
-
-  auto array_attr = ArrayAttr::get(tuple.getContext(), attrs);
-  tuple.getOperation()->setAttr(kPlaceTyAttr, array_attr);
-
-  return success();
-}
-
-LogicalResult PlaceShapeCalcOnHost::setAttrForGTEOp(
-    mhlo::GetTupleElementOp gte) {
-  OpBuilder builder(gte);
-  auto gte_idx = static_cast<unsigned>(gte.index());
-  auto tuple = gte.getOperation()->getOperand(0).getDefiningOp();
-  // in case the operand is a block argument
-  if (!tuple) {
-    auto parent = gte->getParentOp();
-    if (isa<mhlo::WhileOp>(parent)) {
-      auto while_operand = parent->getOperand(0).getDefiningOp();
-      assert(isa<mhlo::TupleOp>(while_operand));
-      auto parent_array_attr =
-          while_operand->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
-      assert(parent_array_attr &&
-             "tuple in the parent block should already be processed");
-      gte.getOperation()->setAttr(
-          kPlaceTyAttr, parent_array_attr[gte_idx].cast<StringAttr>());
-    } else if (isa<mhlo::IfOp>(parent)) {
-      auto if_op = cast<mhlo::IfOp>(parent);
-      Operation* if_operand = (gte->getParentRegion() == &if_op.true_branch())
-                                  ? if_op.true_arg().getDefiningOp()
-                                  : if_op.false_arg().getDefiningOp();
-      assert(isa<mhlo::TupleOp>(if_operand));
-      auto parent_array_attr =
-          if_operand->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
-      assert(parent_array_attr &&
-             "tuple in the parent block should already be processed");
-      gte.getOperation()->setAttr(
-          kPlaceTyAttr, parent_array_attr[gte_idx].cast<StringAttr>());
-    } else {
-      gte.emitError(
-          "unexpected GTE whose operand is a block argument, \
-                    but not inside a while/if");
-      return failure();
-    }
-    return success();
-  }
-  auto array_attr = tuple->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
-  assert(array_attr && "kPlaceTyAttr on Tuple not found");
-  if (array_attr[gte_idx].cast<StringAttr>().getValue() == kTypeHost) {
-    gte.getOperation()->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
-  }
-  return success();
 }
 
 }  // namespace
