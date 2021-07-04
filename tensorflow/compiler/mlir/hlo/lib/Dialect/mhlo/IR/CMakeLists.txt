@@ -102,6 +102,17 @@ target_link_libraries(DiscRalDialect
   MLIRIR
 )
 
+add_mlir_dialect_library(MhloDiscDialect
+  hlo_disc_ops.cc
+
+  DEPENDS
+  MLIRmhlo_disc_opsIncGen
+)
+target_link_libraries(MhloDiscDialect
+  PUBLIC
+  MLIRIR
+)
+
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc
 DEPENDS

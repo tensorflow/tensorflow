@@ -44,4 +44,12 @@ namespace disc_ral {
 }  // end namespace disc_ral
 }  // end namespace mlir
 
+namespace mlir {
+namespace mhlo_disc {
+
+#define GEN_PASS_CLASSES
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_disc_passes.h.inc"
+
+}  // end namespace mhlo_disc
+}  // end namespace mlir
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H_

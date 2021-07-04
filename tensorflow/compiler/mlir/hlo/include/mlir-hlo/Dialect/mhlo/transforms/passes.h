@@ -41,9 +41,6 @@ std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
-// Place shape calculating subgraph on host
-std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnHostPass();
-
 /// Lowers from the CHLO dialect to the HLO dialect.
 std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
     bool legalize_broadcasts = true, bool expand_compositions = true);
@@ -58,6 +55,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
+
+std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnHostPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
@@ -137,6 +136,14 @@ std::unique_ptr<OperationPass<ModuleOp>> createRalInjectExecutionContextPass(
 
 // Lower some specific ops to library calls (modeled by `disc_ral.launch` op).
 std::unique_ptr<mlir::FunctionPass> createRalLowerToLibraryCallPass();
+
+}  // namespace disc_ral
+
+
+namespace mhlo_disc {
+
+// Place shape calculating subgraph on host
+// std::unique_ptr<OperationPass<FuncOp>> createPlaceShapeCalcOnHostPass();
 
 }  // namespace disc_ral
 

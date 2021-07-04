@@ -65,3 +65,14 @@ function(add_disc_ral_dialect dialect)
 endfunction()
 
 add_disc_ral_dialect(disc_ral_ops)
+
+
+function(add_mhlo_disc_dialect dialect)
+  set(LLVM_TARGET_DEFINITIONS ${dialect}.td)
+  mlir_tablegen(${dialect}.h.inc -gen-op-decls)
+  mlir_tablegen(${dialect}.cc.inc -gen-op-defs)
+  add_public_tablegen_target(MLIR${dialect}IncGen)
+  add_dependencies(mlir-headers MLIR${dialect}IncGen)
+endfunction()
+
+add_mhlo_disc_dialect(mhlo_disc_ops)

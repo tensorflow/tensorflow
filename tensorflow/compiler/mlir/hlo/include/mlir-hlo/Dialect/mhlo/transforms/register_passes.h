@@ -54,4 +54,14 @@ inline void registerAllDiscRalPasses() { registerRALPasses(); }
 }  // namespace disc_ral
 }  // namespace mlir
 
+namespace mlir {
+namespace mhlo_disc {
+
+#define GEN_PASS_REGISTRATION
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_disc_passes.h.inc"
+
+inline void registerAllMhloDiscPasses() { registerMhloDiscPasses(); }
+
+}  // namespace mhlo_disc
+}  // namespace mlir
 #endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REGISTER_PASSES_H_

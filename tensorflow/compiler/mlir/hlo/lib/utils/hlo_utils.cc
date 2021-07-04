@@ -167,30 +167,5 @@ int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
   return -1;
 }
 
-PlacementType getInputPlacement(Value arg) {
-  auto parent = arg.getParentRegion()->getParentOp();
-  assert(isa<mlir::FuncOp>(parent) && "invalid use of getInputPlacement");
-  auto main_func = cast<mlir::FuncOp>(parent);
-  assert(main_func.getName() == "main" && "invalid use of getInputPlacement");
-  auto dict_attr = parent->getAttrOfType<DictionaryAttr>("tf.entry_function");
-  assert(dict_attr && "main_func must has tf.entry_function attr");
-  auto input_placements_attr = dict_attr.get(kInputPlacementAttr);
-  if (!input_placements_attr) return PlacementType::kDevice;
-
-  SmallVector<StringRef, 4> input_placements;
-  input_placements_attr.cast<mlir::StringAttr>().getValue().split(
-      input_placements, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
-  assert(input_placements.size() == main_func.getNumArguments() &&
-         "input_placements.size() is not equal to num of inputs");
-  auto arg_index = hlo::getArgumentIndex(main_func, arg);
-  if (input_placements[arg_index] == hlo::kTypeHost) {
-    return PlacementType::kHost;
-  } else {
-    assert((input_placements[arg_index] == hlo::kTypeDevice) &&
-           "invalid input_placements string");
-    return PlacementType::kDevice;
-  }
-}
-
 }  // namespace hlo
 }  // namespace mlir

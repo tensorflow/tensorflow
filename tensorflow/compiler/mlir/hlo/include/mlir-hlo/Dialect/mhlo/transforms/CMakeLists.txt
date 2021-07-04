@@ -25,3 +25,7 @@ add_public_tablegen_target(MLIRLmhloPassIncGen)
 set(LLVM_TARGET_DEFINITIONS disc_ral_passes.td)
 mlir_tablegen(disc_ral_passes.h.inc -gen-pass-decls -name RAL)
 add_public_tablegen_target(MLIRDiscRalPassIncGen)
+
+set(LLVM_TARGET_DEFINITIONS mhlo_disc_passes.td)
+mlir_tablegen(mhlo_disc_passes.h.inc -gen-pass-decls -name RAL)
+add_public_tablegen_target(MLIRMhloDiscPassIncGen)

@@ -68,12 +68,10 @@ def LegalizeTanhToApproximationPass : FunctionPass<"mhlo-legalize-trigonometric-
   let constructor = "createLegalizeTrigonometricToApproximationPass()";
 }
 
-
 def HloLegalizeToLinalgPass : FunctionPass<"hlo-legalize-to-linalg"> {
   let summary = "Legalize from HLO dialect to Linalg dialect.";
   let constructor = "createLegalizeHloToLinalgPass()";
 }
-
 
 def LegalizeToStandardPass : FunctionPass<"mhlo-legalize-to-std"> {
   let summary = "Legalize from MHLO dialect to standard dialect.";

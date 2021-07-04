@@ -39,27 +39,8 @@ enum class PlacementType {
 };
 
 // Input & output placement attr
-const std::string kInputPlacementAttr = "input_placements";
-const std::string kOutputPlacementAttr = "output_placements";
-
-// for rule based placement strategy, the placement of the op in the list
-// is up to the placement of the dominant operand
-const std::unordered_map<std::string, /*dominant operand index*/ int>
-    kPlaceRuleMap = {{"mhlo.dynamic_gather", /*operand*/ 0},
-                     {"mhlo.gather", /*operand*/ 0}};
-
-const std::unordered_map<std::string, std::set<int>> kShapeCalcOperandMap = {
-    {"mhlo.real_dynamic_slice",
-     {/*start_indices*/ 1, /*limit_indices*/ 2, /*strides*/ 3}},
-    {"mhlo.dynamic_pad",
-     {/*edge_padding_low*/ 2, /*edge_padding_high*/ 3, /*interior_padding*/ 4}},
-    {"mhlo.dynamic_reshape", {/*shape*/ 1}},
-    {"mhlo.dynamic_iota", {/*shape*/ 0}},
-    {"mhlo.dynamic_broadcast_in_dim", {/*out_dim_size*/ 1}},
-    {"mhlo.dynamic_gather", {/*slice_sizes*/ 2}},
-    {"mhlo.dynamic_conv", {/*paddings*/ 2}},
-    {"mhlo.if", {/*pred*/ 0}},
-    {"mhlo.dynamic_rng_uniform", {/*start*/ 0, /*limit*/ 1, /*shape*/ 2}}};
+constexpr StringRef kInputPlacementAttr = "input_placements";
+constexpr StringRef kOutputPlacementAttr = "output_placements";
 
 // Computes the broadcast dimensions attr for an elementwise binary operator
 // between two ranked tensors.
@@ -127,9 +108,8 @@ std::string LmhloToMhloOpName(llvm::StringRef op_name,
 // Return true if Attr has values [0, 1, ...].
 bool IsSequenceStartingWith0(DenseIntElementsAttr attr);
 
+// Returns the argument index for the giving FuncOp and its operand value.
 int64_t getArgumentIndex(mlir::FuncOp op, Value value);
-
-PlacementType getInputPlacement(Value arg);
 
 }  // namespace hlo
 }  // namespace mlir

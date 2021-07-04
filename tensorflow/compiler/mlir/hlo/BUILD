@@ -693,6 +693,77 @@ cc_library(
     alwayslink = 1,
 )
 
+
+gentbl_cc_library(
+    name = "MhloDiscPassIncGen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=MhloDisc",
+            ],
+            "include/mlir-hlo/Dialect/mhlo/transforms/mhlo_disc_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/transforms/mhlo_disc_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "mhlo_disc_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_disc_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_disc_ops.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/mhlo/IR/hlo_disc_ops.td",
+    deps = [":hlo_ops_td_files"],
+)
+
+cc_library(
+    name = "mhlo_disc",
+    srcs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_disc_ops.cc.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_disc_ops.h.inc",
+        "lib/Dialect/mhlo/IR/hlo_disc_ops.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_disc_ops.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":mhlo_disc_ops_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:CopyOpInterface",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:ViewLikeInterface",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "ral_lower_to_library_call",
     srcs = ["lib/Dialect/mhlo/transforms/ral_lower_to_library_call.cc"],
@@ -723,6 +794,7 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/register.h"],
     deps = [
         ":disc_ral",
+        ":mhlo_disc",
         ":hlo",
         ":lhlo",
         ":lhlo_gpu",
@@ -772,6 +844,7 @@ cc_library(
     srcs = ["lib/Dialect/mhlo/transforms/mhlo_shape_calc_placement.cc"],
     deps = [
         ":hlo",
+        ":mhlo_disc",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -780,7 +853,6 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1357,6 +1429,7 @@ cc_library(
     ],
     deps = [
         ":DiscRalPassIncGen",
+        ":MhloDiscPassIncGen",
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
         "@llvm-project//mlir:Pass",
@@ -1405,6 +1478,7 @@ cc_library(
     ],
     deps = [
         ":DiscRalPassIncGen",
+        ":MhloDiscPassIncGen",
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
         ":broadcast_propagation",
@@ -1446,6 +1520,7 @@ cc_binary(
     deps = [
         ":all_passes",
         ":disc_ral",
+        ":mhlo_disc",
         ":hlo",
         ":lhlo",
         ":lhlo_gpu",

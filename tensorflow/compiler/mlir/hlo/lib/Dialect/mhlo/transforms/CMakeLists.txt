@@ -69,6 +69,7 @@ add_mlir_library(MhloPasses
 
   DEPENDS
   MLIRDiscRalPassIncGen
+  MLIRMhloDiscPassIncGen
   MLIRhlo_opsIncGen
   MLIRMhloLowerComplexIncGen
   MLIRMhloPassIncGen
@@ -172,6 +173,21 @@ add_mlir_library(DiscRalPasses
 
   LINK_LIBS PUBLIC
   DiscRalDialect
+  MLIRIR
+  MLIRPass
+)
+
+add_mlir_library(MhloDiscPasses
+
+  DEPENDS
+  MLIRmhlo_disc_opsIncGen
+  MLIRMhloDiscPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MhloDiscDialect
   MLIRIR
   MLIRPass
 )
