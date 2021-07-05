@@ -141,28 +141,28 @@ inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
 inline int32_t MultiplyByQuantizedMultiplier(int32_t x,
                                              int32_t quantized_multiplier,
                                              int shift) {
-  assert(quantized_multiplier >= 0);
-  assert(shift >= -31 && shift <= 30);
+  TFLITE_DCHECK(quantized_multiplier >= 0);
+  TFLITE_DCHECK(shift >= -31 && shift <= 30);
 
   const int64_t total_shift = 31 - shift;
   const int64_t round = static_cast<int64_t>(1) << (total_shift - 1);
   int64_t result = x * static_cast<int64_t>(quantized_multiplier) + round;
   result = result >> total_shift;
 
-  assert(result >= std::numeric_limits<int32_t>::min() &&
-         result <= std::numeric_limits<int32_t>::max());
+  TFLITE_DCHECK(result >= std::numeric_limits<int32_t>::min() &&
+                result <= std::numeric_limits<int32_t>::max());
   return static_cast<int32_t>(result);
 }
 
 inline int32_t MultiplyByQuantizedMultiplierSmallerThanOneExp(
     int32_t x, int32_t quantized_multiplier, int shift) {
-  assert(shift <= 0);
+  TFLITE_DCHECK_LE(shift, 0);
   return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
 }
 
 inline int32_t MultiplyByQuantizedMultiplierGreaterThanOne(
     int32_t x, int32_t quantized_multiplier, int shift) {
-  assert(shift >= 0);
+  TFLITE_DCHECK_GE(shift, 0);
   return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
 }
 
@@ -177,10 +177,10 @@ inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
   // - quantize_scale>=0  (the usual range is (1<<30) to (1>>31)-1)
   // - scaling is chosen so final scaled result fits in int32_t
   // - input x is in the range -(1<<47) <= x < (1<<47)
-  assert(quantized_multiplier >= 0);
-  assert(shift >= -31 && shift < 8);
-  assert(x >= -(static_cast<int64_t>(1) << 47) &&
-         x < (static_cast<int64_t>(1) << 47));
+  TFLITE_DCHECK(quantized_multiplier >= 0);
+  TFLITE_DCHECK(shift >= -31 && shift < 8);
+  TFLITE_DCHECK(x >= -(static_cast<int64_t>(1) << 47) &&
+                x < (static_cast<int64_t>(1) << 47));
 
   const int32_t reduced_multiplier =
       (quantized_multiplier < 0x7FFF0000)
@@ -191,8 +191,8 @@ inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
   int64_t result = x * static_cast<int64_t>(reduced_multiplier) + round;
   result = result >> total_shift;
 
-  assert(result >= std::numeric_limits<int32_t>::min() &&
-         result <= std::numeric_limits<int32_t>::max());
+  TFLITE_DCHECK(result >= std::numeric_limits<int32_t>::min() &&
+                result <= std::numeric_limits<int32_t>::max());
   return static_cast<int32_t>(result);
 }
 
