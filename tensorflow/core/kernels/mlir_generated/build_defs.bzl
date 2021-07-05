@@ -214,6 +214,7 @@ def _gen_kernel_library(
         gpu_archs = [],
         tags = [],
         unroll_factors = None,
+        types_with_unrolling_disabled = [],
         extra_args = [],
         test_tags = [],
         test_size = "medium"):
@@ -234,6 +235,7 @@ def _gen_kernel_library(
                  the compilation will happen for CPU.
       tags: The tags which should be added to the library.
       unroll_factors: The unrolling specification, e.g. "4,4"
+      types_with_unrolling_disabled: The types for which unrolling should be disabled.
       extra_args: Extra arguments to pass to the generator tool.
       test_tags: The tags to pass to the generated test.
       test_size: The "size" argument to pass to the test.
@@ -247,8 +249,10 @@ def _gen_kernel_library(
         for (type, output_type) in zip(types, output_types):
             # Disable unrolling for integer types while LLVM does not vectorize these.
             # See b/182343395 for context.
+            unrolling_disabled = (types_with_unrolling_disabled +
+                                  ["i1", "i8", "i16", "i32", "i64"])
             filtered_unroll_factors = ""
-            if type not in ["i1", "i8", "i16", "i32", "i64"]:
+            if type not in unrolling_disabled:
                 filtered_unroll_factors = unroll_factors
             _gen_mlir_op(
                 op = op,
