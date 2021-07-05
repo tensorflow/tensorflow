@@ -199,6 +199,9 @@ class TestCluster(object):
   def num_registered_workers(self):
     return self.dispatcher._num_workers()
 
+  def num_tasks_on_workers(self):
+    return sum(worker.num_tasks() for worker in self.workers)
+
   def __del__(self):
     # Destroy workers before the dispatcher for clean shutdown.
     self.workers.clear()

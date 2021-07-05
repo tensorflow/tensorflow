@@ -78,6 +78,13 @@ gentbl_cc_library(
             "lib/Dialect/Test/TestOpsDialect.h.inc",
         ),
         (
+            [
+                "-gen-dialect-defs",
+                "-dialect=test",
+            ],
+            "lib/Dialect/Test/TestOpsDialect.cpp.inc",
+        ),
+        (
             ["-gen-enum-decls"],
             "lib/Dialect/Test/TestOpEnums.h.inc",
         ),
@@ -226,7 +233,6 @@ cc_library(
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Reducer",
         "@llvm-project//mlir:SideEffects",
@@ -516,6 +522,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
     ],

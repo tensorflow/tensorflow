@@ -176,6 +176,19 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return absl::optional<std::string>();
   }
 
+  StatusOr<std::string> SerializeExecutable(
+      const PjRtExecutable& executable) const override {
+    return Unimplemented("SerializeExecutable not implemented on %s",
+                         platform_name());
+  }
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
+      CompileOptions options) override {
+    return Unimplemented("DeserializeExecutable not implemented on %s",
+                         platform_name());
+  }
+
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
 
   // Creates a buffer on the device without initializing or copying any data.
@@ -277,6 +290,16 @@ class PjRtStreamExecutorClient : public PjRtClient {
                                         std::function<void(Status)> on_ready) {
     return Unimplemented("Raw copies to host not implemented.");
   }
+
+  // Helper function for creating PjRtStreamExecutorExecutables. Modifies
+  // `options` in-place.
+  struct ExecutableExtras {
+    std::shared_ptr<DeviceAssignment> device_assignment;
+    std::vector<PjRtExecutable::LogicalDeviceIds>
+        addressable_device_logical_ids;
+    std::vector<PjRtDevice*> addressable_devices;
+  };
+  StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -720,6 +743,7 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
  private:
   friend class PjRtStreamExecutorClient;
+  friend class PjRtTpuClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);

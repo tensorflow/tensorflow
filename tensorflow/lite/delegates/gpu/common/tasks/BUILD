@@ -444,6 +444,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "@com_google_absl//absl/strings",
     ],
 )
 

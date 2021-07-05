@@ -34,6 +34,14 @@ const std::string GetOpName(const OpSignature& op_sig) {
   return tflite::EnumNamesBuiltinOperator()[op_sig.op];
 }
 
+int NumElements(const std::vector<int32_t>& dims) {
+  int count = 1;
+  for (int i = 0; i < dims.size(); ++i) {
+    count *= dims.at(i);
+  }
+  return count;
+}
+
 // Helper functions from
 // tensorflow/lite/delegates/gpu/common/model_builder_helper.cc
 
@@ -281,7 +289,7 @@ absl::Status CheckDepthwiseConvGpuDelegateCompatibility(
   if (output_depth != input_depth * depth_multiplier) {
     return absl::InvalidArgumentError("output.c != input.c * depth_multiplier");
   }
-  if (bias && bias->dims.size() != output_depth) {
+  if (bias && NumElements(bias->dims) != output_depth) {
     return absl::InvalidArgumentError("bias.size != output.c");
   }
   if (depth_multiplier != 1 && input_depth != 1) {
@@ -330,9 +338,13 @@ absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
 absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
   TfLiteBuiltinOperator opcode = static_cast<TfLiteBuiltinOperator>(op_sig.op);
   switch (opcode) {
-    case kTfLiteBuiltinAdd:
-      return CheckInputsOutputs(op_sig, /*required_runtime_inputs=*/2,
-                                /*required_outputs=*/1);
+    case kTfLiteBuiltinAdd: {
+      if (op_sig.inputs.size() != 2) {
+        return absl::UnimplementedError("ADD requires two input tensors.");
+      }
+      const TfLiteAddParams* tf_options;
+      return RetrieveBuiltinData(op_sig, &tf_options);
+    }
 
     case kTfLiteBuiltinAveragePool2d:
       return CheckPooling2DGpuDelegateCompatibility(op_sig);
@@ -793,6 +805,13 @@ absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
     free(op_sig.builtin_data);
   }
   return status;
+}
+
+absl::Status CheckGpuDelegateCompatibility(
+    const TfLiteContext* context, const TfLiteNode* node,
+    const TfLiteRegistration* registration) {
+  return CheckGpuDelegateCompatibility(
+      GetOpSignature(context, node, registration));
 }
 
 }  // namespace tflite

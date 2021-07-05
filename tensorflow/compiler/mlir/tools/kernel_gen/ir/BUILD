@@ -27,6 +27,10 @@ gentbl_cc_library(
             ["-gen-dialect-decls"],
             "tf_framework_dialect.h.inc",
         ),
+        (
+            ["-gen-dialect-defs"],
+            "tf_framework_dialect.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_framework_ops.td",

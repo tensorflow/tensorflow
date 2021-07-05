@@ -35,6 +35,7 @@ TEST(CppGeneratorTest, typical_usage) {
       "IdentityN",  // Variadic input+output
       "SparseSoftmaxCrossEntropyWithLogits",  // 2 outputs
       "AccumulatorApplyGradient",             // 0 outputs
+      "VarHandleOp",                          // type, shape, list(string) attrs
   };
 
   cpp::CppConfig cpp_config(category, name_space);

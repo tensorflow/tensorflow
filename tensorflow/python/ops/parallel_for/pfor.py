@@ -3436,10 +3436,11 @@ def _convert_print_v2(pfor_input):
 def _convert_string_format(pfor_input):
   # Format using the full input Tensor(s), including the batch dimension if
   # stacked.
-  return _create_op(
+  op = _create_op(
       "StringFormat", [x.t for x in pfor_input.inputs],
       [x.dtype for x in pfor_input.outputs],
-      attrs=pfor_input.op.node_def.attr).outputs
+      attrs=pfor_input.op.node_def.attr)
+  return [wrap(output, False) for output in op.outputs]
 
 
 # data_flow_ops

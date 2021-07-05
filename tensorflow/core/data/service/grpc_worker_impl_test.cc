@@ -49,6 +49,7 @@ using ::grpc::Channel;
 using ::grpc::ChannelArguments;
 using ::grpc::ChannelCredentials;
 using ::grpc::ClientContext;
+using ::tensorflow::data::testing::RangeSquareDataset;
 
 constexpr const char kHostAddress[] = "localhost";
 constexpr const char kProtocol[] = "grpc";
@@ -105,11 +106,10 @@ class GrpcWorkerImplTest : public ::testing::Test {
   }
 
   StatusOr<GetOrRegisterDatasetResponse> RegisterDataset() {
-    TF_ASSIGN_OR_RETURN(test_util::GraphDefTestCase graph_def_test_case,
-                        test_util::map_test_case(/*range=*/10));
     GetOrRegisterDatasetRequest request;
     GetOrRegisterDatasetResponse response;
-    *request.mutable_dataset()->mutable_graph() = graph_def_test_case.graph_def;
+    TF_ASSIGN_OR_RETURN(*request.mutable_dataset(),
+                        RangeSquareDataset(/*range=*/10));
     ClientContext context;
     TF_RETURN_IF_ERROR(
         FromGrpcStatus(dispatcher_client_stub_->GetOrRegisterDataset(

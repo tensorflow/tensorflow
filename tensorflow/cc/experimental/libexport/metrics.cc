@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/cc/experimental/libexport/metrics.h"
 
+#include <string>
+
 #include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace tensorflow {
@@ -37,17 +39,17 @@ auto* saved_model_read_counter = monitoring::Counter<0>::New(
 // across "api_label" is not expected to equal the ".../write/count" cell value
 // because programs can invoke more than one API to save a single SM and
 // because the API may error out before successfully writing a SM.
-auto* saved_model_write_api = monitoring::Counter<1>::New(
+auto* saved_model_write_api = monitoring::Counter<2>::New(
     "/tensorflow/core/saved_model/write/api",
-    "The API used to write the SavedModel.", "api_label");
+    "The API used to write the SavedModel.", "api_label", "write_version");
 
 // Counter that tracks number of calls for each SavedModel read API. Summing
 // across "api_label" is not expected to equal the ".../read/count" cell value
 // because programs can invoke more than one API to load a single SM and
 // because the API may error out before successfully reading a SM.
-auto* saved_model_read_api = monitoring::Counter<1>::New(
+auto* saved_model_read_api = monitoring::Counter<2>::New(
     "/tensorflow/core/saved_model/read/api",
-    "The API used to load the SavedModel.", "api_label");
+    "The API used to load the SavedModel.", "api_label", "write_version");
 
 }  // namespace
 
@@ -57,12 +59,14 @@ monitoring::CounterCell& Write() {
 
 monitoring::CounterCell& Read() { return *saved_model_read_counter->GetCell(); }
 
-monitoring::CounterCell& WriteApi(const std::string& api_label) {
-  return *saved_model_write_api->GetCell(api_label);
+monitoring::CounterCell& WriteApi(const std::string& api_label,
+                                  const std::string& write_version) {
+  return *saved_model_write_api->GetCell(api_label, write_version);
 }
 
-monitoring::CounterCell& ReadApi(const std::string& api_label) {
-  return *saved_model_read_api->GetCell(api_label);
+monitoring::CounterCell& ReadApi(const std::string& api_label,
+                                 const std::string& write_version) {
+  return *saved_model_read_api->GetCell(api_label, write_version);
 }
 
 }  // namespace metrics

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import sys
 import time
 
 from absl.testing import parameterized
@@ -584,6 +585,28 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_loop_variant_roll_shift(self):
+    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
+                  "addressed.")
+    x = random_ops.random_uniform([3, 5, 6, 7])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return manip_ops.roll(x_i, [i - 2, -1, i], axis=[1, 2, 2])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_loop_variant_roll_scalar_shift(self):
+    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
+                  "addressed.")
+    x = random_ops.random_uniform([5, 5, 6])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return manip_ops.roll(x_i, i, axis=0)
+
+    self._test_loop_fn(loop_fn, 5)
+
   def test_avg_pool(self):
     with backprop.GradientTape(persistent=True) as g:
       x = random_ops.random_uniform([3, 2, 12, 12, 3])
@@ -930,16 +953,20 @@ class LoggingTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   def test_print_v2(self):
-    x = random_ops.random_uniform([3, 5])
+    x = constant_op.constant([1, 2, 3])
 
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
       with ops.control_dependencies([
           logging_ops.print_v2(
-              x1, [x1, "x1", array_ops.shape(x1)], summarize=10)]):
-        return x1
+              x1, "x1", array_ops.shape(x1), summarize=10)]):
+        return array_ops.identity(x1)
 
     self._test_loop_fn(loop_fn, 3)
+
+    with self.captureWritesToStream(sys.stderr) as printed:
+      self.evaluate(pfor_control_flow_ops.pfor(loop_fn, 3))
+    self.assertIn("[1 2 3] x1 []", printed.contents())
 
   def test_assert(self):
 

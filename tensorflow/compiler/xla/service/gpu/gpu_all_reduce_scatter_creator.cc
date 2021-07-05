@@ -31,7 +31,6 @@ StatusOr<bool> AllReduceScatterCreator::Run(HloModule *module) {
   int64 next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
-  int c = 0;
   for (HloComputation *computation : module->MakeNonfusionComputations()) {
     for (HloInstruction *instruction :
          computation->MakeInstructionPostOrder()) {
@@ -72,23 +71,30 @@ StatusOr<bool> AllReduceScatterCreator::Run(HloModule *module) {
               ar->replica_groups(), ar->constrain_layout(), channel_id,
               ar->use_global_device_ids(), ar_spec->split_dim));
 
-      // If there was an intervening bitcast, reshape the non-split dimensions
-      // to match that bitcast. Basically we can just bitcast the ars result to
-      // the dynamic slice shape.
+      // If there was an intervening reshape, reshape the non-split dimensions
+      // to match that existing reshape. Basically we can just reshape the ars
+      // result to the dynamic slice shape.
       HloInstruction *result = ars;
+      HloInstruction *reshape = nullptr;
       if (ds->operand(0) != ar) {
+        reshape = ds->mutable_operand(0);
         result = computation->AddInstruction(
             HloInstruction::CreateReshape(ds->shape(), result));
       }
 
+      // Note that RemoveInstructionAndUnusedOperands may not always remove the
+      // all-reduce operand of the dynamic-slice, so remove all the dead
+      // instructions manually.
       TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(result));
-      TF_RETURN_IF_ERROR(ar->parent()->RemoveInstructionAndUnusedOperands(ds));
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ds));
+      if (reshape) {
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(reshape));
+      }
+      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ar));
       changed = true;
-      c++;
     }
   }
 
-  std::cerr << "Created " << c << " ars\n";
   return changed;
 }
 

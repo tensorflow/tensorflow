@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/model/op_spec.h"
 
+#include <string>
+
+#include "absl/container/flat_hash_set.h"
+
 namespace tensorflow {
 namespace generator {
 
@@ -25,26 +29,31 @@ OpSpec::OpSpec(const OpDef& op_def, const ApiDef& api_def)
     : name_(op_def.name()),
       summary_(api_def.summary()),
       description_(api_def.description()) {
-  // Parse the attributes.
-  for (const OpDef::AttrDef& attr_def : op_def.attr()) {
-    AttrSpec attr = AttrSpec::Create(attr_def);
-    // Typed attributes could be determined based on which attribute names were
-    // the types of the arguments above, but this is easier:
-    if (attr_def.type() == "type" || attr_def.type() == "list(type)") {
-      type_attrs_[attr.name()] = attr;
-    } else {
-      argument_attrs_.push_back(attr);
-    }
-  }
-
+  absl::flat_hash_set<string> inferred_attrs;
   // Parse the arguments
   for (const OpDef::ArgDef& arg_def : op_def.input_arg()) {
     ArgSpec arg = ArgSpec::CreateInput(arg_def, input_args_.size());
     input_args_.push_back(arg);
+    if (!arg_def.type_attr().empty()) {
+      inferred_attrs.insert(arg_def.type_attr());
+      if (!arg_def.number_attr().empty()) {
+        inferred_attrs.insert(arg_def.number_attr());
+      }
+    } else if (!arg_def.type_list_attr().empty()) {
+      inferred_attrs.insert(arg_def.type_list_attr());
+    }
   }
   for (const OpDef::ArgDef& arg_def : op_def.output_arg()) {
     ArgSpec arg = ArgSpec::CreateOutput(arg_def, output_args_.size());
     output_args_.push_back(arg);
+  }
+  // Parse the attributes.
+  for (const OpDef::AttrDef& attr_def : op_def.attr()) {
+    AttrSpec attr = AttrSpec::Create(attr_def);
+    // Only non-inferred args are added as arguments.
+    if (inferred_attrs.find(attr_def.name()) == inferred_attrs.end()) {
+      argument_attrs_.push_back(attr);
+    }
   }
 }
 

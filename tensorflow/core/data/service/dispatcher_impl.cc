@@ -474,13 +474,17 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
       if (s.ok()) {
         TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
                                                request->dataset_id()));
-        int64 job_client_id;
-        TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
-        response->set_job_client_id(job_client_id);
-        VLOG(3) << "Found existing job for name=" << key.value().name
-                << ", index=" << key.value().index
-                << ". job_id: " << job->job_id;
-        return Status::OK();
+        // If the matching job was already garbage-collected, we fall through to
+        // re-create the job.
+        if (!job->garbage_collected) {
+          int64 job_client_id;
+          TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+          response->set_job_client_id(job_client_id);
+          VLOG(3) << "Found existing job for name=" << key.value().name
+                  << ", index=" << key.value().index
+                  << ". job_id: " << job->job_id;
+          return Status::OK();
+        }
       } else if (!errors::IsNotFound(s)) {
         return s;
       }

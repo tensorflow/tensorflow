@@ -21,6 +21,9 @@ limitations under the License.
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.cc.inc"
 
+// Generated dialect definitions.
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_dialect.cc.inc"
+
 namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {

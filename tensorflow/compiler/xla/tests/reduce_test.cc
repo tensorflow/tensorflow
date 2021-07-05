@@ -1030,7 +1030,7 @@ XLA_TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
     log.0 = f32[2,2,2]{2,1,0} log(abs.0)
     reduce.0 = f32[2,2]{1,0} reduce(log.0, constant_4), dimensions={2},
                to_apply=add
-    ROOT tuple = (f32[2,2]{1,0}, f64[2,2,2]{2,1,0}) tuple(reduce.0, reduce.1)
+    ROOT tuple = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(reduce.0, reduce.1)
   }
   )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));

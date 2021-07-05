@@ -38,6 +38,7 @@ import sys
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
+from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -139,8 +140,24 @@ class _Compatible:
     """Returns a concrete function of the decorated function."""
     return self._get_func().get_concrete_function(*args, **kwargs)
 
-  def _decode_error(self, err):
-    """Parses the given ConverterError and generates compatibility warnings."""
+  def _dump_error_details(self, ops, locations):
+    """Dump the list of ops and locations."""
+    for i in range(0, len(ops)):
+      callstack = []
+      for single_call in locations[i].call:
+        if (locations[i].type ==
+            converter_error_data_pb2.ConverterErrorData.CALLSITELOC):
+          callstack.append(
+              f"  - {single_call.source.filename}:{single_call.source.line}")
+        else:
+          callstack.append(str(single_call))
+      callstack_dump = "\n".join(callstack)
+      err_string = f"Op: {ops[i]}\n{callstack_dump}\n"
+      self._log_messages.append(err_string)
+      logging.warning(err_string)
+
+  def _decode_error_legacy(self, err):
+    """Parses the given legacy ConverterError for OSS."""
     for line in str(err).splitlines():
       # Check custom op usage error.
       if line.startswith(_CUSTOM_OPS_HDR):
@@ -160,6 +177,49 @@ class _Compatible:
             "https://www.tensorflow.org/lite/guide/ops_select")
         self._log_messages.append(err_string)
         logging.warning(err_string)
+
+  def _decode_converter_error(self, err):
+    """Parses the given ConverterError which has detailed error information."""
+    custom_ops = []
+    custom_ops_location = []
+    tf_ops = []
+    tf_ops_location = []
+    for err in err.errors:
+      # Check custom op usage error.
+      if err.error_code == converter_error_data_pb2.ConverterErrorData.ERROR_NEEDS_CUSTOM_OPS:
+        custom_ops.append(err.operator.name)
+        custom_ops_location.append(err.location)
+      # Check TensorFlow op usage error.
+      elif err.error_code == converter_error_data_pb2.ConverterErrorData.ERROR_NEEDS_FLEX_OPS:
+        tf_ops.append(err.operator.name)
+        tf_ops_location.append(err.location)
+
+    if custom_ops:
+      custom_ops_str = ", ".join(custom_ops)
+      err_string = (
+          f"CompatibilityError: op '{custom_ops_str}' is(are) not natively "
+          "supported by TensorFlow Lite. You need to provide a custom "
+          "operator. https://www.tensorflow.org/lite/guide/ops_custom")
+      self._log_messages.append(err_string)
+      logging.warning(err_string)
+      self._dump_error_details(custom_ops, custom_ops_location)
+
+    if tf_ops:
+      tf_ops_str = ", ".join(tf_ops)
+      err_string = (
+          f"CompatibilityWarning: op '{tf_ops_str}' require(s) \"Select TF Ops"
+          "\" for model conversion for TensorFlow Lite. "
+          "https://www.tensorflow.org/lite/guide/ops_select")
+      self._log_messages.append(err_string)
+      logging.warning(err_string)
+      self._dump_error_details(tf_ops, tf_ops_location)
+
+  def _decode_error(self, err):
+    """Parses the given ConverterError and generates compatibility warnings."""
+    if hasattr(err, "errors"):
+      self._decode_converter_error(err)
+    else:
+      self._decode_error_legacy(err)
 
     if self._raise_exception and self._log_messages:
       raise CompatibilityError(f"CompatibilityException at {repr(self._func)}")

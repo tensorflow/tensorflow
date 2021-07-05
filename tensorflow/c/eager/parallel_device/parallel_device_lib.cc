@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
+#include <string>
+#include <utility>
+
+#include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/tfe_cancellation_manager_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -94,6 +98,9 @@ class DeviceThread {
   // the status from `TFE_Execute` and returns outputs if the status is OK.
   std::vector<TensorHandlePtr> Join(TF_Status* status);
 
+  // Block until all Ops finished running on the thread.
+  void AsyncWait(TF_Status* status);
+
  private:
   void Run();
 
@@ -149,6 +156,12 @@ DeviceThread::~DeviceThread() {
     execution_state_ = ExecutionState::kShuttingDown;
   }
   start_execute_.notify_one();
+}
+
+void DeviceThread::AsyncWait(TF_Status* status) {
+  tensorflow::mutex_lock l(execution_mutex_);
+  TFE_ExecutorWaitForAllPendingNodes(executor_.get(), status);
+  TFE_ExecutorClearError(executor_.get());
 }
 
 void DeviceThread::Run() {
@@ -334,6 +347,28 @@ void ParallelDevice::StartExecute(
     device_thread->StartExecute(context, operation_name,
                                 std::move(device_inputs), attributes,
                                 expected_max_outputs, cancellation_manager);
+  }
+}
+
+void ParallelDevice::AsyncWait(TFE_Context* context, TF_Status* status) const {
+  StatusPtr first_bad_status(nullptr);
+
+  for (const auto& dt : device_threads_) {
+    StatusPtr async_wait_status(TF_NewStatus());
+    dt->AsyncWait(async_wait_status.get());
+    // Prefer non cancelled errors to uncover real failures.
+    if (TF_GetCode(async_wait_status.get()) != TF_OK &&
+        (first_bad_status == nullptr ||
+         TF_GetCode(first_bad_status.get()) == TF_CANCELLED)) {
+      first_bad_status.reset(TF_NewStatus());
+      TF_SetStatus(first_bad_status.get(), TF_GetCode(async_wait_status.get()),
+                   TF_Message(async_wait_status.get()));
+    }
+  }
+
+  if (first_bad_status != nullptr) {
+    TF_SetStatus(status, TF_GetCode(first_bad_status.get()),
+                 TF_Message(first_bad_status.get()));
   }
 }
 

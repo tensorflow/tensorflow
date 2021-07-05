@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 // clang-format on
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
@@ -130,17 +129,6 @@ __global__ void UnsortedSegmentCustomKernel(
         output_segment_index * inner_dim_size + segment_offset;
     KernelReductionFunctor()(output + output_index, ldg(input + input_index));
   }
-}
-
-bool DisableSegmentReductionOpDeterminismExceptions() {
-  static bool cached_disable = [] {
-    bool disable = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_DISABLE_SEGMENT_REDUCTION_OP_DETERMINISM_EXCEPTIONS",
-        /*default_val=*/false, &disable));
-    return disable;
-  }();
-  return cached_disable;
 }
 
 template <typename Tindex, typename Tsegmentids>
@@ -840,6 +828,7 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
   }
 };
 
+<<<<<<< HEAD:tensorflow/core/kernels/segment_reduction_ops_gpu.cu.cc
 #define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index)                           \
   template struct SegmentReductionFunctor<T, Index, functor::Zero<T>,     \
                                           functor::NonAtomicSumOpGpu<T>,  \
@@ -920,6 +909,8 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR);
 
 #endif  // !defined(PLATFORM_WINDOWS)
 
+=======
+>>>>>>> upstream/master:tensorflow/core/kernels/segment_reduction_ops_gpu.cu.h
 }  // namespace functor
 }  // namespace tensorflow
 

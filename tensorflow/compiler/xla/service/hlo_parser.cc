@@ -1504,8 +1504,22 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateTuple(operands));
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<const Shape*, 2> arg_shapes;
+                arg_shapes.reserve(operands.size());
+                for (auto* operand : operands) {
+                  arg_shapes.push_back(&operand->shape());
+                }
+                return ShapeInference::InferVariadicOpShape(opcode, arg_shapes);
+              },
+              &shape)) {
+        return false;
+      }
+      // HloInstruction::CreateTuple() infers the shape of the tuple from
+      // operands and should not be used here.
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateVariadic(shape, HloOpcode::kTuple, operands));
       break;
     }
     case HloOpcode::kWhile: {

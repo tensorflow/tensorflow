@@ -823,19 +823,19 @@ def softmax_cross_entropy(
 
   | TF1 Arg Name          | TF2 Arg Name     | Note                       |
   | :-------------------- | :--------------- | :------------------------- |
-  |  -                    | `from_logits`    | Set `from_logits` as True  :
+  |  -                    | `from_logits`    | Set `from_logits` as True  |
   :                       :                  : to have identical behavior :
   | `onehot_labels`       | `y_true`         | In `__call__()` method     |
   | `logits`              | `y_pred`         | In `__call__()` method     |
   | `weights`             | `sample_weight`  | In `__call__()` method     |
   | `label_smoothing`     | `label_smoothing`| In constructor             |
   | `scope`               | Not supported    | -                          |
-  | `loss_collection`     | Not supported    | Losses should be tracked   :
+  | `loss_collection`     | Not supported    | Losses should be tracked   |
   :                       :                  : explicitly or with Keras   :
   :                       :                  : APIs, for example,         :
   :                       :                  : [add_loss][add_loss],      :
   :                       :                  : instead of via collections :
-  | `reduction`           | `reduction`      | In constructor. Value of   :
+  | `reduction`           | `reduction`      | In constructor. Value of   |
   : : : `tf.compat.v1.losses.Reduction.SUM_OVER_BATCH_SIZE`,              :
   : : : `tf.compat.v1.losses.Reduction.SUM`,                              :
   : : : `tf.compat.v1.losses.Reduction.NONE` in                           :

@@ -69,9 +69,8 @@ void TensorDeviceCopyConversionPass::runOnFunction() {
                    kDeviceAttr)) {
       return op_device == attr;
     }
-    // when arg device is not defined, fold op if op device is not defined
-    // either.
-    return !op_device;
+    // Fold tf.Identity when arg device is not defined.
+    return true;
   };
 
   func_op.walk([&should_fold_op_func](TF::IdentityOp op) {

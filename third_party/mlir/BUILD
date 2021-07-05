@@ -142,6 +142,10 @@ gentbl_cc_library(
             ["-gen-dialect-decls"],
             "include/mlir/IR/BuiltinDialect.h.inc",
         ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/IR/BuiltinDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/IR/BuiltinDialect.td",
@@ -385,6 +389,21 @@ cc_library(
         ":LinalgPassIncGen",
         ":LinalgTransforms",
         ":Pass",
+    ],
+)
+
+cc_library(
+    name = "CAPILLVM",
+    srcs = [
+        "lib/CAPI/Dialect/LLVM.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/LLVM.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":LLVMDialect",
     ],
 )
 
@@ -771,6 +790,10 @@ gentbl_cc_library(
             ["-gen-dialect-decls"],
             "include/mlir/Dialect/Affine/IR/AffineOpsDialect.h.inc",
         ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/Affine/IR/AffineOpsDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Affine/IR/AffineOps.td",
@@ -841,6 +864,10 @@ gentbl_cc_library(
             "include/mlir/Dialect/EmitC/IR/EmitCDialect.h.inc",
         ),
         (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/EmitC/IR/EmitCDialect.cpp.inc",
+        ),
+        (
             ["-gen-op-decls"],
             "include/mlir/Dialect/EmitC/IR/EmitC.h.inc",
         ),
@@ -896,6 +923,10 @@ gentbl_cc_library(
         (
             ["-gen-dialect-decls"],
             "include/mlir/Dialect/Async/IR/AsyncOpsDialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/Async/IR/AsyncOpsDialect.cpp.inc",
         ),
         (
             ["-gen-typedef-decls"],
@@ -967,6 +998,13 @@ gentbl_cc_library(
                 "-dialect=arm_neon",
             ],
             "include/mlir/Dialect/ArmNeon/ArmNeonDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=arm_neon",
+            ],
+            "include/mlir/Dialect/ArmNeon/ArmNeonDialect.cpp.inc",
         ),
         (
             ["-gen-op-decls"],
@@ -1086,6 +1124,13 @@ gentbl_cc_library(
             ],
             "include/mlir/Dialect/ArmSVE/ArmSVEDialect.h.inc",
         ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=arm_sve",
+            ],
+            "include/mlir/Dialect/ArmSVE/ArmSVEDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/ArmSVE/ArmSVE.td",
@@ -1165,6 +1210,13 @@ gentbl_cc_library(
                 "-dialect=amx",
             ],
             "include/mlir/Dialect/AMX/AMXDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=amx",
+            ],
+            "include/mlir/Dialect/AMX/AMXDialect.cpp.inc",
         ),
         (
             ["-gen-op-decls"],
@@ -1253,6 +1305,13 @@ gentbl_cc_library(
                 "-dialect=x86vector",
             ],
             "include/mlir/Dialect/X86Vector/X86VectorDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=x86vector",
+            ],
+            "include/mlir/Dialect/X86Vector/X86VectorDialect.cpp.inc",
         ),
         (
             ["-gen-op-decls"],
@@ -1348,6 +1407,10 @@ gentbl_cc_library(
             ["-gen-dialect-decls"],
             "include/mlir/Dialect/SCF/SCFOpsDialect.h.inc",
         ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/SCF/SCFOpsDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/SCF/SCFOps.td",
@@ -1440,6 +1503,13 @@ gentbl_cc_library(
             "include/mlir/Dialect/SparseTensor/IR/SparseTensorOpsDialect.h.inc",
         ),
         (
+            [
+                "-gen-dialect-defs",
+                "-dialect=sparse_tensor",
+            ],
+            "include/mlir/Dialect/SparseTensor/IR/SparseTensorOpsDialect.cpp.inc",
+        ),
+        (
             ["-gen-op-decls"],
             "include/mlir/Dialect/SparseTensor/IR/SparseTensorOps.h.inc",
         ),
@@ -1513,6 +1583,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":LinalgOps",
         ":SideEffectInterfaces",
         ":SparseTensorAttrDefsIncGen",
         ":SparseTensorOpsIncGen",
@@ -1578,6 +1649,10 @@ gentbl_cc_library(
         (
             ["-gen-dialect-decls"],
             "include/mlir/Dialect/StandardOps/IR/OpsDialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/StandardOps/IR/OpsDialect.cpp.inc",
         ),
         (
             ["-gen-enum-decls"],
@@ -2053,6 +2128,10 @@ gentbl_cc_library(
             ["-gen-dialect-decls"],
             "include/mlir/Dialect/Shape/IR/ShapeOpsDialect.h.inc",
         ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/Shape/IR/ShapeOpsDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Shape/IR/ShapeOps.td",
@@ -2231,6 +2310,7 @@ cc_library(
         ":StandardOps",
         ":StandardOpsTransformsPassIncGen",
         ":Support",
+        ":TensorDialect",
         ":Transforms",
         "@llvm-project//llvm:Support",
     ],
@@ -2508,6 +2588,13 @@ gentbl_cc_library(
                 "-dialect=gpu",
             ],
             "include/mlir/Dialect/GPU/GPUOpsDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=gpu",
+            ],
+            "include/mlir/Dialect/GPU/GPUOpsDialect.cpp.inc",
         ),
         (
             ["-gen-op-interface-decls"],
@@ -2947,6 +3034,10 @@ gentbl_cc_library(
             "include/mlir/Dialect/LLVMIR/LLVMOpsDialect.h.inc",
         ),
         (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/LLVMIR/LLVMOpsDialect.cpp.inc",
+        ),
+        (
             ["-gen-enum-decls"],
             "include/mlir/Dialect/LLVMIR/LLVMOpsEnums.h.inc",
         ),
@@ -3030,6 +3121,13 @@ gentbl_cc_library(
             ],
             "include/mlir/Dialect/LLVMIR/NVVMOpsDialect.h.inc",
         ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=nvvm",
+            ],
+            "include/mlir/Dialect/LLVMIR/NVVMOpsDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/LLVMIR/NVVMOps.td",
@@ -3097,6 +3195,13 @@ gentbl_cc_library(
                 "-dialect=rocdl",
             ],
             "include/mlir/Dialect/LLVMIR/ROCDLOpsDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=rocdl",
+            ],
+            "include/mlir/Dialect/LLVMIR/ROCDLOpsDialect.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -3167,6 +3272,10 @@ gentbl_cc_library(
         (
             ["-gen-dialect-decls"],
             "include/mlir/Dialect/PDL/IR/PDLOpsDialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/PDL/IR/PDLOpsDialect.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -3243,6 +3352,13 @@ gentbl_cc_library(
             ],
             "include/mlir/Dialect/PDLInterp/IR/PDLInterpOpsDialect.h.inc",
         ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=pdl_interp",
+            ],
+            "include/mlir/Dialect/PDLInterp/IR/PDLInterpOpsDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/PDLInterp/IR/PDLInterpOps.td",
@@ -3276,6 +3392,10 @@ gentbl_cc_library(
         (
             ["-gen-dialect-decls"],
             "include/mlir/Dialect/SPIRV/IR/SPIRVOpsDialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/SPIRV/IR/SPIRVOpsDialect.cpp.inc",
         ),
         (
             ["-gen-op-doc"],
@@ -3637,6 +3757,13 @@ gentbl_cc_library(
                 "-dialect=tensor",
             ],
             "include/mlir/Dialect/Tensor/IR/TensorOpsDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=tensor",
+            ],
+            "include/mlir/Dialect/Tensor/IR/TensorOpsDialect.cpp.inc",
         ),
         (
             ["-gen-op-decls"],
@@ -5148,6 +5275,13 @@ gentbl_cc_library(
             "include/mlir/Dialect/OpenACC/OpenACCOpsDialect.h.inc",
         ),
         (
+            [
+                "-gen-dialect-defs",
+                "-dialect=acc",
+            ],
+            "include/mlir/Dialect/OpenACC/OpenACCOpsDialect.cpp.inc",
+        ),
+        (
             ["-gen-op-decls"],
             "include/mlir/Dialect/OpenACC/OpenACCOps.h.inc",
         ),
@@ -5253,6 +5387,13 @@ gentbl_cc_library(
                 "-dialect=omp",
             ],
             "include/mlir/Dialect/OpenMP/OpenMPOpsDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=omp",
+            ],
+            "include/mlir/Dialect/OpenMP/OpenMPOpsDialect.cpp.inc",
         ),
         (
             ["-gen-op-doc"],
@@ -5386,6 +5527,10 @@ gentbl_cc_library(
             "include/mlir/Dialect/Quant/QuantOpsDialect.h.inc",
         ),
         (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/Quant/QuantOpsDialect.cpp.inc",
+        ),
+        (
             ["-gen-op-doc"],
             "g3doc/Dialects/QuantOps/QuantOps.md",
         ),
@@ -5482,6 +5627,13 @@ gentbl_cc_library(
                 "-dialect=linalg",
             ],
             "include/mlir/Dialect/Linalg/IR/LinalgOpsDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=linalg",
+            ],
+            "include/mlir/Dialect/Linalg/IR/LinalgOpsDialect.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -5822,6 +5974,13 @@ gentbl_cc_library(
             "include/mlir/Dialect/Vector/VectorOpsDialect.h.inc",
         ),
         (
+            [
+                "-gen-dialect-defs",
+                "-dialect=vector",
+            ],
+            "include/mlir/Dialect/Vector/VectorOpsDialect.cpp.inc",
+        ),
+        (
             ["-gen-enum-decls"],
             "include/mlir/Dialect/Vector/VectorOpsEnums.h.inc",
         ),
@@ -5938,6 +6097,7 @@ td_library(
     name = "TosaDialectTdFiles",
     srcs = glob(["include/mlir/Dialect/Tosa/IR/*.td"]),
     deps = [
+        ":InferTypeOpInterfaceTdFiles",
         ":LoopLikeInterfaceTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
@@ -5967,6 +6127,10 @@ gentbl_cc_library(
         (
             ["-gen-dialect-decls"],
             "include/mlir/Dialect/Tosa/IR/TosaOpsDialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir/Dialect/Tosa/IR/TosaOpsDialect.cpp.inc",
         ),
         (
             ["-gen-op-doc"],
@@ -6028,8 +6192,10 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":Dialect",
         ":IR",
+        ":InferTypeOpInterface",
         ":LoopLikeInterface",
         ":Pass",
         ":QuantOps",
@@ -6061,7 +6227,6 @@ cc_library(
         ":IR",
         ":LinalgOps",
         ":MathDialect",
-        ":MemRefDialect",
         ":Pass",
         ":StandardOps",
         ":TensorDialect",
@@ -6141,6 +6306,13 @@ gentbl_cc_library(
                 "-dialect=complex",
             ],
             "include/mlir/Dialect/Complex/IR/ComplexOpsDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=complex",
+            ],
+            "include/mlir/Dialect/Complex/IR/ComplexOpsDialect.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -6293,6 +6465,13 @@ gentbl_cc_library(
             ],
             "include/mlir/Dialect/Math/IR/MathOpsDialect.h.inc",
         ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=math",
+            ],
+            "include/mlir/Dialect/Math/IR/MathOpsDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Math/IR/MathBase.td",
@@ -6416,6 +6595,13 @@ gentbl_cc_library(
             ],
             "include/mlir/Dialect/MemRef/IR/MemRefOpsDialect.h.inc",
         ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=memref",
+            ],
+            "include/mlir/Dialect/MemRef/IR/MemRefOpsDialect.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/MemRef/IR/MemRefBase.td",
@@ -6532,6 +6718,13 @@ gentbl_cc_library(
                 "-dialect=dlti",
             ],
             "include/mlir/Dialect/DLTI/DLTIDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=dlti",
+            ],
+            "include/mlir/Dialect/DLTI/DLTIDialect.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",

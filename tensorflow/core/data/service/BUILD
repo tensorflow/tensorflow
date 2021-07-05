@@ -555,10 +555,14 @@ cc_library(
     ],
     data = ["//tensorflow/core/data/service/testdata"],
     deps = [
+        ":common_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/framework:protos_all_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 
@@ -567,12 +571,15 @@ tf_cc_test(
     srcs = ["test_util_test.cc"],
     deps = [
         ":test_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:standalone",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

@@ -597,7 +597,6 @@ cc_library(
         ":graph_view",
         ":immutable_executor_state",
         ":local_executor_params",
-        ":metric_util",
         ":pending_counts",
         ":propagator_state",
         ":renamed_device",
@@ -626,19 +625,6 @@ cc_library(
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "metric_util",
-    srcs = ["metric_util.cc"],
-    hdrs = ["metric_util.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tflite_portable_logging",
     ],
 )
 

@@ -59,24 +59,18 @@ std::string GetDriverVersion(const CLDevice& device) {
 
 }  // namespace
 
-ProgramCache::ProgramDescriptor::ProgramDescriptor(const std::string& code_text,
-                                                   const std::string& options,
-                                                   bool use_fingerprints)
-    : code(code_text),
-      compiler_options(options),
-      fingerprint(GetProgramFingerprint(code, compiler_options)),
-      use_fingerprint(use_fingerprints) {}
+ProgramCache::ProgramDescriptor::ProgramDescriptor(
+    const std::string& code, const std::string& compiler_options)
+    : fingerprint(GetProgramFingerprint(code, compiler_options)) {}
 
 ProgramCache::ProgramDescriptor::ProgramDescriptor(uint64_t fingerprints)
-    : fingerprint(fingerprints), use_fingerprint(true) {}
+    : fingerprint(fingerprints) {}
 
 ProgramCache::ProgramCache(ProgramCache&& program_cache)
-    : use_fingerprints_(program_cache.use_fingerprints_),
-      programs_(std::move(program_cache.programs_)) {}
+    : programs_(std::move(program_cache.programs_)) {}
 
 ProgramCache& ProgramCache::operator=(ProgramCache&& program_cache) {
   if (this != &program_cache) {
-    use_fingerprints_ = program_cache.use_fingerprints_;
     programs_ = std::move(program_cache.programs_);
   }
   return *this;
@@ -89,7 +83,7 @@ absl::Status ProgramCache::GetOrCreateCLKernel(
     uint64_t* kernel_fingerprint) {
   const std::string options =
       CompilerOptionsToString(device.GetInfo(), compiler_options);
-  ProgramDescriptor desc{code, options, use_fingerprints_};
+  ProgramDescriptor desc(code, options);
   if (kernel_fingerprint) {
     *kernel_fingerprint = desc.fingerprint;
   }
@@ -130,8 +124,6 @@ absl::Status ProgramCache::AddProgramBinary(const CLContext& context,
                                             const CLDevice& device,
                                             uint64_t fingerprint,
                                             absl::Span<const uint8_t> binary) {
-  use_fingerprints_ = true;
-
   ProgramDescriptor desc(fingerprint);
   auto it = programs_.find(desc);
   if (it == programs_.end()) {
@@ -170,8 +162,6 @@ absl::Status ProgramCache::AddSerializedCache(
     return absl::InvalidArgumentError(
         "OpenCL driver changed, cache invalid, should be regenerated");
   }
-
-  use_fingerprints_ = true;
 
   for (auto serialized_program : *model->programs()) {
     auto binary_span = absl::MakeSpan(serialized_program->binary()->data(),

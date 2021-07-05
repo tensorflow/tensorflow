@@ -121,8 +121,8 @@ struct RemoveUnusedBufferCastOperations
                                mlir::FunctionPass> {
   void runOnFunction() override {
     getFunction().walk([](mlir::memref::BufferCastOp op) {
-      // Drop all tensor_to_memref that have no more users. Currently this will
-      // not happen, as tensor_to_memref has a side-effect. See
+      // Drop all buffercast that have no more users. Currently this will
+      // not happen, as buffercast has a side-effect. See
       // https://reviews.llvm.org/D91967 for a dicsussion.
       if (op.memref().getUsers().empty()) {
         op.erase();
@@ -331,16 +331,13 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // deallocs.
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   // TODO(herhut): Enable once no-longer broken.
-  // This depends on https://bugs.llvm.org/show_bug.cgi?id=49142 being fixed.
-  // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
-  // TODO(herhut): Depends on https://bugs.llvm.org/show_bug.cgi?id=48385.
-  // We also cannot properly free temporaries until
-  // https://llvm.discourse.group/t/remove-tight-coupling-of-the-bufferdeallocation-pass-to-std-and-linalg-operations/2162
-  // is resolved.
-  // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
-  // pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
+  // Free all temporaries,
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+
   // Apply the mapping and go to GPU. We cannot do this earlier due to missing
   // interfaces on the GPU dialect.
   // TODO(b/174830459): Move up once implemented.

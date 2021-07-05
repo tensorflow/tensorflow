@@ -640,6 +640,7 @@ tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
     disable_experimental = True,
+    disable_tfrt = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -657,6 +658,7 @@ tpu_py_test(
     srcs = ["tpu_strategy_compilation_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -1970,11 +1972,9 @@ distribute_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
-    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/171349346, b/181878817): Frequent timeouts. Do not re-enable until rewritten
-        "no_tsan",  # Tsan failure doesn't seem to be caused by TF.
+        "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
         ":multi_worker_test_base",

@@ -458,7 +458,6 @@ py_library(
         "//tensorflow/python:global_test_configuration",
         ":tf_decorator",
         ":tf_export",
-        "@org_python_pypi_backports_weakref",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
         "@six_archive//:six",

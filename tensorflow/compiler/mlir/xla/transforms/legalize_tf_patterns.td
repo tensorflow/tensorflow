@@ -31,8 +31,6 @@ def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
 
-def FeatureDimension : NativeCodeCall<
-    "getFeatureDimensionAttr($_builder, $0.getValue(), $1)">;
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
@@ -55,21 +53,6 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 def CastElementsToI64Elements : NativeCodeCall<
   "hlo::ConvertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
-
-def : Pattern<
-    (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
-                         $exponential_avg_factor, $data_format,
-                         FalseBoolAttr:$is_training),
-    [(HLO_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
-                               $epsilon, (FeatureDimension $data_format, $x)),
-     // We already guaranteed that the last four results has no use so it
-     // does not matter what value we provide here for replacement.
-     /*batch_mean=*/(replaceWithValue $x),
-     /*batch_variance=*/(replaceWithValue $x),
-     /*reserve_space_1=*/(replaceWithValue $x),
-     /*reserve_space_2=*/(replaceWithValue $x)],
-    [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
-     (HasNoUseOf:$root__3), (HasNoUseOf:$root__4)]>;
 
 //===----------------------------------------------------------------------===//
 // Assert op pattern.

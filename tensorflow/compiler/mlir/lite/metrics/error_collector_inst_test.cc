@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 
 #include <cstddef>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -114,7 +115,8 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
       std::make_unique<ErrorCollectorInstrumentation>(&context));
   EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), true);
 
-  auto collected_errors = GetErrorCollector()->CollectedErrors();
+  auto collected_errors =
+      ErrorCollector::GetErrorCollector()->CollectedErrors();
   EXPECT_EQ(collected_errors.size(), 0);
 }
 
@@ -140,16 +142,34 @@ TEST(ErrorCollectorTest, TessFailurePass) {
       std::make_unique<ErrorCollectorInstrumentation>(&context));
   EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), false);
 
-  auto collected_errors = GetErrorCollector()->CollectedErrors();
+  auto collected_errors =
+      ErrorCollector::GetErrorCollector()->CollectedErrors();
 
-  EXPECT_EQ(collected_errors.size(), 2);
+  EXPECT_EQ(collected_errors.size(), 3);
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
-                "MockFailurePass", "Failed at tf.Const op",
+                "MockFailurePass",
+                "Failed at tf.Const op\nsee current operation: %0 = "
+                "\"tf.Const\"() {value = dense<1> : tensor<4xi32>} : () -> "
+                "tensor<4xi32>\nError code: ERROR_NEEDS_FLEX_OPS",
                 ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.Const",
                 mlir::FileLineColLoc::get(input_file_id, 2, 9))),
             1);
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(
-                "MockFailurePass", "Failed at tf.StridedSlice op",
+                "MockFailurePass",
+                "Failed at tf.Const op\nsee current operation: %1 = "
+                "\"tf.Const\"() {value = dense<0> : tensor<4xi32>} : () -> "
+                "tensor<4xi32>\nError code: ERROR_NEEDS_FLEX_OPS",
+                ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.Const",
+                mlir::FileLineColLoc::get(input_file_id, 2, 9))),
+            1);
+  EXPECT_EQ(collected_errors.count(NewConverterErrorData(
+                "MockFailurePass",
+                "Failed at tf.StridedSlice op\nsee current operation: %2 = "
+                "\"tf.StridedSlice\"(%arg0, %1, %1, %0) {begin_mask = 11 : "
+                "i64, device = \"\", ellipsis_mask = 0 : i64, end_mask = 11 : "
+                "i64, new_axis_mask = 4 : i64, shrink_axis_mask = 0 : i64} : "
+                "(tensor<*xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) "
+                "-> tensor<*xf32>\nError code: ERROR_NEEDS_FLEX_OPS",
                 ConverterErrorData::ERROR_NEEDS_FLEX_OPS, "tf.StridedSlice",
                 mlir::FileLineColLoc::get(input_file_id, 4, 10))),
             1);

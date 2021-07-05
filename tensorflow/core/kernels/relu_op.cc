@@ -90,11 +90,18 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
       typename TTypes<T>::Tensor activations);                                 \
   extern template struct Relu<GPUDevice, T>;                                   \
+                                                                               \
   template <>                                                                  \
   void Elu<GPUDevice, T>::operator()(const GPUDevice& d,                       \
                                      typename TTypes<T>::ConstTensor features, \
                                      typename TTypes<T>::Tensor activations);  \
-  extern template struct Elu<GPUDevice, T>;
+  extern template struct Elu<GPUDevice, T>;                                    \
+                                                                               \
+  template <>                                                                  \
+  void Selu<GPUDevice, T>::operator()(                                         \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
+      typename TTypes<T>::Tensor activations);                                 \
+  extern template struct Selu<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_NO_MLIR_SPEC);
 }  // namespace functor
@@ -105,7 +112,10 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_NO_MLIR_SPEC);
       ReluOp<GPUDevice, type>);                                  \
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Elu").Device(DEVICE_GPU).TypeConstraint<type>("T"),  \
-      EluOp<GPUDevice, type>);
+      EluOp<GPUDevice, type>);                                   \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("Selu").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SeluOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_NO_MLIR_KERNELS);
 #undef REGISTER_RELU_KERNEL
@@ -153,6 +163,7 @@ namespace functor {
   extern template struct EluGrad<GPUDevice, T>;                                \
                                                                                \
   template <>                                                                  \
+<<<<<<< HEAD
   void Gelu<GPUDevice, T>::operator()(                                         \
       const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
       typename TTypes<T>::Tensor activations);                                 \
@@ -172,6 +183,8 @@ namespace functor {
   extern template struct Selu<GPUDevice, T>;                                   \
                                                                                \
   template <>                                                                  \
+=======
+>>>>>>> upstream/master
   void SeluGrad<GPUDevice, T>::operator()(                                     \
       const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
       typename TTypes<T>::ConstTensor activations,                             \
@@ -208,6 +221,7 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       Name("EluGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"),       \
       EluGradOp<GPUDevice, type>);                                        \
   REGISTER_KERNEL_BUILDER(                                                \
+<<<<<<< HEAD
       Name("Gelu").Device(DEVICE_GPU).TypeConstraint<type>("T"),          \
       GeluOp<GPUDevice, type>);                                           \
   REGISTER_KERNEL_BUILDER(                                                \
@@ -217,6 +231,8 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       Name("Selu").Device(DEVICE_GPU).TypeConstraint<type>("T"),          \
       SeluOp<GPUDevice, type>);                                           \
   REGISTER_KERNEL_BUILDER(                                                \
+=======
+>>>>>>> upstream/master
       Name("SeluGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"),      \
       SeluGradOp<GPUDevice, type>)
 

@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
+#include "mlir/Reducer/ReductionPatternInterface.h"  // from @llvm-project
 #include "mlir/Tools/mlir-reduce/MlirReduceMain.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
@@ -27,7 +29,25 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
-int main(int argc, char* argv[]) {
+namespace {
+
+#include "tensorflow/compiler/mlir/tensorflow/transforms/reducer/tf_reduce_patterns.inc"
+
+struct TFReductionPatternInterface
+    : public mlir::DialectReductionPatternInterface {
+ public:
+  explicit TFReductionPatternInterface(mlir::Dialect *dialect)
+      : DialectReductionPatternInterface(dialect) {}
+
+  void populateReductionPatterns(
+      mlir::RewritePatternSet &patterns) const final {
+    populateWithGenerated(patterns);
+  }
+};
+
+}  // namespace
+
+int main(int argc, char *argv[]) {
   tensorflow::InitMlir y(&argc, &argv);
 
   mlir::registerAllPasses();
@@ -42,6 +62,8 @@ int main(int argc, char* argv[]) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
+  registry.addDialectInterface<mlir::TF::TensorFlowDialect,
+                               TFReductionPatternInterface>();
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();

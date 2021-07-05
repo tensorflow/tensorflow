@@ -49,15 +49,35 @@ from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as tracking_util
 
+# We create one cluster to share between tests. The cluster should be large
+# enough to accommodate all the tests. Adjust the following constants as needed
+# but be aware of resource limitations in OSS tests.
+MAX_NUM_WORKER = 2
+MAX_NUM_PS = 3
+
+_cluster = None
+
+
+def get_cluster_def(num_workers, num_ps):
+  if num_workers > MAX_NUM_WORKER or num_ps > MAX_NUM_PS:
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "MAX_NUM_PS and MAX_NUM_WORKER")
+  global _cluster
+  if _cluster is None:
+    _cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=MAX_NUM_WORKER, num_ps=MAX_NUM_PS)
+  return {
+      "worker": _cluster["worker"][:num_workers],
+      "ps": _cluster["ps"][:num_ps],
+  }
+
 
 class ParameterServerStrategyV2Test(test.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(ParameterServerStrategyV2Test, cls).setUpClass()
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=2, num_ps=3)
-    cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=3)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -253,12 +273,10 @@ class PartitionAwareIdentity(object):
 
 class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(VariablePartitioningTest, cls).setUpClass()
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=2, num_ps=2)
-    cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=2)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -600,35 +618,10 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
 class ClusterTypeNameTest(test.TestCase):
 
-  def testArbitraryChiefName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1,
-        num_ps=1,
-        has_chief=True,
-        chief_name="some_arbitrary_name")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
-
-  def testArbitraryWorkerName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1, worker_name="some_arbitrary_name")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
-
-  def testArbitraryPsName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1, ps_name="some_arbitrary_name")
-    cluster_def["chief"] = [
+  def testArbitraryJobName(self):
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=1, has_chief=True)
+    cluster_def["some_arbitrary_name"] = [
         "localhost:%d" % multi_worker_test_base.pick_unused_port()
     ]
     cluster_resolver = SimpleClusterResolver(
@@ -637,18 +630,15 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testArbitraryCurrentTaskType(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=1, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer="grpc", task_type="foobar")
     with self.assertRaisesRegexp(ValueError, "Unrecognized task_type: foobar"):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testMoreThanOneChief(self):
-    cluster_def = multi_worker_test_base._create_cluster(
+    cluster_def = multi_worker_test_base.create_cluster_spec(
         num_workers=1, num_ps=1)
     chief_ports = [multi_worker_test_base.pick_unused_port() for _ in range(3)]
     cluster_def["chief"] = ["localhost:%s" % port for port in chief_ports]
@@ -662,11 +652,8 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testLessThanOneWorker(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=0, num_ps=1)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=0, num_ps=1, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer="grpc", task_type="ps", task_id=0)
     with self.assertRaisesRegexp(ValueError,
@@ -674,11 +661,8 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testLessThanOnePs(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=0)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=0, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def),
         rpc_layer="grpc",

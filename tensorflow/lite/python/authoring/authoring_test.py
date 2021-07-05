@@ -36,7 +36,7 @@ class OpCallbacksTest(tf.test.TestCase):
     log_messages = f.get_compatibility_log()
     self.assertEqual(result, tf.constant([1.0]))
     self.assertIn(
-        "CompatibilityWarning: op 'Cosh' require(s) \"Select TF Ops\" for "
+        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -54,7 +54,7 @@ class OpCallbacksTest(tf.test.TestCase):
       del result
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityWarning: op 'Cosh' require(s) \"Select TF Ops\" for "
+        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -77,8 +77,8 @@ class OpCallbacksTest(tf.test.TestCase):
     f(tf.ones(shape=(3, 3, 3, 3, 3), dtype=tf.float32))
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityWarning: op 'Erf' require(s) \"Select TF Ops\" for model "
-        "conversion for TensorFlow Lite. "
+        "CompatibilityWarning: op 'tf.Erf' require(s) \"Select TF Ops\" for "
+        "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
   def test_compatibility_error(self):
@@ -92,8 +92,8 @@ class OpCallbacksTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityError: op 'DummySeedGenerator, RangeDataset, "
-        "ShuffleDatasetV3' is(are) not natively supported by "
+        "CompatibilityError: op 'tf.ShuffleDatasetV3, tf.DummySeedGenerator, "
+        "tf.RangeDataset' is(are) not natively supported by "
         "TensorFlow Lite. You need to provide a custom operator. "
         "https://www.tensorflow.org/lite/guide/ops_custom", log_messages)
 
@@ -128,7 +128,7 @@ class OpCallbacksTest(tf.test.TestCase):
 
     self.assertEqual(result, tf.constant([1.0]))
     self.assertIn(
-        "CompatibilityWarning: op 'Cosh' require(s) \"Select TF Ops\" for "
+        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -192,7 +192,8 @@ class OpCallbacksTest(tf.test.TestCase):
       f(tf.constant([3.0]))
 
     # Test if compatiblility checks happens only once.
-    self.assertEqual(1, len(warning_messages))
+    # The number of warning_messages will be 2 by op location detail.
+    self.assertEqual(2, len(warning_messages))
 
   def test_user_tf_ops_all_filtered(self):
     target_spec = tf.lite.TargetSpec()
@@ -235,9 +236,9 @@ class OpCallbacksTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityError: op 'RangeDataset, ShuffleDatasetV3' is(are) not "
-        "natively supported by TensorFlow Lite. You need to provide a custom "
-        "operator. https://www.tensorflow.org/lite/guide/ops_custom",
+        "CompatibilityError: op 'tf.ShuffleDatasetV3, tf.RangeDataset' is(are) "
+        "not natively supported by TensorFlow Lite. You need to provide a "
+        "custom operator. https://www.tensorflow.org/lite/guide/ops_custom",
         log_messages)
 
   def test_allow_custom_ops(self):

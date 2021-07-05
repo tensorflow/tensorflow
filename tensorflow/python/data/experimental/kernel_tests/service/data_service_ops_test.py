@@ -248,6 +248,50 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertCountEqual(num_workers * list(range(num_elements)), result)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testEmptyJobNameDistribute(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    with self.assertRaisesRegex(ValueError, "job_name must not be empty"):
+      dataset_ops.Dataset.range(10).apply(
+          data_service_ops.distribute(
+              processing_mode="parallel_epochs",
+              service=cluster.dispatcher.target,
+              job_name=""))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyJobNameFromDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset_id = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset_ops.Dataset.range(10))
+    with self.assertRaisesRegex(ValueError, "job_name must not be empty"):
+      data_service_ops.from_dataset_id(
+          dataset_id=dataset_id,
+          processing_mode="parallel_epochs",
+          service=cluster.dispatcher.target,
+          job_name="")
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNonStringJobNameDistribute(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    with self.assertRaisesRegex(ValueError, "job_name must be a string"):
+      dataset_ops.Dataset.range(10).apply(
+          data_service_ops.distribute(
+              processing_mode="parallel_epochs",
+              service=cluster.dispatcher.target,
+              job_name=constant_op.constant("foo")))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNonStringJobNameFromDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset_id = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset_ops.Dataset.range(10))
+    with self.assertRaisesRegex(ValueError, "job_name must be a string"):
+      data_service_ops.from_dataset_id(
+          dataset_id=dataset_id,
+          processing_mode="parallel_epochs",
+          service=cluster.dispatcher.target,
+          job_name=constant_op.constant("foo"))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testSharedJobName(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 1000
@@ -355,25 +399,21 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testGcErrorMessage(self):
+  def testGcAndRecreate(self):
     cluster = data_service_test_base.TestCluster(
-        num_workers=1, job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
-    num_elements = 100
-    ds = self.make_distributed_range_dataset(
-        num_elements, cluster, job_name="test")
-    it = iter(ds)
-    self.assertEqual(next(it).numpy(), 0)
-    self.assertEqual(cluster.workers[0].num_tasks(), 1)
-    del it
-    while cluster.workers[0].num_tasks() > 0:
-      time.sleep(0.1)
-
-    ds = self.make_distributed_range_dataset(
-        num_elements, cluster, job_name="test")
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError,
-        "The requested job has been garbage collected due to inactivity"):
-      list(ds)
+        num_workers=3, job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
+    num_elements = 1000
+    # Repeatedly create and garbage-collect the same job.
+    for _ in range(3):
+      ds = self.make_distributed_range_dataset(
+          num_elements, cluster, job_name="test")
+      it = iter(ds)
+      for _ in range(50):
+        next(it)
+      del it
+      # Wait for the task to be garbage-collected on all workers.
+      while cluster.num_tasks_on_workers() > 0:
+        time.sleep(0.1)
 
   @combinations.generate(test_base.default_test_combinations())
   def testApplyDeterminismOption(self):
@@ -536,6 +576,35 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         "parallel_epochs", cluster.dispatcher_address(), dataset_id,
         ds.element_spec)
     self.assertDatasetProduces(from_dataset_id_ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromDatasetIdSharedJobs(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+
+    datasets = [
+        dataset_ops.Dataset.range(20, output_type=dtypes.int32),
+        dataset_ops.Dataset.from_tensor_slices(list(range(20, 40)))
+    ]
+    dataset_ids = [
+        data_service_ops.register_dataset(cluster.dispatcher_address(), ds)
+        for ds in datasets
+    ]
+
+    # Read from both jobs in parallel, with 2 consumers for each job.
+    data_service_datasets = []
+    for _ in range(2):
+      for dataset, dataset_id in zip(datasets, dataset_ids):
+        ds = data_service_ops.from_dataset_id(
+            "distributed_epoch",
+            cluster.dispatcher_address(),
+            dataset_id,
+            dataset.element_spec,
+            job_name="shared_job")
+        data_service_datasets.append(ds)
+    ds = dataset_ops.Dataset.from_tensor_slices(data_service_datasets)
+    ds = ds.interleave(lambda x: x, cycle_length=len(data_service_datasets))
+
+    self.assertDatasetProduces(ds, list(range(40)), assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testRegisteringDatasetAsTfFunction(self):

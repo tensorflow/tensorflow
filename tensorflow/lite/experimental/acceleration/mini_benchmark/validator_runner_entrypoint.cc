@@ -27,12 +27,14 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/set_big_core_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
 namespace tflite {
 namespace acceleration {
+
 extern "C" {
 int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
                                                                 char** argv) {
@@ -53,6 +55,23 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
   }
   status = kMinibenchmarkNoValidationRequestFound;
   TFLiteSettingsT tflite_settings;
+
+  int32_t set_big_core_affinity_errno = SetBigCoresAffinity();
+  if (set_big_core_affinity_errno != 0) {
+    flatbuffers::FlatBufferBuilder fbb;
+    storage.Append(
+        &fbb,
+        CreateBenchmarkEvent(
+            fbb, CreateTFLiteSettings(fbb, &tflite_settings),
+            BenchmarkEventType_RECOVERED_ERROR, /* result */ 0,
+            CreateBenchmarkError(
+                fbb, BenchmarkStage_UNKNOWN,
+                kMinibenchmarkUnableToSetCpuAffinity, /*signal=*/0,
+                /*error_code=*/0,
+                /*mini_benchmark_error_code=*/set_big_core_affinity_errno),
+            Validator::BootTimeMicros(), Validator::WallTimeMicros()));
+  }
+
   for (int i = storage.Count() - 1; i >= 0; i--) {
     const BenchmarkEvent* event = storage.Get(i);
     if (event->event_type() == BenchmarkEventType_START) {

@@ -146,9 +146,9 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-                                                       operands,
-                                                       &reifiedReturnShapes);
+      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                  operands.front(),
+                                                  &reifiedReturnShapes);
     }
     bool inferInputOutputShapeEquality(int input, int output) {
       return true;
@@ -461,9 +461,9 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     LogicalResult reifyReturnTypeShapes(
         OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-                                                       operands,
-                                                       &reifiedReturnShapes);
+      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                  operands.front(),
+                                                  &reifiedReturnShapes);
     }
     bool inferInputsShapeEquality(int lhs, int rhs) {
       return true;
@@ -2302,6 +2302,23 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp 
        HLO_Tensor:$d_padding),
     ConvolutionAttributes.attributes);
   let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_PrintOp : HLO_Op<"print", []> {
+  let summary = "Print operation";
+  let description = [{
+    PrintOp is used to print tensor, which can be used to debug.
+  }];
+  
+  let arguments = (ins
+      HLO_Tensor:$input
+  );
+
+  let results = (outs
+    HLO_Tensor:$output
+  );
+
   let hasCustomHLOConverter = 1;
 }
 
