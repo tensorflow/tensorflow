@@ -26,7 +26,7 @@ namespace mhlo {
 namespace {
 
 bool isTargetDialect(llvm::StringRef dialect_name) {
-  return (dialect_name == "mhlo" || dialect_name == "tensor");
+  return (dialect_name == "mhlo");
 }
 
 // This pass explicitly place the shape calculating hlo_ops on host side
@@ -339,8 +339,7 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
             (cast<mlir::FuncOp>(parent).getName() != "main")) {
           continue;
         }
-      } else if ((operand_op->getDialect()->getNamespace() != "mhlo" &&
-                  operand_op->getDialect()->getNamespace() != "tensor") ||
+      } else if ((operand_op->getDialect()->getNamespace() != "mhlo") ||
                  (isa<mhlo::TupleOp>(operand_op))) {
         continue;
       }
