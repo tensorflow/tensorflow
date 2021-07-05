@@ -891,6 +891,32 @@ func @floormod_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*x
 }
 
 //===----------------------------------------------------------------------===//
+// OnesLike
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @ones_like
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<2x?xf32>)
+func @ones_like(%arg0: tensor<2x?xf32>) -> tensor<2x?xf32> {
+  // CHECK: %[[RES:.*]] = "chlo.constant_like"(%[[ARG]]) {value = 1.0{{.*}}}
+  // CHECK: return %[[RES]]
+  %0 = "tf.OnesLike"(%arg0) : (tensor<2x?xf32>) -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// ZerosLike
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @zeros_like
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<2x?xf32>)
+func @zeros_like(%arg0: tensor<2x?xf32>) -> tensor<2x?xf32> {
+  // CHECK: %[[RES:.*]] = "chlo.constant_like"(%[[ARG]]) {value = 0.0{{.*}}}
+  // CHECK: return %[[RES]]
+  %0 = "tf.ZerosLike"(%arg0) : (tensor<2x?xf32>) -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastTo.
 //===----------------------------------------------------------------------===//
 
