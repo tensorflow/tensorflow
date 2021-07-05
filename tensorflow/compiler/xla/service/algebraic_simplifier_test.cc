@@ -5493,6 +5493,25 @@ TEST_F(DotOfConcatSimplificationTest, ConcatIntoScalarDot) {
   ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
 }
 
+TEST_F(DotOfConcatSimplificationTest, UnnestConcatenate) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[2,10] parameter(0)
+      p1 = f32[3,10] parameter(1)
+      p2 = f32[4,10] parameter(2)
+      c0 = f32[5,10] concatenate(p0, p1), dimensions={0}
+      ROOT c1 = f32[9,10] concatenate(c0, p2), dimensions={0}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, m.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1),
+                                        m::Parameter(2))));
+}
+
 // Test that DynamicUpdateSlice update param with any dimension equal to zero
 // gets removed.
 TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {

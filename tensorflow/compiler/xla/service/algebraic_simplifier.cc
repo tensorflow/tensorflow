@@ -1242,6 +1242,29 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
     return Status::OK();
   }
 
+  // concat(x, concat(y, z)) -> concat(x, y, z).  We only do this in
+  // layout-insensitive mode because some backends may have (late,
+  // layout-sensitive) passes that break up ops with many operands into smaller
+  // pieces.  This would undo that.
+  absl::InlinedVector<HloInstruction*, 8> unnested_concat_operands;
+  for (HloInstruction* operand : operands) {
+    if (operand->opcode() == HloOpcode::kConcatenate &&
+        operand->concatenate_dimension() ==
+            concatenate->concatenate_dimension()) {
+      for (HloInstruction* instr : operand->operands()) {
+        unnested_concat_operands.push_back(instr);
+      }
+    } else {
+      unnested_concat_operands.push_back(operand);
+    }
+  }
+  if (unnested_concat_operands.size() != concatenate->operand_count()) {
+    return ReplaceWithNewInstruction(
+        concatenate, HloInstruction::CreateConcatenate(
+                         concatenate->shape(), unnested_concat_operands,
+                         concatenate->concatenate_dimension()));
+  }
+
   // Check if we can merge "adjacent" slice operands which take slices from the
   // same other op. For simplicity we only merge unstrided slices.
   int64 concatenate_dimension = concatenate->concatenate_dimension();
