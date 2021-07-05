@@ -393,6 +393,21 @@ cc_library(
 )
 
 cc_library(
+    name = "CAPILLVM",
+    srcs = [
+        "lib/CAPI/Dialect/LLVM.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Dialect/LLVM.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":LLVMDialect",
+    ],
+)
+
+cc_library(
     name = "CAPIGPU",
     srcs = [
         "lib/CAPI/Dialect/GPU.cpp",
