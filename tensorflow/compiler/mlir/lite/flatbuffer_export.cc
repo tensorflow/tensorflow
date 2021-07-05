@@ -60,7 +60,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
