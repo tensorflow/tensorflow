@@ -123,35 +123,29 @@ struct PlaceShapeCalcOnHost
 
 // Place the subgraph that is the producer of any shape operands
 // on Host
-// TODO: handle when TupleOp exists in shape_calc_ops
+// TODO(disc): handle when TupleOp exists in shape_calc_ops
 void PlaceShapeCalcOnHost::placeShapeCalcSubgraphOnHost() {
   ModuleOp module = getOperation();
   Builder builder(&getContext());
   std::map<Operation*, bool> shape_calc_ops;
 
-  // Put the i64 Scalar output on Host into shape_calc_ops,
-  // This is a optimization for PyTorch,
-  // TODO(disc): revisit this if we have outputs on CPU for TF in the future.
-  module.walk([&](FuncOp func) {
+  for (FuncOp func : module.getOps<FuncOp>()) {
+    // Put the i64 Scalar output on Host(into shape_calc_ops).
+    // TODO(disc): revisit this if we have outputs on CPU for TF in the future.
     if (func.getName() == "main") {
       markI64ReturnedCPUScalarOps(func, shape_calc_ops);
     }
-  });
-
-  module.walk([&](FuncOp func) {
     // skip empty blocks
-    if (func.getBlocks().size() == 0) return;
-
+    if (func.getBlocks().size() == 0) continue;
     // no target ops
     if (llvm::none_of(func.getBlocks().front(), [](Operation& op) {
           auto dialect_name = op.getDialect()->getNamespace();
           return isTargetDialect(dialect_name);
         })) {
-      return;
+      continue;
     }
-
     markShapeCalculationOps(func, shape_calc_ops);
-  });
+  }
 
   for (auto op : shape_calc_ops) {
     if (op.second) {
@@ -245,8 +239,8 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
     if (!place_on_host) {
       // For most ops, we can safely omit to insert placement attribute since
       // currently we suppose ops without placement attribute are placed on
-      // gpu. However, ops having tuple outputs should have explicit placement
-      // attributes.
+      // device. However, ops having tuple outputs should have explicit
+      // placement attributes.
       if (auto tp = op->getResult(0).getType().dyn_cast<TupleType>()) {
         SmallVector<Attribute, 4> attrs(tp.size(),
                                         builder.getStringAttr(kTypeDevice));
@@ -331,80 +325,7 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
         (isa<mhlo::ReturnOp>(dst)))
       return;
 
-    // output of the while's cond func should be placed on host.
-    if (auto while_op = dyn_cast<mhlo::WhileOp>(dst)) {
-      {
-        assert(while_op.cond().getBlocks().size() == 1 &&
-               "only support single block while_op");
-        auto& front = while_op.cond().getBlocks().front();
-        auto return_op = &*std::prev(front.end());
-        assert(isa<mhlo::ReturnOp>(return_op) &&
-               return_op->getNumOperands() == 1);
-        Value operand = return_op->getOperand(0);
-        auto defining_op = operand.getDefiningOp();
-
-        // TODO(disc): support while_op with single tensor input once we finish
-        // the refactor the placement pass.
-        assert(defining_op && "unsupported while_op with single tensor input");
-
-        if (getOpPlacement(defining_op) == PlacementType::kDevice) {
-          d2h_worklist.push_back(std::make_pair(return_op, 0));
-        }
-      }
-
-      // outputs and inputs of the while's body func should have the same
-      // placement.
-      // TODO(disc): this is a workaround and should be removed once we refactor
-      // the pass.
-      {
-        auto ensure_input_output_having_same_output = [&]() {
-          assert(while_op.body().getBlocks().size() == 1 &&
-                 "only support single block while_op");
-          auto& front = while_op.body().getBlocks().front();
-          auto return_op = &*std::prev(front.end());
-          assert(isa<mhlo::ReturnOp>(return_op) &&
-                 return_op->getNumOperands() == 1);
-          Value operand = return_op->getOperand(0);
-          auto defining_op = operand.getDefiningOp();
-          // io forwarding, thus already satifies the requirement.
-          if (!defining_op) return;
-
-          auto tp = operand.getType().dyn_cast<TupleType>();
-          // TODO(disc): support while_op with single tensor input once we
-          // finish the refactor the placement pass.
-          if (!tp) {
-            return;
-          }
-          assert(dyn_cast<mhlo::TupleOp>(defining_op) &&
-                 "unexpected nest while");
-          auto output_attr =
-              defining_op->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
-
-          auto while_operand = while_op.getOperand(0);
-          auto while_operand_defining_op = while_operand.getDefiningOp();
-          assert(while_operand_defining_op && "unexpected nest while");
-          auto while_operand_tuple_op =
-              dyn_cast<mhlo::TupleOp>(while_operand_defining_op);
-          assert(while_operand_tuple_op && "unexpected nest while");
-          auto input_attr =
-              while_operand_defining_op->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
-          for (int i = 0; i < tp.size(); ++i) {
-            auto input_placement = input_attr[i].cast<StringAttr>();
-            auto output_placement = output_attr[i].cast<StringAttr>();
-            if (input_placement.getValue() == output_placement.getValue()) {
-              continue;
-            }
-            if (input_placement.getValue() == kTypeHost) {
-              d2h_worklist.push_back(std::make_pair(defining_op, i));
-            } else {
-              h2d_worklist.push_back(std::make_pair(defining_op, i));
-            }
-          }
-          defining_op->setAttr(kPlaceTyAttr, input_attr);
-        };
-        ensure_input_output_having_same_output();
-      }
-    }
+    // TODO(disc): output of the while's cond func should be placed on host.
 
     for (auto indexed_operand : llvm::enumerate(dst->getOperands())) {
       auto index = indexed_operand.index();
@@ -412,7 +333,6 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
       auto operand_op = operand.getDefiningOp();
       // If operand is a Block Argument and the parent is not the main func,
       // insert the potential memcpy outside the parent Op.
-
       if (!operand_op) {
         auto parent = operand.getParentRegion()->getParentOp();
         if (!isa<mlir::FuncOp>(parent) ||
