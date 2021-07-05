@@ -85,7 +85,7 @@ class NcclTestBase : public ::testing::Test {
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
       : collective_type_(collective_type),
         collective_name_(collective_name),
-        nccl_communicator_(MaybeCreateNcclCommunicator()),
+        nccl_communicator_(MaybeCreateNcclCommunicator(config_proto_)),
         work_queue_(std::make_shared<UnboundedWorkQueue>(
             Env::Default(), "collective_executor")),
         col_exec_(nullptr),
@@ -433,6 +433,7 @@ class NcclTestBase : public ::testing::Test {
   const string collective_name_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpus_;
   TestCollectiveExecutorMgr col_exec_mgr_;
+  ConfigProto config_proto_;
   std::unique_ptr<NcclCommunicatorInterface> nccl_communicator_;
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CollectiveExecutor* col_exec_;

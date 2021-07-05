@@ -49,6 +49,18 @@ def make_reshape_tests(options):
       "fully_quantize": [True],
   }]
 
+  if options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        # Zero in input shape.
+        {
+            "dtype": [tf.float32],
+            "input_shape": [[1, 4, 0]],
+            "output_shape": [[2, -1], [2, 0, -1]],
+            "constant_shape": [True, False],
+            "fully_quantize": [False],
+        }
+    ]
+
   def build_graph(parameters):
     """Build the graph for reshape tests."""
     input_tensor = tf.compat.v1.placeholder(

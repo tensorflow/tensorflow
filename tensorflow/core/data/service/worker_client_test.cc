@@ -46,6 +46,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::tensorflow::data::testing::RangeSquareDataset;
+using ::tensorflow::testing::StatusIs;
 using ::testing::MatchesRegex;
 
 constexpr const char kProtocol[] = "grpc";
@@ -61,11 +63,10 @@ class WorkerClientTest : public ::testing::Test {
 
   // Creates a dataset and returns the dataset ID.
   StatusOr<int64> RegisterDataset(const int64 range) {
-    TF_ASSIGN_OR_RETURN(test_util::GraphDefTestCase graph_def_test_case,
-                        test_util::map_test_case(range));
+    TF_ASSIGN_OR_RETURN(DatasetDef dataset_def, RangeSquareDataset(range));
     int64 dataset_id = 0;
-    TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-        graph_def_test_case.graph_def, dataset_id));
+    TF_RETURN_IF_ERROR(
+        dispatcher_client_->RegisterDataset(dataset_def, dataset_id));
     return dataset_id;
   }
 
@@ -135,10 +136,9 @@ TEST_F(WorkerClientTest, LocalRead) {
   // Remove the local worker from `LocalWorkers`. Since the client reads from a
   // local server, this should cause the request to fail.
   LocalWorkers::Remove(GetWorkerAddress());
-  EXPECT_THAT(
-      GetElement(*client, task_id),
-      testing::StatusIs(error::CANCELLED,
-                        MatchesRegex("Worker.*is no longer available.*")));
+  EXPECT_THAT(GetElement(*client, task_id),
+              StatusIs(error::CANCELLED,
+                       MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
@@ -154,10 +154,9 @@ TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
   // Remove the local worker from `LocalWorkers`. Since the client reads from a
   // local server, this should cause the request to fail.
   LocalWorkers::Remove(GetWorkerAddress());
-  EXPECT_THAT(
-      GetElement(*client, task_id),
-      testing::StatusIs(error::CANCELLED,
-                        MatchesRegex("Worker.*is no longer available.*")));
+  EXPECT_THAT(GetElement(*client, task_id),
+              StatusIs(error::CANCELLED,
+                       MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, GrpcRead) {
@@ -191,10 +190,9 @@ TEST_F(WorkerClientTest, LocalServerShutsDown) {
 
   // Stopping a worker causes local reads to return Cancelled status.
   test_cluster_->StopWorkers();
-  EXPECT_THAT(
-      GetElement(*client, task_id),
-      testing::StatusIs(error::CANCELLED,
-                        MatchesRegex("Worker.*is no longer available.*")));
+  EXPECT_THAT(GetElement(*client, task_id),
+              StatusIs(error::CANCELLED,
+                       MatchesRegex("Worker.*is no longer available.*")));
 }
 
 TEST_F(WorkerClientTest, CancelClient) {
@@ -206,9 +204,8 @@ TEST_F(WorkerClientTest, CancelClient) {
 
   client->TryCancel();
   EXPECT_THAT(GetElement(*client, task_id),
-              testing::StatusIs(
-                  error::CANCELLED,
-                  MatchesRegex("Client for worker.*has been cancelled.")));
+              StatusIs(error::CANCELLED,
+                       MatchesRegex("Client for worker.*has been cancelled.")));
 }
 
 }  // namespace

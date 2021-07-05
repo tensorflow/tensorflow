@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -84,17 +84,18 @@ class Window : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
+    if (!ctx->serialize_data_tensors()) {
+      // If data tensors are not to be serialized (e.g. when the serialization
+      // is done for the sake of graph optimizations), we return
+      // `errors::Unimplemented` to short-circuit the computation.
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
+    }
     std::vector<Node*> input_nodes;
     for (const auto& element : elements_) {
       for (const auto& t : element) {
         Node* node;
-        if (ctx->serialize_data_tensors()) {
-          TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
-          DCHECK_NE(ctx->input_list(), nullptr);
-          ctx->input_list()->emplace_back(node->name(), t);
-        }
+        TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
         input_nodes.emplace_back(node);
       }
     }
@@ -187,6 +188,7 @@ Status NewWindow(std::vector<std::vector<Tensor>> elements,
   // the elements match the output_types and output_shapes.
   *out_dataset = new Window(std::move(elements), std::move(output_types),
                             std::move(output_shapes));
+  (*out_dataset)->Initialize();
   return Status::OK();
 }
 

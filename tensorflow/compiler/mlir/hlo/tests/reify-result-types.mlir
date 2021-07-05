@@ -12,7 +12,7 @@ func @dynamic_broadcast_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %arg0)
        { broadcast_dimensions = dense<0> : tensor<1xi64> }
      : (tensor<*xf32>, tensor<?xi32>) -> tensor<*xf32>
-  %1 = memref.dim %0, %c0 : tensor<*xf32>
+  %1 = tensor.dim %0, %c0 : tensor<*xf32>
   return %1 : index
 }
 
@@ -28,7 +28,7 @@ func @dynamic_iota_i32_shape(%arg0 : tensor<?xi32>) -> index {
   %0 = "mhlo.dynamic_iota"(%arg0)
        {iota_dimension = 0 : i64}
      : (tensor<?xi32>) -> tensor<?xi32>
-  %1 = memref.dim %0, %c0 : tensor<?xi32>
+  %1 = tensor.dim %0, %c0 : tensor<?xi32>
   return %1 : index
 }
 
@@ -45,6 +45,6 @@ func @dynamic_reshape_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
   %0 = "mhlo.dynamic_reshape"(%arg1, %arg0)
        { broadcast_dimensions = dense<0> : tensor<1xi64> }
      : (tensor<*xf32>, tensor<?xi32>) -> tensor<*xf32>
-  %1 = memref.dim %0, %c0 : tensor<*xf32>
+  %1 = tensor.dim %0, %c0 : tensor<*xf32>
   return %1 : index
 }

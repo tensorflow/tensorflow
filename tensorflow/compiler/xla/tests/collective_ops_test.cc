@@ -573,6 +573,74 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
   }
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduce)) {
+  const absl::string_view kModuleStr = R"(
+      HloModule test
+
+      apply_op {
+        x = u32[] parameter(0)
+        y = u32[] parameter(1)
+        ROOT apply_op = u32[] add(x, y)
+      }
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        start = (u32[], u32[]) all-reduce-start(id), to_apply=apply_op
+        ROOT done = u32[] all-reduce-done(start)
+      }
+    )";
+  static constexpr int kNumReplicas = 4;
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+
+  ASSERT_EQ(results.size(), kNumReplicas);
+  uint32_t expected = 6;  // sum [0,4)
+  for (int i = 0; i < kNumReplicas; ++i) {
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, results[i]);
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduceTwoOperands)) {
+  const absl::string_view kModuleStr = R"(
+      HloModule test
+
+      apply_op {
+        x = u32[] parameter(0)
+        y = u32[] parameter(1)
+        ROOT apply_op = u32[] add(x, y)
+      }
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        id2 = u32[] multiply(id, id)
+        start = ((u32[], u32[]), (u32[], u32[])) all-reduce-start(id, id2), to_apply=apply_op
+        ROOT done = (u32[], u32[]) all-reduce-done(start)
+      }
+    )";
+  static constexpr int kNumReplicas = 4;
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+
+  ASSERT_EQ(results.size(), kNumReplicas);
+  uint32_t expected0 = 6;   // sum [0,4)
+  uint32_t expected1 = 14;  // sum squares [0,4)
+  for (int i = 0; i < kNumReplicas; ++i) {
+    std::vector<Literal> replica_results = results[i].DecomposeTuple();
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(expected0, replica_results[0]);
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(expected1, replica_results[1]);
+  }
+}
+
 XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   const char* const kModuleStr = R"(
   HloModule test

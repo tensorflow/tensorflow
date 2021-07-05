@@ -1418,8 +1418,8 @@ port::Status ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
     case blas::DataType::kBF16:
       return DoBlasInternalStatus(
           wrap::rocblas_gemm_ex, stream, /* pointer_mode_host = */ true,
-          ROCMBlasTranspose(transa), ROCMBlasTranspose(transb),
-          (rocblas_int)m, (rocblas_int)n, (rocblas_int)k, alpha, a.opaque(),
+          ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), (rocblas_int)m,
+          (rocblas_int)n, (rocblas_int)k, alpha, a.opaque(),
           rocblas_datatype_bf16_r, lda, b.opaque(), rocblas_datatype_bf16_r,
           ldb, beta, c->opaque(), rocblas_datatype_bf16_r, ldc, c->opaque(),
           rocblas_datatype_bf16_r, ldc, rocblas_datatype_f32_r,
@@ -2340,15 +2340,12 @@ port::Status ROCMBlas::DoBlasGemmStridedBatched(
       return DoBlasInternalStatus(
           wrap::rocblas_gemm_strided_batched_ex, stream,
           false, /* pointer_mode_host */
-          ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
-          alpha,
-          a.opaque(), rocblas_datatype_bf16_r, lda, stride_a,
-          b.opaque(), rocblas_datatype_bf16_r, ldb, stride_b,
-          beta,
-          c->opaque(), rocblas_datatype_bf16_r, ldc, stride_c,
-          c->opaque(), rocblas_datatype_bf16_r, ldc, stride_c,
-          batch_count, rocblas_datatype_f32_r,
-          rocblas_gemm_algo_standard, 0, 0);
+          ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k, alpha,
+          a.opaque(), rocblas_datatype_bf16_r, lda, stride_a, b.opaque(),
+          rocblas_datatype_bf16_r, ldb, stride_b, beta, c->opaque(),
+          rocblas_datatype_bf16_r, ldc, stride_c, c->opaque(),
+          rocblas_datatype_bf16_r, ldc, stride_c, batch_count,
+          rocblas_datatype_f32_r, rocblas_gemm_algo_standard, 0, 0);
     case blas::DataType::kFloat:
       return DoBlasInternalStatus(
           wrap::rocblas_sgemm_strided_batched, stream,

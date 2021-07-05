@@ -29,6 +29,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.platform import test
 
 
 class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -146,3 +147,7 @@ class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
     dataset = dataset_ops.Dataset.range(42)
     io.save(dataset, self._save_dir)
     verify_fn(self, self._build_ds, num_outputs=42)
+
+
+if __name__ == "__main__":
+  test.main()

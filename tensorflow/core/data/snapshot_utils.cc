@@ -437,10 +437,13 @@ class Reader::Dataset : public DatasetBase {
           start_index_(dataset()->start_index_) {}
 
     Status Initialize(IteratorContext* ctx) override {
+      // TODO(jsimsa): This only needs to happen when we are not restoring but
+      // parallel_interleave op implementation caches IteratorContext (and thus
+      // the is_restoring bit ends up being inaccurate).
       TF_RETURN_IF_ERROR(Reader::Create(
           ctx->env(), GetCurrentFilename(), dataset()->compression_,
           dataset()->version_, dataset()->dtypes_, &reader_));
-      return AdvanceToStart(ctx);
+      return AdvanceToStartIndex(ctx);
     }
 
    protected:
@@ -480,7 +483,7 @@ class Reader::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(Reader::Create(
           ctx->env(), GetCurrentFilename(), dataset()->compression_,
           dataset()->version_, dataset()->dtypes_, &reader_));
-      return AdvanceToStart(ctx);
+      return AdvanceToStartIndex(ctx);
     }
 
    private:
@@ -497,13 +500,11 @@ class Reader::Dataset : public DatasetBase {
                                    current_checkpoint_id_);
     }
 
-    Status AdvanceToStart(IteratorContext* ctx) {
-      auto num_to_skip = start_index_;
-      bool end_of_sequence;
-      for (int64 i = 0; i < num_to_skip; ++i) {
-        // TODO(frankchn): Optimize this to not parse every single element.
+    // TODO(frankchn): Optimize this to not parse every single element.
+    Status AdvanceToStartIndex(IteratorContext* ctx) {
+      for (int64 i = 0; i < start_index_; ++i) {
         std::vector<Tensor> unused;
-        TF_RETURN_IF_ERROR(GetNextInternal(ctx, &unused, &end_of_sequence));
+        TF_RETURN_IF_ERROR(reader_->ReadTensors(&unused));
       }
       return Status::OK();
     }
@@ -605,7 +606,7 @@ class Reader::NestedDataset : public DatasetBase {
   class Iterator : public DatasetIterator<NestedDataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<NestedDataset>(params), index_(0) {}
+        : DatasetIterator<NestedDataset>(params) {}
 
    protected:
     Status GetNextInternal(IteratorContext* ctx,
@@ -639,7 +640,7 @@ class Reader::NestedDataset : public DatasetBase {
     }
 
    private:
-    int64 index_;
+    int64 index_ = 0;
   };
 };
 
@@ -658,6 +659,7 @@ void Reader::NestedDatasetOp::MakeDataset(OpKernelContext* ctx,
     inputs.push_back(input);
   }
   *output = new Reader::NestedDataset(DatasetContext(ctx), inputs);
+  (*output)->Initialize();
 }
 
 Status Reader::MakeNestedDataset(Env* env,
@@ -684,6 +686,7 @@ Status Reader::MakeNestedDataset(Env* env,
                          strings::StrCat("SnapshotDatasetReader/_", i)})),
                     shard_dirs.at(i), compression_type, version, dtypes, shapes,
                     dataset_start_index));
+    datasets.back()->Initialize();
   }
 
   // Rotate the vector such that the first dataset contains the next element
@@ -699,6 +702,7 @@ Status Reader::MakeNestedDataset(Env* env,
       DatasetContext(DatasetContext::Params(
           {"SnapshotNestedDatasetReader", "SnapshotNestedDatasetReader"})),
       datasets);
+  (*output)->Initialize();
   return Status::OK();
 }
 

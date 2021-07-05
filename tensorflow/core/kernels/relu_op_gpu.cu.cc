@@ -332,7 +332,8 @@ struct GeluGrad<GPUDevice, T> {
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 #define DEFINE_GPU_NO_MLIR_KERNELS(T)          \
   template struct functor::Relu<GPUDevice, T>; \
-  template struct functor::Elu<GPUDevice, T>;
+  template struct functor::Elu<GPUDevice, T>;  \
+  template struct functor::Selu<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_NO_MLIR_KERNELS);
 
@@ -347,7 +348,6 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_NO_MLIR_KERNELS);
   template struct functor::LeakyRelu<GPUDevice, T>;     \
   template struct functor::LeakyReluGrad<GPUDevice, T>; \
   template struct functor::EluGrad<GPUDevice, T>;       \
-  template struct functor::Selu<GPUDevice, T>;          \
   template struct functor::SeluGrad<GPUDevice, T>;      \
   template struct functor::Gelu<GPUDevice, T>;          \
   template struct functor::GeluGrad<GPUDevice, T>;

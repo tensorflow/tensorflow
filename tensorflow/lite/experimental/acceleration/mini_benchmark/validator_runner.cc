@@ -314,7 +314,8 @@ std::vector<const BenchmarkEvent*> ValidatorRunner::GetAndFlushEventsToLog(
       break;
     }
     if (event->event_type() == BenchmarkEventType_END ||
-        event->event_type() == BenchmarkEventType_ERROR) {
+        event->event_type() == BenchmarkEventType_ERROR ||
+        event->event_type() == BenchmarkEventType_RECOVERED_ERROR) {
       events.push_back(event);
       seen_end = true;
     } else if (event->event_type() == BenchmarkEventType_START) {

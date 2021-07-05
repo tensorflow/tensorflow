@@ -77,14 +77,14 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
   }
 };
 
-class BufferizeDimOp : public OpConversionPattern<memref::DimOp> {
+class BufferizeDimOp : public OpConversionPattern<tensor::DimOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      memref::DimOp op, ArrayRef<Value> operands,
+      tensor::DimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    memref::DimOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.memrefOrTensor(),
+    tensor::DimOp::Adaptor adaptor(operands);
+    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.source(),
                                                adaptor.index());
     return success();
   }

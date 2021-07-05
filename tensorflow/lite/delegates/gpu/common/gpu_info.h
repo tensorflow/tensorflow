@@ -264,6 +264,11 @@ enum class OpenClVersion {
 std::string OpenClVersionToString(OpenClVersion version);
 
 struct OpenClInfo {
+  std::string device_name;
+  std::string vendor_name;
+  std::string opencl_c_version;
+  std::string platform_version;
+
   OpenClVersion cl_version;
 
   std::vector<std::string> extensions;

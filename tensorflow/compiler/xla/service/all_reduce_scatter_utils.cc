@@ -387,10 +387,13 @@ absl::optional<AllReduceScatterSpec> MatchAllReduceScatter(
   spec.group_size = group_size;
   spec.split_dim = -1;
   std::vector<int64_t> split_dims;
-  for (int64_t dim = 0; dim < user->operand(0)->shape().rank(); ++dim) {
+  const Shape& shape = user->operand(0)->shape();
+  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
     auto offset = user->operand(dim + 1);
-    if (offset->opcode() == HloOpcode::kConstant &&
-        offset->literal().IsZero({})) {
+    // Skip trivial (1) dimensions or if the index is a constant 0.
+    if (shape.dimensions(dim) == 1 ||
+        (offset->opcode() == HloOpcode::kConstant &&
+         offset->literal().IsZero({}))) {
       continue;
     }
     split_dims.push_back(dim);

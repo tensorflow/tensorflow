@@ -47,8 +47,7 @@ REGISTER2(BinaryOp, GPU, "TruncateDiv", functor::div, int16, int64);
 REGISTER2(BinaryOp, GPU, "Div", functor::div, uint8, uint16);
 REGISTER2(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16);
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER5(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
           double, complex64, complex128);
 #endif

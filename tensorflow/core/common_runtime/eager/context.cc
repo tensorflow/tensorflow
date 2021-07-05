@@ -40,8 +40,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
@@ -125,7 +125,8 @@ EagerContext::EagerContext(
   // time.
   if (collective_executor_mgr_.Get() == nullptr) {
     collective_executor_mgr_.Reset(CreateProdLocalCollectiveExecutorMgr(
-        opts.config, local_device_mgr(), MaybeCreateNcclCommunicator()));
+        opts.config, local_device_mgr(),
+        MaybeCreateNcclCommunicator(opts.config)));
   }
   global_rendezvous_for_functions_ =
       core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -35,6 +37,13 @@ class AllReduceSimplifierTest : public HloTestBase {
     }
     EXPECT_EQ(changed.ValueOrDie(), expect_change);
     return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+  }
+
+  size_t AllReduceCount(std::unique_ptr<HloModule>& module) {
+    return absl::c_count_if(module->entry_computation()->instructions(),
+                            [](const HloInstruction* inst) {
+                              return inst->opcode() == HloOpcode::kAllReduce;
+                            });
   }
 };
 
@@ -60,6 +69,32 @@ ENTRY main {
                           RunPass(hlo_string, /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Parameter(0), m::Parameter(1))));
+  EXPECT_EQ(AllReduceCount(module), 1);
+}
+
+TEST_F(AllReduceSimplifierTest, SimpleWithChannelId) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), channel_id=1, replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(p1), channel_id=1, replica_groups={}, to_apply=sum
+  ROOT add = f32[8] add(ar0, ar1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              m::AllReduce(m::Add(m::Parameter(0), m::Parameter(1))));
+  EXPECT_EQ(AllReduceCount(module), 1);
 }
 
 // Checks whether a linear chain of adds of ARs is reassociated iin a single
@@ -95,6 +130,7 @@ ENTRY main {
       m::AllReduce(m::Add(
           m::Add(m::Add(m::Parameter(0), m::Parameter(1)), m::Parameter(2)),
           m::Parameter(3))));
+  EXPECT_EQ(AllReduceCount(module), 1);
 }
 
 // Checks whether a tree of add of ARs is reassociated in a single pass.
@@ -127,6 +163,7 @@ ENTRY main {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               m::AllReduce(m::Add(m::Add(m::Parameter(0), m::Parameter(1)),
                                   m::Add(m::Parameter(2), m::Parameter(3)))));
+  EXPECT_EQ(AllReduceCount(module), 1);
 }
 
 TEST_F(AllReduceSimplifierTest, MismatchOp0) {
@@ -245,6 +282,29 @@ ENTRY main {
   ar0 = f32[8] all-reduce(p0), replica_groups={{0, 1}}, channel_id=3, use_global_device_ids=true, to_apply=sum
   ar1 = f32[8] all-reduce(p1), replica_groups={{0, 1}}, channel_id=4, to_apply=sum
   ROOT add = f32[8] add(ar0, ar1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/false));
+}
+
+TEST_F(AllReduceSimplifierTest, NotSingleUser) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum
+  add = f32[8] add(ar0, ar1)
+  ROOT t = (f32[8], f32[8]) tuple(ar0, add)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

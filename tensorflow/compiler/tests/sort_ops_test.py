@@ -242,7 +242,7 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
   def testTopK(self):
     supported_types = set([
         dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32
+        np.int32, np.uint32, np.int64, np.uint64
     ])
     for dtype in supported_types.intersection(self.numeric_types):
       # Use small input size for bfloat16. Otherwise, we'll get duplicate values
@@ -271,8 +271,10 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
       ("HalfFloatPrecision", np.float16),
       ("SinglePrecision", np.float32),
       ("DoublePrecision", np.float64),
-      ("Int", np.int32),
-      ("UnsignedInt", np.uint32),
+      ("Int32", np.int32),
+      ("UnsignedInt32", np.uint32),
+      ("Int64", np.int64),
+      ("UnsignedInt64", np.uint64),
   )
   def testTopK2D(self, dtype):
     if dtype in self.numeric_types:

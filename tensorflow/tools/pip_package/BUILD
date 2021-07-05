@@ -214,7 +214,6 @@ filegroup(
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@opt_einsum_archive//:LICENSE",
-        "@org_python_pypi_backports_weakref//:LICENSE",
         "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@six_archive//:LICENSE",

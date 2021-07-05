@@ -494,7 +494,13 @@ class SavedModelLoader(object):
     Returns:
       `MetagraphDef` proto of the graph that was loaded.
     """
-    metrics.IncrementReadApi(_LOADER_LABEL)
+    saved_model_proto = parse_saved_model(self._export_dir)
+    if (len(saved_model_proto.meta_graphs) == 1 and
+        saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
+      metrics.IncrementReadApi(_LOADER_LABEL, write_version="2")
+    else:
+      metrics.IncrementReadApi(_LOADER_LABEL, write_version="1")
+
     with sess.graph.as_default():
       saver, _ = self.load_graph(sess.graph, tags, import_scope,
                                  **saver_kwargs)

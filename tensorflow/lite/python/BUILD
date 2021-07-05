@@ -599,6 +599,7 @@ py_test(
     python_version = "PY3",
     deps = [
         ":analyzer",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],

@@ -1100,7 +1100,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
@@ -1671,6 +1671,7 @@ cuda_py_test(
     srcs = ["jit_test.py"],
     #shard_count = 5,
     tags = [
+        "no_cuda_asan",  # Times out.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     xla_enable_strict_auto_jit = False,

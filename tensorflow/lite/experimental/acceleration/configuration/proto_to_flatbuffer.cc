@@ -114,6 +114,36 @@ GPUBackend ConvertGPUBackend(proto::GPUBackend backend) {
   return GPUBackend_UNSET;
 }
 
+GPUInferenceUsage ConvertGPUInferenceUsage(
+    proto::GPUInferenceUsage preference) {
+  switch (preference) {
+    case proto::GPUInferenceUsage::GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER:
+      return GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+    case proto::GPUInferenceUsage::GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED:
+      return GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
+  }
+  TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                  "Unexpected value for GPUInferenceUsage: %d", preference);
+  return GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+}
+
+GPUInferencePriority ConvertGPUInferencePriority(
+    proto::GPUInferencePriority priority) {
+  switch (priority) {
+    case proto::GPUInferencePriority::GPU_PRIORITY_AUTO:
+      return GPUInferencePriority_GPU_PRIORITY_AUTO;
+    case proto::GPUInferencePriority::GPU_PRIORITY_MAX_PRECISION:
+      return GPUInferencePriority_GPU_PRIORITY_MAX_PRECISION;
+    case proto::GPUInferencePriority::GPU_PRIORITY_MIN_LATENCY:
+      return GPUInferencePriority_GPU_PRIORITY_MIN_LATENCY;
+    case proto::GPUInferencePriority::GPU_PRIORITY_MIN_MEMORY_USAGE:
+      return GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE;
+  }
+  TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
+                  "Unexpected value for GPUInferencePriority: %d", priority);
+  return GPUInferencePriority_GPU_PRIORITY_AUTO;
+}
+
 EdgeTpuPowerState ConvertEdgeTpuPowerState(proto::EdgeTpuPowerState state) {
   switch (state) {
     case proto::EdgeTpuPowerState::UNDEFINED_POWERSTATE:
@@ -174,7 +204,13 @@ Offset<GPUSettings> ConvertGPUSettings(const proto::GPUSettings& settings,
       *builder,
       /*is_precision_loss_allowed=*/settings.is_precision_loss_allowed(),
       /*enable_quantized_inference=*/settings.enable_quantized_inference(),
-      ConvertGPUBackend(settings.force_backend()));
+      ConvertGPUBackend(settings.force_backend()),
+      ConvertGPUInferencePriority(settings.inference_priority1()),
+      ConvertGPUInferencePriority(settings.inference_priority2()),
+      ConvertGPUInferencePriority(settings.inference_priority3()),
+      ConvertGPUInferenceUsage(settings.inference_preference()),
+      /*cache_directory=*/builder->CreateString(settings.cache_directory()),
+      /*model_token=*/builder->CreateString(settings.model_token()));
 }
 
 Offset<HexagonSettings> ConvertHexagonSettings(

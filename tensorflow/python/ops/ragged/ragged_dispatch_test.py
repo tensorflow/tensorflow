@@ -703,22 +703,46 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               'inputs': [ragged_factory_ops.constant_value([[1, 2], [3]])]
           },
           expected='Hi [[1, 2], [3]]'),
+      dict(
+          op=nn_ops.softmax_v2,
+          kwargs={
+              'logits':
+                  ragged_factory_ops.constant_value([[1., 2., 3.], [4., 5.]]),
+          },
+          expected=ragged_factory_ops.constant_value([
+              [
+                  np.exp(1) / (np.exp(1) + np.exp(2) + np.exp(3)),
+                  np.exp(2) / (np.exp(1) + np.exp(2) + np.exp(3)),
+                  np.exp(3) / (np.exp(1) + np.exp(2) + np.exp(3)),
+              ],
+              [
+                  np.exp(4) / (np.exp(4) + np.exp(5)),
+                  np.exp(5) / (np.exp(4) + np.exp(5)),
+              ],
+          ]),
+          rtol=1e-6,
+      ),
   ])
   def testRaggedDispatch(self,
                          op,
                          expected,
                          args=(),
                          result_is_list=False,
+                         rtol=None,
                          kwargs=None):
-    if kwargs is None:
-      kwargs = {}
+    kwargs = kwargs or {}
+    if rtol is not None:
+      assert_fn = lambda x, y: self.assertAllClose(x, y, rtol=rtol)
+    else:
+      assert_fn = self.assertAllEqual
+
     result = op(*args, **kwargs)
     if result_is_list:
       self.assertLen(result, len(expected))
       for (r, e) in zip(result, expected):
-        self.assertAllEqual(r, e)
+        assert_fn(r, e)
     else:
-      self.assertAllEqual(result, expected)
+      assert_fn(result, expected)
 
   def testUnaryElementwiseOpsPreserveUniformRowLength(self):
     # Unary elementwise op
@@ -776,7 +800,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     supported_ops_v1 = ['batch_gather']
 
     # Ops that should be listed as supported in v2 only.
-    supported_ops_v2 = []
+    supported_ops_v2 = ['nn.softmax']
 
     v1_ragged_ops = ragged_dispatch.ragged_op_list(tf_version=1)
     for element in supported_ops + supported_ops_v1:

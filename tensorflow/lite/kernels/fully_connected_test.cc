@@ -141,13 +141,16 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
-      bool add_bias_for_quantized = true)
-      : batches_(batches), units_(units) {
-    int total_input_size = 1;
-    for (size_t i = 0; i < input.shape.size(); ++i) {
-      total_input_size *= input.shape[i];
+      bool add_bias_for_quantized = true, int input_size = -1)
+      : batches_(batches), units_(units), input_size_(input_size) {
+    if (input_size_ == -1) {
+      // Calculate input_size_ from batch and input shape.
+      int total_input_size = 1;
+      for (size_t i = 0; i < input.shape.size(); ++i) {
+        total_input_size *= input.shape[i];
+      }
+      input_size_ = total_input_size / batches_;
     }
-    input_size_ = total_input_size / batches_;
 
     input_ = AddInput(input);
     if (input.type == TensorType_INT16) {
@@ -458,6 +461,31 @@ TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1));
   EXPECT_THAT(m.GetOutput(), ElementsAre(10, 8));
+}
+
+TEST(FloatFullyConnectedOpTest, SimpleTestEmptyOutput) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+
+  FloatFullyConnectedOpModel m(ops::builtin::Register_FULLY_CONNECTED_PIE(),
+                               /*units=*/1, /*batches=*/2,
+                               /*input=*/{TensorType_FLOAT32, {0, 2}},
+                               /*output=*/{TensorType_FLOAT32},
+                               /*keep_num_dims=*/false,
+                               /*bias_tensor_optional=*/true,
+                               /*activation_func=*/ActivationFunctionType_RELU,
+                               /*weights_format=*/
+                               FullyConnectedOptionsWeightsFormat_DEFAULT,
+                               /*add_bias_for_quantized=*/true,
+                               /*input_size=*/2);
+  m.SetWeights({
+      2, 4,  // u = 0
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(0, 1));
 }
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedUint8) {

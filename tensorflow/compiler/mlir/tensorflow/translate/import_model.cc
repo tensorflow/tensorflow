@@ -106,6 +106,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -116,6 +117,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -210,7 +212,15 @@ class ImporterBase {
         debug_info_(debug_info),
         function_name_for_debug_info_(function_name_for_debug_info),
         function_name_uniquifier_(function_name_uniquifier),
-        error_handler_(module.getContext()) {}
+        error_handler_(module.getContext()) {
+    // Log import config.
+    if (VLOG_IS_ON(1)) {
+      LOG(INFO) << "Importing with: " << specs.str();
+      for (auto& it : *tf_name_to_mlir_name) {
+        LOG(INFO) << "\t" << it.first << " -> " << it.second;
+      }
+    }
+  }
 
   // Returns the inferred function signature of the given function body. Input
   // types are unranked tensor of the respective datatype in the function and
@@ -1404,6 +1414,9 @@ Status ImporterBase::ConvertFeedsToPlaceholders(
 }
 
 Status ImporterBase::PrepareConvert(const Graph& graph) {
+  VLOG(1) << "Importing: "
+          << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
+                                           &graph_flib_);
   TF_RETURN_IF_ERROR(RemoveBackedges(graph));
   TF_RETURN_IF_ERROR(CopyStackTraces(graph, graph_.get()));
 

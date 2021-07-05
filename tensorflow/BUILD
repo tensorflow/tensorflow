@@ -332,6 +332,18 @@ config_setting(
 )
 
 config_setting(
+    name = "fuchsia_x86_64",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "fuchsia"},
+        {},
+    ),
+    values = {
+        "cpu": "x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios_x86_64",
     flag_values = if_google(
         {"//tools/cpp:cc_target_os": "apple"},
@@ -950,6 +962,7 @@ tf_cc_shared_object(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",
+        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
         "//tensorflow/stream_executor:stream_executor_impl",
         "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),

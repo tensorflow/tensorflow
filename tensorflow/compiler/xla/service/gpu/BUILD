@@ -444,6 +444,7 @@ tf_cuda_library(
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_nccl(["-DGOOGLE_XCCL=1"]),
     deps = [
         ":buffer_allocations",
+        ":ir_emission_utils",
         ":thunk",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -462,6 +463,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/mlir/xla:attribute_exporter",
@@ -608,6 +610,8 @@ cc_library(
     ]),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
+    ]) + if_nccl([
+        "GOOGLE_XCCL=1",
     ]) + select({
         ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
         "//conditions:default": [],
@@ -686,12 +690,17 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_bef_thunk_enabled": [
+            ":virtual_nccl",
+            ":virtual_nccl_utils",
+            ":virtual_rccl",
             "@llvm-project//llvm:Support",
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
             "//tensorflow/compiler/mlir/hlo:lhlo",
             # copybara:uncomment_begin(target not open-sourced yet)
             # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            # "//tensorflow/compiler/mlir/xla:attribute_exporter",
+            # "//tensorflow/compiler/xla/service:collective_ops_utils",
             # "//tensorflow/core/tfrt/gpu:gpu_shared_context",
             # "//tensorflow/core/tfrt/runtime:work_queue_interface",
             # copybara:uncomment_end
@@ -1374,6 +1383,7 @@ cc_library(
         ":cudnn_batchnorm_rewriter",
         ":fusion_merger",
         ":gemm_rewriter",
+        ":gpu_all_reduce_scatter_creator",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_copy_insertion",

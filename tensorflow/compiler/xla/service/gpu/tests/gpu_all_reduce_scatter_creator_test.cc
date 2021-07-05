@@ -53,6 +53,13 @@ class GpuAllReduceScatterCreatorTest : public HloTestBase {
     EXPECT_EQ(changed.ValueOrDie(), expect_change);
     return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
+
+  size_t AllReduceCount(std::unique_ptr<HloModule> &module) {
+    return absl::c_count_if(module->entry_computation()->instructions(),
+                            [](const HloInstruction *inst) {
+                              return inst->opcode() == HloOpcode::kAllReduce;
+                            });
+  }
 };
 
 TEST_F(GpuAllReduceScatterCreatorTest, AllReplicas) {
@@ -91,6 +98,7 @@ ENTRY %AllReduce {
       Cast<HloAllReduceScatterInstruction>(
           module->entry_computation()->root_instruction());
   EXPECT_EQ(ars->scatter_dimension(), 0) << ars->ToString();
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasWithReshape) {
@@ -126,6 +134,7 @@ ENTRY %AllReduce {
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Reshape(op::AllReduceScatter(op::Parameter(0))));
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasWithReshapeSplitDimModified) {
@@ -158,6 +167,7 @@ ENTRY %AllReduce {
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Reshape(op::AllReduceScatter(op::Parameter(0))));
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasDim2) {
@@ -195,6 +205,7 @@ ENTRY %AllReduce {
       Cast<HloAllReduceScatterInstruction>(
           module->entry_computation()->root_instruction());
   EXPECT_EQ(ars->scatter_dimension(), 2) << ars->ToString();
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasWrongOffsets) {
@@ -259,6 +270,7 @@ ENTRY %AllReduce {
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduceScatter(op::Parameter(0)));
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, SubgroupedReplicas) {
@@ -293,6 +305,7 @@ ENTRY %AllReduce {
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduceScatter(op::Parameter(0)));
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, AllPartitions) {
@@ -326,6 +339,7 @@ ENTRY %AllReduce {
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduceScatter(op::Parameter(0)));
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, SubgroupsGlobals) {
@@ -364,6 +378,7 @@ ENTRY %AllReduce {
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduceScatter(op::Parameter(0)));
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, SubgroupsGlobalsOrthogonalReplicas) {
@@ -397,6 +412,7 @@ ENTRY %AllReduce {
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::AllReduceScatter(op::Parameter(0)));
+  EXPECT_EQ(AllReduceCount(module), 0);
 }
 
 TEST_F(GpuAllReduceScatterCreatorTest, SubgroupsGlobalsNonOrthogonalReplicas) {

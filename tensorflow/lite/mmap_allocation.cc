@@ -23,6 +23,22 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace tflite {
+namespace {
+
+size_t GetFdSizeBytes(int fd) {
+  if (fd < 0) {
+    return 0;
+  }
+
+  struct stat fd_stat;
+  if (fstat(fd, &fd_stat) != 0) {
+    return 0;
+  }
+
+  return fd_stat.st_size;
+}
+
+}  // namespace
 
 MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
@@ -40,19 +56,30 @@ MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
   }
 }
 
+MMAPAllocation::MMAPAllocation(int fd, size_t offset, size_t length,
+                               ErrorReporter* error_reporter)
+    : MMAPAllocation(error_reporter, dup(fd), offset, length) {
+  if (mmap_fd_ == -1) {
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to dup '%d' file descriptor.",
+                         fd);
+  }
+}
+
 MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd)
+    : MMAPAllocation(error_reporter, owned_fd, /*offset=*/0,
+                     /*length=*/GetFdSizeBytes(owned_fd)) {}
+
+MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd,
+                               size_t offset, size_t length)
     : Allocation(error_reporter, Allocation::Type::kMMap),
       mmap_fd_(owned_fd),
       mmapped_buffer_(MAP_FAILED),
-      buffer_size_bytes_(0) {
-  if (mmap_fd_ == -1) {
+      buffer_size_bytes_(length) {
+  if (owned_fd < 0) {
     return;
   }
-  struct stat sb;
-  fstat(mmap_fd_, &sb);
-  buffer_size_bytes_ = sb.st_size;
   mmapped_buffer_ =
-      mmap(nullptr, buffer_size_bytes_, PROT_READ, MAP_SHARED, mmap_fd_, 0);
+      mmap(nullptr, length, PROT_READ, MAP_SHARED, mmap_fd_, offset);
   if (mmapped_buffer_ == MAP_FAILED) {
     TF_LITE_REPORT_ERROR(error_reporter, "Mmap of '%d' failed.", mmap_fd_);
     return;
@@ -63,7 +90,9 @@ MMAPAllocation::~MMAPAllocation() {
   if (valid()) {
     munmap(const_cast<void*>(mmapped_buffer_), buffer_size_bytes_);
   }
-  if (mmap_fd_ != -1) close(mmap_fd_);
+  if (mmap_fd_ >= 0) {
+    close(mmap_fd_);
+  }
 }
 
 const void* MMAPAllocation::base() const { return mmapped_buffer_; }

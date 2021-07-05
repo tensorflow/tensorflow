@@ -125,11 +125,11 @@ Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::RegisterDataset(const GraphDef& dataset,
+Status DataServiceDispatcherClient::RegisterDataset(const DatasetDef& dataset,
                                                     int64& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
-  *req.mutable_dataset()->mutable_graph() = dataset;
+  *req.mutable_dataset() = dataset;
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrRegisterDataset(&client_ctx, req, &resp);

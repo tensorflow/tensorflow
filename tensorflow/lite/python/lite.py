@@ -939,7 +939,6 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._saved_model_exported_names = saved_model_exported_names
     self._trackable_obj = trackable_obj
     self._parse_saved_model_args(always_enable_saved_model_import=True)
-    self._enable_tflite_resource_variables = False
 
   @_export_metrics
   def convert(self):
@@ -987,8 +986,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     converter_kwargs = {
         "enable_tflite_resource_variables":
-            (self._enable_tflite_resource_variables or
-             self.experimental_enable_resource_variables)
+            self.experimental_enable_resource_variables
     }
     converter_kwargs.update(self._get_base_converter_args())
     converter_kwargs.update(quant_mode.converter_flags())
