@@ -532,6 +532,7 @@ _RAGGED_DISPATCH_OPS = [
     (math_ops.reduce_all, ragged_math_ops.reduce_all, ['input_tensor']),
     (nn_ops.dropout, _ragged_nn_dropout_v1, ['x']),
     (nn_ops.dropout_v2, _ragged_nn_dropout_v2, ['x']),
+    (nn_ops.softmax_v2, ragged_math_ops.softmax, ['logits']),
 ]
 
 
