@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 // RUN: mlir-hlo-opt -test-print-userange -split-input-file %s | FileCheck %s
-=======
-// RUN: mlir-hlo-opt %s -test-print-userange -split-input-file 2>&1 | FileCheck %s
->>>>>>> PR #48847
 
 // CHECK-LABEL: Testing : func_empty
 func @func_empty() {

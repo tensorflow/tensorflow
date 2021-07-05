@@ -1695,23 +1695,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test_userange_analysis",
-    srcs = ["lib/Analysis/test_userange_analysis.cc"],
-    hdrs = [
-        "include/mlir-hlo/Analysis/userange_analysis.h",
-        "include/mlir-hlo/Transforms/PassDetail.h",
-        "include/mlir-hlo/Transforms/passes.h",
-    ],
-    deps = [
-        ":hlo",
-        ":transforms_pass_inc_gen",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
     name = "buffer_reuse",
     srcs = ["lib/Transforms/buffer_reuse.cc"],
     hdrs = [
@@ -1721,7 +1704,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":mlir_buffer_transforms_pass_inc_gen",
+        ":transforms_pass_inc_gen",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

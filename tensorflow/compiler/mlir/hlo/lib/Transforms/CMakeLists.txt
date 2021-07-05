@@ -18,7 +18,7 @@ add_mlir_library(MLIRBufferTransforms
   buffer_reuse.cc
 
   DEPENDS
-  MLIRBufferTransformsPassIncGen
+  LMHLOTransformsPassIncGen
 
   LINK_COMPONENTS
   Core
