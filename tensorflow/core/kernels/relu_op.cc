@@ -163,7 +163,6 @@ namespace functor {
   extern template struct EluGrad<GPUDevice, T>;                                \
                                                                                \
   template <>                                                                  \
-<<<<<<< HEAD
   void Gelu<GPUDevice, T>::operator()(                                         \
       const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
       typename TTypes<T>::Tensor activations);                                 \
@@ -177,14 +176,6 @@ namespace functor {
   extern template struct GeluGrad<GPUDevice, T>;                               \
                                                                                \
   template <>                                                                  \
-  void Selu<GPUDevice, T>::operator()(                                         \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
-      typename TTypes<T>::Tensor activations);                                 \
-  extern template struct Selu<GPUDevice, T>;                                   \
-                                                                               \
-  template <>                                                                  \
-=======
->>>>>>> upstream/master
   void SeluGrad<GPUDevice, T>::operator()(                                     \
       const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
       typename TTypes<T>::ConstTensor activations,                             \
@@ -221,18 +212,12 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       Name("EluGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"),       \
       EluGradOp<GPUDevice, type>);                                        \
   REGISTER_KERNEL_BUILDER(                                                \
-<<<<<<< HEAD
       Name("Gelu").Device(DEVICE_GPU).TypeConstraint<type>("T"),          \
       GeluOp<GPUDevice, type>);                                           \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("GeluGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"),      \
       GeluGradOp<GPUDevice, type>);                                       \
   REGISTER_KERNEL_BUILDER(                                                \
-      Name("Selu").Device(DEVICE_GPU).TypeConstraint<type>("T"),          \
-      SeluOp<GPUDevice, type>);                                           \
-  REGISTER_KERNEL_BUILDER(                                                \
-=======
->>>>>>> upstream/master
       Name("SeluGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"),      \
       SeluGradOp<GPUDevice, type>)
 

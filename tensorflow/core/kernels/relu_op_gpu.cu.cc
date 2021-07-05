@@ -348,14 +348,9 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_NO_MLIR_KERNELS);
   template struct functor::LeakyRelu<GPUDevice, T>;     \
   template struct functor::LeakyReluGrad<GPUDevice, T>; \
   template struct functor::EluGrad<GPUDevice, T>;       \
-<<<<<<< HEAD
-  template struct functor::Selu<GPUDevice, T>;          \
   template struct functor::SeluGrad<GPUDevice, T>;      \
   template struct functor::Gelu<GPUDevice, T>;          \
   template struct functor::GeluGrad<GPUDevice, T>;
-=======
-  template struct functor::SeluGrad<GPUDevice, T>;
->>>>>>> upstream/master
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 template struct functor::Relu<GPUDevice, qint8>;

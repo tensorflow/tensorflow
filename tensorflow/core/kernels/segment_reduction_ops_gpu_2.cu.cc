@@ -44,11 +44,7 @@ namespace functor {
 
 TF_CALL_int32(DEFINE_REAL_GPU_SPECS);
 TF_CALL_int32(DEFINE_SUM_GPU_SPECS);
-
-// TODO(rocm): support atomicAdd for complex numbers on ROCm
-#if GOOGLE_CUDA
 TF_CALL_COMPLEX_TYPES(DEFINE_SUM_GPU_SPECS);
-#endif
 
 #undef DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX
 #undef DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX
