@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 // Define basic byte swapping operations.
 // These operations must be macros to use compiler intrinsics.
@@ -114,8 +115,12 @@ Status ByteSwapTensor(Tensor *t);
 //  buff: pointer to the buffer to be modified IN PLACE.
 //  size: size of bytes in this buffer.
 //  dtype: type of data in this buffer.
+//  num_of_elem: number of data in this buffer, set to -1 if unspecified
 // Returns: Status::OK() on success, -1 otherwise
-Status ByteSwapBuffer(void* buff, size_t size, DataType dtype);
+Status ByteSwapBuffer(void* buff, size_t size, DataType dtype, int num_of_elem);
+
+// Swap tensor_content field of Const Op Tensors in the named functions
+Status SwapTensorContent(MetaGraphDef* meta_graph_def);
 
 }  // namespace tensorflow
 
