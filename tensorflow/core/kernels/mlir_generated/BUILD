@@ -238,6 +238,7 @@ tf_kernel_library(
         "gpu_op_bitwise_xor.cc",
         "gpu_op_complex.cc",
         "gpu_op_div.cc",
+        "gpu_op_div_no_nan.cc",
         "gpu_op_equal.cc",
         "gpu_op_greater.cc",
         "gpu_op_greater_equal.cc",
@@ -258,7 +259,6 @@ tf_kernel_library(
         "gpu_op_sub.cc",
         "gpu_op_zeta.cc",
     ]) + if_mlir_generated_experimental_kernels_enabled([
-        "gpu_op_div_no_nan.cc",
         "gpu_op_floor_div.cc",
         "gpu_op_xdivy.cc",
         "gpu_op_xlogy.cc",
@@ -274,6 +274,7 @@ tf_kernel_library(
         ":gpu_bitwise_xor_kernels",
         ":gpu_complex_kernels",
         ":gpu_div_kernels",
+        ":gpu_div_no_nan_kernels",
         ":gpu_equal_kernels",
         ":gpu_greater_equal_kernels",
         ":gpu_greater_kernels",
@@ -295,7 +296,6 @@ tf_kernel_library(
         ":gpu_zeta_kernels",
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled([
-        ":gpu_div_no_nan_kernels",
         ":gpu_floor_div_kernels",
         ":gpu_xdivy_kernels",
         ":gpu_xlogy_kernels",
