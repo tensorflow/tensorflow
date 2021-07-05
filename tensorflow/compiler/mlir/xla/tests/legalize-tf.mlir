@@ -905,6 +905,15 @@ func @broadcast_to(%arg0: tensor<16xf32>) -> tensor<16x16x16x16xf32> {
   return %0 : tensor<16x16x16x16xf32>
 }
 
+// CHECK-LABEL: func @broadcast_scalar_to_unranked
+// CHECK: (%[[ARG0:.*]]: tensor<f32>, %[[SHAPE:.*]]: tensor<?xi32>)
+func @broadcast_scalar_to_unranked(%arg0: tensor<f32>, %shape: tensor<?xi32>) -> tensor<*xf32> {
+  // CHECK: "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]])
+  // CHECK-SAME: {broadcast_dimensions = dense<> : tensor<0xi64>}
+  %0 = "tf.BroadcastTo"(%arg0, %shape) : (tensor<f32>, tensor<?xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // Complex op legalizations.
 //===----------------------------------------------------------------------===//
