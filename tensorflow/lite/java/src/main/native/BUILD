@@ -7,7 +7,7 @@ load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tfli
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 alias_with_tflite(
@@ -48,6 +48,7 @@ cc_library_with_tflite(
     ],
     tflite_deps = [
         "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/core/shims:create_op_resolver_header",
         "//tensorflow/lite/core/shims:framework_stable",
         "//tensorflow/lite/core/shims:jni_initialization",
     ],
@@ -88,10 +89,10 @@ cc_library_with_tflite(
     tflite_deps = [
         ":native_framework_only",
         "//tensorflow/lite/core/shims:builtin_ops",
+        "//tensorflow/lite/core/shims:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/core/shims:framework_stable",
     ],
     deps = [
-        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:deprecated_backends",
     ],

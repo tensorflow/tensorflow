@@ -3202,6 +3202,26 @@ namespace {
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
+absl::optional<int64_t> GetEngineId(cudnnBackendDescriptor_t engine_config) {
+  int64_t count;
+  int64_t engine_id;
+  cudnn_frontend::ManagedOpaqueDescriptor managed_engine =
+      cudnn_frontend::make_shared_backend_pointer(
+          CUDNN_BACKEND_ENGINE_DESCRIPTOR);
+  cudnnBackendDescriptor_t engine = managed_engine->get_backend_descriptor();
+  if (cudnnBackendGetAttribute(engine_config, CUDNN_ATTR_ENGINECFG_ENGINE,
+                               CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &count,
+                               &engine) != CUDNN_STATUS_SUCCESS) {
+    return absl::nullopt;
+  }
+  if (cudnnBackendGetAttribute(engine, CUDNN_ATTR_ENGINE_GLOBAL_INDEX,
+                               CUDNN_TYPE_INT64, 1, &count,
+                               &engine_id) != CUDNN_STATUS_SUCCESS) {
+    return absl::nullopt;
+  }
+  return engine_id;
+}
+
 bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
                          bool disable_winograd, bool disable_nondeterminism,
                          bool disable_tensor_core) {
@@ -3222,6 +3242,11 @@ bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
   if (disable_tensor_core) {
     ret |= cudnn_frontend::hasNumericalNote<CUDNN_NUMERICAL_NOTE_TENSOR_CORE>(
         engine_config);
+  }
+
+  auto maybe_engine_id = GetEngineId(engine_config);
+  if (maybe_engine_id.has_value()) {
+    ret |= *maybe_engine_id == 0;
   }
 
   return ret;
@@ -5192,61 +5217,6 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
     return port::Status::OK();
   }();
   return IsStatusOk(status, /*report_error=*/true);
-}
-
-template <class T>
-port::Status CudnnSupport::DoConvolveBackwardBiasImpl(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<T>& input_data,
-    const dnn::BatchDescriptor& bias_descriptor,
-    DeviceMemory<T>* backward_bias_data) {
-  cudnnDataType_t cudnn_type = GetCudnnDataType<T>();
-  CudnnTensorDescriptor input_nd(input_descriptor, cudnn_type);
-  CudnnTensorDescriptor bias_nd(bias_descriptor, cudnn_type);
-
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-  RETURN_IF_CUDNN_ERROR(cudnnConvolutionBackwardBias(
-      cudnn.handle(), &alpha, input_nd.handle(), input_data.opaque(), &beta,
-      bias_nd.handle(), backward_bias_data->opaque()));
-  return port::Status::OK();
-}
-
-bool CudnnSupport::DoConvolveBackwardBias(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<double>& input_data,
-    const dnn::BatchDescriptor& bias_descriptor,
-    DeviceMemory<double>* backward_bias_data) {
-  return IsStatusOk(
-      DoConvolveBackwardBiasImpl(stream, input_descriptor, input_data,
-                                 bias_descriptor, backward_bias_data),
-      /*report_error=*/true);
-}
-
-bool CudnnSupport::DoConvolveBackwardBias(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<float>& input_data,
-    const dnn::BatchDescriptor& bias_descriptor,
-    DeviceMemory<float>* backward_bias_data) {
-  return IsStatusOk(
-      DoConvolveBackwardBiasImpl(stream, input_descriptor, input_data,
-                                 bias_descriptor, backward_bias_data),
-      /*report_error=*/true);
-}
-
-bool CudnnSupport::DoConvolveBackwardBias(
-    Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<Eigen::half>& input_data,
-    const dnn::BatchDescriptor& bias_descriptor,
-    DeviceMemory<Eigen::half>* backward_bias_data) {
-  return IsStatusOk(
-      DoConvolveBackwardBiasImpl(stream, input_descriptor, input_data,
-                                 bias_descriptor, backward_bias_data),
-      /*report_error=*/true);
 }
 
 bool CudnnSupport::DoMatMul(Stream* stream,

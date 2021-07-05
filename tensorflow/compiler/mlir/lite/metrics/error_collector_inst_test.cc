@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 
 #include <cstddef>
 #include <set>
@@ -114,7 +114,8 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
       std::make_unique<ErrorCollectorInstrumentation>(&context));
   EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), true);
 
-  auto collected_errors = GetErrorCollector()->CollectedErrors();
+  auto collected_errors =
+      ErrorCollector::GetErrorCollector()->CollectedErrors();
   EXPECT_EQ(collected_errors.size(), 0);
 }
 
@@ -140,7 +141,8 @@ TEST(ErrorCollectorTest, TessFailurePass) {
       std::make_unique<ErrorCollectorInstrumentation>(&context));
   EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), false);
 
-  auto collected_errors = GetErrorCollector()->CollectedErrors();
+  auto collected_errors =
+      ErrorCollector::GetErrorCollector()->CollectedErrors();
 
   EXPECT_EQ(collected_errors.size(), 2);
   EXPECT_EQ(collected_errors.count(NewConverterErrorData(

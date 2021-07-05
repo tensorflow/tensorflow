@@ -34,6 +34,8 @@ Status SparseSoftmaxCrossEntropyWithLogits(AbstractContext* ctx, AbstractTensorH
 
 Status AccumulatorApplyGradient(AbstractContext* ctx, AbstractTensorHandle** handle, AbstractTensorHandle* const local_step, AbstractTensorHandle* const gradient, const char* name = nullptr);
 
+Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource, DataType dtype, const PartialTensorShape shape, const char* container = "", const char* shared_name = "", absl::Span<string const> allowed_devices = {}, const char* name = nullptr);
+
 }  // namespace ops
 }  // namespace tensorflow
 

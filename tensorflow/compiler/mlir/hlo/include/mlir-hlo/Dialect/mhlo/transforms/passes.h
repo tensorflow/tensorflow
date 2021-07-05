@@ -50,8 +50,11 @@ std::unique_ptr<FunctionPass> createHloCanonicalizeReductionPass();
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
-    bool convert_to_lmhlo_only = false);
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
+
+/// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
+/// buffers if necessary.
+std::unique_ptr<FunctionPass> createLegalizeToMemrefPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();

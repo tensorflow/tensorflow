@@ -174,6 +174,18 @@ enum GPUInferencePriority {
   GPU_PRIORITY_MIN_MEMORY_USAGE = 3;
 }
 
+// GPU inference preference for initialization time vs. inference time.
+// Corresponds to TfLiteGpuInferenceUsage.
+enum GPUInferenceUsage {
+  // Delegate will be used only once, therefore, bootstrap/init time should
+  // be taken into account.
+  GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0;
+
+  // Prefer maximizing the throughput. Same delegate will be used repeatedly on
+  // multiple inputs.
+  GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1;
+}
+
 // GPU Delegate settings.
 //
 // See
@@ -208,7 +220,20 @@ message GPUSettings {
   optional GPUInferencePriority inference_priority3 = 6
       [default = GPU_PRIORITY_AUTO];
 
-  // TODO(b/152019007): add remaining options.
+  // Whether to optimize for compilation+execution time or execution time only.
+  optional GPUInferenceUsage inference_preference = 7;
+
+  // Model serialization. Setting both of these fields will also set the
+  // TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION flag on the delegate.
+  //
+  // GPU model serialization directory passed in TfLiteGpuDelegateOptionsV2.
+  // This should be set to the application's code cache directory so that it can
+  // not be accessed by other apps and is correctly deleted on app updates.
+  // tflite::StatefulNnApiDelegate
+  optional string cache_directory = 8;
+  // Normally, the model name with version number should be provided here, since
+  // each model needs an unique ID to avoid cache collision.
+  optional string model_token = 9;
 }
 
 // Hexagon Delegate settings.

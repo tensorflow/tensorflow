@@ -632,6 +632,7 @@ distribute_py_test(
     main = "normalization_distribution_test.py",
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",
         "no_oss",
     ],
     deps = [

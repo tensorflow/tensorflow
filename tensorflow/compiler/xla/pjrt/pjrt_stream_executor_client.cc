@@ -1901,8 +1901,12 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   // too far, not for correctness. Placing it before the executable launch
   // allows the inputs for the next executable to be fetched even if the
   // launch is delayed.
-  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
-      device_state->compute_semaphore().ScopedAcquire(1));
+  std::shared_ptr<Semaphore::ScopedReservation> compute_reservation;
+  {
+    tensorflow::profiler::TraceMe traceme("ComputeSemaphoreAcquire");
+    compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+        device_state->compute_semaphore().ScopedAcquire(1));
+  }
 
   StatusOr<ExecutionOutput> result_buffer_or_status =
       executables_[executable_idx]->RunAsync(std::move(execution_inputs),

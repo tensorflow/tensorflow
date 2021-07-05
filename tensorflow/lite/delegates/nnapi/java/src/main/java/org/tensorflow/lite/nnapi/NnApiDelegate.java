@@ -179,8 +179,8 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
 
   /**
    * Returns the latest error code returned by an NNAPI call or zero if NO calls to NNAPI failed.
-   * The error code is reset when the delegate is associated with an {@link
-   * #org.tensorflow.lite.Interpreter interpreter}).
+   * The error code is reset when the delegate is associated with an <a
+   * href=https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter>interpreter</a>.
    *
    * <p>For details on NNAPI error codes see <a
    * href="https://developer.android.com/ndk/reference/group/neural-networks#resultcode">the NNAPI
@@ -194,8 +194,8 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
   }
 
   /**
-   * Returns true if any NNAPI call failed since this delegate was associated with an {@link
-   * #org.tensorflow.lite.Interpreter interpreter}).
+   * Returns true if any NNAPI call failed since this delegate was associated with an <a
+   * href=https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter>interpreter</a>.
    *
    * @throws IllegalStateException if the method is called after {@link #close() close}.
    */

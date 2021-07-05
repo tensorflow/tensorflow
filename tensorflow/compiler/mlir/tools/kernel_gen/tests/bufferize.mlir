@@ -50,7 +50,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   %size = rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
   ^bb0(%i : index):
-    %elem = memref.dim %arg, %i : tensor<*xf32>
+    %elem = tensor.dim %arg, %i : tensor<*xf32>
     tensor.yield %elem : index
   } : tensor<?xindex>
   %c0 = constant 0 : index

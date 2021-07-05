@@ -61,6 +61,27 @@ TEST(MMAPAllocation, TestInvalidFileDescriptor) {
   EXPECT_FALSE(allocation.valid());
 }
 
+TEST(MMAPAllocation, TestInvalidSizeAndOffset) {
+  if (!MMAPAllocation::IsSupported()) {
+    return;
+  }
+
+  int fd =
+      open("tensorflow/lite/testdata/empty_model.bin", O_RDONLY);
+  ASSERT_GT(fd, 0);
+
+  TestErrorReporter error_reporter;
+  MMAPAllocation allocation_invalid_offset(fd, /*offset=*/50000, /*length=*/1,
+                                           &error_reporter);
+  EXPECT_FALSE(allocation_invalid_offset.valid());
+
+  MMAPAllocation allocation_invalid_length(fd, /*offset=*/0, /*length=*/0,
+                                           &error_reporter);
+  EXPECT_FALSE(allocation_invalid_length.valid());
+
+  close(fd);
+}
+
 TEST(MMAPAllocation, TestValidFileDescriptor) {
   if (!MMAPAllocation::IsSupported()) {
     return;

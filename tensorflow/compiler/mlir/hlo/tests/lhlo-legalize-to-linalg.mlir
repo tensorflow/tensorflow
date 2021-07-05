@@ -919,6 +919,20 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
 
 // -----
 
+// CHECK: func @slice_with_strides(%[[IN:.*]]: memref<?xf32>, %[[OUT:.*]]: memref<?xf32>)
+func @slice_with_strides(%operand: memref<?xf32>, %result: memref<?xf32>) {
+  "lmhlo.slice"(%operand, %result) {
+    limit_indices = dense<12> : tensor<1xi64>,
+    start_indices = dense<0> : tensor<1xi64>,
+    strides = dense<2> : tensor<1xi64>
+  } : (memref<?xf32>, memref<?xf32>) -> ()
+  return
+}
+// CHECK: %[[RESULT:.*]] = memref.subview %[[IN]][0] [6] [2] : memref<?xf32> to memref<6xf32, #{{.*}}>
+// CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
+
+// -----
+
 // CHECK-LABEL: func @reshape_3D_2D
 func @reshape_3D_2D(%arg0: memref<12x1x42xi32>, %arg1 : memref<12x42xi32>) {
   "lmhlo.reshape"(%arg0, %arg1)

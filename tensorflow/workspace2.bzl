@@ -127,11 +127,11 @@ def _tf_repositories():
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "7320355409ae5dd2c8600cafbd07b56c379cd13666a7c971ffd3a01025c0f63e",
-        strip_prefix = "XNNPACK-56b78a03e359ac04a3ba758596cd28b198a8000f",
+        sha256 = "96d81ea94cfcd7a6d8a0424af60198b731f660b7f720ffdc99e0a98b86eabd55",
+        strip_prefix = "XNNPACK-75d1b7977fd4e732d17d9948bab2f071632b0414",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/56b78a03e359ac04a3ba758596cd28b198a8000f.zip",
-            "https://github.com/google/XNNPACK/archive/56b78a03e359ac04a3ba758596cd28b198a8000f.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/75d1b7977fd4e732d17d9948bab2f071632b0414.zip",
+            "https://github.com/google/XNNPACK/archive/75d1b7977fd4e732d17d9948bab2f071632b0414.zip",
         ],
     )
 
@@ -514,17 +514,6 @@ def _tf_repositories():
         build_file = "//third_party:enum34.BUILD",
         system_build_file = "//third_party/systemlibs:enum34.BUILD",
         strip_prefix = "enum34-1.1.6/enum",
-    )
-
-    tf_http_archive(
-        name = "org_python_pypi_backports_weakref",
-        build_file = "//third_party:backports_weakref.BUILD",
-        sha256 = "8813bf712a66b3d8b85dc289e1104ed220f1878cf981e2fe756dfaabe9a82892",
-        strip_prefix = "backports.weakref-1.0rc1/src",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
-            "https://pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
-        ],
     )
 
     tf_http_archive(

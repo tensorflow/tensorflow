@@ -194,6 +194,18 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
     } break;
 
+    case BuiltinOperator_DEQUANTIZE: {
+      const Tensor* input_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(0));
+      const QuantizationParameters* input_quant = input_tensor->quantization();
+      if (input_quant && input_quant->scale() &&
+          input_quant->scale()->Length() > 1 &&
+          input_quant->scale()->Length() ==
+              input_tensor->shape()->Get(input_quant->quantized_dimension())) {
+        op_sig.ext_options.dequantize.is_per_channel_quantized = true;
+      }
+    } break;
+
     default:
       break;
   }

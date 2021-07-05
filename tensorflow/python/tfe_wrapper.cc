@@ -826,8 +826,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       [](py::handle& ctx, const char* config_key, const char* config_value) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
         TFE_SetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
                               config_value, status.get());
+        Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },
       py::return_value_policy::reference);
@@ -836,8 +838,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       [](py::handle& ctx, const char* config_key, TF_Buffer& config_value) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
         TFE_GetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
                               &config_value, status.get());
+        Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },
       py::return_value_policy::reference);
@@ -846,8 +850,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       [](py::handle& ctx, const char* config_key) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
         TFE_DeleteConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
                                  status.get());
+        Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },
       py::return_value_policy::reference);

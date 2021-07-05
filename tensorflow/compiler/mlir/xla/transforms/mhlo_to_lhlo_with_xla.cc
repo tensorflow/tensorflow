@@ -1214,8 +1214,8 @@ StatusOr<lmhlo_gpu::AllReduceStartOp> LhloDialectEmitter::EmitAllReduceStartOp(
   TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{1}));
 
   Location loc = getLocation(instr);
-  mlir::TypeRange result_types = {
-      mlir::mhlo::TokenType::get(builder_.getContext())};
+  mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
+  std::array<mlir::Type, 1> result_types = {token_type};
   lmhlo_gpu::AllReduceStartOp all_reduce_start_op =
       builder_.create<lmhlo_gpu::AllReduceStartOp>(loc, result_types, operands);
 

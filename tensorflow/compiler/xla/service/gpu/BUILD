@@ -443,6 +443,7 @@ tf_cuda_library(
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_nccl(["-DGOOGLE_XCCL=1"]),
     deps = [
         ":buffer_allocations",
+        ":ir_emission_utils",
         ":thunk",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",

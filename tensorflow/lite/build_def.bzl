@@ -907,11 +907,13 @@ def tflite_custom_android_library(
 
     android_library(
         name = name,
-        srcs = ["//tensorflow/lite/java:java_srcs"],
         manifest = "//tensorflow/lite/java:AndroidManifest.xml",
         deps = [
             ":%s_jni" % name,
-            "@org_checkerframework_qual",
+            "//tensorflow/lite/java:tensorflowlite_javalib",
+        ],
+        exports = [
+            "//tensorflow/lite/java:tensorflowlite_javalib",
         ],
         custom_package = custom_package,
         visibility = visibility,

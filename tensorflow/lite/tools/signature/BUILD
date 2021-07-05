@@ -1,5 +1,6 @@
 # Utilities for signature_defs in TFLite
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.bzl", "if_mobile", "if_not_mobile")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -15,18 +16,21 @@ cc_library(
     srcs = ["signature_def_util.cc"],
     hdrs = ["signature_def_util.h"],
     copts = tflite_copts(),
-    deps = [
+    deps = if_not_mobile([
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+    ]) + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + [
+        "@com_google_protobuf//:protobuf",
+        "@com_google_absl//absl/memory",
+        "@flatbuffers",
+        "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
-        "@com_google_protobuf//:protobuf",
-        "@flatbuffers",
     ],
 )
 

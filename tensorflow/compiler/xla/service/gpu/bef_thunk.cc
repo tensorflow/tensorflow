@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/tfrt/gpu/gpu_shared_context.h"
@@ -96,8 +97,13 @@ class BefThunk : public Thunk {
         inputs_(std::move(inputs)),
         outputs_(std::move(outputs)),
         bef_buffer_(std::move(bef_buffer)),
-        bef_file_(std::move(bef_file)),
-        op_(op) {}
+        bef_file_(std::move(bef_file)) {
+    // TODO(hanbinyoon): Also handle other collective ops.
+    if (auto all_reduce_op = mlir::dyn_cast<mlir::lmhlo::AllReduceOp>(*op)) {
+      xccl_config_ = GetNcclCollectiveConfigForMlir(
+          all_reduce_op, all_reduce_op.use_global_device_ids());
+    }
+  }
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -106,7 +112,7 @@ class BefThunk : public Thunk {
   std::vector<BufferAllocation::Slice> outputs_;
   tfrt::BefBuffer bef_buffer_;
   tfrt::RCReference<tfrt::BEFFile> bef_file_;
-  mlir::Operation* op_;
+  absl::optional<NcclCollectiveConfig> xccl_config_;
 };
 
 }  // namespace
@@ -259,22 +265,15 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
       std::move(*buffer));
 }
 
-// TODO(hanbinyoon): Templatize to handle other collective ops.
-static Status CreateCclContext(
-    const Thunk::ExecuteParams& params, mlir::lmhlo::AllReduceOp* src_op,
+static Status CreateXcclContext(
+    const Thunk::ExecuteParams& params, const NcclCollectiveConfig& xccl_config,
     tfrt::RequestContextBuilder* request_context_builder) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
-  std::vector<ReplicaGroup> replica_groups =
-      ConvertReplicaGroups(src_op->replica_groups()).ValueOrDie();
-  CollectiveOpGroupMode group_mode =
-      GetCollectiveOpGroupMode(src_op->channel_id().hasValue(),
-                               src_op->use_global_device_ids())
-          .ValueOrDie();
-  TF_ASSIGN_OR_RETURN(
-      std::vector<GlobalDeviceId> participants,
-      GetParticipatingDevices(global_device_id, *params.device_assn,
-                              replica_groups, group_mode));
+  TF_ASSIGN_OR_RETURN(std::vector<GlobalDeviceId> participants,
+                      GetParticipatingDevices(
+                          global_device_id, *params.device_assn,
+                          xccl_config.replica_groups, xccl_config.group_mode));
   if (IsGlobalNcclConfig() &&
       (participants.size() != params.device_assn->replica_count())) {
     return InvalidArgument(
@@ -341,9 +340,9 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
   TF_RETURN_IF_ERROR(runtime_and_queue.work_queue->InitializeRequest(
       &request_context_builder, &intra_op_threadpool));
-  if (auto all_reduce = mlir::dyn_cast<mlir::lmhlo::AllReduceOp>(op_)) {
+  if (xccl_config_.has_value()) {
     TF_RETURN_IF_ERROR(
-        CreateCclContext(params, &all_reduce, &request_context_builder));
+        CreateXcclContext(params, *xccl_config_, &request_context_builder));
   }
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {

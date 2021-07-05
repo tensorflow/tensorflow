@@ -1057,6 +1057,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",

@@ -976,6 +976,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
+  // Do nothing if expected output is empty.
+  if (NumElements(output) == 0) {
+    return kTfLiteOk;
+  }
 
   switch (filter->type) {
     case kTfLiteFloat32:

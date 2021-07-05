@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
 namespace mlir {
@@ -113,7 +112,7 @@ namespace {
 struct HloCanonicalizeReductionPass
     : HloCanonicalizeReductionPassBase<HloCanonicalizeReductionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<memref::MemRefDialect>();
+    registry.insert<tensor::TensorDialect>();
   }
   void runOnFunction() override {
     getFunction().walk([&](ReduceOp op) {
@@ -162,7 +161,7 @@ struct HloCanonicalizeReductionPass
       auto dim_prod = [&](ArrayRef<int64_t> dims) {
         Value nelems = one;
         for (int64_t v : dims) {
-          Value dim_index = b.create<memref::DimOp>(loc, op.getOperand(0), v);
+          Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), v);
           nelems = b.create<MulIOp>(
               loc, nelems,
               b.create<IndexCastOp>(loc, dim_index, shape_scalar_type));
@@ -229,7 +228,7 @@ struct HloCanonicalizeReductionPass
       } else {
         SmallVector<Value, 4> result_dims;
         for (int64_t i : dims_to_keep) {
-          Value dim_index = b.create<memref::DimOp>(loc, op.getOperand(0), i);
+          Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), i);
           result_dims.push_back(
               b.create<IndexCastOp>(loc, dim_index, shape_scalar_type));
         }

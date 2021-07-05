@@ -4541,6 +4541,74 @@ TEST_P(MemorySpaceAssignmentTest, AvoidRedundantEvictionInNestedWhile) {
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, RedundantEvictionEliminationBug) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    tanh = f32[3]{0} tanh(gte1)
+    gte2 = pred[] get-tuple-element(p0), index=2
+    negate0 = f32[3]{0} negate(gte0)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    add0 = f32[3]{0} add(negate14, tanh)
+    add1 = f32[3]{0} add(add0, gte1)
+    negate = f32[3]{0} negate(add1)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(add1, negate, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0)
+    tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, p0, p1)
+    while = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple), condition=while_cond, body=while_body
+    gte = f32[3]{0} get-tuple-element(while), index=1
+    ROOT negate = f32[3]{0} negate(gte)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Expect that redundant eviction elimination doesn't kick in because
+  // while{1} is updated within the body.
+  const HloInstruction* while_instr = FindInstruction(module.get(), "while");
+  EXPECT_EQ(while_instr->shape().tuple_shapes_size(), 3);
+  if (GetParam()) {
+    EXPECT_EQ(while_instr->shape().tuple_shapes(1).layout().memory_space(),
+              kAlternateMemorySpace);
+    const HloInstruction* gte1 = FindInstruction(module.get(), "gte1");
+    EXPECT_EQ(gte1->user_count(), 2);
+    EXPECT_NE(absl::c_find_if(gte1->users(),
+                              [](const HloInstruction* use) {
+                                return use->opcode() == HloOpcode::kCopyStart;
+                              }),
+              gte1->users().end());
+  }
+}
+
 TEST_P(MemorySpaceAssignmentTest, BitcastRoot) {
   // Tests against a bug where the root of entry computation is a bitcast
   // instruction and it ends up getting an allocation in the alternate memory.
@@ -4570,7 +4638,7 @@ ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s3
   %copy.11 = s32[] copy(s32[] %constant.1)
   %constant = f32[] constant(0)
   %broadcast = f32[3,3,3] broadcast(f32[] %constant), dimensions={}
-  %tuple.8 = (s32[], f32[3,10,5], s32[3,1], f32[3,3,3]) tuple(s32[] %copy.11, f32[3,3,3] %broadcast)
+  %tuple.8 = (s32[], f32[3,3,3]) tuple(s32[] %copy.11, f32[3,3,3] %broadcast)
   %while = (s32[], f32[3,3,3]) while(%tuple.8), condition=%while_cond, body=%while_body
   %get-tuple-element.7 = f32[3,3,3] get-tuple-element(%while), index=1
   ROOT %bitcast.1 = f32[3,3,3] bitcast(f32[3,3,3] %get-tuple-element.7)

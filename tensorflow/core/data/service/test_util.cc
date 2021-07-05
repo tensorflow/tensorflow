@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/test_util.h"
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -25,7 +29,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-namespace test_util {
+namespace testing {
 
 namespace {
 constexpr char kTestdataDir[] =
@@ -44,20 +48,17 @@ constexpr char kTestdataDir[] =
 constexpr char kMapGraphDefFile[] = "map_graph_def.pbtxt";
 }  // namespace
 
-StatusOr<GraphDefTestCase> map_test_case(const int64 range) {
+StatusOr<DatasetDef> RangeSquareDataset(const int64 range) {
+  DatasetDef dataset_def;
   std::string filepath = io::JoinPath(kTestdataDir, kMapGraphDefFile);
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(ReadTextProto(Env::Default(), filepath, &graph_def));
-  (*graph_def.mutable_node(1)->mutable_attr())["value"]
+  TF_RETURN_IF_ERROR(
+      ReadTextProto(Env::Default(), filepath, dataset_def.mutable_graph()));
+  (*dataset_def.mutable_graph()->mutable_node(1)->mutable_attr())["value"]
       .mutable_tensor()
       ->set_int64_val(0, range);
-  std::vector<std::vector<Tensor>> outputs(range);
-  for (int64 i = 0; i < range; ++i) {
-    outputs[i] = CreateTensors<int64>(TensorShape{}, {{i * i}});
-  }
-  return GraphDefTestCase{"MapGraph", graph_def, outputs};
+  return dataset_def;
 }
 
-}  // namespace test_util
+}  // namespace testing
 }  // namespace data
 }  // namespace tensorflow

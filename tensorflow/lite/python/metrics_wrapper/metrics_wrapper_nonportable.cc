@@ -60,7 +60,8 @@ PyObject* MetricsWrapper::ExportMetrics() {
 }
 
 std::vector<std::string> RetrieveCollectedErrors() {
-  mlir::TFL::ErrorCollector* collector = mlir::TFL::GetErrorCollector();
+  mlir::TFL::ErrorCollector* collector =
+      mlir::TFL::ErrorCollector::GetErrorCollector();
   std::vector<std::string> result;
   for (const auto& error_data : collector->CollectedErrors()) {
     result.push_back(error_data.SerializeAsString());

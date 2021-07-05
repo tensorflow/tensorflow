@@ -2730,7 +2730,7 @@ func @slice_real_dynamic_slice(%arg0: tensor<4xi32>, %arg1: tensor<1xi64>, %arg2
   // CHECK: index_cast {{.*}} : index to i64
   // CHECK: cmpi eq, {{.*}} : i64
   // CHECK: addi {{.*}} : i64
-  // CHECK: memref.dim {{.*}} : tensor<4xi32>
+  // CHECK: tensor.dim {{.*}} : tensor<4xi32>
   // CHECK: index_cast {{.*}} : index to i64
   // CHECK: select {{.*}} : i64
   // CHECK: index_cast {{.*}} : i64 to index
@@ -3408,7 +3408,7 @@ func @tile_just_broadcast(%arg0: tensor<1x1xf32>) -> tensor<7x3xf32> {
 // CHECK-LABEL: func @tile_dynamic_shape
 func @tile_dynamic_shape(%arg0: tensor<?x8xf32>) -> tensor<?x24xf32> {
   %multiples = "tf.Const"() { value = dense<[7,3]> : tensor<2xi32> } : () -> tensor<2xi32>
-  // CHECK: memref.dim {{.*}} : tensor<?x8xf32>
+  // CHECK: tensor.dim {{.*}} : tensor<?x8xf32>
   // CHECK: tensor.from_elements  {{.*}} : tensor<4xindex>
   // CHECK: "mhlo.dynamic_broadcast_in_dim"({{.*}}) {broadcast_dimensions = dense<[1, 3]> : tensor<2xi64>} : (tensor<?x8xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
   // CHECK: muli {{.*}} : index
@@ -3893,7 +3893,7 @@ func @split_not_match_non_const_split_dim(%input: tensor<4x4xf32>, %split_dim: t
 // CHECK-LABEL: @split_not_match_unknown_input_dim
 func @split_not_match_unknown_input_dim(%input: tensor<4x?x4xf32>) -> (tensor<4x?x4xf32>, tensor<4x?x4xf32>) {
   %cst = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: memref.dim {{.*}} : tensor<4x?x4xf32>
+  // CHECK: tensor.dim {{.*}} : tensor<4x?x4xf32>
   // CHECK: divi_signed {{.*}} : index
   // CHECK: tensor.from_elements {{.*}} : tensor<3xindex>
   // CHECK: "mhlo.real_dynamic_slice"({{.*}}) : (tensor<4x?x4xf32>, tensor<3xindex>, tensor<3xindex>, tensor<3xindex>) -> tensor<4x?x4xf32>
@@ -4129,7 +4129,7 @@ func @unsorted_segment_max(%data: tensor<8x?x64xf32>, %segment_ids : tensor<?x16
 //===----------------------------------------------------------------------===//
 // CHECK-LABEL: func @gatherNd_dynamic
 func @gatherNd_dynamic(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?x6x2xi32>) -> tensor<?x6x?xi32> {
-  // CHECK: memref.dim
+  // CHECK: tensor.dim
   // CHECK: index_cast
   // CHECK: tensor.from_elements
   // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = false} : (tensor<?x?x?xi32>, tensor<?x6x2xi32>, tensor<3xi32>) -> tensor<?x6x?xi32>
@@ -4151,9 +4151,9 @@ func @gather_v2(%arg0: tensor<16x2x3xf32>, %arg1: tensor<16x5xi32>) -> tensor<16
 
 // CHECK-LABEL: @gather_v2_dynamic
 func @gather_v2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi32>) -> tensor<*xf32> {
-  // CHECK: memref.dim {{.*}} : tensor<?x?x?xf32>
+  // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
   // CHECK: index_cast {{.*}} : index to i32
-  // CHECK: memref.dim {{.*}} : tensor<?x?x?xf32>
+  // CHECK: tensor.dim {{.*}} : tensor<?x?x?xf32>
   // CHECK: index_cast {{.*}} : index to i32
   // CHECK: tensor.from_elements {{.*}} : tensor<3xi32>
   // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<2> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<[0, 1]> : tensor<2xi64>, start_index_map = dense<2> : tensor<1xi64>}, indices_are_sorted = false} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<3xi32>) -> tensor<*xf32>
@@ -4174,7 +4174,7 @@ func @gather_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*
 func @gather_v2_dynamic_shape(%arg0: tensor<?x2x3xf32>, %arg1: tensor<?x5xi32>) -> tensor<?x2x5xf32> {
   // CHECK: constant 0
   %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  // CHECK: memref.dim {{.*}} : tensor<?x2x3xf32>
+  // CHECK: tensor.dim {{.*}} : tensor<?x2x3xf32>
   // CHECK: index_cast {{.*}} : index to i32
   // CHECK: tensor.from_elements {{.*}} : tensor<3xi32>
   // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<2> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<[0, 1]> : tensor<2xi64>, start_index_map = dense<2> : tensor<1xi64>}, indices_are_sorted = false} : (tensor<?x2x3xf32>, tensor<?x5xi32>, tensor<3xi32>) -> tensor<?x2x5xf32>

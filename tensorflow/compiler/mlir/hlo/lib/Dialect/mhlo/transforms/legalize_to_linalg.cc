@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
@@ -110,7 +111,7 @@ SmallVector<Value, 2> ExtractDynamicSizes(OpBuilder& b, Location loc,
       dyn_sizes.push_back(
           b.create<IndexCastOp>(loc, b.getIndexType(), extract));
     } else {
-      dyn_sizes.push_back(b.create<memref::DimOp>(loc, tensor, en.index()));
+      dyn_sizes.push_back(b.create<tensor::DimOp>(loc, tensor, en.index()));
     }
   }
   return dyn_sizes;
@@ -998,13 +999,13 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
     Value zero = b.create<ConstantIndexOp>(0);
     SmallVector<Value, 3> sizes;
     for (int64_t i = 0; i < rank; ++i) {
-      sizes.push_back(i == dim ? Value() : b.create<memref::DimOp>(args[0], i));
+      sizes.push_back(i == dim ? Value() : b.create<tensor::DimOp>(args[0], i));
     }
 
     // Calculate the size of the concatenated dimension.
     Value result_dim_size;
     for (auto arg : args) {
-      Value size = b.create<memref::DimOp>(arg, dim);
+      Value size = b.create<tensor::DimOp>(arg, dim);
       result_dim_size =
           result_dim_size ? b.create<AddIOp>(result_dim_size, size) : size;
     }
@@ -1045,7 +1046,7 @@ struct ConcatenateConverter : public OpConversionPattern<mhlo::ConcatenateOp> {
               // Calculate how far along we have iterated along the concatenate
               // dimension. That way we can tell which input to select.
               new_concat_dim_size = b.create<AddIOp>(
-                  loc, concat_dim_size, b.create<memref::DimOp>(loc, arg, dim));
+                  loc, concat_dim_size, b.create<tensor::DimOp>(loc, arg, dim));
               Value cmp = b.create<CmpIOp>(loc, rewriter.getI1Type(),
                                            CmpIPredicate::ult, index_op,
                                            new_concat_dim_size);
@@ -1256,13 +1257,12 @@ class SliceConverter : public OpConversionPattern<OpTy> {
 
     SmallVector<OpFoldResult, 3> offsets, sizes, strides;
     for (int i = 0, e = arg_type.getRank(); i < e; ++i) {
-      offsets.push_back(rewriter.getI64IntegerAttr(
-          slice_op.start_indices().template getValue<int64_t>(i)));
-      sizes.push_back(rewriter.getI64IntegerAttr(
-          slice_op.limit_indices().template getValue<int64_t>(i) -
-          slice_op.start_indices().template getValue<int64_t>(i)));
-      strides.push_back(rewriter.getI64IntegerAttr(
-          slice_op.strides().template getValue<int64_t>(i)));
+      auto start = slice_op.start_indices().template getValue<int64_t>(i);
+      auto limit = slice_op.limit_indices().template getValue<int64_t>(i);
+      auto stride = slice_op.strides().template getValue<int64_t>(i);
+      offsets.push_back(rewriter.getI64IntegerAttr(start));
+      sizes.push_back(rewriter.getI64IntegerAttr((limit - start) / stride));
+      strides.push_back(rewriter.getI64IntegerAttr(stride));
     }
     if (isLHLO) {
       auto linalg_op = rewriter.create<memref::SubViewOp>(loc, args[0], offsets,
@@ -1310,7 +1310,7 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
       //       0, operand.dimension_size[i] - size_indices[i])`
       Value start_index =
           rewriter.create<tensor::ExtractOp>(loc, std::get<0>(en.value()));
-      Value ub = rewriter.createOrFold<memref::DimOp>(loc, adaptor.operand(),
+      Value ub = rewriter.createOrFold<tensor::DimOp>(loc, adaptor.operand(),
                                                       en.index());
       // ClampOp lowering does not support index type, so cast it into integer
       // type.
@@ -1454,14 +1454,14 @@ SmallVector<Value, 2> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
   switch (type) {
     case DotOperationType::kMatrixMatrix: {
       if (lhs.getType().cast<ShapedType>().isDynamicDim(0))
-        dyn_shape.push_back(b.create<memref::DimOp>(loc, lhs, 0));
+        dyn_shape.push_back(b.create<tensor::DimOp>(loc, lhs, 0));
       if (rhs.getType().cast<ShapedType>().isDynamicDim(1))
-        dyn_shape.push_back(b.create<memref::DimOp>(loc, rhs, 1));
+        dyn_shape.push_back(b.create<tensor::DimOp>(loc, rhs, 1));
       break;
     }
     case DotOperationType::kMatrixVector: {
       if (lhs.getType().cast<ShapedType>().isDynamicDim(0))
-        dyn_shape.push_back(b.create<memref::DimOp>(loc, lhs, 0));
+        dyn_shape.push_back(b.create<tensor::DimOp>(loc, lhs, 0));
       break;
     }
     case DotOperationType::kVectorDot:
@@ -1508,11 +1508,11 @@ SmallVector<Value, 8> GetDotGeneralOpInitTensorDynSizes(
     OpBuilder& b, Location loc, Value lhs, Value rhs, ShapedType result_type) {
   SmallVector<Value, 8> dyn_shape;
   if (result_type.isDynamicDim(0))
-    dyn_shape.push_back(b.create<memref::DimOp>(loc, lhs, 0));
+    dyn_shape.push_back(b.create<tensor::DimOp>(loc, lhs, 0));
   if (result_type.isDynamicDim(1))
-    dyn_shape.push_back(b.create<memref::DimOp>(loc, lhs, 1));
+    dyn_shape.push_back(b.create<tensor::DimOp>(loc, lhs, 1));
   if (result_type.isDynamicDim(2))
-    dyn_shape.push_back(b.create<memref::DimOp>(loc, rhs, 2));
+    dyn_shape.push_back(b.create<tensor::DimOp>(loc, rhs, 2));
   return dyn_shape;
 }
 
@@ -1615,7 +1615,7 @@ SmallVector<Value, 8> GetReduceOpInitTensorDynSizes(
   for (int i = 0, j = 0; i < rank; ++i) {
     if (s.count(i)) continue;
     if (!result_type.isDynamicDim(j++)) continue;
-    dyn_shape.push_back(b.create<memref::DimOp>(loc, arg, i));
+    dyn_shape.push_back(b.create<tensor::DimOp>(loc, arg, i));
   }
 
   return dyn_shape;
@@ -1785,7 +1785,7 @@ struct NormalConvOpOnTensorsConversion
     // The output shape is N spatial_dims F.
     SmallVector<Value, 8> dyn_sizes;
     if (result_type.isDynamicDim(0)) {
-      dyn_sizes.push_back(rewriter.create<memref::DimOp>(loc, input, 0));
+      dyn_sizes.push_back(rewriter.create<tensor::DimOp>(loc, input, 0));
     }
     for (int64_t i = 1, e = rank - 1; i < e; ++i) {
       if (result_type.isDynamicDim(i)) {
@@ -1795,7 +1795,7 @@ struct NormalConvOpOnTensorsConversion
     }
     if (result_type.isDynamicDim(rank - 1)) {
       dyn_sizes.push_back(
-          rewriter.create<memref::DimOp>(loc, filter, rank - 1));
+          rewriter.create<tensor::DimOp>(loc, filter, rank - 1));
     }
     Value init_tensor = rewriter.create<linalg::InitTensorOp>(
         loc, dyn_sizes, result_type.getShape(), result_type.getElementType());
@@ -2072,7 +2072,7 @@ struct ReduceWindowOpOnTensorsConversion
       SmallVector<Value> result_dynamic_dims;
       for (auto& en : llvm::enumerate(result_type.getShape())) {
         if (en.value() != ShapedType::kDynamicSize) continue;
-        Value dim_size = rewriter.create<memref::DimOp>(loc, input, en.index());
+        Value dim_size = rewriter.create<tensor::DimOp>(loc, input, en.index());
         if (en.index() == 0 || en.index() == rank - 1) {
           // batch dims and channel dims can be derived from input dims
           // directly.
@@ -2182,15 +2182,15 @@ struct TorchIndexSelectOpOnTensorsConversion
       if (!result_type.isDynamicDim(i)) continue;
       if (i < axis) {
         dyn_sizes.push_back(
-            rewriter.create<memref::DimOp>(loc, adaptor.input(), i));
+            rewriter.create<tensor::DimOp>(loc, adaptor.input(), i));
       } else if (i < (axis + num_indices - batch)) {
         int idx = i - axis + batch;
         dyn_sizes.push_back(
-            rewriter.create<memref::DimOp>(loc, adaptor.index(), idx));
+            rewriter.create<tensor::DimOp>(loc, adaptor.index(), idx));
       } else {
         int idx = i - (axis + num_indices - batch) + axis + 1;
         dyn_sizes.push_back(
-            rewriter.create<memref::DimOp>(loc, adaptor.input(), idx));
+            rewriter.create<tensor::DimOp>(loc, adaptor.input(), idx));
       }
     }
     Value init_op = rewriter.create<linalg::InitTensorOp>(
@@ -2391,60 +2391,6 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-// Converter that turns signed/unsigned integers types into signless types.
-class RemoveSignTypeConverter : public TypeConverter {
- public:
-  RemoveSignTypeConverter() {
-    addConversion([](Type type) { return type; });
-
-    addConversion(convertInteger);
-    addConversion(convertShapedType);
-
-    addArgumentMaterialization(materializeCastFromIllegal);
-    addSourceMaterialization(materializeCastToIllegal);
-    addTargetMaterialization(materializeCastFromIllegal);
-  }
-
- private:
-  static Type convertInteger(IntegerType int_type) {
-    return IntegerType::get(int_type.getContext(),
-                            int_type.getIntOrFloatBitWidth());
-  }
-
-  static Type convertShapedType(ShapedType shaped_type) {
-    if (auto int_type = shaped_type.getElementType().dyn_cast<IntegerType>())
-      return shaped_type.clone(convertInteger(int_type));
-    return shaped_type;
-  }
-
-  static llvm::Optional<Value> materializeCastFromIllegal(OpBuilder& builder,
-                                                          Type type,
-                                                          ValueRange inputs,
-                                                          Location loc) {
-    Type from_type = getElementTypeOrSelf(inputs[0].getType());
-    Type to_type = getElementTypeOrSelf(type);
-    if ((!from_type.isSignedInteger() && !from_type.isUnsignedInteger()) ||
-        !to_type.isSignlessInteger())
-      return llvm::None;
-    // Use unrealized conversion casts to do signful->signless conversions.
-    return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
-        ->getResult(0);
-  }
-
-  static llvm::Optional<Value> materializeCastToIllegal(OpBuilder& builder,
-                                                        Type type,
-                                                        ValueRange inputs,
-                                                        Location loc) {
-    Type from_type = getElementTypeOrSelf(inputs[0].getType());
-    Type to_type = getElementTypeOrSelf(type);
-    if (!from_type.isSignlessInteger() ||
-        (!to_type.isSignedInteger() && !to_type.isUnsignedInteger()))
-      return llvm::None;
-    // Use unrealized conversion casts to do signless->signful conversions.
-    return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
-        ->getResult(0);
-  }
-};
 
 // Converts LHLO ops to Linalg generic.
 // Sample result for lmhlo::AddOp.
@@ -2479,7 +2425,7 @@ struct LhloLegalizeToLinalgPass
                            StandardOpsDialect, AffineDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
 
-    RemoveSignTypeConverter type_converter;
+    mhlo::RemoveSignTypeConverter type_converter;
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), type_converter,
                                           &patterns);
@@ -2505,11 +2451,9 @@ struct HloLegalizeToLinalgPass
                            math::MathDialect, StandardOpsDialect,
                            tensor::TensorDialect, scf::SCFDialect>();
 
-    // TODO: DimOp shouldn't be in MemRefDialect
-    target.addLegalOp<memref::DimOp>();
     target.addLegalOp<UnrealizedConversionCastOp>();
 
-    RemoveSignTypeConverter type_converter;
+    mhlo::RemoveSignTypeConverter type_converter;
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(&ctx, type_converter, &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {

@@ -468,7 +468,7 @@ func @select_scalar_pred_dyn(%pred : tensor<i1>, %lhs: tensor<2x?xf32>, %rhs: te
   return %0 : tensor<2x?xf32>
 }
 // CHECK-DAG:  %[[C1:.*]] = constant 1
-// CHECK-DAG:  %[[DIM:.*]] = memref.dim %[[LHS]], %[[C1]]
+// CHECK-DAG:  %[[DIM:.*]] = tensor.dim %[[LHS]], %[[C1]]
 // CHECK-DAG:  %[[DST:.*]] = linalg.init_tensor [2, %[[DIM]]]
 // CHECK:      linalg.generic
 // CHECK-SAME:   indexing_maps = [#[[SCALAR_MAP]], #[[ID_MAP]], #[[ID_MAP]], #[[ID_MAP]]]
@@ -503,7 +503,7 @@ func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
   return %0: tensor<4x2x1x4x?x16xf32>
 }
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[D1:.*]] = memref.dim %{{.*}}, %[[C1]] : tensor<4x?x16xf32>
+// CHECK: %[[D1:.*]] = tensor.dim %{{.*}}, %[[C1]] : tensor<4x?x16xf32>
 // CHECK: linalg.init_tensor [4, 2, 1, 4, %[[D1]], 16] : tensor<4x2x1x4x?x16xf32>
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %{{.*}}: f32):
@@ -1250,7 +1250,7 @@ func @dot_matmul(%arg0: tensor<2x3xf32>,
 // CHECK-LABEL: func @dot_matmul(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xf32>, %[[ARG1:.*]]: tensor<3x?xf32>)
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[D1:.*]] = memref.dim %[[ARG1]], %[[C1]]
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%{{.*}}, %[[INIT]]
 // CHECK: linalg.matmul
@@ -1266,7 +1266,7 @@ func @dot_matmul_i8_i8_i32(%arg0: tensor<2x3xi8>,
 // CHECK-LABEL: func @dot_matmul_i8_i8_i32(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xi8>, %[[ARG1:.*]]: tensor<3x?xi8>)
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[D1:.*]] = memref.dim %[[ARG1]], %[[C1]]
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%{{.*}}, %[[INIT]]
 // CHECK: linalg.matmul
@@ -1284,7 +1284,7 @@ func @dot_matmul_i16_i16_i32(%arg0: tensor<2x3xi16>,
 // CHECK-LABEL: func @dot_matmul_i16_i16_i32(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xi16>, %[[ARG1:.*]]: tensor<3x?xi16>)
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[D1:.*]] = memref.dim %[[ARG1]], %[[C1]]
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%{{.*}}, %[[INIT]]
 // CHECK: linalg.matmul
@@ -1302,7 +1302,7 @@ func @dot_matmul_i32_i32_i32(%arg0: tensor<2x3xi32>,
 // CHECK-LABEL: func @dot_matmul_i32_i32_i32(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xi32>, %[[ARG1:.*]]: tensor<3x?xi32>)
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[D1:.*]] = memref.dim %[[ARG1]], %[[C1]]
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%{{.*}}, %[[INIT]]
 // CHECK: linalg.matmul
@@ -1320,7 +1320,7 @@ func @dot_matvec(%arg0: tensor<?x3xf32>,
 // CHECK-LABEL: func @dot_matvec(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x3xf32>, %[[ARG1:.*]]: tensor<3xf32>)
 // CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[D0:.*]] = memref.dim %[[ARG0]], %[[C0]]
+// CHECK: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%{{.*}}, %[[INIT]]
 // CHECK: linalg.matvec
@@ -1360,11 +1360,11 @@ func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
 // CHECK-LABEL: func @dot_general_batch_matmul(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x3xf32>, %[[ARG1:.*]]: tensor<?x3x?xf32>)
 // CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[D0:.*]] = memref.dim %[[ARG0]], %[[C0]]
+// CHECK: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[D1:.*]] = memref.dim %[[ARG0]], %[[C1]]
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = constant 2 : index
-// CHECK: %[[D2:.*]] = memref.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%{{.*}}, %[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -1389,11 +1389,11 @@ func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
 // CHECK-LABEL: func @dot_general_batch_matmul_i8_i8_i32(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x3xi8>, %[[ARG1:.*]]: tensor<?x3x?xi8>)
 // CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[D0:.*]] = memref.dim %[[ARG0]], %[[C0]]
+// CHECK: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[D1:.*]] = memref.dim %[[ARG0]], %[[C1]]
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = constant 2 : index
-// CHECK: %[[D2:.*]] = memref.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%{{.*}}, %[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -1418,11 +1418,11 @@ func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
 // CHECK-LABEL: func @dot_general_batch_matmul_i16_i16_i32(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x3xi16>, %[[ARG1:.*]]: tensor<?x3x?xi16>)
 // CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[D0:.*]] = memref.dim %[[ARG0]], %[[C0]]
+// CHECK: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[D1:.*]] = memref.dim %[[ARG0]], %[[C1]]
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = constant 2 : index
-// CHECK: %[[D2:.*]] = memref.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%{{.*}}, %[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -1696,7 +1696,7 @@ func @reduce_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<i32>) -> tensor<?xi32
 // CHECK: func @reduce_dynamic(%[[ARG0:.*]]: tensor<?x?xi32>
 // CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
 // CHECK-DAG: %[[C0:.*]] = constant 0 : index
-// CHECK-DAG: %[[DIM1:.*]] = memref.dim %[[ARG0]], %[[C0]] : tensor<?x?xi32>
+// CHECK-DAG: %[[DIM1:.*]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x?xi32>
 // CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [%[[DIM1]]]
 // CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill(%[[INIT]], %[[INIT_TENSOR]])
 // CHECK: linalg.generic
@@ -1776,6 +1776,19 @@ func @slice_stride_part(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
 }
 // CHECK-LABEL: func @slice_stride_part
 //       CHECK:   tensor.extract_slice %{{.*}}[1, 1] [1, 2] [1, 1]  : tensor<3x4xi32> to tensor<1x2xi32>
+
+// -----
+
+func @slice_with_strides(%arg0: tensor<13xi32>) -> tensor<6xi32> {
+  %0 = "mhlo.slice"(%arg0) {
+    limit_indices = dense<12> : tensor<1xi64>,
+    start_indices = dense<0> : tensor<1xi64>,
+    strides = dense<2> : tensor<1xi64>
+  } : (tensor<13xi32>) -> tensor<6xi32>
+  return %0 : tensor<6xi32>
+}
+// CHECK-LABEL: func @slice_with_strides
+//       CHECK:   tensor.extract_slice %{{.*}}[0] [6] [2] : tensor<13xi32> to tensor<6xi32>
 
 // -----
 
@@ -1948,14 +1961,13 @@ func @pad_cst(%arg0: tensor<12x4xf32>) -> tensor<18x12xf32> {
 }
 // CHECK-LABEL: func @pad_cst
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
-//   CHECK-DAG: %[[CST:.+]] = constant dense<0.000000e+00> : tensor<f32>
-//   CHECK-DAG: %[[PAD:.+]] = tensor.extract %[[CST]][] : tensor<f32>
+//   CHECK-DAG: %[[CST:.+]] = constant 0.000000e+00 : f32
 //   CHECK-DAG: %[[C4:.+]] = constant 4 : index
 //   CHECK-DAG: %[[C2:.+]] = constant 2 : index
 //   CHECK-DAG: %[[C5:.+]] = constant 5 : index
 //   CHECK-DAG: %[[C3:.+]] = constant 3 : index
 //       CHECK: linalg.pad_tensor %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
-//       CHECK:  linalg.yield %[[PAD]] : f32
+//       CHECK:  linalg.yield %[[CST]] : f32
 //       CHECK: } : tensor<12x4xf32> to tensor<18x12xf32>
 
 // -----
@@ -2008,9 +2020,9 @@ func @linalg.conv_1d_input_nwc_filter_wcf(%arg0: tensor<?x8x?xf32>, %arg1: tenso
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK:         %[[C0:.+]] = constant 0 : index
-// CHECK:         %[[DIM0:.+]] = memref.dim %[[ARG0]], %[[C0]] : tensor<?x8x?xf32>
+// CHECK:         %[[DIM0:.+]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x8x?xf32>
 // CHECK:         %[[C2:.+]] = constant 2 : index
-// CHECK:         %[[DIM2:.+]] = memref.dim %[[ARG1]], %[[C2]] : tensor<2x?x?xf32>
+// CHECK:         %[[DIM2:.+]] = tensor.dim %[[ARG1]], %[[C2]] : tensor<2x?x?xf32>
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 7, %[[DIM2]]]
 // CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[ZERO]], %[[INIT]])
@@ -2048,9 +2060,9 @@ func @conv_2d_input_nhwc_filter_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK:         %[[C0:.+]] = constant 0 : index
-// CHECK:         %[[DIM0:.+]] = memref.dim %[[ARG0]], %[[C0]] : tensor<?x4x5x?xf32>
+// CHECK:         %[[DIM0:.+]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x4x5x?xf32>
 // CHECK:         %[[C3:.+]] = constant 3 : index
-// CHECK:         %[[DIM3:.+]] = memref.dim %[[ARG1]], %[[C3]] : tensor<3x2x?x?xf32>
+// CHECK:         %[[DIM3:.+]] = tensor.dim %[[ARG1]], %[[C3]] : tensor<3x2x?x?xf32>
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 2, 3, %[[DIM3]]]
 // CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[ZERO]], %[[INIT]])
@@ -2088,9 +2100,9 @@ func @conv_3d_input_ndhwc_filter_dhwcf(%arg0: tensor<?x8x8x8x?xf32>, %arg1: tens
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK:         %[[C0:.+]] = constant 0 : index
-// CHECK:         %[[DIM0:.+]] = memref.dim %[[ARG0]], %[[C0]] : tensor<?x8x8x8x?xf32>
+// CHECK:         %[[DIM0:.+]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x8x8x8x?xf32>
 // CHECK:         %[[C4:.+]] = constant 4 : index
-// CHECK:         %[[DIM4:.+]] = memref.dim %[[ARG1]], %[[C4]] : tensor<2x2x2x?x?xf32>
+// CHECK:         %[[DIM4:.+]] = tensor.dim %[[ARG1]], %[[C4]] : tensor<2x2x2x?x?xf32>
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 7, 7, 7, %[[DIM4]]]
 // CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[ZERO]], %[[INIT]])
@@ -2365,9 +2377,9 @@ func @dynamic_reduce_window_sum_nhwc(%arg0: tensor<?x?x?x?xf32>,
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK:         %[[WINDOW:.+]] = linalg.init_tensor [3, 3] : tensor<3x3xf32>
 // CHECK:         %[[C0:.+]] = constant 0 : index
-// CHECK:         %[[D0:.+]] = memref.dim %[[ARG0]], %[[C0]] : tensor<?x?x?x?xf32>
+// CHECK:         %[[D0:.+]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x?x?x?xf32>
 // CHECK:         %[[C1:.+]] = constant 1 : index
-// CHECK:         %[[T1:.+]] = memref.dim %[[ARG0]], %[[C1]] : tensor<?x?x?x?xf32>
+// CHECK:         %[[T1:.+]] = tensor.dim %[[ARG0]], %[[C1]] : tensor<?x?x?x?xf32>
 // CHECK:         %[[C3:.+]] = constant 3 : index
 // CHECK:         %[[T2:.+]] = subi %[[T1]], %[[C3]]
 // CHECK:         %[[C2:.+]] = constant 2 : index
@@ -2375,7 +2387,7 @@ func @dynamic_reduce_window_sum_nhwc(%arg0: tensor<?x?x?x?xf32>,
 // CHECK:         %[[C1:.+]] = constant 1 : index
 // CHECK:         %[[D1:.+]] = addi %[[T3]], %[[C1]]
 // CHECK:         %[[C2:.+]] = constant 2 : index
-// CHECK:         %[[T1:.+]] = memref.dim %[[ARG0]], %[[C2]] : tensor<?x?x?x?xf32>
+// CHECK:         %[[T1:.+]] = tensor.dim %[[ARG0]], %[[C2]] : tensor<?x?x?x?xf32>
 // CHECK:         %[[C3:.+]] = constant 3 : index
 // CHECK:         %[[T2:.+]] = subi %[[T1]], %[[C3]]
 // CHECK:         %[[C2:.+]] = constant 2 : index
@@ -2383,7 +2395,7 @@ func @dynamic_reduce_window_sum_nhwc(%arg0: tensor<?x?x?x?xf32>,
 // CHECK:         %[[C1:.+]] = constant 1 : index
 // CHECK:         %[[D2:.+]] = addi %[[T3]], %[[C1]]
 // CHECK:         %[[C3:.+]] = constant 3 : index
-// CHECK:         %[[D3:.+]] = memref.dim %[[ARG0]], %[[C3]] : tensor<?x?x?x?xf32>
+// CHECK:         %[[D3:.+]] = tensor.dim %[[ARG0]], %[[C3]] : tensor<?x?x?x?xf32>
 // CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]], %[[D3]]] : tensor<?x?x?x?xf32>
 // CHECK:         %[[INIT_VAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
 // CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT_VAL]], %[[INIT]]) : f32, tensor<?x?x?x?xf32> -> tensor<?x?x?x?xf32>
@@ -2522,13 +2534,13 @@ func @torch_index_select_dynamic(%input: tensor<?x?x?x?xf32>,
 // CHECK-SAME:   %[[INPUT:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[INDEX:[a-zA-Z0-9_]*]]
 //      CHECK:   %[[C0:.+]] = constant 0 : index
-//      CHECK:   %[[D0:.+]] = memref.dim %[[INPUT]], %[[C0]]
+//      CHECK:   %[[D0:.+]] = tensor.dim %[[INPUT]], %[[C0]]
 //      CHECK:   %[[C1:.+]] = constant 1 : index
-//      CHECK:   %[[D1:.+]] = memref.dim %[[INPUT]], %[[C1]]
+//      CHECK:   %[[D1:.+]] = tensor.dim %[[INPUT]], %[[C1]]
 //      CHECK:   %[[C1:.+]] = constant 1 : index
-//      CHECK:   %[[D2:.+]] = memref.dim %[[INDEX]], %[[C1]]
+//      CHECK:   %[[D2:.+]] = tensor.dim %[[INDEX]], %[[C1]]
 //      CHECK:   %[[C3:.+]] = constant 3 : index
-//      CHECK:   %[[D3:.+]] = memref.dim %[[INPUT]], %[[C3]]
+//      CHECK:   %[[D3:.+]] = tensor.dim %[[INPUT]], %[[C3]]
 //      CHECK:   %[[INIT:.+]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]], %[[D3]]]
 //      CHECK:   %[[RESULT:.+]] = linalg.generic
 // CHECK-SAME:     indexing_maps = [#[[MAP0]], #[[MAP1]]]
@@ -2553,14 +2565,14 @@ func @torch_index_select_dynamic(%input: tensor<?x?x?x?xf32>,
 // CHECK-SAME:   %[[VAL_2:[a-zA-Z0-9_]*]]
 // CHECK:           %[[VAL_3:.*]] = constant 0 : index
 // CHECK:           %[[VAL_4:.*]] = constant 0 : index
-// CHECK:           %[[VAL_5:.*]] = memref.dim %[[VAL_0]], %[[VAL_4]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_5:.*]] = tensor.dim %[[VAL_0]], %[[VAL_4]] : tensor<?x?xi32>
 // CHECK:           %[[VAL_6:.*]] = constant 1 : index
-// CHECK:           %[[VAL_7:.*]] = memref.dim %[[VAL_0]], %[[VAL_6]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_7:.*]] = tensor.dim %[[VAL_0]], %[[VAL_6]] : tensor<?x?xi32>
 // CHECK:           %[[VAL_8:.*]] = constant 1 : index
-// CHECK:           %[[VAL_9:.*]] = memref.dim %[[VAL_1]], %[[VAL_8]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_9:.*]] = tensor.dim %[[VAL_1]], %[[VAL_8]] : tensor<?x?xi32>
 // CHECK:           %[[VAL_10:.*]] = addi %[[VAL_7]], %[[VAL_9]] : index
 // CHECK:           %[[VAL_11:.*]] = constant 1 : index
-// CHECK:           %[[VAL_12:.*]] = memref.dim %[[VAL_2]], %[[VAL_11]] : tensor<?x?xi32>
+// CHECK:           %[[VAL_12:.*]] = tensor.dim %[[VAL_2]], %[[VAL_11]] : tensor<?x?xi32>
 // CHECK:           %[[VAL_13:.*]] = addi %[[VAL_10]], %[[VAL_12]] : index
 // CHECK:           %[[VAL_14:.*]] = linalg.init_tensor [%[[VAL_5]], %[[VAL_13]]] : tensor<?x?xi32>
 // CHECK:           %[[VAL_15:.*]] = linalg.generic {indexing_maps = [#map], iterator_types = ["parallel", "parallel"]} outs(%[[VAL_14]] : tensor<?x?xi32>) {
@@ -2569,7 +2581,7 @@ func @torch_index_select_dynamic(%input: tensor<?x?x?x?xf32>,
 // CHECK:             %[[VAL_17:.*]] = linalg.index 1
 // CHECK:             %[[DIM:.*]] = linalg.index 1
 // CHECK:             %[[VAL_19:.*]] = constant 1 : index
-// CHECK:             %[[VAL_20:.*]] = memref.dim %[[VAL_0]], %[[VAL_19]] : tensor<?x?xi32>
+// CHECK:             %[[VAL_20:.*]] = tensor.dim %[[VAL_0]], %[[VAL_19]] : tensor<?x?xi32>
 // CHECK:             %[[VAL_21:.*]] = addi %[[VAL_3]], %[[VAL_20]] : index
 // CHECK:             %[[VAL_22:.*]] = cmpi ult, %[[DIM]], %[[VAL_21]] : index
 // CHECK:             %[[VAL_23:.*]] = scf.if %[[VAL_22]] -> (i32) {
@@ -2578,7 +2590,7 @@ func @torch_index_select_dynamic(%input: tensor<?x?x?x?xf32>,
 // CHECK:               scf.yield %[[VAL_25]] : i32
 // CHECK:             } else {
 // CHECK:               %[[VAL_26:.*]] = constant 1 : index
-// CHECK:               %[[VAL_27:.*]] = memref.dim %[[VAL_1]], %[[VAL_26]] : tensor<?x?xi32>
+// CHECK:               %[[VAL_27:.*]] = tensor.dim %[[VAL_1]], %[[VAL_26]] : tensor<?x?xi32>
 // CHECK:               %[[VAL_28:.*]] = addi %[[VAL_21]], %[[VAL_27]] : index
 // CHECK:               %[[VAL_29:.*]] = cmpi ult, %[[DIM]], %[[VAL_28]] : index
 // CHECK:               %[[VAL_30:.*]] = scf.if %[[VAL_29]] -> (i32) {
@@ -2614,14 +2626,14 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK-DAG:      %[[C_SIGNLESS:.*]] = unrealized_conversion_cast %[[C_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK:          %[[VAL_3:.*]] = constant 0 : index
 // CHECK:          %[[VAL_4:.*]] = constant 0 : index
-// CHECK:          %[[VAL_5:.*]] = memref.dim %[[A_SIGNLESS]], %[[VAL_4]] : tensor<?x?xi32>
+// CHECK:          %[[VAL_5:.*]] = tensor.dim %[[A_SIGNLESS]], %[[VAL_4]] : tensor<?x?xi32>
 // CHECK:          %[[VAL_6:.*]] = constant 1 : index
-// CHECK:          %[[VAL_7:.*]] = memref.dim %[[A_SIGNLESS]], %[[VAL_6]] : tensor<?x?xi32>
+// CHECK:          %[[VAL_7:.*]] = tensor.dim %[[A_SIGNLESS]], %[[VAL_6]] : tensor<?x?xi32>
 // CHECK:          %[[VAL_8:.*]] = constant 1 : index
-// CHECK:          %[[VAL_9:.*]] = memref.dim %[[B_SIGNLESS]], %[[VAL_8]] : tensor<?x?xi32>
+// CHECK:          %[[VAL_9:.*]] = tensor.dim %[[B_SIGNLESS]], %[[VAL_8]] : tensor<?x?xi32>
 // CHECK:          %[[VAL_10:.*]] = addi %[[VAL_7]], %[[VAL_9]] : index
 // CHECK:          %[[VAL_11:.*]] = constant 1 : index
-// CHECK:          %[[VAL_12:.*]] = memref.dim %[[C_SIGNLESS]], %[[VAL_11]] : tensor<?x?xi32>
+// CHECK:          %[[VAL_12:.*]] = tensor.dim %[[C_SIGNLESS]], %[[VAL_11]] : tensor<?x?xi32>
 // CHECK:          %[[VAL_13:.*]] = addi %[[VAL_10]], %[[VAL_12]] : index
 // CHECK:          %[[VAL_14:.*]] = linalg.init_tensor [%[[VAL_5]], %[[VAL_13]]] : tensor<?x?xi32>
 // CHECK:          %[[RET_SIGNLESS:.*]] = linalg.generic {indexing_maps = [#map], iterator_types = ["parallel", "parallel"]} outs(%[[VAL_14]] : tensor<?x?xi32>) {
@@ -2630,7 +2642,7 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK:            %[[VAL_17:.*]] = linalg.index 1
 // CHECK:            %[[DIM:.*]] = linalg.index 1
 // CHECK:            %[[VAL_19:.*]] = constant 1 : index
-// CHECK:            %[[VAL_20:.*]] = memref.dim %[[A_SIGNLESS]], %[[VAL_19]] : tensor<?x?xi32>
+// CHECK:            %[[VAL_20:.*]] = tensor.dim %[[A_SIGNLESS]], %[[VAL_19]] : tensor<?x?xi32>
 // CHECK:            %[[VAL_21:.*]] = addi %[[VAL_3]], %[[VAL_20]] : index
 // CHECK:            %[[VAL_22:.*]] = cmpi ult, %[[DIM]], %[[VAL_21]] : index
 // CHECK:            %[[VAL_23:.*]] = scf.if %[[VAL_22]] -> (i32) {
@@ -2639,7 +2651,7 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK:              scf.yield %[[VAL_25]] : i32
 // CHECK:            } else {
 // CHECK:              %[[VAL_26:.*]] = constant 1 : index
-// CHECK:              %[[VAL_27:.*]] = memref.dim %[[B_SIGNLESS]], %[[VAL_26]] : tensor<?x?xi32>
+// CHECK:              %[[VAL_27:.*]] = tensor.dim %[[B_SIGNLESS]], %[[VAL_26]] : tensor<?x?xi32>
 // CHECK:              %[[VAL_28:.*]] = addi %[[VAL_21]], %[[VAL_27]] : index
 // CHECK:              %[[VAL_29:.*]] = cmpi ult, %[[DIM]], %[[VAL_28]] : index
 // CHECK:              %[[VAL_30:.*]] = scf.if %[[VAL_29]] -> (i32) {

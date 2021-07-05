@@ -26,7 +26,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(QuantizedConv2D, 1x1) {
+TEST(SignedQuantizedConv2D, 1x1) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -58,7 +58,7 @@ TEST(QuantizedConv2D, 1x1) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, 3x3) {
+TEST(SignedQuantizedConv2D, 3x3) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -90,7 +90,7 @@ TEST(QuantizedConv2D, 3x3) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, 3x3Stride2) {
+TEST(SignedQuantizedConv2D, 3x3Stride2) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -124,7 +124,7 @@ TEST(QuantizedConv2D, 3x3Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, SmallKernelWithSamePadding) {
+TEST(SignedQuantizedConv2D, SmallKernelWithSamePadding) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -158,7 +158,7 @@ TEST(QuantizedConv2D, SmallKernelWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, SmallKernelWithValidPadding) {
+TEST(SignedQuantizedConv2D, SmallKernelWithValidPadding) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -192,7 +192,7 @@ TEST(QuantizedConv2D, SmallKernelWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, StrideWithSamePadding) {
+TEST(SignedQuantizedConv2D, StrideWithSamePadding) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -230,7 +230,7 @@ TEST(QuantizedConv2D, StrideWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, StrideWithValidPadding) {
+TEST(SignedQuantizedConv2D, StrideWithValidPadding) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -268,7 +268,7 @@ TEST(QuantizedConv2D, StrideWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, DilationWithSamePadding) {
+TEST(SignedQuantizedConv2D, DilationWithSamePadding) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -306,7 +306,7 @@ TEST(QuantizedConv2D, DilationWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, DilationWithValidPadding) {
+TEST(SignedQuantizedConv2D, DilationWithValidPadding) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -344,7 +344,7 @@ TEST(QuantizedConv2D, DilationWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, ReluActivation) {
+TEST(SignedQuantizedConv2D, ReluActivation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -382,7 +382,7 @@ TEST(QuantizedConv2D, ReluActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, Relu6Activation) {
+TEST(SignedQuantizedConv2D, Relu6Activation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -420,7 +420,7 @@ TEST(QuantizedConv2D, Relu6Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, ReluMinus1To1Activation) {
+TEST(SignedQuantizedConv2D, ReluMinus1To1Activation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -458,7 +458,7 @@ TEST(QuantizedConv2D, ReluMinus1To1Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(QuantizedConv2D, MultiThreading) {
+TEST(SignedQuantizedConv2D, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;

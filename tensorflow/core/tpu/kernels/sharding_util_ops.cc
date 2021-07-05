@@ -15,6 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <functional>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -33,19 +34,77 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
 
-constexpr absl::string_view kTensorName = "'input' tensor";
-constexpr absl::string_view kResourceName = "'resource' variable tensor";
+constexpr absl::string_view kNumSplitsAttrName = "num_splits";
+constexpr absl::string_view kNumConcatsAttrName = "num_concats";
+
+template <bool Split>
+Status GetAndValidateAttributes(OpKernelConstruction* ctx,
+                                std::vector<int32>& num_partitions,
+                                int& num_slices, std::vector<int32>& paddings,
+                                bool& has_paddings) {
+  absl::string_view num_partitions_attr_name =
+      Split ? kNumSplitsAttrName : kNumConcatsAttrName;
+  TF_RETURN_IF_ERROR(ctx->GetAttr(num_partitions_attr_name, &num_partitions));
+
+  int num_dims_to_split = 0;
+  for (int i = 0, e = num_partitions.size(); i < e; ++i) {
+    const auto& split = num_partitions[i];
+    if (split <= 0) {
+      return errors::InvalidArgument("'", num_partitions_attr_name,
+                                     "' at index ", i,
+                                     " must be positive, but got ", split, ".");
+    }
+    if (split > 1) {
+      ++num_dims_to_split;
+    }
+    num_slices *= split;
+  }
+
+  int n;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("N", &n));
+  if (n != num_slices) {
+    return errors::InvalidArgument(
+        "'N' must match number of slices ", num_slices, " from '",
+        num_partitions_attr_name, "', but got ", n, ".");
+  }
+
+  TF_RETURN_IF_ERROR(ctx->GetAttr("paddings", &paddings));
+  const int expected_rank = num_partitions.size();
+  if (!paddings.empty()) {
+    if (paddings.size() != expected_rank) {
+      return errors::InvalidArgument(
+          "'paddings' length must match '", num_partitions_attr_name,
+          "' length ", expected_rank, ", but got ", paddings.size(), ".");
+    }
+
+    for (int dim = 0; dim < expected_rank; ++dim) {
+      if (paddings[dim] < 0) {
+        return errors::InvalidArgument(
+            "'padding' must be all non-negative, but got ", paddings[dim],
+            " at index ", dim, ".");
+      }
+      if (paddings[dim] > 0) {
+        has_paddings = true;
+      }
+    }
+  } else {
+    paddings.assign(expected_rank, 0);
+  }
+
+  return Status::OK();
+}
 
 // Converts flatten index to start indices (subscript scaled with slice shape)
 // for determining where to start a slice in the input tensor.
 template <int Rank>
 Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, Rank>& slice_shape,
     const int index) {
   return Eigen::DSizes<Eigen::DenseIndex, Rank>();
@@ -53,7 +112,7 @@ Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 1> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 1>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 1> subscript;
   subscript[0] = index * slice_shape[0];
@@ -62,186 +121,176 @@ Eigen::DSizes<Eigen::DenseIndex, 1> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 2> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 2> subscript;
-  subscript[1] = (index % num_splits[1]) * slice_shape[1];
-  subscript[0] = (index / num_splits[1]) * slice_shape[0];
+  subscript[1] = (index % num_partitions[1]) * slice_shape[1];
+  subscript[0] = (index / num_partitions[1]) * slice_shape[0];
   return subscript;
 }
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 3> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 3> subscript;
-  subscript[2] = (index % num_splits[2]) * slice_shape[2];
-  subscript[1] = ((index / num_splits[2]) % num_splits[1]) * slice_shape[1];
-  subscript[0] = (index / (num_splits[2] * num_splits[1])) * slice_shape[2];
+  subscript[2] = (index % num_partitions[2]) * slice_shape[2];
+  subscript[1] =
+      ((index / num_partitions[2]) % num_partitions[1]) * slice_shape[1];
+  subscript[0] =
+      (index / (num_partitions[2] * num_partitions[1])) * slice_shape[2];
   return subscript;
 }
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 4> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 4>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 4> subscript;
-  subscript[3] = (index % num_splits[3]) * slice_shape[3];
-  subscript[2] = ((index / num_splits[3]) % num_splits[2]) * slice_shape[2];
-  subscript[1] = ((index / (num_splits[3] * num_splits[2])) % num_splits[1]) *
-                 slice_shape[1];
-  subscript[0] = (index / (num_splits[3] * num_splits[2] * num_splits[1])) *
-                 slice_shape[0];
+  subscript[3] = (index % num_partitions[3]) * slice_shape[3];
+  subscript[2] =
+      ((index / num_partitions[3]) % num_partitions[2]) * slice_shape[2];
+  subscript[1] =
+      ((index / (num_partitions[3] * num_partitions[2])) % num_partitions[1]) *
+      slice_shape[1];
+  subscript[0] =
+      (index / (num_partitions[3] * num_partitions[2] * num_partitions[1])) *
+      slice_shape[0];
   return subscript;
 }
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 5> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 5>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 5> subscript;
-  subscript[4] = (index % num_splits[4]) * slice_shape[4];
-  subscript[3] = ((index / num_splits[4]) % num_splits[3]) * slice_shape[3];
-  subscript[2] = ((index / (num_splits[4] * num_splits[3])) % num_splits[2]) *
-                 slice_shape[2];
-  subscript[1] = ((index / (num_splits[4] * num_splits[3] * num_splits[2])) %
-                  num_splits[1]) *
-                 slice_shape[1];
-  subscript[0] = (index / (num_splits[4] * num_splits[3] * num_splits[2] *
-                           num_splits[1])) *
+  subscript[4] = (index % num_partitions[4]) * slice_shape[4];
+  subscript[3] =
+      ((index / num_partitions[4]) % num_partitions[3]) * slice_shape[3];
+  subscript[2] =
+      ((index / (num_partitions[4] * num_partitions[3])) % num_partitions[2]) *
+      slice_shape[2];
+  subscript[1] =
+      ((index / (num_partitions[4] * num_partitions[3] * num_partitions[2])) %
+       num_partitions[1]) *
+      slice_shape[1];
+  subscript[0] = (index / (num_partitions[4] * num_partitions[3] *
+                           num_partitions[2] * num_partitions[1])) *
                  slice_shape[0];
   return subscript;
 }
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 6> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 6>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 6> subscript;
-  subscript[5] = (index % num_splits[5]) * slice_shape[5];
-  subscript[4] = ((index / num_splits[5]) % num_splits[4]) * slice_shape[4];
-  subscript[3] = ((index / (num_splits[5] * num_splits[4])) % num_splits[3]) *
-                 slice_shape[3];
-  subscript[2] = ((index / (num_splits[5] * num_splits[4] * num_splits[3])) %
-                  num_splits[2]) *
-                 slice_shape[2];
-  subscript[1] = ((index / (num_splits[5] * num_splits[4] * num_splits[3] *
-                            num_splits[2])) %
-                  num_splits[1]) *
+  subscript[5] = (index % num_partitions[5]) * slice_shape[5];
+  subscript[4] =
+      ((index / num_partitions[5]) % num_partitions[4]) * slice_shape[4];
+  subscript[3] =
+      ((index / (num_partitions[5] * num_partitions[4])) % num_partitions[3]) *
+      slice_shape[3];
+  subscript[2] =
+      ((index / (num_partitions[5] * num_partitions[4] * num_partitions[3])) %
+       num_partitions[2]) *
+      slice_shape[2];
+  subscript[1] = ((index / (num_partitions[5] * num_partitions[4] *
+                            num_partitions[3] * num_partitions[2])) %
+                  num_partitions[1]) *
                  slice_shape[1];
-  subscript[0] = (index / (num_splits[5] * num_splits[4] * num_splits[3] *
-                           num_splits[2] * num_splits[1])) *
-                 slice_shape[0];
+  subscript[0] =
+      (index / (num_partitions[5] * num_partitions[4] * num_partitions[3] *
+                num_partitions[2] * num_partitions[1])) *
+      slice_shape[0];
   return subscript;
 }
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 7> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 7>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 7> subscript;
-  subscript[6] = (index % num_splits[6]) * slice_shape[6];
-  subscript[5] = ((index / num_splits[6]) % num_splits[5]) * slice_shape[5];
-  subscript[4] = ((index / (num_splits[6] * num_splits[5])) % num_splits[4]) *
-                 slice_shape[4];
-  subscript[3] = ((index / (num_splits[6] * num_splits[5] * num_splits[4])) %
-                  num_splits[3]) *
-                 slice_shape[3];
-  subscript[2] = ((index / (num_splits[6] * num_splits[5] * num_splits[4] *
-                            num_splits[3])) %
-                  num_splits[2]) *
+  subscript[6] = (index % num_partitions[6]) * slice_shape[6];
+  subscript[5] =
+      ((index / num_partitions[6]) % num_partitions[5]) * slice_shape[5];
+  subscript[4] =
+      ((index / (num_partitions[6] * num_partitions[5])) % num_partitions[4]) *
+      slice_shape[4];
+  subscript[3] =
+      ((index / (num_partitions[6] * num_partitions[5] * num_partitions[4])) %
+       num_partitions[3]) *
+      slice_shape[3];
+  subscript[2] = ((index / (num_partitions[6] * num_partitions[5] *
+                            num_partitions[4] * num_partitions[3])) %
+                  num_partitions[2]) *
                  slice_shape[2];
-  subscript[1] = ((index / (num_splits[6] * num_splits[5] * num_splits[4] *
-                            num_splits[3] * num_splits[2])) %
-                  num_splits[1]) *
-                 slice_shape[1];
-  subscript[0] = (index / (num_splits[6] * num_splits[5] * num_splits[4] *
-                           num_splits[3] * num_splits[2] * num_splits[1])) *
-                 slice_shape[0];
+  subscript[1] =
+      ((index / (num_partitions[6] * num_partitions[5] * num_partitions[4] *
+                 num_partitions[3] * num_partitions[2])) %
+       num_partitions[1]) *
+      slice_shape[1];
+  subscript[0] =
+      (index / (num_partitions[6] * num_partitions[5] * num_partitions[4] *
+                num_partitions[3] * num_partitions[2] * num_partitions[1])) *
+      slice_shape[0];
   return subscript;
 }
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 8> GetSliceIndices(
-    absl::Span<const int32> num_splits,
+    absl::Span<const int32> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 8>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 8> subscript;
-  subscript[7] = (index % num_splits[7]) * slice_shape[7];
-  subscript[6] = ((index / num_splits[7]) % num_splits[6]) * slice_shape[6];
-  subscript[5] = ((index / (num_splits[7] * num_splits[6])) % num_splits[5]) *
-                 slice_shape[5];
-  subscript[4] = ((index / (num_splits[7] * num_splits[6] * num_splits[5])) %
-                  num_splits[4]) *
-                 slice_shape[4];
-  subscript[3] = ((index / (num_splits[7] * num_splits[6] * num_splits[5] *
-                            num_splits[4])) %
-                  num_splits[3]) *
+  subscript[7] = (index % num_partitions[7]) * slice_shape[7];
+  subscript[6] =
+      ((index / num_partitions[7]) % num_partitions[6]) * slice_shape[6];
+  subscript[5] =
+      ((index / (num_partitions[7] * num_partitions[6])) % num_partitions[5]) *
+      slice_shape[5];
+  subscript[4] =
+      ((index / (num_partitions[7] * num_partitions[6] * num_partitions[5])) %
+       num_partitions[4]) *
+      slice_shape[4];
+  subscript[3] = ((index / (num_partitions[7] * num_partitions[6] *
+                            num_partitions[5] * num_partitions[4])) %
+                  num_partitions[3]) *
                  slice_shape[3];
-  subscript[2] = ((index / (num_splits[7] * num_splits[6] * num_splits[5] *
-                            num_splits[4] * num_splits[3])) %
-                  num_splits[2]) *
-                 slice_shape[2];
-  subscript[1] = ((index / (num_splits[7] * num_splits[6] * num_splits[5] *
-                            num_splits[4] * num_splits[3] * num_splits[2])) %
-                  num_splits[1]) *
-                 slice_shape[1];
+  subscript[2] =
+      ((index / (num_partitions[7] * num_partitions[6] * num_partitions[5] *
+                 num_partitions[4] * num_partitions[3])) %
+       num_partitions[2]) *
+      slice_shape[2];
+  subscript[1] =
+      ((index / (num_partitions[7] * num_partitions[6] * num_partitions[5] *
+                 num_partitions[4] * num_partitions[3] * num_partitions[2])) %
+       num_partitions[1]) *
+      slice_shape[1];
   subscript[0] =
-      (index / (num_splits[7] * num_splits[6] * num_splits[5] * num_splits[4] *
-                num_splits[3] * num_splits[2] * num_splits[1])) *
+      (index / (num_partitions[7] * num_partitions[6] * num_partitions[5] *
+                num_partitions[4] * num_partitions[3] * num_partitions[2] *
+                num_partitions[1])) *
       slice_shape[0];
   return subscript;
 }
+
+constexpr absl::string_view kTensorName = "'input' tensor";
+constexpr absl::string_view kResourceName = "'resource' variable tensor";
 
 template <typename Device, typename T, bool Resource>
 class XlaSplitNDBaseOp : public OpKernel {
  public:
   explicit XlaSplitNDBaseOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_splits", &num_splits_));
-
-    int num_dims_to_split = 0;
-    for (int i = 0, e = num_splits_.size(); i < e; ++i) {
-      const auto& split = num_splits_[i];
-      OP_REQUIRES(
-          ctx, split > 0,
-          errors::InvalidArgument("'num_splits' at index ", i,
-                                  " must be positive, but got ", split, "."));
-      if (split > 1) {
-        ++num_dims_to_split;
-      }
-      num_slices_ *= split;
-    }
-
-    int n;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("N", &n));
-    OP_REQUIRES(
-        ctx, n == num_slices_,
-        errors::InvalidArgument("'N' must match number of slices ", num_slices_,
-                                " from 'num_splits', but got ", n, "."));
-
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("paddings", &paddings_));
-    const int expected_rank = num_splits_.size();
-    if (!paddings_.empty()) {
-      OP_REQUIRES(ctx, paddings_.size() == expected_rank,
-                  errors::InvalidArgument(
-                      "'paddings' length must match 'num_splits' length ",
-                      expected_rank, ", but got ", paddings_.size(), "."));
-
-      for (int dim = 0; dim < expected_rank; ++dim) {
-        OP_REQUIRES(ctx, paddings_[dim] >= 0,
-                    errors::InvalidArgument(
-                        "'padding' must be all non-negative, but got ",
-                        paddings_[dim], " at index ", dim, "."));
-        if (paddings_[dim] > 0) {
-          has_paddings_ = true;
-        }
-      }
-    } else {
-      paddings_.assign(expected_rank, 0);
-    }
+    OP_REQUIRES_OK(ctx,
+                   GetAndValidateAttributes<true>(ctx, num_splits_, num_slices_,
+                                                  paddings_, has_paddings_));
   }
 
  protected:
-  void ComputeInternal(OpKernelContext* ctx, const Tensor* input) {
+  void ComputeInternal(
+      OpKernelContext* ctx,
+      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const Tensor* input) {
     absl::string_view input_name = Resource ? kResourceName : kTensorName;
     const int rank = input->shape().dims();
 
@@ -289,21 +338,21 @@ class XlaSplitNDBaseOp : public OpKernel {
     }
 
     if (rank == 1) {
-      Slice<1>(ctx, input);
+      Slice<1>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 2) {
-      Slice<2>(ctx, input);
+      Slice<2>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 3) {
-      Slice<3>(ctx, input);
+      Slice<3>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 4) {
-      Slice<4>(ctx, input);
+      Slice<4>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 5) {
-      Slice<5>(ctx, input);
+      Slice<5>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 6) {
-      Slice<6>(ctx, input);
+      Slice<6>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 7) {
-      Slice<7>(ctx, input);
+      Slice<7>(ctx, assign_or_copy_value_fn, input);
     } else if (rank == 8) {
-      Slice<8>(ctx, input);
+      Slice<8>(ctx, assign_or_copy_value_fn, input);
     }
   }
 
@@ -341,13 +390,14 @@ class XlaSplitNDBaseOp : public OpKernel {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(
                               /*index=*/i, output_slice_shape, &output_slice));
 
-      bool pad = false;
+      int num_complete_pad_dims = 0;
+      int num_partial_pad_dims = 0;
       TensorShape non_padded_slice_shape;
       Eigen::array<Eigen::IndexPair<int64>, Rank> slice_paddings;
       Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
           GetSliceIndices<Rank>(num_splits_, output_slice_shape_dsizes, i);
 
-      // Calculate paddings necessary for shard instead of padding input and
+      // Calculate paddings necessary for slice instead of padding input and
       // slicing subsequently to reduce temporary memory allocation.
       for (int dim = 0; dim < Rank; ++dim) {
         const int64 dim_size = shape[dim];
@@ -356,24 +406,27 @@ class XlaSplitNDBaseOp : public OpKernel {
           slice_indices[dim] = dim_size;
           non_padded_slice_shape.AddDim(0);
           slice_paddings[dim] = {0, output_slice_shape_dsizes[dim]};
-          pad = true;
+          ++num_complete_pad_dims;
         } else if (slice_indices[dim] + output_slice_shape_dsizes[dim] >=
                    dim_size) {
           // Partial padding.
           non_padded_slice_shape.AddDim(dim_size - slice_indices[dim]);
           slice_paddings[dim] = {0, output_slice_shape_dsizes[dim] -
                                         non_padded_slice_shape.dim_size(dim)};
-          pad = true;
+          ++num_partial_pad_dims;
         } else {
           non_padded_slice_shape.AddDim(output_slice_shape_dsizes[dim]);
         }
       }
 
-      if (pad) {
-        Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes =
-            non_padded_slice_shape.AsEigenDSizes<Rank>();
+      if (num_complete_pad_dims == Rank) {
         output_slice->flat<T>().device(device) =
             output_slice->flat<T>().constant(T());
+      } else if (num_complete_pad_dims > 0 || num_partial_pad_dims > 0) {
+        output_slice->flat<T>().device(device) =
+            output_slice->flat<T>().constant(T());
+        Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes =
+            non_padded_slice_shape.AsEigenDSizes<Rank>();
         output_slice->tensor<T, Rank>()
             .slice(Eigen::DSizes<Eigen::DenseIndex, Rank>(),
                    non_padded_slice_shape_dsizes)
@@ -388,9 +441,12 @@ class XlaSplitNDBaseOp : public OpKernel {
   }
 
   template <int Rank>
-  void Slice(OpKernelContext* ctx, const Tensor* input) {
+  void Slice(
+      OpKernelContext* ctx,
+      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const Tensor* input) {
     if (num_slices_ == 1) {
-      ctx->set_output(0, *input);
+      OP_REQUIRES_OK(ctx, assign_or_copy_value_fn(*input));
       return;
     }
 
@@ -430,7 +486,13 @@ class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, false> {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    this->ComputeInternal(ctx, &input);
+
+    auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
+      ctx->set_output(/*index=*/0, input);
+      return Status::OK();
+    };
+
+    this->ComputeInternal(ctx, assign_or_copy_value_fn, &input);
   }
 };
 
@@ -445,7 +507,7 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
   void Compute(OpKernelContext* ctx) override {
     core::RefCountPtr<Var> variable;
     const ResourceHandle& handle = HandleFromInput(ctx, 0);
-    const auto status = LookupResource(ctx, handle, &variable);
+    const Status status = LookupResource(ctx, handle, &variable);
     OP_REQUIRES(
         ctx, status.ok(),
         errors::InvalidArgument("'resource' variable handle ('", handle.name(),
@@ -461,7 +523,20 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
                     "') dtype ", DataTypeString(input->dtype()), ", but got ",
                     DataTypeString(dtype_), "."));
 
-    this->ComputeInternal(ctx, input);
+    auto assign_or_copy_value_fn = [&ctx,
+                                    &variable](const Tensor& input) -> Status {
+      if (variable->copy_on_read_mode.load()) {
+        Tensor* output;
+        TF_RETURN_IF_ERROR(
+            ctx->allocate_output(/*index=*/0, input.shape(), &output));
+        output->flat<T>().device(ctx->eigen_device<Device>()) = input.flat<T>();
+      } else {
+        ctx->set_output(/*index=*/0, input);
+      }
+      return Status::OK();
+    };
+
+    this->ComputeInternal(ctx, assign_or_copy_value_fn, input);
   }
 
  private:

@@ -108,7 +108,7 @@ absl::optional<ReductionKind> MatchAllReduceComputation(
   if (!opcode.ok()) return absl::nullopt;
   // Match the operation to a reduction kind. We can represent and/or of pred as
   // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
-  PrimitiveType type = TypeToShape(result.getType()).element_type();
+  PrimitiveType type = GetShape(result).element_type();
   if (type == PRED) {
     switch (opcode.ValueOrDie()) {
       case HloOpcode::kAnd:

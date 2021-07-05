@@ -49,24 +49,25 @@ void PopulateGatherToTorchIndexSelectPatterns(
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
 
-// Collection of rewrite patterns for lowering of dynamic HLOs to LHLO or memref
-// dialect.
-void populateDynamicHLOToLHLOOrMemRefConversionPattern(
-    MLIRContext *context, BufferizeTypeConverter *converter,
-    OwningRewritePatternList *patterns, bool insert_copy = true);
-
-// Collection of rewrite patterns for simply lowering all mhlo ops to their
-// lmhlo counterparts, do not apply any optimization (e.g. elide any buffer
-// copy).
-void populateDynamicHLOToLHLOOnlyConversionPattern(
+// Collection of rewrite patterns for lowering all mhlo ops to their
+// lmhlo counterparts.
+void populateDynamicHLOToLHLOConversionPattern(
     MLIRContext *context, BufferizeTypeConverter *converter,
     OwningRewritePatternList *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         BufferizeTypeConverter *converter,
-                                        OwningRewritePatternList *patterns,
-                                        bool convert_to_lmhlo_only = false);
+                                        OwningRewritePatternList *patterns);
+
+// Collection of rewrite patterns for lowering of HLO to memref dialect.
+// These patterns generally assume that the HLO operation are aliasing their
+// input memrefs. If enforce_identity_map is set to true, copies will be
+// inserted when the lowering would otherwise lead to a memref with a
+// non-identity map.
+void populateHLOToMemrefConversionPattern(BufferizeTypeConverter *converter,
+                                          OwningRewritePatternList *patterns,
+                                          bool enforce_identity_map = true);
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,

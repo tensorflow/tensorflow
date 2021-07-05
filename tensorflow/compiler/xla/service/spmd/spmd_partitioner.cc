@@ -1481,7 +1481,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
            [](const HloSharding& sharding) { return sharding.IsManual(); }));
   if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape") &&
       hlo->opcode() != HloOpcode::kConditional &&
-      hlo->opcode() != HloOpcode::kWhile) {
+      hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng) {
     visiting_hlo_sharding_ = hlo->sharding();
     hlo->set_sharding(
         manual_to_onedevice(hlo->shape(), *visiting_hlo_sharding_));
@@ -2973,19 +2973,28 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
   }
+  auto clone_from_original = [&](const HloSharding& shared_sharding) {
+    std::vector<HloInstruction*> new_operands;
+    for (int64 i = 0; i < hlo->operand_count(); ++i) {
+      new_operands.push_back(
+          GetPartitionedHlo(hlo->operand(i)).Reshard(shared_sharding).hlo());
+    }
+    auto clone = b_.AddInstruction(
+        hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+    clone->set_sharding(shared_sharding);
+    return clone;
+  };
+
+  if (hlo->sharding().IsManual()) {
+    SetPartitionedHlo(hlo,
+                      [&] { return clone_from_original(hlo->sharding()); });
+    return Status::OK();
+  }
 
   if (hlo->sharding().IsReplicated()) {
     SetPartitionedHlo(hlo, [&] {
       // Run on a single device (0) and distribute the data to all other cores.
-      std::vector<HloInstruction*> new_operands;
-      for (int64 i = 0; i < hlo->operand_count(); ++i) {
-        new_operands.push_back(GetPartitionedHlo(hlo->operand(i))
-                                   .Reshard(HloSharding::AssignDevice(0))
-                                   .hlo());
-      }
-      auto clone = b_.AddInstruction(
-          hlo->CloneWithNewOperands(hlo->shape(), new_operands));
-      clone->set_sharding(HloSharding::AssignDevice(0));
+      auto clone = clone_from_original(HloSharding::AssignDevice(0));
       return PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
           .Reshard(HloSharding::Replicate())
           .hlo();

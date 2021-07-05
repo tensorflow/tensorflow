@@ -89,7 +89,7 @@ HloModule RemoveDotOpOut
       %val = f32[2] get-tuple-element(p_body), index=0
       %val2 = bf16[2] get-tuple-element(p_body), index=1
       %const = s32[] constant(-1)
-      ROOT root = (f32[2], bf16[], s32[]) tuple(%val, %val2, %const)
+      ROOT root = (f32[2], bf16[2], s32[]) tuple(%val, %val2, %const)
     }
 
     condition {
@@ -1395,7 +1395,7 @@ ENTRY main {
   conditional.2 = (bf16[2,512,364]{2,1,0}) conditional(pred.2, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
   get-first-index.2 = bf16[2,512,364]{2,1,0} get-tuple-element(conditional.2), index=0
   add.2 = bf16[2,512,364]{2,1,0} add(bf16[2,512,364]{2,1,0} get-first-index.2, bf16[2,512,364]{2,1,0} get-first-index.2)
- ROOT result = (bf16[2,512,364]{2,1,0}) tuple(add.1, add.2)
+ ROOT result = (bf16[2,512,364]{2,1,0}, bf16[2,512,364]{2,1,0}) tuple(add.1, add.2)
 }
 )";
   // Use a config loop to tune which instructions should be moved/not_moved.

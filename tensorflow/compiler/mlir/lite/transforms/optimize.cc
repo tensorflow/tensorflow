@@ -1321,7 +1321,8 @@ struct RemoveReshapeAfterFullyConnected
     // Check that the reshape doesn't modify the last dimension and it restores
     // the input (batch) dimension with the exception of the feature (last)
     // dimension.
-    if (output_shape.getShape().back() != reshape_shape.getShape().back() ||
+    if (output_shape.getShape().empty() || reshape_shape.getShape().empty() ||
+        output_shape.getShape().back() != reshape_shape.getShape().back() ||
         input_shape.getShape().drop_back() !=
             reshape_shape.getShape().drop_back())
       return failure();

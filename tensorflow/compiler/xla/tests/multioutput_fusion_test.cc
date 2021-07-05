@@ -370,7 +370,7 @@ XLA_TEST_F(MultiOutputFusionTest,
       mul = f32[2,32,32]{2,1,0} multiply(p0, p0)
       c1 = f32[] constant(5)
       r2 = f32[2,32]{1,0} reduce(mul, c1), dimensions={2}, to_apply=Max
-      ROOT tuple = (f32[2,32,32]{2,1,0}, f32[2,32]{1,0}, f32[2,2]{1,0})
+      ROOT tuple = (f32[2,32,32]{2,1,0}, f32[2,32]{1,0}, f32[2,32]{1,0})
                      tuple(p0, r1, r2)
     }
 

@@ -3163,6 +3163,9 @@ class ReplicaContextBase(object):
     execute in the same order on all replicas. Dispatching all-reduce based on
     conditions is usually error-prone.
 
+    Known limitation: if `value` contains `tf.IndexedSlices`, attempting to
+    compute gradient w.r.t `value` would result in an error.
+
     This API currently can only be called in the replica context. Other
     variants to reduce values across replicas are:
     * `tf.distribute.StrategyExtended.reduce_to`: the reduce and all-reduce API
@@ -3176,9 +3179,9 @@ class ReplicaContextBase(object):
       reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
         be combined. Allows using string representation of the enum such as
         "SUM", "MEAN".
-      value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts.
-        The structure and the shapes of the `tf.Tensor` need to be same on all
-        replicas.
+      value: a potentially nested structure of `tf.Tensor` or `tf.IndexedSlices` which
+        `tf.nest.flatten` accepts. The structure and the shapes of `value` need to be
+        same on all replicas.
       options: a `tf.distribute.experimental.CommunicationOptions`. Options to
         perform collective operations. This overrides the default options if the
         `tf.distribute.Strategy` takes one in the constructor. See
@@ -3189,6 +3192,13 @@ class ReplicaContextBase(object):
        A nested structure of `tf.Tensor` with the reduced values. The structure
        is the same as `value`.
     """
+    flattened_value = nest.flatten(value)
+    has_indexed_slices = False
+
+    for v in flattened_value:
+      if isinstance(v, ops.IndexedSlices):
+        has_indexed_slices = True
+
     if isinstance(reduce_op, six.string_types):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     if options is None:
@@ -3204,23 +3214,23 @@ class ReplicaContextBase(object):
     # found in b/184009754.
     if self._strategy.extended._use_merge_call():  # pylint: disable=protected-access
       # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
-      if isinstance(value, ops.IndexedSlices):
+      if has_indexed_slices:
         return nest.pack_sequence_as(
             value,
-            self.merge_call(batch_all_reduce, args=nest.flatten(value)))
+            self.merge_call(batch_all_reduce, args=flattened_value))
 
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):
         ys = self.merge_call(batch_all_reduce, args=xs)
         # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
         return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
-      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+      return nest.pack_sequence_as(value, grad_wrapper(*flattened_value))
     else:
-      if isinstance(value, ops.IndexedSlices):
+      if has_indexed_slices:
         return nest.pack_sequence_as(
             value,
             self._strategy.extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
-                reduce_op, nest.flatten(value), options))
+                reduce_op, flattened_value, options))
 
       @custom_gradient.custom_gradient
       def grad_wrapper(*xs):
@@ -3229,7 +3239,7 @@ class ReplicaContextBase(object):
         # The gradient of an all-sum is itself an all-sum (all-mean, likewise).
         return ys, lambda *dy_s: self.all_reduce(reduce_op, dy_s)
 
-      return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
+      return nest.pack_sequence_as(value, grad_wrapper(*flattened_value))
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`

@@ -13,6 +13,7 @@ tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
+tensorflow/lite/core/shims/cc/create_op_resolver.h
 tensorflow/lite/core/shims/cc/experimental/acceleration/configuration/delegate_registry.h
 tensorflow/lite/core/shims/cc/interpreter.h
 tensorflow/lite/core/shims/cc/interpreter_builder.h
@@ -53,7 +54,6 @@ tensorflow/third_party/android/android_configure.bzl
 tensorflow/third_party/arm_neon_2_x86_sse.BUILD
 tensorflow/third_party/astor.BUILD
 tensorflow/third_party/astunparse.BUILD
-tensorflow/third_party/backports_weakref.BUILD
 tensorflow/third_party/boringssl/BUILD
 tensorflow/third_party/clang_toolchain/BUILD
 tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl

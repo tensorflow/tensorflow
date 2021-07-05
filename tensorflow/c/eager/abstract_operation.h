@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -93,6 +94,8 @@ class AbstractOperation {
   virtual Status SetAttrType(const char* attr_name, DataType value) = 0;
   virtual Status SetAttrShape(const char* attr_name, const int64_t* dims,
                               const int num_dims) = 0;
+  virtual Status SetAttrShape(const char* attr_name,
+                              const PartialTensorShape shape);
   virtual Status SetAttrFunction(const char* attr_name,
                                  const AbstractOperation* value) = 0;
   virtual Status SetAttrFunctionName(const char* attr_name, const char* value,
@@ -102,6 +105,8 @@ class AbstractOperation {
   virtual Status SetAttrStringList(const char* attr_name,
                                    const void* const* values,
                                    const size_t* lengths, int num_values) = 0;
+  virtual Status SetAttrStringList(const char* attr_name,
+                                   absl::Span<string const> values);
   virtual Status SetAttrFloatList(const char* attr_name, const float* values,
                                   int num_values) = 0;
   virtual Status SetAttrIntList(const char* attr_name, const int64_t* values,

@@ -1568,6 +1568,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":LinalgOps",
         ":SideEffectInterfaces",
         ":SparseTensorAttrDefsIncGen",
         ":SparseTensorOpsIncGen",
@@ -2294,6 +2295,7 @@ cc_library(
         ":StandardOps",
         ":StandardOpsTransformsPassIncGen",
         ":Support",
+        ":TensorDialect",
         ":Transforms",
         "@llvm-project//llvm:Support",
     ],
@@ -6080,6 +6082,7 @@ td_library(
     name = "TosaDialectTdFiles",
     srcs = glob(["include/mlir/Dialect/Tosa/IR/*.td"]),
     deps = [
+        ":InferTypeOpInterfaceTdFiles",
         ":LoopLikeInterfaceTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
@@ -6174,8 +6177,10 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":Dialect",
         ":IR",
+        ":InferTypeOpInterface",
         ":LoopLikeInterface",
         ":Pass",
         ":QuantOps",
@@ -6207,7 +6212,6 @@ cc_library(
         ":IR",
         ":LinalgOps",
         ":MathDialect",
-        ":MemRefDialect",
         ":Pass",
         ":StandardOps",
         ":TensorDialect",
