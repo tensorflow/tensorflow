@@ -248,7 +248,11 @@ inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3,
 }
 
 inline int Offset(const RuntimeShape& shape, int* index) {
-  return Offset(shape, index[0], index[1], index[2], index[3]);
+  if (shape.DimensionsCount() == 5) {
+    return Offset(shape, index[0], index[1], index[2], index[3], index[4]);
+  } else {
+    return Offset(shape, index[0], index[1], index[2], index[3]);
+  }
 }
 
 }  // namespace tflite

@@ -1680,7 +1680,7 @@ TfLiteStatus FillQuantizationParams(
 
           // Fill per channel max and min with respect to channel_dim_index.
           if (input.second.per_axis) {
-            if (tensor->shape.size() == 4) {
+            if (tensor->shape.size() == 4 || tensor->shape.size() == 5) {
               int32_t channel_dim_index = input.second.per_axis_index;
               TF_LITE_ENSURE_STATUS(utils::FillPerChannelMinMax(
                   float_input_data, tensor->shape, channel_dim_index,
@@ -1689,7 +1689,7 @@ TfLiteStatus FillQuantizationParams(
               TF_LITE_REPORT_ERROR(
                   error_reporter,
                   "Could not fill max min for tensor as the dimension is %d "
-                  "and not 4 as expected.",
+                  "and not 4 or 5 as expected.",
                   tensor->shape.size());
               return kTfLiteError;
             }

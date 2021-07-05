@@ -2745,14 +2745,6 @@ func.func @testConv3dMisMatchInputType(%arg0: tensor<2x3x4x5x2xi32>,%arg1:  tens
 
 // -----
 
-func.func @testConv3dMisMatchBiasType(%arg0: tensor<2x3x4x5x2xf32>,%arg1:  tensor<2x2x2x2x3xf32>,%arg2: tensor<3xi32>) -> tensor<?x?x?x?x?xf32> {
-  // expected-error @+1 {{failed to verify that bias and output must have same element type}}
-  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xf32>, tensor<2x2x2x2x3xf32>, tensor<3xi32>) -> tensor<?x?x?x?x?xf32>
-  func.return %0 : tensor<?x?x?x?x?xf32>
-}
-
-// -----
-
 // CHECK-LABEL: testComplexAbs
 func.func @testComplexAbs(%arg0: tensor<? x complex<f32>>) -> tensor<?xf32> {
   // CHECK: "tfl.complex_abs"(%arg0)

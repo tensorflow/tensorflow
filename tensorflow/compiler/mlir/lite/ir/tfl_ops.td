@@ -5197,16 +5197,14 @@ Read variable data identified by 'resource_id'.
 def TFL_Conv3DOp : TFL_Op<"conv_3d", [
     NoSideEffect,
     AccumulatorUniformScale<2, 0, 1>,
+    AffineQuantizedOpInterface,
+    AffineOpCoefficient<4, 1>,
     TFL_OperandHasRank<0, 5>,
     TFL_OperandHasRank<1, 5>,
     // Channel dimension in input and filter should match.
     TFL_OperandsHaveSameDimsTrait<0, 1, 4, 3>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    PredOpTrait<"bias and output must have same element type",
-      Or<[
-        TFL_OperandIsNoneType<2>,
-        TFL_TCresVTEtIsSameAsOp<0, 2>]>>,
     PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
       Or<[
         TFL_OperandIsNoneType<2>,
@@ -5221,10 +5219,16 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
       `inputs[2]`: optional: the bias tensor
   }];
 
+  let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return 4; }
+  }];
+
   let arguments = (ins
-    TFL_TensorOf<[F32]>:$input,
-    TFL_TensorOf<[F32]>:$filter,
-    TFL_TensorOfOrNone<[F32]>:$bias,
+    TFL_TensorOf<[F32, QI8, QI16]>:$input,
+    TFL_TensorOf<[F32, QI8]>:$filter,
+    TFL_TensorOfOrNone<[F32, I32, I64]>:$bias,
     I32Attr:$dilation_d_factor,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
@@ -5235,7 +5239,7 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
     I32Attr:$stride_w
   );
 
-  let results = (outs TFL_TensorOf<[F32]>:$output);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$output);
 
   let hasOptions = 1;
 
