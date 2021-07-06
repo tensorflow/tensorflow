@@ -539,8 +539,10 @@ build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
 build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:elinux_aarch64 --config=elinux
 build:elinux_aarch64 --cpu=aarch64
+build:elinux_aarch64 --distinct_host_configuration=true
 build:elinux_armhf --config=elinux
 build:elinux_armhf --cpu=armhf
+build:elinux_armhf --distinct_host_configuration=true
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # Config-specific options should come above this line.
