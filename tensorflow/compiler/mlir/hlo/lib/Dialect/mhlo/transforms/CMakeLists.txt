@@ -207,10 +207,27 @@ add_mlir_library(DiscRalPasses
   MLIRPass
 )
 
+add_mlir_library(DiscRalToLLVM
+  ral_legalize_to_llvm.cc
+
+  DEPENDS
+  MLIRdisc_ral_opsIncGen
+  MLIRDiscRalPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  DiscRalDialect
+  MLIRIR
+  MLIRPass
+)
+
 add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   DiscRalPasses
+  DiscRalToLLVM
   MhloPasses
   MhloToLhloConversion
   MhloToMemrefConversion

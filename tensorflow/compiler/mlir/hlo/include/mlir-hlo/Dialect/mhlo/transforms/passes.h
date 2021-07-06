@@ -138,6 +138,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createRalInjectExecutionContextPass(
 // Lower some specific ops to library calls (modeled by `disc_ral.launch` op).
 std::unique_ptr<mlir::FunctionPass> createRalLowerToLibraryCallPass();
 
+// Lower disc to llvm dialect
+std::unique_ptr<OperationPass<ModuleOp>> createRalToLLVMPass();
+
 }  // namespace disc_ral
 
 }  // namespace mlir
