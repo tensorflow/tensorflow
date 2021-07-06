@@ -1,0 +1,16 @@
+diff --git a/googletest/include/gtest/gtest-param-test.h b/googletest/include/gtest/gtest-param-test.h
+index a0eecc69..2f5e7ade 100644
+--- a/googletest/include/gtest/gtest-param-test.h
++++ b/googletest/include/gtest/gtest-param-test.h
+@@ -297,9 +297,9 @@ internal::ParamGenerator<T> Range(T start, T end) {
+ //
+ template <typename ForwardIterator>
+ internal::ParamGenerator<
+-  typename ::testing::internal::IteratorTraits<ForwardIterator>::value_type>
++  typename std::iterator_traits<ForwardIterator>::value_type>
+ ValuesIn(ForwardIterator begin, ForwardIterator end) {
+-  typedef typename ::testing::internal::IteratorTraits<ForwardIterator>
++  typedef typename std::iterator_traits<ForwardIterator>
+       ::value_type ParamType;
+   return internal::ParamGenerator<ParamType>(
+       new internal::ValuesInIteratorRangeGenerator<ParamType>(begin, end));
