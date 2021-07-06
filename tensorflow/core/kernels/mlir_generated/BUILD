@@ -1442,6 +1442,8 @@ gpu_kernel_library(
         "f16",
         "f32",
         "f64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "4",
 )

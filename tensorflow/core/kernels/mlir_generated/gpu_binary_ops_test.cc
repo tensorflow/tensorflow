@@ -874,7 +874,7 @@ GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Int64, int64, int64, baseline_sub,
 
 template <typename T>
 T baseline_xlogy(T x, T y) {
-  return x == 0 ? x : x * std::log(y);
+  return x == T(0) ? x : x * std::log(y);
 }
 
 GENERATE_DEFAULT_TESTS_2(Xlogy, /*test_name=*/Half, Eigen::half, float,
@@ -886,6 +886,12 @@ GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Float, float, float, baseline_xlogy,
 GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Double, double, double,
                        baseline_xlogy,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_xlogy,
+                       test::OpsTestConfig())
+GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_xlogy,
+                       test::OpsTestConfig())
 
 /// Test `tf.Xlog1py`.
 
