@@ -582,9 +582,17 @@ message BenchmarkInitializationFailure {
 message MiniBenchmarkEvent {
   // Not using oneof because of the way the generated cpp code.
   // See comment above on TfLite settings for details.
+
+  // If set to true, this event is used to mark all previous events in the
+  // mini-benchmark internal storage as read and one of the other fields
+  // in this message will have a value.
   optional bool is_log_flushing_event = 1;
+  // Event generated when a best acceleration decision is taken.
   optional BestAccelerationDecision best_acceleration_decision = 2;
+  // Reports a failure during mini-benchmark initialization.
   optional BenchmarkInitializationFailure initialization_failure = 3;
+  // Event generated while benchmarking the different settings to test locally.
+  optional BenchmarkEvent benchmark_event = 4;
 }
 
 // How to access the model for mini-benchmark.
