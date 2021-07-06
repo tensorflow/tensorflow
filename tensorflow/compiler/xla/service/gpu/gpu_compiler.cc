@@ -150,7 +150,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
 
 class GpuBfloat16Support : public BFloat16Support {
@@ -173,10 +172,22 @@ class GpuBfloat16Support : public BFloat16Support {
 
  private:
   bool IsSupported(const HloInstruction& hlo) const {
-    return hlo.opcode() == HloOpcode::kBitcast ||
-           (supports_matrix_multiplication_ &&
-            gpu::IsMatrixMultiplication(hlo)) ||
-           (IsConvBF16Supported() && hlo.opcode() == HloOpcode::kConvolution);
+    switch (hlo.opcode()) {
+      case HloOpcode::kAllGather:
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllReduceStart:
+      case HloOpcode::kAllReduceDone:
+      case HloOpcode::kAllReduceScatter:
+      case HloOpcode::kAllToAll:
+      case HloOpcode::kBitcast:
+      case HloOpcode::kCollectivePermute:
+        return true;
+      case HloOpcode::kConvolution:
+        return IsConvBF16Supported();
+      default:
+        return supports_matrix_multiplication_ &&
+               gpu::IsMatrixMultiplication(hlo);
+    }
   }
 
   bool IsConvBF16Supported() const {
