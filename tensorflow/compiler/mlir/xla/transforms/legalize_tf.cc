@@ -6643,34 +6643,6 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
   }
 };
 
-class ConvertDynamicReshapeOp : public OpRewritePattern<TF::ReshapeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::ReshapeOp op,
-                                PatternRewriter &rewriter) const override {
-    auto tensor = op.tensor();
-    auto shape = op.shape();
-
-    auto tensor_ty = tensor.getType().cast<ShapedType>();
-    auto shape_ty = shape.getType().cast<ShapedType>();
-    auto result_ty = op.getType().cast<ShapedType>();
-
-    if (!result_ty.hasRank() || !tensor_ty.hasRank() || !shape_ty.hasRank()) {
-      return failure();
-    }
-
-    // Handle with the static case.
-    if (result_ty.hasStaticShape()) {
-      return failure();
-    }
-
-    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_ty, tensor,
-                                                        shape);
-    return success();
-  }
-};
-
 class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -7509,7 +7481,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertCumsumOp,
     ConvertDiagPartOp,
     ConvertDynamicExpandDimsOp,
-    ConvertDynamicReshapeOp,
     ConvertEinsumOp,
     ConvertRFFTOp,
     ConvertIRFFTOp,

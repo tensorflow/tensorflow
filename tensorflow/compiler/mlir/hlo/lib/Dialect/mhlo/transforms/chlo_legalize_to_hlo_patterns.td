@@ -19,6 +19,7 @@ limitations under the License.
 // ambiguous/different for various backends. Avoid patterns that are actually
 // lowering to non-canonical forms.
 
+include "mlir/Dialect/Shape/IR/ShapeOps.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
@@ -289,3 +290,12 @@ def : Pat<(HLOClient_TanOp NonComplexElementType:$input),
     (HLO_SinOp $input),
     (HLO_CosOp $input)
   )>;
+
+
+def CreateComputeReshapeOp : NativeCodeCall<
+  "$_builder.create<mhlo::ComputeReshapeShapeOp>($_loc, $1.getType(), $0, $1)">;
+
+def : Pat<(HLOClient_DynamicReshapeOp:$res $arg, $target_shape),
+          (HLO_DynamicReshapeOp $arg, (CreateComputeReshapeOp
+                                  (Shape_NumElementsOp (Shape_ShapeOfOp $arg)),
+                                  $target_shape))>;

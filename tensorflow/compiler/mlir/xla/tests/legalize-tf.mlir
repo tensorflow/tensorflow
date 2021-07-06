@@ -2549,14 +2549,20 @@ func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<2x1xf32> {
 
 // CHECK-LABEL: reshape_dynamic
 func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
-  // CHECK:  "mhlo.dynamic_reshape"
+  // CHECK:  "chlo.dynamic_reshape"
+  // CHLO:  mhlo.compute_reshape_shape
+  // CHLO:  mhlo.dynamic_reshape
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: reshape_unranked
+// CHECK-SAME: %[[INPUT:.*]]: tensor<*xf32>
+// CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
 func @reshape_unranked(%arg0: tensor<*xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
-  // CHECK:  "tf.Reshape"
+  // CHECK:  "chlo.dynamic_reshape"
+  // CHLO:  mhlo.compute_reshape_shape
+  // CHLO:  mhlo.dynamic_reshape
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
 }

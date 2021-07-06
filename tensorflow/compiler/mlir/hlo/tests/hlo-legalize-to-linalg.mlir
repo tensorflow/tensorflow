@@ -2864,3 +2864,30 @@ func @const_splat() -> tensor<3xi16> {
   %cst = mhlo.constant dense<1> : tensor<3xi16>
   return %cst : tensor<3xi16>
 }
+
+// -----
+
+// CHECK-LABEL: compute_reshape_shape
+// CHECK-SAME: %[[NUM_ELS:.*]]: index
+// CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
+func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: %[[N1:.*]] = constant -1 : index
+  // CHECK: %[[IT:.*]] = index_cast %[[TARGET_SHAPE]] : tensor<2xi32> to tensor<2xindex>
+  // CHECK: %[[RANK:.*]] = shape.rank %[[IT]] : tensor<2xindex> -> index
+  // CHECK: %[[TOTAL:.*]] = shape.reduce(%[[IT]], %[[N1]]) : tensor<2xindex> -> index {
+  // CHECK:   ^bb0(%[[IDX:.*]]: index, %[[VAL:.*]]: index, %[[REDUCTION:.*]]: index): // no predecessors
+  // CHECK:   %[[NEW_RED:.*]] = muli %[[VAL]], %[[REDUCTION]] : index
+  // CHECK:   shape.yield %[[NEW_RED]] : index
+  // CHECK: }
+  // CHECK: %[[DYNAMIC_EXTENT:.*]] = divi_unsigned %[[NUM_ELS]], %[[TOTAL]] : index
+  // CHECK: %[[COMPUTED_SHAPE:.*]] = tensor.generate   {
+  // CHECK:   ^bb0(%[[ARG:.*]]: index):  // no predecessors
+  // CHECK:   %[[EXT1:.*]] = shape.get_extent %[[IT]], %[[ARG]] : tensor<2xindex>, index -> index
+  // CHECK:   %[[IS_DYNAMIC:.*]] = cmpi eq, %[[EXT1]], %[[N1]] : index
+  // CHECK:   %[[EXTENT:.*]] = select %[[IS_DYNAMIC]], %[[DYNAMIC_EXTENT]], %[[EXT1]] : index
+  // CHECK:   %[[EXTENT_INT:.*]] = index_cast %[[EXTENT]] : index to i32
+  // CHECK:   tensor.yield %[[EXTENT_INT]] : i32
+  // CHECK: } : tensor<2xi32>
+  %0 = "mhlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<2xi32>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+}

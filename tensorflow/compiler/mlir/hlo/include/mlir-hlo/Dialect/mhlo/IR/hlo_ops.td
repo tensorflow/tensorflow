@@ -2310,7 +2310,7 @@ def HLO_PrintOp : HLO_Op<"print", []> {
   let description = [{
     PrintOp is used to print tensor, which can be used to debug.
   }];
-  
+
   let arguments = (ins
       HLO_Tensor:$input
   );
@@ -2319,6 +2319,32 @@ def HLO_PrintOp : HLO_Op<"print", []> {
     HLO_Tensor:$output
   );
 
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_ComputeReshapeShapeOp :
+    HLO_Op<"compute_reshape_shape", [NoSideEffect]> {
+  string summary = "Compute input for reshape with any dynamic dim resolved";
+
+  string description = [{
+    This operation handles the dynamic aspect of a TF/NumPy/CHLO reshape. The
+    dynamic aspect is that a single extent can be -1 and that dimension will
+    instead be computed. This handles the computation and can then be passed to
+    an HLO DynamicReshapeOp to replicate the TF/NumPy reshape behavior.
+
+    This op has undefined behavior if the dimensions do not evenly divide the
+    number of elements, or if there are multiple -1 values. It is an identity op
+    if no dimensions are -1.
+
+    ```
+    %0 = hlo.compute_reshape_shape 12, [2, -1] -> [2, 6]
+    ```
+  }];
+
+  let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
+  let results = (outs 1DTensorOf<[AnyInteger, Index]>:$result);
+
+  let assemblyFormat = "$num_elements `,` $dynamic_shape attr-dict `:` type($num_elements) `,` type($dynamic_shape) `->` type($result)";
   let hasCustomHLOConverter = 1;
 }
 
