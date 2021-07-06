@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -230,10 +231,22 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
           }
         }  // while
         DCHECK(clone_changed) << "We should have changed the fusion!";
+        std::function<int64(const Shape&)> shape_size_func =
+            [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
+        auto shape_verifier = absl::make_unique<ShapeVerifier>(
+            /*layout_sensitive=*/true,
+            /*allow_mixed_precision=*/false,
+            shape_size_func);
         if (clone_changed) {
-          // 3) Replace the old fusion with the new fusion.
-          TF_RETURN_IF_ERROR(fusion->parent()->ReplaceWithNewInstruction(
-              fusion, std::move(cloned_fusion)));
+          Status status =
+              cloned_fusion->fused_instructions_computation()->Accept(shape_verifier.get());
+          if (status.ok()) {
+            // 3) Replace the old fusion with the new fusion.
+            TF_RETURN_IF_ERROR(fusion->parent()->ReplaceWithNewInstruction(
+                fusion, std::move(cloned_fusion)));
+          } else {
+            VLOG(2) << "Not lifting due to shape problem: " << cloned_fusion->ToString();
+          }
         }
       }  // if fusion
     }

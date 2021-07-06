@@ -1125,6 +1125,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
         "@com_google_absl//absl/types:span",
     ],
 )
