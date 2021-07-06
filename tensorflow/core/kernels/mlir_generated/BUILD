@@ -1447,6 +1447,12 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    # For complex XlogyOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    types_with_unrolling_disabled = [
+        "c64",
+        "c128",
+    ],
     unroll_factors = "4",
 )
 
