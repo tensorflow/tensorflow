@@ -53,12 +53,12 @@ def make_tile_tests(options):
         dtype=parameters["input_dtype"],
         shape=parameters["input_shape"],
         name="input")
-    multiplier_value = tf.compat.v1.placeholder(
-        dtype=parameters["multiplier_dtype"],
-        shape=parameters["multiplier_shape"],
-        name="multiplier")
+    multiplier_value = create_tensor_data(
+        parameters["multiplier_dtype"],
+        parameters["multiplier_shape"],
+        min_value=0)
     out = tf.tile(input_value, multiplier_value)
-    return [input_value, multiplier_value], [out]
+    return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
     min_value, max_value = parameters.get("input_range", (-10, 10))
@@ -67,15 +67,9 @@ def make_tile_tests(options):
         parameters["input_shape"],
         min_value=min_value,
         max_value=max_value)
-    multipliers_value = create_tensor_data(
-        parameters["multiplier_dtype"],
-        parameters["multiplier_shape"],
-        min_value=0)
-    return [input_value, multipliers_value], sess.run(
         outputs,
         feed_dict={
-            inputs[0]: input_value,
-            inputs[1]: multipliers_value
+            inputs[0]: input_value
         })
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
