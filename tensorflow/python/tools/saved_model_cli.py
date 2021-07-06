@@ -31,6 +31,7 @@ import sys
 from absl import app  # pylint: disable=unused-import
 import numpy as np
 import six
+import json
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
@@ -545,6 +546,37 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
     # ast.literal_eval does not work with numpy expressions
     input_dict[input_key] = eval(expr)  # pylint: disable=eval-used
   return input_dict
+  
+def preprocess_input_examples_arg_string_safe(input_examples_str):
+  """Parses input arg into dictionary that maps input key to python expression.
+
+  Parses input string in the format of 'input_key=<python expression>' into a
+  dictionary that maps each input_key to its python expression.
+
+  Args:
+    input_examples_str: A json string that specifies list of dictionaries for input keys.
+    Each input is separated by semicolon. For each input key:
+        'input_key=<python expression>'
+
+  Returns:
+    A dictionary that maps input keys to their values.
+
+  Raises:
+    RuntimeError: An error when the given input string is in a bad format.
+  """
+  input_dict = {}
+
+  for input_raw in filter(bool, input_examples_str.split(';')):
+    if '=' not in input_examples_str:
+      raise RuntimeError('--input_exprs "%s" format is incorrect. Please follow'
+                         '"<input_key>=<json dictionary>"' % input_examples_str)
+    input_key, expr = input_raw.split('=', 1)
+    # using json.loads instead of eval to prevent code injection
+    try:
+    	input_dict[input_key] = json.loads(expr)
+    except:
+          raise RuntimeError('expression %s is not valid json dictionary' % expr)
+  return input_dict
 
 
 def preprocess_input_examples_arg_string(input_examples_str):
@@ -567,7 +599,7 @@ def preprocess_input_examples_arg_string(input_examples_str):
   Raises:
     ValueError: An error when the given tf.Example is not a list.
   """
-  input_dict = preprocess_input_exprs_arg_string(input_examples_str)
+  input_dict = preprocess_input_examples_arg_string_safe(input_examples_str)
   for input_key, example_list in input_dict.items():
     if not isinstance(example_list, list):
       raise ValueError(
