@@ -1018,6 +1018,7 @@ cc_library(
     deps = [
         ":hlo",
         ":pass_details",
+        ":type_conversion",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
