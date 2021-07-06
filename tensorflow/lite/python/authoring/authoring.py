@@ -29,7 +29,7 @@ Example:
 
     f(1.0)
 
-    > CompatibilityWarning: op 'Cosh' requires "Select TF Ops" for model
+    > CompatibilityWarning: op 'tf.Cosh' requires "Select TF Ops" for model
     conversion for TensorFlow Lite.
 """
 import functools
@@ -195,7 +195,7 @@ class _Compatible:
         tf_ops_location.append(err.location)
 
     if custom_ops:
-      custom_ops_str = ", ".join(custom_ops)
+      custom_ops_str = ", ".join(sorted(custom_ops))
       err_string = (
           f"CompatibilityError: op '{custom_ops_str}' is(are) not natively "
           "supported by TensorFlow Lite. You need to provide a custom "
@@ -205,7 +205,7 @@ class _Compatible:
       self._dump_error_details(custom_ops, custom_ops_location)
 
     if tf_ops:
-      tf_ops_str = ", ".join(tf_ops)
+      tf_ops_str = ", ".join(sorted(tf_ops))
       err_string = (
           f"CompatibilityWarning: op '{tf_ops_str}' require(s) \"Select TF Ops"
           "\" for model conversion for TensorFlow Lite. "
