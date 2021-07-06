@@ -290,12 +290,3 @@ def : Pat<(HLOClient_TanOp NonComplexElementType:$input),
     (HLO_SinOp $input),
     (HLO_CosOp $input)
   )>;
-
-
-def CreateComputeReshapeOp : NativeCodeCall<
-  "$_builder.create<mhlo::ComputeReshapeShapeOp>($_loc, $1.getType(), $0, $1)">;
-
-def : Pat<(HLOClient_DynamicReshapeOp:$res $arg, $target_shape),
-          (HLO_DynamicReshapeOp $arg, (CreateComputeReshapeOp
-                                  (Shape_NumElementsOp (Shape_ShapeOfOp $arg)),
-                                  $target_shape))>;

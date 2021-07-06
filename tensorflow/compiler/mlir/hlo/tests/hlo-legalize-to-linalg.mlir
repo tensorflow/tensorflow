@@ -2891,3 +2891,35 @@ func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32>
   %0 = "mhlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<2xi32>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
 }
+
+// CHECK-LABEL: cstr_reshapable_op
+// CHECK-SAME: %[[NUM_ELS:.*]]: index
+// CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
+func @cstr_reshapable_op(%arg0: index, %arg1: tensor<2xi32>) -> !shape.witness {
+  // CHECK-DAG: %[[N1:.*]] = constant -1 : index
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
+  // CHECK: %[[IT0:.*]] = index_cast %[[TARGET_SHAPE]] : tensor<2xi32> to tensor<2xindex>
+  // CHECK: %[[VALID:.*]]:3 = shape.reduce(%[[IT0]], %[[C1]], %[[C0]], %[[C0]]) : tensor<2xindex> -> (index, index, index) {
+  // CHECK:   ^bb0(%[[IDX:.*]]: index, %[[VAL:.*]]: index, %[[PROD:.*]]: index, %[[DYN_DIMS:.*]]: index, %[[ILLEGAL_DIMS:.*]]: index): // no predecessors
+  // CHECK:   %[[V1:.*]] = cmpi eq, %[[N1]], %[[VAL]] : index
+  // CHECK:   %[[V2:.*]] = cmpi slt, %[[VAL]], %[[N1]] : index
+  // CHECK:   %[[V3:.*]] = select %[[V1]], %[[C1]], %[[C0]] : index
+  // CHECK:   %[[V4:.*]] = addi %[[V3]], %[[DYN_DIMS]] : index
+  // CHECK:   %[[V5:.*]] = select %[[V2]], %[[C1]], %[[C0]] : index
+  // CHECK:   %[[V6:.*]] = addi %[[V5]], %[[ILLEGAL_DIMS]] : index
+  // CHECK:   %[[V7:.*]] = select %[[V1]], %[[C1]], %[[VAL]] : index
+  // CHECK:   %[[V8:.*]] = muli %[[V7]], %[[PROD]] : index
+  // CHECK:   shape.yield %[[V8]], %[[V4]], %[[V6]] : index, index, index
+  // CHECK: }
+  // CHECK: %[[REM:.*]] = remi_signed %[[NUM_ELS]], %[[VALID]]#0 : index
+  // CHECK: %[[DIVISIBLE:.*]] = cmpi eq, %[[C0]], %[[REM]] : index
+  // CHECK: %[[NOT_TOO_DYNAMIC:.*]] = cmpi ult, %[[C2]], %[[VALID]]#1 : index
+  // CHECK: %[[ALL_VALID_DIMS:.*]] = cmpi eq, %[[C0]], %[[VALID]]#0 : index
+  // CHECK: %[[PARTIAL_AND:.*]] = and %[[NOT_TOO_DYNAMIC]], %[[ALL_VALID_DIMS]] : i1
+  // CHECK: %[[ALL_CSTRS:.*]] = and %[[DIVISIBLE]], %[[PARTIAL_AND]] : i1
+  // CHECK: %[[W:.*]] = shape.cstr_require %[[ALL_CSTRS]], "Required valid reshape shape input"
+  %0 = "mhlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<2xi32>) -> !shape.witness
+  return %0 : !shape.witness
+}

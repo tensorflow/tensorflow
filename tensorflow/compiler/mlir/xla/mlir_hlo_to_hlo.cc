@@ -606,6 +606,11 @@ LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   auto& valueMap = *ctx.values;
   xla::XlaOp operand;

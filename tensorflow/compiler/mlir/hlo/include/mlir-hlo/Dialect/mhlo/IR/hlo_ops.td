@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef HLO_OPS
 #define HLO_OPS
 
+include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -2345,6 +2346,27 @@ def HLO_ComputeReshapeShapeOp :
   let results = (outs 1DTensorOf<[AnyInteger, Index]>:$result);
 
   let assemblyFormat = "$num_elements `,` $dynamic_shape attr-dict `:` type($num_elements) `,` type($dynamic_shape) `->` type($result)";
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_CstrReshapableOp :
+    HLO_Op<"cstr_reshapable", [NoSideEffect]> {
+  string summary = "Compute input for reshape with any dynamic dim resolved";
+
+  string description = [{
+    This operation creates a witness on the constraint that a given shape would
+    be a valid reshape for the given number of elements.
+
+    ```
+    %0 = mhlo.cstr_reshapable 12, [2, -1] -> success
+    %1 = mhlo.cstr_reshapable 13, [2, -1] -> failure ```
+  }];
+
+  let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
+  let results = (outs Shape_WitnessType:$result);
+
+  let assemblyFormat = "$num_elements `,` $dynamic_shape attr-dict `:` type($num_elements) `,` type($dynamic_shape)";
+
   let hasCustomHLOConverter = 1;
 }
 

@@ -2459,6 +2459,73 @@ struct ComputeReshapeShapeConversion
   }
 };
 
+struct CstrReshapableConversion
+    : public OpConversionPattern<mhlo::CstrReshapableOp> {
+  using OpConversionPattern<mhlo::CstrReshapableOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::CstrReshapableOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    auto ctx = op->getContext();
+    Value neg_one = rewriter.create<ConstantIndexOp>(loc, -1);
+    Value zero = rewriter.create<ConstantIndexOp>(loc, 0);
+    Value one = rewriter.create<ConstantIndexOp>(loc, 1);
+    Value two = rewriter.create<ConstantIndexOp>(loc, 2);
+    auto num_elements = args[0];
+    auto target_shape_type = args[1].getType().cast<ShapedType>();
+    auto extent_type =
+        shape::getExtentTensorType(ctx, target_shape_type.getDimSize(0));
+
+    // Calculate the computed actual extent for a possible dynamic extent.
+    auto new_shape =
+        target_shape_type.getElementType().isIndex()
+            ? args[1]
+            : rewriter.create<IndexCastOp>(loc, extent_type, args[1]);
+    auto reduction = rewriter.create<shape::ReduceOp>(
+        loc, new_shape, llvm::makeArrayRef({one, zero, zero}));
+    {
+      PatternRewriter::InsertionGuard g(rewriter);
+      auto body = reduction.getBody();
+      rewriter.setInsertionPointToEnd(body);
+      Value extent = body->getArgument(1);
+      Value is_dynamic =
+          rewriter.create<CmpIOp>(loc, CmpIPredicate::eq, neg_one, extent);
+      Value is_invalid =
+          rewriter.create<CmpIOp>(loc, CmpIPredicate::slt, extent, neg_one);
+      Value total_dynamic = rewriter.create<AddIOp>(
+          loc, rewriter.create<SelectOp>(loc, is_dynamic, one, zero),
+          body->getArgument(3));
+      Value total_invalid = rewriter.create<AddIOp>(
+          loc, rewriter.create<SelectOp>(loc, is_invalid, one, zero),
+          body->getArgument(4));
+      Value extent_or_one =
+          rewriter.create<SelectOp>(loc, is_dynamic, one, extent);
+      Value total_elements =
+          rewriter.create<MulIOp>(loc, extent_or_one, body->getArgument(2));
+      rewriter.create<shape::YieldOp>(
+          loc,
+          llvm::makeArrayRef({total_elements, total_dynamic, total_invalid}));
+    }
+    Value is_divisible = rewriter.create<CmpIOp>(
+        loc, CmpIPredicate::eq, zero,
+        rewriter.create<SignedRemIOp>(loc, num_elements,
+                                      reduction->getResult(0)));
+    Value acceptably_dynamic = rewriter.create<CmpIOp>(
+        loc, CmpIPredicate::ult, two, reduction->getResult(1));
+    Value no_invalid = rewriter.create<CmpIOp>(loc, CmpIPredicate::eq, zero,
+                                               reduction->getResult(0));
+
+    Value all_passing = rewriter.create<AndOp>(
+        loc, is_divisible,
+        rewriter.create<AndOp>(loc, acceptably_dynamic, no_invalid));
+
+    rewriter.replaceOpWithNewOp<shape::CstrRequireOp>(
+        op, all_passing, "Required valid reshape shape input");
+
+    return success();
+  }
+};
+
 // Converts LHLO ops to Linalg generic.
 // Sample result for lmhlo::AddOp.
 //
@@ -2593,6 +2660,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       ReverseConverter<mhlo::ReverseOp, false>,
       SliceConverter<mhlo::SliceOp, false>,
       ComputeReshapeShapeConversion,
+      CstrReshapableConversion,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
       TransposeConverter<mhlo::TransposeOp, false>,
