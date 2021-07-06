@@ -56,7 +56,11 @@ PyObject* MlirSparsifyModel(PyObject* data);
 // Registers the given custom opdefs to TensorFlow global op registry.
 PyObject* RegisterCustomOpdefs(PyObject* list);
 
+// Returns the collected TFLite conversion errors.
 const std::vector<std::string> RetrieveCollectedErrors();
+
+// All the exported functions should be listed in
+// tensorflow/tools/def_file_filter/symbols_pybind.txt for the Windows build.
 }  // namespace toco
 
 #endif  // TENSORFLOW_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_
