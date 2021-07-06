@@ -427,6 +427,15 @@ std::string TensorDescriptor::Write(
   switch (storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
+      if (gpu_info.IsApiOpenGl()) {
+        if (data_type == DataType::FLOAT16) {
+          return absl::StrCat("buffer[", coords[0], "] = uvec2(packHalf2x16(",
+                              var_name, ".xy), packHalf2x16(", var_name,
+                              ".zw))");
+        } else {
+          return absl::StrCat("buffer[", coords[0], "] = ", var_name);
+        }
+      }
       return absl::StrCat("buffer[", coords[0], "] = ", var_name);
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_2D:
@@ -437,6 +446,9 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image2d.write($0, ushort2($1, $2))", var_name,
                                 coords[0], coords[1]);
+      } else if (gpu_info.IsApiOpenGl()) {
+        return absl::Substitute("imageStore(image2d, ivec2($0, $1), $2)",
+                                coords[0], coords[1], var_name);
       } else {
         return "";
       }
@@ -448,6 +460,9 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image3d.write($0, ushort3($1, $2, $3))",
                                 var_name, coords[0], coords[1], coords[2]);
+      } else if (gpu_info.IsApiOpenGl()) {
+        return absl::Substitute("imageStore(image3d, ivec3($0, $1, $2), $3)",
+                                coords[0], coords[1], coords[2], var_name);
       } else {
         return "";
       }
@@ -459,6 +474,10 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image2d_array.write($0, ushort2($1, $2), $3)",
                                 var_name, coords[0], coords[1], coords[2]);
+      } else if (gpu_info.IsApiOpenGl()) {
+        return absl::Substitute(
+            "imageStore(image2d_array, ivec3($0, $1, $2), $3)", coords[0],
+            coords[1], coords[2], var_name);
       } else {
         return "";
       }
