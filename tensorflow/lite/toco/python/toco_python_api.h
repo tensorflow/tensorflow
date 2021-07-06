@@ -18,6 +18,7 @@ limitations under the License.
 #include <Python.h>
 
 #include <string>
+#include <vector>
 
 namespace toco {
 
@@ -54,6 +55,8 @@ PyObject* MlirSparsifyModel(PyObject* data);
 
 // Registers the given custom opdefs to TensorFlow global op registry.
 PyObject* RegisterCustomOpdefs(PyObject* list);
+
+const std::vector<std::string> RetrieveCollectedErrors();
 }  // namespace toco
 
 #endif  // TENSORFLOW_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_
