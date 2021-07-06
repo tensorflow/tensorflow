@@ -1252,6 +1252,29 @@ func @dynamic_broadcast_in_dim(%scalar: tensor<f32>, %shape: tensor<2xi32>)
 
 // -----
 
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0) -> ()>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0) -> (d0)>
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim(
+// CHECK-SAME: [[SHAPE:%.*]]: tensor<1xindex>, [[CSTARG:%.*]]: tensor<ui32>
+func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>, %cst: tensor<ui32>) -> tensor<?xui32> {
+  %result = "mhlo.dynamic_broadcast_in_dim"(%cst, %shape) {
+     broadcast_dimensions = dense<> : tensor<0xi64>
+  } : (tensor<ui32>, tensor<1xindex>) -> tensor<?xui32>
+  return %result : tensor<?xui32>
+}
+// CHECK: [[CST:%.*]] = unrealized_conversion_cast [[CSTARG]] : tensor<ui32> to tensor<i32>
+// CHECK: [[INIT:%.*]] = linalg.init_tensor
+// CHECK: [[GENERIC:%.*]] = linalg.generic
+// CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-SAME: ins([[CST]] : tensor<i32>) outs([[INIT]] : tensor<?xi32>)
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: i32, %[[RESULT:.*]]: i32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : i32
+// CHECK: [[RES:%.*]] = unrealized_conversion_cast [[GENERIC]] : tensor<?xi32> to tensor<?xui32>
+// CHECK: return [[RES]] : tensor<?xui32>
+
+// -----
+
 func @dot_matmul(%arg0: tensor<2x3xf32>,
                  %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>,

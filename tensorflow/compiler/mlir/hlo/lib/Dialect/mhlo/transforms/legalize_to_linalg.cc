@@ -535,7 +535,7 @@ class HloDynamicBroadcastInDimConverter
     // Ideally the pattern (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`)
     // should be converted to an Tensor-dialect op similar to TF ConstantLikeOp.
 
-    mhlo::DynamicBroadcastInDimOp::Adaptor adaptor(op);
+    mhlo::DynamicBroadcastInDimOp::Adaptor adaptor(operands);
     Value operand = adaptor.operand();
     auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
     if (!operand_type || !operand_type.hasStaticShape()) return failure();
@@ -547,7 +547,8 @@ class HloDynamicBroadcastInDimConverter
     bool convert_to_index =
         shape_type.getElementType() != rewriter.getIndexType();
 
-    auto result_type = op.getType().dyn_cast<RankedTensorType>();
+    auto result_type =
+        typeConverter->convertType(op.getType()).dyn_cast<RankedTensorType>();
     if (!result_type) return failure();
 
     SmallVector<Value, 2> dyn_dims;
