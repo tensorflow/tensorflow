@@ -600,6 +600,34 @@ TEST_F(BinaryOpsTest, MulComplex128SpecialCases) {
 }
 #endif
 
+/// Test `tf.MulNoNan`.
+
+template <typename T>
+T baseline_mul_no_nan(T lhs, T rhs) {
+  return rhs == T(0) ? T(0) : lhs * rhs;
+}
+
+GENERATE_DEFAULT_TESTS(MulNoNan,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_mul_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(MulNoNan,
+                       /*test_name=*/Float, float, float, baseline_mul_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(MulNoNan,
+                       /*test_name=*/Double, double, double,
+                       baseline_mul_no_nan,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TESTS(MulNoNan,
+                       /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_mul_no_nan,
+                       test::OpsTestConfig().ATol(1e-6).RTol(1e-6))
+GENERATE_DEFAULT_TESTS(MulNoNan,
+                       /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_mul_no_nan,
+                       test::OpsTestConfig())
+
 /// Test `tf.NotEqual`.
 
 template <typename T>

@@ -260,6 +260,7 @@ tf_kernel_library(
         "gpu_op_zeta.cc",
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_floor_div.cc",
+        "gpu_op_mul_no_nan.cc",
         "gpu_op_xdivy.cc",
         "gpu_op_xlogy.cc",
         "gpu_op_xlog1py.cc",
@@ -297,6 +298,7 @@ tf_kernel_library(
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":gpu_floor_div_kernels",
+        ":gpu_mul_no_nan_kernels",
         ":gpu_xdivy_kernels",
         ":gpu_xlogy_kernels",
         ":gpu_xlog1py_kernels",
