@@ -563,12 +563,42 @@ GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Float, float, float, baseline_mul,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Double, double, double, baseline_mul,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_mul,
+                       test::OpsTestConfig().RTol(1e-6).ATol(1e-6))
+GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_mul,
+                       test::OpsTestConfig().RTol(1e-6).ATol(1e-6))
 GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Int8, int8, int8, baseline_mul,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Int16, int16, int16, baseline_mul,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Int64, int64, int64, baseline_mul,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+
+// The following tests don't work with Eigen kernels if the Eigen kernels are
+// compiled with nvcc.
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TEST_F(BinaryOpsTest, MulComplex64SpecialCases) {
+  TestEqualShapes<std::complex<float>, std::complex<float>, std::complex<float>,
+                  std::complex<float>>(
+      "Mul", /*shape=*/{67, 63},
+      test::NearZeroInfAndNanInput<std::complex<float>>(),
+      test::RepeatElements(test::NearZeroInfAndNanInput<std::complex<float>>(),
+                           64),
+      baseline_mul, test::OpsTestConfig());
+}
+
+TEST_F(BinaryOpsTest, MulComplex128SpecialCases) {
+  TestEqualShapes<std::complex<double>, std::complex<double>,
+                  std::complex<double>, std::complex<double>>(
+      "Mul", /*shape=*/{67, 63},
+      test::NearZeroInfAndNanInput<std::complex<double>>(),
+      test::RepeatElements(test::NearZeroInfAndNanInput<std::complex<double>>(),
+                           64),
+      baseline_mul, test::OpsTestConfig());
+}
+#endif
 
 /// Test `tf.NotEqual`.
 

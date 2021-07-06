@@ -924,9 +924,17 @@ gpu_kernel_library(
         "f16",
         "f32",
         "f64",
+        "c64",
+        "c128",
         "i8",
         "i16",
         "i64",
+    ],
+    # For complex MulOp kernels, we don't use unrolling, it would only cause
+    # slowdowns.
+    types_with_unrolling_disabled = [
+        "c64",
+        "c128",
     ],
     unroll_factors = "4",
 )
