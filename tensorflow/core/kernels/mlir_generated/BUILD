@@ -1538,3 +1538,20 @@ gpu_kernel_library(
     ],
     unroll_factors = "4",
 )
+
+gpu_kernel_library(
+    name = "zeros_like_kernels",
+    op = "zeros_like",
+    tile_size = "1024",
+    types = [
+        "i1",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+        # TODO(b/190374484): Enable it for complex types once it is supported.
+        # "c64",
+        # "c128",
+    ],
+    unroll_factors = "4",
+)
