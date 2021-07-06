@@ -85,7 +85,7 @@ class NcclTestBase : public ::testing::Test {
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
       : collective_type_(collective_type),
         collective_name_(collective_name),
-        nccl_communicator_(MaybeCreateNcclCommunicator(config_protot_)),
+        nccl_communicator_(MaybeCreateNcclCommunicator(config_proto_)),
         work_queue_(std::make_shared<UnboundedWorkQueue>(
             Env::Default(), "collective_executor")),
         col_exec_(nullptr),
