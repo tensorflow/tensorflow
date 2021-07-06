@@ -91,13 +91,13 @@ struct PlaceShapeCalcOnHost
 
   // add output OP into marked set if it is a I64 scalar and placment is CPU.
   void markI64ReturnedCPUScalarOps(FuncOp func,
-                                   std::map<Operation*, bool>& marked_ops);
+                                   DenseMap<Operation*, bool>& marked_ops);
   // Update marked set.
   // If a OP is in marked set, add all of its operands to marked set.
   // Add some operands of dynamic shape OPs into marked set according to lookup
   // table.
   void markShapeCalculationOps(FuncOp func,
-                               std::map<Operation*, bool>& marked_ops);
+                               DenseMap<Operation*, bool>& marked_ops);
 
   // Get placement vector of func's output.
   SmallVector<llvm::StringRef, 4> getOutputPlacements(FuncOp main_func);
@@ -127,7 +127,7 @@ struct PlaceShapeCalcOnHost
 void PlaceShapeCalcOnHost::placeShapeCalcSubgraphOnHost() {
   ModuleOp module = getOperation();
   Builder builder(&getContext());
-  std::map<Operation*, bool> shape_calc_ops;
+  llvm::DenseMap<Operation*, bool> shape_calc_ops;
 
   for (FuncOp func : module.getOps<FuncOp>()) {
     // Put the i64 Scalar output on Host(into shape_calc_ops).
@@ -409,7 +409,7 @@ SmallVector<llvm::StringRef, 4> PlaceShapeCalcOnHost::getOutputPlacements(
 }
 
 void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
-    FuncOp func, std::map<Operation*, bool>& marked_ops) {
+    FuncOp func, DenseMap<Operation*, bool>& marked_ops) {
   assert(func.getName() == "main");
   auto return_op = func.front().getTerminator();
   if (!isa<mlir::ReturnOp>(return_op)) return;
@@ -435,7 +435,7 @@ void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
 }
 
 void PlaceShapeCalcOnHost::markShapeCalculationOps(
-    FuncOp func, std::map<Operation*, bool>& marked_ops) {
+    FuncOp func, DenseMap<Operation*, bool>& marked_ops) {
   auto& block = func.getBlocks().front();
   block.walk([&](Operation* op) {
     auto dialect_name = op->getDialect()->getNamespace();
