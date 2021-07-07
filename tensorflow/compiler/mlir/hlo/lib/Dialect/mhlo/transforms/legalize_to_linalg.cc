@@ -672,8 +672,8 @@ class LhloBroadcastInDimConverter
     }
 
     SmallVector<int64_t, 2> new_shape, new_strides, broadcast_dims;
-    SmallVector<linalg::ReassociationIndices, 4> collapsed_dims_list;
-    linalg::ReassociationIndices collapsed_dims;
+    SmallVector<ReassociationIndices, 4> collapsed_dims_list;
+    ReassociationIndices collapsed_dims;
     for (const auto& item :
          enumerate(op.broadcast_dimensions().getIntValues())) {
       size_t index = item.index();
@@ -811,8 +811,7 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
              ? result_type.getShape()
              : operand_type.getShape());
     unsigned curr_src_dim = 0, curr_dst_dim = 0;
-    SmallVector<linalg::ReassociationExprs, 4> reassociation_map(
-        dst_shape.size());
+    SmallVector<ReassociationExprs, 4> reassociation_map(dst_shape.size());
 
     // First scan all dimensions in the source shapes to see whether we have a
     // perfect case where consecutive dimensions in source are collapsed. For
@@ -863,11 +862,11 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
       int64_t total_elems = std::accumulate(src_shape.begin(), src_shape.end(),
                                             1, std::multiplies<int64_t>());
       auto elem_type = operand_type.getElementType();
-      SmallVector<linalg::ReassociationExprs, 4> collapsing_map = {
+      SmallVector<ReassociationExprs, 4> collapsing_map = {
           // Use operand_type here because we need to collapse all operands
           // dimensions.
           get_identity_exprs(operand_type.getShape().size())};
-      SmallVector<linalg::ReassociationExprs, 4> expanding_map = {
+      SmallVector<ReassociationExprs, 4> expanding_map = {
           // Use result_type here because we need to expand to all result
           // dimensions.
           get_identity_exprs(result_type.getShape().size())};
@@ -1942,7 +1941,7 @@ struct DepthwiseConvOpOnTensorsConversion
       // into 4 dimensions (by collapsing the last two dimensions). This is
       // needed because linalg.depthwise_conv_2d_input_nhwc_filter_hwcf returns
       // 5 dimensions for the output.
-      SmallVector<linalg::ReassociationIndices, 4> collapsed_dim_list = {
+      SmallVector<ReassociationIndices, 4> collapsed_dim_list = {
           get_indices_vector(0, 1), get_indices_vector(1, 2),
           get_indices_vector(2, 3), get_indices_vector(3, 5)};
       rewriter.replaceOpWithNewOp<linalg::TensorCollapseShapeOp>(
@@ -1967,7 +1966,7 @@ struct DepthwiseConvOpOnTensorsConversion
       RankedTensorType filter_shape =
           RankedTensorType::get(filter_dims, op.getType().getElementType());
 
-      SmallVector<linalg::ReassociationIndices, 4> collapsed_dim_list = {
+      SmallVector<ReassociationIndices, 4> collapsed_dim_list = {
           get_indices_vector(0, 1), get_indices_vector(1, 2),
           get_indices_vector(2, 4)};
 
