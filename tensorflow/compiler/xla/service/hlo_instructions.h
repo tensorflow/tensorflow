@@ -399,6 +399,8 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
   // The dimension on which data from different participants are concatenated.
   int64 all_gather_dimension() const { return all_gather_dimension_; }
 
+  void set_all_gather_dimension(int64 dim) { all_gather_dimension_ = dim; }
+
  protected:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
