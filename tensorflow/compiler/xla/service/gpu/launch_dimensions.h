@@ -52,10 +52,16 @@ class LaunchDimensions {
 
   Dim3D thread_counts_per_block() const { return thread_counts_per_block_; }
 
+  int64_t total_nb_threads() const {
+    return thread_counts_per_block_.x *
+        thread_counts_per_block_.y *
+        thread_counts_per_block_.z;
+  }
+
   int64_t launch_bound() const {
     return block_counts_.x * thread_counts_per_block_.x * block_counts_.y *
-           thread_counts_per_block_.y * block_counts_.z *
-           thread_counts_per_block_.z;
+        thread_counts_per_block_.y * block_counts_.z *
+        thread_counts_per_block_.z;
   }
 
   std::string ToString() const {
