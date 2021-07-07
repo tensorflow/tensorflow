@@ -17,6 +17,7 @@ limitations under the License.
 // Currently it supports MHLO and some operations from the Standard dialect.
 
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
