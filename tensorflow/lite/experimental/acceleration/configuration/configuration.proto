@@ -617,8 +617,8 @@ message ModelFile {
 message BenchmarkStoragePaths {
   // Base path to the files used to to store benchmark results in. Two files
   // will be generated: one with the given path and an extra file to store
-  // the best acceleration results events at path storage_file_path +
-  // ".best.fb". Must be specific to the model.
+  // events related to best acceleration results at path storage_file_path +
+  // ".extra.fb". Must be specific to the model.
   // Note on Android, this should be the code cache directory.
   optional string storage_file_path = 1;
 
