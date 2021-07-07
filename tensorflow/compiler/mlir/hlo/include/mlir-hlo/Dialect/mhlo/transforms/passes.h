@@ -29,6 +29,9 @@ class Operation;
 template <typename T>
 class OperationPass;
 class Pass;
+namespace lmhlo {
+class FusionOp;
+}
 
 namespace mhlo {
 
@@ -127,6 +130,13 @@ std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
 
 // inline lmhlo.Fusion
 std::unique_ptr<OperationPass<FuncOp>> createLhloFusionInlinerPass();
+
+// Lowers the roots of lmhlo.fusion to parallel loops
+std::unique_ptr<OperationPass<FuncOp>>
+createLhloLegalizeRootsToParallelLoopsPass();
+
+// Input inline fusion pass for fusion codegen
+std::unique_ptr<OperationPass<lmhlo::FusionOp>> createInputInlineFusionPass();
 
 }  // namespace lmhlo
 
