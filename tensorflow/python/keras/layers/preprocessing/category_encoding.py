@@ -24,7 +24,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -131,8 +130,6 @@ class CategoryEncoding(base_layer.Layer):
       del kwargs["max_tokens"]
 
     super(CategoryEncoding, self).__init__(**kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell("CategoryEncoding").set(
-        True)
 
     # Support deprecated names for output_modes.
     if output_mode == "binary":

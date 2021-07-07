@@ -192,8 +192,6 @@ class Discretization(base_preprocessing_layer.PreprocessingLayer):
         bin_boundaries = kwargs["bins"]
       del kwargs["bins"]
     super().__init__(streaming=True, **kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell("Discretization").set(
-        True)
     if num_bins is not None and num_bins < 0:
       raise ValueError("`num_bins` must be must be greater than or equal to 0. "
                        "You passed `num_bins={}`".format(num_bins))
