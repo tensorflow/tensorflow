@@ -19,8 +19,10 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -162,7 +164,7 @@ class GlobalCalibratorRegistry {
   }
 
  private:
-  std::unordered_map<const TfLiteContext*, std::unique_ptr<Calibrator>>
+  absl::flat_hash_map<const TfLiteContext*, std::unique_ptr<Calibrator>>
       calibrator_registry_;
 };
 

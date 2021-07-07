@@ -61,13 +61,15 @@ class Thunk {
     kMemzero,
     kNcclAllGather,
     kNcclAllReduce,
+    kNcclAllReduceStart,
+    kNcclAllReduceDone,
+    kNcclAllReduceScatter,
     kNcclAllToAll,
     kOutfeed,
     kReplicaId,
     kPartitionId,
     kSequential,
     kTriangularSolve,
-    kTuple,
     kWhile,
   };
 
@@ -106,6 +108,7 @@ class Thunk {
   struct ExecuteParams {
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
+    se::Stream* async_comms_stream;
     RunId run_id;
     HloExecutionProfiler* profiler;                               // never null
     const DeviceAssignment* device_assn;                          // never null

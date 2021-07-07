@@ -83,7 +83,9 @@ class ContextTest(test.TestCase):
         return x + constant_op.constant(1.)
 
     with context.collect_graphs() as graphs:
-      f(constant_op.constant(1.))
+      with ops.device('CPU:0'):
+        x = constant_op.constant(1.)
+      f(x)
 
     self.assertLen(graphs, 1)
     graph, = graphs
@@ -134,6 +136,10 @@ class ContextTest(test.TestCase):
 
   @test_util.disable_tfrt('b/169293680: TFE_GetTotalMemoryUsage is unsupported')
   def testGetMemoryInfoCPU(self):
+    if test_util.IsMklEnabled():
+      # TODO(gzmkl) work with Google team to address design issue in allocator.h
+      self.skipTest('MklCPUAllocator does not throw exception. So skip test.')
+
     with self.assertRaisesRegex(ValueError, 'Allocator stats not available'):
       context.context().get_memory_info('CPU:0')
 

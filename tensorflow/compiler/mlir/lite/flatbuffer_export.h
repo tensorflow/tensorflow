@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
 
+#include <map>
 #include <string>
 #include <unordered_set>
 
@@ -32,9 +33,13 @@ struct FlatbufferExportOptions {
   std::unordered_set<std::string> saved_model_tags;
   // TF custom op passed by the user.
   std::unordered_set<std::string> select_user_tf_ops;
+  // Metadata key/value pairs to write to the flatbuffer.
+  std::map<std::string, std::string> metadata;
   // OpOrArgNameMapper to convert location of the op to name in flatbuffer.
   // If not set, a default mapper will be used.
   tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper = nullptr;
+  // If set to true, then allow pass through of TF ops as select Tensorflow ops.
+  bool allow_all_select_tf_ops = false;
 };
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the

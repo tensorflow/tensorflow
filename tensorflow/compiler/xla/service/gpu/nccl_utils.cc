@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 namespace xla {
 namespace gpu {
@@ -67,6 +68,10 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
       return ncclFloat32;
     case F64:
       return ncclFloat64;
+#if defined(__CUDA_BF16_TYPES_EXIST__)
+    case BF16:
+      return ncclBfloat16;
+#endif
     default:
       return tensorflow::errors::InvalidArgument(absl::StrFormat(
           "Unsupported data type: %s", PrimitiveType_Name(element_type)));
@@ -159,12 +164,12 @@ StatusOr<std::unique_ptr<NcclClique>> CreateNcclClique(
     const NcclUniqueIdCallback* callback) {
   int num_participants = key.devices().size();
   ncclUniqueId unique_id;
-  if (callback) {  // Multi-host collective.
+  bool only_local_participants = num_participants == local_participants.size();
+  if (callback && !only_local_participants) {  // Multi-host collective.
     TF_ASSIGN_OR_RETURN(std::string id_string, (*callback)(key));
     TF_RETURN_IF_ERROR(ToNcclUniqueId(id_string, &unique_id));
   } else {
-    TF_RET_CHECK((num_participants == local_participants.size()) ||
-                 IsGlobalNcclConfig())
+    TF_RET_CHECK(only_local_participants || IsGlobalNcclConfig())
         << "If non-local devices are taking part of a collective API on GPU, "
            "the nccl_unique_id_callback must be provided by the client.";
     XLA_CUDA_RETURN_IF_ERROR(ncclGetUniqueId(&unique_id));
@@ -214,8 +219,34 @@ StatusOr<std::unique_ptr<NcclClique>> CreateNcclClique(
 }
 
 struct NcclCliqueParticipantData : public ParticipantData {
-  using ParticipantData::ParticipantData;
-  std::string ToString() const override { return ""; }
+  // For running in StreamExecutor. To be deprecated after transitioning to
+  // TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            int64 device_ordinal, se::Stream* stream)
+      : ParticipantData(rendezvous_key),
+        device_ordinal(device_ordinal),
+        stream(stream) {}
+
+  // For running in TFRT.
+  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
+                            se::gpu::GpuContextHandle context)
+      : ParticipantData(rendezvous_key), stream(nullptr), context(context) {}
+
+  int64 device_ordinal;
+  se::Stream* stream;
+  se::gpu::GpuContextHandle context;
+
+  std::string ToString() const override {
+    if (stream != nullptr) {
+      return absl::StrFormat(
+          "NcclCliqueParticipantData{rendezvous_key=%s, "
+          "device_ordinal=%d, stream=%p}",
+          rendezvous_key.ToString(), device_ordinal, stream);
+    }
+    return absl::StrFormat(
+        "NcclCliqueParticipantData{rendezvous_key=%s, context=%p}",
+        rendezvous_key.ToString(), context);
+  }
 };
 
 class NcclCliqueRendezvous
@@ -315,13 +346,24 @@ StatusOr<NcclClique*> NcclCliqueMap::GetOrTryCreateIfAbsent(
     const NcclCliqueKey& key,
     const std::function<StatusOr<std::unique_ptr<NcclClique>>(
         const NcclCliqueKey&)>& value_factory) {
-  absl::MutexLock lock(&mu_);
-  auto it = map_.find(key);
-  if (it == map_.end()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<NcclClique> value, value_factory(key));
-    it = map_.emplace(key, std::move(value)).first;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = map_.find(key);
+    if (it != map_.end()) {
+      return it->second.get();
+    }
   }
-  return it->second.get();
+  // We release the lock to allow different cliques to be created in parallel
+  // (avoiding a potential deadlock in multi-host settings). This is safe
+  // provided that there aren't two threads trying to create cliques with the
+  // same key - which we know will not happen as this method is only called by
+  // the primary thread from the clique rendezvous. If this assumption is not
+  // valid, the method will return an error.
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<NcclClique> value, value_factory(key));
+  absl::MutexLock lock(&mu_);
+  auto result = map_.emplace(key, std::move(value));
+  TF_RET_CHECK(result.second) << "Clique already in cache.";
+  return result.first->second.get();
 }
 
 void NcclCliqueMap::ForEach(

@@ -690,17 +690,21 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
 // keeping the same order.
 std::vector<std::string> GetValidControlRets(
     absl::Span<Node* const> orig_control_ret_nodes, const Graph& graph) {
-  // Build map from control ret node to index.
-  absl::flat_hash_map<const Node*, int> control_ret_nodes_map;
+  // Build map from control ret node name to index.
+  // We use Node name instead of Node* here to index into the map as we populate
+  // the map with nodes in FunctionDef control_ret_nodes and later query it
+  // using the nodes in `graph`. The Node pointers would be different but the
+  // Node name is expected to remain the same between the two.
+  absl::flat_hash_map<const string, int> control_ret_nodes_map;
   for (int i = 0; i < orig_control_ret_nodes.size(); ++i) {
     const Node* n = orig_control_ret_nodes[i];
-    control_ret_nodes_map[n] = i;
+    control_ret_nodes_map[n->name()] = i;
   }
   // Check which control rets are still valid.
   std::vector<bool> is_valid_control_ret(orig_control_ret_nodes.size(), false);
   int num_valid_control_rets = 0;
   for (const Node* n : graph.nodes()) {
-    auto iter = control_ret_nodes_map.find(n);
+    auto iter = control_ret_nodes_map.find(n->name());
     if (iter != control_ret_nodes_map.end()) {
       ++num_valid_control_rets;
       is_valid_control_ret[iter->second] = true;
@@ -812,7 +816,7 @@ Status XlaCompiler::CompileFunction(
         /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
   }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    VLOG(1) << "Using MLIR bridge";
+    VLOG(1) << "Using MLIR bridge to compile the function";
     GraphDebugInfo debug_info;
 
     std::vector<std::string> valid_control_rets =
@@ -824,6 +828,7 @@ Status XlaCompiler::CompileFunction(
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
         debug_info, options_.shape_representation_fn, result));
   } else {
+    VLOG(1) << "Using the old bridge to compile the function";
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
   }
@@ -987,7 +992,8 @@ Status XlaCompiler::BuildArguments(
                 absl::get<TensorShape>(arg.shape), xla::XlaOp(),
                 /*max_array_size=*/arg.max_array_size,
                 /*tensor_array_gradients=*/arg.tensor_array_gradients,
-                /*tensor_array_multiple_writes_aggregate=*/true));
+                /*tensor_array_multiple_writes_aggregate=*/true,
+                arg.definition_stack_trace));
         arg_expression =
             arg.kind == XlaCompiler::Argument::kResource
                 ? XlaExpression::Resource(resource)
@@ -1152,8 +1158,10 @@ Status XlaCompiler::BuildArguments(
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
           if (arg.value_bound) {
-            // Propagate upper bound to arg_expression.
+            TF_RET_CHECK(arg.value_dynamism);
+            // Propagate upper bound and value dynamism to arg_expression.
             arg_expression.set_value_bound(arg.value_bound.value());
+            arg_expression.set_value_dynamism(arg.value_dynamism.value());
           }
         }
         break;

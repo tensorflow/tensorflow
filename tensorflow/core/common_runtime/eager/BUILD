@@ -4,6 +4,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_test_mkl",
+    "tf_copts",
     "tf_cuda_library",
     "tf_mkl_kernel_library",
 )
@@ -487,7 +488,8 @@ cc_library(
     hdrs = [
         "execute.h",
         "execute_node.h",
-    ],
+    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
+    copts = if_mkl(["-DINTEL_MKL"]),
     deps = [
         ":context",
         ":copy_to_device_node",
@@ -610,6 +612,7 @@ cc_library(
         "execute.h",
         "execute_node.h",
     ],
+    copts = tf_copts(),
     deps = [
         ":context",
         ":copy_to_device_node",

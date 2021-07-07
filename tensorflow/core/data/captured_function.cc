@@ -236,30 +236,6 @@ Status CreateFunctionLibraryDefinition(
   return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
 }
 
-Status IsFunctionStateful(const FunctionLibraryDefinition& library,
-                          const FunctionDef& function_def) {
-  if (!function_def.signature().is_stateful()) {
-    return Status::OK();
-  }
-
-  for (const NodeDef& node_def : function_def.node_def()) {
-    TF_RETURN_IF_ERROR(IsNodeStateful(library, node_def));
-  }
-  return Status::OK();
-}
-
-// Returns whether an op has been allowlisted as stateless. Uses a heuristic to
-// allowlist source dataset ops which have been marked stateful due to
-// b/65524810. Also looks up the `op_def->name` in the global
-// `AllowlistedStatefulOpRegistry`.
-bool IsOpAllowlisted(const OpDef* op_def) {
-  return (op_def->output_arg_size() == 1 &&
-          op_def->output_arg(0).type() == DT_VARIANT &&
-          (absl::EndsWith(op_def->name(), "Dataset") ||
-           absl::EndsWith(op_def->name(), "DatasetV2"))) ||
-         AllowlistedStatefulOpRegistry::Global()->Contains(op_def->name());
-}
-
 Status LookupFunction(const FunctionLibraryDefinition& lib_def,
                       const string& name, const FunctionDef** fdef) {
   *fdef = lib_def.Find(name);
@@ -398,49 +374,6 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
 }  // namespace
 
-Status IsNodeStateful(const FunctionLibraryDefinition& library,
-                      const NodeDef& node) {
-  const OpDef* op_def;
-
-  // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
-  // `LookUpOpDef` errors here.
-  if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
-      IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
-      op_def->name() == "Assert") {
-    return Status::OK();
-  }
-
-  if (op_def->name() == "If") {
-    const FunctionDef* then_func =
-        library.Find(node.attr().at("then_branch").func().name());
-    const FunctionDef* else_func =
-        library.Find(node.attr().at("else_branch").func().name());
-    if (then_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *then_func));
-    }
-    if (else_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *else_func));
-    }
-    return Status::OK();
-  }
-
-  if (op_def->name() == "While") {
-    const FunctionDef* cond_func =
-        library.Find(node.attr().at("cond").func().name());
-    const FunctionDef* body_func =
-        library.Find(node.attr().at("body").func().name());
-    if (cond_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *cond_func));
-    }
-    if (body_func != nullptr) {
-      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *body_func));
-    }
-    return Status::OK();
-  }
-
-  return errors::FailedPrecondition(op_def->name(), " is stateful.");
-}
-
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const IteratorBase* parent,
     const std::vector<Tensor>& input_element, int64 thread_index,
@@ -475,13 +408,13 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
-  if (ctx->split_provider() == nullptr) {
+  if (ctx->split_providers().empty()) {
     return returned_dataset->MakeIterator(ctx, parent, iterator_prefix,
                                           out_iterator);
   }
-  // Strip out the split provider so that it doesn't apply to sub-iterators.
+  // Strip out the split providers so that they don't apply to sub-iterators.
   IteratorContext::Params params(ctx);
-  params.split_provider = nullptr;
+  params.split_providers.clear();
   return returned_dataset->MakeIterator(IteratorContext(std::move(params)),
                                         parent, iterator_prefix, out_iterator);
 }
@@ -583,6 +516,8 @@ Status CapturedFunction::AddToGraph(
   return Status::OK();
 }
 
+// TODO(b/190831948): Check whether the function creates a resource and if so,
+// produce a warning.
 Status CapturedFunction::Instantiate(
     IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
                               instantiated_captured_function) {

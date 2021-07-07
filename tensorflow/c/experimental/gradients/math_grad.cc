@@ -161,45 +161,37 @@ class MatMulGradientFunction : public GradientFunction {
     std::string name_grad_B = "MatMul_Grad_B";
     if (!t_a && !t_b) {
       TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, B.get(), &matmul_A_output,
-                                name_grad_A.c_str(),
                                 /*transpose_a = */ false,
-                                /*transpose_b = */ true));
+                                /*transpose_b = */ true, name_grad_A.c_str()));
 
       TF_RETURN_IF_ERROR(MatMul(ctx, A.get(), upstream_grad, &matmul_B_output,
-                                name_grad_B.c_str(),
                                 /*transpose_a = */ true,
-                                /*transpose_b = */ false));
+                                /*transpose_b = */ false, name_grad_B.c_str()));
     } else if (!t_a && t_b) {
       TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, B.get(), &matmul_A_output,
-                                name_grad_A.c_str(),
                                 /*transpose_a = */ false,
-                                /*transpose_b = */ false));
+                                /*transpose_b = */ false, name_grad_A.c_str()));
 
       TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, A.get(), &matmul_B_output,
-                                name_grad_B.c_str(),
                                 /*transpose_a = */ true,
-                                /*transpose_b = */ false));
+                                /*transpose_b = */ false, name_grad_B.c_str()));
 
     } else if (t_a && !t_b) {
       TF_RETURN_IF_ERROR(MatMul(ctx, B.get(), upstream_grad, &matmul_A_output,
-                                name_grad_A.c_str(),
                                 /*transpose_a = */ false,
-                                /*transpose_b = */ true));
+                                /*transpose_b = */ true, name_grad_A.c_str()));
 
       TF_RETURN_IF_ERROR(MatMul(ctx, A.get(), upstream_grad, &matmul_B_output,
-                                name_grad_B.c_str(),
                                 /*transpose_a = */ false,
-                                /*transpose_b = */ false));
+                                /*transpose_b = */ false, name_grad_B.c_str()));
     } else {  // t_a && t_b
       TF_RETURN_IF_ERROR(MatMul(ctx, B.get(), upstream_grad, &matmul_A_output,
-                                name_grad_A.c_str(),
                                 /*transpose_a = */ true,
-                                /*transpose_b = */ true));
+                                /*transpose_b = */ true, name_grad_A.c_str()));
 
       TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, A.get(), &matmul_B_output,
-                                name_grad_B.c_str(),
                                 /*transpose_a = */ true,
-                                /*transpose_b = */ true));
+                                /*transpose_b = */ true, name_grad_B.c_str()));
     }
 
     // Gradient for A

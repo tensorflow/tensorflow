@@ -596,6 +596,15 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           },
           expected=[1., 6.]),
       dict(
+          op=math_ops.reduce_std,
+          kwargs={
+              'input_tensor':
+                  ragged_factory_ops.constant_value([[1, 3], [1, 2, 2, 1]]),
+              'axis':
+                  1
+          },
+          expected=[1., 0.5]),
+      dict(
           op=math_ops.reduce_any,
           kwargs={
               'input_tensor':
@@ -609,7 +618,8 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           op=math_ops.matmul,
           kwargs={
               'a': ragged_factory_ops.constant_value([[1, 2, 3], [4, 5, 6]]),
-              'b': ragged_factory_ops.constant_value([[5], [4], [3]])},
+              'b': ragged_factory_ops.constant_value([[5], [4], [3]])
+          },
           expected=[[22], [58]]),
       dict(
           op=string_ops.reduce_join,
@@ -693,22 +703,46 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               'inputs': [ragged_factory_ops.constant_value([[1, 2], [3]])]
           },
           expected='Hi [[1, 2], [3]]'),
+      dict(
+          op=nn_ops.softmax_v2,
+          kwargs={
+              'logits':
+                  ragged_factory_ops.constant_value([[1., 2., 3.], [4., 5.]]),
+          },
+          expected=ragged_factory_ops.constant_value([
+              [
+                  np.exp(1) / (np.exp(1) + np.exp(2) + np.exp(3)),
+                  np.exp(2) / (np.exp(1) + np.exp(2) + np.exp(3)),
+                  np.exp(3) / (np.exp(1) + np.exp(2) + np.exp(3)),
+              ],
+              [
+                  np.exp(4) / (np.exp(4) + np.exp(5)),
+                  np.exp(5) / (np.exp(4) + np.exp(5)),
+              ],
+          ]),
+          rtol=1e-6,
+      ),
   ])
   def testRaggedDispatch(self,
                          op,
                          expected,
                          args=(),
                          result_is_list=False,
+                         rtol=None,
                          kwargs=None):
-    if kwargs is None:
-      kwargs = {}
+    kwargs = kwargs or {}
+    if rtol is not None:
+      assert_fn = lambda x, y: self.assertAllClose(x, y, rtol=rtol)
+    else:
+      assert_fn = self.assertAllEqual
+
     result = op(*args, **kwargs)
     if result_is_list:
       self.assertLen(result, len(expected))
       for (r, e) in zip(result, expected):
-        self.assertAllEqual(r, e)
+        assert_fn(r, e)
     else:
-      self.assertAllEqual(result, expected)
+      assert_fn(result, expected)
 
   def testUnaryElementwiseOpsPreserveUniformRowLength(self):
     # Unary elementwise op
@@ -744,28 +778,29 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'math.maximum', 'math.minimum', 'math.multiply', 'math.negative',
         'math.not_equal', 'math.pow', 'math.real', 'math.reciprocal',
         'math.reduce_any', 'math.reduce_max', 'math.reduce_mean',
-        'math.reduce_variance', 'math.reduce_min', 'math.reduce_prod',
-        'math.reduce_sum', 'math.rint', 'math.round', 'math.rsqrt', 'math.sign',
-        'math.sin', 'math.sinh', 'math.sqrt', 'math.square',
-        'math.squared_difference', 'math.subtract', 'math.tan', 'math.truediv',
-        'math.unsorted_segment_max', 'math.unsorted_segment_mean',
-        'math.unsorted_segment_min', 'math.unsorted_segment_prod',
-        'math.unsorted_segment_sqrt_n', 'math.unsorted_segment_sum', 'one_hot',
-        'ones_like', 'rank', 'realdiv', 'math.reduce_all', 'size', 'squeeze',
-        'stack', 'strings.as_string', 'strings.join', 'strings.length',
-        'strings.reduce_join', 'strings.regex_full_match',
-        'strings.regex_replace', 'strings.strip', 'strings.substr',
-        'strings.to_hash_bucket_fast', 'strings.to_hash_bucket_strong',
-        'strings.to_hash_bucket', 'strings.to_number', 'strings.unicode_script',
-        'tile', 'truncatediv', 'truncatemod', 'zeros_like', 'dynamic_partition',
-        'reverse', 'nn.dropout', 'strings.format', 'print'
+        'math.reduce_variance', 'math.reduce_std', 'math.reduce_min',
+        'math.reduce_prod', 'math.reduce_sum', 'math.rint', 'math.round',
+        'math.rsqrt', 'math.sign', 'math.sigmoid', 'math.sin', 'math.sinh',
+        'math.sqrt', 'math.square', 'math.squared_difference', 'math.subtract',
+        'math.tan', 'math.truediv', 'math.unsorted_segment_max',
+        'math.unsorted_segment_mean', 'math.unsorted_segment_min',
+        'math.unsorted_segment_prod', 'math.unsorted_segment_sqrt_n',
+        'math.unsorted_segment_sum', 'one_hot', 'ones_like', 'rank', 'realdiv',
+        'math.reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
+        'strings.join', 'strings.length', 'strings.reduce_join',
+        'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',
+        'strings.substr', 'strings.to_hash_bucket_fast',
+        'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
+        'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
+        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse',
+        'nn.dropout', 'strings.format', 'print'
     ]
 
     # Ops that should be listed as supported in v1 only.
     supported_ops_v1 = ['batch_gather']
 
     # Ops that should be listed as supported in v2 only.
-    supported_ops_v2 = []
+    supported_ops_v2 = ['nn.softmax']
 
     v1_ragged_ops = ragged_dispatch.ragged_op_list(tf_version=1)
     for element in supported_ops + supported_ops_v1:

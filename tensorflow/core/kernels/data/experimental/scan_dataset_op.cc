@@ -288,7 +288,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
           state_.resize(size);
           for (int idx = 0; idx < size; idx++) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat("state[", idx, "]")), &state_[idx]));
+                ctx->flr(), full_name(strings::StrCat("state[", idx, "]")),
+                &state_[idx]));
           }
         }
         return Status::OK();

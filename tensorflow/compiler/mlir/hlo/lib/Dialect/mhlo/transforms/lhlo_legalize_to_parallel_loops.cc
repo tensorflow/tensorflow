@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -700,9 +701,11 @@ class SelectAndScatterOpConverter
 };
 
 struct LhloLegalizeToParallelLoopsPass
-    : public PassWrapper<LhloLegalizeToParallelLoopsPass, FunctionPass> {
+    : public LhloLegalizeToParallelLoopsPassBase<
+          LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<StandardOpsDialect, scf::SCFDialect>();
+    registry
+        .insert<StandardOpsDialect, memref::MemRefDialect, scf::SCFDialect>();
   }
 
   void runOnFunction() override {

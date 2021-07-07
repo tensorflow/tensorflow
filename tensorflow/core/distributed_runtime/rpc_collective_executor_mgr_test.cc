@@ -51,13 +51,13 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
     std::unique_ptr<DeviceResolverDistributed> dr(
         new DeviceResolverDistributed(device_mgr_.get()));
     std::unique_ptr<CollectiveParamResolverDistributed> cpr(
-        new CollectiveParamResolverDistributed(options.config,
-                                               device_mgr_.get(), dr.get(),
-                                               worker_cache, task_name));
+        new CollectiveParamResolverDistributed(
+            options.config, device_mgr_.get(), dr.get(),
+            /*nccl_communicator*/ nullptr, worker_cache, task_name));
     // This CME is the group leader.
     cme_.reset(new RpcCollectiveExecutorMgr(
         options.config, device_mgr_.get(), std::move(dr), std::move(cpr),
-        MaybeCreateNcclCommunicator(), worker_cache, task_name));
+        MaybeCreateNcclCommunicator(options.config), worker_cache, task_name));
   }
 
   std::unique_ptr<RpcCollectiveExecutorMgr> cme_;

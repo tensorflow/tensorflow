@@ -765,7 +765,6 @@ cc_library(
 # Note: this target is only used by python_api_dispatcher_test.
 tf_python_pybind_extension(
     name = "_pywrap_python_api_dispatcher",
-    # testonly = True,
     srcs = ["python_api_dispatcher_wrapper.cc"],
     hdrs = ["python_api_dispatcher.h"],
     module_name = "_pywrap_python_api_dispatcher",
@@ -952,6 +951,7 @@ py_library(
         ":auto_control_deps",
         ":ops",
         ":sparse_tensor",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
@@ -1387,7 +1387,10 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":constant_op",
-    ],
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:client_testlib",
+    ] + tf_additional_xla_deps_py(),
 )
 
 tf_py_test(

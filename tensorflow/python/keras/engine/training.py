@@ -74,7 +74,6 @@ from tensorflow.python.saved_model import loader_impl as sm_loader
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
@@ -340,15 +339,14 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       return
 
     if all(
-        isinstance(v, (base_layer.Layer,
-                       data_structures.TrackableDataStructure)) or
+        isinstance(v, (base_layer.Layer, variables.Variable)) or
         base_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._base_model_initialized
       except AttributeError:
         raise RuntimeError(
             'It looks like you are subclassing `Model` and you '
-            'forgot to call `super(YourClass, self).__init__()`.'
+            'forgot to call `super().__init__()`.'
             ' Always start with this line.')
 
     super(Model, self).__setattr__(name, value)
@@ -1037,9 +1035,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             `tf.data` dataset, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
             When passing an infinitely repeating dataset, you must specify the
-            `steps_per_epoch` argument. This argument is not supported with
-            array inputs. `steps_per_epoch=None` is not supported when using
-            `tf.distribute.experimental.ParameterServerStrategy`.
+            `steps_per_epoch` argument. If `steps_per_epoch=-1` the training
+            will run indefinitely with an infinitely repeating dataset.
+            This argument is not supported with array inputs.
+            When using `tf.distribute.experimental.ParameterServerStrategy`:
+              * `steps_per_epoch=None` is not supported.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation

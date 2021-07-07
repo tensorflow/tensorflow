@@ -145,6 +145,9 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
         // which will be using the indices to drop the addresses from its own
         // ScopedShapedBuffer result, if the ExecutionOutput is not committed.
         result.AddAliasedIndex(result_index);
+      } else {
+        VLOG(2) << "An input was not reused since it is not donated "
+                << alias->ToString();
       }
     }
 

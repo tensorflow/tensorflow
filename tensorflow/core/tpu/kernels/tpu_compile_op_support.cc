@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 
+#include <string>
+
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -345,7 +347,8 @@ StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
   if (use_mlir) {
     VLOG(1) << "Serializing MlirModule";
     const MlirToHloArgs& mlir_computation = absl::get<0>(computation);
-    *compilation_request.mutable_mlir_module() = mlir_computation.mlir_module;
+    *compilation_request.mutable_mlir_module() =
+        string(mlir_computation.mlir_module);
   } else {
     VLOG(1) << "Serializing FunctionDefinitionLibrary";
     const FunctionToHloArgs& function_computation = absl::get<1>(computation);

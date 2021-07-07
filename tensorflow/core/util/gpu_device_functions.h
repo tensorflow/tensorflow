@@ -563,14 +563,14 @@ __global__ void SetZero(const int count, T* __restrict__ ptr) {
 }
 
 // Helper to set all tensor entries to a specific value.
-template <typename T>
-__global__ void SetToValue(const int count, T* __restrict__ ptr, T value) {
+template <typename T, typename Tvalue = T>
+__global__ void SetToValue(const int count, T* __restrict__ ptr, Tvalue value) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
   for (int i : GpuGridRangeX(count)) {
-    ptr[i] = value;
+    ptr[i] = static_cast<T>(value);
   }
 }
 
@@ -636,7 +636,6 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
   static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "Not little endian");
 #endif
-  namespace half_impl = Eigen::half_impl;
   intptr_t intptr = reinterpret_cast<intptr_t>(ptr);
   assert(!(intptr & 0x1));  // should be 2-aligned.
   if (intptr & 0x2) {

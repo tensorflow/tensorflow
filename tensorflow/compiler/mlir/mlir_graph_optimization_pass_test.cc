@@ -152,7 +152,7 @@ class MlirGraphOptimizationPassTest : public Test {
   bool control_rets_updated_{false};
 };
 
-TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoShadow) {
+TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
   Init(Status(error::Code::ABORTED, "aborted"),
        {MlirOptimizationPassState::Enabled});
 
@@ -166,56 +166,9 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoShadow) {
   verifyGraph(original_graph_def);
 }
 
-TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsShadow) {
-  Init(Status(error::Code::ABORTED, "aborted"),
-       {MlirOptimizationPassState::ShadowEnabled,
-        MlirOptimizationPassState::ShadowEnabled});
-
-  GraphDef original_graph_def;
-  graph_->ToGraphDef(&original_graph_def);
-
-  EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            Status::OK());
-  verifyGraph(original_graph_def);
-}
-
-TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailShadow) {
-  Init(Status::OK(), {MlirOptimizationPassState::Disabled,
-                      MlirOptimizationPassState::ShadowEnabled});
-
-  GraphDef original_graph_def;
-  graph_->ToGraphDef(&original_graph_def);
-
-  EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            Status::OK());
-  verifyGraph(original_graph_def);
-}
-
-TEST_F(MlirGraphOptimizationPassTest,
-       OptimizationPassFailsMixShadowAndEnabled) {
-  Init(Status(error::Code::ABORTED, "aborted"),
-       {MlirOptimizationPassState::Disabled, MlirOptimizationPassState::Enabled,
-        MlirOptimizationPassState::ShadowEnabled});
-
-  GraphDef original_graph_def;
-  graph_->ToGraphDef(&original_graph_def);
-
-  EXPECT_EQ(function_optimization_pass_.Run(
-                device_set_, config_proto_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            Status(error::Code::ABORTED, "aborted"));
-  verifyGraph(original_graph_def);
-}
-
-TEST_F(MlirGraphOptimizationPassTest,
-       OptimizationPassFailsShadowDisabledFallback) {
+TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
   Init(Status(error::Code::ABORTED, "aborted"),
        {MlirOptimizationPassState::Disabled,
-        MlirOptimizationPassState::ShadowEnabled,
         MlirOptimizationPassState::FallbackEnabled});
 
   GraphDef original_graph_def;
@@ -230,10 +183,8 @@ TEST_F(MlirGraphOptimizationPassTest,
   verifyGraph(original_graph_def);
 }
 
-TEST_F(MlirGraphOptimizationPassTest,
-       OptimizationPassDoesNotFailShadowFallback) {
-  Init(Status::OK(), {MlirOptimizationPassState::ShadowEnabled,
-                      MlirOptimizationPassState::FallbackEnabled});
+TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
+  Init(Status::OK(), {MlirOptimizationPassState::FallbackEnabled});
 
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);

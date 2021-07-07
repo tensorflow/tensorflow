@@ -209,8 +209,15 @@ TFE_OutputTensorHandles InputTFE_OutputTensorHandles(
 #else
   long sz = PyLong_AsLong(num_outputs.ptr());  // NOLINT
 #endif
+  // PyLong_AsLong might throw an error if an overflow occurs.
+  if (PyErr_Occurred()) {
+    PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
+                                          "Number of outputs is too big: ", sz)
+                                          .c_str());
+    throw py::error_already_set();
+  }
   // We can't handle more than int32 sizes for number of outputs.
-  if (static_cast<long>(static_cast<int32>(sz)) != sz) {  // NOLINT
+  if (static_cast<long>(static_cast<int32_t>(sz)) != sz) {  // NOLINT
     PyErr_SetString(PyExc_ValueError, tensorflow::strings::StrCat(
                                           "Number of outputs is too big: ", sz)
                                           .c_str());
@@ -814,6 +821,42 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });
+  m.def(
+      "TFE_SetConfigKeyValue",
+      [](py::handle& ctx, const char* config_key, const char* config_value) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_SetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                              config_value, status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_GetConfigKeyValue",
+      [](py::handle& ctx, const char* config_key, TF_Buffer& config_value) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_GetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                              &config_value, status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
+  m.def(
+      "TFE_DeleteConfigKeyValue",
+      [](py::handle& ctx, const char* config_key) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        Py_BEGIN_ALLOW_THREADS;
+        TFE_DeleteConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 status.get());
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+      },
+      py::return_value_policy::reference);
   m.def("TFE_ContextSetSoftDevicePlacement", [](py::handle& ctx, bool enable) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

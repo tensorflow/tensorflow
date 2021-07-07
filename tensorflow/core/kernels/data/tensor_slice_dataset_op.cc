@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/util/batch_util.h"
 
@@ -56,10 +60,10 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
-  Status MakeSplitProvider(
-      std::unique_ptr<SplitProvider>* split_provider) const override {
-    *split_provider =
-        absl::make_unique<IndexSplitProvider>(tensors_[0].dim_size(0));
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    split_providers->push_back(
+        absl::make_unique<IndexSplitProvider>(tensors_[0].dim_size(0)));
     return Status::OK();
   }
 
@@ -112,10 +116,12 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      split_provider_ = ctx->split_provider();
-      if (split_provider_ == nullptr) {
+      if (ctx->split_providers().empty()) {
         split_provider_ = std::make_shared<IndexSplitProvider>(
             dataset()->tensors_[0].dim_size(0));
+      } else {
+        TF_ASSIGN_OR_RETURN(split_provider_,
+                            GetSingleSplitProvider(ctx, dataset()));
       }
       return Status::OK();
     }
@@ -132,11 +138,12 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       out_tensors->clear();
       out_tensors->reserve(dataset()->tensors_.size());
       for (size_t i = 0; i < dataset()->tensors_.size(); ++i) {
-        const Tensor& t = dataset()->tensors_[i];
-        out_tensors->emplace_back(ctx->allocator({}), t.dtype(),
-                                  dataset()->shapes_[i]);
-        TF_RETURN_IF_ERROR(
-            batch_util::CopySliceToElement(t, &out_tensors->back(), index));
+        Tensor slice = dataset()->tensors_[i].SubSlice(index);
+        if (slice.IsAligned()) {
+          out_tensors->push_back(std::move(slice));
+        } else {
+          out_tensors->push_back(tensor::DeepCopy(std::move(slice)));
+        }
       }
       *end_of_sequence = false;
       return Status::OK();

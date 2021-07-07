@@ -18,9 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -204,7 +206,8 @@ absl::Status InferenceContext::InitFromGraph(
       out_refs[i] = outputs[i]->tensor.ref;
     }
     flatbuffers::FlatBufferBuilder builder;
-    auto encoded_fb = Encode(*this, in_refs, out_refs, &builder);
+    auto encoded_fb = Encode(*env->GetDevicePtr(), *this, *env->program_cache(),
+                             in_refs, out_refs, &builder);
     data::FinishInferenceContextBuffer(builder, encoded_fb);
     serialized_model->resize(builder.GetSize());
     std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
@@ -225,7 +228,8 @@ absl::Status InferenceContext::RestoreDeserialized(
     return absl::DataLossError("Deserialization failed.");
   }
   auto decoded_fb = data::GetInferenceContext(serialized_model.data());
-  RETURN_IF_ERROR(Decode(decoded_fb, this));
+  RETURN_IF_ERROR(Decode(env->context(), *env->GetDevicePtr(),
+                         env->program_cache(), decoded_fb, this));
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
@@ -237,7 +241,7 @@ absl::Status InferenceContext::RestoreDeserialized(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
   BindMemoryToOperations();
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.cl_operation.CompileDeserialized(creation_context));
+    RETURN_IF_ERROR(node.cl_operation.RestoreDeserialized(creation_context));
   }
   RETURN_IF_ERROR(UpdateParams());
   InitRecordableQueue(env);

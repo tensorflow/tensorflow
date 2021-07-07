@@ -192,6 +192,11 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return GetMetadataFromDevice(ctx->device(), metadata);
 }
 
+/* static */ mutex XlaDevice::global_mu_(LINKER_INITIALIZED);
+/* static */ std::vector<std::shared_ptr<se::Stream>>*
+    XlaDevice::global_compute_streams_ =
+        new std::vector<std::shared_ptr<se::Stream>>;
+
 XlaDevice::XlaDevice(const SessionOptions& session_options,
                      const Options& options)
     : LocalDevice(session_options,
@@ -211,9 +216,13 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
           session_options.config.intra_op_parallelism_threads()),
       use_multiple_streams_(options.use_multiple_streams),
       shape_representation_fn_(options.shape_representation_fn),
-      allowed_devices_(options.allowed_devices) {
+      allowed_devices_(options.allowed_devices),
+      use_global_compute_stream_(options.use_global_compute_stream) {
   VLOG(1) << "Created XLA device " << options.compilation_device_name << " "
-          << this;
+          << options.device_ordinal << " " << this;
+  VLOG(1) << "XlaDevice options: use_multiple_streams: "
+          << options.use_multiple_streams << " use_global_compute_stream: "
+          << options.use_global_compute_stream;
   thread_pool_.reset(new thread::ThreadPool(session_options.env, "xla_device",
                                             /*num_threads=*/1));
 
@@ -296,8 +305,29 @@ XlaDevice::GetDeviceContextLocked() {
 
   // Ensure all our streams are valid, borrowing new streams if necessary.
   bool need_new_device_context = !device_context_;
-  TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
-                                          &need_new_device_context));
+  if (use_global_compute_stream_) {
+    mutex_lock lock(global_mu_);
+    if (global_compute_streams_->size() <= device_ordinal_) {
+      global_compute_streams_->resize(device_ordinal_ + 1, nullptr);
+    }
+
+    auto& global_stream = global_compute_streams_->at(device_ordinal_);
+    if (global_stream != nullptr && global_stream->ok()) {
+      stream_ = global_stream;
+    } else {
+      // Directly create the stream here instead of borrowing from the stream
+      // pool to avoid potential lifetime issues.
+      stream_ = absl::make_unique<se::Stream>(
+          backend->stream_executors()[device_ordinal_]);
+      stream_->Init();
+      TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
+                                              &need_new_device_context));
+      (*global_compute_streams_)[device_ordinal_] = stream_;
+    }
+  } else {
+    TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
+                                            &need_new_device_context));
+  }
 
   std::shared_ptr<se::Stream> host_to_device_stream;
   std::shared_ptr<se::Stream> device_to_host_stream;

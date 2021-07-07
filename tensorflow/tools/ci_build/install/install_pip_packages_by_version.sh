@@ -53,6 +53,7 @@ PACKAGES=(
   "astor"
   "gast"
   "termcolor"
+  "keras-nightly"
   "keras_preprocessing"
   "h5py"
   "tf-estimator-nightly"
@@ -62,6 +63,7 @@ PACKAGES=(
   "dill"
   "tblib"
   "pybind11"
+  "libclang"
 )
 
 # tf.mock require the following for python2:

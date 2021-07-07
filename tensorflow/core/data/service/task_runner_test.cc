@@ -13,6 +13,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -26,7 +27,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -137,8 +140,8 @@ TEST(FirstComeFirstServedTaskRunnerTest, Cancel) {
 
   for (int i = 0; i < elements.size(); ++i) {
     GetElementResult result;
-    EXPECT_TRUE(
-        errors::IsCancelled(runner.GetNext(GetElementRequest(), result)));
+    EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
+                testing::StatusIs(error::CANCELLED));
   }
 }
 
@@ -159,8 +162,8 @@ TEST(FirstComeFirstServedTaskRunnerTest, GetNextAndCancel) {
 
   for (; i < elements.size(); ++i) {
     GetElementResult result;
-    EXPECT_TRUE(
-        errors::IsCancelled(runner.GetNext(GetElementRequest(), result)));
+    EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
+                testing::StatusIs(error::CANCELLED));
   }
 }
 
@@ -168,9 +171,12 @@ TEST(FirstComeFirstServedTaskRunnerTest, Error) {
   FirstComeFirstServedTaskRunner runner(
       absl::make_unique<TestErrorIterator>(errors::Aborted("Aborted")));
   GetElementResult result;
-  EXPECT_TRUE(errors::IsAborted(runner.GetNext(GetElementRequest(), result)));
-  EXPECT_TRUE(errors::IsAborted(runner.GetNext(GetElementRequest(), result)));
-  EXPECT_TRUE(errors::IsAborted(runner.GetNext(GetElementRequest(), result)));
+  EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
+              testing::StatusIs(error::ABORTED));
+  EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
+              testing::StatusIs(error::ABORTED));
+  EXPECT_THAT(runner.GetNext(GetElementRequest(), result),
+              testing::StatusIs(error::ABORTED));
 }
 
 class ConsumeParallelTest

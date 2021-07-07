@@ -15,29 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/data_service.h"
 
-#include "grpcpp/create_channel.h"
-#include "grpcpp/security/credentials.h"
-#include "absl/strings/str_split.h"
-#include "tensorflow/core/data/compression_utils.h"
-#include "tensorflow/core/data/dataset_test_base.h"
-#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
+#include <vector>
+
 #include "tensorflow/core/data/service/dispatcher.pb.h"
-#include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/server_lib.h"
+#include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/test_cluster.h"
-#include "tensorflow/core/data/service/test_util.h"
-#include "tensorflow/core/data/service/worker.grpc.pb.h"
-#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
-
 namespace {
-constexpr const char kProtocol[] = "grpc+local";
-}
+
+constexpr const char kProtocol[] = "grpc";
 
 TEST(DataService, ParseParallelEpochsProcessingMode) {
   ProcessingMode mode;
@@ -53,8 +48,8 @@ TEST(DataService, ParseDistributedEpochProcessingMode) {
 
 TEST(DataService, ParseInvalidProcessingMode) {
   ProcessingMode mode;
-  Status s = ParseProcessingMode("invalid", mode);
-  EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
+  EXPECT_THAT(ParseProcessingMode("invalid", mode),
+              testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
 TEST(DataService, ProcessingModeToString) {
@@ -62,6 +57,34 @@ TEST(DataService, ProcessingModeToString) {
             ProcessingModeToString(ProcessingMode::PARALLEL_EPOCHS));
   EXPECT_EQ("distributed_epoch",
             ProcessingModeToString(ProcessingMode::DISTRIBUTED_EPOCH));
+}
+
+TEST(DataService, ParseTargetWorkers) {
+  EXPECT_THAT(ParseTargetWorkers("AUTO"),
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
+  EXPECT_THAT(ParseTargetWorkers("Auto"),
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
+  EXPECT_THAT(ParseTargetWorkers("ANY"),
+              testing::IsOkAndHolds(TargetWorkers::ANY));
+  EXPECT_THAT(ParseTargetWorkers("any"),
+              testing::IsOkAndHolds(TargetWorkers::ANY));
+  EXPECT_THAT(ParseTargetWorkers("LOCAL"),
+              testing::IsOkAndHolds(TargetWorkers::LOCAL));
+  EXPECT_THAT(ParseTargetWorkers("local"),
+              testing::IsOkAndHolds(TargetWorkers::LOCAL));
+  EXPECT_THAT(ParseTargetWorkers(""),
+              testing::IsOkAndHolds(TargetWorkers::AUTO));
+}
+
+TEST(DataService, ParseInvalidTargetWorkers) {
+  EXPECT_THAT(ParseTargetWorkers("UNSET"),
+              testing::StatusIs(error::INVALID_ARGUMENT));
+}
+
+TEST(DataService, TargetWorkersToString) {
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::AUTO), "AUTO");
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::ANY), "ANY");
+  EXPECT_EQ(TargetWorkersToString(TargetWorkers::LOCAL), "LOCAL");
 }
 
 TEST(DataService, GetWorkers) {
@@ -74,5 +97,6 @@ TEST(DataService, GetWorkers) {
   EXPECT_EQ(1, workers.size());
 }
 
+}  // namespace
 }  // namespace data
 }  // namespace tensorflow

@@ -1145,8 +1145,8 @@ about broadcasting
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>, [{2-D or higher with shape `[..., r_x, c_x]`.}]>:$x,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8]>, [{2-D or higher with shape `[..., r_y, c_y]`.}]>:$y,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint8]>, [{2-D or higher with shape `[..., r_x, c_x]`.}]>:$x,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint8]>, [{2-D or higher with shape `[..., r_y, c_y]`.}]>:$y,
 
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
@@ -3753,12 +3753,12 @@ def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape, 
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$x,
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$y
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$x,
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64]>:$z
+    TensorOf<[TF_Complex128, TF_Complex64, TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4434,7 +4434,7 @@ dimension of size 1 added.}]>:$output
   ];
 }
 
-def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes `exp(x) - 1` element-wise.";
 
   let description = [{
@@ -4462,6 +4462,14 @@ i.e. `exp(x) - 1` or `e^(x) - 1`, where `x` is the input tensor.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
+
 }
 
 def TF_ExtractImagePatchesOp : TF_Op<"ExtractImagePatches", [NoSideEffect]> {
@@ -6003,6 +6011,23 @@ A placeholder op for a value that will be fed into the computation.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_InitializeTableOp : TF_Op<"InitializeTable", []> {
+  let summary = [{
+Table initializer that takes two tensors for keys and values respectively.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Handle to a table which will be initialized.}], [TF_LookupTableWrite]>:$table_handle,
+    Arg<TF_Tensor, [{Keys of type Tkey.}]>:$keys,
+    Arg<TF_Tensor, [{Values of type Tval.}]>:$values
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tkey = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tval = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_InitializeTableFromDatasetOp : TF_Op<"InitializeTableFromDataset", []> {
   let summary = "";
 
@@ -6031,7 +6056,7 @@ Where to extract the key and value from a line is specified by `key_index` and
   }];
 
   let arguments = (ins
-    Arg<TF_StrTensor, [{Handle to a table which will be initialized.}]>:$table_handle,
+    Arg<TF_StrTensor, [{Handle to a table which will be initialized.}], [TF_LookupTableWrite]>:$table_handle,
     Arg<TF_StrTensor, [{Filename of a vocabulary text file.}]>:$filename,
 
     Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
@@ -9735,6 +9760,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_OneHotOp : TF_Op<"OneHot", [NoSideEffect]> {
@@ -10460,6 +10487,30 @@ gradients in some corner cases.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_PrintOp : TF_Op<"Print", []> {
+  let summary = "Prints a list of tensors.";
+
+  let description = [{
+Passes `input` through to `output` and prints `data` when evaluating.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor passed to `output`}]>:$input,
+    Arg<Variadic<TF_Tensor>, [{A list of tensors to print out when op is evaluated.}]>:$data,
+
+    DefaultValuedAttr<StrAttr, "">:$message,
+    DefaultValuedAttr<I64Attr, "-1">:$first_n,
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The unmodified `input` tensor}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr U = TF_DerivedOperandTypeListAttr<1>;
 }
 
 def TF_PrintV2Op : TF_Op<"PrintV2", []> {
@@ -15431,18 +15482,72 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>:$data,
+    TF_FloatTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>, [{Has same shape as data, except for dimension 0 which
+    Res<TF_FloatTensor, [{Has same shape as data, except for dimension 0 which
 has size `k`, the number of segments.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_SparseSegmentMeanGradOp : TF_Op<"SparseSegmentMeanGrad", [NoSideEffect]> {
+  let summary = "Computes gradients for SparseSegmentMean.";
+
+  let description = [{
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+  }];
+
+  let arguments = (ins
+    Arg<TF_FloatTensor, [{gradient propagated to the SparseSegmentMean op.}]>:$grad,
+    Arg<TF_I32OrI64Tensor, [{indices passed to the corresponding SparseSegmentMean op.}]>:$indices,
+    Arg<TF_I32OrI64Tensor, [{segment_ids passed to the corresponding SparseSegmentMean op.}]>:$segment_ids,
+    Arg<TF_Int32Tensor, [{dimension 0 of "data" passed to SparseSegmentMean op.}]>:$output_dim0
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_SparseSegmentMeanWithNumSegmentsOp : TF_Op<"SparseSegmentMeanWithNumSegments", [NoSideEffect]> {
+  let summary = "Computes the mean along sparse segments of a tensor.";
+
+  let description = [{
+Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
+missing, the `output` tensor at that position will be zeroed.
+
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+  }];
+
+  let arguments = (ins
+    TF_FloatTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{Should equal the number of distinct segment IDs.}]>:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_FloatTensor, [{Has same shape as data, except for dimension 0 which has size
+`num_segments`.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<3>;
   TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
 }
 
@@ -15458,18 +15563,76 @@ See `tf.sparse.segment_sum` for usage examples.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>:$data,
+    TF_FloatTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Float32, TF_Float64]>, [{Has same shape as data, except for dimension 0 which
+    Res<TF_FloatTensor, [{Has same shape as data, except for dimension 0 which
 has size `k`, the number of segments.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_SparseSegmentSqrtNGradOp : TF_Op<"SparseSegmentSqrtNGrad", [NoSideEffect]> {
+  let summary = "Computes gradients for SparseSegmentSqrtN.";
+
+  let description = [{
+Returns tensor "output" with same shape as grad, except for dimension 0 whose
+value is output_dim0.
+  }];
+
+  let arguments = (ins
+    Arg<TF_FloatTensor, [{gradient propagated to the SparseSegmentSqrtN op.}]>:$grad,
+    Arg<TF_I32OrI64Tensor, [{indices passed to the corresponding SparseSegmentSqrtN op.}]>:$indices,
+    Arg<TF_I32OrI64Tensor, [{segment_ids passed to the corresponding SparseSegmentSqrtN op.}]>:$segment_ids,
+    Arg<TF_Int32Tensor, [{dimension 0 of "data" passed to SparseSegmentSqrtN op.}]>:$output_dim0
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_SparseSegmentSqrtNWithNumSegmentsOp : TF_Op<"SparseSegmentSqrtNWithNumSegments", [NoSideEffect]> {
+  let summary = [{
+Computes the sum along sparse segments of a tensor divided by the sqrt of N.
+  }];
+
+  let description = [{
+N is the size of the segment being reduced.
+
+Like `SparseSegmentSqrtN`, but allows missing ids in `segment_ids`. If an id is
+missing, the `output` tensor at that position will be zeroed.
+
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+  }];
+
+  let arguments = (ins
+    TF_FloatTensor:$data,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{Should equal the number of distinct segment IDs.}]>:$num_segments
+  );
+
+  let results = (outs
+    Res<TF_FloatTensor, [{Has same shape as data, except for dimension 0 which
+has size `k`, the number of segments.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<3>;
   TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
 }
 
@@ -17826,6 +17989,11 @@ On GPU, if an out of bound index is found, the index is ignored.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [
+    OpBuilder<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
+    [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]>
+  ];
 }
 
 def TF_TensorScatterMaxOp : TF_Op<"TensorScatterMax", [NoSideEffect]> {
@@ -18110,6 +18278,23 @@ array([[1, 2, 3, 1, 2, 3],
   let verifier = [{ return Verify(*this); }];
 
   let hasFolder = 1;
+}
+
+def TF_TimestampOp : TF_Op<"Timestamp", []> {
+  let summary = "Provides the time since epoch in seconds.";
+
+  let description = [{
+Returns the timestamp as a `float64` for seconds since the Unix epoch.
+
+Note: the timestamp is computed when the op is executed, not when it is added
+to the graph.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_Float64Tensor:$ts
+  );
 }
 
 def TF_TopKUniqueOp : TF_Op<"TopKUnique", [NoSideEffect]> {
@@ -19586,6 +19771,20 @@ def TF__ArrayToListOp : TF_Op<"_ArrayToList", [NoSideEffect]> {
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeListAttr out_types = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF__EagerConstOp : TF_Op<"_EagerConst", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF__FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {

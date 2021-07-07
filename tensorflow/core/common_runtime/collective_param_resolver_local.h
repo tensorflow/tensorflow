@@ -43,6 +43,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   CollectiveParamResolverLocal(const ConfigProto& config,
                                const DeviceMgr* dev_mgr,
                                DeviceResolverInterface* dev_resolver,
+                               NcclCommunicatorInterface* nccl_communicator,
                                const string& task_name);
 
   ~CollectiveParamResolverLocal() override {}
@@ -188,7 +189,9 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   const bool nccl_;
   const DeviceMgr* dev_mgr_;
   DeviceResolverInterface* dev_resolver_;  // Not owned.
+  NcclCommunicatorInterface* nccl_communicator_;  // Not owned.
   string task_name_;
+  string gpu_ring_order_;
   mutex group_mu_;
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_
       TF_GUARDED_BY(group_mu_);

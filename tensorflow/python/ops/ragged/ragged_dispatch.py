@@ -331,6 +331,7 @@ _UNARY_ELEMENTWISE_OPS = [
     math_ops.rsqrt,
     math_ops.saturate_cast,
     math_ops.sign,
+    math_ops.sigmoid,
     math_ops.sin,
     math_ops.sinh,
     math_ops.sqrt,
@@ -407,6 +408,7 @@ _V2_OPS_THAT_ARE_DELEGATED_TO_FROM_V1_OPS = [
     math_ops.reduce_max,
     math_ops.reduce_mean,
     math_ops.reduce_variance,
+    math_ops.reduce_std,
     math_ops.reduce_any,
     math_ops.reduce_all,
     string_ops.string_to_number,
@@ -525,10 +527,12 @@ _RAGGED_DISPATCH_OPS = [
     (math_ops.reduce_mean, ragged_math_ops.reduce_mean, ['input_tensor']),
     (math_ops.reduce_variance, ragged_math_ops.reduce_variance,
      ['input_tensor']),
+    (math_ops.reduce_std, ragged_math_ops.reduce_std, ['input_tensor']),
     (math_ops.reduce_any, ragged_math_ops.reduce_any, ['input_tensor']),
     (math_ops.reduce_all, ragged_math_ops.reduce_all, ['input_tensor']),
     (nn_ops.dropout, _ragged_nn_dropout_v1, ['x']),
     (nn_ops.dropout_v2, _ragged_nn_dropout_v2, ['x']),
+    (nn_ops.softmax_v2, ragged_math_ops.softmax, ['logits']),
 ]
 
 

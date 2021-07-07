@@ -24,6 +24,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.SupportedFeatures;
 import org.tensorflow.lite.TestInit;
 import org.tensorflow.lite.TestUtils;
 
@@ -65,6 +66,10 @@ public final class NnApiDelegateTest {
 
   @Test
   public void testInterpreterWithNnApiAndXNNPack() throws Exception {
+    if (!SupportedFeatures.supportsXnnpack()) {
+      System.err.println("Not testing NNAPI with XNNPACK, since XNNPACK isn't supported.");
+      return;
+    }
     Interpreter.Options options = new Interpreter.Options();
     options.setUseXNNPACK(true);
 

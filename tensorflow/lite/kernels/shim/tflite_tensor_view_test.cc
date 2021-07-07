@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/shim/tflite_tensor_view.h"
 
 #include <cstdint>
+#include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

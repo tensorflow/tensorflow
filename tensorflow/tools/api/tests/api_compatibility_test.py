@@ -102,7 +102,9 @@ _TEST_README_FILE = resource_loader.get_path_to_datafile('README.txt')
 _UPDATE_WARNING_FILE = resource_loader.get_path_to_datafile(
     'API_UPDATE_WARNING.txt')
 
-_NON_CORE_PACKAGES = ['estimator']
+_NON_CORE_PACKAGES = ['estimator', 'keras']
+_V1_APIS_FROM_KERAS = ['layers', 'nn.rnn_cell']
+_V2_APIS_FROM_KERAS = ['initializers', 'losses', 'metrics', 'optimizers']
 
 # TODO(annarev): remove this once we test with newer version of
 # estimator that actually has compat v1 version.
@@ -172,8 +174,20 @@ def _VerifyNoSubclassOfMessageVisitor(path, parent, unused_children):
 
 def _FilterNonCoreGoldenFiles(golden_file_list):
   """Filter out non-core API pbtxt files."""
+  return _FilterGoldenFilesByPrefix(golden_file_list, _NON_CORE_PACKAGES)
+
+
+def _FilterV1KerasRelatedGoldenFiles(golden_file_list):
+  return _FilterGoldenFilesByPrefix(golden_file_list, _V1_APIS_FROM_KERAS)
+
+
+def _FilterV2KerasRelatedGoldenFiles(golden_file_list):
+  return _FilterGoldenFilesByPrefix(golden_file_list, _V2_APIS_FROM_KERAS)
+
+
+def _FilterGoldenFilesByPrefix(golden_file_list, package_prefixes):
   filtered_file_list = []
-  filtered_package_prefixes = ['tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
+  filtered_package_prefixes = ['tensorflow.%s.' % p for p in package_prefixes]
   for f in golden_file_list:
     if any(
         six.ensure_str(f).rsplit('/')[-1].startswith(pre)
@@ -323,6 +337,7 @@ class ApiCompatibilityTest(test.TestCase):
   def testNoSubclassOfMessage(self):
     visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
     visitor.do_not_descend_map['tf'].append('contrib')
+    # visitor.do_not_descend_map['tf'].append('keras')
     # Skip compat.v1 and compat.v2 since they are validated in separate tests.
     visitor.private_map['tf.compat'] = ['v1', 'v2']
     traverse.traverse(tf, visitor)
@@ -369,8 +384,14 @@ class ApiCompatibilityTest(test.TestCase):
         'float32', 'float64', 'inexact', 'int_', 'int16', 'int32', 'int64',
         'int8', 'object_', 'string_', 'uint16', 'uint32', 'uint64', 'uint8',
         'unicode_', 'iinfo']
+    public_api_visitor.do_not_descend_map['tf'].append('keras')
     if FLAGS.only_test_core_api:
       public_api_visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
+      if api_version == 2:
+        public_api_visitor.do_not_descend_map['tf'].extend(_V2_APIS_FROM_KERAS)
+      else:
+        public_api_visitor.do_not_descend_map['tf'].extend(['layers'])
+        public_api_visitor.do_not_descend_map['tf.nn'] = ['rnn_cell']
     if additional_private_map:
       public_api_visitor.private_map.update(additional_private_map)
 
@@ -381,6 +402,10 @@ class ApiCompatibilityTest(test.TestCase):
     golden_file_list = file_io.get_matching_files(golden_file_patterns)
     if FLAGS.only_test_core_api:
       golden_file_list = _FilterNonCoreGoldenFiles(golden_file_list)
+      if api_version == 2:
+        golden_file_list = _FilterV2KerasRelatedGoldenFiles(golden_file_list)
+      else:
+        golden_file_list = _FilterV1KerasRelatedGoldenFiles(golden_file_list)
 
     def _ReadFileToProto(filename):
       """Read a filename, create a protobuf from its contents."""

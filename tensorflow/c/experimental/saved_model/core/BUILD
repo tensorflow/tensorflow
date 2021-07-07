@@ -50,6 +50,7 @@ cc_library(
     deps = [
         ":concrete_function",
         ":signature_def_function",
+        "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
     ],

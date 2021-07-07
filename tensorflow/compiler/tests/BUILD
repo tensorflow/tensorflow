@@ -337,7 +337,7 @@ tf_xla_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -403,7 +403,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_inverse_op_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -426,7 +426,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["matrix_solve_op_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -762,6 +762,26 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "ftrl_ops_test",
+    size = "medium",
+    srcs = ["ftrl_ops_test.py"],
+    enable_mlir_bridge = False,  # TODO(kramm): Set to True once b/191171827 is fixed.
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
@@ -783,10 +803,12 @@ tf_xla_py_test(
     size = "small",
     timeout = "long",
     srcs = ["image_ops_test.py"],
+    disabled_backends = [
+        "gpu",  # Fails on CUDA 11 b/190787813
+    ],
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_gpu",  # TODO(b/177961887): Fails after NCCL update
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -1081,13 +1103,12 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",  # TODO(b/141057424): flaky on TPU
     ],
     deps = [
         ":xla_test",
@@ -1577,7 +1598,7 @@ tf_xla_py_test(
     srcs = ["sort_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 2,
+    shard_count = 10,
     # Times out in fastbuild mode.
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1653,6 +1674,7 @@ cuda_py_test(
     srcs = ["jit_test.py"],
     #shard_count = 5,
     tags = [
+        "no_cuda_asan",  # Times out.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     xla_enable_strict_auto_jit = False,
@@ -1753,7 +1775,6 @@ tf_cuda_cc_test(
     name = "unary_ops_composition_test",
     srcs = ["unary_ops_composition_test.cc"],
     tags = [
-        "no_cuda_asan",  # TODO(b/171317888): re-enable.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ] + tf_cuda_tests_tags(),
     deps = [
@@ -1935,11 +1956,6 @@ tf_xla_py_test(
     name = "tridiagonal_solve_ops_test",
     size = "medium",
     srcs = ["tridiagonal_solve_ops_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-        "cpu",
-        "gpu",
-    ],
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [

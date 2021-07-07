@@ -258,7 +258,7 @@ class CSRSparseMatrix {
     DCHECK_LT(batch, batch_size());
     const int offset = (*batch_pointers_vec_)(batch);
     const int nnz_in_batch = nnz(batch);
-    return typename TTypes<T>::UnalignedVec(&(values().vec<T>()(offset)),
+    return typename TTypes<T>::UnalignedVec(values().vec<T>().data() + offset,
                                             nnz_in_batch);
   }
 
@@ -268,8 +268,8 @@ class CSRSparseMatrix {
     DCHECK_LT(batch, batch_size());
     const int offset = (*batch_pointers_vec_)(batch);
     const int nnz_in_batch = nnz(batch);
-    return typename TTypes<T>::UnalignedConstVec(&(values().vec<T>()(offset)),
-                                                 nnz_in_batch);
+    return typename TTypes<T>::UnalignedConstVec(
+        values().vec<T>().data() + offset, nnz_in_batch);
   }
 
   inline Tensor& row_pointers() {

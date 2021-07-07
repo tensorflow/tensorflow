@@ -52,9 +52,6 @@ class MetricsWrapper {
   const std::unique_ptr<MetricsExporter> exporter_;
 };
 
-// Returns a vector of serialized ConverterErrorData from ErrorCollector.
-std::vector<std::string> GetCollectedErrors();
-
 }  // namespace metrics_wrapper
 }  // namespace tflite
 

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
@@ -52,6 +54,15 @@ def initialize_tpu_system(cluster_resolver=None):
     RuntimeError: If running inside a tf.function.
     NotFoundError: If no TPU devices found in eager mode.
   """
+
+  # Deallocate all TPU buffers by clearing out eager context caches and
+  # triggering garbage collection to avoid keeping invalid tpu buffer around
+  # after reinitialized tpu system.
+  logging.info("Deallocate tpu buffers before initializing tpu system.")
+  context.context()._clear_caches()  # pylint: disable=protected-access
+  context.context().clear_kernel_cache()
+  gc.collect()
+
   job = None
   if cluster_resolver is None:
     # If no cluster resolver is specified, and running eagerly, execute the init
@@ -106,10 +117,7 @@ def initialize_tpu_system(cluster_resolver=None):
           + str(e))
 
     # Clear out the eager context caches since the memory is invalid now.
-    logging.info("Clearing out eager caches")
-    context.context()._clear_caches()  # pylint: disable=protected-access
     context.context()._initialize_logical_devices()  # pylint: disable=protected-access
-    context.context().clear_kernel_cache()
 
     serialized_topology = output.numpy()
   elif not ops.executing_eagerly_outside_functions():
@@ -137,6 +145,15 @@ def initialize_tpu_system(cluster_resolver=None):
   _INITIALIZED_TPU_SYSTEMS[tpu_name] = tpu_topology
 
   return tpu_topology
+
+
+def get_initialized_tpu_systems():
+  """Returns all currently initialized tpu systems.
+
+  Returns:
+     A dictionary, with tpu name as the key and the tpu topology as the value.
+  """
+  return _INITIALIZED_TPU_SYSTEMS.copy()
 
 
 @tf_export("tpu.experimental.shutdown_tpu_system")

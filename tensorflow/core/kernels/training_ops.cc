@@ -743,6 +743,34 @@ struct SparseApplyKerasMomentum<CPUDevice, T, Tindex> {
   }
 };
 
+template <typename T, typename Tindex>
+struct SparseApplyAdadelta<CPUDevice, T, Tindex> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
+                  typename TTypes<T>::Matrix accum,
+                  typename TTypes<T>::Matrix accum_update,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstMatrix grad,
+                  typename TTypes<Tindex>::ConstFlat indices) {
+    const Tindex N = static_cast<Tindex>(indices.size());
+    for (Tindex i = 0; i < N; i++) {
+      const Tindex index = indices(i);
+      auto a = accum.template chip<0>(index);
+      auto a_update = accum_update.template chip<0>(index);
+      auto g = grad.template chip<0>(i);
+
+      a = a * a.constant(rho()) + g.square() * g.constant(T(1) - rho());
+      const auto update = (a_update + a_update.constant(epsilon())).sqrt() *
+                          (a + a.constant(epsilon())).rsqrt() * g;
+      auto v = var.template chip<0>(index);
+      v -= update * update.constant(lr());
+      a_update = a_update * a_update.constant(rho()) +
+                 update.square() * update.constant(static_cast<T>(1) - rho());
+    }
+  }
+};
+
 template <typename Device, typename T>
 struct ApplyAdamNonCuda {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
@@ -774,8 +802,8 @@ struct ApplyAdamNonCuda {
     // v     == n
     // var   == θ
 
-    auto shard = [this, var_ptr, m_ptr, v_ptr, g_ptr, alpha, beta1, beta2,
-                  epsilon, use_nesterov, packet_size](int begin, int end) {
+    auto shard = [var_ptr, m_ptr, v_ptr, g_ptr, alpha, beta1, beta2, epsilon,
+                  use_nesterov, packet_size](int begin, int end) {
       int t_size = (end - begin) * packet_size;
       begin = begin * packet_size;
       auto var = typename TTypes<T>::UnalignedTensor(var_ptr + begin, t_size);
@@ -1157,8 +1185,7 @@ REGISTER_KERNELS(GPU, complex128);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-// Note, this op works on cpu only.
-template <typename T, typename Tindex>
+template <typename T, typename Device, typename Tindex>
 class SparseApplyAdadeltaOp : public OpKernel {
  public:
   explicit SparseApplyAdadeltaOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -1167,7 +1194,7 @@ class SparseApplyAdadeltaOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const bool sparse = true;
-    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
     DoCompute(ctx);
   }
@@ -1175,15 +1202,15 @@ class SparseApplyAdadeltaOp : public OpKernel {
   void DoCompute(OpKernelContext* ctx) {
     Tensor var;
     const bool sparse = true;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum_grad;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 1, use_exclusive_lock_, sparse, &accum_grad));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensorFromVariable<CPUDevice, T>(
-                       ctx, 2, use_exclusive_lock_, sparse, &accum_update));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable<Device, T>(ctx, 2, use_exclusive_lock_,
+                                                   sparse, &accum_update));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1243,37 +1270,19 @@ class SparseApplyAdadeltaOp : public OpKernel {
       auto indices_vec = indices.vec<Tindex>();
       for (Tindex i = 0; i < N; i++) {
         const Tindex index = indices_vec(i);
-        OP_REQUIRES(ctx, index >= 0 && index < first_dim_size,
+        OP_REQUIRES(ctx,
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     (index >= 0 && index < first_dim_size)),
                     errors::InvalidArgument(
                         strings::StrCat("Index ", index, " at offset ", i,
                                         " in indices is out of range")));
       }
 
-      auto var_flat = var.flat_outer_dims<T>();
-      auto accum_grad_flat = accum_grad.flat_outer_dims<T>();
-      auto accum_update_flat = accum_update.flat_outer_dims<T>();
-      auto grad_flat = grad.flat_outer_dims<T>();
-      const T lr_scalar = lr.scalar<T>()();
-      const T rho_scalar = rho.scalar<T>()();
-      const T epsilon_scalar = epsilon.scalar<T>()();
-
-      for (Tindex i = 0; i < N; i++) {
-        const Tindex index = indices_vec(i);
-        auto accum_ = accum_grad_flat.template chip<0>(index);
-        auto accum_update_ = accum_update_flat.template chip<0>(index);
-        auto grad_ = grad_flat.template chip<0>(i);
-
-        accum_ = accum_ * accum_.constant(rho_scalar) +
-                 grad_.square() * grad_.constant(T(1) - rho_scalar);
-        const auto update =
-            (accum_update_ + accum_update_.constant(epsilon_scalar)).sqrt() *
-            (accum_ + accum_.constant(epsilon_scalar)).rsqrt() * grad_;
-        auto v = var_flat.template chip<0>(index);
-        v -= update * update.constant(lr_scalar);
-        accum_update_ =
-            accum_update_ * accum_update_.constant(rho_scalar) +
-            update.square() * update.constant(static_cast<T>(1) - rho_scalar);
-      }
+      const Device& device = ctx->template eigen_device<Device>();
+      functor::SparseApplyAdadelta<Device, T, Tindex>()(
+          device, var.flat_outer_dims<T>(), accum_grad.flat_outer_dims<T>(),
+          accum_update.flat_outer_dims<T>(), lr.scalar<T>(), rho.scalar<T>(),
+          epsilon.scalar<T>(), grad.flat_outer_dims<T>(), indices_vec);
     }
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
@@ -1283,25 +1292,64 @@ class SparseApplyAdadeltaOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdadelta")                \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdadeltaOp<T, Tindices>);       \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdadelta")        \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdadeltaOp<T, Tindices>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+#define REGISTER_KERNELS(T, D, Tindices)                                  \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdadelta")                     \
+                              .Device(DEVICE_##D)                         \
+                              .TypeConstraint<T>("T")                     \
+                              .TypeConstraint<Tindices>("Tindices"),      \
+                          SparseApplyAdadeltaOp<T, D##Device, Tindices>); \
+  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdadelta")             \
+                              .Device(DEVICE_##D)                         \
+                              .TypeConstraint<T>("T")                     \
+                              .TypeConstraint<Tindices>("Tindices"),      \
+                          SparseApplyAdadeltaOp<T, D##Device, Tindices>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(T, CPU, int32); \
+  REGISTER_KERNELS(T, CPU, int64);
 
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                            \
+  template <>                                                                  \
+  void SparseApplyAdadelta<GPUDevice, T, Tindex>::operator()(                  \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                      \
+      typename TTypes<T>::Matrix accum,                                        \
+      typename TTypes<T>::Matrix accum_update,                                 \
+      typename TTypes<T>::ConstScalar lr, typename TTypes<T>::ConstScalar rho, \
+      typename TTypes<T>::ConstScalar epsilon,                                 \
+      typename TTypes<T>::ConstMatrix grad,                                    \
+      typename TTypes<Tindex>::ConstFlat indices);                             \
+  extern template struct SparseApplyAdadelta<GPUDevice, T, Tindex>;
+DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int64);
+DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int64);
+DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int64);
+DECLARE_GPU_SPEC(complex64, int32);
+DECLARE_GPU_SPEC(complex64, int64);
+DECLARE_GPU_SPEC(complex128, int32);
+DECLARE_GPU_SPEC(complex128, int64);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+#define REGISTER_GPU_KERNELS(T)    \
+  REGISTER_KERNELS(T, GPU, int32); \
+  REGISTER_KERNELS(T, GPU, int64);
+
+REGISTER_GPU_KERNELS(Eigen::half);
+REGISTER_GPU_KERNELS(float);
+REGISTER_GPU_KERNELS(double);
+REGISTER_GPU_KERNELS(complex64);
+REGISTER_GPU_KERNELS(complex128);
+#undef REGISTER_GPU_KERNELS
+#endif
 #undef REGISTER_KERNELS
 
 // Note, this op works on cpu only.
@@ -2619,12 +2667,12 @@ class ApplyFtrlOp : public OpKernel {
                                   "is not a scalar: ",
                                   l2_shrinkage.shape().DebugString()));
       if (multiply_linear_by_lr_) {
-        functor::ApplyFtrlV2<Device, T>()(
+        functor::ApplyFtrlV2MultiplyLinearByLr<Device, T>()(
             device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
             grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
             l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
       } else {
-        functor::ApplyFtrlV2MultiplyLinearByLr<Device, T>()(
+        functor::ApplyFtrlV2<Device, T>()(
             device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
             grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
             l2_shrinkage.scalar<T>(), lr_power.scalar<T>());

@@ -1541,17 +1541,180 @@ class LowerResizeNearestNeighbor : public RewritePattern {
   }
 };
 
+struct LowerRollOp : public RewritePattern {
+  explicit LowerRollOp(MLIRContext *context)
+      : RewritePattern(
+            RollOp::getOperationName(), 1, context,
+            {ConstOp::getOperationName(), SliceOp::getOperationName(),
+             ConcatV2Op::getOperationName()}) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tf_roll_op = cast<RollOp>(op);
+
+    auto input_ty = tf_roll_op.input().getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "require the type of input to have static shapes");
+    }
+
+    DenseIntElementsAttr shift_attr;
+    Value shift = tf_roll_op.shift();
+    auto shift_ranked_attr_type = shift.getType().dyn_cast<RankedTensorType>();
+    if (!shift_ranked_attr_type ||
+        !matchPattern(shift, m_Constant(&shift_attr))) {
+      return failure();
+    }
+
+    DenseIntElementsAttr axis_attr;
+    Value axis = tf_roll_op.axis();
+    auto axis_ranked_attr_type = axis.getType().dyn_cast<RankedTensorType>();
+    if (!axis_ranked_attr_type || !matchPattern(axis, m_Constant(&axis_attr))) {
+      return failure();
+    }
+
+    // Combine duplicate axis and make sure they are in [0, rank(input)) range.
+    auto input_shape = input_ty.getShape();
+    int input_rank = input_shape.size();
+    SmallVector<int32_t, 4> shift_map(input_rank, 0);
+    for (int i = 0; i < axis_attr.getNumElements(); ++i) {
+      int32_t axis_i = axis_attr.getValue<int32_t>(i);
+      if (axis_i < 0) axis_i += input_rank;
+      int32_t shift_i = shift_attr.getValue<int32_t>(i);
+      shift_map[axis_i] += shift_i;
+    }
+
+    SmallVector<int32_t, 4> adjusted_axis;
+    SmallVector<int32_t, 4> adjusted_shift;
+    for (int i = 0; i < input_rank; ++i) {
+      int32_t input_dims_i = input_shape[i];
+      int32_t shift_i = shift_map[i] % input_dims_i;
+      if (shift_i < 0) shift_i += input_dims_i;
+      if (shift_i == 0) continue;
+      adjusted_axis.push_back(i);
+      adjusted_shift.push_back(shift_i);
+    }
+
+    // Convert rolling in each dimension to two Slice ops and one Concat op.
+    auto axis_type =
+        RankedTensorType::get({input_rank}, rewriter.getIntegerType(64));
+    auto create_slice_op = [&](int32_t axis_i, int32_t begin_i, int32_t size_i,
+                               Value input) {
+      SmallVector<int64_t, 4> begin_values(input_rank, 0);
+      begin_values[axis_i] = begin_i;
+      auto begin_attr = DenseIntElementsAttr::get(axis_type, begin_values);
+      auto begin =
+          rewriter.create<ConstOp>(op->getLoc(), axis_type, begin_attr);
+
+      SmallVector<int64_t, 4> output_shape;
+      output_shape.append(input_shape.begin(), input_shape.end());
+      output_shape[axis_i] = size_i;
+      auto size_attr = DenseIntElementsAttr::get(axis_type, output_shape);
+      auto size = rewriter.create<ConstOp>(op->getLoc(), axis_type, size_attr);
+
+      auto slice_op_ty =
+          RankedTensorType::get(output_shape, input_ty.getElementType());
+      return rewriter.create<SliceOp>(op->getLoc(), slice_op_ty, input, begin,
+                                      size);
+    };
+
+    auto result = tf_roll_op.input();
+    auto scalar_type =
+        mlir::RankedTensorType::get({}, rewriter.getIntegerType(32));
+    for (int i = 0; i < adjusted_axis.size(); ++i) {
+      int32_t axis_i = adjusted_axis[i];
+      int32_t shift_i = adjusted_shift[i];
+      auto slice_op_1 = create_slice_op(axis_i, input_shape[axis_i] - shift_i,
+                                        shift_i, result);
+      auto slice_op_2 =
+          create_slice_op(axis_i, 0, input_shape[axis_i] - shift_i, result);
+
+      auto dim_attr = DenseIntElementsAttr::get(scalar_type, {axis_i});
+      auto concat_dim =
+          rewriter.create<ConstOp>(op->getLoc(), scalar_type, dim_attr);
+      auto concat_op = rewriter.create<ConcatV2Op>(
+          op->getLoc(), input_ty,
+          ArrayRef<Value>({slice_op_1.output(), slice_op_2.output()}),
+          concat_dim);
+      result = concat_op.getResult();
+    }
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+// Decomposes Softmax and LogSoftmax to primitive TF ops, using the following
+// formulas:
+//
+//     softmax = div(exp(logits), sum(exp(logits)))
+//     log_softmax = sub(logits, log(sum(exp(logits))))
+//
+// TODO(jpienaar): Evaluate benefit of templating here.
+template <typename OpTy, bool use_log = true>
+class LowerSoftmaxOp : public OpRewritePattern<OpTy> {
+ public:
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    Value logits = op.logits();
+    auto loc = op.getLoc();
+
+    // Note that the TensorFlow Softmax op verifies that the input rank is
+    // greater than or equal to one so the following sequence is valid.
+    auto reduce_dim =
+        rewriter.create<TF::ConstOp>(loc, GetI64ElementsAttr({-1}, &rewriter));
+
+    // Exponential of input values and then their sum can be very large here.
+    // Division with large denominator is numerically unstable. To improve
+    // numerical stability, subtract each batch with their max element so that
+    // the maximum input value is zero. It can be shown that softmax computed
+    // after adding or subtracting all inputs in a batch using a common value
+    // gives mathematically equivalent result.
+    auto max_logits =
+        rewriter.create<TF::MaxOp>(loc, logits, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(true));
+    auto shifted_logits = rewriter.create<TF::SubOp>(loc, logits, max_logits);
+
+    // Exponentiate the inputs.
+    Value exp = rewriter.create<TF::ExpOp>(loc, shifted_logits);
+
+    // Compute summation of the exponentials.
+    Value sum =
+        rewriter.create<TF::SumOp>(loc, exp, reduce_dim,
+                                   /*keep_dims=*/rewriter.getBoolAttr(true));
+
+    if (use_log) {
+      Value log = rewriter.create<TF::LogOp>(loc, sum);
+      rewriter.replaceOpWithNewOp<TF::SubOp>(op, shifted_logits, log);
+    } else {
+      rewriter.replaceOpWithNewOp<TF::DivOp>(op, exp, sum);
+    }
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp<DynamicStitchOp>,
-                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
-                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
-                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
-                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
-                   Lower_UnaryOpsComposition>(context);
+  // clang-format off
+  patterns->insert<
+      LowerAddNOp,
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerLgammaOp,
+      LowerPackOp,
+      LowerBatchToSpaceND,
+      LowerSpaceToBatchNDOp,
+      LowerResizeNearestNeighbor,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition,
+      LowerRollOp>(context);
+  // clang-format on
   populateWithGenerated(*patterns);
 }
 
@@ -1567,9 +1730,12 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerInvertPermutationOp,
       LowerPackOp,
       LowerResizeNearestNeighbor,
+      LowerSoftmaxOp<TF::LogSoftmaxOp, /*use_log=*/true>,
+      LowerSoftmaxOp<TF::SoftmaxOp, /*use_log=*/false>,
       LowerSpaceToBatchNDOp,
       LowerSparseMatMulOp,
-      Lower_UnaryOpsComposition>(context);
+      Lower_UnaryOpsComposition,
+      LowerRollOp>(context);
   // clang-format on
 
   // Populate the relevant generated patterns.
@@ -1583,7 +1749,6 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerIsNanOp,
       LowerL2LossOp,
       LowerMulNoNanOp,
-      LowerOnesLikeOp,
       LowerPadOp,
       LowerReciprocal,
       LowerRintOp,
@@ -1591,6 +1756,8 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerRoundOpOnIntTensor,
       LowerRsqrtGradOp,
       LowerScatterNdOp,
+      LowerSeluOp,
+      LowerSeluGradOp,
       LowerSizeOp,
       LowerSoftmaxCrossEntropyWithLogitsOp,
       LowerSparseSoftmaxCrossEntropyWithLogitsOp,
@@ -1601,8 +1768,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerTanhGradOp,
       LowerXdivyOp,
       LowerXlog1pyOp,
-      LowerXlogyOp,
-      LowerZerosLikeOp>(context);
+      LowerXlogyOp>(context);
   // clang-format on
 }
 

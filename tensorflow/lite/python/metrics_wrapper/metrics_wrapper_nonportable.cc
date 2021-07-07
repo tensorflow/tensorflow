@@ -17,7 +17,6 @@ limitations under the License.
 #include <vector>
 
 #include "learning/brain/google/monitoring/metrics_exporter.h"
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/lite/python/metrics_wrapper/metrics_wrapper.h"
 
 namespace tflite {
@@ -57,15 +56,6 @@ PyObject* MetricsWrapper::ExportMetrics() {
   exporter_->ExportMetrics();
 
   Py_RETURN_NONE;
-}
-
-std::vector<std::string> GetCollectedErrors() {
-  mlir::TFL::ErrorCollector* collector = mlir::TFL::GetErrorCollector();
-  std::vector<std::string> result;
-  for (const auto& error_data : collector->CollectedErrors()) {
-    result.push_back(error_data.SerializeAsString());
-  }
-  return result;
 }
 
 }  // namespace metrics_wrapper

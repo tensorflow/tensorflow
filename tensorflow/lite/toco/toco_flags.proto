@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 37.
+// Next ID to use: 40.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -245,4 +245,16 @@ message TocoFlags {
   // tensor list ops.
   // WARNING: Experimental interface, subject to change.
   optional bool lower_tensor_list_ops = 36 [default = true];
+
+  // The accumulation type to use when quantize_to_float16 is true. Typical
+  // choices would be either float16 or float32.
+  optional IODataType accumulation_type = 37;
+
+  // Whether this model supports inference in bfloat16.
+  // Note: This is an experimental feature.
+  optional bool allow_bfloat16 = 38 [default = false];
+
+  // If true, automatically adds all tf ops into the model as select Tensorflow
+  // ops.
+  optional bool allow_all_select_tf_ops = 39;
 }

@@ -177,6 +177,10 @@ class BaseGPUDevice : public LocalDevice {
   Status MaybeCopyTensorToGPU(const AllocatorAttributes& alloc_attrs,
                               const Tensor& from, Tensor* to,
                               StatusCallback done);
+
+  Tensor CopyGpuTensorToHostDebugOnly(const Tensor& gpu_tensor);
+  void LogInputs(OpKernel* op_kernel, OpKernelContext* context);
+  void LogOutputs(OpKernel* op_kernel, OpKernelContext* context);
 };
 
 // A per-compute-stream utility that keeps track of kernels that have been

@@ -23,6 +23,7 @@ import os
 
 from absl import app
 
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -103,11 +104,20 @@ class StaticHashTableModule(module.Module):
     return self.table.lookup(word)
 
 
+def get_simple_session():
+  ops.disable_eager_execution()
+  sess = session_lib.Session()
+  variables.Variable(1.)
+  sess.run(variables.global_variables_initializer())
+  return sess
+
+
 MODULE_CTORS = {
-    "VarsAndArithmeticObjectGraph": VarsAndArithmeticObjectGraph,
-    "CyclicModule": CyclicModule,
-    "AssetModule": AssetModule,
-    "StaticHashTableModule": StaticHashTableModule,
+    "VarsAndArithmeticObjectGraph": (VarsAndArithmeticObjectGraph, 2),
+    "CyclicModule": (CyclicModule, 2),
+    "AssetModule": (AssetModule, 2),
+    "StaticHashTableModule": (StaticHashTableModule, 2),
+    "SimpleV1Model": (get_simple_session, 1)
 }
 
 
@@ -118,15 +128,20 @@ def main(args):
     return 1
 
   _, export_path, module_name = args
-  module_ctor = MODULE_CTORS.get(module_name)
+  module_ctor, version = MODULE_CTORS.get(module_name)
   if not module_ctor:
     print("Expected ModuleName to be one of:", MODULE_CTORS.keys())
     return 2
   os.makedirs(export_path)
 
   tf_module = module_ctor()
-  options = save_options.SaveOptions(save_debug_info=True)
-  saved_model.save(tf_module, export_path, options=options)
+  if version == 2:
+    options = save_options.SaveOptions(save_debug_info=True)
+    saved_model.save(tf_module, export_path, options=options)
+  else:
+    builder = saved_model.builder.SavedModelBuilder(export_path)
+    builder.add_meta_graph_and_variables(tf_module, ["serve"])
+    builder.save()
 
 
 if __name__ == "__main__":

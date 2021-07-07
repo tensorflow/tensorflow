@@ -21,9 +21,10 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-// Translates the given FlatBuffer into MLIR and returns translated MLIR
-// as string.
-std::string FlatBufferFileToMlir(const std::string& inputFilename);
+// Translates the given FlatBuffer filename or buffer into MLIR and returns
+// translated MLIR as string.
+std::string FlatBufferFileToMlir(const std::string& model_file_or_buffer,
+                                 bool input_is_filepath);
 
 }  // namespace TFL
 }  // namespace mlir

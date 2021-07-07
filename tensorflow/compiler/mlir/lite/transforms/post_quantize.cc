@@ -15,6 +15,8 @@ limitations under the License.
 
 // This transformation pass applies some clean up steps after quantization.
 
+#include <utility>
+
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -25,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 //===----------------------------------------------------------------------===//
-// The post-quantize Pass.
+// The post-quantize Passes.
 //
 namespace mlir {
 namespace TFL {
@@ -41,6 +43,16 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
   explicit PostQuantizePass(bool emit_quant_adaptor_ops)
       : emit_quant_adaptor_ops_(emit_quant_adaptor_ops) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-post-quantize";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Apply post quantization clean up after quantization";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -49,6 +61,26 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
   // feeding them to the model and convert them back to floating point
   // (i.e. dequantize) as the output.
   bool emit_quant_adaptor_ops_;
+};
+
+// Cleans up unnecessary QDQ pattern for input/output ops.
+class PostQuantizeRemoveQDQPass
+    : public PassWrapper<PostQuantizeRemoveQDQPass, FunctionPass> {
+ public:
+  // Constructor used by the PassRegistration. This will remove QDQ ops.
+  explicit PostQuantizeRemoveQDQPass() {}
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-post-quantize-remove-qdq";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Remove qdq from input and output nodes after quantization";
+  }
+
+  void runOnFunction() override;
 };
 
 // TODO(fengliuai): migrate to use modify_io_nodes pass.
@@ -122,7 +154,15 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
   func.setType(new_func_type);
 }
 
+enum RemoveVolatileOpsType {
+  // Remove all volatile quant-dequant ops.
+  kPreserveNone,
+  // Preserve volatile quant-dequants for input and output ops.
+  kPreserveInputsAndOutputs,
+};
+
 // Remove the back-to-back quantize and dequantize ops with volatile attribute.
+template <RemoveVolatileOpsType remove_volatile_ops_type>
 struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   explicit RemoveVolatileOps(MLIRContext* context)
       : OpRewritePattern<DequantizeOp>(context, 1) {}
@@ -133,12 +173,24 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
       if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
 
-      // Don't remove leading and tailing QDQ for PQT workflow, so the io
-      // modifying lib can work correctly.
-      if (!q.input().getDefiningOp()) return failure();
-      if (op->hasOneUse() &&
-          op->user_begin()->hasTrait<OpTrait::IsTerminator>())
-        return failure();
+      if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
+        // Don't remove leading and tailing QDQ for PQT workflow, so the io
+        // modifying lib can work correctly.
+        if (!q.input().getDefiningOp()) return failure();
+        if (op->hasOneUse() &&
+            op->user_begin()->hasTrait<OpTrait::IsTerminator>())
+          return failure();
+      }
+      // If the quantize op is a requantize op, it is being used in other scale
+      // adjustments and should be kept. Instead, moving dequantize op before
+      // the requantize op to remove the unnecessary requantize op.
+      if (auto qtype = quant::QuantizedType::getQuantizedElementType(
+              q.input().getType())) {
+        rewriter.setInsertionPoint(op);
+        rewriter.replaceOpWithNewOp<DequantizeOp>(op, op.output().getType(),
+                                                  q.input());
+        return success();
+      }
 
       op.replaceAllUsesWith(q.input());
       return success();
@@ -191,10 +243,18 @@ void PostQuantizePass::runOnFunction() {
 
   OwningRewritePatternList phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
-  phase_2_patterns
-      .insert<quant::FoldTrivalRequantizeOp<QuantizeOp>, RemoveVolatileOps>(
-          ctx);
+  phase_2_patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>,
+                          RemoveVolatileOps<kPreserveInputsAndOutputs>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+}
+
+void PostQuantizeRemoveQDQPass::runOnFunction() {
+  OwningRewritePatternList patterns(&getContext());
+  auto func = getFunction();
+  auto* ctx = func.getContext();
+  TFL::populateWithGenerated(patterns);
+  patterns.insert<RemoveVolatileOps<kPreserveNone>>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
@@ -205,8 +265,15 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
   return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
 }
 
-static PassRegistration<PostQuantizePass> pass(
-    "tfl-post-quantize", "Apply post quantization clean up after quantization");
+// Creates an instance of the TensorFlow Lite dialect PostQuantizeRemoveQDQ
+// pass.
+std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizeRemoveQDQPass() {
+  return std::make_unique<PostQuantizeRemoveQDQPass>();
+}
+
+static PassRegistration<PostQuantizePass> pass;
+
+static PassRegistration<PostQuantizeRemoveQDQPass> remove_qdq_pass;
 
 }  // namespace TFL
 }  // namespace mlir

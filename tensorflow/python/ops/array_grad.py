@@ -758,6 +758,12 @@ def _IdGrad(_, grad):
   return grad
 
 
+@ops.RegisterGradient("_EagerConst")
+def _EagerConstGrad(_, grad):
+  raise AssertionError(
+      "This op should never interact with gradient APIs. Please file a bug.")
+
+
 @ops.RegisterGradient("RefIdentity")
 def _RefIdGrad(_, grad):
   return grad

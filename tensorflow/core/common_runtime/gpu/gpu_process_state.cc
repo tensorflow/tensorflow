@@ -184,8 +184,10 @@ Allocator* GPUProcessState::GetGPUAllocator(
                            total_bytes, peer_gpu_ids);
     GPUBFCAllocator* gpu_bfc_allocator = new GPUBFCAllocator(
         sub_allocator, total_bytes, options,
-        strings::StrCat("GPU_", tf_device_id.value(), "_bfc"));
+        strings::StrCat("GPU_", tf_device_id.value(), "_bfc"),
+        options.experimental().internal_fragmentation_fraction());
     Allocator* gpu_allocator = gpu_bfc_allocator;
+
     SharedCounter* timing_counter = nullptr;
     if (options.experimental().timestamped_allocator()) {
       timing_counter = new SharedCounter;

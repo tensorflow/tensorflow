@@ -22,6 +22,16 @@ namespace TFDevice {
 namespace {
 struct TestClusteringPolicyPass
     : public PassWrapper<TestClusteringPolicyPass, mlir::FunctionPass> {
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-test-clustering-policy";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Annotates operations with clustering constraints inferred from set "
+           "of test policies";
+  }
   void runOnFunction() override;
 };
 
@@ -71,10 +81,7 @@ void TestClusteringPolicyPass::runOnFunction() {
 }
 
 static mlir::PassRegistration<TestClusteringPolicyPass>
-    tf_cpurt_test_clustering_policy(
-        "tf-test-clustering-policy",
-        "Annotates operations with clustering constraints inferred from set of "
-        "test policies");
+    tf_cpurt_test_clustering_policy;
 
 }  // namespace TFDevice
 }  // namespace mlir

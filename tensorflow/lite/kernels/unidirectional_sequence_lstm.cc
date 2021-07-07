@@ -1434,7 +1434,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                          TfLiteTypeGetName(input_to_output_weights->type));
       return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 }  // namespace unidirectional_sequence_lstm
 

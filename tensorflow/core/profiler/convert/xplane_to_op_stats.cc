@@ -219,25 +219,20 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   return op_stats;
 }
 
-Status ConvertMultiXSpacesToCombinedOpStats(
-    const std::vector<std::string>& xspace_paths, const OpStatsOptions& options,
-    OpStats* combined_op_stats) {
+Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
+                                            const OpStatsOptions& options,
+                                            OpStats* combined_op_stats) {
   // A shortcut code path for a single XSpace. There is no need to merge OpStats
   // if there is only a single XSpace.
-  if (xspace_paths.size() == 1) {
-    XSpace xspace;
-    Status status = ReadBinaryProto(Env::Default(), xspace_paths[0], &xspace);
-    if (!status.ok()) return status;
-    *combined_op_stats = ConvertXSpaceToOpStats(xspace, options);
+  if (xspaces.size() == 1) {
+    *combined_op_stats = ConvertXSpaceToOpStats(xspaces[0], options);
     return Status::OK();
   }
 
   // Read multiple XSpaces and convert to multiple OpStats.
   std::vector<OpStats> all_op_stats;
-  for (const std::string& xspace_path : xspace_paths) {
-    XSpace xspace;
-    Status status = ReadBinaryProto(Env::Default(), xspace_path, &xspace);
-    if (!status.ok()) return status;
+  all_op_stats.reserve(xspaces.size());
+  for (const XSpace& xspace : xspaces) {
     all_op_stats.push_back(ConvertXSpaceToOpStats(xspace, options));
   }
 

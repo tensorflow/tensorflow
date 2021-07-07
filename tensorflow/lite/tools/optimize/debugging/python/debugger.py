@@ -15,6 +15,7 @@
 """Python TF-Lite QuantizationDebugger."""
 import collections
 import csv
+import re
 
 from typing import (Any, Callable, Dict, IO, Iterable, List, Mapping, Optional,
                     Sequence, Tuple)
@@ -22,6 +23,7 @@ from typing import (Any, Callable, Dict, IO, Iterable, List, Mapping, Optional,
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.lite.python import convert
 from tensorflow.python.util import tf_export
 
 # pylint: disable=g-import-not-at-top
@@ -102,6 +104,10 @@ class QuantizationDebugOptions:
     if len(keys) != len(set(keys)):
       raise ValueError('Provided metrics have duplicate keys.')
 
+    self.denylisted_ops = None
+    self.denylisted_nodes = None
+    self.fully_quantize = False
+
 
 @tf_export.tf_export('lite.experimental.QuantizationDebugger')
 class QuantizationDebugger:
@@ -120,7 +126,8 @@ class QuantizationDebugger:
       float_model_content: Optional[bytes] = None,
       debug_dataset: Optional[Callable[[],
                                        Iterable[Sequence[np.ndarray]]]] = None,
-      debug_options: Optional[QuantizationDebugOptions] = None) -> None:
+      debug_options: Optional[QuantizationDebugOptions] = None,
+      converter: Optional[tf.lite.TFLiteConverter] = None) -> None:
     """Runs the TFLite debugging model with given debug options.
 
     Args:
@@ -133,6 +140,7 @@ class QuantizationDebugger:
         generated elements must have same types and shape as inputs to the
         model.
       debug_options: Debug options to debug the given model.
+      converter: Optional, use converter instead of quantized model.
 
     Raises:
       ValueError: If the debugger was unable to be created.
@@ -145,17 +153,49 @@ class QuantizationDebugger:
     """
     self._data_gen = debug_dataset
     self._debug_options = debug_options or QuantizationDebugOptions()
+    self.converter = None
+    self.calibrated_model = None
+    self.float_model = None
+    self._float_interpreter = None
+    if converter is not None:
+      if self._debug_options.model_debug_metrics:
+        self.converter = self._set_converter_options_for_float(converter)
+        self.float_model = self.converter.convert()
 
-    input_data = next(iter(self._data_gen()))
-    self._quant_interpreter = tf.lite.Interpreter(
-        quant_debug_model_path,
-        quant_debug_model_content,
-        experimental_preserve_all_tensors=(
-            self._debug_options.layer_direct_compare_metrics is not None))
-    if self._debug_options.model_debug_metrics:
-      self._float_interpreter = tf.lite.Interpreter(float_model_path,
-                                                    float_model_content)
+      self.converter = self._set_converter_options_for_calibration(
+          converter)
+      self.calibrated_model = self.converter.convert()
+      # Converter should be already set up with all options
+      self._init_from_converter(self._debug_options, self.converter,
+                                self.calibrated_model,
+                                float_model=self.float_model)
+    else:
+      self._quant_interpreter = tf.lite.Interpreter(
+          quant_debug_model_path,
+          quant_debug_model_content,
+          experimental_preserve_all_tensors=(
+              self._debug_options.layer_direct_compare_metrics is not None))
+      if self._debug_options.model_debug_metrics:
+        self._float_interpreter = tf.lite.Interpreter(float_model_path,
+                                                      float_model_content)
+    self._initialize_stats()
 
+  @property
+  def options(self) -> QuantizationDebugOptions:
+    return self._debug_options
+
+  @options.setter
+  def options(self, options: QuantizationDebugOptions) -> None:
+    self._debug_options = options
+    if not self.converter or not self.calibrated_model:
+      return
+    self._init_from_converter(self._debug_options, self.converter,
+                              self.calibrated_model,
+                              float_model=self.float_model)
+    self._initialize_stats()
+
+  def _initialize_stats(self):
+    """Helper function initializes stats."""
     # TODO(b/177749613) : Fix the dependency on tf.lite._get_ops_details()
     # Following code is needed to get op's name from the output tensor index,
     # since NumericVerify op only provides its quantized input tensor index.
@@ -178,6 +218,108 @@ class QuantizationDebugger:
 
     self._metrics = metrics_stub.TFLiteMetrics()
     self._metrics.increase_counter_debugger_creation()
+
+  def _quantize_model(self, calibrated_model: bytes, disable_per_channel: bool,
+                      fully_quantize: bool, enable_numeric_verify: bool,
+                      denylisted_ops: Optional[List[str]] = None,
+                      denylisted_nodes: Optional[List[str]] = None) -> bytes:
+    return convert.mlir_quantize(
+        calibrated_model, disable_per_channel=disable_per_channel,
+        fully_quantize=fully_quantize,
+        enable_numeric_verify=enable_numeric_verify,
+        blocklisted_ops=denylisted_ops,
+        blocklisted_nodes=denylisted_nodes)
+
+  def _get_quantized_model(self, is_debug: bool) -> bytes:
+    if not self.converter:
+      raise ValueError('No converter found, use this function with the '
+                       'converter option in the constructor.')
+
+    denylisted_nodes = self._debug_options.denylisted_nodes
+    disable_per_channel = self.converter._experimental_disable_per_channel  # pylint: disable=protected-access
+    return self._quantize_model(
+        self.calibrated_model,
+        disable_per_channel=disable_per_channel,
+        fully_quantize=self._debug_options.fully_quantize,
+        enable_numeric_verify=is_debug,
+        denylisted_ops=self._debug_options.denylisted_ops,
+        denylisted_nodes=denylisted_nodes)
+
+  def get_nondebug_quantized_model(self) -> bytes:
+    """Returns a non-instrumented quantized model.
+
+    Convert the quantized model with the initialized converter and
+    return bytes for nondebug model. The model will not be instrumented with
+    numeric verification operations.
+
+    Returns:
+      Model bytes corresponding to the model.
+    Raises:
+      ValueError: if converter is not passed to the debugger.
+    """
+    return self._get_quantized_model(is_debug=False)
+
+  def get_debug_quantized_model(self) -> bytes:
+    """Returns an instrumented quantized model.
+
+    Convert the quantized model with the initialized converter and
+    return bytes for model. The model will be instrumented with numeric
+    verification operations and should only be used for debugging.
+
+    Returns:
+      Model bytes corresponding to the model.
+    Raises:
+      ValueError: if converter is not passed to the debugger.
+    """
+    return self._get_quantized_model(is_debug=True)
+
+  def _init_from_converter(self, options: QuantizationDebugOptions,
+                           converter: tf.lite.TFLiteConverter,
+                           calibrated_model: Optional[bytes] = None,
+                           float_model: Optional[bytes] = None) -> None:
+    """Convert the model and apply options.
+
+    Converts the quantized model and initializes a quantized model interpreter
+    with the quantized model. Returns a float model interpreter if float model
+    is provided.
+
+    Args:
+      options: a QuantizationDebugOptions object.
+      converter: an initialized tf.lite.TFLiteConverter.
+      calibrated_model: Calibrated model bytes.
+      float_model: Float model bytes.
+    """
+    self.quant_model = self._quantize_model(
+        calibrated_model,
+        disable_per_channel=converter._experimental_disable_per_channel,  # pylint: disable=protected-access
+        fully_quantize=options.fully_quantize,
+        enable_numeric_verify=True,
+        denylisted_ops=options.denylisted_ops,
+        denylisted_nodes=options.denylisted_nodes)
+    self._quant_interpreter = tf.lite.Interpreter(
+        model_content=self.quant_model)
+    self._float_interpreter = None
+    if float_model is not None:
+      self._float_interpreter = tf.lite.Interpreter(model_content=float_model)
+
+  def _set_converter_options_for_float(
+      self, converter: tf.lite.TFLiteConverter) -> tf.lite.TFLiteConverter:
+    """Verify converter options and set required experimental options."""
+    if converter.optimizations:
+      converter.optimizations = []
+    return converter
+
+  def _set_converter_options_for_calibration(
+      self, converter: tf.lite.TFLiteConverter) -> tf.lite.TFLiteConverter:
+    """Verify converter options and set required experimental options."""
+    if not converter.optimizations:
+      converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    if not converter.representative_dataset:
+      raise ValueError('converter object must set representative_dataset')
+
+    converter.experimental_mlir_quantizer = True
+    converter._experimental_calibrate_only = True  # pylint: disable=protected-access
+    return converter
 
   def run(self) -> None:
     """Runs models and gets metrics."""
@@ -356,8 +498,8 @@ class QuantizationDebugger:
     # pylint: enable=protected-access
     return self._numeric_verify_tensor_details
 
-  def _get_operand_name_and_index(self,
-                                  numeric_verify_name: str) -> Tuple[str, int]:
+  def _get_operand_name_and_index(
+      self, numeric_verify_name: str) -> Tuple[str, int]:
     """Gets the index and name of NumericVerify Op's quantized input tensor.
 
     Args:
@@ -368,7 +510,11 @@ class QuantizationDebugger:
       Tuple of (tensor_name, tensor_idx) for quantized op's output tensor.
     """
     tensor_name, tensor_idx = numeric_verify_name.rsplit(':', 1)
-    return (tensor_name[len(_NUMERIC_VERIFY_OP_NAME) + 1:], int(tensor_idx))
+    float_tensor_name = tensor_name[len(_NUMERIC_VERIFY_OP_NAME) + 1:]
+    if re.match(r'\d', float_tensor_name[-1]):
+      float_tensor_name = float_tensor_name[:-1]
+
+    return (float_tensor_name, int(tensor_idx))
 
   def layer_statistics_dump(self, file: IO[str]) -> None:
     """Dumps layer statistics into file, in csv format.

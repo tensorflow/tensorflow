@@ -415,6 +415,7 @@ cc_library(
 
 cc_library(
     name = "abstract_operation",
+    srcs = ["abstract_operation.cc"],
     hdrs = ["abstract_operation.h"],
     visibility = [
         "//tensorflow:internal",
@@ -682,6 +683,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         # copybara:uncomment_begin
+        # "//tensorflow/core/tfrt/eager:c_api_tfrt",
         # "@tf_runtime//backends/cpu:tf_ops_alwayslink",
         # copybara:uncomment_end
     ],
@@ -922,6 +924,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",

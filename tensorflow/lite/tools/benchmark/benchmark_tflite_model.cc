@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/kernels/variable_ops.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
@@ -692,8 +691,9 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   std::unordered_set<int> checked_node_ids;
   tools::ProvidedDelegateList delegate_providers(&params_);
   auto created_delegates = delegate_providers.CreateAllRankedDelegates();
-  TFLITE_LOG(INFO) << "Going to apply " << created_delegates.size()
-                   << " delegates one after another.";
+  TFLITE_MAY_LOG(INFO, (created_delegates.size() >= 2))
+      << "Going to apply " << created_delegates.size()
+      << " delegates one after another.";
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
     tools::TfLiteDelegatePtr delegate = std::move(created_delegate.delegate);
@@ -824,7 +824,6 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
   } else {
     resolver = new tflite::ops::builtin::BuiltinOpResolver();
   }
-  tflite::ops::custom::AddVariableOps(resolver);
   RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }

@@ -50,6 +50,11 @@ def enable_v2_behavior():
 
   This function is called in the main TensorFlow `__init__.py` file, user should
   not need to call it, except during complex migrations.
+
+  @compatibility(TF2)
+  This function is not necessary if you are using TF2. V2 behavior is enabled by
+  default.
+  @end_compatibility
   """
   _v2_behavior_usage_gauge.get_cell("enable").set(True)
   # TF2 behavior is enabled if either 1) enable_v2_behavior() is called or

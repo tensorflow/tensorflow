@@ -370,7 +370,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
   explicit HloCollectiveInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id);
 
   HloInstructionProto ToProto() const override;
@@ -390,9 +390,9 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllGatherInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64 all_gather_dimension,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id, bool use_global_device_ids);
+      int64 all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
+      bool constrain_layout, const absl::optional<int64>& channel_id,
+      bool use_global_device_ids);
   // Same as HloAllReduceInstruction::use_global_device_ids.
   bool use_global_device_ids() const { return use_global_device_ids_; }
 
@@ -419,18 +419,15 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
   bool use_global_device_ids_;
 };
 
-class HloAllReduceInstruction : public HloCollectiveInstruction {
+// Base class for all-reduce and all-reduce scatter instructions.
+class HloAllReduceInstructionBase : public HloCollectiveInstruction {
  public:
-  explicit HloAllReduceInstruction(
+  explicit HloAllReduceInstructionBase(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
-
-  // Returns true if the AllReduce does no communication, so it's equivalent
-  // to a mem copy.
-  bool IsNoop() const;
 
   // Returns true if the ids in the ReplicaGroup config represent a global id of
   // (replica_id * partition_count + partition_id) instead of a replica id.
@@ -449,6 +446,47 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const HloPrintOptions& options) const override;
   HloInstructionProto ToProto() const override;
 
+  bool IdenticalSlowPathIgnoringChannelIdValues(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+ private:
+  bool use_global_device_ids_;
+};
+
+class HloAllReduceInstruction : public HloAllReduceInstructionBase {
+ public:
+  using HloAllReduceInstructionBase::HloAllReduceInstructionBase;
+
+  // Returns true if the AllReduce does no communication, so it's equivalent
+  // to a mem copy.
+  bool IsNoop() const;
+
+ private:
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+};
+
+class HloAllReduceScatterInstruction : public HloAllReduceInstructionBase {
+ public:
+  explicit HloAllReduceScatterInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids,
+      int64 scatter_dimension);
+
+  // The dimension on which reduced data is scattered to different participants.
+  int64 scatter_dimension() const { return scatter_dimension_; }
+
+ protected:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  HloInstructionProto ToProto() const override;
+
  private:
   bool IdenticalSlowPathIgnoringChannelIdValues(
       const HloInstruction& other,
@@ -460,16 +498,17 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  bool use_global_device_ids_;
+  int64 scatter_dimension_;
 };
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
-  explicit HloAllToAllInstruction(
-      const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id,
-      const absl::optional<int64>& split_dimension);
+  explicit HloAllToAllInstruction(const Shape& shape,
+                                  absl::Span<HloInstruction* const> operands,
+                                  absl::Span<const ReplicaGroup> replica_groups,
+                                  bool constrain_layout,
+                                  const absl::optional<int64>& channel_id,
+                                  const absl::optional<int64>& split_dimension);
 
   // AllToAll can optionally take a split dimension, which means that this
   // AllToAll takes a single (flattened) array operand and produces an array

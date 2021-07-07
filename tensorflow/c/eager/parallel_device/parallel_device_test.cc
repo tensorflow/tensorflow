@@ -132,39 +132,19 @@ TEST(PARALLEL_DEVICE, TestExplicitCopies) {
   TensorHandlePtr cpu_value(FloatTensorHandle(3., status.get()));
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
-  // Copying on to a parallel device is OK.
-  TensorHandlePtr device_value(TFE_TensorHandleCopyToDevice(
+  // Copying on to a parallel device must be explicit.
+  TensorHandlePtr failed_copy_on_result(TFE_TensorHandleCopyToDevice(
       cpu_value.get(), context.get(), device_name, status.get()));
+  EXPECT_EQ(TF_GetCode(status.get()), TF_UNIMPLEMENTED);
+
+  std::array<TFE_TensorHandle*, 2> components{cpu_value.get(), cpu_value.get()};
+  TensorHandlePtr device_value = CreatePerDeviceValues(
+      context.get(), components, device_name, status.get());
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-  const char* backing_device =
-      TFE_TensorHandleBackingDeviceName(device_value.get(), status.get());
-  ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-  ASSERT_EQ(std::string(device_name), backing_device);
-
-  // Un-pack the parallel tensor to verify that the copy was successful.
-  {
-    std::array<TensorHandlePtr, 2> components;
-    ExtractPerDeviceValues(context.get(), device_value.get(), &components,
-                           status.get());
-    ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-
-    // The value of the original tensor is replicated on each device.
-    ExpectScalarEq<float>(components[0].get(), 3.);
-    ExpectScalarEq<float>(components[1].get(), 3.);
-
-    // Verify that the mirrors are placed on the component devices.
-    std::string first_device =
-        TFE_TensorHandleBackingDeviceName(components[0].get(), status.get());
-    ASSERT_EQ(underlying_devices[0], first_device);
-    std::string second_device =
-        TFE_TensorHandleBackingDeviceName(components[1].get(), status.get());
-    ASSERT_EQ(underlying_devices[1], second_device);
-  }
-
   // Copies off of parallel devices must be explicit.
-  TensorHandlePtr copy_back(TFE_TensorHandleCopyToDevice(
+  TensorHandlePtr copy_off(TFE_TensorHandleCopyToDevice(
       device_value.get(), context.get(), first_device_name, status.get()));
-  ASSERT_EQ(TF_GetCode(status.get()), TF_UNIMPLEMENTED);
+  EXPECT_EQ(TF_GetCode(status.get()), TF_UNIMPLEMENTED);
 }
 
 TEST(PARALLEL_DEVICE, TestDifferentShapes) {
@@ -266,11 +246,22 @@ TEST(PARALLEL_DEVICE, TestNestedParallelDevices) {
       context.get(), components, second_device_name, status.get());
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
-  TensorHandlePtr negative_one(FloatTensorHandle(3., status.get()));
+  TensorHandlePtr negative_one_cpu(FloatTensorHandle(3., status.get()));
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-  TensorHandlePtr multiply_result(Multiply(context.get(),
-                                           second_combined_value.get(),
-                                           negative_one.get(), status.get()));
+  components[0] = negative_one_cpu.get();
+  components[1] = negative_one_cpu.get();
+  TensorHandlePtr first_negative_one = CreatePerDeviceValues(
+      context.get(), components, first_device_name, status.get());
+  ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+  components[0] = first_negative_one.get();
+  components[1] = negative_one_cpu.get();
+  TensorHandlePtr second_negative_one = CreatePerDeviceValues(
+      context.get(), components, second_device_name, status.get());
+  ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+
+  TensorHandlePtr multiply_result(
+      Multiply(context.get(), second_combined_value.get(),
+               second_negative_one.get(), status.get()));
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
   // Un-pack the parallel tensor to verify that the operation was
@@ -601,8 +592,9 @@ TEST(PARALLEL_DEVICE, TestSummaryString) {
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
   TensorHandlePtr cpu_value(FloatTensorHandle(3., status.get()));
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-  TensorHandlePtr device_value(TFE_TensorHandleCopyToDevice(
-      cpu_value.get(), context.get(), device_name, status.get()));
+  std::array<TFE_TensorHandle*, 2> components{cpu_value.get(), cpu_value.get()};
+  TensorHandlePtr device_value = CreatePerDeviceValues(
+      context.get(), components, device_name, status.get());
   ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
   ImmediateExecutionTensorHandle* unwrapped_handle =
       tensorflow::unwrap(device_value.get());

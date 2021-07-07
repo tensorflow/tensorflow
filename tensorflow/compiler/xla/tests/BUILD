@@ -1508,6 +1508,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -2772,7 +2773,6 @@ xla_test(
     srcs = ["cholesky_test.cc"],
     real_hardware_only = True,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [

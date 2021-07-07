@@ -224,7 +224,7 @@ struct QuantizationPattern : public RewritePattern {
   using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER, RootOp>;
 
   explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
-                               float error_tolerance, bool single_layer_verify,
+                               float error_tolerance, bool whole_model_verify,
                                bool log_if_failed = false,
                                const StringSet& ops_blocklist = {},
                                const StringSet& nodes_blocklist = {})
@@ -232,7 +232,7 @@ struct QuantizationPattern : public RewritePattern {
       : RewritePattern(RootOp::getOperationName(), 300, context),
         enable_verify(enable_verify),
         error_tolerance(error_tolerance),
-        single_layer_verify(single_layer_verify),
+        whole_model_verify(whole_model_verify),
         log_if_failed(log_if_failed),
         ops_blocklist(ops_blocklist),
         nodes_blocklist(nodes_blocklist) {}
@@ -428,7 +428,7 @@ struct QuantizationPattern : public RewritePattern {
               quantized_op->getLoc(), new_op->getResult(i).getType(),
               new_op->getResult(i), quantized_op->getResult(i), tolerance, log);
 
-          if (single_layer_verify) continue;
+          if (!whole_model_verify) continue;
 
           // Find the Dequantize/Dequantize users of the new op results, and
           // replace the usage. Then all the floating-point ops are connected.
@@ -451,7 +451,7 @@ struct QuantizationPattern : public RewritePattern {
 
   bool enable_verify;
   float error_tolerance;
-  bool single_layer_verify;
+  bool whole_model_verify;
   bool log_if_failed;
   const StringSet ops_blocklist;
   const StringSet nodes_blocklist;

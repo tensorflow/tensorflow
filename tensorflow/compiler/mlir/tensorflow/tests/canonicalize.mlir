@@ -658,6 +658,14 @@ func @testStaticAndIdenticalTypeForEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2
   return %0: tensor<2xi1>
 }
 
+// CHECK-LABEL: func @testStaticAndIdenticalTypeForNotEqualOp
+func @testStaticAndIdenticalTypeForNotEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = true
+  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
 // CHECK-LABEL: testLogicalNotOfEqual
 func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
@@ -885,7 +893,7 @@ func @ToBool_0DScalarFloat(%arg0: tensor<f32>) -> tensor<i1> {
 // CHECK-LABEL: func @ToBool_0DScalarString
 func @ToBool_0DScalarString(%arg0: tensor<!tf.string>) -> tensor<i1> {
   // CHECK: [[EmptyStr:%.*]] = "tf.Const"() {value = dense<""> : tensor<!tf.string>} : () -> tensor<!tf.string>
-  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = false} : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<i1>
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = true} : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<i1>
   // CHECK: return [[NE]] : tensor<i1>
   %0 = "tf.ToBool"(%arg0) : (tensor<!tf.string>) -> tensor<i1>
   return %0 : tensor<i1>

@@ -56,11 +56,11 @@ static llvm::cl::opt<float> error_tolerance(
     llvm::cl::init(5.0));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> enable_single_layer_verify(
-    "tfl-single-layer-verify", llvm::cl::value_desc("bool"),
-    llvm::cl::desc("Whether verify numericals layer by layer. Valid when "
-                   "`-tfl-numeric-verify` is set."),
-    llvm::cl::init(true));
+static llvm::cl::opt<bool> enable_whole_model_verify(
+    "tfl-whole-model-verify", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Whether verify numericals layer by layer or whole model. "
+                   "Valid when `-tfl-numeric-verify` is set."),
+    llvm::cl::init(false));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> enable_log_if_failed(
@@ -101,11 +101,11 @@ struct TFLFullQuantization
     : public quant::QuantizationPattern<TFLFullQuantization, QuantizeOp,
                                         DequantizeOp, NumericVerifyOp> {
   explicit TFLFullQuantization(MLIRContext* ctx, bool verify_numeric_flag,
-                               float tolerance, bool verify_single_layer,
+                               float tolerance, bool verify_whole_model,
                                bool log_if_failed_flag = false,
                                const StringSet& ops_blocklist_flag = {},
                                const StringSet& nodes_blocklist_flag = {})
-      : BaseType(ctx, verify_numeric_flag, tolerance, verify_single_layer,
+      : BaseType(ctx, verify_numeric_flag, tolerance, verify_whole_model,
                  log_if_failed_flag, ops_blocklist_flag, nodes_blocklist_flag) {
   }
   static bool AllowHybridOperand() { return false; }
@@ -120,10 +120,10 @@ struct TFLFullQuantizationReverse
                                         QuantizeOp> {
   explicit TFLFullQuantizationReverse(
       MLIRContext* ctx, bool verify_numeric_flag, float tolerance,
-      bool verify_single_layer, bool log_if_failed_flag = false,
+      bool verify_whole_model, bool log_if_failed_flag = false,
       const StringSet& ops_blocklist_flag = {},
       const StringSet& nodes_blocklist_flag = {})
-      : BaseType(ctx, verify_numeric_flag, tolerance, verify_single_layer,
+      : BaseType(ctx, verify_numeric_flag, tolerance, verify_whole_model,
                  log_if_failed_flag, ops_blocklist_flag, nodes_blocklist_flag) {
   }
   static bool AllowHybridOperand() { return false; }
@@ -165,20 +165,33 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
  public:
   // Constructor used by manually creating the pass.
   explicit QuantizePass(bool verify_numeric_flag = false,
+                        bool verify_whole_model = true,
                         bool legacy_float_scale = false,
                         const StringSet& ops_blocklist_set = {},
                         const StringSet& nodes_blocklist_set = {})
       : verify_numeric(verify_numeric_flag),
+        verify_whole_model(verify_whole_model),
         legacy_float_scale(legacy_float_scale),
         ops_blocklist(
             LIST_FLAG_OR_STRING_SET(ops_blocklist_flag, ops_blocklist_set)),
         nodes_blocklist(LIST_FLAG_OR_STRING_SET(nodes_blocklist_flag,
                                                 nodes_blocklist_set)) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-quantize";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Apply quantization on models in TensorFlow Lite dialect";
+  }
+
   void runOnFunction() override;
 
  private:
   bool verify_numeric;
+  bool verify_whole_model;
   bool legacy_float_scale;
   const StringSet ops_blocklist;
   const StringSet nodes_blocklist;
@@ -196,8 +209,8 @@ void QuantizePass::runOnFunction() {
   TFL::populateWithGenerated(patterns);
   patterns.insert<TFLFullQuantization, TFLFullQuantizationReverse>(
       ctx, enable_numeric_verify || verify_numeric, error_tolerance,
-      enable_single_layer_verify, enable_log_if_failed, ops_blocklist,
-      nodes_blocklist);
+      enable_whole_model_verify || verify_whole_model, enable_log_if_failed,
+      ops_blocklist, nodes_blocklist);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Constant quantization is a lossy transformation, so they are applied only
@@ -211,14 +224,14 @@ void QuantizePass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
-    bool verify_numeric, bool legacy_float_scale,
+    bool verify_numeric, bool whole_model_verify, bool legacy_float_scale,
     const StringSet& ops_blocklist, const StringSet& nodes_blocklist) {
-  return std::make_unique<QuantizePass>(verify_numeric, legacy_float_scale,
-                                        ops_blocklist, nodes_blocklist);
+  return std::make_unique<QuantizePass>(verify_numeric, whole_model_verify,
+                                        legacy_float_scale, ops_blocklist,
+                                        nodes_blocklist);
 }
 
-static PassRegistration<QuantizePass> pass(
-    "tfl-quantize", "Apply quantization on models in TensorFlow Lite dialect");
+static PassRegistration<QuantizePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

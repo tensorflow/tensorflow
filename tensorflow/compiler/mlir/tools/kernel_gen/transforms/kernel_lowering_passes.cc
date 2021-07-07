@@ -69,7 +69,7 @@ class GpuKernelToNVVMPass
 /// A pass that does the final lowering to ROCDL. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
 class GpuKernelToROCDLPass
-    : public GpuKernelToNVVMPassBase<GpuKernelToROCDLPass> {
+    : public GpuKernelToROCDLPassBase<GpuKernelToROCDLPass> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::ROCDL::ROCDLDialect, mlir::LLVM::LLVMDialect>();
   }

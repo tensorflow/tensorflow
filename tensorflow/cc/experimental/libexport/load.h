@@ -18,6 +18,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
 namespace tensorflow {
@@ -73,10 +75,13 @@ class TFPackage {
   // that logic should live outside this class; this class should continue to
   // have the clearly-defined, singular responsibility of reading and parsing
   // the low-level, serialized format.
-  const absl::StatusOr<SavedObjectGraph> GetObjectGraph();
+  const SavedObjectGraph& GetObjectGraph();
 
   // Returns a list of function defs in the SavedModel.
-  const absl::StatusOr<std::vector<FunctionDef>> GetFunctionDefs();
+  const protobuf::RepeatedPtrField<FunctionDef>& GetFunctionDefs();
+
+ private:
+  SavedModel saved_model_proto_;
 };
 
 }  // namespace libexport

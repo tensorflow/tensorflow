@@ -63,9 +63,6 @@ class TestOptimizer : public CustomGraphOptimizer {
     return Status::OK();
   }
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
-
  private:
   static bool optimized_;
 };
@@ -121,9 +118,6 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
     }
     return Status::OK();
   }
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 
  private:
   static gtl::FlatMap<string, GrapplerItem::OptimizationOptions>*
@@ -728,9 +722,6 @@ class SleepingOptimizer : public CustomGraphOptimizer {
     optimized_graph->add_node();
     return Status::OK();
   }
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 };
 
 REGISTER_GRAPH_OPTIMIZER(SleepingOptimizer);
@@ -1071,9 +1062,6 @@ class TfDataTestOptimizer : public CustomGraphOptimizer {
     *optimized_graph = item.graph;
     return Status::OK();
   }
-
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 
  private:
   static std::atomic<int> count_;

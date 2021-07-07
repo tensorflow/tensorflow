@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import re
 import sys
 import threading
@@ -37,7 +38,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
-# pywrap_tensorflow must be imported first to avoid profobuf issues.
+# pywrap_tensorflow must be imported first to avoid protobuf issues.
 # (b/143110113)
 # pylint: disable=invalid-import-order,g-bad-import-order,unused-import
 from tensorflow.python import pywrap_tensorflow
@@ -396,7 +397,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
       raise AttributeError("""
         '{}' object has no attribute '{}'.
         If you are looking for numpy-related methods, please run the following:
-        import tensorflow.python.ops.numpy_ops.np_config
+        from tensorflow.python.ops.numpy_ops import np_config
         np_config.enable_numpy_behavior()""".format(type(self).__name__, name))
     self.__getattribute__(name)
 
@@ -2895,6 +2896,13 @@ _MUTATION_LOCK_GROUP = 0
 _SESSION_RUN_LOCK_GROUP = 1
 
 
+@tf_contextlib.contextmanager
+def resource_creator_scope(resource_type, resource_creator):
+  with get_default_graph()._resource_creator_scope(resource_type,  # pylint: disable=protected-access
+                                                   resource_creator):
+    yield
+
+
 @tf_export("Graph")
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
@@ -3090,6 +3098,80 @@ class Graph(object):
         raise RuntimeError(
             "Exiting variable_creator_scope without proper nesting.")
       self._thread_local._variable_creator_stack = old  # pylint: disable=protected-access
+
+  # TODO(b/192405401): unify resource_creator_scope with variable_creator_scope.
+  # pylint: disable=protected-access
+  @tf_contextlib.contextmanager
+  def _resource_creator_scope(self, resource_type, creator):
+    """Scope which defines a resource creation function used by some resource.
+
+    The resource should be a subclass of CachableResource with a class method
+    `cls._resource_type`, the output of which is what the `resource_type`
+    argument should be. By default, `cls._resource_type` returns the class name,
+    `cls.__name__`. Given a scope, creators being added with the same
+    `resource_type` argument will be composed together to apply to all classes
+    with this `_resource_type`.
+
+
+    `creator` is expected to be a function with the following signature:
+
+    ```
+      def resource_creator(next_creator, *a, **kwargs)
+    ```
+
+    The creator is supposed to eventually call the next_creator to create an
+    instance if it does want to create an instance and not call
+    the class initialization method directly. This helps make creators
+    composable. A creator may choose to create multiple instances, return
+    already existing instances, or simply register that an instance was created
+    and defer to the next creator in line. Creators can also modify keyword
+    arguments seen by the next creators.
+
+    Valid keyword arguments in `kwargs` depends on the specific resource
+    class. For StaticHashTable, this may be:
+    * initializer: The table initializer to use.
+    * default_value: The value to use if a key is missing in the table.
+    * name: Optional name for the table, default to None.
+
+
+    Args:
+      resource_type: the output of the resource class's `_resource_type` method.
+      creator: the passed creator for the resource.
+
+    Yields:
+      A scope in which the creator is active
+
+    Raises:
+      RuntimeError: If resource_creator_scope is existed without proper nesting.
+    """
+    # This step keeps a reference to the existing stack, and it also initializes
+    # self._thread_local._variable_creator_stack if it doesn't exist yet.
+    old = self._resource_creator_stack
+    new = copy.deepcopy(old)
+    if isinstance(resource_type, (list, tuple)):
+      for r in resource_type:
+        new[r].append(creator)
+    else:
+      new[resource_type].append(creator)
+    self._thread_local._resource_creator_stack = new
+    try:
+      yield
+    finally:
+      if self._thread_local._resource_creator_stack is not new:
+        raise RuntimeError(
+            "Exiting resource_creator_scope without proper nesting.")
+      self._thread_local._resource_creator_stack = old
+
+  @property
+  def _resource_creator_stack(self):
+    if not hasattr(self._thread_local, "_resource_creator_stack"):
+      self._thread_local._resource_creator_stack = collections.defaultdict(list)
+    return self._thread_local._resource_creator_stack
+
+  @_resource_creator_stack.setter
+  def _resource_creator_stack(self, resource_creator_stack):
+    self._thread_local._resource_creator_stack = resource_creator_stack
+  # pylint: enable=protected-access
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
@@ -5858,6 +5940,11 @@ def enable_eager_execution(config=None, device_policy=None,
   at program startup and not in a library (as most libraries should be usable
   both with and without eager execution).
 
+  @compatibility(TF2)
+  This function is not necessary if you are using TF2. Eager execution is
+  enabled by default.
+  @end_compatibility
+
   Args:
     config: (Optional.) A `tf.compat.v1.ConfigProto` to use to configure the
       environment in which operations are executed. Note that
@@ -6607,6 +6694,41 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
 
   def __exit__(self, *exc_info):
     return self._name_scope.__exit__(*exc_info)
+
+
+@tf_export("get_current_name_scope", v1=[])
+def get_current_name_scope():
+  """Returns current full name scope specified by `tf.name_scope(...)`s.
+
+  For example,
+  ```python
+  with tf.name_scope("outer"):
+    tf.get_current_name_scope()  # "outer"
+
+    with tf.name_scope("inner"):
+      tf.get_current_name_scope()  # "outer/inner"
+  ```
+
+  In other words, `tf.get_current_name_scope()` returns the op name prefix that
+  will be prepended to, if an op is created at that place.
+
+  Note that `@tf.function` resets the name scope stack as shown below.
+
+  ```
+  with tf.name_scope("outer"):
+
+    @tf.function
+    def foo(x):
+      with tf.name_scope("inner"):
+        return tf.add(x * x)  # Op name is "inner/Add", not "outer/inner/Add"
+  ```
+  """
+
+  ctx = context.context()
+  if ctx.executing_eagerly():
+    return ctx.scope_name.rstrip("/")
+  else:
+    return get_default_graph().get_name_scope()
 
 
 @tf_export("name_scope", v1=[])

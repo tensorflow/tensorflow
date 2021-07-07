@@ -43,12 +43,15 @@ DstT CastTo(int32 src) {
 // efficiently serialize tensors that have one value repeated for all the
 // indices.
 xla::XlaOp GetScalarConst(const TensorProto& proto, xla::XlaBuilder* b) {
+  if (!proto.tensor_content().empty()) return xla::XlaOp();
   TensorShape shape(proto.tensor_shape());
   if (shape.num_elements() > 1) {
     switch (proto.dtype()) {
 #define HANDLE_SPLAT(DTYPE, field_name, xla_type)                             \
   case DTYPE:                                                                 \
-    if (proto.field_name##_val_size() == 1) {                                 \
+    if (proto.field_name##_val_size() == 0) {                                 \
+      return xla::ConstantR0(b, CastTo<xla_type>(0));                         \
+    } else if (proto.field_name##_val_size() == 1) {                          \
       return xla::ConstantR0(b, CastTo<xla_type>(proto.field_name##_val(0))); \
     }                                                                         \
     break;

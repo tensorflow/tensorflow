@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/dlpack.h"
 
+#include <functional>
 #include <memory>
+#include <numeric>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -222,23 +225,24 @@ StatusOr<DLContext> DLContextForDevice(const PjRtDevice& device) {
   return context;
 }
 
-StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
+StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient* cpu_client,
+                                         const PjRtClient* gpu_client,
                                          const DLContext& context) {
   switch (context.device_type) {
     case kDLCPU:
-      if (client.platform_id() != kCpuId) {
+      if (cpu_client == nullptr) {
         return InvalidArgument(
-            "DLPack CPU device type mismatch with PjRtClient platform %s",
-            client.platform_name());
+            "DLPack tensor is on CPU, but no CPU backend was provided.");
       }
-      return client.LookupAddressableDevice(context.device_id);
+      TF_RET_CHECK(cpu_client->platform_id() == kCpuId);
+      return cpu_client->LookupAddressableDevice(context.device_id);
     case kDLGPU:
-      if (client.platform_id() != kGpuId) {
+      if (gpu_client == nullptr) {
         return InvalidArgument(
-            "DLPack GPU device type mismatch with PjRtClient platform %s",
-            client.platform_name());
+            "DLPack tensor is on GPU, but no GPU backend was provided.");
       }
-      return client.LookupAddressableDevice(context.device_id);
+      TF_RET_CHECK(gpu_client->platform_id() == kGpuId);
+      return gpu_client->LookupAddressableDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
                              context.device_type);
@@ -319,7 +323,19 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
 }
 
 StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, std::shared_ptr<PyClient> client) {
+    const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
+    std::shared_ptr<PyClient> gpu_client) {
+  // Backward compatibility: if only one client is passed, it may be from any
+  // platform. Drop this support after dropping support for jax <= 0.2.14.
+  if (cpu_client && cpu_client->pjrt_client()->platform_id() == kGpuId) {
+    gpu_client = std::move(cpu_client);
+    cpu_client = nullptr;
+  }
+  if (cpu_client && cpu_client->pjrt_client()->platform_id() != kCpuId) {
+    return InvalidArgument("DLPack does not support platform %s",
+                           cpu_client->pjrt_client()->platform_name());
+  }
+
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
@@ -334,7 +350,9 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
   }
   TF_ASSIGN_OR_RETURN(
       PjRtDevice * device,
-      DeviceForDLContext(*client->pjrt_client(), dlmt->dl_tensor.ctx));
+      DeviceForDLContext(cpu_client ? cpu_client->pjrt_client() : nullptr,
+                         gpu_client ? gpu_client->pjrt_client() : nullptr,
+                         dlmt->dl_tensor.ctx));
   absl::Span<int64 const> dimensions(
       reinterpret_cast<int64*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
@@ -359,7 +377,7 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
   TF_ASSIGN_OR_RETURN(auto pjrt_buffer,
-                      client->pjrt_client()->CreateViewOfDeviceBuffer(
+                      device->client()->CreateViewOfDeviceBuffer(
                           static_cast<char*>(dlmt->dl_tensor.data) +
                               dlmt->dl_tensor.byte_offset,
                           shape, device, on_delete_callback));
@@ -367,8 +385,13 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  return PyBuffer::Make(std::move(client), std::move(pjrt_buffer),
-                        Traceback::Get());
+  // TODO(phawkins): simplify the expression below once we know cpu_client is
+  // always non-null.
+  return PyBuffer::Make(
+      (cpu_client && device->client() == cpu_client->pjrt_client())
+          ? std::move(cpu_client)
+          : std::move(gpu_client),
+      std::move(pjrt_buffer), Traceback::Get());
 }
 
 }  // namespace xla

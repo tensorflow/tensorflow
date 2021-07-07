@@ -198,4 +198,4 @@ bazel test --announce_rc --config=opt -k --test_output=errors \
   --flaky_test_attempts=3 \
   --output_filter=^$ \
   -- ${TEST_TARGET} \
-  -//${PY_TEST_DIR}/tensorflow/python:virtual_gpu_test
+  -//${PY_TEST_DIR}/tensorflow/python/client:virtual_gpu_test

@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -335,7 +336,8 @@ class TransferManager {
   };
 
   // Map from platform kind to transfer manager singleton.
-  static std::map<se::Platform::Id, State>* GetPlatformTransferManagers();
+  static absl::flat_hash_map<se::Platform::Id, State>*
+  GetPlatformTransferManagers();
 };
 
 }  // namespace xla
