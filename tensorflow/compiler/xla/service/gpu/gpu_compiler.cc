@@ -40,9 +40,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_gather_broadcast_reorder.h"
 #include "tensorflow/compiler/xla/service/all_gather_combiner.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
+#include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/async_all_reduce_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
@@ -383,6 +385,17 @@ Status GpuCompiler::OptimizeHloModule(
   {
     HloPassPipeline collectives_pipeline("collective-optimizations");
     collectives_pipeline.AddPass<AllReduceScatterCreator>();
+    collectives_pipeline.AddPass<AllReduceReassociate>();
+
+    // Run algebraic simplifier to reshape(broadcast) into a broadcast when
+    // the reshape is just adding a unit dimension. This will help with the
+    // AllGatherBroadcastReorder pass.
+    AlgebraicSimplifierOptions options;
+    options.set_replace_transpose_with_bitcast(false);
+    options.set_enable_conv_operand_swap(false);
+    collectives_pipeline.AddPass<AlgebraicSimplifier>(options);
+
+    collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
     TF_RETURN_IF_ERROR(collectives_pipeline.Run(hlo_module).status());
   }
 
