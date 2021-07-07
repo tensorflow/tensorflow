@@ -241,6 +241,16 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div,
     test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Div,
+    /*test_name=*/UInt8, uint8, uint8, test::DefaultInput<uint8>(),
+    test::DefaultInputNonZero<uint8>(), baseline_div,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    Div,
+    /*test_name=*/UInt16, uint16, uint16, test::DefaultInput<uint16>(),
+    test::DefaultInputNonZero<uint16>(), baseline_div,
+    test::OpsTestConfig().ExpectStrictlyEqual())
 
 // The following tests don't work with Eigen kernels if the Eigen kernels are
 // compiled with nvcc.
@@ -948,6 +958,16 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     TruncateDiv,
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputNonZero<int64>(), baseline_div,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv,
+    /*test_name=*/UInt8, uint8, uint8, test::DefaultInput<uint8>(),
+    test::DefaultInputNonZero<uint8>(), baseline_div,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv,
+    /*test_name=*/UInt16, uint16, uint16, test::DefaultInput<uint16>(),
+    test::DefaultInputNonZero<uint16>(), baseline_div,
     test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Xdivy`.
