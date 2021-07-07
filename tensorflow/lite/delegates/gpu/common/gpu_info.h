@@ -95,6 +95,15 @@ enum class AdrenoGpu {
   kUnknown
 };
 
+struct AMDInfo {
+  AMDInfo() = default;
+  int shader_engines;
+  int compute_units_per_shader_engine;
+  int GetComputeUnitsCount() const {
+    return shader_engines * compute_units_per_shader_engine;
+  }
+};
+
 struct AdrenoInfo {
   AdrenoInfo() = default;
   explicit AdrenoInfo(const std::string& device_version);
@@ -384,6 +393,7 @@ struct GpuInfo {
   std::vector<int> supported_subgroup_sizes;
 
   AdrenoInfo adreno_info;
+  AMDInfo amd_info;
   AppleInfo apple_info;
   MaliInfo mali_info;
 
