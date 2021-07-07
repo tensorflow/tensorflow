@@ -899,6 +899,28 @@ GENERATE_DEFAULT_TEST(Sinh, DT_FLOAT, DT_FLOAT, std::sinh,
 GENERATE_DEFAULT_TEST(Sinh, DT_DOUBLE, DT_DOUBLE, std::sinh,
                       test::OpsTestConfig())
 
+/// Test `tf.Softplus`.
+
+// Reference implementation
+template <typename T>
+T baseline_softplus(T x) {
+  T epsilon = std::numeric_limits<T>::epsilon();
+  T threshold = 2 + std::log(epsilon);
+  if (x > -threshold && x < threshold) {
+    return std::exp(x);
+  }
+  return std::log1p(std::exp(x));
+}
+
+GENERATE_DEFAULT_TEST_2(Softplus, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_softplus, test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Softplus, DT_FLOAT, DT_FLOAT, baseline_softplus,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Softplus, DT_DOUBLE, DT_DOUBLE, baseline_softplus,
+                      test::OpsTestConfig())
+
 /// Test `tf.Sqrt`.
 
 GENERATE_DEFAULT_TEST(Sqrt, DT_FLOAT, DT_FLOAT, std::sqrt,

@@ -416,6 +416,28 @@ tf_kernel_library(
     ]),
 )
 
+tf_kernel_library(
+    name = "gpu_softplus_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_softplus.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_softplus_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "softplus_op",
+    srcs = [],
+    deps = [
+    ] + if_cuda_or_rocm([
+        ":gpu_softplus_op",
+    ]),
+)
+
 cc_library(
     name = "base_ops_test",
     testonly = 1,
@@ -1160,6 +1182,7 @@ gpu_kernel_library(
         "log1p",
         "relu_grad",
         "rsqrt",
+        "softplus",
         "sqrt",
         "tanh",
     ]
