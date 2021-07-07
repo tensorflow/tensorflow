@@ -17,6 +17,22 @@ include "mlir/Pass/PassBase.td"
 
 // TF dialect passes.
 
+def TensorflowGPUFusion : FunctionPass<"tf-gpu-op-fusion"> {
+  let summary = "Fusion optimization for GPU targets";
+  let description = [{
+    This pass is performing fusion specific to GPU targets. This is an ad-hoc
+    pass for now, but should be integrated with some notion of "target" in the
+    MLIR pipeline in the future.
+  }];
+  let constructor = "TF::CreateGpuOpFusionPass()";
+}
+
+def MaterializePassthroughOp : FunctionPass<"tf-materialize-passthrough-op"> {
+  let summary = "Materialize the MlirPassthroughOp by replacing it with the "
+    "MLIR module attached as an attribute";
+  let constructor = "TF::CreateMaterializePassthroughOpPass()";
+}
+
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   let summary = "Simple Shape Inference on TensorFlow Dialect";
   // TODO(jpienaar): Write `description`.
