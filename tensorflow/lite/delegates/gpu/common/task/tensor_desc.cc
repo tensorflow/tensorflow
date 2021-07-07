@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 #include <cstdint>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -338,6 +340,15 @@ std::string TensorDescriptor::Read(
       read_as_type == DataType::FLOAT32 ? "float4" : "half4";
   switch (storage_type) {
     case TensorStorageType::BUFFER:
+      if (gpu_info.IsApiOpenGl()) {
+        if (data_type == DataType::FLOAT16) {
+          return absl::StrCat("vec4(unpackHalf2x16(buffer[", coords[0],
+                              "].x), unpackHalf2x16(buffer[", coords[0],
+                              "].y))");
+        } else {
+          return absl::StrCat("buffer[", coords[0], "]");
+        }
+      }
       if (read_as_type == data_type) {
         return absl::StrCat("buffer[", coords[0], "]");
       } else {
@@ -366,6 +377,9 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
+      } else if (gpu_info.IsApiOpenGl()) {
+        return "texelFetch(image2d, ivec2(" + coords[0] + ", " + coords[1] +
+               "), 0)";
       } else {
         return "";
       }
@@ -383,6 +397,9 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
+      } else if (gpu_info.IsApiOpenGl()) {
+        return "texelFetch(image3d, ivec3(" + coords[0] + ", " + coords[1] +
+               ", " + coords[2] + "), 0)";
       } else {
         return "";
       }
@@ -400,6 +417,9 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
+      } else if (gpu_info.IsApiOpenGl()) {
+        return "texelFetch(image2d_array, ivec3(" + coords[0] + ", " +
+               coords[1] + ", " + coords[2] + "), 0)";
       } else {
         return "";
       }
@@ -413,6 +433,8 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
+      } else if (gpu_info.IsApiOpenGl()) {
+        return "texelFetch(image_buffer, " + coords[0] + ")";
       } else {
         return "";
       }
