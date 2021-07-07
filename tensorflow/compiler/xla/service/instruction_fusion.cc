@@ -471,6 +471,12 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 
 }  // namespace
 
+std::vector<HloComputation*> InstructionFusion::GetFusionComputations(
+    HloModule* module) {
+  // Use sorted computations because fusion configuration is order-sensitive.
+  return module->MakeNonfusionComputationsSorted();
+}
+
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
     HloComputation* computation) {
   return absl::make_unique<ReversePostOrderFusionQueue>(computation);
@@ -488,8 +494,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     fusion_config->clear();
   }
 
-  // Use sorted computations because fusion configuration is order-sensitive.
-  for (auto* computation : module->MakeNonfusionComputationsSorted()) {
+  for (auto* computation : GetFusionComputations(module_)) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
     reachability_ = HloReachabilityMap::Build(computation_);
