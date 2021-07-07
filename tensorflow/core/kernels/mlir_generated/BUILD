@@ -1087,7 +1087,7 @@ gpu_kernel_library(
     gpu_kernel_library(
         name = "gpu_" + op + "_kernels",
         op = op,
-        output_types = ["i1"] * 7,
+        output_types = ["i1"] * 10,
         tile_size = "1024",
         types = [
             "f16",
@@ -1095,8 +1095,11 @@ gpu_kernel_library(
             "f64",
             "i8",
             "i16",
-            "i32",
             "i64",
+            "ui8",
+            "ui16",
+            "ui32",
+            "ui64",
         ],
         unroll_factors = "4",
     )

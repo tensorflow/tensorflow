@@ -399,6 +399,18 @@ GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/Int16, int16, bool,
 GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/Int64, int64, bool,
                        baseline_greater,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/UInt8, uint8, bool,
+                       baseline_greater,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/UInt16, uint16, bool,
+                       baseline_greater,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/UInt32, uint32, bool,
+                       baseline_greater,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/UInt64, uint64, bool,
+                       baseline_greater,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.GreaterEqual`.
 
@@ -423,6 +435,18 @@ GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/Int16, int16, bool,
                        baseline_greater_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/Int64, int64, bool,
+                       baseline_greater_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/UInt8, uint8, bool,
+                       baseline_greater_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/UInt16, uint16, bool,
+                       baseline_greater_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/UInt32, uint32, bool,
+                       baseline_greater_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/UInt64, uint64, bool,
                        baseline_greater_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
@@ -470,6 +494,14 @@ GENERATE_DEFAULT_TESTS(Less, /*test_name=*/Int16, int16, bool, baseline_less,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Less, /*test_name=*/Int64, int64, bool, baseline_less,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/UInt8, uint8, bool, baseline_less,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/UInt16, uint16, bool, baseline_less,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/UInt32, uint32, bool, baseline_less,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/UInt64, uint64, bool, baseline_less,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.LessEqual`.
 
@@ -494,6 +526,18 @@ GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/Int16, int16, bool,
                        baseline_less_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/Int64, int64, bool,
+                       baseline_less_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/UInt8, uint8, bool,
+                       baseline_less_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/UInt16, uint16, bool,
+                       baseline_less_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/UInt32, uint32, bool,
+                       baseline_less_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/UInt64, uint64, bool,
                        baseline_less_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
