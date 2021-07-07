@@ -2610,6 +2610,13 @@ def _convert_check_numerics(pfor_input):
   return wrap(gen_array_ops.check_numerics(t, message), True)
 
 
+@RegisterPFor("EnsureShape")
+def _convert_ensure_shape(pfor_input):
+  t = pfor_input.stacked_input(0)
+  shape = tensor_shape.TensorShape(pfor_input.get_attr("shape"))
+  return wrap(gen_array_ops.ensure_shape(t, [None] + shape), True)
+
+
 # manip_ops
 
 
