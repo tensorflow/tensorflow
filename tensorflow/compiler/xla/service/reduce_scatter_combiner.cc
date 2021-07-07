@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
+#include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
 
 #include <algorithm>
 #include <list>
@@ -24,10 +24,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/all_reduce_key.h"
 #include "tensorflow/compiler/xla/service/collective_combiner_utils.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -45,48 +44,53 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Combines the elements of to_combine into a single AllReduce op. All
-// entries in to_combine must be AllReduce ops with exactly one operand
+using ReduceScatterKey =
+    std::tuple<AllReduceKey, /*scatter_dimension*/ int64_t>;
+
+// Combines the elements of to_combine into a single ReduceScatter op. All
+// entries in to_combine must be ReduceScatter ops with exactly one operand
 // and the same reduction operation.
-Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
+Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
     return Status::OK();
   }
-  VLOG(1) << "Combined " << to_combine.size() << " CRS ops";
+  VLOG(1) << "Combined " << to_combine.size() << " reduce-scatter ops";
 
   HloComputation& computation = *to_combine.back()->parent();
   HloComputation* reduction = to_combine[0]->to_apply();
-  const HloOpcode type = reduction->root_instruction()->opcode();
+  absl::optional<ReductionKind> first_reduction_kind =
+      MatchReductionComputation(reduction);
+  TF_RET_CHECK(first_reduction_kind);
 
-  // Create a single bigger AllReduce of the operands of the smaller
-  // AllReduces.
+  // Create a single bigger ReduceScatter of the operands of the smaller
+  // ReduceScatters.
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> operand_shapes;
+  std::vector<Shape> output_shapes;
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
     VLOG(1) << "Set element: " << hlo->ToString();
-    TF_RET_CHECK(hlo->opcode() == HloOpcode::kAllReduce);
+    TF_RET_CHECK(hlo->opcode() == HloOpcode::kAllReduceScatter);
     TF_RET_CHECK(hlo->operands().size() == 1);
-    TF_RET_CHECK(hlo->to_apply() == reduction ||
-                 (hlo->to_apply()->instruction_count() == 3 &&
-                  hlo->to_apply()->num_parameters() == 2 &&
-                  hlo->to_apply()->root_instruction()->opcode() == type));
+    absl::optional<ReductionKind> reduction_kind =
+        MatchReductionComputation(hlo->to_apply());
+    TF_RET_CHECK(reduction_kind);
+    TF_RET_CHECK(*reduction_kind == *first_reduction_kind);
     TF_RET_CHECK(hlo->shape().IsArray());
-    for (HloInstruction* operand : hlo->operands()) {
-      operands.push_back(operand);
-      operand_shapes.push_back(operand->shape());
-    }
+    operands.push_back(hlo->operands()[0]);
+    output_shapes.push_back(hlo->shape());
   }
+
+  const HloAllReduceScatterInstruction* rs =
+      Cast<HloAllReduceScatterInstruction>(to_combine.front());
 
   HloInstruction* combined;
   // AllReduce ops with more than one operand produce a tuple.
   TF_RET_CHECK(operands.size() >= 2);
-  combined = computation.AddInstruction(HloInstruction::CreateAllReduce(
-      ShapeUtil::MakeTupleShape(operand_shapes), operands, reduction,
+  combined = computation.AddInstruction(HloInstruction::CreateAllReduceScatter(
+      ShapeUtil::MakeTupleShape(output_shapes), operands, reduction,
       to_combine.front()->replica_groups(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
-      Cast<HloAllReduceInstruction>(to_combine.front())
-          ->use_global_device_ids()));
+      rs->use_global_device_ids(), rs->scatter_dimension()));
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
@@ -95,9 +99,9 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   }
   VLOG(1) << "Replacing with : " << combined->ToString();
 
-  // Replace all the smaller AllReduces with elements of the tuple output
-  // of the single bigger AllReduce.
-  for (int64 i = 0; i < to_combine.size(); ++i) {
+  // Replace all the smaller ReduceScatters with elements of the tuple output
+  // of the single bigger ReduceScatter.
+  for (int64_t i = 0; i < to_combine.size(); ++i) {
     auto replace_with = HloInstruction::CreateGetTupleElement(
         to_combine[i]->shape(), combined, i);
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
@@ -107,22 +111,24 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
 }
 }  // namespace
 
-AllReduceCombiner::AllReduceCombiner(int64 combine_threshold_in_bytes,
-                                     int64 combine_threshold_count)
+ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
+                                             int64_t combine_threshold_count)
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count) {}
 
-StatusOr<bool> AllReduceCombiner::Run(HloModule* module) {
-  VLOG(1) << "Running AllReduceCombiner with threshold of "
+StatusOr<bool> ReduceScatterCombiner::Run(HloModule* module) {
+  VLOG(1) << "Running ReduceScatterCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
   if (combine_threshold_in_bytes_ <= 0 || combine_threshold_count_ <= 0) {
-    VLOG(1) << "Skip AllReduceCombiner because the threshold is zero";
+    VLOG(1) << "Skip ReduceScatterCombiner because the threshold is zero";
     return false;
   }
 
-  if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
-    VLOG(1) << "Skip AllReduceCombiner because the module contains all-reduce "
+  if (hlo_query::ContainsLayoutConstrainedCollective(
+          *module, HloOpcode::kAllReduceScatter)) {
+    VLOG(1) << "Skip ReduceScatterCombiner because the module contains "
+               "reduce-scatter "
                "with constrained layouts";
     return false;
   }
@@ -131,19 +137,22 @@ StatusOr<bool> AllReduceCombiner::Run(HloModule* module) {
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
-    auto key_fn =
-        [&domain_map](
-            const HloInstruction* instruction) -> absl::optional<AllReduceKey> {
-      if (instruction->opcode() != HloOpcode::kAllReduce) {
+    auto key_fn = [&domain_map](const HloInstruction* instruction)
+        -> absl::optional<ReduceScatterKey> {
+      auto* rs = DynCast<HloAllReduceScatterInstruction>(instruction);
+      absl::optional<AllReduceKey> key =
+          GetAllReduceKey(instruction, domain_map.get());
+
+      if (!rs || !key) {
         return absl::nullopt;
       }
-      return GetAllReduceKey(instruction, domain_map.get());
+      return ReduceScatterKey{std::move(*key), rs->scatter_dimension()};
     };
 
     TF_ASSIGN_OR_RETURN(
         bool computation_changed,
-        CombineInstructionsByKey<AllReduceKey>(
-            computation, key_fn, &CombineAllReduces,
+        CombineInstructionsByKey<ReduceScatterKey>(
+            computation, key_fn, &CombineReduceScatters,
             combine_threshold_in_bytes_, combine_threshold_count_));
     changed |= computation_changed;
   }
