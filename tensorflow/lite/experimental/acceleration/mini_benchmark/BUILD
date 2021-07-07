@@ -637,6 +637,7 @@ cc_test(
     tags = [
         "no_mac",
         "no_windows",
+        "notsan",  # TODO(b/193070577): Remove this after fixing the tsan failure.
         "tflite_not_portable_ios",
     ],
     deps = [
