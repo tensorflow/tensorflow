@@ -232,11 +232,11 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
       }
       size_map_historgram[p.second]++;
     }
-    VLOG(ERROR)
+    LOG(ERROR)
       << "Histogram of current allocation: (allocation_size_in_bytes, "
       << "nb_allocation_of_that_sizes), ...;";
     for (auto p : size_map_historgram) {
-      VLOG(ERROR) << p.first << ", " << p.second;
+      LOG(ERROR) << p.first << ", " << p.second;
     }
 
     VLOG(8) << "\nThe sorted list of (ptr,size):";
@@ -244,28 +244,28 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
 
     cuuint64_t mem_reserved_current;
     if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT, &mem_reserved_current)) {
-      VLOG(ERROR) << "Error while fethcing extra cudaMallocAsync pool attribute: "
+      LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
                   << GetCudaErrorMessage(result);
     }
     cuuint64_t mem_used_current;
     if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_USED_MEM_CURRENT, &mem_used_current)) {
-      VLOG(ERROR) << "Error while fethcing extra cudaMallocAsync pool attribute: "
+      LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
                   << GetCudaErrorMessage(result);
     }
     cuuint64_t mem_reserved_high;
     if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH, &mem_reserved_high)) {
-      VLOG(ERROR) << "Error while fethcing extra cudaMallocAsync pool attribute: "
+      LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
                   << GetCudaErrorMessage(result);
     }
     cuuint64_t mem_used_high;
     if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_USED_MEM_HIGH, &mem_used_high)) {
-      VLOG(ERROR) << "Error while fethcing extra cudaMallocAsync pool attribute: "
+      LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
                   << GetCudaErrorMessage(result);
     }
-    VLOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT: " << mem_reserved_current;
-    VLOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_CURRENT: " << mem_used_current;
-    VLOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
-    VLOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
+    LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT: " << mem_reserved_current;
+    LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_CURRENT: " << mem_used_current;
+    LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
+    LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
 
     return nullptr;
   }
