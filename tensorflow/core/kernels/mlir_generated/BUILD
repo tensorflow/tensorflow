@@ -369,6 +369,28 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "gpu_constant_op",
+    srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_zeros_like.cc",
+    ]),
+    tags = ["manual"],
+    deps = if_mlir_generated_experimental_kernels_enabled([
+        ":base_gpu_op",
+        ":gpu_zeros_like_kernels",
+        "//third_party/eigen3",
+    ]),
+)
+
+tf_kernel_library(
+    name = "constant_op",
+    srcs = [],
+    deps = [
+    ] + if_cuda_or_rocm([
+        ":gpu_constant_op",
+    ]),
+)
+
+tf_kernel_library(
     name = "gpu_relu_op",
     srcs = if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_elu.cc",
@@ -1550,7 +1572,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "zeros_like_kernels",
+    name = "gpu_zeros_like_kernels",
     op = "zeros_like",
     tile_size = "1024",
     types = [

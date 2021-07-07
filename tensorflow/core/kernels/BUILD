@@ -1063,8 +1063,21 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "constant_op",
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "constant_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:constant_op",
+    ],
 )
 
 tf_kernel_library(
@@ -4048,6 +4061,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "relu_op",
     copts = if_mlir_generated_experimental_kernels_enabled(
+        ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
+    ) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_experimental_kernels_enabled(
         ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED"],
     ) + if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],

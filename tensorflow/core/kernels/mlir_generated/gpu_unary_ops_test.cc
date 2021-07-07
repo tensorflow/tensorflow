@@ -969,5 +969,23 @@ GENERATE_DEFAULT_TEST(Square, DT_DOUBLE, DT_DOUBLE, baseline_square,
 GENERATE_DEFAULT_TEST(Square, DT_INT64, DT_INT64, baseline_square,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.ZerosLike`.
+
+template <typename T>
+T baseline_zeros_like(T /*inp*/) {
+  return T(0);
+}
+
+GENERATE_DEFAULT_TEST(ZerosLike, DT_BOOL, DT_BOOL, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_HALF, DT_HALF, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_FLOAT, DT_FLOAT, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_DOUBLE, DT_DOUBLE, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(ZerosLike, DT_INT64, DT_INT64, baseline_zeros_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
 }  // namespace
 }  // namespace tensorflow
