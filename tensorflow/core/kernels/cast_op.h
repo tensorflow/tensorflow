@@ -83,6 +83,29 @@ limitations under the License.
     }                                                                 \
   };
 
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+// If MLIR kernels are enabled, we don't need the specialized cast from float to
+// double or from Eigen::half to double. We still need the specialized cast from
+// Eigen::half to float, because it is used in depthwise_conv_grad_op.cc.
+#define CAST_FUNCTORS_SUBSET(devname)                                 \
+  SPECIALIZE_CAST(devname, float, std::complex<double>)               \
+  SPECIALIZE_CAST(devname, std::complex<float>, std::complex<double>) \
+  SPECIALIZE_CAST(devname, std::complex<float>, double)               \
+  SPECIALIZE_CAST(devname, Eigen::half, float)                        \
+  SPECIALIZE_CAST(devname, Eigen::half, std::complex<double>)         \
+  SPECIALIZE_CAST(devname, Eigen::half, std::complex<float>)          \
+  SPECIALIZE_CAST(devname, bfloat16, float)                           \
+  template <typename OUT_TYPE, typename IN_OUT>                       \
+  struct CastFunctor<devname, OUT_TYPE, IN_OUT> {                     \
+    void operator()(const devname& d,                                 \
+                    typename TTypes<OUT_TYPE>::Flat out_tensor,       \
+                    typename TTypes<IN_OUT>::ConstFlat in_tensor,     \
+                    bool truncate = false) {                          \
+      out_tensor.device(d) = in_tensor.template cast<OUT_TYPE>();     \
+    }                                                                 \
+  };
+#endif
+
 namespace tensorflow {
 
 typedef std::function<void(OpKernelContext*, const Tensor&, Tensor*,
