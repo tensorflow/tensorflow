@@ -563,13 +563,13 @@ class Interpreter {
   static constexpr int kTensorsCapacityHeadroom = 16;
 
   /// Set if buffer handle output is allowed.
-  //
+  ///
   /// When using hardware delegation, Interpreter will make the data of output
   /// tensors available in `tensor->data` by default. If the application can
   /// consume the buffer handle directly (e.g. reading output from OpenGL
   /// texture), it can set this flag to false, so Interpreter won't copy the
-  /// data from buffer handle to CPU memory. WARNING: This is an experimental
-  /// API and subject to change.
+  /// data from buffer handle to CPU memory.
+  /// WARNING: This is an experimental API and subject to change.
   void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
