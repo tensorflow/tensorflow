@@ -102,6 +102,26 @@
     *   Fix `tf.summary.should_record_summaries()` so it correctly reflects when summaries will be written, even when `tf.summary.record_if()` is not n effect, by returning True tensor if default writer is present.
 *   Grappler:
     *   Disable default Grappler optimization timeout to make the optimization pipeline deterministic. This may lead to increased model loading time, because time spent in graph optimizations is now unbounded (was 20 minutes).
+*   Deterministic Op Functionality (enabled by setting `TF_DETERMINISTIC_OPS` to
+        `"true"` or `"1"`):
+    *   Add a deterministic GPU implementation of
+        `tf.nn.softmax_cross_entropy_with_logits`. See PR
+        [49178](https://github.com/tensorflow/tensorflow/pull/49178).
+    *   Add a deterministic CPU implementation of `tf.image.crop_and_resize`.
+        See PR [48905](https://github.com/tensorflow/tensorflow/pull/48905).
+    *   Add determinism-unimplemented exception-throwing to the following ops.
+        When op-determinism is expected, an attempt to use the
+        specified paths through the following ops on a GPU will cause
+        `tf.errors.UnimplementedError` (with an understandable message) to be
+        thrown.
+        *    `tf.nn.sparse_softmax_cross_entropy_with_logits` forwards and/or
+             backwards. See PR
+             [47925](https://github.com/tensorflow/tensorflow/pull/47925))
+        *    `tf.image.crop_and_resize` gradient w.r.t. either `image` or
+             `boxes`. See PR
+             [48905](https://github.com/tensorflow/tensorflow/pull/48905).
+        *    `tf.sparse.sparse_dense_matmul` forwards. See PR
+             [50355](https://github.com/tensorflow/tensorflow/pull/50355).
 
 ## Thanks to our Contributors
 
