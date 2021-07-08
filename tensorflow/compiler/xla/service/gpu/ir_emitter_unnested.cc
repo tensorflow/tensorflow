@@ -4880,6 +4880,10 @@ bool IsUnrollingColumnReductionBeneficial(
     return false;
   }
 
+  if (input_shape.dimensions()[input_shape.rank() - 1] < 64) {
+    return false;
+  }
+
   if (IsReductionFromOrToContiguousDimensions(unnested_hlo, layout_analysis)) {
     return true;
   }
@@ -5010,6 +5014,8 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       return kStridedIndexingX;
     }
   }();
+  VLOG(3) << "Each threads will produce " << num_partial_results
+          << " output(s)";
 
   int vector_size = 1;
   if (indexing_order == kStridedLinearIndexingX) {

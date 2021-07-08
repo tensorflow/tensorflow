@@ -131,6 +131,12 @@ class HloComputation {
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
                                  const std::string& new_name = "");
 
+  // Replace the old parameter at index param_no with
+  // `instruction`. Updates uses and root instruction. Removes old
+  // instruction from computation. No check is done on the shape.
+  HloInstruction* ReplaceParameter(int64 param_no,
+                                   std::unique_ptr<HloInstruction> instruction);
+
   // Remove the param_no'th parameter from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
@@ -161,7 +167,7 @@ class HloComputation {
       std::unique_ptr<HloInstruction> instruction);
 
   // Replaces an old parameter with a new parameter. Adds the new parameter
-  // instruction to the entry computation.
+  // instruction to the entry computation.  Updates users instruction.
   Status ReplaceEntryComputationParameter(
       int64 param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
@@ -356,6 +362,10 @@ class HloComputation {
   // receive the sharding information of |old_instruction|.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
+
+  // As ReplaceInstruction, but the new instruction can have a different shape.
+  Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
+                                              HloInstruction* new_instruction);
 
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
