@@ -168,7 +168,7 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
   """Breadth first search for reachable nodes from target nodes."""
   nodes_to_keep = set()
   # Breadth first search to find all the nodes that we should keep.
-  next_to_visit = target_nodes[:]
+  next_to_visit = list(target_nodes)
   while next_to_visit:
     node = next_to_visit[0]
     del next_to_visit[0]
@@ -190,7 +190,7 @@ def extract_sub_graph(graph_def, dest_nodes):
 
   Args:
     graph_def: A graph_pb2.GraphDef proto.
-    dest_nodes: A list of strings specifying the destination node names.
+    dest_nodes: An iterable of strings specifying the destination node names.
   Returns:
     The GraphDef of the sub-graph.
 
@@ -202,7 +202,7 @@ def extract_sub_graph(graph_def, dest_nodes):
     raise TypeError("graph_def must be a graph_pb2.GraphDef proto.")
 
   if isinstance(dest_nodes, six.string_types):
-    raise TypeError("dest_nodes must be a list.")
+    raise TypeError("dest_nodes must be an iterable of strings.")
 
   name_to_input_name, name_to_node, name_to_seq_num = _extract_graph_summary(
       graph_def)
