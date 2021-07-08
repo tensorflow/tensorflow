@@ -371,11 +371,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "gpu_constant_op",
     srcs = if_mlir_generated_experimental_kernels_enabled([
+        "gpu_op_ones_like.cc",
         "gpu_op_zeros_like.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_experimental_kernels_enabled([
         ":base_gpu_op",
+        ":gpu_ones_like_kernels",
         ":gpu_zeros_like_kernels",
         "//third_party/eigen3",
     ]),
@@ -1600,6 +1602,23 @@ gpu_kernel_library(
 gpu_kernel_library(
     name = "gpu_zeros_like_kernels",
     op = "zeros_like",
+    tile_size = "1024",
+    types = [
+        "i1",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+        # TODO(b/190374484): Enable it for complex types once it is supported.
+        # "c64",
+        # "c128",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_ones_like_kernels",
+    op = "ones_like",
     tile_size = "1024",
     types = [
         "i1",

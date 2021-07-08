@@ -704,6 +704,24 @@ GENERATE_DEFAULT_TEST(Neg, DT_COMPLEX64, DT_COMPLEX64, baseline_neg,
 GENERATE_DEFAULT_TEST(Neg, DT_COMPLEX128, DT_COMPLEX128, baseline_neg,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.OnesLike`.
+
+template <typename T>
+T baseline_ones_like(T /*inp*/) {
+  return T(1);
+}
+
+GENERATE_DEFAULT_TEST(OnesLike, DT_BOOL, DT_BOOL, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_HALF, DT_HALF, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_FLOAT, DT_FLOAT, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_DOUBLE, DT_DOUBLE, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(OnesLike, DT_INT64, DT_INT64, baseline_ones_like,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.Real`.
 
 template <typename T>
