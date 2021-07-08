@@ -242,6 +242,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     VLOG(8) << "\nThe sorted list of (ptr,size):";
     VLOG(8) << absl::StrJoin(ptr_size_string, ",");
 
+#if CUDA_VERSION >= 11030
     cuuint64_t mem_reserved_current;
     if (auto result2 = cuMemPoolGetAttribute(pool_, CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT, &mem_reserved_current)) {
       LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
@@ -266,6 +267,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
     LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_CURRENT: " << mem_used_current;
     LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
     LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
+#endif
 
     return nullptr;
   }
