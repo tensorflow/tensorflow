@@ -195,7 +195,9 @@ Offset<NNAPISettings> ConvertNNAPISettings(const proto::NNAPISettings& settings,
       /*allow_dynamic_dimensions=*/
       settings.allow_dynamic_dimensions(),
       /*allow_fp16_precision_for_fp32=*/
-      settings.allow_fp16_precision_for_fp32());
+      settings.allow_fp16_precision_for_fp32(),
+      /*use_burst_computation=*/
+      settings.use_burst_computation());
 }
 
 Offset<GPUSettings> ConvertGPUSettings(const proto::GPUSettings& settings,

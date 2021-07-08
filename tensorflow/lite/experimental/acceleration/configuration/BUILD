@@ -117,6 +117,31 @@ cc_library(
 )
 
 cc_library(
+    name = "flatbuffer_to_proto",
+    srcs = [
+        "flatbuffer_to_proto.cc",
+    ],
+    hdrs = ["flatbuffer_to_proto.h"],
+    deps = [
+        ":configuration_cc_proto",
+        ":configuration_fbs",
+        "//tensorflow/lite:minimal_logging",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "flatbuffer_to_proto_test",
+    srcs = ["flatbuffer_to_proto_test.cc"],
+    deps = [
+        ":configuration_cc_proto",
+        ":configuration_fbs",
+        ":flatbuffer_to_proto",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "delegate_registry",
     srcs = ["delegate_registry.cc"],
     hdrs = ["delegate_registry.h"],
