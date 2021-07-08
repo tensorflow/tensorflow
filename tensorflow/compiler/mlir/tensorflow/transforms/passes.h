@@ -480,6 +480,10 @@ void CreateTPUBridgePipelineV1(OpPassManager& pm);
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
 CreateTPUCompileOpReplicationPass();
 
+// Creates a pass that applies space to depth transform
+// for the first or frontier convolutions consume host inputs on TPU.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass();
+
 }  // namespace TFTPU
 
 #define GEN_PASS_REGISTRATION

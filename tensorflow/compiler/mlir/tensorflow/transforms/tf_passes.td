@@ -1289,3 +1289,49 @@ def TPUExtractHeadTailOutsideCompilationPass : Pass<"tf-tpu-extract-head-tail-ou
 
   let constructor = "TFTPU::CreateTPUExtractHeadTailOutsideCompilationPass()";
 }
+
+def TPUSpaceToDepthPass : Pass<"tf-tpu-space-to-depth-pass", "ModuleOp"> {
+  let summary = "Applies automatic space to depth transform for the first or frontier convolutions consume host inputs on TPU.";
+
+  let description = [{
+    Automatic space to depth transform is done by adding space to depth transform op after host input
+    and applying space to depth transform for the first convolution and its backprop filter on TPU.
+
+    For example, original program:
+
+    ```mlir
+    module {
+      func @while_body {
+        %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}: -> tensor<2x224x224x3xf32>
+        %device_launch = "tf_device.cluster_func"(%input,...) {func = @_func,...)
+        return ...
+      }
+      func @_func(%input: tensor<2x224x224x3xf32>, %filter: tensor<7x7x3x64xf32>) {
+        %6 = "tf.Conv2D"(%input, %filter)  {strides = [1, 2, 2, 1]}: (tensor<2x230x230x3xf32>, tensor<7x7x3x64xf32>) -> tensor<2x112x112x64xf32>
+      }
+    }
+    ```
+
+    The program will be transformed into:
+
+    ```mlir
+    module {
+      func @while_body {
+        %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"} -> tensor<2x224x224x3xf32>
+        %space_to_depth = "tf.SpaceToDepth"(%input) {block_size = 2, ...}: (tensor<2x224x224x3xf32>) -> tensor<2x112x112x12xf32>
+        %device_launch = "tf_device.cluster_func"(%space_to_depth,...) {func = @_func,...)
+        return ...
+      }
+      func @_func(%input: tensor<2x112x112x12xf32>, %filter: tensor<7x7x3x64xf32>) {
+        %filter_transform = "tf.Pad/tf.Transpose/tf.Reshape"(%filter): tensor<7x7x3x64xf32>) -> tensor<4x4x12x64xf32>
+        %conv = "tf.Conv2D"(%input, %filter_transfrom) {strides = [1, 1, 1, 1]}: (tensor<2x112x112x12xf32>, tensor<4x4x12x64xf32>) -> tensor<2x112x112x64xf32>
+      }
+    }
+    ```
+
+    This way, the first convolution with 3 feature dimension will be transformed
+    to 12 feature dimension, which has better performance on TPU.
+  }];
+
+  let constructor = "TFTPU::CreateTPUSpaceToDepthPass()";
+}
