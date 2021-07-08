@@ -525,6 +525,50 @@ struct BuildConstantListAsAttr : public OpRewritePattern<BuildListOp> {
   }
 };
 
+quant::QuantizedType getQuantizedElementType(CastOp cast_op) {
+  if (!cast_op || !cast_op.getInputElementType()) {
+    return {};
+  }
+  return cast_op.getInputElementType()
+      .cast<TypeAttr>()
+      .getValue()
+      .dyn_cast<quant::QuantizedType>();
+}
+
+struct RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
+  using OpRewritePattern<TFRQuantQParamsOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFRQuantQParamsOp qparams_op,
+                                PatternRewriter &rewriter) const override {
+    auto cast_op = dyn_cast<TFR::CastOp>(qparams_op.input().getDefiningOp());
+    auto cast_qtype = getQuantizedElementType(cast_op);
+    if (!cast_qtype) {
+      return failure();
+    }
+    // Reads quantization parameters from the quantized type, and converts
+    // them to constants.
+    rewriter.setInsertionPoint(qparams_op);
+    if (auto qtype = cast_qtype.dyn_cast<quant::UniformQuantizedType>()) {
+      auto scale = rewriter.create<ConstantOp>(
+          qparams_op->getLoc(), rewriter.getF32FloatAttr(qtype.getScale()));
+      auto scale_tensor = rewriter.create<TFR::ConstantTensorOp>(
+          qparams_op->getLoc(), qparams_op.scale().getType(),
+          scale.getResult());
+      auto zp = rewriter.create<ConstantOp>(
+          qparams_op->getLoc(),
+          rewriter.getI32IntegerAttr(qtype.getZeroPoint()));
+      auto zp_tensor = rewriter.create<TFR::ConstantTensorOp>(
+          qparams_op->getLoc(), qparams_op.zp().getType(), zp.getResult());
+      qparams_op.scale().replaceAllUsesWith(scale_tensor.getResult());
+      qparams_op.zp().replaceAllUsesWith(zp_tensor.getResult());
+    } else {
+      // TODO(b/192720615): Add handling of UniformQuantizedPerAxisType
+      return failure();
+    }
+    return success();
+  }
+};
+
 void ConstantTensorOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<ConvertConstToTensorConst>(context);
@@ -553,6 +597,11 @@ void GetLengthOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void BuildListOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
   results.insert<BuildConstantListAsAttr>(context);
+}
+
+void TFRQuantQParamsOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<RemoveQParamsOp>(context);
 }
 
 OpFoldResult TFR::EqualOp::fold(ArrayRef<Attribute> operands) {

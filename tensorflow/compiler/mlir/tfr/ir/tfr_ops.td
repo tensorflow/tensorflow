@@ -575,6 +575,8 @@ def TFR_TFRQuantQParamsOp : TFR_Op<"quant_qparam", [NoSideEffect]> {
   let assemblyFormat = [{
     `(` $input `)` attr-dict `:` functional-type($input, results)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 

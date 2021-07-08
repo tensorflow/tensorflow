@@ -270,9 +270,17 @@ func @quant_raw_data(%arg0: !tfr.tensor) -> !tfr.tensor {
 // -----
 
 // CHECK-LABEL: quant_qparam
-func @quant_qparam(%arg0: !tfr.tensor) -> (!tfr.tensor, !tfr.tensor) {
-  %0:2 = "tfr.quant_qparam"(%arg0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
-  return %0#0, %0#1 : !tfr.tensor, !tfr.tensor
+// CANON-LABEL: quant_qparam
+func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tensor<f32>, tensor<i32>) {
+  %0 = "tfr.cast"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> !tfr.tensor
+  %scale, %zp = tfr.quant_qparam(%0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
+  %1 = "tfr.cast"(%scale) : (!tfr.tensor) -> tensor<f32>
+  %2 = "tfr.cast"(%zp) : (!tfr.tensor) -> tensor<i32>
+  return %1, %2 : tensor<f32>, tensor<i32>
+
+// CANON: %[[scale:.*]] = "tf.Const"() {value = dense<1.000000e-01> : tensor<f32>}
+// CANON: %[[zp:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
+// CANON: return %[[scale]], %[[zp]]
 }
 
 // -----
