@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <string>
-
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -29,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 
 #define DEBUG_TYPE "tf-layout-optimization"
@@ -67,38 +63,64 @@ TransposeOp ReuseExistingTranspose(const OpOperand* operand,
   return nullptr;
 }
 
+// LayoutAssignmentPass assigns optimal data layout (data format) for all
+// layout sensitive operations.
 class LayoutAssignmentPass
-    : public TensorflowLayoutAssignmentBase<LayoutAssignmentPass> {
+    : public PassWrapper<LayoutAssignmentPass, FunctionPass> {
  public:
   LayoutAssignmentPass() = default;
   explicit LayoutAssignmentPass(const std::string& force_data_format) {
-    this->force_data_format = force_data_format;
+    force_data_format_ = force_data_format;
   }
 
-  void runOnOperation() override;
+  LayoutAssignmentPass(const LayoutAssignmentPass& pass) {}
+
+  void runOnFunction() final;
+
+ private:
+  // Force a specified data format for all layout sensitive operations.
+  Option<std::string> force_data_format_{
+      *this, "force-data-format",
+      llvm::cl::desc("Force data format for all layout sensitive ops")};
 };
 
+// MoveTransposesPass moves all Transpose ops to the beginning or to the end of
+// the basic block where they are defined. This will allow canonicalzer to
+// delete redundant transposes.
 class MoveTransposesPass
-    : public TensorflowMoveTransposesBase<MoveTransposesPass> {
+    : public PassWrapper<MoveTransposesPass, FunctionPass> {
  public:
-  static constexpr const char* kBegin = "begin";
-  static constexpr const char* kEnd = "end";
+  enum class Direction { kBegin, kEnd };
 
   MoveTransposesPass() = default;
-
-  explicit MoveTransposesPass(std::string direction,
-                              bool fold_transpose_in_ops) {
-    this->direction_ = direction;
-    this->fold_transpose_in_ops_ = fold_transpose_in_ops;
+  explicit MoveTransposesPass(Direction direction, bool fold_transpose_in_ops) {
+    direction_ = direction;
+    fold_transpose_in_ops_ = fold_transpose_in_ops;
   }
+  MoveTransposesPass(const MoveTransposesPass& pass) {}
 
-  void runOnOperation() final;
+  void runOnFunction() final;
+
+ private:
+  Option<bool> fold_transpose_in_ops_{
+      *this, "fold-transpose-in-ops",
+      llvm::cl::desc(
+          "Whether to fold transposes in ops which can support folding."),
+      llvm::cl::init(true)};
+
+  Option<Direction> direction_{
+      *this, "direction",
+      llvm::cl::desc("Move transposes to the beginning or the end of the block "
+                     "where they are defined."),
+      llvm::cl::values(
+          clEnumValN(Direction::kBegin, "begin", "beginning of the block"),
+          clEnumValN(Direction::kEnd, "end", "end of the block"))};
 };
 
 using Permutation = SmallVector<int64_t, 4>;
 
-void LayoutAssignmentPass::runOnOperation() {
-  FuncOp func = getOperation();
+void LayoutAssignmentPass::runOnFunction() {
+  FuncOp func = getFunction();
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
@@ -108,11 +130,11 @@ void LayoutAssignmentPass::runOnOperation() {
 
   // If there is no runtime device information and data format is not explicitly
   // forced, there is nothing to do.
-  if (devices.NumDevices() == 0 && force_data_format.empty()) return;
+  if (devices.NumDevices() == 0 && force_data_format_.empty()) return;
 
   func.walk([&](LayoutSensitiveInterface layout_sensitive_interface) {
     // Get desired op data format.
-    StringRef target_data_format = force_data_format;
+    StringRef target_data_format = force_data_format_;
     if (target_data_format.empty()) {
       target_data_format = layout_sensitive_interface.GetOptimalLayout(devices);
     }
@@ -423,21 +445,18 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
   }
 }
 
-void MoveTransposesPass::runOnOperation() {
-  FuncOp func = getOperation();
+void MoveTransposesPass::runOnFunction() {
+  FuncOp func = getFunction();
 
   SmallVector<Operation*, 8> work_list;
 
-  // Unsupported direction for moving Transpose operations.
-  if (direction_ != kBegin && direction_ != kEnd) return signalPassFailure();
-
   func.walk([&](TransposeOp transpose) {
-    if (direction_ == kBegin) {
+    if (direction_ == Direction::kBegin) {
       // Try to push transpose before the operand operation.
       for (auto operand : transpose.getOperands()) {
         if (auto op = operand.getDefiningOp()) work_list.push_back(op);
       }
-    } else if (direction_ == kEnd) {
+    } else {
       // Try to push transpose after the user operation.
       for (Operation* user : transpose.y().getUsers()) {
         if (!llvm::isa<TransposeOp>(user)) work_list.push_back(user);
@@ -447,9 +466,9 @@ void MoveTransposesPass::runOnOperation() {
 
   while (!work_list.empty()) {
     Operation* op = work_list.pop_back_val();
-    if (direction_ == kBegin) {
+    if (direction_ == Direction::kBegin) {
       MoveTransposeBefore(op, &work_list);
-    } else if (direction_ == kEnd) {
+    } else if (direction_ == Direction::kEnd) {
       MoveTransposeAfter(op, &work_list, fold_transpose_in_ops_);
     }
   }
@@ -469,25 +488,24 @@ void MoveTransposesPass::runOnOperation() {
 void CreateLayoutOptimizationPipeline(
     OpPassManager& pm,  // NOLINT - MLIR contract is pass by mutable reference.
     const LayoutOptimizationPipelineOptions& options) {
+  using Direction = MoveTransposesPass::Direction;
+
   // Assign optimal layout for layout sensitive ops.
   pm.addPass(std::make_unique<LayoutAssignmentPass>(options.force_data_format));
 
   // Move transposes to the beginning of the block and try to fold them.
   pm.addPass(std::make_unique<MoveTransposesPass>(
-      MoveTransposesPass::kBegin, !options.skip_fold_transpose_in_ops));
+      Direction::kBegin, !options.skip_fold_transpose_in_ops));
 
   // Move transposes to the end of the block and try to fold them.
   pm.addPass(std::make_unique<MoveTransposesPass>(
-      MoveTransposesPass::kEnd, !options.skip_fold_transpose_in_ops));
+      Direction::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLayoutAssignmentPass() {
-  return std::make_unique<LayoutAssignmentPass>();
-}
-
-std::unique_ptr<OperationPass<FuncOp>> CreateMoveTransposesPass() {
-  return std::make_unique<MoveTransposesPass>();
-}
+static PassRegistration<LayoutAssignmentPass> layout_assignment(
+    "tf-layout-assignment", "Layout assignment pass");
+static PassRegistration<MoveTransposesPass> move_transposes(
+    "tf-move-transposes", "Move transposes pass");
 
 static mlir::PassPipelineRegistration<LayoutOptimizationPipelineOptions>
     pipeline("tf-layout-optimization",

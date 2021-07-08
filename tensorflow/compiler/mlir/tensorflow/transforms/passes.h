@@ -75,15 +75,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 
-// Assigns optimal data layout (data format) for all layout sensitive
-// operations.
-std::unique_ptr<OperationPass<FuncOp>> CreateLayoutAssignmentPass();
-
-// MoveTransposesPass moves all Transpose ops to the beginning or to the end of
-// the basic block where they are defined. This will allow canonicalzer to
-// delete redundant transposes.
-std::unique_ptr<OperationPass<FuncOp>> CreateMoveTransposesPass();
-
 // Performs checks that the whole module does not contain dynamic shapes.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFEnsureStaticShapesPass();
 
