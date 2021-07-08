@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/all_reduce_scatter_utils.h"
+#include "tensorflow/compiler/xla/service/reduce_scatter_utils.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -248,7 +248,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
 
 }  // namespace
 
-absl::optional<AllReduceScatterSpec> MatchAllReduceScatter(
+absl::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank) {
@@ -299,7 +299,7 @@ absl::optional<AllReduceScatterSpec> MatchAllReduceScatter(
     VLOG(2) << "All-reduce user is not dynamic slice " << user->ToString();
     return absl::nullopt;
   }
-  AllReduceScatterSpec spec;
+  ReduceScatterSpec spec;
   int64_t group_size;
   MapIdToTableOffset map_id;
   spec.dynamic_slice = user;

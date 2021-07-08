@@ -1374,15 +1374,15 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_all_reduce_scatter_creator",
-    srcs = ["gpu_all_reduce_scatter_creator.cc"],
-    hdrs = ["gpu_all_reduce_scatter_creator.h"],
+    name = "gpu_reduce_scatter_creator",
+    srcs = ["gpu_reduce_scatter_creator.cc"],
+    hdrs = ["gpu_reduce_scatter_creator.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:all_reduce_scatter_utils",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:reduce_scatter_utils",
     ],
 )
 
@@ -1412,7 +1412,6 @@ cc_library(
         ":fusion_bitcast_lift",
         ":fusion_merger",
         ":gemm_rewriter",
-        ":gpu_all_reduce_scatter_creator",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_copy_insertion",
@@ -1420,6 +1419,7 @@ cc_library(
         ":gpu_executable",
         ":gpu_hlo_schedule",
         ":gpu_layout_assignment",
+        ":gpu_reduce_scatter_creator",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
         ":gpu_spmd_partitioner",

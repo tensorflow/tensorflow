@@ -25,7 +25,7 @@ namespace xla {
 absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
                                              const HloDomainMap* domain_map) {
   if (instruction->opcode() != HloOpcode::kAllReduce &&
-      instruction->opcode() != HloOpcode::kAllReduceScatter) {
+      instruction->opcode() != HloOpcode::kReduceScatter) {
     return absl::nullopt;
   }
 

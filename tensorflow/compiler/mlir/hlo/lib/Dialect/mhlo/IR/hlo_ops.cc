@@ -197,11 +197,11 @@ Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
 }  // namespace
 
 //===----------------------------------------------------------------------===//
-// AllReduceScatterOp
+// ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllReduceScatterOp op) {
-  return mlir::hlo::VerifyAllReduceScatter(
+static LogicalResult Verify(ReduceScatterOp op) {
+  return mlir::hlo::VerifyReduceScatter(
       op,
       /*operand_types=*/{op.operand().getType()},
       /*result_types=*/{op.getType()},

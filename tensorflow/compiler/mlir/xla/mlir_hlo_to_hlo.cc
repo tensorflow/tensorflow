@@ -645,7 +645,7 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(AllReduceScatterOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
   auto& valueMap = *ctx.values;
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
@@ -664,9 +664,9 @@ LogicalResult ExportXlaOp(AllReduceScatterOp op, OpLoweringContext ctx) {
   }
 
   valueMap[op] =
-      xla::AllReduceScatter(operand, computation, scatterDim, shardCount,
-                            Convert_replica_groups(op.replica_groups()),
-                            Convert_channel_handle(op.channel_handle()));
+      xla::ReduceScatter(operand, computation, scatterDim, shardCount,
+                         Convert_replica_groups(op.replica_groups()),
+                         Convert_channel_handle(op.channel_handle()));
   return success();
 }
 

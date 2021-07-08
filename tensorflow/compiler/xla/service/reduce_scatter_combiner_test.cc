@@ -48,7 +48,7 @@ class ReduceScatterCombinerTest : public HloTestBase {
     return absl::c_count_if(module->entry_computation()->instructions(),
                             [](const HloInstruction* inst) {
                               return inst->opcode() ==
-                                     HloOpcode::kAllReduceScatter;
+                                     HloOpcode::kReduceScatter;
                             });
   }
 };
@@ -66,8 +66,8 @@ sum {
 ENTRY main {
   p0 = f32[8] parameter(0)
   p1 = f32[8] parameter(1)
-  rs0 = f32[4] all-reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
-  rs1 = f32[4] all-reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
+  rs0 = f32[4] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
+  rs1 = f32[4] reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
   ROOT t = (f32[4], f32[4]) tuple(rs0, rs1)
 }
 )";
@@ -89,10 +89,10 @@ sum {
 ENTRY main {
   p0 = f32[8, 8] parameter(0)
   p1 = f32[8, 8] parameter(1)
-  rs0 = f32[4, 8] all-reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
-  rs1 = f32[4, 8] all-reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
-  rs2 = f32[8, 4] all-reduce-scatter(p0), replica_groups={{0,1}}, dimensions={1}, to_apply=sum
-  rs3 = f32[8, 4] all-reduce-scatter(p1), replica_groups={{0,1}}, dimensions={1}, to_apply=sum
+  rs0 = f32[4, 8] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
+  rs1 = f32[4, 8] reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
+  rs2 = f32[8, 4] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={1}, to_apply=sum
+  rs3 = f32[8, 4] reduce-scatter(p1), replica_groups={{0,1}}, dimensions={1}, to_apply=sum
   ROOT t = (f32[4, 8], f32[4, 8], f32[8, 4], f32[8, 4]) tuple(rs0, rs1, rs2, rs3)
 }
 )";
@@ -114,8 +114,8 @@ sum {
 
 ENTRY main {
   p0 = f32[8, 8] parameter(0)
-  rs0 = f32[4, 8] all-reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
-  rs1 = f32[2, 8] all-reduce-scatter(rs0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
+  rs0 = f32[4, 8] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
+  rs1 = f32[2, 8] reduce-scatter(rs0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
   ROOT t = (f32[4, 8], f32[2, 8]) tuple(rs0, rs1)
 }
 )";
@@ -136,8 +136,8 @@ sum {
 ENTRY main {
   p0 = f32[8] parameter(0)
   p1 = f32[8] parameter(1)
-  rs0 = f32[4] all-reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
-  rs1 = f32[4] all-reduce-scatter(p1), replica_groups={{1,0}}, dimensions={0}, to_apply=sum
+  rs0 = f32[4] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
+  rs1 = f32[4] reduce-scatter(p1), replica_groups={{1,0}}, dimensions={0}, to_apply=sum
   ROOT t = (f32[4], f32[4]) tuple(rs0, rs1)
 }
 )";

@@ -2060,7 +2060,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return ShapeUtil::MakeTupleShape(operand_shape_values);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllReduceScatterShape(
+/* static */ StatusOr<Shape> ShapeInference::InferReduceScatterShape(
     absl::Span<const Shape* const> operand_shapes, int64 scatter_dimension,
     int64 shard_count) {
   TF_RET_CHECK(scatter_dimension >= 0);
@@ -2071,12 +2071,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   for (const Shape* operand_shape : operand_shapes) {
     TF_RET_CHECK(scatter_dimension < operand_shape->rank());
     TF_RETURN_IF_ERROR(
-        ExpectArray(*operand_shape, "operand of all-reduce-scatter"));
+        ExpectArray(*operand_shape, "operand of reduce-scatter"));
 
     int64 scatter_dim_input_size = operand_shape->dimensions(scatter_dimension);
     if (scatter_dim_input_size % shard_count != 0) {
       return InvalidArgument(
-          "AllReduceScatter operand scatter dimension size %d must be "
+          "ReduceScatter operand scatter dimension size %d must be "
           "dividable by shard_count "
           "%d.",
           scatter_dim_input_size, shard_count);

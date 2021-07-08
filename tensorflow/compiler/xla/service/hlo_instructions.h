@@ -472,9 +472,9 @@ class HloAllReduceInstruction : public HloAllReduceInstructionBase {
       HloCloneContext* context) const override;
 };
 
-class HloAllReduceScatterInstruction : public HloAllReduceInstructionBase {
+class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
  public:
-  explicit HloAllReduceScatterInstruction(
+  explicit HloReduceScatterInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,

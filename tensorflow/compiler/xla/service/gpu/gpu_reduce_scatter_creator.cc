@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_all_reduce_scatter_creator.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 
-#include "tensorflow/compiler/xla/service/all_reduce_scatter_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/reduce_scatter_utils.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> AllReduceScatterCreator::Run(HloModule *module) {
+StatusOr<bool> ReduceScatterCreator::Run(HloModule *module) {
   const HloModuleConfig &config = module->config();
   int64 next_channel_id = hlo_query::NextChannelId(*module);
 
@@ -38,10 +38,10 @@ StatusOr<bool> AllReduceScatterCreator::Run(HloModule *module) {
         continue;
       }
       auto *ar = Cast<HloAllReduceInstruction>(instruction);
-      auto ar_spec = MatchAllReduceScatter(ar, config.num_partitions(),
-                                           config.replica_count(),
-                                           /*allow_multiple_split_dims=*/false,
-                                           /*allow_intervening_reshape=*/true);
+      auto ar_spec = MatchReduceScatter(ar, config.num_partitions(),
+                                        config.replica_count(),
+                                        /*allow_multiple_split_dims=*/false,
+                                        /*allow_intervening_reshape=*/true);
       if (!ar_spec) {
         VLOG(2) << "Cannot match reduce-scatter " << ar->ToString();
         continue;
@@ -61,12 +61,12 @@ StatusOr<bool> AllReduceScatterCreator::Run(HloModule *module) {
 
       absl::optional<int64> channel_id;
       if (ar->channel_id()) {
-        // We cannot reuse the channel_id on all-reduce for all-reduce-scatter.
+        // We cannot reuse the channel_id on all-reduce for reduce-scatter.
         channel_id = next_channel_id++;
       }
 
       HloInstruction *ars =
-          computation->AddInstruction(HloInstruction::CreateAllReduceScatter(
+          computation->AddInstruction(HloInstruction::CreateReduceScatter(
               scatter_shape, ar->operands(), ar->to_apply(),
               ar->replica_groups(), ar->constrain_layout(), channel_id,
               ar->use_global_device_ids(), ar_spec->split_dim));

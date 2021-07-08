@@ -195,7 +195,7 @@ Status GatherComputationsByAllocationType(
             break;
           case HloOpcode::kCustomCall:
           case HloOpcode::kAllReduce:
-          case HloOpcode::kAllReduceScatter:
+          case HloOpcode::kReduceScatter:
           case HloOpcode::kAllReduceStart:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:

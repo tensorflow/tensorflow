@@ -69,7 +69,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
     VLOG(1) << "Set element: " << hlo->ToString();
-    TF_RET_CHECK(hlo->opcode() == HloOpcode::kAllReduceScatter);
+    TF_RET_CHECK(hlo->opcode() == HloOpcode::kReduceScatter);
     TF_RET_CHECK(hlo->operands().size() == 1);
     absl::optional<ReductionKind> reduction_kind =
         MatchReductionComputation(hlo->to_apply());
@@ -80,13 +80,12 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
     output_shapes.push_back(hlo->shape());
   }
 
-  const HloAllReduceScatterInstruction* rs =
-      Cast<HloAllReduceScatterInstruction>(to_combine.front());
+  const auto* rs = Cast<HloReduceScatterInstruction>(to_combine.front());
 
   HloInstruction* combined;
   // AllReduce ops with more than one operand produce a tuple.
   TF_RET_CHECK(operands.size() >= 2);
-  combined = computation.AddInstruction(HloInstruction::CreateAllReduceScatter(
+  combined = computation.AddInstruction(HloInstruction::CreateReduceScatter(
       ShapeUtil::MakeTupleShape(output_shapes), operands, reduction,
       to_combine.front()->replica_groups(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
@@ -126,7 +125,7 @@ StatusOr<bool> ReduceScatterCombiner::Run(HloModule* module) {
   }
 
   if (hlo_query::ContainsLayoutConstrainedCollective(
-          *module, HloOpcode::kAllReduceScatter)) {
+          *module, HloOpcode::kReduceScatter)) {
     VLOG(1) << "Skip ReduceScatterCombiner because the module contains "
                "reduce-scatter "
                "with constrained layouts";
@@ -139,7 +138,7 @@ StatusOr<bool> ReduceScatterCombiner::Run(HloModule* module) {
 
     auto key_fn = [&domain_map](const HloInstruction* instruction)
         -> absl::optional<ReduceScatterKey> {
-      auto* rs = DynCast<HloAllReduceScatterInstruction>(instruction);
+      auto* rs = DynCast<HloReduceScatterInstruction>(instruction);
       absl::optional<AllReduceKey> key =
           GetAllReduceKey(instruction, domain_map.get());
 

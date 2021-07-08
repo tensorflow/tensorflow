@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_all_reduce_scatter_creator.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -34,7 +34,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class GpuAllReduceScatterCreatorTest : public HloTestBase {
+class GpuReduceScatterCreatorTest : public HloTestBase {
  public:
   StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module,
                                                int64 num_replicas,
@@ -46,7 +46,7 @@ class GpuAllReduceScatterCreatorTest : public HloTestBase {
     config.set_use_spmd_partitioning(num_partitions > 1);
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
-    auto changed = AllReduceScatterCreator().Run(module.get());
+    auto changed = ReduceScatterCreator().Run(module.get());
     if (!changed.ok()) {
       return changed.status();
     }
@@ -62,7 +62,7 @@ class GpuAllReduceScatterCreatorTest : public HloTestBase {
   }
 };
 
-TEST_F(GpuAllReduceScatterCreatorTest, AllReplicas) {
+TEST_F(GpuReduceScatterCreatorTest, AllReplicas) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -93,15 +93,14 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
-              op::AllReduceScatter(op::Parameter(0)));
-  const HloAllReduceScatterInstruction *ars =
-      Cast<HloAllReduceScatterInstruction>(
-          module->entry_computation()->root_instruction());
-  EXPECT_EQ(ars->scatter_dimension(), 0) << ars->ToString();
+              op::ReduceScatter(op::Parameter(0)));
+  const auto *rs = Cast<HloReduceScatterInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_EQ(rs->scatter_dimension(), 0) << rs->ToString();
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasWithReshape) {
+TEST_F(GpuReduceScatterCreatorTest, AllReplicasWithReshape) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -133,11 +132,11 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Reshape(op::AllReduceScatter(op::Parameter(0))));
+              op::Reshape(op::ReduceScatter(op::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasWithReshapeSplitDimModified) {
+TEST_F(GpuReduceScatterCreatorTest, AllReplicasWithReshapeSplitDimModified) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -166,11 +165,11 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Reshape(op::AllReduceScatter(op::Parameter(0))));
+              op::Reshape(op::ReduceScatter(op::Parameter(0))));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasDim2) {
+TEST_F(GpuReduceScatterCreatorTest, AllReplicasDim2) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -200,15 +199,14 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/1,
                                                /*expect_change=*/true));
   ASSERT_THAT(module->entry_computation()->root_instruction(),
-              op::AllReduceScatter(op::Parameter(0)));
-  const HloAllReduceScatterInstruction *ars =
-      Cast<HloAllReduceScatterInstruction>(
-          module->entry_computation()->root_instruction());
-  EXPECT_EQ(ars->scatter_dimension(), 2) << ars->ToString();
+              op::ReduceScatter(op::Parameter(0)));
+  const auto *rs = Cast<HloReduceScatterInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_EQ(rs->scatter_dimension(), 2) << rs->ToString();
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasWrongOffsets) {
+TEST_F(GpuReduceScatterCreatorTest, AllReplicasWrongOffsets) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -239,7 +237,7 @@ ENTRY %AllReduce {
                                                /*expect_change=*/false));
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, AllReplicasIotaTable) {
+TEST_F(GpuReduceScatterCreatorTest, AllReplicasIotaTable) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -269,11 +267,11 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/2,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::AllReduceScatter(op::Parameter(0)));
+              op::ReduceScatter(op::Parameter(0)));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, SubgroupedReplicas) {
+TEST_F(GpuReduceScatterCreatorTest, SubgroupedReplicas) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -304,11 +302,11 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/2,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::AllReduceScatter(op::Parameter(0)));
+              op::ReduceScatter(op::Parameter(0)));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, AllPartitions) {
+TEST_F(GpuReduceScatterCreatorTest, AllPartitions) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -338,11 +336,11 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/8,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::AllReduceScatter(op::Parameter(0)));
+              op::ReduceScatter(op::Parameter(0)));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, SubgroupsGlobals) {
+TEST_F(GpuReduceScatterCreatorTest, SubgroupsGlobals) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -377,11 +375,11 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/4,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::AllReduceScatter(op::Parameter(0)));
+              op::ReduceScatter(op::Parameter(0)));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, SubgroupsGlobalsOrthogonalReplicas) {
+TEST_F(GpuReduceScatterCreatorTest, SubgroupsGlobalsOrthogonalReplicas) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 
@@ -411,11 +409,11 @@ ENTRY %AllReduce {
                                                /*num_partitions=*/4,
                                                /*expect_change=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::AllReduceScatter(op::Parameter(0)));
+              op::ReduceScatter(op::Parameter(0)));
   EXPECT_EQ(AllReduceCount(module), 0);
 }
 
-TEST_F(GpuAllReduceScatterCreatorTest, SubgroupsGlobalsNonOrthogonalReplicas) {
+TEST_F(GpuReduceScatterCreatorTest, SubgroupsGlobalsNonOrthogonalReplicas) {
   absl::string_view hlo_string = R"(
 HloModule AllReduce
 

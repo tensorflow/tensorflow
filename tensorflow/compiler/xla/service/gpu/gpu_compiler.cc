@@ -68,13 +68,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_all_reduce_scatter_creator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_spmd_partitioner.h"
@@ -181,7 +181,7 @@ class GpuBfloat16Support : public BFloat16Support {
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllReduceDone:
-      case HloOpcode::kAllReduceScatter:
+      case HloOpcode::kReduceScatter:
       case HloOpcode::kAllToAll:
       case HloOpcode::kBitcast:
       case HloOpcode::kCollectivePermute:
@@ -386,7 +386,7 @@ Status GpuCompiler::OptimizeHloModule(
   // otherwise as well so that all collectives can get these optimizations.
   {
     HloPassPipeline collectives_pipeline("collective-optimizations");
-    collectives_pipeline.AddPass<AllReduceScatterCreator>();
+    collectives_pipeline.AddPass<ReduceScatterCreator>();
     collectives_pipeline.AddPass<AllReduceReassociate>();
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when

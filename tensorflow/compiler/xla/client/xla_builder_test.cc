@@ -405,7 +405,7 @@ TEST_F(XlaBuilderTest, AllGatherR2) {
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 64})));
 }
 
-TEST_F(XlaBuilderTest, AllReduceScatter) {
+TEST_F(XlaBuilderTest, ReduceScatter) {
   XlaBuilder b(TestName());
   XlaComputation to_apply;
   {
@@ -421,12 +421,12 @@ TEST_F(XlaBuilderTest, AllReduceScatter) {
   ReplicaGroup group;
   group.add_replica_ids(0);
   group.add_replica_ids(1);
-  AllReduceScatter(x, to_apply, /*scatter_dimension=*/1, /*shard_count=*/2,
-                   /*replica_groups=*/{group});
+  ReduceScatter(x, to_apply, /*scatter_dimension=*/1, /*shard_count=*/2,
+                /*replica_groups=*/{group});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
 
-  EXPECT_EQ(root->opcode(), HloOpcode::kAllReduceScatter);
+  EXPECT_EQ(root->opcode(), HloOpcode::kReduceScatter);
   EXPECT_TRUE(
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 8})));
 }

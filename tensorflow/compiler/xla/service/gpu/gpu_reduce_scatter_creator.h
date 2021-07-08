@@ -13,21 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_ALL_REDUCE_SCATTER_CREATOR_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_ALL_REDUCE_SCATTER_CREATOR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_REDUCE_SCATTER_CREATOR_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_REDUCE_SCATTER_CREATOR_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
 
-// Transforms dynamic-slice(all-reduce) to a all-reduce-scatter custom call.
-class AllReduceScatterCreator : public HloModulePass {
+// Transforms dynamic-slice(all-reduce) to a reduce-scatter.
+class ReduceScatterCreator : public HloModulePass {
  public:
-  AllReduceScatterCreator() = default;
-  absl::string_view name() const override {
-    return "all-reduce-scatter-creator";
-  }
+  ReduceScatterCreator() = default;
+  absl::string_view name() const override { return "reduce-scatter-creator"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };
@@ -35,4 +33,4 @@ class AllReduceScatterCreator : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_ALL_REDUCE_SCATTER_CREATOR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_REDUCE_SCATTER_CREATOR_H_

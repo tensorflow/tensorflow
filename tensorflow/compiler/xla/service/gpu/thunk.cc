@@ -58,8 +58,8 @@ StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
       return "kNcclAllReduceStart";
     case Thunk::kNcclAllReduceDone:
       return "kNcclAllReduceDone";
-    case Thunk::kNcclAllReduceScatter:
-      return "kNcclAllReduceScatter";
+    case Thunk::kNcclReduceScatter:
+      return "kNcclReduceScatter";
     case Thunk::kNcclAllToAll:
       return "kNcclAllToAll";
     case Thunk::kFft:

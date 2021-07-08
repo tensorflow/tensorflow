@@ -1079,7 +1079,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceScatter)) {
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter)) {
   const char* const kModuleStr = R"(
   HloModule test
   add {
@@ -1097,7 +1097,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceScatter)) {
     pb = pred[8] broadcast(p), dimensions={}
     // data = c0 for replica 0 and c1 for replica 1
     data = u32[8] select(pb, c0, c1)
-    ROOT ars = u32[4] all-reduce-scatter(data), replica_groups={},
+    ROOT ars = u32[4] reduce-scatter(data), replica_groups={},
                       dimensions={0}, to_apply=add
   }
   )";
@@ -1115,7 +1115,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceScatter)) {
   LiteralTestUtil::ExpectR1Equal<uint32>({19, 21, 23, 25}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceScatter_Dim1)) {
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter_Dim1)) {
   const char* const kModuleStr = R"(
   HloModule test
   add {
@@ -1134,7 +1134,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceScatter_Dim1)) {
     // data = c0 for replica 0 and c1 for replica 1
     data = u32[2, 4] select(pb, c0, c1)
     // all-reduce result = {{11, 13, 15, 17}, {19, 21, 23, 25}}
-    ars = u32[2, 2] all-reduce-scatter(data), replica_groups={},
+    ars = u32[2, 2] reduce-scatter(data), replica_groups={},
                     dimensions={1}, to_apply=add
     ROOT r = u32[4] reshape(ars)
   }

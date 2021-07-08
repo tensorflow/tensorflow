@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALL_REDUCE_SCATTER_UTILS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_ALL_REDUCE_SCATTER_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_REDUCE_SCATTER_UTILS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_REDUCE_SCATTER_UTILS_H_
 
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 namespace xla {
 
-struct AllReduceScatterSpec {
+struct ReduceScatterSpec {
   int64_t split_dim;
   int64_t sharded_partitions = 1;
   int64_t sharded_replicas = 1;
@@ -29,12 +29,12 @@ struct AllReduceScatterSpec {
   HloInstruction* dynamic_slice;
 };
 
-// Matches the given all-reduce operation to a all-reduce scatter pattern.
-absl::optional<AllReduceScatterSpec> MatchAllReduceScatter(
+// Matches the given all-reduce operation to a reduce-scatter pattern.
+absl::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims = false,
     bool allow_intervening_reshape = false, int64_t min_rank = 1);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_ALL_REDUCE_SCATTER_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_REDUCE_SCATTER_UTILS_H_

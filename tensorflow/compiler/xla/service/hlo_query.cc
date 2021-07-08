@@ -28,7 +28,7 @@ namespace {
 bool IsCollectiveCommunicationOp(HloOpcode op) {
   return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
          op == HloOpcode::kAllToAll || op == HloOpcode::kCollectivePermute ||
-         op == HloOpcode::kAllReduceScatter;
+         op == HloOpcode::kReduceScatter;
 }
 }  // namespace
 
