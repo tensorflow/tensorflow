@@ -562,7 +562,6 @@ cc_library(
     name = "gpu_executable",
     srcs = [
         "bef_thunk.cc",
-        "collective_permute_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
@@ -585,7 +584,6 @@ cc_library(
     ]),
     hdrs = [
         "bef_thunk.h",
-        "collective_permute_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
