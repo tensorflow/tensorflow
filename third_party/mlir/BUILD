@@ -5879,6 +5879,7 @@ cc_library(
         ":LinalgNamedStructuredOpsYamlIncGen",
         ":LinalgOpsIncGen",
         ":LinalgStructuredOpsIncGen",
+        ":MathDialect",
         ":MemRefDialect",
         ":Parser",
         ":SideEffectInterfaces",
