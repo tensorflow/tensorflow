@@ -92,13 +92,12 @@ struct PlaceShapeCalcOnHost
 
   // add output OP into marked set if it is a I64 scalar and placment is CPU.
   void markI64ReturnedCPUScalarOps(FuncOp func,
-                                   DenseMap<Operation*, bool>& marked_ops);
+                                   DenseSet<Operation*>& marked_ops);
   // Update marked set.
   // If a OP is in marked set, add all of its operands to marked set.
   // Add some operands of dynamic shape OPs into marked set according to lookup
   // table.
-  void markShapeCalculationOps(FuncOp func,
-                               DenseMap<Operation*, bool>& marked_ops);
+  void markShapeCalculationOps(FuncOp func, DenseSet<Operation*>& marked_ops);
 
   // Get placement vector of func's output.
   SmallVector<llvm::StringRef, 4> getOutputPlacements(FuncOp main_func);
@@ -128,7 +127,7 @@ struct PlaceShapeCalcOnHost
 void PlaceShapeCalcOnHost::placeShapeCalcSubgraphOnHost() {
   ModuleOp module = getOperation();
   Builder builder(&getContext());
-  llvm::DenseMap<Operation*, bool> shape_calc_ops;
+  llvm::DenseSet<Operation*> shape_calc_ops;
 
   for (FuncOp func : module.getOps<FuncOp>()) {
     // Put the i64 Scalar output on Host(into shape_calc_ops).
@@ -146,19 +145,17 @@ void PlaceShapeCalcOnHost::placeShapeCalcSubgraphOnHost() {
     markShapeCalculationOps(func, shape_calc_ops);
   }
 
-  for (auto op : shape_calc_ops) {
-    if (op.second) {
-      // We suppose that mhlo op only has single output, either having tensor
-      // type or tuple type.
-      if (auto tp = op.first->getResult(0).getType().dyn_cast<TupleType>()) {
-        // If an op is placed on host, then we suppose all its outputs are
-        // placed on host.
-        SmallVector<Attribute, 4> attrs(tp.size(),
-                                        builder.getStringAttr(kTypeHost));
-        op.first->setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
-      } else {
-        op.first->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
-      }
+  for (Operation* op : shape_calc_ops) {
+    // We suppose that mhlo op only has single output, either having tensor
+    // type or tuple type.
+    if (auto tp = op->getResult(0).getType().dyn_cast<TupleType>()) {
+      // If an op is placed on host, then we suppose all its outputs are
+      // placed on host.
+      SmallVector<Attribute, 4> attrs(tp.size(),
+                                      builder.getStringAttr(kTypeHost));
+      op->setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
+    } else {
+      op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
     }
   }
 }
@@ -404,7 +401,7 @@ SmallVector<llvm::StringRef, 4> PlaceShapeCalcOnHost::getOutputPlacements(
 }
 
 void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
-    FuncOp func, DenseMap<Operation*, bool>& marked_ops) {
+    FuncOp func, llvm::DenseSet<Operation*>& marked_ops) {
   assert(func.getName() == "main");
   auto return_op = func.front().getTerminator();
   if (!isa<mlir::ReturnOp>(return_op)) return;
@@ -422,14 +419,14 @@ void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
     if (auto type = op->getResult(0).getType().dyn_cast<RankedTensorType>()) {
       if ((output_placements[idx] == kTypeHost) &&
           type.getElementType().isInteger(64) && (type.getRank() == 0)) {
-        marked_ops[op] = true;
+        marked_ops.insert(op);
       }
     }
   }
 }
 
 void PlaceShapeCalcOnHost::markShapeCalculationOps(
-    FuncOp func, DenseMap<Operation*, bool>& marked_ops) {
+    FuncOp func, llvm::DenseSet<Operation*>& marked_ops) {
   auto& block = func.getBlocks().front();
   for (Operation& op : block) {
     if (!isTargetDialect(&op)) return;
@@ -437,20 +434,19 @@ void PlaceShapeCalcOnHost::markShapeCalculationOps(
 
     // 1. If the op is already marked, mark all of its operands
     //    as shape calculation ops
-    if ((marked_ops.find(&op) != marked_ops.end()) && marked_ops[&op]) {
+    if (marked_ops.contains(&op)) {
       for (auto operand_value : op.getOperands()) {
         Operation* operand = operand_value.getDefiningOp();
         if (operand == nullptr) continue;
         if (!isTargetDialect(operand)) {
           continue;
         }
-        marked_ops[operand] = true;
+        marked_ops.insert(operand);
       }
     }
     // 2. If the op is not marked, mark the shape operands as
     //    shape calculation ops
-    if (((marked_ops.find(&op) != marked_ops.end()) && (!marked_ops[&op])) ||
-        (marked_ops.find(&op) == marked_ops.end())) {
+    if (!marked_ops.contains(&op)) {
       std::string name_str = op.getName().getStringRef().str();
       if (kShapeCalcOperandMap.find(name_str) != kShapeCalcOperandMap.end()) {
         for (auto operand_idx : kShapeCalcOperandMap.at(name_str)) {
@@ -459,7 +455,7 @@ void PlaceShapeCalcOnHost::markShapeCalculationOps(
           if (!isTargetDialect(operand)) {
             continue;
           }
-          marked_ops[operand] = true;
+          marked_ops.insert(operand);
         }
       }
     }
