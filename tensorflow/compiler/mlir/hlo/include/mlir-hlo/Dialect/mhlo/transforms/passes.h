@@ -155,14 +155,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createRalToLLVMPass();
 
 }  // namespace disc_ral
 
-
-namespace mhlo_disc {
-
-// Place shape calculating subgraph on host
-// std::unique_ptr<OperationPass<FuncOp>> createPlaceShapeCalcOnHostPass();
-
-}  // namespace disc_ral
-
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_

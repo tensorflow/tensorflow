@@ -170,43 +170,43 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
   ModuleOp module = getOperation();
   Builder builder(&getContext());
 
-  module.walk([&](Operation* op) {
-    if (!isTargetDialect(op)) {
+  for (Operation& op : module.getOps()) {
+    if (!isTargetDialect(&op)) {
       return;
     }
     if (isa<mhlo::TupleOp, mhlo::GetTupleElementOp, mhlo::WhileOp, mhlo::IfOp,
-            mhlo::ReturnOp>(op)) {
+            mhlo::ReturnOp>(&op)) {
       return;
     }
     // skip the ops that is already placed on Host
-    auto attr = op->getAttrOfType<StringAttr>(kPlaceTyAttr);
+    auto attr = op.getAttrOfType<StringAttr>(kPlaceTyAttr);
     if ((attr != nullptr) && (attr.getValue() == kTypeHost)) return;
 
-    if (isa<mhlo::GetDimensionSizeOp, tensor::FromElementsOp>(op)) {
-      op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
+    if (isa<mhlo::GetDimensionSizeOp, tensor::FromElementsOp>(&op)) {
+      op.setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
       return;
     }
 
     // ops that only cares about the output element type
     if (isa<mhlo::ConstOp, mhlo::SelectOp, mhlo::IotaOp, mhlo::DynamicIotaOp>(
-            op)) {
-      auto result_ty = op->getResult(0).getType().dyn_cast<RankedTensorType>();
+            &op)) {
+      auto result_ty = op.getResult(0).getType().dyn_cast<RankedTensorType>();
       assert(result_ty && "unexpected non ranked type for ConstOp");
       auto elem_type = result_ty.getElementType();
       if (elem_type.isInteger(32)) {
-        op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
+        op.setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
       }
       return;
     }
 
-    std::string op_name = op->getName().getStringRef().str();
+    std::string op_name = op.getName().getStringRef().str();
     bool place_on_host = false;
     // follow the rule of kPlaceRuleMap exist, or else follow
     // kShapeCalcOperandMap
     if (kPlaceRuleMap.find(op_name) != kPlaceRuleMap.end()) {
       auto dominant_idx = kPlaceRuleMap.at(op_name);
       auto operand_ty =
-          op->getOperand(dominant_idx).getType().dyn_cast<RankedTensorType>();
+          op.getOperand(dominant_idx).getType().dyn_cast<RankedTensorType>();
       assert(operand_ty && "unexpected non unranked type of operand");
       if (operand_ty.getElementType().isInteger(32)) {
         place_on_host = true;
@@ -216,11 +216,11 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
       if (kShapeCalcOperandMap.find(op_name) != kShapeCalcOperandMap.end()) {
         shape_operand_indices = kShapeCalcOperandMap.at(op_name);
       }
-      for (int idx = 0; idx < op->getNumOperands(); ++idx) {
+      for (int idx = 0; idx < op.getNumOperands(); ++idx) {
         // if it is not "shape operand", then it must be "data operand"
         if (shape_operand_indices.find(idx) == shape_operand_indices.end()) {
           auto operand_ty =
-              op->getOperand(idx).getType().dyn_cast<RankedTensorType>();
+              op.getOperand(idx).getType().dyn_cast<RankedTensorType>();
           if (!operand_ty) continue;
           auto elem_type = operand_ty.getElementType();
           if (elem_type.isInteger(32)) {
@@ -236,22 +236,22 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
       // currently we suppose ops without placement attribute are placed on
       // device. However, ops having tuple outputs should have explicit
       // placement attributes.
-      if (auto tp = op->getResult(0).getType().dyn_cast<TupleType>()) {
+      if (auto tp = op.getResult(0).getType().dyn_cast<TupleType>()) {
         SmallVector<Attribute, 4> attrs(tp.size(),
                                         builder.getStringAttr(kTypeDevice));
-        op->setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
+        op.setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
       }
     } else {
-      if (auto tp = op->getResult(0).getType().dyn_cast<TupleType>()) {
+      if (auto tp = op.getResult(0).getType().dyn_cast<TupleType>()) {
         SmallVector<Attribute, 4> attrs(tp.size(),
                                         builder.getStringAttr(kTypeHost));
-        op->setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
+        op.setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
       } else {
-        op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
+        op.setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
       }
     }
     return;
-  });
+  };
 }
 
 void PlaceShapeCalcOnHost::enforceOutputPlacement(
@@ -290,20 +290,21 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
 
   SmallVector<std::pair<Operation*, size_t>, 4> d2h_worklist;
   SmallVector<std::pair<Operation*, size_t>, 4> h2d_worklist;
-  module.walk([&](Operation* dst) {
+
+  for (Operation& dst : module.getOps()) {
     // Enforce output placement specified by the users using attrs.
-    if (isa<mlir::ReturnOp>(dst)) {
-      auto parent = dst->getParentOp();
+    if (isa<mlir::ReturnOp>(&dst)) {
+      auto parent = dst.getParentOp();
       if (!isa<mlir::FuncOp>(parent) ||
           (cast<mlir::FuncOp>(parent).getName() != "main")) {
         return;
       }
       auto main_func = dyn_cast<mlir::FuncOp>(parent);
-      enforceOutputPlacement(dst, main_func, d2h_worklist, h2d_worklist);
+      enforceOutputPlacement(&dst, main_func, d2h_worklist, h2d_worklist);
     }
 
-    if (isa<tensor::ExtractOp>(dst)) {
-      auto operand = dst->getOperand(0);
+    if (isa<tensor::ExtractOp>(&dst)) {
+      auto operand = dst.getOperand(0);
       auto parent = operand.getParentRegion()->getParentOp();
       if (!isa<mlir::FuncOp>(parent) ||
           (cast<mlir::FuncOp>(parent).getName() != "main")) {
@@ -312,16 +313,16 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
       auto defining_op = operand.getDefiningOp();
       if (defining_op) return;
       if (getArgumentPlacement(operand) == PlacementType::kDevice) {
-        d2h_worklist.push_back(std::make_pair(dst, 0));
+        d2h_worklist.push_back(std::make_pair(&dst, 0));
       }
     }
-    if (!isTargetDialect(dst) || (isa<mhlo::GetTupleElementOp>(dst)) ||
-        (isa<mhlo::ReturnOp>(dst)))
+    if (!isTargetDialect(&dst) ||
+        (isa<mhlo::GetTupleElementOp, mhlo::ReturnOp>(&dst)))
       return;
 
     // TODO(disc): output of the while's cond func should be placed on host.
 
-    for (auto indexed_operand : llvm::enumerate(dst->getOperands())) {
+    for (auto indexed_operand : llvm::enumerate(dst.getOperands())) {
       auto index = indexed_operand.index();
       auto operand = indexed_operand.value();
       auto operand_op = operand.getDefiningOp();
@@ -338,18 +339,18 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
         continue;
       }
 
-      auto dst_placement = getTensorPlacement(dst, index);
+      auto dst_placement = getTensorPlacement(&dst, index);
       auto src_placement = operand_op ? getOpPlacement(operand_op)
                                       : getArgumentPlacement(operand);
       if (dst_placement == PlacementType::kHost &&
           src_placement == PlacementType::kDevice) {
-        d2h_worklist.push_back(std::make_pair(dst, index));
+        d2h_worklist.push_back(std::make_pair(&dst, index));
       } else if (dst_placement == PlacementType::kDevice &&
                  src_placement == PlacementType::kHost) {
-        h2d_worklist.push_back(std::make_pair(dst, index));
+        h2d_worklist.push_back(std::make_pair(&dst, index));
       }
     }
-  });
+  };
 
   for (auto h2d : h2d_worklist) {
     insertMemcpy(h2d.first, h2d.second, 1);
