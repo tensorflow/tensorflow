@@ -1389,16 +1389,28 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
-    # TODO(b/184696047): Write down the test codes for multiple signature
-    #                    runners once the Python API is ready to use.
     interpreter = tf.lite.Interpreter(model_content=tflite_model)
     signature_defs = interpreter.get_signature_list()
-    self.assertEqual(len(signature_defs), 2)
 
-    with self.assertRaises(ValueError) as error:
-      _ = interpreter.get_signature_runner('add')
-    self.assertIn('This Interpreter doesnt handle multiple signatures properly',
-                  str(error.exception))
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 2)
+    self.assertEqual(list(signature_defs.keys()), ['add', 'sub'])
+    self.assertEqual(len(signature_defs.values()), 2)
+    self.assertEqual(list(signature_defs['add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['add']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['add']['outputs']), ['output_0'])
+    self.assertEqual(list(signature_defs['sub'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['sub']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['sub']['outputs']), ['output_0'])
+
+    # Verify the Signature runner executions.
+    add_signature_runner = interpreter.get_signature_runner('add')
+    add_output = add_signature_runner(x=input_data)
+    self.assertEqual(add_output['output_0'], 3)
+
+    sub_signature_runner = interpreter.get_signature_runner('sub')
+    sub_output = sub_signature_runner(x=input_data)
+    self.assertEqual(sub_output['output_0'], -2)
 
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):

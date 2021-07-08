@@ -57,6 +57,10 @@ class TestDelegation;  // Class for friend declarations.
 }  // namespace test_utils
 }  // namespace delegates
 
+namespace interpreter_wrapper {
+class InterpreterWrapper;  // Class for friend declarations.
+}  // namespace interpreter_wrapper
+
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
 /// set of output Tensors. All inputs/output tensors are referenced by index.
@@ -292,6 +296,20 @@ class Interpreter {
       method_names.emplace_back(&sig_def.method_name);
     }
     return method_names;
+  }
+
+  /// WARNING: Experimental interface, subject to change
+  // Return the subgraph index that corresponds to a SignatureDef, defined by
+  // 'signature_method_name'.
+  // If invalid name passed, -1 will be returned.
+  int GetSubgraphIndexFromSignatureDefName(
+      const char* signature_method_name) const {
+    for (const auto& signature : signature_defs_) {
+      if (signature.method_name == signature_method_name) {
+        return signature.subgraph_index;
+      }
+    }
+    return -1;
   }
 
   /// WARNING: Experimental interface, subject to change
@@ -676,11 +694,14 @@ class Interpreter {
     std::string method_name;
     // The key of this SignatureDef in the SavedModel signature def map.
     std::string signature_def_key;
+    // The subgraph index of the signature in the model.
+    uint32_t subgraph_index;
   };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
+  friend class tflite::interpreter_wrapper::InterpreterWrapper;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
