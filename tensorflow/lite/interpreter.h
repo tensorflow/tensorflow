@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -777,6 +778,11 @@ class Interpreter {
   // A map of resource Ids. Owned by interpreter and shared by multiple
   // subgraphs.
   resource::ResourceIDMap resource_ids_;
+
+  // A map of intialization statuses, that indicate whether the intialization
+  // subgraph invocation is done or not. Owned by interpreter and shared by
+  // multiple subgraphs.
+  resource::InitializationStatusMap initialization_status_map_;
 
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or
