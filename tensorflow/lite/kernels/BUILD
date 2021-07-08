@@ -1,5 +1,4 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "pybind_extension")
@@ -475,7 +474,7 @@ cc_library(
         "kernel_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
