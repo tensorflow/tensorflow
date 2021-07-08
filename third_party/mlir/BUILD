@@ -2934,6 +2934,7 @@ cc_library(
         ":GPUDialect",
         ":GPUTransforms",
         ":IR",
+        ":LLVMCommonConversion",
         ":LLVMDialect",
         ":NVVMToLLVMIRTranslation",
         ":Pass",
@@ -5507,6 +5508,7 @@ cc_library(
     deps = [
         ":ConversionPassIncGen",
         ":IR",
+        ":LLVMCommonConversion",
         ":LLVMDialect",
         ":OpenMPDialect",
         ":Pass",
