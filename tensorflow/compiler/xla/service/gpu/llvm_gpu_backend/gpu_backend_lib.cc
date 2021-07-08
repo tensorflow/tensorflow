@@ -819,13 +819,16 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 // related changes which have not yet been upstreamed (to the LLVM repo)
 // When that upstreaming happens (and TF LLVM pointer moves past the
 // upstream commit), the following mapping will need to change
-std::string MapGCNArchNameTokenToFeatureStr(const std::string& token) {
+std::string MapGCNArchNameTokenToFeatureStr(const std::string& token,
+                                            const std::string& gfx) {
   if (token == "sramecc+") {
     return "+sramecc";
   } else if (token == "sramecc-") {
 #if TF_ROCM_VERSION < 40100
     return "";
 #else
+    if(gfx=="gfx90a")
+      return "";
     return "-sramecc";
 #endif
   } else if (token == "xnack+") {
@@ -860,7 +863,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
     // The rest of the tokens are the feature/targetid strings
     if (it != tokens.begin()) {
       std::string token(*it);
-      std::string mapped_token = MapGCNArchNameTokenToFeatureStr(token);
+      std::string mapped_token = MapGCNArchNameTokenToFeatureStr(token, gfx);
       mapped_tokens.push_back(mapped_token);
     }
   }
