@@ -190,6 +190,17 @@ def ExecutorDialectToFunctionalPass : FunctionPass<"tf-executor-to-functional-co
   let constructor = "CreateExecutorDialectToFunctionalConversionPass()";
 }
 
+def ExecutorIslandCoarseningPass : FunctionPass<"tf-executor-island-coarsening"> {
+  let summary = "Walks tf_executor::GraphOp and merges individual tf_executor::IslandOps.";
+  let description = [{
+    This pass performs whole graph analysis for a graph encapsulated into tf_executor::GraphOp.
+    The analysis identifies all IslandOps within the graph which could be merged together.
+    The goal is to merge as many islands as possible.
+    Once analysis is completed, the pass merges all IslandOps in a single scan.
+  }];
+  let constructor = "tf_executor::CreateTFExecutorIslandCoarseningPass()";
+}
+
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
   let summary = "Forms clusters from operations assigned to the same TPU computation";
 
