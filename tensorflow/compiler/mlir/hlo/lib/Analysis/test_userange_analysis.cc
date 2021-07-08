@@ -30,11 +30,6 @@ struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
     registry.insert<mlir::lmhlo::LmhloDialect>();
   }
 
-  StringRef getArgument() const final { return "test-print-userange"; }
-  StringRef getDescription() const final {
-    return "Test userange intervals";
-  }
-
   void runOnFunction() override {
     llvm::outs() << "Testing : " << getFunction().getName() << "\n";
     UserangeAnalysis(getFunction(), BufferPlacementAllocs(getFunction()),

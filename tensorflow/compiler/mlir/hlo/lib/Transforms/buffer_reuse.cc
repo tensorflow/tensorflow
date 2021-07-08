@@ -28,6 +28,9 @@ namespace {
 
 /// Reuses already allocated buffer to save allocation operations.
 class BufferReuse : BufferPlacementTransformationBase {
+  using ValueSetMap = llvm::MapVector<Value, DenseSet<Value>>;
+  using ValueVectorMap = llvm::MapVector<Value, SmallVector<Value, 4>>;
+
 public:
   BufferReuse(Operation *op)
       : BufferPlacementTransformationBase(op), dominators(op),
@@ -38,7 +41,7 @@ public:
     // Create a list of values that can potentially be replaced for each value
     // in the useRangeMap. The potentialReuseMap maps each value to the
     // respective list.
-    llvm::MapVector<Value, SmallVector<Value, 4>> potentialReuseMap;
+    ValueVectorMap potentialReuseMap;
     for (BufferPlacementAllocs::AllocEntry entry : allocs) {
       Value itemA = std::get<0>(entry);
       SmallVector<Value, 4> potReuseVector;
@@ -55,13 +58,8 @@ public:
         if (userange.rangesInterfere(itemA, itemB))
           continue;
 
-        // Get the defining block of itemA.
-        Block *defOpBlock = itemA.isa<BlockArgument>()
-                                ? itemA.getParentBlock()
-                                : itemA.getDefiningOp()->getBlock();
-
         // The defining block of itemA has to dominate all uses of itemB.
-        if (!dominatesAllUses(defOpBlock, itemB))
+        if (!dominatesAllUses(itemA.getParentBlock(), itemB))
           continue;
 
         // Insert itemB into the right place of the potReuseVector. The order of
@@ -77,8 +75,7 @@ public:
         potReuseVector.insert(insertionPoint, itemB);
       }
 
-      potentialReuseMap.insert(
-          std::pair<Value, SmallVector<Value, 4>>(itemA, potReuseVector));
+      potentialReuseMap.insert({itemA, potReuseVector});
     }
 
     // Replace all uses of the value that is replaced and
@@ -106,12 +103,14 @@ private:
   /// of all values that can potentially be replaced by V. If potReuseValue
   /// already replaces any other value that is not part of the potReuses vector
   /// it cannot be replaced by V anymore.
-  bool transitiveInterference(
-      Value potReuseValue, SmallVector<Value, 4> &potReuses,
-      llvm::MapVector<Value, DenseSet<Value>> &actualReuseMap) {
-    return actualReuseMap.find(potReuseValue) != actualReuseMap.end() &&
-           llvm::any_of(actualReuseMap[potReuseValue], [&](Value vReuse) {
-             return !std::count(potReuses.begin(), potReuses.end(), vReuse);
+  bool transitiveInterference(Value potReuseValue,
+                              SmallVector<Value, 4> &potReuses,
+                              ValueSetMap &actualReuseMap) {
+    auto actualReuser = actualReuseMap.find(potReuseValue);
+    return actualReuser != actualReuseMap.end() &&
+           llvm::any_of(actualReuser->second, [&](Value vReuse) {
+             return std::find(potReuses.begin(), potReuses.end(), vReuse) ==
+                    potReuses.end();
            });
   }
 
@@ -140,6 +139,8 @@ private:
         defOpA->getNumOperands() != defOpB->getNumOperands())
       return false;
 
+    // TODO: Fix for memref<?x5xi32> vs memref<5x?xi32>, also consider the
+    // basetype.
     // If all operands are equal the types are compatible.
     for (auto const &pair :
          llvm::zip(defOpA->getOperands(), defOpB->getOperands())) {
@@ -151,8 +152,7 @@ private:
 
   /// A Fixpoint iteration over the potential reuses to compute the actual
   /// reuses.
-  llvm::MapVector<Value, DenseSet<Value>> computeActualReuse(
-      llvm::MapVector<Value, SmallVector<Value, 4>> &potentialReuseMap) {
+  ValueSetMap computeActualReuse(ValueVectorMap &potentialReuseMap) {
 
     // The replacedSet contains all values that are going to be replaced.
     DenseSet<Value> replacedSet;
@@ -163,7 +163,7 @@ private:
     DenseSet<Value> currentReuserSet;
 
     /// Maps a value to the set of values that it replaces.
-    llvm::MapVector<Value, DenseSet<Value>> actualReuseMap;
+    ValueSetMap actualReuseMap;
 
     for (;;) {
       // Clear the currentReuserSet for this iteration.
@@ -190,13 +190,13 @@ private:
   /// For each value in the potentialReuseMap, check if another value tries to
   /// reuse it or if it is already replaced by another value. If neither is the
   /// case add the value and its reuses (if any) to the actualReuseMap.
-  void choosePotentialReuses(
-      DenseSet<Value> &replacedSet, DenseSet<Value> &currentReuserSet,
-      llvm::MapVector<Value, SmallVector<Value, 4>> &potentialReuseMap,
-      llvm::MapVector<Value, DenseSet<Value>> &actualReuseMap) {
+  void choosePotentialReuses(DenseSet<Value> &replacedSet,
+                             DenseSet<Value> &currentReuserSet,
+                             ValueVectorMap &potentialReuseMap,
+                             ValueSetMap &actualReuseMap) {
     for (auto &potReuser : potentialReuseMap) {
       Value item = potReuser.first;
-      SmallVector<Value, 4> potReuses = potReuser.second;
+      SmallVector<Value, 4> &potReuses = potReuser.second;
 
       // If the current value is replaced already we have to skip it.
       if (replacedSet.contains(item))
@@ -236,10 +236,9 @@ private:
   }
 
   /// Update the potentialReuseVectors for each value in the potentialReuseMap.
-  void updatePotentialReuses(
-      DenseSet<Value> &replacedSet,
-      llvm::MapVector<Value, SmallVector<Value, 4>> &potentialReuseMap,
-      llvm::MapVector<Value, DenseSet<Value>> &actualReuseMap) {
+  void updatePotentialReuses(DenseSet<Value> &replacedSet,
+                             ValueVectorMap &potentialReuseMap,
+                             ValueSetMap &actualReuseMap) {
     for (auto itReuseMap = potentialReuseMap.begin();
          itReuseMap != potentialReuseMap.end();) {
       Value item = itReuseMap->first;
