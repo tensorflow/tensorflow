@@ -997,7 +997,10 @@ def tf_gen_op_wrapper_py(
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
     if op_whitelist:
-        print("op_whitelist is deprecated. Use op_allowlist.")  # buildifier: disable=print
+        full_target_name = "//" + native.package_name() + ":" + name
+        print("op_whitelist is deprecated. Please migrate to the preferred " +
+              "`op_allowlist` spelling. Offending target: " +
+              full_target_name)  # buildifier: disable=print
     if op_allowlist:
         op_whitelist = op_allowlist
 
