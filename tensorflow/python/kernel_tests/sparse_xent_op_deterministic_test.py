@@ -176,7 +176,7 @@ class SparseXentOpDeterministicTest(
     """
     self._testLabelsPlaceholderScalar(
         expected_error_message="Expected batch_dims in the range \[0, 0\], " +
-                               "but got 1")
+        "but got 1")
 
   def testScalarHandling(self):
     """Test exception-throwing for non-statically-shaped, zero-rank labels.

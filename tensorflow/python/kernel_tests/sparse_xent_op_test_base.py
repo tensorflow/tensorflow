@@ -108,7 +108,7 @@ class SparseXentOpTestBase(test.TestCase):
   def _testInvalidLabelCPU(self, expected_regex="Received a label value of"):
     labels = [4, 3, 0, -1]
     logits = [[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 2., 3., 4.],
-                [1., 2., 3., 4.]]
+              [1., 2., 3., 4.]]
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, errors_impl.UnknownError),
         expected_regex):
@@ -186,19 +186,22 @@ class SparseXentOpTestBase(test.TestCase):
     for label_dtype in np.int32, np.int64:
       self._testXent(
           np_labels=np.array([3, 0]).astype(label_dtype),
-          np_logits=np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32))
+          np_logits=np.array(
+              [[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32))
 
   def testDouble(self):
     for label_dtype in np.int32, np.int64:
       self._testXent(
           np_labels=np.array([0, 3]).astype(label_dtype),
-          np_logits=np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64))
+          np_logits=np.array(
+              [[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64))
 
   def testHalf(self):
     for label_dtype in np.int32, np.int64:
       self._testXent(
           np_labels=np.array([3, 0]).astype(label_dtype),
-          np_logits=np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16))
+          np_logits=np.array(
+              [[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16))
 
   def testEmpty(self):
     self._testXent(
@@ -295,7 +298,7 @@ class SparseXentOpTestBase(test.TestCase):
   def testHighDim2(self):
     labels = [[3, 2], [0, 3]]
     logits = [[[1., 1., 1., 1.], [2., 2., 2., 2.]],
-                [[1., 2., 3., 4.], [5., 6., 7., 8.]]]
+              [[1., 2., 3., 4.], [5., 6., 7., 8.]]]
     self._testHighDim(labels, logits)
 
   def _testScalarHandling(self, expected_regex):
