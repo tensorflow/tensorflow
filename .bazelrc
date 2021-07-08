@@ -430,7 +430,10 @@ build:rbe_linux_cuda_base --config=tensorrt
 build:rbe_linux_cuda_base --action_env=TF_CUDA_VERSION=11
 build:rbe_linux_cuda_base --action_env=TF_CUDNN_VERSION=8
 build:rbe_linux_cuda_base --repo_env=REMOTE_GPU_TESTING=1
-test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+# TensorRT 7 for CUDA 11.1 is compatible with CUDA 11.2, but requires
+# libnvrtc.so.11.1. See https://github.com/NVIDIA/TensorRT/issues/1064.
+# TODO(b/187962120): Remove when upgrading to TensorRT 8.
+test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.1/lib64"
 
 build:rbe_linux_cuda11.2_nvcc_base --config=rbe_linux_cuda_base
 build:rbe_linux_cuda11.2_nvcc_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
