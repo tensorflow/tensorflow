@@ -33,6 +33,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTestTFLowerTFPass();
 std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilPass();
 std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilInterruptPass();
 
+// Test operation clustering based on user defined policy.
+std::unique_ptr<OperationPass<FuncOp>> CreateTestClusteringPolicyPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
 

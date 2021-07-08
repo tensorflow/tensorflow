@@ -58,3 +58,8 @@ def TestTensorFlowVisitorUtilInterrupt :
   }];
   let constructor = "::mlir::tf_test::CreateTestVisitorUtilInterruptPass()";
 }
+
+def TestClusteringPolicyPass : Pass<"tf-test-clustering-policy", "FuncOp"> {
+  let summary = "Test pass for clustering based on the user defined policy";
+  let constructor = "::mlir::tf_test::CreateTestClusteringPolicyPass()";
+}
