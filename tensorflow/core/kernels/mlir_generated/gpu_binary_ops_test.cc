@@ -979,7 +979,12 @@ GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Complex128, std::complex<double>,
 
 template <typename T>
 T baseline_xlog1py(T x, T y) {
-  return x == 0 ? x : x * std::log1p(y);
+  return x == T(0) ? x : x * std::log1p(y);
+}
+
+template <typename T>
+std::complex<T> baseline_xlog1py(std::complex<T> x, std::complex<T> y) {
+  return x == std::complex<T>(0) ? x : x * std::log(std::complex<T>(1) + y);
 }
 
 GENERATE_DEFAULT_TESTS_2(Xlog1py, /*test_name=*/Half, Eigen::half, float,
@@ -990,6 +995,12 @@ GENERATE_DEFAULT_TESTS(Xlog1py, /*test_name=*/Float, float, float,
                        baseline_xlog1py, test::OpsTestConfig().RTol(1e-2))
 GENERATE_DEFAULT_TESTS(Xlog1py, /*test_name=*/Double, double, double,
                        baseline_xlog1py, test::OpsTestConfig().RTol(1e-2))
+GENERATE_DEFAULT_TESTS(Xlog1py, /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_xlog1py,
+                       test::OpsTestConfig().ATol(1e-5).RTol(1e-2))
+GENERATE_DEFAULT_TESTS(Xlog1py, /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_xlog1py,
+                       test::OpsTestConfig().RTol(1e-2))
 
 /// Test `tf.TruncateDiv`.
 
