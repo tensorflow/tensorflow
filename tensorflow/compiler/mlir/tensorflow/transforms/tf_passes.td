@@ -45,6 +45,39 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   ];
 }
 
+def TensorflowLayoutAssignment : Pass<"tf-layout-assignment", "FuncOp"> {
+  let summary = "Assigns optimal layout to the layout sensitive operations";
+
+  let constructor = "TF::CreateLayoutAssignmentPass()";
+
+  let options = [
+    Option<"force_data_format", "force-data-format", "std::string",
+           /*default=*/"", "Force data format for all layout sensitive ops.">,
+  ];
+}
+
+def TensorflowMoveTransposes : Pass<"tf-move-transposes", "FuncOp"> {
+  let summary = "Moves Transpose operations in the each block.";
+
+  let description = [{
+    This pass moves all Transpose ops to the beginning or to the end of
+    the basic block where they are defined. This will allow canonicalzer to
+    delete redundant transposes.
+  }];
+
+  let constructor = "TF::CreateMoveTransposesPass()";
+
+  let options = [
+    Option<"fold_transpose_in_ops_", "fold-transpose-in-ops", "bool",
+           /*default=*/"true",
+           "Whether to fold transposes in ops which can support folding.">,
+    Option<"direction_", "direction", "std::string",
+           /*default=*/"",
+           "Move transposes to the beginning or the end of the block where "
+           "they are defined.">,
+  ];
+}
+
 def TensorFlowEnsureStaticShapesPass : FunctionPass<"tf-ensure-static-shapes"> {
   let summary = "Performs checks that the whole module does not contain dynamic shapes.";
 
