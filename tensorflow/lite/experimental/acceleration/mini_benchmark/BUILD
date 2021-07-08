@@ -512,6 +512,7 @@ cc_library(
     srcs = ["set_big_core_affinity.cc"],
     hdrs = ["set_big_core_affinity.h"],
     deps = [":big_little_affinity"],
+    alwayslink = True,
 )
 
 #
