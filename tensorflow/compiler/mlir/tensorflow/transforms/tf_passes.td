@@ -1313,3 +1313,45 @@ def TPUSpaceToDepthPass : Pass<"tf-tpu-space-to-depth-pass", "ModuleOp"> {
 
   let constructor = "TFTPU::CreateTPUSpaceToDepthPass()";
 }
+
+def MergeControlFlowPass : Pass<"tf-merge-control-flow", "ModuleOp"> {
+  let summary = "Merges IfRegion ops together with a common predicate.";
+
+  let description = [{
+    This pass merges IfRegion ops together if they have the same predicate and it
+    is safe to do so (there are no intermediate dependencies, they are in the
+    same block, etc).
+
+    For example:
+
+    ```mlir
+    "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+     }) { is_stateless = true } : (tensor<i1>) -> ()
+    "tf.IfRegion"(%0) ( {
+      %2 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+      }) { is_stateless = true } : (tensor<i1>) -> ()
+    ```
+
+    Would be transformed to:
+
+    ```mlir
+    "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      %3 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+      }) { is_stateless = true } : (tensor<i1>) -> ()
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateMergeControlFlowPass()";
+}
+
