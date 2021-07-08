@@ -25,8 +25,9 @@ using hlo::PlacementType;
 namespace mhlo {
 namespace {
 
-bool isTargetDialect(llvm::StringRef dialect_name) {
-  return (dialect_name == "mhlo");
+bool isTargetDialect(Operation* op) {
+  return (op->getDialect() ==
+          op->getContext()->getLoadedDialect<mhlo::MhloDialect>());
 }
 
 // This pass explicitly place the shape calculating hlo_ops on host side
@@ -135,13 +136,11 @@ void PlaceShapeCalcOnHost::placeShapeCalcSubgraphOnHost() {
     if (func.getName() == "main") {
       markI64ReturnedCPUScalarOps(func, shape_calc_ops);
     }
-    // skip empty blocks
-    if (func.getBlocks().size() == 0) continue;
+    // Skip if this function is external
+    if (func.isExternal()) continue;
     // no target ops
-    if (llvm::none_of(func.getBlocks().front(), [](Operation& op) {
-          auto dialect_name = op.getDialect()->getNamespace();
-          return isTargetDialect(dialect_name);
-        })) {
+    if (llvm::none_of(func.getBlocks().front(),
+                      [](Operation& op) { return isTargetDialect(&op); })) {
       continue;
     }
     markShapeCalculationOps(func, shape_calc_ops);
@@ -172,36 +171,32 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
   Builder builder(&getContext());
 
   module.walk([&](Operation* op) {
-    auto dialect_name = op->getDialect()->getNamespace();
-    if (!isTargetDialect(dialect_name)) {
+    if (!isTargetDialect(op)) {
       return;
     }
-    if (isa<mhlo::TupleOp>(op) || isa<mhlo::GetTupleElementOp>(op) ||
-        isa<mhlo::WhileOp>(op) || isa<mhlo::IfOp>(op) ||
-        isa<mhlo::ReturnOp>(op)) {
+    if (isa<mhlo::TupleOp, mhlo::GetTupleElementOp, mhlo::WhileOp, mhlo::IfOp,
+            mhlo::ReturnOp>(op)) {
       return;
     }
     // skip the ops that is already placed on Host
     auto attr = op->getAttrOfType<StringAttr>(kPlaceTyAttr);
     if ((attr != nullptr) && (attr.getValue() == kTypeHost)) return;
 
-    if (isa<mhlo::GetDimensionSizeOp>(op) || isa<tensor::FromElementsOp>(op)) {
+    if (isa<mhlo::GetDimensionSizeOp, tensor::FromElementsOp>(op)) {
       op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
       return;
     }
 
     // ops that only cares about the output element type
-    if (isa<mhlo::ConstOp>(op) || isa<mhlo::SelectOp>(op) ||
-        isa<mhlo::IotaOp>(op) || isa<mhlo::DynamicIotaOp>(op)) {
+    if (isa<mhlo::ConstOp, mhlo::SelectOp, mhlo::IotaOp, mhlo::DynamicIotaOp>(
+            op)) {
       auto result_ty = op->getResult(0).getType().dyn_cast<RankedTensorType>();
       assert(result_ty && "unexpected non ranked type for ConstOp");
       auto elem_type = result_ty.getElementType();
       if (elem_type.isInteger(32)) {
         op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
-        return;
-      } else {
-        return;
       }
+      return;
     }
 
     std::string op_name = op->getName().getStringRef().str();
@@ -320,8 +315,7 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
         d2h_worklist.push_back(std::make_pair(dst, 0));
       }
     }
-    auto dialect_name = dst->getDialect()->getNamespace();
-    if (!isTargetDialect(dialect_name) || (isa<mhlo::GetTupleElementOp>(dst)) ||
+    if (!isTargetDialect(dst) || (isa<mhlo::GetTupleElementOp>(dst)) ||
         (isa<mhlo::ReturnOp>(dst)))
       return;
 
@@ -422,8 +416,7 @@ void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
     auto op = output.value().getDefiningOp();
     if (!op) continue;
 
-    auto dialect_name = op->getDialect()->getNamespace();
-    if (!isTargetDialect(dialect_name)) continue;
+    if (!isTargetDialect(op)) continue;
 
     if (auto type = op->getResult(0).getType().dyn_cast<RankedTensorType>()) {
       if ((output_placements[idx] == kTypeHost) &&
@@ -437,19 +430,17 @@ void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
 void PlaceShapeCalcOnHost::markShapeCalculationOps(
     FuncOp func, DenseMap<Operation*, bool>& marked_ops) {
   auto& block = func.getBlocks().front();
-  block.walk([&](Operation* op) {
-    auto dialect_name = op->getDialect()->getNamespace();
-    if (!isTargetDialect(dialect_name)) return;
-    if (op->getParentOp() != func.getOperation()) return;
+  for (Operation& op : block) {
+    if (!isTargetDialect(&op)) return;
+    if (op.getParentOp() != func.getOperation()) return;
 
     // 1. If the op is already marked, mark all of its operands
     //    as shape calculation ops
-    if ((marked_ops.find(op) != marked_ops.end()) && marked_ops[op]) {
-      for (auto operand_value : op->getOperands()) {
+    if ((marked_ops.find(&op) != marked_ops.end()) && marked_ops[&op]) {
+      for (auto operand_value : op.getOperands()) {
         Operation* operand = operand_value.getDefiningOp();
         if (operand == nullptr) continue;
-        auto operand_dialect_name = operand->getDialect()->getNamespace();
-        if (!isTargetDialect(operand_dialect_name)) {
+        if (!isTargetDialect(operand)) {
           continue;
         }
         marked_ops[operand] = true;
@@ -457,15 +448,14 @@ void PlaceShapeCalcOnHost::markShapeCalculationOps(
     }
     // 2. If the op is not marked, mark the shape operands as
     //    shape calculation ops
-    if (((marked_ops.find(op) != marked_ops.end()) && (!marked_ops[op])) ||
-        (marked_ops.find(op) == marked_ops.end())) {
-      std::string name_str = op->getName().getStringRef().str();
+    if (((marked_ops.find(&op) != marked_ops.end()) && (!marked_ops[&op])) ||
+        (marked_ops.find(&op) == marked_ops.end())) {
+      std::string name_str = op.getName().getStringRef().str();
       if (kShapeCalcOperandMap.find(name_str) != kShapeCalcOperandMap.end()) {
         for (auto operand_idx : kShapeCalcOperandMap.at(name_str)) {
-          auto operand = op->getOperand(operand_idx).getDefiningOp();
+          auto operand = op.getOperand(operand_idx).getDefiningOp();
           if (operand == nullptr) continue;
-          auto operand_dialect_name = operand->getDialect()->getNamespace();
-          if (!isTargetDialect(operand_dialect_name)) {
+          if (!isTargetDialect(operand)) {
             continue;
           }
           marked_ops[operand] = true;
@@ -474,7 +464,7 @@ void PlaceShapeCalcOnHost::markShapeCalculationOps(
     }
     // TODO(disc): 3. If the operand of the op is a nested FuncOp, mark the
     //    associated producer in the nested FuncOp
-  });
+  };
 }
 
 PlacementType PlaceShapeCalcOnHost::getOpPlacement(Operation* op) {
