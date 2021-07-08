@@ -118,6 +118,7 @@ tf_kernel_library(
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         ":tpu_pod_state",
+        ":tpu_fingerprint_lookup",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
