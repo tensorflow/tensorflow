@@ -384,6 +384,16 @@ class ResourceExhaustedError(OpError):
 
   For example, this error might be raised if a per-user quota is
   exhausted, or perhaps the entire file system is out of space.
+  
+  Example:
+
+  >>> try:
+  >>>     session = tf.compat.v1.Session()
+  >>>     sess.run(node_output, feed_dict={node_input : value_input})
+  >>> except tf.errors.ResourceExhaustedError as e:
+  >>>     config = tf.compat.v1.ConfigProto()
+  >>>     config.gpu_options.allow_growth = True
+  >>>     session = tf.compat.v1.Session(config=config)
 
   @@__init__
   """
