@@ -2103,7 +2103,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceDoneShape(
     const Shape& operand_shape) {
-  return ShapeUtil::GetTupleElementShape(operand_shape, 0);
+  // The returned value from AllReduceDone is determined from
+  // HloDataflowAnalysis::UpdateAllReduceStartValueSet(). The operand to
+  // AllReduceDone is a tuple of two elements and this function selects
+  // ShapeIndex {1} as the value forwarded.
+  return ShapeUtil::GetTupleElementShape(operand_shape, 1);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllToAllShape(

@@ -60,6 +60,11 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
+def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
+  let summary = "Pass to transform the IR to be on signless integers.";
+  let constructor = "transforms::CreateConvertToSignlessPass()";
+}
+
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
   let summary = "Pass to transform a gpu module to nvvm.";
   let constructor = "transforms::CreateGpuKernelToNvvmPass()";

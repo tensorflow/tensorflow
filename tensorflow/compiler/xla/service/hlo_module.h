@@ -226,6 +226,7 @@ class HloModule {
   // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
+  HloModuleConfig& config() { return config_; }
   const HloModuleConfig& config() const { return config_; }
   void set_config(const HloModuleConfig& config) { config_ = config; }
 

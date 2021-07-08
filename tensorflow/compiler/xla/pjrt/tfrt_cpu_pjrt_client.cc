@@ -458,7 +458,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
   } else {
     auto device_buffer = MaybeOwningCpuMemory::AllocateShared(byte_size);
     auto dst_data_ptr = device_buffer->data();
-    buffers.push_back(std::move(device_buffer));
+    buffers.push_back(device_buffer);
     if (!has_default_layout) {
       // If layout is not default, relayout and sync copy.
       BorrowingLiteral literal(static_cast<const char*>(data), shape);
@@ -487,7 +487,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
         definition_events.push_back(copy_event.CopyRef());
         tfrt::EnqueueWork(
             host_ctx_.get(),
-            [dst_data_ptr, data, byte_size, copy_event = std::move(copy_event),
+            [device_buffer = std::move(device_buffer), dst_data_ptr, data,
+             byte_size, copy_event = std::move(copy_event),
              on_done_with_host_buffer =
                  std::move(on_done_with_host_buffer)]() mutable {
               tensorflow::profiler::TraceMe traceme("H2D Dispatch");

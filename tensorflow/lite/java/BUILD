@@ -96,7 +96,7 @@ aar_with_jni(
 # Same as "tensorflow-lite" (above), but excluding experimental APIs.
 aar_with_jni(
     name = "tensorflow-lite-stable",
-    android_library = ":tensorflowlite_stable",
+    android_library = ":tensorflowlite_stable_for_aar",
     headers = [
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
@@ -136,21 +136,24 @@ aar_with_jni(
 # the use of experimental APIs, it may be preferable to use that one.)
 android_library_with_tflite(
     name = "tensorflowlite",
+    # Note that we need to explicitly list all the srcs here, rather than
+    # including a dependency on ":tensorflowlite_javalib", in order
+    # for the class files to get included in the generated AAR file.
+    srcs = [":java_srcs"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     tflite_deps = [
         ":tensorflowlite_native",
     ],
-    exports = [
-        ":tensorflowlite_javalib",
-    ],
     deps = [
-        ":tensorflowlite_javalib",
+        "@org_checkerframework_qual",
     ],
 )
 
 # 'tensorflowlite_stable' is the public android_library target for the
 # TF Lite Java APIs, excluding experimental APIs.
+#
+# See also 'tensorflowlite_stable_for_aar' below.
 #
 # Note that the stable Java APIs are defined in three android_library targets,
 # 'tensorflowlite_stable' 'tensorflowlite_stable_interface', and
@@ -184,6 +187,26 @@ android_library_with_tflite(
     exports = [
         ":tensorflowlite_javalib_stable",
     ],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+# The is similar to 'tensorflowlite_stable', but includes all the
+# required Java source files directly in "srcs" rather than
+# depending on them via "deps"/"exports"; this is needed when
+# building the AAR file since the current AAR building process
+# doesn't include the transitive Java dependencies.
+# TODO(b/180305743): don't include experimental API classes here.
+android_library_with_tflite(
+    name = "tensorflowlite_stable_for_aar",
+    srcs = [":java_srcs"],
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
+    tflite_deps = [
+        ":tensorflowlite_native_stable",
+    ],
+    visibility = ["//visibility:private"],
     deps = [
         "@org_checkerframework_qual",
     ],
@@ -260,8 +283,11 @@ android_library(
 
 android_library(
     name = "tensorflowlite_java",
+    srcs = [":java_srcs"],
     proguard_specs = ["proguard.flags"],
-    exports = [":tensorflowlite_javalib"],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
 )
 
 #-----------------------------------------------------------------------------

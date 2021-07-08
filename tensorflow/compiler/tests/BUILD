@@ -778,6 +778,7 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/tpu",
     ],
 )
 

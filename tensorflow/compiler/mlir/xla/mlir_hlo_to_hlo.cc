@@ -599,6 +599,18 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
+  // This op has no expression in the legacy export format. It can be expanded
+  // to a sequence of operations if needed in the future, but would feed into
+  // ops creating unsupported dynamic shapes.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   auto& valueMap = *ctx.values;
   xla::XlaOp operand;

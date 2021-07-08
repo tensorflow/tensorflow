@@ -2503,6 +2503,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     AppendOperand(operand);
   }
   AppendComputation(to_apply);
+  to_apply->SetCustomCallInstruction(this);
 }
 
 HloCustomCallInstruction::HloCustomCallInstruction(

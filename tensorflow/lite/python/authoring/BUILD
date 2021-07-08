@@ -23,9 +23,6 @@ py_test(
     srcs = ["authoring_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",  # TODO(b/191744901): ConverterError.errors is not available on OSS.
-    ],
     deps = [
         ":authoring",
         "//tensorflow:tensorflow_py",

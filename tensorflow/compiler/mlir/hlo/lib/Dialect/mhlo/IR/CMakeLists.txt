@@ -40,6 +40,14 @@ add_mlir_library(MhloInferFusibilityOpInterface
   MLIRinfer_fusibility_op_interfaceIncGen
 )
 
+add_mlir_library(LmhloStructuredInterface
+  lhlo_structured_interface.cc
+
+  DEPENDS
+  MLIRlhlo_structured_interfaceIncGen
+)
+
+
 add_mlir_library(HloOpsCommon
   hlo_ops_common.cc
 )
@@ -71,10 +79,12 @@ add_mlir_dialect_library(LmhloDialect
   DEPENDS
   MLIRlhlo_opsIncGen
 )
+
 target_link_libraries(LmhloDialect
   PUBLIC
   MLIRIR
   HloOpsCommon
+  LmhloStructuredInterface
 )
 
 add_mlir_dialect_library(LmhloGPUDialect

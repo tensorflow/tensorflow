@@ -1790,14 +1790,22 @@ class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
   LogicalResult matchAndRewrite(TF::BroadcastToOp op,
                                 PatternRewriter &rewriter) const override {
     auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
-    auto output_type = op.output().getType().dyn_cast<RankedTensorType>();
-    if (!input_type || !output_type) {
-      return rewriter.notifyMatchFailure(op, "requires ranked shape");
+    auto output_type = op.output().getType();
+    if (!input_type) {
+      return rewriter.notifyMatchFailure(op, "requires ranked input shape");
     }
-    auto rank_diff = output_type.getRank() - input_type.getRank();
-    // The tf.BroadcastTo op performs "right-aligned" numpy-style broadcasting.
-    auto broadcast_dimensions = llvm::to_vector<4>(
-        llvm::seq<int64_t>(rank_diff, output_type.getRank()));
+    llvm::SmallVector<int64_t, 4> broadcast_dimensions;
+    if (input_type.getRank() > 0) {
+      auto ranked_output_type = output_type.dyn_cast<RankedTensorType>();
+      if (!ranked_output_type) {
+        return rewriter.notifyMatchFailure(op, "requires ranked output shape");
+      }
+      auto rank_diff = ranked_output_type.getRank() - input_type.getRank();
+      // The tf.BroadcastTo op performs "right-aligned" numpy-style
+      // broadcasting.
+      broadcast_dimensions = llvm::to_vector<4>(
+          llvm::seq<int64_t>(rank_diff, ranked_output_type.getRank()));
+    }
     rewriter.replaceOpWithNewOp<DynamicBroadcastInDimOp>(
         op, output_type, op.input(), op.shape(),
         rewriter.getI64TensorAttr(broadcast_dimensions));
@@ -6635,34 +6643,6 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
   }
 };
 
-class ConvertDynamicReshapeOp : public OpRewritePattern<TF::ReshapeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::ReshapeOp op,
-                                PatternRewriter &rewriter) const override {
-    auto tensor = op.tensor();
-    auto shape = op.shape();
-
-    auto tensor_ty = tensor.getType().cast<ShapedType>();
-    auto shape_ty = shape.getType().cast<ShapedType>();
-    auto result_ty = op.getType().cast<ShapedType>();
-
-    if (!result_ty.hasRank() || !tensor_ty.hasRank() || !shape_ty.hasRank()) {
-      return failure();
-    }
-
-    // Handle with the static case.
-    if (result_ty.hasStaticShape()) {
-      return failure();
-    }
-
-    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_ty, tensor,
-                                                        shape);
-    return success();
-  }
-};
-
 class ConvertDynamicExpandDimsOp : public OpRewritePattern<TF::ExpandDimsOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -7501,7 +7481,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertCumsumOp,
     ConvertDiagPartOp,
     ConvertDynamicExpandDimsOp,
-    ConvertDynamicReshapeOp,
     ConvertEinsumOp,
     ConvertRFFTOp,
     ConvertIRFFTOp,

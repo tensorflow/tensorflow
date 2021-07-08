@@ -17,6 +17,7 @@ limitations under the License.
 // Currently it supports MHLO and some operations from the Standard dialect.
 
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -119,13 +121,17 @@ struct ComputeOpAndFuncBufferizePass
     target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect, math::MathDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>();
 
     CustomBufferizeTypeConverter converter;
+    mhlo::RemoveSignTypeConverter remove_sign_converter;
+
     // Configure bufferize pattern for functions and lhlo.
-    mhlo::populateHLOToMemrefConversionPattern(&converter, &patterns,
-                                               /*enforce_identity_map=*/false);
+    mhlo::populateHLOToMemrefConversionPattern(
+        &converter, &remove_sign_converter, &patterns,
+        /*enforce_identity_map=*/false);
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);

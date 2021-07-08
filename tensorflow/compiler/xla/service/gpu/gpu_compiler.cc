@@ -40,9 +40,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_gather_broadcast_reorder.h"
 #include "tensorflow/compiler/xla/service/all_gather_combiner.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
+#include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/async_all_reduce_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
@@ -115,6 +117,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
+#include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -150,7 +153,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
 
 class GpuBfloat16Support : public BFloat16Support {
@@ -173,10 +175,22 @@ class GpuBfloat16Support : public BFloat16Support {
 
  private:
   bool IsSupported(const HloInstruction& hlo) const {
-    return hlo.opcode() == HloOpcode::kBitcast ||
-           (supports_matrix_multiplication_ &&
-            gpu::IsMatrixMultiplication(hlo)) ||
-           (IsConvBF16Supported() && hlo.opcode() == HloOpcode::kConvolution);
+    switch (hlo.opcode()) {
+      case HloOpcode::kAllGather:
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllReduceStart:
+      case HloOpcode::kAllReduceDone:
+      case HloOpcode::kAllReduceScatter:
+      case HloOpcode::kAllToAll:
+      case HloOpcode::kBitcast:
+      case HloOpcode::kCollectivePermute:
+        return true;
+      case HloOpcode::kConvolution:
+        return IsConvBF16Supported();
+      default:
+        return supports_matrix_multiplication_ &&
+               gpu::IsMatrixMultiplication(hlo);
+    }
   }
 
   bool IsConvBF16Supported() const {
@@ -372,6 +386,17 @@ Status GpuCompiler::OptimizeHloModule(
   {
     HloPassPipeline collectives_pipeline("collective-optimizations");
     collectives_pipeline.AddPass<AllReduceScatterCreator>();
+    collectives_pipeline.AddPass<AllReduceReassociate>();
+
+    // Run algebraic simplifier to reshape(broadcast) into a broadcast when
+    // the reshape is just adding a unit dimension. This will help with the
+    // AllGatherBroadcastReorder pass.
+    AlgebraicSimplifierOptions options;
+    options.set_replace_transpose_with_bitcast(false);
+    options.set_enable_conv_operand_swap(false);
+    collectives_pipeline.AddPass<AlgebraicSimplifier>(options);
+
+    collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
     TF_RETURN_IF_ERROR(collectives_pipeline.Run(hlo_module).status());
   }
 
@@ -440,6 +465,9 @@ Status GpuCompiler::OptimizeHloModule(
         /*combine_threshold_in_bytes=*/1024 * 1024 * 1024,
         /*combine_threshold_count=*/256);
     pipeline.AddPass<AllReduceCombiner>(
+        /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
+        /*combine_threshold_count=*/256);
+    pipeline.AddPass<ReduceScatterCombiner>(
         /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
         /*combine_threshold_count=*/256);
 
@@ -1046,6 +1074,18 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }
+
+  // Dump computation proto state and buffer assignment for debug and test, if
+  // dump is enabled.
+  if (DumpingEnabledForHloModule(gpu_executable->module())) {
+    auto hlo_proto = absl::make_unique<HloProto>();
+    *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
+    *hlo_proto->mutable_buffer_assignment() =
+        compile_module_results.buffer_assignment->ToProto();
+    gpu_executable->set_hlo_proto(std::move(hlo_proto));
+  }
+  gpu_executable->set_debug_info(
+      compile_module_results.buffer_assignment->GetStats().ToString());
   return std::unique_ptr<Executable>(gpu_executable);
 }
 

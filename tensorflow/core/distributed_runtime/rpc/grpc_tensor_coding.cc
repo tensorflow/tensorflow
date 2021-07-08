@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "grpcpp/support/byte_buffer.h"
 #include "grpcpp/support/slice.h"
-#include "absl/flags/flag.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -27,8 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/proto_encode_helper.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-
-// (Omitted internal-only flag)
 
 namespace tensorflow {
 namespace grpc {
@@ -193,8 +190,6 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
     //
     // We enable this behavior if the tensor is large.
     bool share_tensor_slice_memory = (tdata.size() > kLargeTensorBytes);
-
-    // (Omitted internal-only conditional)
 
     size_t encoder_size = expected_size - tdata.size();
 

@@ -16,6 +16,8 @@ limitations under the License.
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdarg.h>
 
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -50,6 +51,22 @@ limitations under the License.
                  "Invalid tensor index %d exceeds max tensor index %lu", i, \
                  interpreter_->tensors_size());                             \
     return nullptr;                                                         \
+  }
+
+#define TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(i, subgraph_index)             \
+  if (i >= interpreter_->subgraph(subgraph_index)->tensors_size() || i < 0) { \
+    PyErr_Format(PyExc_ValueError,                                            \
+                 "Invalid tensor index %d exceeds max tensor index %lu", i,   \
+                 interpreter_->subgraph(subgraph_index)->tensors_size());     \
+    return nullptr;                                                           \
+  }
+
+#define TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(i)                                   \
+  if (i >= interpreter_->subgraphs_size() || i < 0) {                        \
+    PyErr_Format(PyExc_ValueError,                                           \
+                 "Invalid subgraph index %d exceeds max subgraph index %lu", \
+                 i, interpreter_->subgraphs_size());                         \
+    return nullptr;                                                          \
   }
 
 #define TFLITE_PY_NODES_BOUNDS_CHECK(i)                   \
@@ -239,19 +256,28 @@ InterpreterWrapper::InterpreterWrapper(
 
 InterpreterWrapper::~InterpreterWrapper() {}
 
-PyObject* InterpreterWrapper::AllocateTensors() {
+PyObject* InterpreterWrapper::AllocateTensors(int subgraph_index) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_CHECK(interpreter_->AllocateTensors());
+  TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
+  TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)->AllocateTensors());
   Py_RETURN_NONE;
 }
 
-PyObject* InterpreterWrapper::Invoke() {
+PyObject* InterpreterWrapper::Invoke(int subgraph_index) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
 
   // Release the GIL so that we can run multiple interpreters in parallel
   TfLiteStatus status_code = kTfLiteOk;
   Py_BEGIN_ALLOW_THREADS;  // To return can happen between this and end!
-  status_code = interpreter_->Invoke();
+  tflite::Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
+  status_code = subgraph->Invoke();
+
+  if (!interpreter_->allow_buffer_handle_output_) {
+    for (int tensor_index : subgraph->outputs()) {
+      subgraph->EnsureTensorDataIsReadable(tensor_index);
+    }
+  }
   Py_END_ALLOW_THREADS;
 
   TFLITE_PY_CHECK(
@@ -306,7 +332,11 @@ PyObject* InterpreterWrapper::ResizeInputTensorImpl(int i, PyObject* value) {
 }
 
 PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
-                                                bool strict) {
+                                                bool strict,
+                                                int subgraph_index) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
+
   PyArrayObject* array =
       reinterpret_cast<PyArrayObject*>(ResizeInputTensorImpl(i, value));
   if (array == nullptr) {
@@ -317,9 +347,11 @@ PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
   memcpy(dims.data(), PyArray_BYTES(array), dims.size() * sizeof(int));
 
   if (strict) {
-    TFLITE_PY_CHECK(interpreter_->ResizeInputTensorStrict(i, dims));
+    TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)
+                        ->ResizeInputTensorStrict(i, dims));
   } else {
-    TFLITE_PY_CHECK(interpreter_->ResizeInputTensor(i, dims));
+    TFLITE_PY_CHECK(
+        interpreter_->subgraph(subgraph_index)->ResizeInputTensor(i, dims));
   }
   Py_RETURN_NONE;
 }
@@ -445,9 +477,11 @@ PyObject* InterpreterWrapper::TensorQuantizationParameters(int i) const {
   return result;
 }
 
-PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
+PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
+                                        int subgraph_index) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+  TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(i, subgraph_index);
 
   std::unique_ptr<PyObject, PyDecrefDeleter> array_safe(
       PyArray_FromAny(value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr));
@@ -458,7 +492,7 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
   }
 
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
-  TfLiteTensor* tensor = interpreter_->tensor(i);
+  TfLiteTensor* tensor = interpreter_->subgraph(subgraph_index)->tensor(i);
 
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
@@ -568,11 +602,13 @@ namespace {
 // Checks to see if a tensor access can succeed (returns nullptr on error).
 // Otherwise returns Py_None.
 PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
-                             TfLiteTensor** tensor, int* type_num) {
+                             TfLiteTensor** tensor, int* type_num,
+                             int subgraph_index) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(tensor_index);
+  TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
+  TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
-  *tensor = interpreter_->tensor(tensor_index);
+  *tensor = interpreter_->subgraph(subgraph_index)->tensor(tensor_index);
   if ((*tensor)->bytes == 0) {
     PyErr_SetString(PyExc_ValueError, "Invalid tensor size.");
     return nullptr;
@@ -622,29 +658,27 @@ PyObject* InterpreterWrapper::GetSignatureDefs() const {
   return result;
 }
 
-PyObject* InterpreterWrapper::GetOutputTensorFromSignatureDefName(
-    const char* output_name, const char* method_name) const {
-  const auto& outputs = interpreter_->signature_outputs(method_name);
-  const auto& output = outputs.find(output_name);
-  if (output == outputs.end()) return nullptr;
-  return GetTensor(output->second);
+PyObject* InterpreterWrapper::GetSubgraphIndexFromSignatureDefName(
+    const char* method_name) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+
+  int32_t subgraph_index =
+      interpreter_->GetSubgraphIndexFromSignatureDefName(method_name);
+
+  if (subgraph_index < 0) {
+    PyErr_SetString(PyExc_ValueError, "No matching signature.");
+    return nullptr;
+  }
+  return PyLong_FromLong(static_cast<int64_t>(subgraph_index));
 }
 
-PyObject* InterpreterWrapper::SetInputTensorFromSignatureDefName(
-    const char* input_name, const char* method_name, PyObject* value) {
-  const auto& inputs = interpreter_->signature_inputs(method_name);
-  const auto& input = inputs.find(input_name);
-  if (input == inputs.end()) return nullptr;
-  return SetTensor(input->second, value);
-}
-
-PyObject* InterpreterWrapper::GetTensor(int i) const {
+PyObject* InterpreterWrapper::GetTensor(int i, int subgraph_index) const {
   // Sanity check accessor
   TfLiteTensor* tensor = nullptr;
   int type_num = 0;
 
-  PyObject* check_result =
-      CheckGetTensorArgs(interpreter_.get(), i, &tensor, &type_num);
+  PyObject* check_result = CheckGetTensorArgs(interpreter_.get(), i, &tensor,
+                                              &type_num, subgraph_index);
   if (check_result == nullptr) return check_result;
   Py_XDECREF(check_result);
 
@@ -712,13 +746,14 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
   }
 }
 
-PyObject* InterpreterWrapper::tensor(PyObject* base_object, int i) {
+PyObject* InterpreterWrapper::tensor(PyObject* base_object, int tensor_index,
+                                     int subgraph_index) {
   // Sanity check accessor
   TfLiteTensor* tensor = nullptr;
   int type_num = 0;
 
-  PyObject* check_result =
-      CheckGetTensorArgs(interpreter_.get(), i, &tensor, &type_num);
+  PyObject* check_result = CheckGetTensorArgs(
+      interpreter_.get(), tensor_index, &tensor, &type_num, subgraph_index);
   if (check_result == nullptr) return check_result;
   Py_XDECREF(check_result);
 

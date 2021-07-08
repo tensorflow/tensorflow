@@ -24,7 +24,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
@@ -114,8 +113,6 @@ class CategoryCrossing(base_layer.Layer):
 
   def __init__(self, depth=None, name=None, separator='_X_', **kwargs):
     super(CategoryCrossing, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell(
-        'CategoryCrossing').set(True)
     self.depth = depth
     self.separator = separator
     if isinstance(depth, (tuple, list)):

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables_test_pass.h"
+#include "llvm/ADT/StringRef.h"
+
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_PLACEMENT_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_PLACEMENT_UTIL_H_
 
 namespace mlir {
-namespace tf_saved_model {
+namespace mhlo {
+namespace placement_utils {
 
-static PassRegistration<LiftVariablesTestPass> lift_variables_test_pass(
-    "tf-saved-model-lift-variables-test",
-    "Lift variables and save them as global tensors");
+constexpr llvm::StringRef c_cpu = "cpu";
+constexpr llvm::StringRef c_gpu = "gpu";
 
-static PassRegistration<LiftVariablesInvalidSessionTestPass>
-    lift_variables_invalid_session_test_pass(
-        "tf-saved-model-lift-variables-invalid-session-test",
-        "Lift variables and save them as global tensors with an invalid "
-        "session");
-
-}  // namespace tf_saved_model
+}  // namespace placement_utils
+}  // namespace mhlo
 }  // namespace mlir
+
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_PLACEMENT_UTIL_H_

@@ -24,6 +24,14 @@ limitations under the License.
 namespace xla {
 namespace hlo_query {
 
+namespace {
+bool IsCollectiveCommunicationOp(HloOpcode op) {
+  return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
+         op == HloOpcode::kAllToAll || op == HloOpcode::kCollectivePermute ||
+         op == HloOpcode::kAllReduceScatter;
+}
+}  // namespace
+
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   if (instruction->opcode() == HloOpcode::kConstant &&
       ShapeUtil::IsScalarWithElementType(instruction->shape(), F32)) {
@@ -121,11 +129,14 @@ bool ContainsInstrWithOpcode(const HloComputation* comp,
   return false;
 }
 
-bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
+bool ContainsLayoutConstrainedCollective(const HloModule& module,
+                                         HloOpcode op) {
+  CHECK(IsCollectiveCommunicationOp(op));
+
   for (auto computation : module.computations()) {
     for (auto hlo : computation->instructions()) {
-      if (hlo->opcode() == HloOpcode::kAllReduce &&
-          DynCast<HloAllReduceInstruction>(hlo)->constrain_layout()) {
+      if (hlo->opcode() == op &&
+          DynCast<HloCollectiveInstruction>(hlo)->constrain_layout()) {
         return true;
       }
     }

@@ -300,6 +300,10 @@ will be transformed into this region-based operation
       "tf.Yield"(%1) : (tensor<*xf32>) -> ()
     }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
 ```
+### `-tf-gpu-op-fusion`: Fusion optimization for GPU targets
+This pass is performing fusion specific to GPU targets. This is an ad-hoc
+pass for now, but should be integrated with some notion of "target" in the
+MLIR pipeline in the future.
 ### `-tf-hoist-replicate-invariant-resource-writes`: Hoists writes to replicate invariant resource variables.
 This pass hoists replicate invariant resource variable writes outside
 tf_device.replicate op. These may have been inserted by other passes such as
@@ -362,6 +366,7 @@ func @unsupported_op() -> tensor<i32> {
   return %0 : tensor<i32>
 }
 ```
+### `-tf-materialize-passthrough-op`: Materialize the MlirPassthroughOp by replacing it with the MLIR module attached as an attribute
 ### `-tf-optimize`: Optimize TensorFlow module
 ### `-tf-outside-compiled-to-host-launch`: Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.
 This pass wraps ops with the same `_xla_outside_compilation`

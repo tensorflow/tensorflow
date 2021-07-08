@@ -62,6 +62,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 // buffers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
 
+// Pass to replace unsigned types with signless integers.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
+
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 

@@ -29,6 +29,9 @@ class Operation;
 template <typename T>
 class OperationPass;
 class Pass;
+namespace lmhlo {
+class FusionOp;
+}
 
 namespace mhlo {
 
@@ -130,6 +133,13 @@ std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
 // inline lmhlo.Fusion
 std::unique_ptr<OperationPass<FuncOp>> createLhloFusionInlinerPass();
 
+// Lowers the roots of lmhlo.fusion to parallel loops
+std::unique_ptr<OperationPass<FuncOp>>
+createLhloLegalizeRootsToParallelLoopsPass();
+
+// Input inline fusion pass for fusion codegen
+std::unique_ptr<OperationPass<lmhlo::FusionOp>> createInputInlineFusionPass();
+
 }  // namespace lmhlo
 
 namespace disc_ral {
@@ -139,6 +149,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createRalInjectExecutionContextPass(
 
 // Lower some specific ops to library calls (modeled by `disc_ral.launch` op).
 std::unique_ptr<mlir::FunctionPass> createRalLowerToLibraryCallPass();
+
+// Lower disc to llvm dialect
+std::unique_ptr<OperationPass<ModuleOp>> createRalToLLVMPass();
 
 }  // namespace disc_ral
 

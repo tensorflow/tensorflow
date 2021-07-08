@@ -84,6 +84,7 @@ cc_library(
     srcs = [
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
+        "convert_to_signless_pass.cc",
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "fuse_inner_parallel_loops_pass.cc",
@@ -131,6 +132,7 @@ cc_library(
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
         "@llvm-project//mlir:SCFDialect",
@@ -150,6 +152,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:type_conversion",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",

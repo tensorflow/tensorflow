@@ -959,7 +959,7 @@ def tf_gen_op_wrappers_cc(
 #   out: name of the python file created by this rule. If None, then
 #     "ops/gen_{name}.py" is used.
 #   hidden: Optional list of ops names to make private in the Python module.
-#     It is invalid to specify both "hidden" and "op_whitelist".
+#     It is invalid to specify both "hidden" and "op_allowlist".
 #   visibility: passed to py_library.
 #   deps: list of dependencies for the intermediate tool used to generate the
 #     python target. NOTE these `deps` are not applied to the final python
@@ -971,8 +971,7 @@ def tf_gen_op_wrappers_cc(
 #     starting characters are treated as comments and ignored.
 #   generated_target_name: name of the generated target (overrides the
 #     "name" arg)
-#   op_whitelist: [DEPRECATED] if not empty, only op names in this list will be wrapped. It
-#     is invalid to specify both "hidden" and "op_whitelist".
+#   op_whitelist: [DEPRECATED] an older spelling for "op_allowlist"
 #   op_allowlist: if not empty, only op names in this list will be wrapped. It
 #     is invalid to specify both "hidden" and "op_allowlist".
 #   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
@@ -997,12 +996,14 @@ def tf_gen_op_wrapper_py(
     if op_whitelist and op_allowlist:
         fail("op_whitelist is deprecated. Only use op_allowlist.")
     if op_whitelist:
-        print("op_whitelist is deprecated. Use op_allowlist.")  # buildifier: disable=print
-    if op_allowlist:
-        op_whitelist = op_allowlist
+        full_target_name = "//" + native.package_name() + ":" + name
+        print("op_whitelist is deprecated. Please migrate to the preferred " +
+              "`op_allowlist` spelling. Offending target: " +
+              full_target_name)  # buildifier: disable=print
+        op_allowlist = op_whitelist
 
-    if (hidden or hidden_file) and op_whitelist:
-        fail("Cannot pass specify both hidden and op_whitelist.")
+    if (hidden or hidden_file) and op_allowlist:
+        fail("Cannot pass specify both hidden and op_allowlist.")
 
     # Construct a cc_binary containing the specified ops.
     tool_name = "gen_" + name + "_py_wrappers_cc"
@@ -1028,8 +1029,8 @@ def tf_gen_op_wrapper_py(
     if hidden:
         op_list_arg = ",".join(hidden)
         op_list_is_whitelist = False
-    elif op_whitelist:
-        op_list_arg = ",".join(op_whitelist)
+    elif op_allowlist:
+        op_list_arg = ",".join(op_allowlist)
         op_list_is_whitelist = True
     else:
         op_list_arg = "''"

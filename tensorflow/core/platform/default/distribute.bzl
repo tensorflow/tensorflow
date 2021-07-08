@@ -76,4 +76,5 @@ def distribute_py_test(
             disable_v2 = disable_v2,
             disable_v3 = disable_v3,
             disable_mlir_bridge = disable_mlir_bridge,
+            disable_tfrt = True,
         )

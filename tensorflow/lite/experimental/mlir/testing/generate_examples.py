@@ -30,6 +30,7 @@ import tensorflow.compat.v1 as tf
 from tensorflow.lite.experimental.mlir.testing import mlir_convert
 # pylint: disable=unused-import
 from tensorflow.lite.experimental.mlir.testing.op_tests.batchmatmul import make_batchmatmul_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_args import make_broadcast_args_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_gradient_args import make_broadcast_gradient_args_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_to import make_broadcast_to_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.complex_abs import make_complex_abs_tests

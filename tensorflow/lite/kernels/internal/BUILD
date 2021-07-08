@@ -459,6 +459,7 @@ cc_library(
         "reference/batch_matmul.h",
         "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/broadcast_args.h",
         "reference/broadcast_to.h",
         "reference/cast.h",
         "reference/ceil.h",

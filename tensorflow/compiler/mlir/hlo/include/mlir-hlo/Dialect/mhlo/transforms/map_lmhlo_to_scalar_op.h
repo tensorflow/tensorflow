@@ -574,7 +574,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogOp>(Location loc,
                                                   ArrayRef<Type> arg_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::LogOp>{}(
+  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::LogOp,
+                                 isComplexType, ::mlir::complex::LogOp>{}(
       loc, result_types, arg_types, args, b);
 }
 
@@ -614,7 +615,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::Log1pOp>(Location loc,
                                                     ArrayRef<Type> arg_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::Log1pOp>{}(
+  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::Log1pOp,
+                                 isComplexType, ::mlir::complex::Log1pOp>{}(
       loc, result_types, arg_types, args, b);
 }
 

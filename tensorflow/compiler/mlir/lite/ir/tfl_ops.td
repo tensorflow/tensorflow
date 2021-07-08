@@ -5037,4 +5037,28 @@ def TFL_HashtableSizeOp: TFL_Op<"hashtable_size", []> {
   );
 }
 
+def TFL_BroadcastArgsOp : TFL_Op<"broadcast_args",[
+    OperandsSameElementTypeConstraintBase<"BroadcastArgs op">,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRank<0, 1>,
+    TFL_OperandHasRank<1, 1>,
+    NoSideEffect]> {
+  let summary = "Return the shape of s0 op s1 with broadcast.";
+
+  let description = [{
+Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the
+broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
+  }];
+
+  let arguments = (ins
+    TFL_I32OrI64Tensor:$s0,
+    TFL_I32OrI64Tensor:$s1
+  );
+
+  let results = (outs
+    TFL_I32OrI64Tensor:$r0
+  );
+}
+
 #endif // TFL_OPS

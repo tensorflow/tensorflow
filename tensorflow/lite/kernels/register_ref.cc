@@ -163,6 +163,7 @@ TfLiteRegistration* Register_IMAG();
 TfLiteRegistration* Register_REAL();
 TfLiteRegistration* Register_COMPLEX_ABS();
 TfLiteRegistration* Register_CONV_3D_TRANSPOSE_REF();
+TfLiteRegistration* Register_BROADCAST_ARGS();
 
 namespace {
 
@@ -474,6 +475,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_COMPLEX_ABS, Register_COMPLEX_ABS());
   AddBuiltin(BuiltinOperator_CONV_3D_TRANSPOSE,
              Register_CONV_3D_TRANSPOSE_REF());
+  AddBuiltin(BuiltinOperator_BROADCAST_ARGS, Register_BROADCAST_ARGS());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

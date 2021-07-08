@@ -26,6 +26,8 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
+struct RemoveSignTypeConverter;
+
 // Collection of rewrite patterns for lowering a general dot product.
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
                                           MLIRContext *ctx);
@@ -65,9 +67,9 @@ void populateHLOToLHLOConversionPattern(MLIRContext *context,
 // input memrefs. If enforce_identity_map is set to true, copies will be
 // inserted when the lowering would otherwise lead to a memref with a
 // non-identity map.
-void populateHLOToMemrefConversionPattern(BufferizeTypeConverter *converter,
-                                          OwningRewritePatternList *patterns,
-                                          bool enforce_identity_map = true);
+void populateHLOToMemrefConversionPattern(
+    BufferizeTypeConverter *converter, RemoveSignTypeConverter *sign_converter,
+    OwningRewritePatternList *patterns, bool enforce_identity_map = true);
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHLOToLinalgConversionPattern(MLIRContext *context,
@@ -135,6 +137,17 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
                                    OwningRewritePatternList *patterns);
 
 }  // namespace chlo
+
+class LLVMTypeConverter;
+class SymbolTable;
+
+namespace disc_ral {
+
+void populateDiscRalToLLVMConversionPatterns(LLVMTypeConverter *converter,
+                                             SymbolTable *symbol_table,
+                                             RewritePatternSet *patterns);
+
+}  // namespace disc_ral
 
 }  // namespace mlir
 
