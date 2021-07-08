@@ -1139,7 +1139,6 @@ cc_library(
         "transforms/test_cluster_ops_by_policy.cc",
         "transforms/test_resource_alias_analysis.cc",
         "transforms/test_side_effect_analysis.cc",
-        "transforms/test_visitor_util.cc",
         "transforms/tf_data_optimization_pass.cc",
         "transforms/tf_device_assignment.cc",
         "transforms/tf_device_replication_pass.cc",
@@ -1264,6 +1263,7 @@ cc_library(
         "transforms/lower_tf_test_pass.cc",
         "transforms/mark_initialized_variables_test_pass.cc",
         "transforms/test_passes.h.inc",
+        "transforms/test_visitor_util.cc",
         "transforms/tf_saved_model_freeze_variables_test_pass.cc",
     ],
     hdrs = [
@@ -1278,6 +1278,7 @@ cc_library(
         ":tensorflow",
         ":tf_saved_model_passes",
         ":tf_test_passes_inc_gen",
+        ":visitor_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
