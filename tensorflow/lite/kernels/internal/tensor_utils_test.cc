@@ -2132,7 +2132,7 @@ void BM_DotprodBatchOneMultiply(benchmark::State& state) {
       tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           data.matrix.data(), data.rows, data.cols,
           data.vectors.data() + (data.cols * i), data.scale_factors.data(), 1,
-          &data.results[0], 1);
+          &data.results[0]);
       testing::DoNotOptimize(data.results[2]);
     }
   }
@@ -2182,7 +2182,7 @@ void BM_DotprodBatchFourMultiply(benchmark::State& state) {
     auto& data = datas[copy];
     tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         data.matrix.data(), data.rows, data.cols, data.vectors.data(),
-        data.scale_factors.data(), data.batch, &data.results[0], 1);
+        data.scale_factors.data(), data.batch, &data.results[0]);
     testing::DoNotOptimize(data.results[2]);
   }
 }
