@@ -1092,6 +1092,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       reason = "User has assigned a device that is not CPU.";
     }
 
+    // XLA devices not supported by MKL
+    if(absl::StrContains(n->assigned_device_name(), "XLA")){
+      result = false;
+      reason = "MKL currently incompatible with XLA devices.";
+    }
+
     if (result == false) {
       VLOG(1) << "MklLayoutRewritePass: Skipping rewriting of the node "
               << n->type_string() << ", reason: " << reason;
