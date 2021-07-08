@@ -665,11 +665,48 @@ class CudnnFilterDescriptor {
 //          "cudnn_version_end"   : -1
 //        }
 // ]})"
-// We intentionally return an empty string for now. Alternately, users can also
-// specify an additional errata JSON file via CUDNN_ERRATA_JSON_FILE at runtime.
-std::string CudnnExecutionPlanEngineFilter() {
-  static std::string filter_str = "";
-  return filter_str;
+// We skip eng0 in the static filter because they are too slow. Additionally,
+// users can specify an additional errata JSON file via
+// CUDNN_ERRATA_JSON_FILE at runtime.
+absl::optional<json> CudnnExecutionPlanEngineFilter(bool is_static) {
+  if (is_static) {
+    static std::string filter_str = R"({
+        "version" : 1,
+          "rules"   : [
+            { "rule_id"             : "ConvFwd_eng0",
+              "operation"           : "ConvFwd",
+              "engine"              : 0,
+              "knob"                : [],
+              "cudnn_version_start" : 8000,
+              "cudnn_version_end"   : -1
+            },
+            { "rule_id"             : "ConvBwdData_eng0",
+              "operation"           : "ConvBwdData",
+              "engine"              : 0,
+              "knob"                : [],
+              "cudnn_version_start" : 8000,
+              "cudnn_version_end"   : -1
+            },
+            { "rule_id"             : "ConvBwdFilter_eng0",
+              "operation"           : "ConvBwdFilter",
+              "engine"              : 0,
+              "knob"                : [],
+              "cudnn_version_start" : 8000,
+              "cudnn_version_end"   : -1
+            }
+        ]})";
+    static json json_handle = json::parse(filter_str);
+    return json_handle;
+  } else {
+    static json json_handle;
+    static bool use_runtime_errata = cudnn_frontend::load_from_config(
+                                        json_handle, "");
+    if (use_runtime_errata) {
+      return json_handle;
+    } else {
+      return absl::nullopt;
+    }
+  }
 }
 
 // A helper function to decide whether to use
@@ -3842,16 +3879,8 @@ GetFirstWorkingExecutionPlan(
   cudnn_frontend::filter(fallback_list, filtered_configs, generic_filter_fn);
 
   auto fn = []() { return true; };
-  json json_handle_static;
-  json json_handle_runtime;
-  std::string errata_str = CudnnExecutionPlanEngineFilter();
-  bool use_static_errata = false;
-  if (errata_str != "") {
-    use_static_errata = true;
-    json_handle_static = json::parse(errata_str);
-  }
-  bool use_runtime_errata = cudnn_frontend::load_from_config(
-                                json_handle_runtime, "");
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilter(true);
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilter(false);
 
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
@@ -3859,15 +3888,15 @@ GetFirstWorkingExecutionPlan(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
-      if (use_static_errata &&
-          cudnn_frontend::check_errata(json_handle_static, plan.getTag(),
+      if (maybe_json_handle_static.has_value() &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
                                        cudnn.handle(), fn)) {
         VLOG(4) << "Exclude engine (static): " << plan.getTag();
         continue;
       }
-      if (use_runtime_errata &&
-          cudnn_frontend::check_errata(json_handle_runtime, plan.getTag(),
-                                       cudnn.handle(), fn)) {
+      if (maybe_json_handle_runtime.has_value() &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
         VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
         continue;
       }
@@ -4495,16 +4524,8 @@ bool CudnnSupport::GetConvolveExecutionPlans(
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
   auto fn = []() { return true; };
-  json json_handle_static;
-  json json_handle_runtime;
-  std::string errata_str = CudnnExecutionPlanEngineFilter();
-  bool use_static_errata = false;
-  if (errata_str != "") {
-    use_static_errata = true;
-    json_handle_static = json::parse(errata_str);
-  }
-  bool use_runtime_errata = cudnn_frontend::load_from_config(
-                                json_handle_runtime, "");
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilter(true);
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilter(false);
 
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
@@ -4515,15 +4536,15 @@ bool CudnnSupport::GetConvolveExecutionPlans(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
-      if (use_static_errata &&
-          cudnn_frontend::check_errata(json_handle_static, plan.getTag(),
+      if (maybe_json_handle_static.has_value() &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
                                        cudnn.handle(), fn)) {
         VLOG(4) << "Exclude engine (static): " << plan.getTag();
         continue;
       }
-      if (use_runtime_errata &&
-          cudnn_frontend::check_errata(json_handle_runtime, plan.getTag(),
-                                       cudnn.handle(), fn)) {
+      if (maybe_json_handle_runtime.has_value() &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
         VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
         continue;
       }
@@ -4604,16 +4625,8 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
   auto fn = []() { return true; };
-  json json_handle_static;
-  json json_handle_runtime;
-  std::string errata_str = CudnnExecutionPlanEngineFilter();
-  bool use_static_errata = false;
-  if (errata_str != "") {
-    use_static_errata = true;
-    json_handle_static = json::parse(errata_str);
-  }
-  bool use_runtime_errata = cudnn_frontend::load_from_config(
-                                json_handle_runtime, "");
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilter(true);
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilter(false);
 
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
@@ -4624,15 +4637,15 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
-      if (use_static_errata &&
-          cudnn_frontend::check_errata(json_handle_static, plan.getTag(),
+      if (maybe_json_handle_static.has_value() &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
                                        cudnn.handle(), fn)) {
         VLOG(4) << "Exclude engine (static): " << plan.getTag();
         continue;
       }
-      if (use_runtime_errata &&
-          cudnn_frontend::check_errata(json_handle_runtime, plan.getTag(),
-                                       cudnn.handle(), fn)) {
+      if (maybe_json_handle_runtime.has_value() &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
         VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
         continue;
       }
