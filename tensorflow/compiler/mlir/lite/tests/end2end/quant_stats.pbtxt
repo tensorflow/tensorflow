@@ -1,6 +1,23 @@
-# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-output-arrays=Add -tf-inference-type=DT_QUINT8 -tf-input-min-values='-2,-3' -tf-input-max-values='2,3' --quant-stats=%s.stats %s -o - --output-mlir 2>&1 \
+# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 \
+# RUN:                  -tf-input-shapes=4:4 \
+# RUN:                  -tf-input-data-types=DT_FLOAT,DT_FLOAT \
+# RUN:                  -tf-output-arrays=Add \
+# RUN:                  -tf-inference-type=DT_QUINT8 \
+# RUN:                  -tf-input-min-values='-2,-3' \
+# RUN:                  -tf-input-max-values='2,3' \
+# RUN:                  --quant-stats=%s.stats \
+# RUN:                  %s -o - --output-mlir 2>&1 \
 # RUN:  | FileCheck --check-prefix=MLIR %s
-# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-output-arrays=Add -tf-inference-type=DT_QUINT8 -tf-input-min-values='-2,-3' -tf-input-max-values='2,3' --quant-stats=%s.stats %s -o - | flatbuffer_to_string - \
+# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 \
+# RUN:                  -tf-input-shapes=4:4 \
+# RUN:                  -tf-input-data-types=DT_FLOAT,DT_FLOAT \
+# RUN:                  -tf-output-arrays=Add \
+# RUN:                  -tf-inference-type=DT_QUINT8 \
+# RUN:                  -tf-input-min-values='-2,-3' \
+# RUN:                  -tf-input-max-values='2,3' \
+# RUN:                  --quant-stats=%s.stats \
+# RUN:                  %s -o - \
+# RUN:  | flatbuffer_to_string - \
 # RUN:  | FileCheck %s
 
 node {
