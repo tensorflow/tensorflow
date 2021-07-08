@@ -206,6 +206,7 @@ static bool DoGemmLt(int64 batch_size, MatrixDescriptor lhs_matrix,
   tensorflow::DataType dtype = tensorflow::DataTypeToEnum<ElemType>::value;
   bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
   int device_id = stream->parent()->device_ordinal();
+
   bool trans_x = lhs_matrix.transpose;
   bool trans_y = rhs_matrix.transpose;
 
@@ -213,10 +214,14 @@ static bool DoGemmLt(int64 batch_size, MatrixDescriptor lhs_matrix,
   int64 n = output_matrix.num_cols;
   auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
   bool broadcast = batch_size == 1;
+  VLOG(2) << "matmul params: trans_x " << trans_x << " trans_y " << trans_y
+          << " adj_x " << false << " adj_y " << false << " m " << m << " n "
+          << n << " k " << k << " batch_size " << batch_size << " broadcast "
+          << broadcast << " broadcast " << broadcast << " dtype " << dtype
+          << " allow_tf32 " << allow_tf32 << " device_id " << device_id;
   tensorflow::BatchMatmulParameters matmul_parameters(
-      trans_x, trans_y, /*adj_x*/ false, /*adj_y*/ false, m, n, k, batch_size,
-      broadcast, broadcast, dtype, dtype, allow_tf32, device_id);
-
+      trans_x, trans_y, false, false, m, n, k, batch_size, broadcast, broadcast,
+      dtype, dtype, allow_tf32, device_id);
   const auto *plan_and_algorithms =
       tensorflow::BatchMatmulPlanMapSingleton::GetInstance()->Find(
           matmul_parameters);
@@ -247,20 +252,16 @@ static bool DoGemmLt(int64 batch_size, MatrixDescriptor lhs_matrix,
   se::DeviceMemory<ElemType> output_data(output_matrix.data);
 
   return stream
-      ->ThenBlasLtMatmul(plan.get(), alpha, rhs_data, lhs_data, beta,
-                         &output_data, scratch_allocator,
-                         algorithm_ptr /* algorithm.get() */, {},
+      ->ThenBlasLtMatmul(plan.get(), alpha, lhs_data, rhs_data, beta,
+                         &output_data, scratch_allocator, algorithm_ptr, {},
                          output_profile_result)
       .ok();
 }
 
-Status PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
-                                   se::DeviceMemoryBase lhs_buffer,
-                                   se::DeviceMemoryBase rhs_buffer,
-                                   se::DeviceMemoryBase output_buffer,
-                                   MatrixDescriptor &lhs_matrix,
-                                   MatrixDescriptor &rhs_matrix,
-                                   MatrixDescriptor &output_matrix) {
+MatrixDescs PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
+                                        se::DeviceMemoryBase lhs_buffer,
+                                        se::DeviceMemoryBase rhs_buffer,
+                                        se::DeviceMemoryBase output_buffer) {
   // VLOG(2) << "Populate I/O matrices";
   const Shape &output_shape = gemm_config.output_shape;
   const Shape &lhs_shape = gemm_config.lhs_shape;
@@ -324,9 +325,9 @@ Status PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
         shape.dimensions(row_dim + static_cast<int64>(!is_row_major))};
   };
 
-  lhs_matrix = make_descriptor(
+  MatrixDescriptor lhs_matrix = make_descriptor(
       lhs_buffer, lhs_shape, dim_nums.lhs_contracting_dimensions(0) == row_dim);
-  rhs_matrix = make_descriptor(
+  MatrixDescriptor rhs_matrix = make_descriptor(
       rhs_buffer, rhs_shape, dim_nums.rhs_contracting_dimensions(0) == col_dim);
 
   if (LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
@@ -336,9 +337,7 @@ Status PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
 
   MatrixDescriptor out_matrix{output_buffer, /*needs_transpose=*/false,
                               output_num_rows, output_num_cols};
-  output_matrix = out_matrix;
-
-  return Status::OK();
+  return std::make_tuple(lhs_matrix, rhs_matrix, out_matrix);
 }
 
 Status RunGemm(const GpuGemmConfig &gemm_config,
@@ -351,16 +350,13 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
                HloExecutionProfiler *profiler,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
-  // VLOG(2) << "Executing a GemmThunk";
-  MatrixDescriptor lhs_matrix;
-  MatrixDescriptor rhs_matrix;
-  MatrixDescriptor output_matrix;
+  VLOG(2) << "Executing a GemmThunk";
+  MatrixDescriptor lhs_matrix, rhs_matrix, output_matrix;
+  std::tie(lhs_matrix, rhs_matrix, output_matrix) = PopulateInputOutputMatrices(
+      gemm_config, lhs_buffer, rhs_buffer, output_buffer);
+
   const Shape &output_shape = gemm_config.output_shape;
   int64 batch_size = gemm_config.backend_config.batch_size();
-  CHECK(PopulateInputOutputMatrices(gemm_config, lhs_buffer, lhs_buffer,
-                                    output_buffer, lhs_matrix, rhs_matrix,
-                                    output_matrix)
-            .ok());
   bool launch_ok = false;
   // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
   if (tensorflow::EnableCublasLtGemm()) {

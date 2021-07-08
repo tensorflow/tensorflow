@@ -249,16 +249,14 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   int64 batch_size = gemm_config.batch_size();
 
   if (tensorflow::EnableCublasLtGemm()) {
-    MatrixDescriptor lhs_matrix;
-    MatrixDescriptor rhs_matrix;
-    MatrixDescriptor output_matrix;
+    GpuGemmConfig config = GetGpuGemmConfig(instr);
+    MatrixDescriptor lhs_matrix, rhs_matrix, output_matrix;
+    std::tie(lhs_matrix, rhs_matrix, output_matrix) =
+        PopulateInputOutputMatrices(config, lhs_buffer, rhs_buffer,
+                                    output_buffer);
+
     static const int64 max_scratch_size = tensorflow::GetBlasWorkspaceLimit(
         "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
-    GpuGemmConfig config = GetGpuGemmConfig(instr);
-    CHECK(PopulateInputOutputMatrices(config, lhs_buffer, lhs_buffer,
-                                      output_buffer, lhs_matrix, rhs_matrix,
-                                      output_matrix)
-              .ok());
     DCHECK(!output_matrix.transpose);
     tensorflow::DataType dtype;
     se::blas::DataType blas_dtype;
@@ -296,16 +294,13 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     int64 m = output_matrix.num_rows;
     int64 n = output_matrix.num_cols;
     auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
+
     bool broadcast = batch_size == 1;
-    // int64 lhs_stride = broadcast ? 0 : lhs_matrix.num_rows *
-    // lhs_matrix.num_cols; int64 rhs_stride = broadcast ? 0 :
-    // rhs_matrix.num_rows
-    // * rhs_matrix.num_cols;
     int64 lhs_stride = broadcast ? 0 : m * k;
     int64 rhs_stride = broadcast ? 0 : k * n;
-    int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
+    int64 output_stride = m * n;
     tensorflow::BatchMatmulParameters matmul_parameters(
-        trans_x, trans_y, /*adj_x*/ false, /*adj_y*/ false, m, n, k, batch_size,
+        trans_x, trans_y, false, false, m, n, k, batch_size,
         /*broadcast_a*/ broadcast, /*broadcast_b*/ broadcast, dtype, dtype,
         allow_tf32, device_id);
     static const int64 max_autotune_algorithm_count =
@@ -318,13 +313,12 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
         tensorflow::BatchMatmulPlanMapSingleton::GetInstance()->Find(
             matmul_parameters);
     if (!plan_and_algorithms) {
-      // se::blas::DataType blas_dtype =
-      // se::blas::ToDataType<ElemType>::value;
       se::blas::ComputationType computation_type;
       if (!GetBlasComputationType(dtype, allow_tf32, &computation_type)) {
         return InternalError("Unsupported dtype for batched matmul 2");
       }
 
+      string transString[] = {"kNoTranspose", "kTranspose"};
       auto lhs_transpose = lhs_matrix.transpose
                                ? se::blas::Transpose::kTranspose
                                : se::blas::Transpose::kNoTranspose;
@@ -351,16 +345,18 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
       plan_params.stride_b = rhs_stride;
       plan_params.stride_c = output_stride;
 
-      VLOG(4) << "plan_params.transa " << lhs_matrix.transpose
-              << " plan_params.transb " << rhs_matrix.transpose
-              << " plan_params.m " << plan_params.m << " plan_params.n "
-              << plan_params.n << " plan_params.k " << plan_params.k
-              << " plan_params.lda " << plan_params.lda << " plan_params.ldb "
-              << plan_params.ldb << " plan_params.ldc " << plan_params.ldc
-              << " plan_params.batch_count " << plan_params.batch_count
-              << " plan_params.stride_a " << plan_params.stride_a
-              << " plan_params.stride_b " << plan_params.stride_b
-              << " plan_params.stride_c " << plan_params.stride_c;
+      VLOG(4) << "plan_params.transa: " << transString[trans_x ? 1 : 0]
+              << " plan_params.transb: " << transString[trans_y ? 1 : 0]
+              << " plan_params.m: " << plan_params.m
+              << " plan_params.n: " << plan_params.n
+              << " plan_params.k: " << plan_params.k
+              << " plan_params.lda: " << plan_params.lda
+              << " plan_params.ldb: " << plan_params.ldb
+              << " plan_params.ldc: " << plan_params.ldc
+              << " plan_params.batch_count: " << plan_params.batch_count
+              << " plan_params.stride_a: " << plan_params.stride_a
+              << " plan_params.stride_b: " << plan_params.stride_b
+              << " plan_params.stride_c: " << plan_params.stride_c;
       auto status_or_plan =
           stream->parent()->CreateBlasLtMatmulPlan(plan_params);
       TF_RETURN_IF_ERROR(tensorflow::FromExecutorStatus(status_or_plan));
@@ -371,12 +367,17 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
           plan.get(), max_scratch_size, max_algorithm_count);
       TF_RETURN_IF_ERROR(tensorflow::FromExecutorStatus(status_or_algorithms));
       auto algorithms = status_or_algorithms.ConsumeValueOrDie();
-
+      VLOG(2) << "matmul params: trans_x " << trans_x << " trans_y " << trans_y
+              << " adj_x " << false << " adj_y " << false << " m " << m << " n "
+              << n << " k " << k << " batch_size " << batch_size
+              << " broadcast " << broadcast << " broadcast " << broadcast
+              << " dtype " << dtype << " allow_tf32 " << allow_tf32
+              << " device_id " << device_id;
       plan_and_algorithms =
           tensorflow::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
               matmul_parameters, {std::move(plan), std::move(algorithms)});
     }
-    const auto& plan = plan_and_algorithms->plan;
+
     const auto& algorithms = plan_and_algorithms->algorithms;
 
     const bool reinit_cublas_data = cublas_autotune_level > 2;
@@ -482,8 +483,10 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     absl::optional<se::blas::AlgorithmType> result;
     if (batch_size == 1) {
       TF_ASSIGN_OR_RETURN(
-          result, DoUncachedGemmAutotune(instr, stream, &input_output_allocator,
-                                         lhs_buffer, rhs_buffer, output_buffer,
+          result, DoUncachedGemmAutotune(instr, stream, /*
+                                         allocator */
+                                         &input_output_allocator, lhs_buffer,
+                                         rhs_buffer, output_buffer,
                                          reference_result_buffer));
     } else {
       // TODO(b/112111608): Implement auto tune for batched gemm.
