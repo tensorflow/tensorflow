@@ -1746,7 +1746,7 @@ tf_module {
   }
   member_method {
     name: "numpy_function"
-    argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'func\', \'inp\', \'Tout\', \'stateful\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "one_hot"
