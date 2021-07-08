@@ -242,6 +242,11 @@ func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
 ```
 -ops-to-preserve : Comma separated list of ops that should not be pruned regardless of reachability
 ```
+### `-tf-executor-island-coarsening`: Walks tf_executor::GraphOp and merges individual tf_executor::IslandOps.
+This pass performs whole graph analysis for a graph encapsulated into tf_executor::GraphOp.
+The analysis identifies all IslandOps within the graph which could be merged together.
+The goal is to merge as many islands as possible.
+Once analysis is completed, the pass merges all IslandOps in a single scan.
 ### `-tf-executor-to-functional-conversion`: Lifts tf_executor.island inner ops from a tf_executor.graph
 This pass converts tf_executor.graphs consisting of only tf_executor.islands and
 a tf_executor.fetch into a sea of nodes consisting of TensorFlow Dialect ops by
@@ -315,6 +320,12 @@ The benefit of this optimization is reduced memory requirement on host. For
 multiple writes (one from each replica) to such variables, the host would
 allocate buffer space to recieve the device output from all replicas, which is
 not required. We can use the output of first replica in such cases.
+### `-tf-layout-assignment`: Assigns optimal layout to the layout sensitive operations
+
+#### Options
+```
+-force-data-format : Force data format for all layout sensitive ops.
+```
 ### `-tf-lower-quantized`: Lowers ops that require quantized input or output.
 This pass rewrites all ops that have at least one input or output that must
 be a quantized type to ops whose inputs and outputs allow non-quantized
@@ -367,6 +378,16 @@ func @unsupported_op() -> tensor<i32> {
 }
 ```
 ### `-tf-materialize-passthrough-op`: Materialize the MlirPassthroughOp by replacing it with the MLIR module attached as an attribute
+### `-tf-move-transposes`: Moves Transpose operations in the each block.
+This pass moves all Transpose ops to the beginning or to the end of
+the basic block where they are defined. This will allow canonicalzer to
+delete redundant transposes.
+
+#### Options
+```
+-fold-transpose-in-ops : Whether to fold transposes in ops which can support folding.
+-direction             : Move transposes to the beginning or the end of the block where they are defined.
+```
 ### `-tf-optimize`: Optimize TensorFlow module
 ### `-tf-outside-compiled-to-host-launch`: Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.
 This pass wraps ops with the same `_xla_outside_compilation`
@@ -927,6 +948,44 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   return %1 : tensor<8xi32>
 }
 ```
+### `-tf-tpu-space-to-depth-pass`: Applies automatic space to depth transform for the first or frontier convolutions consume host inputs on TPU.
+Automatic space to depth transform is done by adding space to depth transform op after host input
+and applying space to depth transform for the first convolution and its backprop filter on TPU.
+
+For example, original program:
+
+```mlir
+module {
+  func @while_body {
+    %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}: -> tensor<2x224x224x3xf32>
+    %device_launch = "tf_device.cluster_func"(%input,...) {func = @_func,...)
+    return ...
+  }
+  func @_func(%input: tensor<2x224x224x3xf32>, %filter: tensor<7x7x3x64xf32>) {
+    %6 = "tf.Conv2D"(%input, %filter)  {strides = [1, 2, 2, 1]}: (tensor<2x230x230x3xf32>, tensor<7x7x3x64xf32>) -> tensor<2x112x112x64xf32>
+  }
+}
+```
+
+The program will be transformed into:
+
+```mlir
+module {
+  func @while_body {
+    %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"} -> tensor<2x224x224x3xf32>
+    %space_to_depth = "tf.SpaceToDepth"(%input) {block_size = 2, ...}: (tensor<2x224x224x3xf32>) -> tensor<2x112x112x12xf32>
+    %device_launch = "tf_device.cluster_func"(%space_to_depth,...) {func = @_func,...)
+    return ...
+  }
+  func @_func(%input: tensor<2x112x112x12xf32>, %filter: tensor<7x7x3x64xf32>) {
+    %filter_transform = "tf.Pad/tf.Transpose/tf.Reshape"(%filter): tensor<7x7x3x64xf32>) -> tensor<4x4x12x64xf32>
+    %conv = "tf.Conv2D"(%input, %filter_transfrom) {strides = [1, 1, 1, 1]}: (tensor<2x112x112x12xf32>, tensor<4x4x12x64xf32>) -> tensor<2x112x112x64xf32>
+  }
+}
+```
+
+This way, the first convolution with 3 feature dimension will be transformed
+to 12 feature dimension, which has better performance on TPU.
 ### `-tf-tpu-update-embedding-enqueue-op-inputs`: Updates inputs to TPU embedding enqueue ops depending on whether graph is in training mode or in evaluation mode.
 Updates inputs to TPU embedding enqueue ops depending on whether graph
 is in training mode or in evaluation mode.
