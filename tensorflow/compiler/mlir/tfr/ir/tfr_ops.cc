@@ -426,6 +426,13 @@ struct RemoveRedundantCast : public OpRewritePattern<CastOp> {
     Type input_type = input.getType();
     Type output_type = cast_op.getType();
 
+    // Preserve quantization information for intermediate tensors.
+    auto intermediate_type = preceding_cast.getType().dyn_cast<TensorType>();
+    if (intermediate_type &&
+        intermediate_type.getElementType().isa<quant::QuantizedType>()) {
+      return failure();
+    }
+
     // If the two types are the same, the back-to-back tfr.cast ops can be
     // removed.
     if (input_type == output_type || output_type.isa<UnrankedTensorType>()) {
@@ -535,6 +542,32 @@ quant::QuantizedType getQuantizedElementType(CastOp cast_op) {
       .dyn_cast<quant::QuantizedType>();
 }
 
+struct RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
+  using OpRewritePattern<TFRQuantRawDataOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFRQuantRawDataOp raw_data_op,
+                                PatternRewriter &rewriter) const override {
+    auto preceding_cast = dyn_cast<CastOp>(raw_data_op.input().getDefiningOp());
+    if (!getQuantizedElementType(preceding_cast)) {
+      return failure();
+    }
+    // If there are redundant casts, hoist output of raw data op originating op.
+    if (auto redundant_cast = preceding_cast.arg().getDefiningOp()) {
+      if (!isa<CastOp>(redundant_cast) ||
+          cast<CastOp>(redundant_cast).arg().getType() !=
+              preceding_cast.out().getType()) {
+        return failure();
+      }
+      raw_data_op.output().replaceAllUsesWith(
+          cast<CastOp>(redundant_cast).arg());
+    } else {
+      // If the argument of cast op is input, then simply remove the RawData op.
+      raw_data_op.output().replaceAllUsesWith(preceding_cast.out());
+    }
+    return success();
+  }
+};
+
 struct RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
   using OpRewritePattern<TFRQuantQParamsOp>::OpRewritePattern;
 
@@ -597,6 +630,11 @@ void GetLengthOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void BuildListOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
   results.insert<BuildConstantListAsAttr>(context);
+}
+
+void TFRQuantRawDataOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<RemoveRawDataOp>(context);
 }
 
 void TFRQuantQParamsOp::getCanonicalizationPatterns(
