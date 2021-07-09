@@ -1558,6 +1558,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """
     collected_metrics = []
     for layer in self._flatten_layers():
+      if not hasattr(layer, '_metrics_lock'): 
+        continue
       with layer._metrics_lock:
         collected_metrics.extend(layer._metrics)
     return collected_metrics
