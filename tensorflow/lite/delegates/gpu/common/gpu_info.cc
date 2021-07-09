@@ -484,6 +484,10 @@ bool GpuInfo::SupportsImages() const {
   return true;
 }
 
+bool GpuInfo::SupportsPointersInKernels() const {
+  return IsApiOpenCl() || IsApiMetal();
+}
+
 bool GpuInfo::IsWaveSizeEqualTo32() const {
   return supported_subgroup_sizes.size() == 1 &&
          supported_subgroup_sizes[0] == 32;

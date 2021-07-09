@@ -361,6 +361,8 @@ struct GpuInfo {
   bool SupportsImageBuffer() const;
   bool SupportsImage3D() const;
 
+  bool SupportsPointersInKernels() const;
+
   // returns true if device have fixed wave size equal to 32
   bool IsWaveSizeEqualTo32() const;
   bool SupportsSubGroupWithSize(int sub_group_size) const;
