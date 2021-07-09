@@ -25,6 +25,8 @@ import os
 
 from absl.testing import parameterized
 import numpy as np
+
+from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
@@ -39,12 +41,17 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
+from tensorflow.python.saved_model import save
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as tracking_util
@@ -258,6 +265,57 @@ class ParameterServerStrategyV2Test(test.TestCase):
     with self._assertRaisesUsageError():
       def_function.function(
           lambda: strategy.distribute_datasets_from_function(dataset_fn))()
+
+  def testSparselyReadForEmbeddingLookup(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    class FakeModel(module.Module):
+
+      def __init__(self):
+        self._var0 = variables.Variable([1.0, 2.0, 3.0, 4.0])
+        self._var1 = variables.Variable([5.0, 6.0, 7.0, 8.0])
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[2], dtype=dtypes.int32, name="inputs")
+      ])
+      def func(self, x):
+        return embedding_ops.embedding_lookup([self._var0, self._var1], x)
+
+    with strategy.scope():
+      model = FakeModel()
+
+    # Assert that ResourceGather op exists instead of Gather in training
+    # function.
+    found_resource_gather = False
+    found_gather = False
+
+    for n in model.func.get_concrete_function().graph.as_graph_def().node:
+      if n.op == "ResourceGather":
+        found_resource_gather = True
+      elif n.op == "Gather":
+        found_gather = True
+    self.assertTrue(found_resource_gather)
+    self.assertFalse(found_gather)
+
+    # Assert that ResourceGather op exists instead of Gather in saved_model.
+    found_resource_gather = False
+    found_gather = False
+
+    tmp_dir = self.get_temp_dir()
+    save.save(model, tmp_dir, signatures=model.func)
+
+    with gfile.Open("%s/saved_model.pb" % tmp_dir, "rb") as f:
+      saved_model_proto = saved_model_pb2.SavedModel().FromString(f.read())
+
+    for function in saved_model_proto.meta_graphs[0].graph_def.library.function:
+      for n in function.node_def:
+        if n.op == "ResourceGather":
+          found_resource_gather = True
+        elif n.op == "Gather":
+          found_gather = True
+    self.assertTrue(found_resource_gather)
+    self.assertFalse(found_gather)
 
 
 class PartitionAwareIdentity(object):
