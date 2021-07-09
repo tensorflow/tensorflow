@@ -62,7 +62,8 @@ std::unique_ptr<FunctionPass> createLegalizeToMemrefPass();
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
-std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnHostPass();
+// Place shape calculating subgraph on cpu.
+std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnCpuPass(bool on_gpu = true);
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.

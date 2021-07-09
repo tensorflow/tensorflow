@@ -30,12 +30,12 @@ namespace mlir {
 namespace hlo {
 
 // Attrs for placement
-constexpr llvm::StringRef kPlaceTyAttr = "mhlo_place_type";
-constexpr llvm::StringRef kTypeHost = "host";
-constexpr llvm::StringRef kTypeDevice = "device";
+constexpr llvm::StringRef kDiscPlaceAssignment = "disc.device";
+constexpr llvm::StringRef kCpu = "cpu";
+constexpr llvm::StringRef kGpu = "gpu";
 enum class PlacementType {
-  kHost,
-  kDevice,
+  kCpu,
+  kGpu,
 };
 
 // Input & output placement attr

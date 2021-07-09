@@ -913,6 +913,7 @@ cc_library(
     deps = [
         ":hlo",
         ":mhlo_disc",
+        ":pass_details",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

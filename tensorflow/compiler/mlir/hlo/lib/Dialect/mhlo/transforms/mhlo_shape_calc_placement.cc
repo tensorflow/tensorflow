@@ -3,9 +3,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"    // from @llvm-project
 #include "mlir/IR/MLIRContext.h"              // TF:llvm-project
@@ -16,15 +16,16 @@
 
 namespace mlir {
 
+using hlo::kCpu;
+using hlo::kDiscPlaceAssignment;
+using hlo::kGpu;
 using hlo::kInputPlacementAttr;
-using hlo::kPlaceTyAttr;
-using hlo::kTypeDevice;
-using hlo::kTypeHost;
 using hlo::PlacementType;
 
 namespace mhlo {
 namespace {
 
+// Check Op if it is a mhlo Op.
 bool isTargetDialect(Operation* op) {
   return (op->getDialect() ==
           op->getContext()->getLoadedDialect<mhlo::MhloDialect>());
@@ -32,41 +33,43 @@ bool isTargetDialect(Operation* op) {
 
 // This pass explicitly place the shape calculating hlo_ops on host side
 // by adding an Attr. Nested FuncOps should be taken into consideration.
-// 1, Normally, the type of kPlaceTyAttr is StringAttr;
+// 1, Normally, the type of kDiscPlaceAssignment is StringAttr;
 // 2, In case the result type of an hlo op is TupleType, for example TupleOp
-//    or TopKOp, the type of kPlaceTyAttr is an ArrayAttr made of
+//    or TopKOp, the type of kDiscPlaceAssignment is an ArrayAttr made of
 //    StringAttr.
-struct PlaceShapeCalcOnHost
-    : public PassWrapper<PlaceShapeCalcOnHost, OperationPass<ModuleOp>> {
+struct PlaceShapeCalcOnCPU
+    : public PlaceShapeCalculationOnHostPassBase<PlaceShapeCalcOnCPU> {
  public:
-  PlaceShapeCalcOnHost() = default;
-  PlaceShapeCalcOnHost(const PlaceShapeCalcOnHost& o){};
+  using PlaceShapeCalculationOnHostPassBase<
+      PlaceShapeCalcOnCPU>::PlaceShapeCalculationOnHostPassBase;
 
-  StringRef getArgument() const final { return "place-shape-calc-on-host"; }
+  PlaceShapeCalcOnCPU(bool on_gpu) { this->on_gpu_ = on_gpu; }
+  PlaceShapeCalcOnCPU(const PlaceShapeCalcOnCPU& o) {}
+
+  StringRef getArgument() const final { return "place-shape-calc-on-cpu"; }
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mhlo::MhloDialect, mhlo_disc::MhloDiscDialect>();
+    registry.insert<mhlo_disc::MhloDiscDialect>();
   }
 
   void runOnOperation() override {
-    // Phase 1: Place the shape calculation subgraph to Host
-    placeShapeCalcSubgraphOnHost();
-    // Phase 2: Place any mhlo ops that calculates I32 on Host
-    placeI32OpsOnHost();
+    // Phase 1: Place the shape calculation subgraph to CPU
+    placeShapeCalcSubgraphOnCPU();
+    // Phase 2: Place any mhlo ops that calculates I32 on CPU
+    placeI32OpsOnCPU();
 
     // TODO(disc): Phase 3: Add placement attribute for TupleOp and
     // GetTupleElementOp.
 
-    // Phase 4: Insert h2d and d2h OP on cross device edges. Host is CPU. Device
-    // is GPU or CPU
+    // Phase 4: Insert h2d and d2h OP on cross device edges.
     addMemcpyNodes();
   };
 
  private:
-  // Place the shape calculation subgraph to Host
-  void placeShapeCalcSubgraphOnHost();
-  // Place any mhlo ops that calculates I32 on Host
-  void placeI32OpsOnHost();
+  // Place the shape calculation subgraph to CPU
+  void placeShapeCalcSubgraphOnCPU();
+  // Place any mhlo ops that calculates I32 on CPU
+  void placeI32OpsOnCPU();
   // Insert h2d and d2h OP on cross device edges.
   void addMemcpyNodes();
 
@@ -102,13 +105,13 @@ struct PlaceShapeCalcOnHost
   // Get placement vector of func's output.
   SmallVector<llvm::StringRef, 4> getOutputPlacements(FuncOp main_func);
 
-  // Get Op's placement according to its attr
+  // Get Op's placement according to its attr. If on_gpu is false, always return kCpu.
   PlacementType getOpPlacement(Operation* op);
 
-  // Get tensor's placement
+  // Get tensor's placement. If on_gpu is false, always return kCpu.
   PlacementType getTensorPlacement(Operation* dst, size_t operand_idx);
 
-  // Get input argument's placment.
+  // Get input argument's placment. If on_gpu is false, always return kCpu.
   PlacementType getArgumentPlacement(Value arg);
 
   // Enforce output's placement.
@@ -122,15 +125,15 @@ struct PlaceShapeCalcOnHost
 };
 
 // Place the subgraph that is the producer of any shape operands
-// on Host
+// on CPU
 // TODO(disc): handle when TupleOp exists in shape_calc_ops
-void PlaceShapeCalcOnHost::placeShapeCalcSubgraphOnHost() {
+void PlaceShapeCalcOnCPU::placeShapeCalcSubgraphOnCPU() {
   ModuleOp module = getOperation();
   Builder builder(&getContext());
   llvm::DenseSet<Operation*> shape_calc_ops;
 
   for (FuncOp func : module.getOps<FuncOp>()) {
-    // Put the i64 Scalar output on Host(into shape_calc_ops).
+    // Put the i64 Scalar output on CPU(into shape_calc_ops).
     // TODO(disc): revisit this if we have outputs on CPU for TF in the future.
     if (func.getName() == "main") {
       markI64ReturnedCPUScalarOps(func, shape_calc_ops);
@@ -149,21 +152,20 @@ void PlaceShapeCalcOnHost::placeShapeCalcSubgraphOnHost() {
     // We suppose that mhlo op only has single output, either having tensor
     // type or tuple type.
     if (auto tp = op->getResult(0).getType().dyn_cast<TupleType>()) {
-      // If an op is placed on host, then we suppose all its outputs are
-      // placed on host.
-      SmallVector<Attribute, 4> attrs(tp.size(),
-                                      builder.getStringAttr(kTypeHost));
-      op->setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
+      // If an op is placed on cpu, then we suppose all its outputs are
+      // placed on cpu.
+      SmallVector<Attribute, 4> attrs(tp.size(), builder.getStringAttr(kCpu));
+      op->setAttr(kDiscPlaceAssignment, ArrayAttr::get(tp.getContext(), attrs));
     } else {
-      op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
+      op->setAttr(kDiscPlaceAssignment, builder.getStringAttr(kCpu));
     }
   }
 }
 
-// Place any mhlo ops that calculates i32 on Host
+// Place any mhlo ops that calculates i32 on CPU
 // this is an rule based optimization that mimicking the behavior of
 // tensorflow
-void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
+void PlaceShapeCalcOnCPU::placeI32OpsOnCPU() {
   ModuleOp module = getOperation();
   Builder builder(&getContext());
 
@@ -175,12 +177,12 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
             mhlo::ReturnOp>(op)) {
       return;
     }
-    // skip the ops that is already placed on Host
-    auto attr = op->getAttrOfType<StringAttr>(kPlaceTyAttr);
-    if ((attr != nullptr) && (attr.getValue() == kTypeHost)) return;
+    // Skip the ops that is already placed on CPU
+    auto attr = op->getAttrOfType<StringAttr>(kDiscPlaceAssignment);
+    if ((attr != nullptr) && (attr.getValue() == kCpu)) return;
 
     if (isa<mhlo::GetDimensionSizeOp, tensor::FromElementsOp>(op)) {
-      op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
+      op->setAttr(kDiscPlaceAssignment, builder.getStringAttr(kCpu));
       return;
     }
 
@@ -191,13 +193,13 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
       assert(result_ty && "unexpected non ranked type for ConstOp");
       auto elem_type = result_ty.getElementType();
       if (elem_type.isInteger(32)) {
-        op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
+        op->setAttr(kDiscPlaceAssignment, builder.getStringAttr(kCpu));
       }
       return;
     }
 
     std::string op_name = op->getName().getStringRef().str();
-    bool place_on_host = false;
+    bool place_on_cpu = false;
     // follow the rule of kPlaceRuleMap exist, or else follow
     // kShapeCalcOperandMap
     if (kPlaceRuleMap.find(op_name) != kPlaceRuleMap.end()) {
@@ -206,7 +208,7 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
           op->getOperand(dominant_idx).getType().dyn_cast<RankedTensorType>();
       assert(operand_ty && "unexpected non unranked type of operand");
       if (operand_ty.getElementType().isInteger(32)) {
-        place_on_host = true;
+        place_on_cpu = true;
       }
     } else {
       std::set<int> shape_operand_indices;
@@ -221,37 +223,39 @@ void PlaceShapeCalcOnHost::placeI32OpsOnHost() {
           if (!operand_ty) continue;
           auto elem_type = operand_ty.getElementType();
           if (elem_type.isInteger(32)) {
-            place_on_host = true;
+            place_on_cpu = true;
             break;
           }
         }
       }
     }
 
-    if (!place_on_host) {
+    if (!place_on_cpu) {
       // For most ops, we can safely omit to insert placement attribute since
       // currently we suppose ops without placement attribute are placed on
-      // device. However, ops having tuple outputs should have explicit
+      // gpu. However, ops having tuple outputs should have explicit
       // placement attributes.
+      llvm::StringRef data_calc_device = this->on_gpu_ ? kGpu : kCpu;
       if (auto tp = op->getResult(0).getType().dyn_cast<TupleType>()) {
-        SmallVector<Attribute, 4> attrs(tp.size(),
-                                        builder.getStringAttr(kTypeDevice));
-        op->setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
+        SmallVector<Attribute, 4> attrs(
+            tp.size(), builder.getStringAttr(data_calc_device));
+        op->setAttr(kDiscPlaceAssignment,
+                    ArrayAttr::get(tp.getContext(), attrs));
       }
     } else {
       if (auto tp = op->getResult(0).getType().dyn_cast<TupleType>()) {
-        SmallVector<Attribute, 4> attrs(tp.size(),
-                                        builder.getStringAttr(kTypeHost));
-        op->setAttr(kPlaceTyAttr, ArrayAttr::get(tp.getContext(), attrs));
+        SmallVector<Attribute, 4> attrs(tp.size(), builder.getStringAttr(kCpu));
+        op->setAttr(kDiscPlaceAssignment,
+                    ArrayAttr::get(tp.getContext(), attrs));
       } else {
-        op->setAttr(kPlaceTyAttr, builder.getStringAttr(kTypeHost));
+        op->setAttr(kDiscPlaceAssignment, builder.getStringAttr(kCpu));
       }
     }
     return;
   });
 }
 
-void PlaceShapeCalcOnHost::enforceOutputPlacement(
+void PlaceShapeCalcOnCPU::enforceOutputPlacement(
     Operation* dst, FuncOp main_func,
     SmallVector<std::pair<Operation*, size_t>, 4>& d2h_worklist,
     SmallVector<std::pair<Operation*, size_t>, 4>& h2d_worklist) {
@@ -264,24 +268,24 @@ void PlaceShapeCalcOnHost::enforceOutputPlacement(
     auto src_placement =
         operand_op ? getOpPlacement(operand_op) : getArgumentPlacement(operand);
     PlacementType dst_placement;
-    if (output_placements[i] == kTypeHost) {
-      dst_placement = PlacementType::kHost;
+    if (output_placements[i] == kCpu || !this->on_gpu_) {
+      dst_placement = PlacementType::kCpu;
     } else {
-      assert(output_placements[i] == kTypeDevice);
-      dst_placement = PlacementType::kDevice;
+      assert(output_placements[i] == kGpu);
+      dst_placement = PlacementType::kGpu;
     }
-    if (dst_placement == PlacementType::kHost &&
-        src_placement == PlacementType::kDevice) {
+    if (dst_placement == PlacementType::kCpu &&
+        src_placement == PlacementType::kGpu) {
       d2h_worklist.push_back(std::make_pair(dst, i));
-    } else if (dst_placement == PlacementType::kDevice &&
-               src_placement == PlacementType::kHost) {
+    } else if (dst_placement == PlacementType::kGpu &&
+               src_placement == PlacementType::kCpu) {
       h2d_worklist.push_back(std::make_pair(dst, i));
     }
   }
 }
 
 // Insert potential h2d and d2h for cross device edges
-void PlaceShapeCalcOnHost::addMemcpyNodes() {
+void PlaceShapeCalcOnCPU::addMemcpyNodes() {
   ModuleOp module = getOperation();
   Builder builder(&getContext());
 
@@ -309,7 +313,7 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
       }
       auto defining_op = operand.getDefiningOp();
       if (defining_op) return;
-      if (getArgumentPlacement(operand) == PlacementType::kDevice) {
+      if (getArgumentPlacement(operand) == PlacementType::kGpu) {
         d2h_worklist.push_back(std::make_pair(dst, 0));
       }
     }
@@ -339,11 +343,11 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
       auto dst_placement = getTensorPlacement(dst, index);
       auto src_placement = operand_op ? getOpPlacement(operand_op)
                                       : getArgumentPlacement(operand);
-      if (dst_placement == PlacementType::kHost &&
-          src_placement == PlacementType::kDevice) {
+      if (dst_placement == PlacementType::kCpu &&
+          src_placement == PlacementType::kGpu) {
         d2h_worklist.push_back(std::make_pair(dst, index));
-      } else if (dst_placement == PlacementType::kDevice &&
-                 src_placement == PlacementType::kHost) {
+      } else if (dst_placement == PlacementType::kGpu &&
+                 src_placement == PlacementType::kCpu) {
         h2d_worklist.push_back(std::make_pair(dst, index));
       }
     }
@@ -357,7 +361,7 @@ void PlaceShapeCalcOnHost::addMemcpyNodes() {
   }
 }
 
-PlacementType PlaceShapeCalcOnHost::getArgumentPlacement(Value arg) {
+PlacementType PlaceShapeCalcOnCPU::getArgumentPlacement(Value arg) {
   auto parent = arg.getParentRegion()->getParentOp();
   assert(isa<mlir::FuncOp>(parent) && "invalid use of getArgumentPlacement");
   auto main_func = cast<mlir::FuncOp>(parent);
@@ -365,8 +369,10 @@ PlacementType PlaceShapeCalcOnHost::getArgumentPlacement(Value arg) {
          "invalid use of getArgumentPlacement");
   auto dict_attr = parent->getAttrOfType<DictionaryAttr>("tf.entry_function");
   assert(dict_attr && "main_func must has tf.entry_function attr");
+  if (!this->on_gpu_) return PlacementType::kCpu;
+
   auto input_placements_attr = dict_attr.get(kInputPlacementAttr);
-  if (!input_placements_attr) return PlacementType::kDevice;
+  if (!input_placements_attr) return PlacementType::kGpu;
 
   SmallVector<StringRef, 4> input_placements;
   input_placements_attr.cast<mlir::StringAttr>().getValue().split(
@@ -374,16 +380,16 @@ PlacementType PlaceShapeCalcOnHost::getArgumentPlacement(Value arg) {
   assert(input_placements.size() == main_func.getNumArguments() &&
          "input_placements.size() is not equal to num of inputs");
   auto arg_index = hlo::getArgumentIndex(main_func, arg);
-  if (input_placements[arg_index] == hlo::kTypeHost) {
-    return PlacementType::kHost;
+  if (input_placements[arg_index] == hlo::kCpu) {
+    return PlacementType::kCpu;
   } else {
-    assert((input_placements[arg_index] == hlo::kTypeDevice) &&
+    assert((input_placements[arg_index] == hlo::kGpu) &&
            "invalid input_placements string");
-    return PlacementType::kDevice;
+    return PlacementType::kGpu;
   }
 }
 
-SmallVector<llvm::StringRef, 4> PlaceShapeCalcOnHost::getOutputPlacements(
+SmallVector<llvm::StringRef, 4> PlaceShapeCalcOnCPU::getOutputPlacements(
     FuncOp main_func) {
   auto dict_attr =
       main_func->getAttrOfType<DictionaryAttr>("tf.entry_function");
@@ -400,12 +406,13 @@ SmallVector<llvm::StringRef, 4> PlaceShapeCalcOnHost::getOutputPlacements(
   return output_placements;
 }
 
-void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
+void PlaceShapeCalcOnCPU::markI64ReturnedCPUScalarOps(
     FuncOp func, llvm::DenseSet<Operation*>& marked_ops) {
   assert(func.getName() == "main");
   auto return_op = func.front().getTerminator();
   if (!isa<mlir::ReturnOp>(return_op)) return;
 
+  auto result_attrs = func.getAllResultAttrs();
   const auto& output_placements = getOutputPlacements(func);
   auto returned_ops = return_op->getOperands();
   assert(returned_ops.size() == output_placements.size());
@@ -417,7 +424,7 @@ void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
     if (!isTargetDialect(op)) continue;
 
     if (auto type = op->getResult(0).getType().dyn_cast<RankedTensorType>()) {
-      if ((output_placements[idx] == kTypeHost) &&
+      if ((output_placements[idx] == kCpu) &&
           type.getElementType().isInteger(64) && (type.getRank() == 0)) {
         marked_ops.insert(op);
       }
@@ -425,15 +432,14 @@ void PlaceShapeCalcOnHost::markI64ReturnedCPUScalarOps(
   }
 }
 
-void PlaceShapeCalcOnHost::markShapeCalculationOps(
+void PlaceShapeCalcOnCPU::markShapeCalculationOps(
     FuncOp func, llvm::DenseSet<Operation*>& marked_ops) {
   auto& block = func.getBlocks().front();
   for (Operation& op : block) {
     if (!isTargetDialect(&op)) return;
-    if (op.getParentOp() != func.getOperation()) return;
 
-    // 1. If the op is already marked, mark all of its operands
-    //    as shape calculation ops
+    // 1. If the op is already in shape calculation op set, insert all of its
+    // operands into shape calculation op set
     if (marked_ops.contains(&op)) {
       for (auto operand_value : op.getOperands()) {
         Operation* operand = operand_value.getDefiningOp();
@@ -444,8 +450,8 @@ void PlaceShapeCalcOnHost::markShapeCalculationOps(
         marked_ops.insert(operand);
       }
     }
-    // 2. If the op is not marked, mark the shape operands as
-    //    shape calculation ops
+    // 2. If the op is not in shape calculation op set, insert the shape
+    // operands into shape calculation op set
     if (!marked_ops.contains(&op)) {
       std::string name_str = op.getName().getStringRef().str();
       if (kShapeCalcOperandMap.find(name_str) != kShapeCalcOperandMap.end()) {
@@ -464,44 +470,46 @@ void PlaceShapeCalcOnHost::markShapeCalculationOps(
   };
 }
 
-PlacementType PlaceShapeCalcOnHost::getOpPlacement(Operation* op) {
-  auto attr = op->getAttrOfType<StringAttr>(hlo::kPlaceTyAttr);
-  if ((attr != nullptr) && (attr.getValue() == kTypeHost)) {
-    return PlacementType::kHost;
+PlacementType PlaceShapeCalcOnCPU::getOpPlacement(Operation* op) {
+  if (!this->on_gpu_) return PlacementType::kCpu;
+  auto attr = op->getAttrOfType<StringAttr>(hlo::kDiscPlaceAssignment);
+  if ((attr != nullptr) && (attr.getValue() == kCpu)) {
+    return PlacementType::kCpu;
   }
-  return PlacementType::kDevice;
+  return PlacementType::kGpu;
 }
 
-PlacementType PlaceShapeCalcOnHost::getTensorPlacement(Operation* dst,
-                                                       size_t operand_idx) {
+PlacementType PlaceShapeCalcOnCPU::getTensorPlacement(Operation* dst,
+                                                      size_t operand_idx) {
+  if (!this->on_gpu_) return PlacementType::kCpu;
   // special case when dst is TupleOp
   if (isa<mhlo::TupleOp>(dst)) {
-    auto array_attr = dst->getAttrOfType<ArrayAttr>(kPlaceTyAttr);
-    assert(array_attr && "kPlaceTyAttr on Tuple not found");
-    if (array_attr[operand_idx].cast<StringAttr>().getValue() == kTypeHost) {
-      return PlacementType::kHost;
+    auto array_attr = dst->getAttrOfType<ArrayAttr>(kDiscPlaceAssignment);
+    assert(array_attr && "kDiscPlaceAssignment on Tuple not found");
+    if (array_attr[operand_idx].cast<StringAttr>().getValue() == kCpu) {
+      return PlacementType::kCpu;
     } else {
-      return PlacementType::kDevice;
+      return PlacementType::kGpu;
     }
   }
 
-  // when dst op placed on Host(CPU)
-  if (getOpPlacement(dst) == PlacementType::kHost) return PlacementType::kHost;
+  // when dst op placed on CPU
+  if (getOpPlacement(dst) == PlacementType::kCpu) return PlacementType::kCpu;
 
-  // when dst op placed on Device
+  // when dst op placed on GPU
   std::string name_str = dst->getName().getStringRef().str();
   if (kShapeCalcOperandMap.find(name_str) == kShapeCalcOperandMap.end())
-    return PlacementType::kDevice;
+    return PlacementType::kGpu;
 
   const auto& shape_operand_indices = kShapeCalcOperandMap.at(name_str);
   if (shape_operand_indices.find(operand_idx) != shape_operand_indices.end())
-    return PlacementType::kHost;
+    return PlacementType::kCpu;
 
-  return PlacementType::kDevice;
+  return PlacementType::kGpu;
 }
 
-void PlaceShapeCalcOnHost::insertMemcpy(Operation* dst, size_t operand_index,
-                                        bool is_h2d) {
+void PlaceShapeCalcOnCPU::insertMemcpy(Operation* dst, size_t operand_index,
+                                       bool is_h2d) {
   OpBuilder b(dst);
   Location loc = dst->getLoc();
   auto orig_operand = dst->getOperand(operand_index);
@@ -510,7 +518,7 @@ void PlaceShapeCalcOnHost::insertMemcpy(Operation* dst, size_t operand_index,
     copy_result = b.create<mhlo_disc::H2DOp>(loc, orig_operand).getResult();
   } else {
     auto new_copy = b.create<mhlo_disc::D2HOp>(loc, orig_operand);
-    new_copy->setAttr(kPlaceTyAttr, b.getStringAttr(kTypeHost));
+    new_copy->setAttr(kDiscPlaceAssignment, b.getStringAttr(kCpu));
     copy_result = new_copy.getResult();
   }
   dst->setOperand(operand_index, copy_result);
@@ -518,8 +526,9 @@ void PlaceShapeCalcOnHost::insertMemcpy(Operation* dst, size_t operand_index,
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnHostPass() {
-  return absl::make_unique<PlaceShapeCalcOnHost>();
+std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnCpuPass(
+    const bool on_gpu) {
+  return std::make_unique<PlaceShapeCalcOnCPU>(on_gpu);
 }
 
 }  // namespace mhlo

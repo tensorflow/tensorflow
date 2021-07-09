@@ -77,9 +77,13 @@ def LegalizeToStandardPass : FunctionPass<"mhlo-legalize-to-std"> {
   let constructor = "createLegalizeToStdPass()";
 }
 
-def PlaceShapeCalcOnHost : FunctionPass<"mhlo-place-shape-calc"> {
-  let summary = "Place shape calculating subgraph on host.";
-  let constructor = "createPlaceShapeCalcOnHostPass()";
+def PlaceShapeCalculationOnHostPass : Pass<"mhlo-place-shape-calc", "ModuleOp"> {
+  let summary = "Place shape calculating subgraph on cpu.";
+  let constructor = "createPlaceShapeCalcOnCpuPass()";
+  let options = [
+    Option<"on_gpu_", "on-gpu", "bool",
+           /*default=*/"true", "Data calculation Ops are placed on GPU or not">,
+  ];
 }
 
 def LowerComplexPass : FunctionPass<"mhlo-test-lower-complex"> {

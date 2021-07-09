@@ -1,8 +1,8 @@
-// RUN: tf-opt --place-shape-calc-on-host %s | FileCheck %s
+// RUN: tf-opt --place-shape-calc-on-cpu %s | FileCheck %s
 
 module  {
-  func @main(%arg0: tensor<?x8xf32>) -> tensor<?x24xf32> attributes {tf.entry_function = {input_placements = "host", inputs = "input0", output_placements = "host", outputs = "output0"}} {
-    // CHECK: mhlo.constant {mhlo_place_type = "host"} dense<[7, 3]> : tensor<2xi32>
+  func @main(%arg0: tensor<?x8xf32>) -> tensor<?x24xf32> attributes {tf.entry_function = {input_placements = "cpu", inputs = "input0", output_placements = "cpu", outputs = "output0"}} {
+    // CHECK: mhlo.constant {disc.device = "cpu"} dense<[7, 3]> : tensor<2xi32>
     // CHECK: constant 0 : index
     // CHECK: tensor.dim {{.*}} : tensor<?x8xf32>
     // CHECK: constant 8 : index
@@ -19,7 +19,7 @@ module  {
     // CHECK: muli {{.*}} : index
     // CHECK: tensor.from_elements {{.*}} : tensor<2xindex>
     // CHECK: "mhlo.dynamic_reshape"({{.*}}) : (tensor<?x?x?x?xf32>, tensor<2xindex>) -> tensor<?x24xf32>
-    // CHECK: "mhlo_disc.d2h"({{.*}}) {mhlo_place_type = "host"} : (tensor<?x24xf32>) -> tensor<?x24xf32>
+    // CHECK: "mhlo_disc.d2h"({{.*}}) {disc.device = "cpu"} : (tensor<?x24xf32>) -> tensor<?x24xf32>
     %0 = mhlo.constant dense<[7, 3]> : tensor<2xi32>
     %c0 = constant 0 : index
     %1 = tensor.dim %arg0, %c0 : tensor<?x8xf32>
@@ -41,14 +41,14 @@ module  {
 }
 
 module {
-  func @main(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?x6x2xi64>) -> tensor<?x6x?xi32> attributes {tf.entry_function = {input_placements = "host,host", inputs = "input0, input1", output_placements = "host", outputs = "output0"}} {
+  func @main(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?x6x2xi64>) -> tensor<?x6x?xi32> attributes {tf.entry_function = {input_placements = "cpu,cpu", inputs = "input0, input1", output_placements = "cpu", outputs = "output0"}} {
     // CHECK: constant 1 : i64
     // CHECK: constant 1 : i64
     // CHECK: constant 2 : index
     // CHECK: tensor.dim {{.*}} : tensor<?x?x?xi32> 
     // CHECK: index_cast {{.*}} : index to i64 
     // CHECK: tensor.from_elements {{.*}} : tensor<3xi64>
-    // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = false, mhlo_place_type = "host"} : (tensor<?x?x?xi32>, tensor<?x6x2xi64>, tensor<3xi64>) -> tensor<?x6x?xi32>
+    // CHECK: "mhlo.dynamic_gather"({{.*}}) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 2 : i64, offset_dims = dense<2> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, disc.device = "cpu", indices_are_sorted = false} : (tensor<?x?x?xi32>, tensor<?x6x2xi64>, tensor<3xi64>) -> tensor<?x6x?xi32>
     %c1_i64 = constant 1 : i64
     %c1_i64_0 = constant 1 : i64
     %c2 = constant 2 : index
