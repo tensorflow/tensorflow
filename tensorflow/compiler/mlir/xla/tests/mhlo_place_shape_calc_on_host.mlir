@@ -1,5 +1,15 @@
 // RUN: tf-opt --mhlo-disc-mark-shape-calc %s | FileCheck %s
 
+module {
+  func @main(%arg : tensor<i64>) -> tensor<i64> attributes {tf.entry_function = {input_placements = "cpu", inputs = "input0", output_placements = "cpu", outputs = "output0"}}  {
+    // CHECK: "mhlo.tuple"({{.*}}) {disc.shape_op = [true]} : (tensor<i64>) -> tuple<tensor<i64>>
+    // CHECK: "mhlo.get_tuple_element"({{.*}}) {disc.shape_op = true, index = 0 : i32} : (tuple<tensor<i64>>) -> tensor<i64>
+    %tuple = "mhlo.tuple"(%arg) : (tensor<i64>) -> tuple<tensor<i64>>
+    %element = "mhlo.get_tuple_element"(%tuple) {index = 0 : i32} : (tuple<tensor<i64>>) -> tensor<i64>
+    return %element : tensor<i64>
+  }
+}
+
 module  {
   func @main(%arg0: tensor<?x8xf32>) -> tensor<?x24xf32> attributes {tf.entry_function = {input_placements = "cpu", inputs = "input0", output_placements = "cpu", outputs = "output0"}} {
     // CHECK: mhlo.constant {disc.shape_op = true} dense<[7, 3]> : tensor<2xi32>
@@ -41,3 +51,4 @@ module {
     return %3 : tensor<?x6x?xi32>
   }
 }
+

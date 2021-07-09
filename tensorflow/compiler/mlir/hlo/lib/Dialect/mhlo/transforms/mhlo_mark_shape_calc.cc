@@ -104,21 +104,21 @@ void MarkShapeCalc::MarkShapeCalcOps() {
   Builder builder(&getContext());
   llvm::DenseSet<Operation*> shape_calc_ops;
 
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  module.walk([&](FuncOp func) {
     // Mark the i64 Scalar output as shape calculation Op.
     // TODO(disc): revisit this if we have outputs on CPU for TF in the future.
     if (func.getName() == "main") {
       markI64ReturnedCpuScalarOps(func, shape_calc_ops);
     }
     // Skip if this function is external
-    if (func.isExternal()) continue;
+    if (func.isExternal()) return;
     // no target ops
     if (llvm::none_of(func.getBlocks().front(),
                       [](Operation& op) { return isMhloDialect(&op); })) {
-      continue;
+      return;
     }
     markShapeCalculationOps(func, shape_calc_ops);
-  }
+  });
 
   for (Operation* op : shape_calc_ops) {
     // We suppose that mhlo op only has single output, either having tensor
