@@ -1,7 +1,5 @@
-#include <set>
-#include <string>
-#include <unordered_map>
-
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
@@ -59,11 +57,10 @@ struct MarkShapeCalc : public MarkShapeCalculationPassBase<MarkShapeCalc> {
 
   // for rule based placement strategy, the placement of the op in the list
   // is up to the placement of the dominant operand
-  const std::unordered_map<std::string, /*dominant operand index*/ int>
-      kPlaceRuleMap = {{"mhlo.dynamic_gather", /*operand*/ 0},
-                       {"mhlo.gather", /*operand*/ 0}};
+  const DenseMap<StringRef, /*dominant operand index*/ int> kPlaceRuleMap = {
+      {"mhlo.dynamic_gather", /*operand*/ 0}, {"mhlo.gather", /*operand*/ 0}};
 
-  const std::unordered_map<std::string, std::set<int>> kShapeCalcOperandMap = {
+  const DenseMap<StringRef, DenseSet<int>> kShapeCalcOperandMap = {
       {"mhlo.real_dynamic_slice",
        {/*start_indices*/ 1, /*limit_indices*/ 2, /*strides*/ 3}},
       {"mhlo.dynamic_pad",
@@ -171,12 +168,13 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
       return;
     }
 
-    std::string op_name = op->getName().getStringRef().str();
+    StringRef op_name = op->getName().getStringRef();
     bool is_shape_calc_op = false;
     // Follow the rule of kPlaceRuleMap exist, or else follow
     // kShapeCalcOperandMap
-    if (kPlaceRuleMap.find(op_name) != kPlaceRuleMap.end()) {
-      auto dominant_idx = kPlaceRuleMap.at(op_name);
+    auto it = kPlaceRuleMap.find(op_name);
+    if (it != kPlaceRuleMap.end()) {
+      auto dominant_idx = it->second;
       auto operand_ty =
           op->getOperand(dominant_idx).getType().dyn_cast<RankedTensorType>();
       assert(operand_ty && "unexpected non unranked type of operand");
@@ -184,9 +182,10 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
         is_shape_calc_op = true;
       }
     } else {
-      std::set<int> shape_operand_indices;
-      if (kShapeCalcOperandMap.find(op_name) != kShapeCalcOperandMap.end()) {
-        shape_operand_indices = kShapeCalcOperandMap.at(op_name);
+      DenseSet<int> shape_operand_indices;
+      auto iter = kShapeCalcOperandMap.find(op_name);
+      if (iter != kShapeCalcOperandMap.end()) {
+        shape_operand_indices = iter->second;
       }
       for (int idx = 0; idx < op->getNumOperands(); ++idx) {
         // if it is not "shape operand", then it must be "data operand"
@@ -278,9 +277,10 @@ void MarkShapeCalc::markShapeCalculationOps(
     }
     // Mark operands into shape calculation set according to the lookup table.
     if (!marked_ops.contains(&op)) {
-      std::string name_str = op.getName().getStringRef().str();
-      if (kShapeCalcOperandMap.find(name_str) != kShapeCalcOperandMap.end()) {
-        for (auto operand_idx : kShapeCalcOperandMap.at(name_str)) {
+      StringRef name_str = op.getName().getStringRef();
+      auto iter = kShapeCalcOperandMap.find(name_str);
+      if (iter != kShapeCalcOperandMap.end()) {
+        for (auto operand_idx : iter->second) {
           auto operand = op.getOperand(operand_idx).getDefiningOp();
           if (operand == nullptr) continue;
           if (!isMhloDialect(operand)) {
