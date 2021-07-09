@@ -668,44 +668,44 @@ class CudnnFilterDescriptor {
 // We skip eng0 in the static filter because they are too slow. Additionally,
 // users can specify an additional errata JSON file via
 // CUDNN_ERRATA_JSON_FILE at runtime.
-absl::optional<json> CudnnExecutionPlanEngineFilter(bool is_static) {
-  if (is_static) {
-    static std::string filter_str = R"({
-        "version" : 1,
-          "rules"   : [
-            { "rule_id"             : "ConvFwd_eng0",
-              "operation"           : "ConvFwd",
-              "engine"              : 0,
-              "knob"                : [],
-              "cudnn_version_start" : 8000,
-              "cudnn_version_end"   : -1
-            },
-            { "rule_id"             : "ConvBwdData_eng0",
-              "operation"           : "ConvBwdData",
-              "engine"              : 0,
-              "knob"                : [],
-              "cudnn_version_start" : 8000,
-              "cudnn_version_end"   : -1
-            },
-            { "rule_id"             : "ConvBwdFilter_eng0",
-              "operation"           : "ConvBwdFilter",
-              "engine"              : 0,
-              "knob"                : [],
-              "cudnn_version_start" : 8000,
-              "cudnn_version_end"   : -1
-            }
-        ]})";
-    static json json_handle = json::parse(filter_str);
+absl::optional<json> CudnnExecutionPlanEngineFilterStatic() {
+  static std::string filter_str = R"({
+      "version" : 1,
+        "rules"   : [
+          { "rule_id"             : "ConvFwd_eng0",
+            "operation"           : "ConvFwd",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvBwdData_eng0",
+            "operation"           : "ConvBwdData",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvBwdFilter_eng0",
+            "operation"           : "ConvBwdFilter",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          }
+      ]})";
+  static json json_handle = json::parse(filter_str);
+  return json_handle;
+}
+
+absl::optional<json> CudnnExecutionPlanEngineFilterRuntime() {
+  static json json_handle;
+  static bool use_runtime_errata = cudnn_frontend::load_from_config(
+                                       json_handle, "");
+  if (use_runtime_errata) {
     return json_handle;
   } else {
-    static json json_handle;
-    static bool use_runtime_errata = cudnn_frontend::load_from_config(
-                                        json_handle, "");
-    if (use_runtime_errata) {
-      return json_handle;
-    } else {
-      return absl::nullopt;
-    }
+    return absl::nullopt;
   }
 }
 
@@ -3854,8 +3854,8 @@ GetFirstWorkingExecutionPlan(
   cudnn_frontend::filter(fallback_list, filtered_configs, generic_filter_fn);
 
   auto fn = []() { return true; };
-  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilter(true);
-  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilter(false);
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
 
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
@@ -4499,8 +4499,8 @@ bool CudnnSupport::GetConvolveExecutionPlans(
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
   auto fn = []() { return true; };
-  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilter(true);
-  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilter(false);
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
 
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
@@ -4600,8 +4600,8 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
   auto fn = []() { return true; };
-  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilter(true);
-  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilter(false);
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
 
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
