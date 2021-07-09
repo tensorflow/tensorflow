@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
+#include <string>
+#include <utility>
+
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -191,6 +194,19 @@ class HloAsyncCopyMatcher : public HloMatcher {
   int64 from_space_;
 };
 
+class HloConstantMatcher : public HloMatcher {
+ public:
+  explicit HloConstantMatcher(Literal literal)
+      : HloMatcher(HloOpcode::kConstant, /*operands=*/{}),
+        literal_(std::move(literal)) {}
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  Literal literal_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -221,7 +237,6 @@ HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(Compare);
 HLO_MATCHER(Concatenate);
 HLO_MATCHER(Conditional);
-HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
@@ -461,6 +476,18 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> AsyncCopy(
     ::testing::Matcher<const HloInstruction*> operand_matcher) {
   return ::testing::MakeMatcher(new ::xla::testing::HloAsyncCopyMatcher(
       to_space, from_space, operand_matcher));
+}
+
+//  - Constant() matches any constant.
+//  - Constant(V) matches a constant with the given value.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Constant() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kConstant, {}));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> Constant(
+    Literal value) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloConstantMatcher(std::move(value)));
 }
 
 #undef HLO_MATCHER
