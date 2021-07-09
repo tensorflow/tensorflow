@@ -214,6 +214,9 @@ bool LmhloOpIsElementwise(mlir::Operation* op) {
 }
 
 bool MayPreventVectorization(mlir::Operation* op) {
+  // An empirically chosen constant: unrolling concat with a large amount of
+  // arguments causes excessive register spilling.
+  static constexpr int kMaxConcatArgumentsForUnrolling = 10;
   CHECK(op->getDialect() ==
         op->getContext()->getLoadedDialect<mlir::lmhlo::LmhloDialect>());
   auto opcode = *MhloToHloOpcode(op);
@@ -236,8 +239,12 @@ bool MayPreventVectorization(mlir::Operation* op) {
         case HloOpcode::kCos:
         case HloOpcode::kPower:
         case HloOpcode::kAtan2:
-        case HloOpcode::kConcatenate:
           return true;
+        case HloOpcode::kConcatenate:
+          if (instr.getOperands().size() > kMaxConcatArgumentsForUnrolling) {
+            return true;
+          }
+          break;
         case HloOpcode::kReduce:
           if (instr.getNumResults() > 1) {
             return true;
