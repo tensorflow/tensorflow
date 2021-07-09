@@ -63,7 +63,7 @@ std::unique_ptr<FunctionPass> createLegalizeToMemrefPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
 // Place shape calculating subgraph on cpu.
-std::unique_ptr<OperationPass<ModuleOp>> createPlaceShapeCalcOnCpuPass(bool on_gpu = true);
+std::unique_ptr<OperationPass<ModuleOp>> createMarkShapeCalcOpPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.

@@ -908,16 +908,13 @@ cc_library(
 )
 
 cc_library(
-    name = "mhlo_shape_calc_placement",
-    srcs = ["lib/Dialect/mhlo/transforms/mhlo_shape_calc_placement.cc"],
+    name = "mhlo_mark_shape_calc",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_mark_shape_calc.cc"],
     deps = [
         ":hlo",
-        ":mhlo_disc",
         ":pass_details",
-        "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
@@ -1700,7 +1697,7 @@ cc_library(
         ":hlo_legalize_to_memref",
         ":input_inline_fusion",
         ":legalize_control_flow",
-        ":mhlo_shape_calc_placement",
+        ":mhlo_mark_shape_calc",
         ":legalize_einsum_to_dot_general",
         ":legalize_gather_to_torch_index_select",
         ":legalize_tensor_load_op",

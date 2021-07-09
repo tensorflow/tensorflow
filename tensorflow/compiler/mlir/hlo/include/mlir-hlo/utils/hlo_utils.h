@@ -28,6 +28,8 @@ limitations under the License.
 
 namespace mlir {
 namespace hlo {
+// Attrs for OP type
+constexpr llvm::StringRef kDiscShapeCalcAttr = "disc.shape_op";
 
 // Attrs for placement
 constexpr llvm::StringRef kDiscPlaceAssignment = "disc.device";
