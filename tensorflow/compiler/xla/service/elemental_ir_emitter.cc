@@ -65,11 +65,9 @@ int64 GlobalRandomValue() {
   return rng();
 }
 
-StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
-                                             llvm::Value* x,
-                                             int64 dest_exponent_bits,
-                                             int64 dest_mantissa_bits,
-                                             llvm::IRBuilder<>* b) {
+StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64 dest_exponent_bits,
+    int64 dest_mantissa_bits, bool quiet_nans, llvm::IRBuilder<>* b) {
   using llvm::APInt;
 
   if (!primitive_util::IsFloatingPointType(src_ty)) {
@@ -89,6 +87,19 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
 
   // Cast the input value to an integer for bitwise manipulation.
   llvm::Value* x_as_int = b->CreateBitCast(x, int_type);
+
+  // Clear the sign bit, it does not participate in rounding and we will restore
+  // it later.
+  APInt sign_bit_mask(nbits, 1);
+  sign_bit_mask <<= nbits - 1;
+  llvm::Value* x_abs_bits =
+      b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, ~sign_bit_mask));
+
+  APInt exp_bits_mask(nbits, 1);
+  exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                  << src_mantissa_bits;
+  auto x_is_nan = b->CreateICmpUGT(
+      x_abs_bits, llvm::ConstantInt::get(int_type, exp_bits_mask));
 
   if (dest_mantissa_bits < src_mantissa_bits) {
     // Last remaining mantissa bit.
@@ -112,19 +123,17 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
     // correct; the non-masked mantissa bits will all be zero, and the
     // exponent will be incremented by one.
     APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
-    x_as_int = b->CreateAdd(x_as_int, x_rounding_bias);
-    x_as_int = b->CreateAnd(x_as_int,
-                            llvm::ConstantInt::get(int_type, truncation_mask));
+    llvm::Value* x_rounded = b->CreateAdd(x_as_int, x_rounding_bias);
+    x_rounded = b->CreateAnd(x_rounded,
+                             llvm::ConstantInt::get(int_type, truncation_mask));
+    if (quiet_nans) {
+      x_as_int = b->CreateSelect(x_is_nan, x_as_int, x_rounded);
+    } else {
+      x_as_int = x_rounded;
+    }
   }
 
   if (dest_exponent_bits < src_exponent_bits) {
-    APInt sign_bit_mask(nbits, 1);
-    sign_bit_mask <<= nbits - 1;
-
-    APInt exp_bits_mask(nbits, 1);
-    exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
-                    << src_mantissa_bits;
-
     // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
     // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
     // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
@@ -179,19 +188,23 @@ StatusOr<llvm::Value*> EmitReducePrecisionIR(PrimitiveType src_ty,
   // is mandatory).  This logic also handles cases where mantissa-rounding
   // causes a NaN's mantissa to overflow into the exponent bits, which would
   // otherwise create an erroneous zero value.
-  //
-  // If the fast-math flags are set to assume no NaNs, the comparison is likely
-  // to be optimized away, so there's no point in even emitting it.
-  if (!b->getFastMathFlags().noNaNs()) {
-    llvm::Value* x_is_nan = b->CreateFCmpUNO(x, x);
 
-    if (dest_mantissa_bits > 0) {
-      result = b->CreateSelect(x_is_nan, x, result);
+  if (dest_mantissa_bits > 0) {
+    if (quiet_nans) {
+      APInt qnan_mask(nbits, 1);
+      qnan_mask <<= src_mantissa_bits - 1;
+      llvm::Value* x_with_qnan_bit_set =
+          b->CreateOr(x_as_int, llvm::ConstantInt::get(int_type, qnan_mask));
+      x_with_qnan_bit_set = b->CreateBitCast(x_with_qnan_bit_set, float_type);
+      result = b->CreateSelect(x_is_nan, x_with_qnan_bit_set, result);
     } else {
-      result = b->CreateSelect(
-          x_is_nan, llvm::ConstantFP::getInfinity(float_type), result);
+      result = b->CreateSelect(x_is_nan, x, result);
     }
+  } else {
+    result = b->CreateSelect(x_is_nan,
+                             llvm::ConstantFP::getInfinity(float_type), result);
   }
+
   return result;
 }
 
@@ -203,7 +216,7 @@ StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
           /*src_ty=*/F32, f32_value,
           /*dest_exponent_bits=*/primitive_util::ExponentWidth(BF16),
           /*dest_mantissa_bits=*/primitive_util::SignificandWidth(BF16) - 1,
-          b));
+          /*quiet_nans=*/true, b));
   auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
   auto shifted = b->CreateLShr(as_int32, 16);
   auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
@@ -1571,7 +1584,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
   return EmitReducePrecisionIR(
       /*src_ty=*/hlo->operand(0)->shape().element_type(), x,
       /*dest_exponent_bits=*/hlo->exponent_bits(),
-      /*dest_mantissa_bits=*/hlo->mantissa_bits(), b_);
+      /*dest_mantissa_bits=*/hlo->mantissa_bits(),
+      /*quiet_nans=*/false, b_);
 }
 
 static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilder<>* b,
