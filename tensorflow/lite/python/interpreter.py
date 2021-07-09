@@ -195,6 +195,7 @@ class SignatureRunner(object):
     if not signature_def_name:
       raise ValueError('None signature_def_name provided.')
     self._interpreter = interpreter
+    self._interpreter_wrapper = interpreter._interpreter
     self._signature_def_name = signature_def_name
     signature_defs = interpreter._get_full_signature_list()
     if signature_def_name not in signature_defs:
@@ -202,6 +203,10 @@ class SignatureRunner(object):
     self._signature_def = signature_defs[signature_def_name]
     self._outputs = self._signature_def['outputs'].items()
     self._inputs = self._signature_def['inputs']
+
+    self._subgraph_index = (
+        self._interpreter_wrapper.GetSubgraphIndexFromSignatureDefName(
+            self._signature_def_name))
 
   def __call__(self, **kwargs):
     """Runs the SignatureDef given the provided inputs in arguments.
@@ -220,26 +225,27 @@ class SignatureRunner(object):
       raise ValueError(
           'Invalid number of inputs provided for running a SignatureDef, '
           'expected %s vs provided %s' % (len(self._inputs), len(kwargs)))
+
     # Resize input tensors
     for input_name, value in kwargs.items():
       if input_name not in self._inputs:
         raise ValueError('Invalid Input name (%s) for SignatureDef' %
                          input_name)
-      self._interpreter.resize_tensor_input(self._inputs[input_name],
-                                            value.shape)
+      self._interpreter_wrapper.ResizeInputTensor(
+          self._inputs[input_name], np.array(value.shape, dtype=np.int32),
+          False, self._subgraph_index)
     # Allocate tensors.
-    self._interpreter.allocate_tensors()
+    self._interpreter_wrapper.AllocateTensors(self._subgraph_index)
     # Set the input values.
     for input_name, value in kwargs.items():
-      self._interpreter._set_input_tensor(
-          input_name, value=value, method_name=self._signature_def_name)
+      self._interpreter_wrapper.SetTensor(self._inputs[input_name], value,
+                                          self._subgraph_index)
 
-    # TODO(b/184696047): Needs to invoke the actual subgraph instead of main
-    #                    graph.
-    self._interpreter.invoke()
+    self._interpreter_wrapper.Invoke(self._subgraph_index)
     result = {}
     for output_name, output_index in self._outputs:
-      result[output_name] = self._interpreter.get_tensor(output_index)
+      result[output_name] = self._interpreter_wrapper.GetTensor(
+          output_index, self._subgraph_index)
     return result
 
 
@@ -787,11 +793,6 @@ class Interpreter(object):
                 len(self._signature_defs)))
       else:
         method_name = next(iter(self._signature_defs))
-    if len(self._signature_defs) > 1:
-      raise ValueError(
-          'This Interpreter doesnt handle multiple signatures properly. '
-          'Proper support is coming soon.'
-      )
     return SignatureRunner(interpreter=self, signature_def_name=method_name)
 
   def get_tensor(self, tensor_index):

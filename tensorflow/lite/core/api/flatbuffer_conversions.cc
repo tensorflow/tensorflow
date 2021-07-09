@@ -800,8 +800,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       params->shared_name = nullptr;
       if (const auto* var_handle_params =
               op->builtin_options_as_VarHandleOptions()) {
-        params->container = var_handle_params->container()->c_str();
-        params->shared_name = var_handle_params->shared_name()->c_str();
+        if (var_handle_params->container())
+          params->container = var_handle_params->container()->c_str();
+        if (var_handle_params->shared_name())
+          params->shared_name = var_handle_params->shared_name()->c_str();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -844,6 +846,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_HASHTABLE_SIZE:
     case BuiltinOperator_READ_VARIABLE:
     case BuiltinOperator_ASSIGN_VARIABLE:
+    case BuiltinOperator_BROADCAST_ARGS:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;

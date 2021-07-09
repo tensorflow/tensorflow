@@ -148,43 +148,45 @@ class _GraphMerger(object):
     return merged
 
 
+def has_stateful_partitioned_call_op(graph_def):
+  """Determines if a StatefulPartitionedCall op exists in the graph."""
+  for node in graph_def.node:
+    if node.op == "StatefulPartitionedCall":
+      return True
+  return False
+
+
+def get_num_variables(graph_def):
+  """Returns the number of ReadVariableOp in the graph."""
+  return sum(node.op == "ReadVariableOp" for node in graph_def.node)
+
+
 class VariablesToConstantsTest(test.TestCase):
 
-  def _freezeModel(self, model):
-    """Freezes the model.
+  def _freezeModel(self, func):
+    """Freezes the function.
 
     Args:
-      model: Function.
+      func: Function.
 
     Returns:
       root: AutoTrackable object with original ConcreteFunction.
       output_func: frozen ConcreteFunction.
     """
     root = tracking.AutoTrackable()
-    root.f = model
+    root.f = func
     input_func = root.f.get_concrete_function()
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func, lower_control_flow=False)
     return root, output_func
 
-  def _hasStatefulPartitionedCallOp(self, graph_def):
-    """Determines if a StatefulPartitionedCall op exists in the graph."""
-    for node in graph_def.node:
-      if node.op == "StatefulPartitionedCall":
-        return True
-    return False
-
-  def _getNumVariables(self, graph_def):
-    """Returns the number of ReadVariableOp in the graph."""
-    return sum(node.op == "ReadVariableOp" for node in graph_def.node)
-
   def _testConvertedFunction(self, obj, func, converted_concrete_func,
                              input_data):
     # Ensure the converted graph has no variables and no function calls.
     constant_graph_def = converted_concrete_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+    self.assertEqual(0, get_num_variables(constant_graph_def))
+    self.assertFalse(has_stateful_partitioned_call_op(constant_graph_def))
 
     # Check that the converted ConcreteFunction produces the same result as the
     # original Function.
@@ -213,7 +215,7 @@ class VariablesToConstantsTest(test.TestCase):
 
   @test_util.run_v2_only
   def testConstSavedModel(self):
-    """Test a basic model with functions to make sure functions are inlined."""
+    """Test a basic model with constants while saving/loading the SavedModel."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
     root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
@@ -225,7 +227,7 @@ class VariablesToConstantsTest(test.TestCase):
     input_func = saved_model.signatures["serving_default"]
 
     variable_graph_def = input_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(variable_graph_def))
+    self.assertEqual(0, get_num_variables(variable_graph_def))
     self.assertTrue(variable_graph_def.library.function)
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
@@ -243,7 +245,7 @@ class VariablesToConstantsTest(test.TestCase):
     input_func = root.f.get_concrete_function(input_data["x"])
 
     variable_graph_def = input_func.graph.as_graph_def()
-    self.assertEqual(2, self._getNumVariables(variable_graph_def))
+    self.assertEqual(2, get_num_variables(variable_graph_def))
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
@@ -260,7 +262,7 @@ class VariablesToConstantsTest(test.TestCase):
     input_func = root.f.get_concrete_function(input_data["x"])
 
     variable_graph_def = input_func.graph.as_graph_def()
-    self.assertEqual(2, self._getNumVariables(variable_graph_def))
+    self.assertEqual(2, get_num_variables(variable_graph_def))
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
@@ -282,7 +284,7 @@ class VariablesToConstantsTest(test.TestCase):
     input_func = saved_model.signatures["serving_default"]
 
     variable_graph_def = input_func.graph.as_graph_def()
-    self.assertTrue(self._hasStatefulPartitionedCallOp(variable_graph_def))
+    self.assertTrue(has_stateful_partitioned_call_op(variable_graph_def))
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
@@ -290,7 +292,7 @@ class VariablesToConstantsTest(test.TestCase):
 
   @test_util.run_v2_only
   def testMultiFunctionModel(self):
-    """Test a basic model with Variables."""
+    """Test a basic model with multiple tf.functions."""
 
     class BasicModel(tracking.AutoTrackable):
 
@@ -315,7 +317,7 @@ class VariablesToConstantsTest(test.TestCase):
     input_func = root.add.get_concrete_function(input_data["x"])
 
     variable_graph_def = input_func.graph.as_graph_def()
-    self.assertEqual(1, self._getNumVariables(variable_graph_def))
+    self.assertEqual(1, get_num_variables(variable_graph_def))
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
@@ -526,6 +528,385 @@ class VariablesToConstantsTest(test.TestCase):
 
     root, output_func = self._freezeModel(model)
     self._testConvertedFunction(root, root.f, output_func, input_data)
+
+
+class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
+
+  def _freezeModel(self, func):
+    """Freezes the function.
+
+    Args:
+      func: Function.
+
+    Returns:
+      root: AutoTrackable object with original ConcreteFunction.
+      output_func: frozen ConcreteFunction.
+    """
+    root = tracking.AutoTrackable()
+    root.f = func
+    input_func = root.f.get_concrete_function()
+
+    output_func = convert_to_constants.convert_var_to_const_function_in_v1(
+        input_func, lower_control_flow=False)
+    return root, output_func
+
+  def _testConvertedFunction(self, sess, obj, func, converted_concrete_func,
+                             input_data):
+    # Ensure the converted graph has no variables and no function calls.
+    constant_graph_def = converted_concrete_func.graph.as_graph_def()
+    self.assertEqual(0, get_num_variables(constant_graph_def))
+    self.assertFalse(has_stateful_partitioned_call_op(constant_graph_def))
+
+    # Check that the converted ConcreteFunction produces the same result as the
+    # original Function.
+    expected_value = nest.flatten(func(**input_data))
+    actual_value = nest.flatten(converted_concrete_func(**input_data))
+
+    for expected, actual in zip(expected_value, actual_value):
+      np.testing.assert_almost_equal(sess.run(expected), sess.run(actual))
+
+    # Ensure the shape is retained.
+    for tensor in converted_concrete_func.inputs:
+      actual_shape = input_data[tensor.name.split(":")[0]].shape
+      self.assertEqual(tensor.shape, actual_shape)
+
+    # Save the converted ConcreteFunction as a signature.
+    save_dir = os.path.join(self.get_temp_dir(), "frozen_saved_model")
+    root = tracking.AutoTrackable()
+    root.f = converted_concrete_func
+    save(root, save_dir, {"mykey": converted_concrete_func})
+
+    # Load it back and make sure it works.
+    loaded_obj = load(save_dir)
+    actual_value = nest.flatten(loaded_obj.signatures["mykey"](**input_data))
+    for expected, actual in zip(expected_value, actual_value):
+      np.testing.assert_almost_equal(sess.run(expected), sess.run(actual))
+
+  def testRaiseErrorInEagerMode(self):
+    """Test the raised exception in Eager mode."""
+    input_data = {"x": constant_op.constant(1., shape=[1])}
+    root = tracking.AutoTrackable()
+    root.v1 = variables.Variable(3.)
+    root.v2 = variables.Variable(2.)
+    root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
+    input_func = root.f.get_concrete_function(input_data["x"])
+
+    with self.assertRaisesRegex(RuntimeError,
+                                "must be carried out in a Session"):
+      convert_to_constants.convert_var_to_const_function_in_v1(
+          input_func)
+
+  def testConvertVariables(self):
+    """Test a basic model with Variables."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {"x": constant_op.constant(1., shape=[1])}
+        root = tracking.AutoTrackable()
+        root.v1 = variables.Variable(3.)
+        root.v2 = variables.Variable(2.)
+        root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
+        input_func = root.f.get_concrete_function(input_data["x"])
+
+        variable_graph_def = input_func.graph.as_graph_def()
+        self.assertEqual(2, get_num_variables(variable_graph_def))
+
+        output_func = convert_to_constants.convert_var_to_const_function_in_v1(
+            input_func)
+
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testConvertVariablesWithAssignments(self):
+    """Test a basic model with Variables and assignment ops."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {"x": constant_op.constant(1., shape=[1])}
+        root = tracking.AutoTrackable()
+        root.v1 = variables.Variable(3.)
+        root.v2 = variables.Variable(2.)
+        root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
+        input_func = root.f.get_concrete_function(input_data["x"])
+
+        variable_graph_def = input_func.graph.as_graph_def()
+        self.assertEqual(2, get_num_variables(variable_graph_def))
+
+        assign_op_1 = root.v1.assign(1.5)
+        assign_op_2 = root.v2.assign(3.0)
+        assign_op_3 = root.v1.assign(4.0)
+        ops.get_default_graph().add_to_collection(
+            convert_to_constants.VAR_ASSIGN_COLLECTION, assign_op_1)
+        ops.get_default_graph().add_to_collection(
+            convert_to_constants.VAR_ASSIGN_COLLECTION, assign_op_2)
+        ops.get_default_graph().add_to_collection(
+            convert_to_constants.VAR_ASSIGN_COLLECTION, assign_op_3)
+
+        output_func = convert_to_constants.convert_var_to_const_function_in_v1(
+            input_func)
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testConstSavedModel(self):
+    """Test a basic model with constants while saving/loading the SavedModel."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {"x": constant_op.constant(1., shape=[1])}
+        root = tracking.AutoTrackable()
+        root.f = def_function.function(lambda x: 2. * x)
+        to_save = root.f.get_concrete_function(input_data["x"])
+
+        save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+        save(root, save_dir, to_save)
+        saved_model = load(save_dir)
+        input_func = saved_model.signatures["serving_default"]
+
+        variable_graph_def = input_func.graph.as_graph_def()
+        self.assertEqual(0, get_num_variables(variable_graph_def))
+        self.assertTrue(variable_graph_def.library.function)
+
+        output_func = convert_to_constants.convert_var_to_const_function_in_v1(
+            input_func)
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testVariableSavedModel(self):
+    """Test a basic model with Variables with saving/loading the SavedModel."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {"x": constant_op.constant(1., shape=[1])}
+        root = tracking.AutoTrackable()
+        root.v1 = variables.Variable(3.)
+        root.v2 = variables.Variable(2.)
+        root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
+        to_save = root.f.get_concrete_function(input_data["x"])
+        sess.run(variables.global_variables_initializer())
+
+        save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+        save(root, save_dir, to_save)
+        saved_model = load(save_dir)
+        input_func = saved_model.signatures["serving_default"]
+
+        variable_graph_def = input_func.graph.as_graph_def()
+        self.assertTrue(has_stateful_partitioned_call_op(variable_graph_def))
+
+        output_func = convert_to_constants.convert_var_to_const_function_in_v1(
+            input_func)
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testMultiFunctionModel(self):
+    """Test a basic model with multiple tf.functions."""
+
+    class BasicModel(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.y = None
+        self.z = None
+
+      @def_function.function
+      def add(self, x):
+        if self.y is None:
+          self.y = variables.Variable(2.)
+        return x + self.y
+
+      @def_function.function
+      def sub(self, x):
+        if self.z is None:
+          self.z = variables.Variable(3.)
+        return x - self.z
+
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {"x": constant_op.constant(1., shape=[1])}
+        root = BasicModel()
+        input_func = root.add.get_concrete_function(input_data["x"])
+
+        variable_graph_def = input_func.graph.as_graph_def()
+        self.assertEqual(1, get_num_variables(variable_graph_def))
+
+        output_func = convert_to_constants.convert_var_to_const_function_in_v1(
+            input_func)
+        self._testConvertedFunction(sess, root, root.add, output_func,
+                                    input_data)
+
+  def testIf(self):
+    """Test a model with the If op."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {
+            "x": constant_op.constant([1., 2.], shape=[1, 2]),
+            "b": constant_op.constant(True)
+        }
+
+        weights = variables.Variable([[0.1, 0.2], [0.3, 0.4]],
+                                     dtype=dtypes.float32)
+
+        def true_fn(x):
+          return math_ops.matmul(x, weights)
+
+        def false_fn(x):
+          return math_ops.add(x, weights)
+
+        @def_function.function(input_signature=[
+            tensor_spec.TensorSpec(shape=[1, 2], dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
+        ])
+        def model(x, b):
+          return control_flow_ops.cond(
+              b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
+
+        root, output_func = self._freezeModel(model)
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testStatelessIf(self):
+    """Test a model with the StatelessIf op."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {"b": constant_op.constant(True)}
+
+        x = constant_op.constant([1., 2.], shape=[1, 2], name="x")
+
+        def true_fn():
+          return x
+
+        def false_fn():
+          return x + 2
+
+        @def_function.function(input_signature=[
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
+        ])
+        def model(b):
+          return cond_v2.cond_v2(b, true_fn, false_fn)
+
+        root, output_func = self._freezeModel(model)
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testStaticRnn(self):
+    """Test a StaticRnn containing If ops."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {
+            "x":
+                constant_op.constant(
+                    np.array(
+                        np.random.random_sample((3, 10)), dtype=np.float32))
+        }
+
+        cell = rnn_cell_impl.LSTMCell(10)
+
+        @def_function.function(input_signature=[
+            tensor_spec.TensorSpec(shape=[3, 10], dtype=dtypes.float32)
+        ])
+        def model(x):
+          seq = array_ops.split(x, 3, 0)
+          return rnn.static_rnn(
+              cell, seq, dtype=dtypes.float32, sequence_length=[1])
+
+        root, output_func = self._freezeModel(model)
+
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testWhile(self):
+    """Test a While loop."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {"x": constant_op.constant([1., 2., 3., 4.], shape=[2, 2])}
+
+        weights = variables.Variable([[0.1, 0.2], [0.3, 0.4]],
+                                     dtype=dtypes.float32)
+
+        def condition(x):
+          return math_ops.reduce_sum(x) < 100
+
+        def body(x):
+          return math_ops.add(x, weights)
+
+        @def_function.function(input_signature=[
+            tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
+        ])
+        def model(x):
+          return control_flow_ops.while_loop(condition, body, [x])
+
+        root, output_func = self._freezeModel(model)
+
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testStatelessWhile(self):
+    """Test a StatelessWhile loop."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {"x": constant_op.constant(2.)}
+
+        @def_function.function(input_signature=[
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+        ])
+        def model(x):
+          return while_v2.while_loop(
+              lambda v: v < 4.,
+              lambda v: v * v, [x],
+              return_same_structure=False,
+              name="while_1")  # x**2
+
+        root, output_func = self._freezeModel(model)
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  def testDynamicRnn(self):
+    """Test a DynamicRnn containing While loops."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {
+            "x":
+                constant_op.constant(
+                    np.array(
+                        np.random.random_sample((3, 10, 10)), dtype=np.float32))
+        }
+
+        cell = rnn_cell_impl.LSTMCell(10)
+
+        @def_function.function(input_signature=[
+            tensor_spec.TensorSpec(shape=[3, 10, 10], dtype=dtypes.float32)
+        ])
+        def model(x):
+          return rnn.dynamic_rnn(cell, x, dtype=dtypes.float32)
+
+        root, output_func = self._freezeModel(model)
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
+
+  @test_util.disable_tfrt("b/180451239")
+  def testSwitchCase(self):
+    """Test a switch_case statement."""
+    with ops.Graph().as_default():
+      with session_lib.Session() as sess:
+        input_data = {
+            "i":
+                constant_op.constant(np.random.randint(0, 3, dtype=np.int32)),
+            "x":
+                constant_op.constant(
+                    np.asarray(
+                        np.random.random_sample((10, 3)), dtype=np.float32)),
+        }
+
+        w0 = variables.Variable(
+            np.random.random_sample((3, 4)), dtype=np.float32)
+        w1 = variables.Variable(
+            np.random.random_sample((3, 4)), dtype=np.float32)
+        w2 = variables.Variable(np.random.random_sample((4,)), dtype=np.float32)
+
+        def branch0(x):
+          return math_ops.matmul(x, w0)
+
+        def branch1(x):
+          return math_ops.matmul(x, w1)
+
+        def branch2(x):
+          x = array_ops.pad(x, [[0, 0], [0, 1]])
+          return x + w2
+
+        @def_function.function(input_signature=[
+            tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+            tensor_spec.TensorSpec(shape=[10, 3], dtype=dtypes.float32),
+        ])
+        def model(i, x):
+          return control_flow_ops.switch_case(
+              i, [lambda: branch0(x), lambda: branch1(x), lambda: branch2(x)])
+
+        root, output_func = self._freezeModel(model)
+        self._testConvertedFunction(sess, root, root.f, output_func, input_data)
 
 
 class ConvertVariablesToConstantsSessionTest(test.TestCase):
@@ -1239,8 +1620,8 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
         simple_save.simple_save(sess, save_dir, {"myinput": a}, {"myoutput": b})
 
     # Add _noinline to the SavedModel.
-    self._addNoinlineAttributeToFunction(saved_model_dir=save_dir,
-                                         func_name="add_all")
+    self._addNoinlineAttributeToFunction(
+        saved_model_dir=save_dir, func_name="add_all")
 
     saved_model = load(save_dir)
     func = saved_model.signatures["serving_default"]

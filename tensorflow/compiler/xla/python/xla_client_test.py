@@ -385,6 +385,69 @@ def TestFactory(xla_backend,
 
   tests.append(ComputationsWithConstantsTest)
 
+  class PythonCallbackTest(ComputationTest):
+
+    def testPythonCallback(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      f = lambda x, y: (x + y, x - y)
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      arg1 = np.array([10, 15, -2, 7], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      shape = shape.with_major_to_minor_layout_if_absent()
+      p0 = ops.Parameter(c, 0, shape)
+      p1 = ops.Parameter(c, 1, shape)
+      out, keepalive = self.backend.emit_python_callback(
+          f, c, [p0, p1], [shape, shape])
+      self._ExecuteAndCompareExact(
+          c, arguments=[arg0, arg1], expected=[arg0 + arg1, arg0 - arg1])
+      del out, keepalive
+
+    def testTokens(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x, y):
+        assert y is None, y
+        return None, x + 1
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      token_shape = xla_client.Shape.token_shape()
+      p0 = ops.Parameter(c, 0, shape)
+      token = ops.CreateToken(c)
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0, token], [token_shape, shape])
+      out = ops.GetTupleElement(out, 1)
+      self._ExecuteAndCompareExact(c, arguments=[arg0], expected=[arg0 + 1])
+      del out, keepalive
+
+    def testStriding(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x):
+        assert x.flags.f_contiguous, x.strides
+        # Force the output array to have C layout, which will require a
+        # transpose back to the expected Fortran layout.
+        return np.ascontiguousarray(x * 2),
+
+      arg0 = np.arange(12, dtype=np.int16).reshape(3, 4)
+      shape_f_layout = xla_client.Shape.array_shape(
+          arg0.dtype, arg0.shape, layout=(0, 1))
+      p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0], [shape_f_layout], [shape_f_layout])
+      self._ExecuteAndCompareExact(c, arguments=[arg0], expected=[arg0 * 2])
+      del out, keepalive
+
+  tests.append(PythonCallbackTest)
+
   class ComputationFromProtoTest(absltest.TestCase):
     """Test computation execution from HLO proto."""
 
@@ -1536,8 +1599,10 @@ def TestFactory(xla_backend,
       """Computation (A) -> B that returns a constant 1 for any input."""
       c = self._NewComputation("constant_{}_{}_one".format(
           in_dtype.__name__, out_dtype.__name__))
-      ops.Parameter(c, 0,
-                    xla_client.shape_from_pyval(np.array(0, dtype=in_dtype)))
+      ops.Parameter(
+          c, 0,
+          xla_client.shape_from_pyval(np.array(
+              0, dtype=in_dtype)).with_major_to_minor_layout_if_absent())
       ops.Constant(c, out_dtype(1))
       return c.build()
 
@@ -2262,7 +2327,7 @@ def TestFactory(xla_backend,
 
   tests.append(TracebackTest)
 
-  class ClientTest(parameterized.TestCase):
+  class ClientTest(ComputationTest):
 
     def setUp(self):
       super(ClientTest, self).setUp()
@@ -2280,6 +2345,28 @@ def TestFactory(xla_backend,
               msg=f"Expected CUDA version string; got {repr(version)}")
         else:
           self.assertEqual(version, "<unknown>")
+
+    @unittest.skipIf(not external_tpu, "not implemented")
+    def testExecutableSerialization(self):
+      c = self._NewComputation()
+      ops.Add(
+          ops.Constant(c, NumpyArrayS32([1, 2])),
+          ops.Constant(c, NumpyArrayS32([3, 4])))
+
+      options = xla_client.CompileOptions()
+      executable = self.backend.compile(c.build(), options)
+      self.assertLen(executable.hlo_modules(), 1)
+
+      serialized = self.backend.serialize_executable(executable)
+      deserialized = self.backend.deserialize_executable(
+          serialized,
+          executable.hlo_modules()[0], options)
+
+      expected, = xla_client.execute_with_python_values(executable, (),
+                                                        self.backend)
+      actual, = xla_client.execute_with_python_values(deserialized, (),
+                                                      self.backend)
+      self.assertTrue(np.all(actual == expected))
 
   tests.append(ClientTest)
 

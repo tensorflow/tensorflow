@@ -28,3 +28,8 @@ def RalLowerToLibraryCallPass : FunctionPass<"disc-ral-lower-to-library-call"> {
   let summary = "Lower some specific ops to library calls (modeled by `disc_ral.launch` op).";
   let constructor = "createRalLowerToLibraryCallPass()";
 }
+
+def RalToLLVMPass : Pass<"disc-ral-to-llvm", "ModuleOp"> {
+  let summary = "Pass for applying LLVM legalization patterns.";
+  let constructor = "createRalToLLVMPass()";
+}

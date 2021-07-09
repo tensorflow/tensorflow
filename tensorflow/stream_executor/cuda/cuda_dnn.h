@@ -275,22 +275,27 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
       const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
+      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var, const DeviceMemory<float>& y,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<float>* side_input_backprop,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
       const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
+      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::half>& y,
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      dnn::ActivationMode activation_mode,
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<Eigen::half>* side_input_backprop,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
@@ -388,24 +393,6 @@ class CudnnSupport : public dnn::DnnSupport {
     LOG(ERROR) << "separable convolution not supported by CUDNN";
     return false;
   }
-
-  bool DoConvolveBackwardBias(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<double>& input_data,
-      const dnn::BatchDescriptor& bias_descriptor,
-      DeviceMemory<double>* backward_bias_data) override;
-
-  bool DoConvolveBackwardBias(Stream* stream,
-                              const dnn::BatchDescriptor& input_descriptor,
-                              const DeviceMemory<float>& input_data,
-                              const dnn::BatchDescriptor& bias_descriptor,
-                              DeviceMemory<float>* backward_bias_data) override;
-
-  bool DoConvolveBackwardBias(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<Eigen::half>& input_data,
-      const dnn::BatchDescriptor& bias_descriptor,
-      DeviceMemory<Eigen::half>* backward_bias_data) override;
 
   bool DoMatMul(Stream* stream, const DeviceMemory<float>& input_data,
                 const DeviceMemory<float>& weights,
@@ -605,11 +592,14 @@ class CudnnSupport : public dnn::DnnSupport {
   port::Status DoBatchNormalizationBackwardImpl(
       Stream* stream, int cudnn_input_type, int cudnn_scale_type,
       const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
-      const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
-      const DeviceMemory<U>& inv_var, const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
+      const DeviceMemory<U>& mean, const DeviceMemory<U>& inv_var,
+      const DeviceMemory<T>& y, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
-      DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
+      dnn::ActivationMode activation_mode, DeviceMemory<T>* x_backprop,
+      DeviceMemory<U>* scale_backprop, DeviceMemory<U>* offset_backprop,
+      DeviceMemory<T>* side_input_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator);
 
   template <typename ScaleType>
@@ -631,7 +621,8 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::ProfileResult* output_profile_result);
 
   port::Status DoFusedConvolveWithExecutionPlanImpl(
-      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+      Stream* stream, dnn::DataType element_type,
+      const dnn::BatchDescriptor& conv_input_descriptor,
       DeviceMemoryBase conv_input_data, double conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
       DeviceMemoryBase filter_data,
@@ -644,13 +635,6 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& plan_config,
       dnn::ProfileResult* output_profile_result);
-
-  template <class T>
-  port::Status DoConvolveBackwardBiasImpl(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<T>& input_data,
-      const dnn::BatchDescriptor& bias_descriptor,
-      DeviceMemory<T>* backward_bias_data);
 
   template <class T>
   port::Status DoRnnForwardImpl(

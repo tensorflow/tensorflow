@@ -53,9 +53,9 @@ LogicalResult VerifyCollectivePermuteSourceTargetPairs(
   return success();
 }
 
-LogicalResult VerifyAllReduceScatter(Operation *op, TypeRange operand_types,
-                                     TypeRange result_types,
-                                     uint64_t scatter_dimension) {
+LogicalResult VerifyReduceScatter(Operation *op, TypeRange operand_types,
+                                  TypeRange result_types,
+                                  uint64_t scatter_dimension) {
   // If operand and result are both ranked, then the size of the scatter
   // dimension in the operand should be a multiple of the size of the scatter
   // dimension in the result.

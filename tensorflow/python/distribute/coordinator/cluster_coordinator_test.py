@@ -1061,13 +1061,26 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
-      v = variables.Variable(initial_value=1.)
+      v = variables.Variable(
+          initial_value=1.,
+          aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
 
       # Test read value inside caching scope
       with distribute_utils.cache_variable_reads():
         v.read_value()  # Reads value 1.0
         v.assign(constant_op.constant(5.0))  # v changes to 5.0
         self.assertEqual(v.read_value(), 1.0)  # should be cached 1.0 value.
+
+      # Reset v to 2.0
+      v.assign(2.0)
+
+      # Test convert to tensor value inside caching scope
+      with distribute_utils.cache_variable_reads():
+        t = v * 3.0
+        self.assertEqual(t, 6.0)
+        v.assign(3.0)
+        t1 = v * 3.0
+        self.assertEqual(t1, 6.0)  # should be cached 2.0 * 3.0 value.
 
       # Reset v to 1.0
       v.assign(1.0)

@@ -44,7 +44,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
@@ -357,8 +357,8 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
   return CheckShape(hlo, ShapeInference::InferAllReduceShape(operand_shapes));
 }
 
-Status ShapeVerifier::HandleAllReduceScatter(HloInstruction* hlo) {
-  auto ars = Cast<HloAllReduceScatterInstruction>(hlo);
+Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
+  auto ars = Cast<HloReduceScatterInstruction>(hlo);
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ars->channel_id().has_value(),
                                                ars->use_global_device_ids()));
@@ -392,7 +392,7 @@ Status ShapeVerifier::HandleAllReduceScatter(HloInstruction* hlo) {
     operand_shapes.push_back(&operand->shape());
   }
   return CheckShape(ars,
-                    ShapeInference::InferAllReduceScatterShape(
+                    ShapeInference::InferReduceScatterShape(
                         operand_shapes, ars->scatter_dimension(), shard_count));
 }
 

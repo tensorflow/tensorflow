@@ -564,6 +564,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseFillEmptyRowsGrad`
 *   `raw_ops.SparseReduceSum`
 *   `raw_ops.SparseReshape`
+*   `raw_ops.SparseReorder`
 *   `raw_ops.SparseSegmentMean`
 *   `raw_ops.SparseSegmentMeanGrad`
 *   `raw_ops.SparseSegmentMeanWithNumSegments`
@@ -575,6 +576,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.SparseSegmentSumWithNumSegments`
 *   `raw_ops.SparseSlice`
 *   `raw_ops.SparseSoftmaxCrossEntropyWithLogits`
+*   `raw_ops.SparseTensorDenseMatMul`
 *   `raw_ops.SparseToDense`
 *   `raw_ops.SparseToSparseSetOperation`
 *   `raw_ops.Split`

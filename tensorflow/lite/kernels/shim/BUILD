@@ -8,6 +8,33 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tf_headers",
+    srcs = [
+        "op_kernel.h",
+        "shape.h",
+        "status_macros.h",
+        "tensor_view.h",
+        "tf_op_shim.h",
+        "tf_tensor_view.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+cc_library(
+    name = "tf_kernel_shim",
+    visibility = ["//tensorflow:__pkg__"],
+    deps = [
+        ":op_kernel",
+        ":shape",
+        ":status_macros",
+        ":tensor_view",
+        ":tf_op_shim",
+        ":tf_tensor_view",
+    ],
+)
+
 cc_library(
     name = "tensor_view",
     hdrs = ["tensor_view.h"],

@@ -31,6 +31,12 @@ namespace {
 
 #define NUM_DEVS 3
 
+TEST(MaybeCreateNcclCommunicatorm, ZeroGpus) {
+  ConfigProto cp;
+  (*cp.mutable_device_count())["GPU"] = 0;
+  EXPECT_EQ(nullptr, MaybeCreateNcclCommunicator(cp));
+}
+
 class CollectiveExecutorMgrTest : public ::testing::Test {
  protected:
   CollectiveExecutorMgrTest() {
@@ -50,7 +56,7 @@ class CollectiveExecutorMgrTest : public ::testing::Test {
                                          task_name));
     cme_.reset(new CollectiveExecutorMgr(cp, device_mgr_.get(), std::move(drl),
                                          std::move(prl),
-                                         MaybeCreateNcclCommunicator()));
+                                         MaybeCreateNcclCommunicator(cp)));
   }
 
   std::unique_ptr<CollectiveExecutorMgr> cme_;

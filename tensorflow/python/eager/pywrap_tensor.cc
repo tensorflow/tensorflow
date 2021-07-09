@@ -584,8 +584,17 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   PyObject* shape = PyTuple_New(n);
   if (PyErr_Occurred()) return nullptr;
   for (int i = 0; i < n; ++i) {
-    PyObject* dim =
-        PyLong_FromLongLong(TFE_TensorHandleDim(handle, i, &self->status));
+    int64_t dim_c_value = TFE_TensorHandleDim(handle, i, &self->status);
+    PyObject* dim;
+    // The C++ convention is -1 for unknown/variable axis lengths. Translate
+    // that to the Python "None" convention. Unknown axis lengths are unusual
+    // for eager tensors.
+    if (dim_c_value < 0) {
+      Py_IncRef(Py_None);
+      dim = Py_None;
+    } else {
+      dim = PyLong_FromLongLong(dim_c_value);
+    }
     code = TF_GetCode(&self->status);
     if (code != TF_OK || dim == nullptr ||
         PyTuple_SetItem(shape, i, dim) != 0) {

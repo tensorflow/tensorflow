@@ -50,6 +50,16 @@ namespace {
 
 using ::tensorflow::profiler::ScopedAnnotation;
 
+bool NeedsAsyncCommsStream(Thunk& thunk) {
+  switch (thunk.kind()) {
+    case Thunk::Kind::kNcclAllReduceStart:
+    case Thunk::Kind::kNcclAllReduceDone:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -98,14 +108,13 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   stream_executor::PlatformKind platform_kind =
       main_stream->parent()->platform_kind();
   if (platform_kind == stream_executor::PlatformKind::kROCm) {
-    int stream_isa_version;
-    main_stream->parent()->GetDeviceDescription().rocm_amdgpu_isa_version(
-        &stream_isa_version);
-    int gpu_exec_isa_version =
-        absl::get<std::pair<int, std::string>>(gpu_version_).first;
-    TF_RET_CHECK(stream_isa_version == gpu_exec_isa_version)
-        << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_isa_version
-        << ", but was " << stream_isa_version;
+    std::string stream_arch = main_stream->parent()
+                                  ->GetDeviceDescription()
+                                  .rocm_amdgpu_gcn_arch_name();
+    std::string gpu_exec_arch = absl::get<std::string>(gpu_version_);
+    TF_RET_CHECK(stream_arch == gpu_exec_arch)
+        << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
+        << ", but was " << stream_arch;
   } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
     GpuVersion cc = main_stream->GetCudaComputeCapability();
     TF_RET_CHECK(absl::get<se::CudaComputeCapability>(cc) ==
@@ -133,6 +142,9 @@ Status GpuExecutable::ExecuteThunks(
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
+
+  StatusOr<StreamPool::Ptr> async_comms_stream =
+      run_options->BorrowStream(executor->device_ordinal());
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
@@ -178,11 +190,16 @@ Status GpuExecutable::ExecuteThunks(
 
     VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
             << " on stream " << stream_no;
+
+    TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
+        << "`run_options` must have a stream borrower for async thunks.";
+
     const GpuExecutableRunOptions* gpu_options =
         run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
         &buffer_allocations,
         stream,
+        async_comms_stream.ok() ? async_comms_stream->get() : nullptr,
         run_options->run_options().run_id(),
         &profiler,
         run_options->run_options().device_assignment(),

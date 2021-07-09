@@ -139,7 +139,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
   // based on the devices in the module.
   if (GetPassState(/*device_set=*/nullptr, config_proto, graph,
                    function_library) == MlirOptimizationPassState::Disabled) {
-    LOG_AT_LEAST_ONCE("Skipping MLIR TPU Bridge, session flag not enabled");
+    VLOG(1) << "Skipping MLIR TPU Bridge, session flag not enabled";
     mlir_bridge_gauge_v2->GetCell()->Set(false);
     return Status::OK();
   }
@@ -151,7 +151,7 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
     return Status::OK();
   }
 
-  LOG_AT_LEAST_ONCE("Running MLIR TPU Bridge");
+  VLOG(1) << "Running MLIR TPU Bridge";
 
   mlir_bridge_gauge_v2->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(
@@ -198,8 +198,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   if (GetPassState(/*device_set=*/nullptr, options.session_options->config,
                    **options.graph,
                    *options.flib_def) == MlirOptimizationPassState::Disabled) {
-    LOG_AT_LEAST_ONCE(
-        "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled");
+    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
     return Status::OK();
   }
@@ -211,7 +210,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     return Status::OK();
   }
 
-  LOG_AT_LEAST_ONCE("Running MLIR TPU Bridge V1 Compat");
+  VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
 
   mlir_bridge_gauge_v1->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(

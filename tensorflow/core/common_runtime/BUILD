@@ -7,6 +7,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
     "tf_openmp_copts",
+    "tf_openmp_lopts",
 )
 
 # buildifier: disable=same-origin-load
@@ -596,7 +597,6 @@ cc_library(
         ":graph_view",
         ":immutable_executor_state",
         ":local_executor_params",
-        ":metric_util",
         ":pending_counts",
         ":propagator_state",
         ":renamed_device",
@@ -625,20 +625,6 @@ cc_library(
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "metric_util",
-    srcs = ["metric_util.cc"],
-    hdrs = ["metric_util.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tflite_portable_logging",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -1332,6 +1318,7 @@ cc_library(
     srcs = ["process_util.cc"],
     hdrs = ["process_util.h"],
     copts = tf_copts() + tf_openmp_copts(),
+    linkopts = tf_openmp_lopts(),
     deps = [
         ":session_options",
         "//tensorflow/core:framework",
@@ -1656,6 +1643,7 @@ cc_library(
     srcs = ["threadpool_device.cc"],
     hdrs = ["threadpool_device.h"],
     copts = tf_copts() + tf_openmp_copts(),
+    linkopts = tf_openmp_lopts(),
     deps = [
         ":device_factory",
         ":local_device",

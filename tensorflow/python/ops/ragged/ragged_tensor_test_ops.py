@@ -64,6 +64,7 @@ UNARY_FLOAT_OPS = [
     math_ops.round,
     math_ops.rsqrt,
     math_ops.sign,
+    math_ops.sigmoid,
     math_ops.sin,
     math_ops.sinh,
     math_ops.sqrt,

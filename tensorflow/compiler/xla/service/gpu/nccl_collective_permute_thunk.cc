@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -36,7 +37,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
   NcclCollectivePermuteConfig config;
 
   config.operand_count = 1;
-  const Shape shape = TypeToShape(op.operand().getType());
+  const Shape shape = GetShape(op.operand());
   config.operand_element_type.push_back(shape.element_type());
   config.SetCollectiveOpKindAndID(op);
   config.group_mode = GetGroupMode(op);
@@ -89,7 +90,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 
 /*static*/ bool NcclCollectivePermuteThunk::CanImplement(
     mlir::lmhlo::CollectivePermuteOp op) {
-  const Shape shape = TypeToShape(op.operand().getType());
+  const Shape shape = GetShape(op.operand());
   return IsTypeSupportedByNccl(shape.element_type());
 }
 

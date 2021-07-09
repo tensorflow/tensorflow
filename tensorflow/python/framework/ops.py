@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import re
 import sys
 import threading
@@ -2895,6 +2896,13 @@ _MUTATION_LOCK_GROUP = 0
 _SESSION_RUN_LOCK_GROUP = 1
 
 
+@tf_contextlib.contextmanager
+def resource_creator_scope(resource_type, resource_creator):
+  with get_default_graph()._resource_creator_scope(resource_type,  # pylint: disable=protected-access
+                                                   resource_creator):
+    yield
+
+
 @tf_export("Graph")
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
@@ -3090,6 +3098,80 @@ class Graph(object):
         raise RuntimeError(
             "Exiting variable_creator_scope without proper nesting.")
       self._thread_local._variable_creator_stack = old  # pylint: disable=protected-access
+
+  # TODO(b/192405401): unify resource_creator_scope with variable_creator_scope.
+  # pylint: disable=protected-access
+  @tf_contextlib.contextmanager
+  def _resource_creator_scope(self, resource_type, creator):
+    """Scope which defines a resource creation function used by some resource.
+
+    The resource should be a subclass of CachableResource with a class method
+    `cls._resource_type`, the output of which is what the `resource_type`
+    argument should be. By default, `cls._resource_type` returns the class name,
+    `cls.__name__`. Given a scope, creators being added with the same
+    `resource_type` argument will be composed together to apply to all classes
+    with this `_resource_type`.
+
+
+    `creator` is expected to be a function with the following signature:
+
+    ```
+      def resource_creator(next_creator, *a, **kwargs)
+    ```
+
+    The creator is supposed to eventually call the next_creator to create an
+    instance if it does want to create an instance and not call
+    the class initialization method directly. This helps make creators
+    composable. A creator may choose to create multiple instances, return
+    already existing instances, or simply register that an instance was created
+    and defer to the next creator in line. Creators can also modify keyword
+    arguments seen by the next creators.
+
+    Valid keyword arguments in `kwargs` depends on the specific resource
+    class. For StaticHashTable, this may be:
+    * initializer: The table initializer to use.
+    * default_value: The value to use if a key is missing in the table.
+    * name: Optional name for the table, default to None.
+
+
+    Args:
+      resource_type: the output of the resource class's `_resource_type` method.
+      creator: the passed creator for the resource.
+
+    Yields:
+      A scope in which the creator is active
+
+    Raises:
+      RuntimeError: If resource_creator_scope is existed without proper nesting.
+    """
+    # This step keeps a reference to the existing stack, and it also initializes
+    # self._thread_local._variable_creator_stack if it doesn't exist yet.
+    old = self._resource_creator_stack
+    new = copy.deepcopy(old)
+    if isinstance(resource_type, (list, tuple)):
+      for r in resource_type:
+        new[r].append(creator)
+    else:
+      new[resource_type].append(creator)
+    self._thread_local._resource_creator_stack = new
+    try:
+      yield
+    finally:
+      if self._thread_local._resource_creator_stack is not new:
+        raise RuntimeError(
+            "Exiting resource_creator_scope without proper nesting.")
+      self._thread_local._resource_creator_stack = old
+
+  @property
+  def _resource_creator_stack(self):
+    if not hasattr(self._thread_local, "_resource_creator_stack"):
+      self._thread_local._resource_creator_stack = collections.defaultdict(list)
+    return self._thread_local._resource_creator_stack
+
+  @_resource_creator_stack.setter
+  def _resource_creator_stack(self, resource_creator_stack):
+    self._thread_local._resource_creator_stack = resource_creator_stack
+  # pylint: enable=protected-access
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.

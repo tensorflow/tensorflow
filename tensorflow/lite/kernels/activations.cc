@@ -809,15 +809,15 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
                            GetTensorShape(output),
                            GetTensorData<float>(output));
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteUInt8: {
       QuantizedReluX<uint8_t>(-1.0f, 1.0f, input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt8: {
       QuantizedReluX<int8_t>(-1, 1, input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Only float32, uint8, int8 supported "
@@ -897,18 +897,18 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       float* out = GetTensorData<float>(output);
       for (; in < in_end; in++, out++) *out = std::min(std::max(0.f, *in), 6.f);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteUInt8:
       QuantizedReluX<uint8_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
     case kTfLiteInt8: {
       QuantizedReluX<int8_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt16: {
       QuantizedReluX<int16_t>(0.0f, 6.0f, input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Only float32, uint8, int8 and int16 are supported "
@@ -1351,7 +1351,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
         }
       }
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteUInt8: {
       PreluParams op_params;
       op_params.input_offset = -input->params.zero_point;
@@ -1373,7 +1373,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       }
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt8: {
       PreluParams op_params;
       op_params.input_offset = -input->params.zero_point;
@@ -1395,7 +1395,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(output), GetTensorData<int8_t>(output));
       }
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(
           context,
@@ -1439,19 +1439,19 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
           op_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteUInt8: {
       QuantizeLeakyRelu<uint8_t>(input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt8: {
       QuantizeLeakyRelu<int8_t>(input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt16: {
       QuantizeLeakyRelu<int16_t>(input, output, data);
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(
           context,
@@ -1487,12 +1487,12 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
       optimized_ops::Elu(GetTensorShape(input), GetTensorData<float>(input),
                          GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
-    } break;
+    }
     case kTfLiteInt8: {
       OpData* data = reinterpret_cast<OpData*>(node->user_data);
       EvalUsingLookupTable(data, input, output);
       return kTfLiteOk;
-    } break;
+    }
     default:
       TF_LITE_KERNEL_LOG(
           context, "Only float32 and int8 is supported currently, got %s.",

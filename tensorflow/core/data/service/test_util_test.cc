@@ -14,63 +14,73 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/test_util.h"
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace data {
-namespace test_util {
+namespace testing {
+namespace {
 
-TEST(TestUtil, MapTestCase) {
-  TF_ASSERT_OK_AND_ASSIGN(GraphDefTestCase test_case,
-                          map_test_case(/*range=*/10));
-  standalone::Dataset::Params params;
-  std::unique_ptr<standalone::Dataset> dataset;
-  TF_ASSERT_OK(
-      standalone::Dataset::FromGraph(params, test_case.graph_def, &dataset));
+using ::tensorflow::testing::IsOkAndHolds;
+using ::testing::IsEmpty;
 
-  std::unique_ptr<standalone::Iterator> iterator;
-  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-
+StatusOr<std::vector<std::vector<Tensor>>> GetIteratorOutput(
+    standalone::Iterator& iterator) {
   bool end_of_input = false;
-
   std::vector<std::vector<Tensor>> result;
   while (!end_of_input) {
     std::vector<tensorflow::Tensor> outputs;
-    TF_ASSERT_OK(iterator->GetNext(&outputs, &end_of_input));
+    TF_RETURN_IF_ERROR(iterator.GetNext(&outputs, &end_of_input));
     if (!end_of_input) {
       result.push_back(outputs);
     }
   }
-  ASSERT_EQ(result.size(), test_case.output.size());
-  for (int i = 0; i < result.size(); ++i) {
-    TF_EXPECT_OK(DatasetOpsTestBase::ExpectEqual(result[i], test_case.output[i],
-                                                 /*compare_order=*/true));
-  }
+  return result;
 }
 
-TEST(TestUtil, EmptyDataset) {
-  TF_ASSERT_OK_AND_ASSIGN(GraphDefTestCase test_case,
-                          map_test_case(/*range=*/0));
+TEST(TestUtilTest, RangeSquareDataset) {
+  TF_ASSERT_OK_AND_ASSIGN(const DatasetDef dataset_def,
+                          RangeSquareDataset(/*range=*/10));
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> dataset;
   TF_ASSERT_OK(
-      standalone::Dataset::FromGraph(params, test_case.graph_def, &dataset));
-
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<Tensor>> result,
+                          GetIteratorOutput(*iterator));
 
-  std::vector<tensorflow::Tensor> outputs;
-  bool end_of_input = false;
-  TF_ASSERT_OK(iterator->GetNext(&outputs, &end_of_input));
-  EXPECT_TRUE(outputs.empty());
-  EXPECT_TRUE(end_of_input);
+  ASSERT_EQ(result.size(), 10);
+  for (int i = 0; i < result.size(); ++i) {
+    test::ExpectEqual(result[i][0], Tensor(int64{i * i}));
+  }
 }
 
-}  // namespace test_util
+TEST(TestUtilTest, EmptyDataset) {
+  TF_ASSERT_OK_AND_ASSIGN(const DatasetDef dataset_def,
+                          RangeSquareDataset(/*range=*/0));
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+  EXPECT_THAT(GetIteratorOutput(*iterator), IsOkAndHolds(IsEmpty()));
+}
+
+}  // namespace
+}  // namespace testing
 }  // namespace data
 }  // namespace tensorflow

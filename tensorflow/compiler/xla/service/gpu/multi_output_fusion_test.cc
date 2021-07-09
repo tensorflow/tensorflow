@@ -407,7 +407,7 @@ TEST_F(MultiOutputFusionTest,
       gte0 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=0
       gte1 = f32[8,1,5,16,1,2]{5,4,3,2,1,0} get-tuple-element(fusion.1), index=1
       ROOT root = (f32[8,1,5,16,1,2]{5,4,3,2,1,0},
-        f32[8,1,5,16,1,1]{5,4,3,2,1,0}, f32[1,5,1,2]{3,2,1,0})
+        f32[8,1,5,16,1,2]{5,4,3,2,1,0}, f32[1,5,1,2]{3,2,1,0})
         tuple(gte0, gte1, fusion.2)
     })"))
                     .ValueOrDie();
@@ -900,7 +900,7 @@ TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
       out7 = f32[64] fusion(param7, param8, zero), kind=kInput, calls=fused_computation7
       out8 = f32[64] fusion(param8, param9, zero), kind=kInput, calls=fused_computation8
       out9 = f32[64] fusion(param9, param0, zero), kind=kInput, calls=fused_computation9
-      ROOT out = (f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64]) tuple(f32[64] out0, f32[64] out1, f32[64] out2, f32[64] out3, f32[64] out4, f32[64] out5, f32[64] out6, f32[64] out7, f32[64] out8, f32[64] out9)
+      ROOT out = (f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64], f32[64]) tuple(f32[64] out0, f32[64] out1, f32[64] out2, f32[64] out3, f32[64] out4, f32[64] out5, f32[64] out6, f32[64] out7, f32[64] out8, f32[64] out9)
     }
   )"))
                     .ValueOrDie();

@@ -378,6 +378,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        if (op_sig.ext_options.dequantize.is_per_channel_quantized) {
+          return 5;
+        }
         return 2;
       }
       return 1;

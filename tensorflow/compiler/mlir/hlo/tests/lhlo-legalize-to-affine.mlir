@@ -439,3 +439,19 @@ func @gather_5(%arg0: memref<28996x512x256xf32>, %arg1: memref<10x3xi32>, %arg2:
 }
 // CHECK: %[[and1:.*]] = and %{{.*}}, %{{.*}} : i1
 // CHECK-NEXT: and %[[and1]], %{{.*}} : i1
+
+// CHECK-LABEL: func @log
+func @log(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
+  
+// CHECK-NEXT: %[[RES:.*]] = memref.alloc() : memref<2x2xf32>
+// CHECK-NEXT: affine.for %{{.*}} = 0 to 2 {
+// CHECK-NEXT:   affine.for %{{.*}} = 0 to 2 {
+// CHECK-NEXT:     %[[LOAD:.*]] = affine.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<2x2xf32>
+// CHECK-NEXT:     %[[LOG:.*]] = math.log %[[LOAD]] : f32
+// CHECK-NEXT:     affine.store %[[LOG]], %[[RES]][%{{.*}}, %{{.*}}] : memref<2x2xf32>
+
+  %0 = memref.alloc() : memref<2x2xf32>
+  "lmhlo.log"(%arg0, %0) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.copy"(%0, %arg1) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.terminator"() : () -> ()
+}

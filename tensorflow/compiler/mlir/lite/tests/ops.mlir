@@ -2733,3 +2733,19 @@ func @conv3d_transpose_bias_size_not_match(%arg0: tensor<5xi32>, %arg1: tensor<1
   %0 = "tfl.conv_3d_transpose"(%arg0, %arg1, %arg2, %arg3) {data_format = "NDHWC", dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "VALID", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"} : (tensor<5xi32>, tensor<1x2x2x3x2xf32>, tensor<2x5x6x8x2xf32>, tensor<3xf32>) -> tensor<?x?x?x?x?xf32>
   return %0 : tensor<?x?x?x?x?xf32>
 }
+
+// -----
+
+func @broadcast_args(%arg0: tensor<5xi32>, %arg1: tensor<2xi32>) -> tensor<5xi32> {
+  // CHECK: "tfl.broadcast_args"(%arg0, %arg1)
+  %0 = "tfl.broadcast_args"(%arg0, %arg1) {} : (tensor<5xi32>, tensor<2xi32>) -> tensor<5xi32>
+  return %0 : tensor<5xi32>
+}
+
+// -----
+
+func @broadcast_args_unmatch_types(%arg0: tensor<5xi32>, %arg1: tensor<2xi64>) -> tensor<5xi32> {
+  // expected-error @+1 {{failed to verify that BroadcastArgs op operands have same element type}}
+  %0 = "tfl.broadcast_args"(%arg0, %arg1) {} : (tensor<5xi32>, tensor<2xi64>) -> tensor<5xi32>
+  return %0 : tensor<5xi32>
+}

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/stream_executor/tpu/tpu_executable.h"
 #include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
@@ -75,27 +76,7 @@ Status TpuDeviceState::ThenMemcpyDeviceToDevice(
   return Status::OK();
 }
 
-class PjRtTpuClient : public PjRtStreamExecutorClient {
- public:
-  PjRtTpuClient(LocalClient* client,
-                std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-                int process_index);
-
-  absl::string_view platform_version() const override {
-    return platform_version_;
-  }
-
-  StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override;
-
-  bool EnqueueD2DTransfersOnSrcStream() const override { return false; }
-
-  StatusOr<absl::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override;
-
- private:
-  const std::string platform_version_;
-};
+}  // namespace
 
 PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
@@ -155,7 +136,48 @@ StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
   return absl::optional<std::string>(tpu_executable->fingerprint());
 }
 
-StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
+StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
+    const PjRtExecutable& executable) const {
+  const PjRtStreamExecutorExecutable* se_executable =
+      tensorflow::down_cast<const PjRtStreamExecutorExecutable*>(&executable);
+  if (se_executable->executables().size() > 1) {
+    return Unimplemented(
+        "PjRtTpuClient::SerializeExecutable unimplemented for MPMD "
+        "executables");
+  }
+  const TpuExecutable* tpu_executable =
+      tensorflow::down_cast<const TpuExecutable*>(
+          se_executable->executables()[0]->executable());
+  return tpu_executable->Serialize();
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
+    absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
+    CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<TpuExecutable> tpu_executable,
+      TpuExecutable::Deserialize(serialized, std::move(hlo_module)));
+
+  auto local_executable = absl::make_unique<LocalExecutable>(
+      std::move(tpu_executable), client_->mutable_backend(),
+      options.executable_build_options);
+  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+  local_executables.emplace_back(std::move(local_executable));
+
+  auto pjrt_executable = absl::make_unique<PjRtStreamExecutorExecutable>(
+      std::move(local_executables), options.parameter_is_tupled_arguments,
+      std::move(extras.device_assignment),
+      std::move(extras.addressable_device_logical_ids),
+      std::move(extras.addressable_devices), this);
+  TF_RETURN_IF_ERROR(
+      pjrt_executable->SetUpDonation(options.parameter_is_tupled_arguments));
+  return std::unique_ptr<PjRtExecutable>(std::move(pjrt_executable));
+}
+
+static StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>>
+GetTpuDevices(
     LocalClient* client,
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
@@ -191,8 +213,6 @@ StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
   }
   return devices;
 }
-
-}  // namespace
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     int max_inflight_computations, absl::Duration init_retry_timeout) {

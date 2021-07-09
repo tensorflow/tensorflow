@@ -602,6 +602,58 @@ inline int MatchingFlatSize(const Dims<N>& dims, const Dims<N>& check_dims_0,
   return MatchingFlatSize(dims, check_dims_1, check_dims_2, check_dims_3);
 }
 
+// Flat size calculation, checking if their extended shapes match.
+inline int MatchingExtendedShapeFlatSize(const RuntimeShape& shape,
+                                         const RuntimeShape& check_shape_0) {
+  const int shape_dims = shape.DimensionsCount();
+  const int check_shape_0_dims = check_shape_0.DimensionsCount();
+  const int min_dims = std::min(shape_dims, check_shape_0_dims);
+
+  for (int i = 0; i < min_dims; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(shape_dims - 1 - i),
+                     check_shape_0.Dims(check_shape_0_dims - 1 - i));
+  }
+  for (int i = min_dims; i < shape_dims; ++i) {
+    TFLITE_DCHECK_EQ(shape.Dims(shape_dims - 1 - i), 1);
+  }
+  for (int i = min_dims; i < check_shape_0_dims; ++i) {
+    TFLITE_DCHECK_EQ(check_shape_0.Dims(check_shape_0_dims - 1 - i), 1);
+  }
+  return shape.FlatSize();
+}
+
+inline int MatchingExtendedShapeFlatSize(const RuntimeShape& shape,
+                                         const RuntimeShape& check_shape_0,
+                                         const RuntimeShape& check_shape_1) {
+  const int flat_size = MatchingExtendedShapeFlatSize(shape, check_shape_0);
+  TFLITE_DCHECK_EQ(MatchingExtendedShapeFlatSize(shape, check_shape_1),
+                   flat_size);
+  return flat_size;
+}
+
+inline int MatchingExtendedShapeFlatSize(const RuntimeShape& shape,
+                                         const RuntimeShape& check_shape_0,
+                                         const RuntimeShape& check_shape_1,
+                                         const RuntimeShape& check_shape_2) {
+  const int flat_size = MatchingExtendedShapeFlatSize(shape, check_shape_0);
+  TFLITE_DCHECK_EQ(
+      MatchingExtendedShapeFlatSize(shape, check_shape_1, check_shape_2),
+      flat_size);
+  return flat_size;
+}
+
+inline int MatchingExtendedShapeFlatSize(const RuntimeShape& shape,
+                                         const RuntimeShape& check_shape_0,
+                                         const RuntimeShape& check_shape_1,
+                                         const RuntimeShape& check_shape_2,
+                                         const RuntimeShape& check_shape_3) {
+  const int flat_size = MatchingExtendedShapeFlatSize(shape, check_shape_0);
+  TFLITE_DCHECK_EQ(MatchingExtendedShapeFlatSize(shape, check_shape_1,
+                                                 check_shape_2, check_shape_3),
+                   flat_size);
+  return flat_size;
+}
+
 // Data is required to be contiguous, and so many operators can use either the
 // full array flat size or the flat size with one dimension skipped (commonly
 // the depth).

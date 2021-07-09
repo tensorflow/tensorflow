@@ -562,7 +562,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
       to_apply=%sum.2,
       sharding={maximal device=1}
 
-  ROOT %tuple = (f32[], f32[])
+  ROOT %tuple = (f32[2], f32[2])
       tuple(%all-reduce.1, %all-reduce.2),
       sharding={{maximal device=0}, {maximal device=1}}
 }

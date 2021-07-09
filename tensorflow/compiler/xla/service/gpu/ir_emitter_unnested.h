@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -165,6 +166,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   template <typename NcclThunkType, typename OpTy>
   Status EmitNcclThunk(mlir::Operation* op);
+  Status EmitAllReduceDone(mlir::Operation* op);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);
@@ -656,6 +658,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
+
+  // Maps all-reduce-start ops to their thunk so done can access the thunk.
+  absl::flat_hash_map<mlir::Operation*, NcclAllReduceStartThunk*>
+      all_reduce_start_thunks_;
 
   // Begin optional members for XLA HLO -> LMHLO:
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>

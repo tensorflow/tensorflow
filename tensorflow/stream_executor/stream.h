@@ -265,11 +265,13 @@ class Stream {
 
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
-      const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
-      const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<float> &scale, const DeviceMemory<float> &offset,
+      const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
+      const DeviceMemory<float> &y, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
-      DeviceMemory<float> *offset_backprop,
+      dnn::ActivationMode activation_mode, DeviceMemory<float> *x_backprop,
+      DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+      DeviceMemory<float> *side_input_backprop,
       DeviceMemory<uint8> *reserve_space_data,
       ScratchAllocator *workspace_allocator);
 
@@ -291,11 +293,14 @@ class Stream {
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
+      const DeviceMemory<float> &offset, const DeviceMemory<float> &mean,
+      const DeviceMemory<float> &inv_var, const DeviceMemory<Eigen::half> &y,
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      dnn::ActivationMode activation_mode,
       DeviceMemory<Eigen::half> *x_backprop,
       DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+      DeviceMemory<Eigen::half> *side_input_backprop,
       DeviceMemory<uint8> *reserve_space_data,
       ScratchAllocator *workspace_allocator);
 
@@ -569,22 +574,6 @@ class Stream {
 #endif  // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
   }
-
-  Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
-                                   const DeviceMemory<double> &input_data,
-                                   const dnn::BatchDescriptor &bias_descriptor,
-                                   DeviceMemory<double> *backward_bias_data);
-
-  Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
-                                   const DeviceMemory<float> &input_data,
-                                   const dnn::BatchDescriptor &bias_descriptor,
-                                   DeviceMemory<float> *backward_bias_data);
-
-  Stream &ThenConvolveBackwardBias(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
-      const dnn::BatchDescriptor &bias_descriptor,
-      DeviceMemory<Eigen::half> *backward_bias_data);
 
   Stream &ThenMatMul(const DeviceMemory<float> &input_data,
                      const DeviceMemory<float> &weights,
@@ -1371,13 +1360,15 @@ class Stream {
         std::is_same<InputType, Eigen::half>::value ||
             std::is_same<InputType, ConstantType>::value,
         "If input is not Eigen::half, constant and input types have to match");
-    static_assert(std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<InputType, float>::value ||
-                      std::is_same<InputType, double>::value ||
-                      std::is_same<InputType, std::complex<float>>::value ||
-                      std::is_same<InputType, std::complex<double>>::value,
-                  "Input can be half, float, double, std::complex<float> or "
-                  "std::complex<double>");
+    static_assert(
+        std::is_same<InputType, Eigen::half>::value ||
+            std::is_same<InputType, Eigen::bfloat16>::value ||
+            std::is_same<InputType, float>::value ||
+            std::is_same<InputType, double>::value ||
+            std::is_same<InputType, std::complex<float>>::value ||
+            std::is_same<InputType, std::complex<double>>::value,
+        "Input can be half, bf16, float, double, std::complex<float> or "
+        "std::complex<double>");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -1607,10 +1598,12 @@ class Stream {
       int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
       ConstantType beta, DeviceMemory<InputType> *c, int ldc, int64 stride_c,
       int batch_count) {
-    static_assert((std::is_same<InputType, Eigen::half>::value &&
+    static_assert(((std::is_same<InputType, Eigen::half>::value ||
+                    std::is_same<InputType, Eigen::bfloat16>::value) &&
                    std::is_same<ConstantType, float>::value) ||
                       ((std::is_same<InputType, float>::value ||
                         std::is_same<InputType, Eigen::half>::value ||
+                        std::is_same<InputType, Eigen::bfloat16>::value ||
                         std::is_same<InputType, double>::value ||
                         std::is_same<InputType, std::complex<float>>::value ||
                         std::is_same<InputType, std::complex<double>>::value) &&
@@ -2171,6 +2164,7 @@ class Stream {
   port::Status CheckTypesForExtendedBlas(
       blas::ComputationType computation_type) {
     static_assert(std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<InputType, Eigen::bfloat16>::value ||
                       std::is_same<InputType, float>::value ||
                       std::is_same<InputType, double>::value ||
                       std::is_same<InputType, int8>::value ||
@@ -2186,13 +2180,15 @@ class Stream {
         "int8 and output is int32");
     static_assert(std::is_same<ConstantType, OutputType>::value ||
                       (std::is_same<ConstantType, float>::value &&
-                       std::is_same<OutputType, Eigen::half>::value),
+                       (std::is_same<OutputType, Eigen::half>::value ||
+                        std::is_same<OutputType, Eigen::bfloat16>::value)),
                   "Constant and output types should match");
     blas::ComputationType expected_computation_type =
         blas::ToComputationType<ConstantType>::value;
     if (expected_computation_type != computation_type &&
         !(computation_type == blas::ComputationType::kF32 &&
-          expected_computation_type == blas::ComputationType::kF16)) {
+          (expected_computation_type == blas::ComputationType::kF16 ||
+           expected_computation_type == blas::ComputationType::kBF16AsF32))) {
       return port::InternalError(absl::StrCat(
           "Alpha/beta type and computation type have to match, got ",
           blas::ComputationTypeString(computation_type),
@@ -2267,14 +2263,6 @@ class Stream {
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_
       TF_GUARDED_BY(mu_);
 
-  // Implementation of ThenConvolveBackwardBias that is shared by all types.
-  template <typename T>
-  Stream &ThenConvolveBackwardBiasImpl(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<T> &input_data,
-      const dnn::BatchDescriptor &bias_descriptor,
-      DeviceMemory<T> *backward_bias_data);
-
   // Implementation of ThenBlasLtMatmul that is shared by all types.
   template <typename ABType, typename CType>
   Stream &ThenBlasLtMatmulImpl(const blas::IBlasLtMatmulPlan *plan,
@@ -2299,6 +2287,13 @@ class Stream {
           static_cast<float>(*reinterpret_cast<Eigen::half *>(*alpha_ptr));
       *beta_storage =
           static_cast<float>(*reinterpret_cast<Eigen::half *>(*beta_ptr));
+      *alpha_ptr = alpha_storage;
+      *beta_ptr = beta_storage;
+    } else if (std::is_same<T, Eigen::bfloat16>::value) {
+      *alpha_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*alpha_ptr));
+      *beta_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*beta_ptr));
       *alpha_ptr = alpha_storage;
       *beta_ptr = beta_storage;
     }

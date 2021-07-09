@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -162,7 +165,6 @@ bool CanInferShape(HloOpcode code) {
     // but we made it so that we always write the shapes explicitly.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
@@ -176,6 +178,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSlice:
@@ -1246,8 +1249,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
-    case HloOpcode::kAllReduceStart: {
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kReduceScatter: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
@@ -1264,7 +1267,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
-      if (opcode == HloOpcode::kAllReduceScatter) {
+      if (opcode == HloOpcode::kReduceScatter) {
         attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                                &dimensions};
       }
@@ -1280,9 +1283,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
             shape, operands, *to_apply, replica_groups,
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
-      } else if (opcode == HloOpcode::kAllReduceScatter) {
+      } else if (opcode == HloOpcode::kReduceScatter) {
         instruction =
-            builder->AddInstruction(HloInstruction::CreateAllReduceScatter(
+            builder->AddInstruction(HloInstruction::CreateReduceScatter(
                 shape, operands, *to_apply, replica_groups,
                 constrain_layout ? *constrain_layout : false, channel_id,
                 use_global_device_ids ? *use_global_device_ids : false,
@@ -1501,8 +1504,22 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateTuple(operands));
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<const Shape*, 2> arg_shapes;
+                arg_shapes.reserve(operands.size());
+                for (auto* operand : operands) {
+                  arg_shapes.push_back(&operand->shape());
+                }
+                return ShapeInference::InferVariadicOpShape(opcode, arg_shapes);
+              },
+              &shape)) {
+        return false;
+      }
+      // HloInstruction::CreateTuple() infers the shape of the tuple from
+      // operands and should not be used here.
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateVariadic(shape, HloOpcode::kTuple, operands));
       break;
     }
     case HloOpcode::kWhile: {
@@ -3119,6 +3136,72 @@ std::string StringifyValue(std::complex<double> val) {
   return StrFormat("(%f, %f)", std::real(val), std::imag(val));
 }
 
+// Evaluates to V when T == U.
+template <typename T, typename U, typename V>
+using EnableIfSameWithType = std::enable_if_t<std::is_same<T, U>::value, V>;
+
+template <class T, EnableIfSameWithType<T, bool, bool> = false>
+uint64_t GetNanPayload(T val) {
+  return 0;
+}
+
+template <class T, EnableIfSameWithType<T, int64_t, bool> = false>
+uint64_t GetNanPayload(T val) {
+  return 0;
+}
+
+template <class T, EnableIfSameWithType<T, double, bool> = false>
+uint64_t GetNanPayload(T val) {
+  auto rep = absl::bit_cast<uint64_t>(val);
+  if (auto payload = rep & NanPayloadBitMask<double>()) {
+    return payload;
+  }
+  return QuietNanWithoutPayload<double>();
+}
+
+template <typename LiteralNativeT, typename LiteralComponentT>
+EnableIfSameWithType<LiteralNativeT, LiteralComponentT, LiteralNativeT>
+LiteralNativeFromRealImag(LiteralComponentT real, LiteralComponentT imag) {
+  return real;
+}
+
+template <typename LiteralNativeT, typename LiteralComponentT>
+EnableIfSameWithType<LiteralNativeT, std::complex<LiteralComponentT>,
+                     LiteralNativeT>
+LiteralNativeFromRealImag(LiteralComponentT real, LiteralComponentT imag) {
+  return LiteralNativeT(real, imag);
+}
+
+template <typename T>
+struct ComponentType {
+  using Type = T;
+};
+
+template <typename T>
+struct ComponentType<std::complex<T>> {
+  using Type = T;
+};
+
+template <typename T>
+T GetReal(T value) {
+  return value;
+}
+
+template <typename T>
+T GetReal(std::complex<T> value) {
+  return value.real();
+}
+
+template <typename T>
+T GetImag(T value) {
+  return 0;
+}
+
+template <typename T>
+T GetImag(std::complex<T> value) {
+  return value.imag();
+}
+
 template <typename LiteralNativeT, typename ParsedElemT>
 bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
                                             int64 index, Literal* literal) {
@@ -3134,8 +3217,54 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
                              " at linear index ", index,
                              ", but the index is out of range"));
   }
+  using ParsedElemComponentT = typename ComponentType<ParsedElemT>::Type;
+  using LiteralNativeComponentT = typename ComponentType<LiteralNativeT>::Type;
+  const auto handle_nan = [this, literal, index, loc](
+                              ParsedElemComponentT parsed_value_component,
+                              LiteralNativeComponentT*
+                                  literal_value_component) {
+    if (!std::isnan(static_cast<double>(parsed_value_component))) {
+      return true;
+    }
+    auto nan_payload = GetNanPayload(parsed_value_component);
+    if (nan_payload == QuietNanWithoutPayload<double>()) {
+      nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
+    }
+    const auto kLargestPayload = NanPayloadBitMask<LiteralNativeComponentT>();
+    if (nan_payload > kLargestPayload) {
+      return Error(
+          loc,
+          StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
+                 " to a literal in shape ",
+                 ShapeUtil::HumanString(literal->shape()), " at linear index ",
+                 index, ", but the NaN payload is out of range (0x",
+                 absl::Hex(kLargestPayload), ")"));
+    }
+    *literal_value_component = NanWithSignAndPayload<LiteralNativeComponentT>(
+        /*sign=*/std::signbit(static_cast<double>(parsed_value_component)),
+        /*nan_payload=*/nan_payload);
+    return true;
+  };
+  const ParsedElemComponentT parsed_real_value = GetReal(value);
+  auto literal_real_value =
+      static_cast<LiteralNativeComponentT>(parsed_real_value);
+  if (std::is_floating_point<ParsedElemT>::value ||
+      std::is_same<ParsedElemT, std::complex<double>>::value) {
+    if (!handle_nan(parsed_real_value, &literal_real_value)) {
+      return false;
+    }
+  }
+  const ParsedElemComponentT parsed_imag_value = GetImag(value);
+  auto literal_imag_value =
+      static_cast<LiteralNativeComponentT>(parsed_imag_value);
+  if (std::is_same<ParsedElemT, std::complex<double>>::value) {
+    if (!handle_nan(parsed_real_value, &literal_imag_value)) {
+      return false;
+    }
+  }
   literal->data<LiteralNativeT>().at(index) =
-      static_cast<LiteralNativeT>(value);
+      LiteralNativeFromRealImag<LiteralNativeT>(literal_real_value,
+                                                literal_imag_value);
   return true;
 }
 
@@ -3345,8 +3474,6 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
       case TokKind::kw_false:
       case TokKind::kInt:
       case TokKind::kDecimal:
-      case TokKind::kw_nan:
-      case TokKind::kNegNan:
       case TokKind::kw_inf:
       case TokKind::kNegInf: {
         add_one_elem_seen();
@@ -5124,12 +5251,6 @@ bool HloParserImpl::ParseDouble(double* result) {
     }
     case TokKind::kInt:
       *result = static_cast<double>(lexer_.GetInt64Val());
-      break;
-    case TokKind::kw_nan:
-      *result = std::numeric_limits<double>::quiet_NaN();
-      break;
-    case TokKind::kNegNan:
-      *result = -std::numeric_limits<double>::quiet_NaN();
       break;
     case TokKind::kw_inf:
       *result = std::numeric_limits<double>::infinity();

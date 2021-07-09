@@ -22,8 +22,7 @@ namespace functor {
 
 DEFINE_BINARY5(floor_div, uint8, uint16, int16, int32, int64);
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_BINARY3(floor_div_real, Eigen::half, float, double);
 #endif
 

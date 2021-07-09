@@ -549,7 +549,8 @@ Status DirectSession::RunInternal(
     }
     if (!collective_executor_mgr_) {
       collective_executor_mgr_ = CreateProdLocalCollectiveExecutorMgr(
-          options_.config, device_mgr_.get(), MaybeCreateNcclCommunicator());
+          options_.config, device_mgr_.get(),
+          MaybeCreateNcclCommunicator(options_.config));
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));

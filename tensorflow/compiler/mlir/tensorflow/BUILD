@@ -18,6 +18,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
+        "//tensorflow/cc/...",
         "//tensorflow/python/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
@@ -347,6 +348,21 @@ gentbl_cc_library(
     td_file = "transforms/canonicalize.td",
     td_srcs = [
         ":tensorflow_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tensorflow_reduce_patterns_inc_gen",
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/reducer/tf_reduce_patterns.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/reducer/tf_mlir_reduce_patterns.td",
+    td_srcs = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
 )
 
@@ -1064,13 +1080,11 @@ cc_library(
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_ops_by_policy.cc",
-        "transforms/cluster_ops_by_policy_pass.cc",
         "transforms/cluster_outlining.cc",
         "transforms/cluster_tf_ops_pass.cc",
         "transforms/collection_ops_util.cc",
         "transforms/constant_op_device_assignment.cc",
         "transforms/convert_launch_func_to_tf_call.cc",
-        "transforms/cross_host_transfer.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_attribute_to_launch.cc",
         "transforms/device_index_selector.cc",
@@ -1121,17 +1135,14 @@ cc_library(
         "transforms/tensor_array_ops_decomposition.cc",
         "transforms/tensor_device_copy_conversion.cc",
         "transforms/tensor_list_ops_decomposition.cc",
-        "transforms/test_cluster_ops_by_policy.cc",
         "transforms/test_resource_alias_analysis.cc",
         "transforms/test_side_effect_analysis.cc",
-        "transforms/test_visitor_util.cc",
         "transforms/tf_data_optimization_pass.cc",
         "transforms/tf_device_assignment.cc",
         "transforms/tf_device_replication_pass.cc",
         "transforms/tpu_cluster_cleanup_attributes.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_colocate_composite_resource_ops.cc",
-        "transforms/tpu_compile_op_replication_pass.cc",
         "transforms/tpu_device_propagation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_extract_head_tail_outside_compilation.cc",
@@ -1249,7 +1260,9 @@ cc_library(
         "transforms/lift_variables_test_pass.cc",
         "transforms/lower_tf_test_pass.cc",
         "transforms/mark_initialized_variables_test_pass.cc",
+        "transforms/test_cluster_ops_by_policy.cc",
         "transforms/test_passes.h.inc",
+        "transforms/test_visitor_util.cc",
         "transforms/tf_saved_model_freeze_variables_test_pass.cc",
     ],
     hdrs = [
@@ -1262,8 +1275,10 @@ cc_library(
         ":lower_tf_lib",
         ":mark_initialized_variables_lib",
         ":tensorflow",
+        ":tensorflow_passes",
         ":tf_saved_model_passes",
         ":tf_test_passes_inc_gen",
+        ":visitor_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -1670,23 +1685,6 @@ cc_library(
 )
 
 cc_library(
-    name = "decode_constant_pass",
-    srcs = [
-        "transforms/decode_constant.cc",
-    ],
-    hdrs = [
-        "transforms/decode_constant.h",
-    ],
-    deps = [
-        ":convert_tensor",
-        ":tensorflow",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "tf_dialect_passes",
     srcs = [
         "transforms/constant_fold.cc",
@@ -1697,7 +1695,6 @@ cc_library(
     ],
     deps = [
         ":convert_tensor",
-        ":decode_constant_pass",
         ":eval_util",
         ":tensorflow",
         ":tensorflow_traits",

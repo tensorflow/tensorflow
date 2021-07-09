@@ -68,6 +68,11 @@ StatusOr<bool> AllReduceReassociate::Run(HloModule *module) {
         continue;
       }
 
+      if (ar0->user_count() != 1 || ar1->user_count() != 1) {
+        VLOG(2) << "All-Reduce operations have > 1 users";
+        continue;
+      }
+
       // Found pattern op(ar(x), ar(y)). Transform it into ar(op(x,y)).
       HloInstruction *new_op = computation->AddInstruction(
           inst->CloneWithNewOperands(inst->shape(), {ar0->mutable_operand(0),
@@ -81,7 +86,13 @@ StatusOr<bool> AllReduceReassociate::Run(HloModule *module) {
       }
 
       TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(new_ar));
-      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(inst));
+      // Note that RemoveInstructionAndUnusedOperands may not remove the 2
+      // all-reduce operands of `inst` if they are not safe to remove otherwise,
+      // so manually these instructions.
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(inst));
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar0));
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(ar1));
+
       changed = true;
     }
   }

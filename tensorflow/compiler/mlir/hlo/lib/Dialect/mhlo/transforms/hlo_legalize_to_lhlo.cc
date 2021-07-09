@@ -15,6 +15,9 @@ limitations under the License.
 
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
+#include <algorithm>
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
@@ -48,9 +51,8 @@ namespace {
 template <typename T>
 using BaseOpConversion = OpConversionPattern<T>;
 
-Value InsertDynamicAllocAndDealloc(Location loc, Value result,
-                                   Value shape_operand,
-                                   ConversionPatternRewriter* rewriter) {
+Value InsertDynamicAlloc(Location loc, Value result, Value shape_operand,
+                         ConversionPatternRewriter* rewriter) {
   auto result_type = result.getType().dyn_cast<RankedTensorType>();
   if (!result_type) {
     result.getDefiningOp()->emitOpError()
@@ -111,10 +113,12 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
 
     if (tensor_operands.empty()) {
       for (auto operand : ArrayRef<Value>(results).take_front(num_operands)) {
-        auto tp = operand.getType().cast<ShapedType>();
+        auto operand_type = operand.getType().dyn_cast<MemRefType>();
+        if (!operand_type) return failure();
         tensor_operands.push_back(rewriter.create<memref::TensorLoadOp>(
             op->getLoc(),
-            RankedTensorType::get(tp.getShape(), tp.getElementType()),
+            RankedTensorType::get(operand_type.getShape(),
+                                  operand_type.getElementType()),
             operand));
       }
     }
@@ -123,9 +127,9 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
     auto status = shape_type_op.reifyReturnTypeShapes(rewriter, tensor_operands,
                                                       results_shape);
     if (failed(status)) return failure();
-    results.push_back(
-        InsertDynamicAllocAndDealloc(op->getLoc(), result.value(),
-                                     results_shape[result.index()], &rewriter));
+    results.push_back(InsertDynamicAlloc(op->getLoc(), result.value(),
+                                         results_shape[result.index()],
+                                         &rewriter));
   }
   return success();
 }
@@ -208,179 +212,6 @@ struct HloToLhloCustomCallOpConverter
   }
 };
 
-class HloToLhloReshapeUnrankedConverter
-    : public BaseOpConversion<mhlo::ReshapeOp> {
- public:
-  using BaseOpConversion<mhlo::ReshapeOp>::BaseOpConversion;
-
-  LogicalResult matchAndRewrite(
-      mhlo::ReshapeOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    mhlo::ReshapeOp::Adaptor adaptor(operands);
-    auto unranked_operand_type =
-        adaptor.operand().getType().dyn_cast<UnrankedMemRefType>();
-    if (unranked_operand_type == nullptr) return failure();
-
-    auto result_type = op.getType().cast<RankedTensorType>();
-    rewriter.replaceOpWithNewOp<memref::CastOp>(
-        op, adaptor.operand(),
-        MemRefType::get(result_type.getShape(), result_type.getElementType()));
-    return success();
-  }
-};
-
-// TODO(pifon): Consider inserting lhlo.copy as in
-// HloToLhloDynamicBroadcastInDimOpConverter.
-class HloToLhloDynamicReshapeConverter
-    : public BaseOpConversion<mhlo::DynamicReshapeOp> {
- public:
-  using BaseOpConversion<mhlo::DynamicReshapeOp>::BaseOpConversion;
-
-  LogicalResult matchAndRewrite(
-      mhlo::DynamicReshapeOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    Type result_type;
-    if (auto ranked_type = op.getType().dyn_cast<RankedTensorType>()) {
-      result_type =
-          MemRefType::get(ranked_type.getShape(), ranked_type.getElementType());
-    } else if (auto unranked_type =
-                   op.getType().dyn_cast<UnrankedTensorType>()) {
-      result_type = UnrankedMemRefType::get(unranked_type.getElementType(), 0);
-    } else {
-      return failure();
-    }
-    mhlo::DynamicReshapeOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<memref::ReshapeOp>(
-        op, result_type, adaptor.operand(), adaptor.output_shape());
-    return success();
-  }
-};
-
-// TODO(b/175670649) Fix this to no longer access original tensor operands.
-class HloToLhloDynamicBroadcastInDimOpConverter
-    : public BaseOpConversion<mhlo::DynamicBroadcastInDimOp> {
- public:
-  HloToLhloDynamicBroadcastInDimOpConverter(TypeConverter& converter,
-                                            MLIRContext* ctx,
-                                            bool insert_copy = true)
-      : BaseOpConversion<mhlo::DynamicBroadcastInDimOp>(converter, ctx),
-        insert_copy_(insert_copy) {}
-
-  LogicalResult matchAndRewrite(
-      mhlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    if (!op.getType().isa<RankedTensorType>()) return failure();
-    Value result = InsertDynamicMemrefCastOp(op, operands.front(), &rewriter);
-
-    if (insert_copy_) {
-      auto loc = op.getLoc();
-      Value result_buffer = InsertDynamicAllocAndDealloc(
-          loc, op.getResult(), op.output_dimensions(), &rewriter);
-
-      rewriter.create<lmhlo::CopyOp>(loc, result, result_buffer);
-      result = result_buffer;
-    }
-    rewriter.replaceOp(op, {result});
-    return success();
-  }
-
- private:
-  // Inserts dynamic memref to change the layout of the memref to put 0-stride
-  // and size of the target dimension if size-1 dimension expansion is
-  // necessary.
-  memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
-      mhlo::DynamicBroadcastInDimOp op, Value operand, OpBuilder* b) const {
-    auto loc = op.getLoc();
-    auto operand_type = operand.getType().cast<MemRefType>();
-    auto operand_shape = operand_type.getShape();
-    auto operand_rank = operand_type.getRank();
-
-    auto result_type = op.getType().cast<RankedTensorType>();
-    auto result_rank = result_type.getRank();
-
-    Value zero = b->create<ConstantIndexOp>(loc, 0);
-    Value one = b->create<ConstantIndexOp>(loc, 1);
-
-    // Compute a reversed scan product. Compute the stride for the dimensions so
-    // far, working from minor to major dimensions. Additionally, save the
-    // operand shape Values to use in the next loop.
-    SmallVector<Value, 2> operand_strides(operand_rank, one);
-    SmallVector<Value, 2> operand_sizes(operand_rank, one);
-    Value stride_so_far = one;
-    for (int i = operand_rank - 1; i >= 0; --i) {
-      Value operand_dim_size =
-          ShapedType::isDynamic(operand_shape[i])
-              ? b->create<memref::DimOp>(loc, operand, i).getResult()
-              : b->create<ConstantIndexOp>(loc, operand_shape[i]).getResult();
-      operand_sizes[i] = operand_dim_size;
-
-      operand_strides[i] = stride_so_far;
-      if (i > 0) {
-        stride_so_far = b->create<MulIOp>(loc, stride_so_far, operand_dim_size);
-      }
-    }
-
-    SmallVector<OpFoldResult, 2> sizes, strides;
-    sizes.reserve(result_rank);
-    strides.reserve(result_rank);
-
-    DenseMap<int, int> output_to_input_dim;
-    for (auto dim : llvm::enumerate(op.broadcast_dimensions())) {
-      output_to_input_dim[dim.value().getSExtValue()] = dim.index();
-    }
-    for (int i = 0; i < result_rank; ++i) {
-      Value i_val = b->create<ConstantIndexOp>(loc, i);
-      Value result_dim_size =
-          b->create<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
-      if (!result_dim_size.getType().isIndex()) {
-        result_dim_size =
-            b->create<IndexCastOp>(loc, result_dim_size, b->getIndexType());
-      }
-      sizes.push_back(result_dim_size);
-
-      auto it = output_to_input_dim.find(i);
-      // If the rank of the output is greater than the rank of the input, i.e.
-      // there was no output dimension in the inverse broadcast_dimensions map
-      // we also set stride to 0 to emulate padding of the shape with 1s and the
-      // corresponding expansion.
-      if (it == output_to_input_dim.end()) {
-        strides.push_back(zero);
-        continue;
-      }
-
-      // There can be two cases:
-      // 1) Operand dim == result dim => expansion is not needed
-      //    => stride flattened buffer stride
-      // 2) Operand dim < result dim => expansion is needed => stride := 0.
-      int dim = it->second;
-      Value is_expansion = b->create<CmpIOp>(
-          loc, CmpIPredicate::slt, operand_sizes[dim], result_dim_size);
-      Value select = b->create<mlir::SelectOp>(loc, is_expansion, zero,
-                                               operand_strides[dim]);
-      strides.push_back(select);
-    }
-
-    // Type-erased memref type with static rank, dynamic sizes and strides.
-    SmallVector<int64_t, 2> dynamic_layout(result_rank,
-                                           MemRefType::kDynamicStrideOrOffset);
-    SmallVector<int64_t, 2> dynamic_shape(result_rank,
-                                          MemRefType::kDynamicSize);
-    auto type_erased_memref_type = MemRefType::get(
-        dynamic_shape, operand_type.getElementType(),
-        makeStridedLinearLayoutMap(dynamic_layout,
-                                   /*offset=*/0, b->getContext()));
-
-    auto transformed_operand = b->create<memref::ReinterpretCastOp>(
-        loc, type_erased_memref_type, operand,
-        /*offset=*/b->getI64IntegerAttr(0), sizes, strides);
-    return transformed_operand;
-  }
-
-  // Keep the copy semantics and allocate a buffer for the result of the memref
-  // cast.
-  bool insert_copy_;
-};
-
 struct HloToLhloDotGeneralOpConverter
     : public BaseOpConversion<mhlo::DotGeneralOp> {
   using BaseOpConversion<mhlo::DotGeneralOp>::BaseOpConversion;
@@ -408,8 +239,8 @@ struct HloToLhloDotGeneralOpConverter
                                                      results_shape)))
         return failure();
 
-      bufferArgs[2] = InsertDynamicAllocAndDealloc(
-          op->getLoc(), result, results_shape.front(), &rewriter);
+      bufferArgs[2] = InsertDynamicAlloc(op->getLoc(), result,
+                                         results_shape.front(), &rewriter);
     }
 
     rewriter.create<lmhlo::DotOp>(op->getLoc(), llvm::None, bufferArgs,
@@ -576,11 +407,6 @@ class HloToLhloTensorStoreOpLegacyConverter
 
 struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
   using HloLegalizeToLhloPassBase<HloLegalizeToLhlo>::HloLegalizeToLhloPassBase;
-  explicit HloLegalizeToLhlo(bool convert_to_lmhlo_only)
-      : HloLegalizeToLhloPassBase<
-            HloLegalizeToLhlo>::HloLegalizeToLhloPassBase() {
-    this->convert_to_lmhlo_only_ = convert_to_lmhlo_only;
-  }
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<lmhlo::LmhloDialect, memref::MemRefDialect,
@@ -612,8 +438,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
     BufferizeTypeConverter converter;
     auto isMemRefType = [](Type type) { return type.isa<BaseMemRefType>(); };
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      auto inputs = op.getType().getInputs();
-      return llvm::all_of(inputs, isMemRefType) &&
+      return converter.isSignatureLegal(op.getType()) &&
              converter.isLegal(&op.getBody());
     });
     target.addDynamicallyLegalOp<CallOp>([&](CallOp op) {
@@ -627,8 +452,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
                          isMemRefType);
     });
 
-    populateHLOToLHLOConversionPattern(&context, &converter, &patterns,
-                                       convert_to_lmhlo_only_);
+    populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateFuncOpTypeConversionPattern(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
@@ -648,20 +472,8 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 };
 }  // namespace
 
-// Lowers some metadata-only mhlo ops (e.g. reshape) to memref dialect
-// directly and Lowers others to their lmhlo counterparts.
-void populateDynamicHLOToLHLOOrMemRefConversionPattern(
-    MLIRContext* context, BufferizeTypeConverter* converter,
-    OwningRewritePatternList* patterns, bool insert_copy) {
-  patterns->insert<HloToLhloDynamicBroadcastInDimOpConverter>(
-      *converter, context, insert_copy);
-  patterns->insert<HloToLhloDynamicReshapeConverter,
-                   HloToLhloReshapeUnrankedConverter>(*converter, context);
-}
-
-// Simply lowers all mhlo ops to their lmhlo counterparts, do not apply
-// any optimization (e.g. elide any buffer copy).
-void populateDynamicHLOToLHLOOnlyConversionPattern(
+// Simply lowers all mhlo ops to their lmhlo counterparts.
+void populateDynamicHLOToLHLOConversionPattern(
     MLIRContext* context, BufferizeTypeConverter* converter,
     OwningRewritePatternList* patterns) {
   // clang-format off
@@ -677,14 +489,9 @@ void populateDynamicHLOToLHLOOnlyConversionPattern(
 
 void populateHLOToLHLOConversionPattern(MLIRContext* context,
                                         BufferizeTypeConverter* converter,
-                                        OwningRewritePatternList* patterns,
-                                        bool convert_to_lmhlo_only) {
-  if (convert_to_lmhlo_only) {
-    populateDynamicHLOToLHLOOnlyConversionPattern(context, converter, patterns);
-  } else {
-    populateDynamicHLOToLHLOOrMemRefConversionPattern(context, converter,
-                                                      patterns);
-  }
+                                        OwningRewritePatternList* patterns) {
+  populateDynamicHLOToLHLOConversionPattern(context, converter, patterns);
+
   // clang-format off
   patterns->insert<
       HloToLhloCustomCallOpConverter,
@@ -742,9 +549,8 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
-    bool convert_to_lmhlo_only) {
-  return std::make_unique<HloLegalizeToLhlo>(convert_to_lmhlo_only);
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {
+  return std::make_unique<HloLegalizeToLhlo>();
 }
 
 }  // namespace mhlo

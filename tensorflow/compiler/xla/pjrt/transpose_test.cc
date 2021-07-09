@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 
+#include <algorithm>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/numeric/int128.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -38,14 +43,22 @@ TEST(TransposeTest, RemoveTrivialDimensions) {
   absl::InlinedVector<int64_t, 4> dims = {4, 5, 1, 3, 1, 2, 5};
   absl::InlinedVector<int64_t, 4> perm = {0, 2, 1, 4, 3, 6, 5};
   absl::InlinedVector<int64_t, 4> lda = {2, 5, 7, 100, 3, 0, 1};
-  TestTransposePlan::RemoveTrivialDimensions(dims, perm, lda);
+  absl::InlinedVector<int64_t, 4> lda_tile = {1, 1, 1, 1, 1, 1, 1};
+  absl::InlinedVector<int64_t, 4> input_tiling = {1, 1, 1, 1, 1, 1, 1};
+  absl::InlinedVector<int64_t, 4> output_tiling = {1, 1, 1, 1, 1, 1, 1};
+  TestTransposePlan::RemoveTrivialDimensions(dims, perm, lda, lda_tile,
+                                             input_tiling, output_tiling);
   EXPECT_THAT(dims, testing::ElementsAre(4, 5, 3, 2, 5));
   EXPECT_THAT(perm, testing::ElementsAre(0, 1, 2, 4, 3));
 
   dims = {4, 5, 3, 2, 5};
   perm = {4, 3, 2, 1, 0};
   lda = {2, 5, 100, 0, 1};
-  TestTransposePlan::RemoveTrivialDimensions(dims, perm, lda);
+  lda_tile = {1, 1, 1, 1, 1};
+  input_tiling = {1, 1, 1, 1, 1};
+  output_tiling = {1, 1, 1, 1, 1};
+  TestTransposePlan::RemoveTrivialDimensions(dims, perm, lda, lda_tile,
+                                             input_tiling, output_tiling);
   EXPECT_THAT(dims, testing::ElementsAre(4, 5, 3, 2, 5));
   EXPECT_THAT(perm, testing::ElementsAre(4, 3, 2, 1, 0));
 }
@@ -54,8 +67,11 @@ TEST(TransposeTest, CoalesceDimensions) {
   absl::InlinedVector<int64_t, 4> dims = {4, 5, 1, 3, 1, 2, 5};
   absl::InlinedVector<int64_t, 4> perm = {0, 2, 1, 4, 3, 6, 5};
   absl::InlinedVector<int64_t, 4> lda = {50, 30, 30, 10, 10, 5, 1};
-
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda);
+  absl::InlinedVector<int64_t, 4> lda_tile = {1, 1, 1, 1, 1, 1, 1};
+  absl::InlinedVector<int64_t, 4> input_tiling = {1, 1, 1, 1, 1, 1, 1};
+  absl::InlinedVector<int64_t, 4> output_tiling = {1, 1, 1, 1, 1, 1, 1};
+  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
+                                        output_tiling);
   EXPECT_THAT(dims, testing::ElementsAre(4, 5, 1, 3, 1, 2, 5));
   EXPECT_THAT(perm, testing::ElementsAre(0, 2, 1, 4, 3, 6, 5));
   EXPECT_THAT(lda, testing::ElementsAre(50, 30, 30, 10, 10, 5, 1));
@@ -63,7 +79,11 @@ TEST(TransposeTest, CoalesceDimensions) {
   dims = {4, 5, 3, 2, 5};
   perm = {4, 1, 2, 3, 0};
   lda = {150, 30, 10, 5, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda);
+  lda_tile = {1, 1, 1, 1, 1};
+  input_tiling = {1, 1, 1, 1, 1};
+  output_tiling = {1, 1, 1, 1, 1};
+  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
+                                        output_tiling);
   EXPECT_THAT(dims, testing::ElementsAre(4, 30, 5));
   EXPECT_THAT(perm, testing::ElementsAre(2, 1, 0));
   EXPECT_THAT(lda, testing::ElementsAre(150, 5, 1));
@@ -71,7 +91,11 @@ TEST(TransposeTest, CoalesceDimensions) {
   dims = {4, 5, 3, 2, 5};
   perm = {0, 1, 2, 3, 4};
   lda = {150, 30, 10, 5, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda);
+  lda_tile = {1, 1, 1, 1, 1};
+  input_tiling = {1, 1, 1, 1, 1};
+  output_tiling = {1, 1, 1, 1, 1};
+  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
+                                        output_tiling);
   EXPECT_THAT(dims, testing::ElementsAre(600));
   EXPECT_THAT(perm, testing::ElementsAre(0));
   EXPECT_THAT(lda, testing::ElementsAre(1));
@@ -79,10 +103,101 @@ TEST(TransposeTest, CoalesceDimensions) {
   dims = {4, 5, 3, 2, 5};
   perm = {4, 1, 2, 3, 0};
   lda = {150, 30, 10, 7, 1};  // Non-standard stridings prevent coalescing.
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda);
+  lda_tile = {1, 1, 1, 1, 1};
+  input_tiling = {1, 1, 1, 1, 1};
+  output_tiling = {1, 1, 1, 1, 1};
+  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
+                                        output_tiling);
   EXPECT_THAT(dims, testing::ElementsAre(4, 15, 2, 5));
   EXPECT_THAT(perm, testing::ElementsAre(3, 1, 2, 0));
   EXPECT_THAT(lda, testing::ElementsAre(150, 10, 7, 1));
+}
+
+TEST(TransposeTest, InvalidTilings) {
+  auto plan =
+      TransposePlan::Create(sizeof(float), {3, 4, 5}, {0, 1, 2},
+                            /*input_layout=*/TransposePlan::Tiling{{8, 128}},
+                            /*output_tiling=*/TransposePlan::Tiling{{4}});
+  EXPECT_EQ(plan.status().code(), tensorflow::error::UNIMPLEMENTED);
+  EXPECT_THAT(plan.status().error_message(),
+              testing::HasSubstr("mismatched tilings for input dimension 2"));
+}
+
+// Computes the size in elements of a tiled array.
+int64_t SizeOfTiledArray(absl::Span<int64 const> shape,
+                         absl::Span<int64 const> tiling) {
+  int64_t size = 1;
+  for (size_t i = 0; i < shape.size(); ++i) {
+    if (i >= shape.size() - tiling.size()) {
+      size *= RoundUpToNearest(shape[i],
+                               tiling[i - (shape.size() - tiling.size())]);
+    } else {
+      size *= shape[i];
+    }
+  }
+  return size;
+}
+
+// Advances 'indices' in the lexicographical order of the multidimensional
+// array with `shape`. Returns false if the end of the array has been reached.
+bool BumpIndices(absl::Span<int64 const> shape, absl::Span<int64> indices) {
+  CHECK_EQ(shape.size(), indices.size());
+  for (int dimno = indices.size() - 1; dimno >= 0; --dimno) {
+    if (indices[dimno] + 1 < shape[dimno]) {
+      indices[dimno]++;
+      // Whenever an index of a dimension is increased, it means that all
+      // following dimensions have maxed out, so they must go to 0.
+      std::fill(indices.begin() + dimno + 1, indices.end(), 0);
+      return true;
+    }
+  }
+  return false;
+}
+
+// Converts a multidimensional index `indices` into an array with `shape` and
+// tiling `tiling` into a linear offset into a buffer.
+int64 IndexToLinearIndex(absl::Span<int64 const> shape,
+                         absl::Span<int64 const> tiling,
+                         absl::Span<int64 const> indices) {
+  CHECK_LE(tiling.size(), shape.size());
+  CHECK_EQ(shape.size(), indices.size());
+  int64 stride = 1;
+  int64 offset = 0;
+
+  auto index_it = indices.rbegin();
+  auto tile_it = tiling.rbegin();
+  for (; tile_it != tiling.rend(); ++index_it, ++tile_it) {
+    offset += (*index_it % *tile_it) * stride;
+    stride *= *tile_it;
+  }
+  index_it = indices.rbegin();
+  tile_it = tiling.rbegin();
+  auto shape_it = shape.rbegin();
+  for (; tile_it != tiling.rend(); ++index_it, ++shape_it, ++tile_it) {
+    offset += (*index_it / *tile_it) * stride;
+    stride *= CeilOfRatio(*shape_it, *tile_it);
+  }
+  for (; shape_it != shape.rend(); ++index_it, ++shape_it) {
+    offset += *index_it * stride;
+    stride *= *shape_it;
+  }
+  return offset;
+}
+
+// Slow reference code that converts an array from an untiled layout into a
+// tiled layout.
+template <typename T>
+std::vector<T> TileArray(const Array<T>& in, absl::Span<int64_t const> tiling) {
+  std::vector<T> out(SizeOfTiledArray(in.dimensions(), tiling), -1);
+  if (in.num_elements() == 0) {
+    return out;
+  }
+  std::vector<int64> indices(in.num_dimensions(), 0);
+  do {
+    int64 i = IndexToLinearIndex(in.dimensions(), tiling, indices);
+    out.at(i) = in(indices);
+  } while (BumpIndices(in.dimensions(), absl::MakeSpan(indices)));
+  return out;
 }
 
 // Reference implementation: transpose using Eigen.
@@ -139,15 +254,24 @@ void TransposeUsingEigen(const T* input, T* output,
 }
 
 struct TransposeTestCase {
-  TransposeTestCase(std::vector<int64> dims, std::vector<int64> permutation)
-      : dims(std::move(dims)), permutation(std::move(permutation)) {}
+  TransposeTestCase(std::vector<int64_t> dims, std::vector<int64_t> permutation,
+                    std::vector<int64_t> input_tiling = {},
+                    std::vector<int64_t> output_tiling = {})
+      : dims(std::move(dims)),
+        permutation(std::move(permutation)),
+        input_tiling(std::move(input_tiling)),
+        output_tiling(std::move(output_tiling)) {}
 
-  std::vector<int64> dims;
-  std::vector<int64> permutation;
+  std::vector<int64_t> dims;
+  std::vector<int64_t> permutation;
+  std::vector<int64_t> input_tiling;
+  std::vector<int64_t> output_tiling;
 
   std::string ToString() const {
-    return absl::StrFormat("[%s],perm=[%s]", absl::StrJoin(dims, ","),
-                           absl::StrJoin(permutation, ","));
+    return absl::StrFormat(
+        "[%s],perm=[%s],tiling=[%s]/[%s]", absl::StrJoin(dims, ","),
+        absl::StrJoin(permutation, ","), absl::StrJoin(input_tiling, ","),
+        absl::StrJoin(output_tiling, ","));
   }
 };
 
@@ -161,6 +285,8 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
       TransposeTestCase(/*dims=*/{1}, /*permutation=*/{0}),
       TransposeTestCase(/*dims=*/{4}, /*permutation=*/{0}),
       TransposeTestCase(/*dims=*/{27}, /*permutation=*/{0}),
+      TransposeTestCase(/*dims=*/{1, 1}, /*permutation=*/{0, 1}),
+      TransposeTestCase(/*dims=*/{1, 1}, /*permutation=*/{1, 0}),
       TransposeTestCase(/*dims=*/{2, 2}, /*permutation=*/{0, 1}),
       TransposeTestCase(/*dims=*/{4, 4}, /*permutation=*/{1, 0}),
       TransposeTestCase(/*dims=*/{4, 4}, /*permutation=*/{0, 1}),
@@ -180,6 +306,40 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
       TransposeTestCase(/*dims=*/{4, 8, 16, 32}, /*permutation=*/{3, 1, 0, 2}),
       TransposeTestCase(/*dims=*/{64, 224, 224, 3},
                         /*permutation=*/{3, 1, 2, 0}),
+
+      TransposeTestCase(/*dims=*/{3}, /*permutation=*/{0},
+                        /*input_tiling=*/{3}),
+      TransposeTestCase(/*dims=*/{3}, /*permutation=*/{0},
+                        /*input_tiling=*/{},
+                        /*output_tiling=*/{3}),
+      TransposeTestCase(/*dims=*/{2, 4, 6}, /*permutation=*/{0, 1, 2},
+                        /*input_tiling=*/{},
+                        /*output_tiling=*/{2, 3}),
+      TransposeTestCase(/*dims=*/{4}, /*permutation=*/{0},
+                        /*input_tiling=*/{3}),
+      TransposeTestCase(/*dims=*/{5}, /*permutation=*/{0},
+                        /*input_tiling=*/{},
+                        /*output_tiling=*/{3}),
+      TransposeTestCase(/*dims=*/{8}, /*permutation=*/{0},
+                        /*input_tiling=*/{3},
+                        /*output_tiling=*/{3}),
+      TransposeTestCase(/*dims=*/{29}, /*permutation=*/{0},
+                        /*input_tiling=*/{},
+                        /*output_tiling=*/{3}),
+      TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{4}),
+      TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{4}, /*output_tiling=*/{4}),
+      TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{5}),
+      TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{2, 4}),
+      TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{5, 2}),
+      TransposeTestCase(/*dims=*/{128, 224, 224, 3},
+                        /*permutation=*/{3, 1, 2, 0},
+                        /*input_tiling=*/{},
+                        /*output_tiling=*/{8, 128}),
   };
   return cases;
 }
@@ -192,18 +352,25 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
     std::vector<int64> output_dims = Permute(test.dims, test.permutation);
     TF_ASSERT_OK_AND_ASSIGN(
         auto plan,
-        TransposePlan::Create(sizeof(T), test.dims, test.permutation));
+        TransposePlan::Create(sizeof(T), test.dims, test.permutation,
+                              TransposePlan::Tiling{test.input_tiling},
+                              TransposePlan::Tiling{test.output_tiling}));
     VLOG(1) << plan->ToString();
-    xla::Array<T> input(test.dims);
-    input.FillIota(0);
-    xla::Array<T> expected_output(output_dims);
-    TransposeUsingEigen(input.data(), expected_output.data(), test.dims,
-                        output_dims, test.permutation);
-    xla::Array<T> output(output_dims);
-    EXPECT_EQ(plan->NumElems(), output.num_elements());
-    plan->Execute(input.data(), output.data());
+    xla::Array<T> untiled_input(test.dims);
+    untiled_input.FillIota(0);
+    xla::Array<T> expected_untiled_output(output_dims);
+    TransposeUsingEigen(untiled_input.data(), expected_untiled_output.data(),
+                        test.dims, output_dims, test.permutation);
 
-    EXPECT_EQ(expected_output, output);
+    auto tiled_input = TileArray(untiled_input, test.input_tiling);
+    auto expected_tiled_output =
+        TileArray(expected_untiled_output, test.output_tiling);
+
+    std::vector<T> output(
+        SizeOfTiledArray(plan->OutputDims(), test.output_tiling), -1);
+    plan->Execute(tiled_input.data(), output.data());
+
+    EXPECT_EQ(expected_tiled_output, output);
   }
 };
 

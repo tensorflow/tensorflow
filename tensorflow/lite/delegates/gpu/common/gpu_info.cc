@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 
@@ -546,6 +547,9 @@ int GpuInfo::GetComputeUnitsCount() const {
   }
   if (IsApple()) {
     return apple_info.GetComputeUnitsCount();
+  }
+  if (IsAMD() && IsApiVulkan()) {
+    return amd_info.GetComputeUnitsCount();
   }
   return 1;
 }

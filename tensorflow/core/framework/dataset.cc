@@ -546,6 +546,46 @@ void MergeOptions(const protobuf::MessageLite& source,
 
 }  // namespace internal
 
+void DatasetBase::Initialize() {
+  Status s = ComputeNumSources();
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+  }
+  s = MergeOptionsFromInputs();
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+  }
+}
+
+Status DatasetBase::ComputeNumSources() {
+  std::vector<const DatasetBase*> inputs;
+  Status s = InputDatasets(&inputs);
+  if (errors::IsUnimplemented(s)) {
+    return errors::Unimplemented(
+        "Cannot compute input sources for dataset of type ", type_string(),
+        ", because the dataset does not implement `InputDatasets`.");
+  }
+  if (num_sources_ >= 0) {
+    // Already computed.
+    return Status::OK();
+  }
+  num_sources_ = 0;
+  if (inputs.empty()) {
+    num_sources_ = 1;
+    return Status::OK();
+  }
+  for (const auto& input : inputs) {
+    if (input->num_sources() < 0) {
+      return errors::FailedPrecondition(
+          "Cannot compute input sources for dataset of type ", type_string(),
+          ", because sources could not be computed for input dataset of type ",
+          input->type_string());
+    }
+    num_sources_ += input->num_sources();
+  }
+  return Status::OK();
+}
+
 Status DatasetBase::MergeOptionsFromInputs() {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
@@ -597,23 +637,24 @@ Status DatasetBase::MakeIterator(
   return s;
 }
 
-Status DatasetBase::MakeSplitProvider(
-    std::unique_ptr<SplitProvider>* split_provider) const {
+Status DatasetBase::MakeSplitProviders(
+    std::vector<std::unique_ptr<SplitProvider>>* split_providers) const {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
   if (errors::IsUnimplemented(s)) {
     return errors::Unimplemented(
-        "Cannot create a split provider for dataset of type ", type_string(),
+        "Cannot create split providers for dataset of type ", type_string(),
         ", because the dataset implements neither `InputDatasets` nor "
         "`MakeSplitProvider`.");
   }
   if (inputs.size() != 1) {
     return errors::Unimplemented(
-        "Cannot create a split provider for dataset of type ", type_string(),
-        ", because the dataset is not unary (having arity ", inputs.size(),
+        "Cannot create split providers for dataset of type ", type_string(),
+        ", because the dataset is not unary (instead having arity ",
+        inputs.size(),
         "), and no custom implementation of `MakeSplitProvider` is defined.");
   }
-  return inputs[0]->MakeSplitProvider(split_provider);
+  return inputs[0]->MakeSplitProviders(split_providers);
 }
 
 Status DatasetBase::InputDatasets(
@@ -852,10 +893,7 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
-    auto status = dataset->MergeOptionsFromInputs();
-    if (!status.ok()) {
-      LOG(ERROR) << status;
-    }
+    dataset->Initialize();
   }
 }
 

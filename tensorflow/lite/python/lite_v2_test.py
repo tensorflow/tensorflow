@@ -1389,16 +1389,28 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
-    # TODO(b/184696047): Write down the test codes for multiple signature
-    #                    runners once the Python API is ready to use.
     interpreter = tf.lite.Interpreter(model_content=tflite_model)
     signature_defs = interpreter.get_signature_list()
-    self.assertEqual(len(signature_defs), 2)
 
-    with self.assertRaises(ValueError) as error:
-      _ = interpreter.get_signature_runner('add')
-    self.assertIn('This Interpreter doesnt handle multiple signatures properly',
-                  str(error.exception))
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 2)
+    self.assertEqual(list(signature_defs.keys()), ['add', 'sub'])
+    self.assertEqual(len(signature_defs.values()), 2)
+    self.assertEqual(list(signature_defs['add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['add']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['add']['outputs']), ['output_0'])
+    self.assertEqual(list(signature_defs['sub'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['sub']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['sub']['outputs']), ['output_0'])
+
+    # Verify the Signature runner executions.
+    add_signature_runner = interpreter.get_signature_runner('add')
+    add_output = add_signature_runner(x=input_data)
+    self.assertEqual(add_output['output_0'], 3)
+
+    sub_signature_runner = interpreter.get_signature_runner('sub')
+    sub_output = sub_signature_runner(x=input_data)
+    self.assertEqual(sub_output['output_0'], -2)
 
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):
@@ -1727,6 +1739,46 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_keras_model(model)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+  @test_util.run_v2_only
+  def testSignatureDefs(self):
+    """Test converting SignatureDef is correct and uses SignatureDef API."""
+    keras_model = tf.keras.Sequential([
+        tf.keras.layers.Conv2D(
+            32,
+            kernel_size=3,
+            padding='same',
+            activation='relu',
+            input_shape=(32, 32, 3),
+            name='tensor'),
+        tf.keras.layers.Dense(10, name='output_tensor')
+    ])
+
+    converter = lite.TFLiteConverterV2.from_keras_model(keras_model)
+    converter.experimental_lower_to_saved_model = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    input_data = tf.constant(
+        np.random.uniform(-1, 1, size=(1, 32, 32, 3)).astype(np.float32))
+    expected_value = keras_model(input_data)
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    results = self._evaluateTFLiteModelUsingSignatureDef(
+        tflite_model, 'serving_default', {'tensor_input': input_data})
+    self.assertEqual(list(results.keys()), ['output_tensor'])
+    self.assertAllClose(expected_value.numpy(), results['output_tensor'])
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 1)
+    self.assertEqual(list(signature_defs.keys()), ['serving_default'])
+    self.assertEqual(len(signature_defs.values()), 1)
+    self.assertEqual(
+        list(signature_defs['serving_default'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['serving_default']['inputs'],
+                          ['tensor_input'])
+    self.assertEqual(
+        list(signature_defs['serving_default']['outputs']), ['output_tensor'])
 
 
 class ControlFlowTest(lite_v2_test_util.ModelTest):

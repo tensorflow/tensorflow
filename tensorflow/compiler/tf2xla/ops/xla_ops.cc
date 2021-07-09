@@ -202,8 +202,7 @@ preferred_element_type: The type of the tensor.
 static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle lhs_shape_handle = c->input(0);
   shape_inference::ShapeHandle rhs_shape_handle = c->input(1);
-  if (!c->FullyDefined(lhs_shape_handle) ||
-      !c->FullyDefined(rhs_shape_handle)) {
+  if (!c->RankKnown(lhs_shape_handle) || !c->RankKnown(rhs_shape_handle)) {
     return shape_inference::UnknownShape(c);
   }
 
@@ -230,20 +229,14 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
         dimension_numbers.lhs_contracting_dimensions(i);
     const int64 rhs_contracting_dimension =
         dimension_numbers.rhs_contracting_dimensions(i);
-    shape_inference::DimensionOrConstant lhs_contracting_dimension_or_constant(
-        c->DimKnownRank(lhs_shape_handle, lhs_contracting_dimension));
-    shape_inference::DimensionOrConstant rhs_contracting_dimension_or_constant(
-        c->DimKnownRank(rhs_shape_handle, rhs_contracting_dimension));
-    const int64 lhs_contracting_dimension_size =
-        c->Value(lhs_contracting_dimension_or_constant);
-    const int64 rhs_contracting_dimension_size =
-        c->Value(rhs_contracting_dimension_or_constant);
-    if (lhs_contracting_dimension_size != rhs_contracting_dimension_size) {
-      return errors::InvalidArgument(
-          "Contracting dimension sizes do not match. Got: ",
-          lhs_contracting_dimension_size, " and ",
-          rhs_contracting_dimension_size);
-    }
+    shape_inference::DimensionHandle unused;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        c->Merge(c->DimKnownRank(lhs_shape_handle, lhs_contracting_dimension),
+                 c->DimKnownRank(rhs_shape_handle, rhs_contracting_dimension),
+                 &unused),
+        "For contracting dimension ", i, " which is lhs dimension ",
+        lhs_contracting_dimension, " and rhs dimension ",
+        rhs_contracting_dimension);
   }
 
   // Check that number of batch dimensions match.
@@ -255,34 +248,26 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
         dimension_numbers.lhs_batch_dimensions_size(), " and ",
         dimension_numbers.rhs_batch_dimensions_size());
 
-  // Check that batch dimension sizes match.
+  // The ranks of lhs and rhs are decremented by the number of contractions,
+  // and added for the rank of the result. When an input tensor
+  // is a scalar, its contribution to the rank of the result is 0. Generate
+  // the result dimensions in order, batch dimensions, then the
+  // non-contracted and non-batch lhs and rhs dimensions.
+  std::vector<shape_inference::DimensionHandle> output_dims;
+
+  // Check that batch dimension sizes match, and add them to output_dims.
   for (int64 i = 0; i < dimension_numbers.lhs_batch_dimensions_size(); ++i) {
     const int64 lhs_batch_dimension = dimension_numbers.lhs_batch_dimensions(i);
     const int64 rhs_batch_dimension = dimension_numbers.rhs_batch_dimensions(i);
-    shape_inference::DimensionOrConstant lhs_batch_dimension_or_constant(
-        c->DimKnownRank(lhs_shape_handle, lhs_batch_dimension));
-    shape_inference::DimensionOrConstant rhs_batch_dimension_or_constant(
-        c->DimKnownRank(rhs_shape_handle, rhs_batch_dimension));
-    const int64 lhs_batch_dimension_size =
-        c->Value(lhs_batch_dimension_or_constant);
-    const int64 rhs_batch_dimension_size =
-        c->Value(rhs_batch_dimension_or_constant);
-    if (lhs_batch_dimension_size != rhs_batch_dimension_size) {
-      return errors::InvalidArgument(
-          "Batch dimension sizes do not match. Got: ", lhs_batch_dimension_size,
-          " and ", rhs_batch_dimension_size);
-    }
+    shape_inference::DimensionHandle out;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        c->Merge(c->DimKnownRank(lhs_shape_handle, lhs_batch_dimension),
+                 c->DimKnownRank(rhs_shape_handle, rhs_batch_dimension), &out),
+        "For batch dimension ", i, " which is lhs dimension ",
+        lhs_batch_dimension, " and rhs dimension ", rhs_batch_dimension);
+    output_dims.emplace_back(out);
   }
 
-  // The ranks of lhs and rhs are decremented by 1 respectively due to the
-  // contraction, and added for the rank of the result. When an input tensor
-  // is a scalar, its contribution to the rank of the result is 0. Generate
-  // the result dimensions in order, rhs dimensions followed by lhs
-  // dimensions except the contracted and batch dimensions.
-  std::vector<shape_inference::DimensionHandle> output_dims;
-  for (int64 lhs_dim : dimension_numbers.lhs_batch_dimensions()) {
-    output_dims.emplace_back(c->Dim(lhs_shape_handle, lhs_dim));
-  }
   const int32 lhs_rank = c->Rank(lhs_shape_handle);
   for (int64 i = 0; i < lhs_rank; ++i) {
     if (absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),

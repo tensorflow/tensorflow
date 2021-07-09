@@ -904,7 +904,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(absl::Span<const int64> dims) {
     HloSharding original_sharding = sharding();
     auto grouped = GroupShardingOnDims(original_sharding, other_dims);
     std::vector<int64> dev_indices(
-        original_sharding.tile_assignment().num_dimensions(), 0);
+        grouped.sharding.tile_assignment().num_dimensions(), 0);
     hlo_->set_sharding(HloSharding::AssignDevice(
         grouped.sharding.tile_assignment()(dev_indices)));
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
@@ -1481,7 +1481,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
            [](const HloSharding& sharding) { return sharding.IsManual(); }));
   if (has_manual_sharding && !hlo->IsCustomCall("SPMDFullToShardShape") &&
       hlo->opcode() != HloOpcode::kConditional &&
-      hlo->opcode() != HloOpcode::kWhile) {
+      hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng) {
     visiting_hlo_sharding_ = hlo->sharding();
     hlo->set_sharding(
         manual_to_onedevice(hlo->shape(), *visiting_hlo_sharding_));
@@ -2221,13 +2221,19 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
   for (int64 i = 0; i < hlo->shape().rank(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) != hlo->shape().dimensions(i)) {
       slice_dims.push_back(i);
+      int64 slice_size = hlo->operand(1)->shape().dimensions(i);
       if (hlo->sharding().tile_assignment().dim(i) != 1) {
-        if (!hlo->operand(i + 2)->IsConstant()) {
+        if (!hlo->operand(i + 2)->IsConstant() && slice_size != 1) {
           return DefaultAction(hlo);
         }
         partitioned_slice_dims.push_back(i);
-        partitioned_slice_offsets.push_back(
-            hlo->operand(i + 2)->literal().Get<int>({}));
+        // Set partitioned_slice_offsets to -1 when slice_size is 1.
+        if (slice_size == 1) {
+          partitioned_slice_offsets.push_back(-1);
+        } else {
+          partitioned_slice_offsets.push_back(
+              hlo->operand(i + 2)->literal().Get<int>({}));
+        }
       }
     } else if (hlo->sharding().tile_assignment().dim(i) != 1) {
       if (!hlo->operand(i + 2)->IsConstant() ||
@@ -2264,6 +2270,8 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
           hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(dus_sharding,
                                                                    slice_dims);
     }
+
+    // TODO(wangtao): use collective permute for sharded update.
     HloInstruction* replicate_update =
         GetPartitionedHlo(hlo->operand(1)).Reshard(update_sharding).hlo();
 
@@ -2280,9 +2288,13 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
       const int64 per_partition_size = partitioned_shape.dimensions(dim);
 
       // Only update within a single partition is supported.
-      if ((partitioned_slice_offsets[i] / per_partition_size) !=
-          ((partitioned_slice_offsets[i] + update_shape.dimensions(dim) - 1) /
-           per_partition_size)) {
+      // Will ignore this check when slice size is 1 where
+      // partitioned_slice_offsets[i] is -1.
+      if ((partitioned_slice_offsets[i] != -1) &&
+          (partitioned_slice_offsets[i] / per_partition_size) !=
+              ((partitioned_slice_offsets[i] + update_shape.dimensions(dim) -
+                1) /
+               per_partition_size)) {
         return DefaultAction(hlo);
       }
 
@@ -2961,19 +2973,28 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
   }
+  auto clone_from_original = [&](const HloSharding& shared_sharding) {
+    std::vector<HloInstruction*> new_operands;
+    for (int64 i = 0; i < hlo->operand_count(); ++i) {
+      new_operands.push_back(
+          GetPartitionedHlo(hlo->operand(i)).Reshard(shared_sharding).hlo());
+    }
+    auto clone = b_.AddInstruction(
+        hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+    clone->set_sharding(shared_sharding);
+    return clone;
+  };
+
+  if (hlo->sharding().IsManual()) {
+    SetPartitionedHlo(hlo,
+                      [&] { return clone_from_original(hlo->sharding()); });
+    return Status::OK();
+  }
 
   if (hlo->sharding().IsReplicated()) {
     SetPartitionedHlo(hlo, [&] {
       // Run on a single device (0) and distribute the data to all other cores.
-      std::vector<HloInstruction*> new_operands;
-      for (int64 i = 0; i < hlo->operand_count(); ++i) {
-        new_operands.push_back(GetPartitionedHlo(hlo->operand(i))
-                                   .Reshard(HloSharding::AssignDevice(0))
-                                   .hlo());
-      }
-      auto clone = b_.AddInstruction(
-          hlo->CloneWithNewOperands(hlo->shape(), new_operands));
-      clone->set_sharding(HloSharding::AssignDevice(0));
+      auto clone = clone_from_original(HloSharding::AssignDevice(0));
       return PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
           .Reshard(HloSharding::Replicate())
           .hlo();

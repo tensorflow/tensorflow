@@ -110,6 +110,7 @@ toco::TocoConvert
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
+toco::RetrieveCollectedErrors
 
 [//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -216,7 +217,7 @@ tensorflow::ImportFunction
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
-tensorflow::AttrValue  # tf_text
+tensorflow::AttrValue::`vftable'  # tf_text
 
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner

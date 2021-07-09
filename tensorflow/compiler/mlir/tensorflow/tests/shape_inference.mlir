@@ -1230,4 +1230,26 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %1 = "tf.Fill"(%0, %arg1) : (tensor<2xi32>, tensor<i32>) -> tensor<*xi32>
     return %1 : tensor<*xi32>
   }
+
+  // Verifies that very large splat constants are not materialized as Tensors.
+  // CHECK-LABEL: @giant_tensor_input
+  func @giant_tensor_input() -> (tensor<*xf32>) {
+    %input = "tf.Const"() {value = dense<1.000000e+00> : tensor<1024x1024x1024x1024xf32>} : () -> tensor<1024x1024x1024x1024xf32>
+    %zero = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
+    %one = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+    %0 = "tf.StridedSlice"(%input, %zero, %one, %one) {begin_mask = 15 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1024x1024x1024x1024xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
+
+    // CHECK: tensor<1x1x1x1xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // Verifies handling of cases involving multiple iteration of feeding inputs.
+  // CHECK-LABEL: @const_input_required
+  func @const_input_required(%arg0: tensor<10xf64>) -> tensor<?xf64> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2,_arg3", outputs = "_retval0"}} {
+    %cst = "tf.Const"() {value = dense<6> : tensor<1xi32>} : () -> tensor<1xi32>
+    %cst_0 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+    %0 = "tf.StridedSlice"(%arg0, %cst_0, %cst, %cst_0) {_XlaHasReferenceVars = false, begin_mask = 0 : i64, device = "/job:localhost/replica:0/task:0/device:XLA_CPU:0", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<10xf64>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<?xf64>
+    // CHECK-NOT: tensor<?xf64>
+    return %0 : tensor<?xf64>
+  }
 }

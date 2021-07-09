@@ -220,6 +220,19 @@ class PjRtClient {
   virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const = 0;
 
+  // Returns a platform-specific serialization of `executable`. The
+  // serialization is not guaranteed to be stable over time. `executable` must
+  // have been produced by this client.
+  virtual StatusOr<std::string> SerializeExecutable(
+      const PjRtExecutable& executable) const = 0;
+
+  // Deserializes a serialized executable as produced by
+  // SerializeExecutable(). `serialized` must have been produced by a client of
+  // the same platform and version as this one.
+  virtual StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
+      CompileOptions options) = 0;
+
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) = 0;

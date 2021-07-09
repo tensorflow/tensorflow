@@ -470,20 +470,49 @@ cc_library(
     ],
 )
 
+# Version of validator_runner_entrypoint without definition of the
+# SetBigCoresAffinity function.
+# This allow us to override the SetBigCoresAffinity definition during test.
+# We cannot simply alter the SetBigCoresAffinity behaviour to make it controllabe
+# by tests because the validation code will run in a separate process.
 cc_library(
-    name = "validator_runner_entrypoint",
+    name = "validator_runner_entrypoint_without_affinity_deps",
     srcs = ["validator_runner_entrypoint.cc"],
     deps = [
         ":fb_storage",
         ":runner",
+        ":set_big_core_affinity_h",
         ":status_codes",
         ":validator",
         ":validator_runner",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
+)
+
+cc_library(
+    name = "validator_runner_entrypoint",
+    deps = [
+        ":set_big_core_affinity",
+        ":validator_runner_entrypoint_without_affinity_deps",
+    ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "set_big_core_affinity_h",
+    hdrs = ["set_big_core_affinity.h"],
+    deps = [":big_little_affinity"],
+)
+
+cc_library(
+    name = "set_big_core_affinity",
+    srcs = ["set_big_core_affinity.cc"],
+    hdrs = ["set_big_core_affinity.h"],
+    deps = [":big_little_affinity"],
+    alwayslink = True,
 )
 
 #
@@ -532,6 +561,7 @@ cc_library(
     deps = [
         ":status_codes",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:big_little_affinity",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -559,6 +589,79 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@cpuinfo//:cpuinfo_with_unstripped_include_path",
     ],
+)
+
+cc_library(
+    name = "mini_benchmark",
+    srcs = [
+        "mini_benchmark.cc",
+    ],
+    hdrs = ["mini_benchmark.h"],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "mini_benchmark_implementation",
+    srcs = [
+        "mini_benchmark_implementation.cc",
+    ],
+    deps = [
+        ":fb_storage",
+        ":mini_benchmark",
+        ":status_codes",
+        ":validator_runner",
+        ":validator_runner_entrypoint",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@flatbuffers",
+    ],
+    alwayslink = 1,
+)
+
+embedded_binary(
+    name = "embedded_mobilenet_float_validation_model",
+    testonly = 1,
+    array_variable_name = "g_tflite_acceleration_embedded_mobilenet_float_validation_model",
+    binary = "//tensorflow/lite/experimental/acceleration/mini_benchmark/metrics:mobilenet_float_with_validation.tflite",
+)
+
+cc_test(
+    name = "mini_benchmark_test",
+    srcs = [
+        "mini_benchmark_test.cc",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "nomsan",  # TODO(b/193070577): Remove this after fixing the tsan failure.
+        "notsan",  # TODO(b/193070577): Remove this after fixing the tsan failure.
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":embedded_mobilenet_float_validation_model",
+        ":mini_benchmark",
+        ":mini_benchmark_implementation",
+        ":status_codes",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/time",
+        "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_cc_proto",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer",
+        "//tensorflow/lite/experimental/acceleration/configuration:xnnpack_plugin",
+    ] + select({
+        clean_dep("//tensorflow:android"): [
+            ":embedded_runner_executable",
+            ":embedded_validator_runner_so_for_tests",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 #
@@ -623,14 +726,20 @@ cc_binary(
         ":fb_storage",
         ":runner",
         ":status_codes",
+        ":set_big_core_affinity",
         ":validator",
         ":validator_runner",
         "@flatbuffers",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ] + select({
+        # On Android, as the validation runs in a separate process as a
+        # different binary, any TFLite delegates to be validated need to
+        # include corresponding delegate plugins.
         clean_dep("//tensorflow:android"): [
             "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",
+            "//tensorflow/lite/experimental/acceleration/configuration:xnnpack_plugin",
         ],
         "//conditions:default": [],
     }),
@@ -694,12 +803,12 @@ cc_test(
     deps = [
         ":embedded_mobilenet_validation_model",
         ":status_codes",
+        ":validator_runner",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner",
     ] + select({
         clean_dep("//tensorflow:android"): [
             "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",
@@ -710,6 +819,28 @@ cc_test(
             ":validator_runner_entrypoint",
         ],
     }),
+)
+
+cc_test(
+    name = "validator_runner_entrypoint_test",
+    srcs = [
+        "set_big_core_affinity.h",
+        "validator_runner_entrypoint_test.cc",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":status_codes",
+        ":validator_runner",
+        ":validator_runner_entrypoint_without_affinity_deps",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
+    ],
 )
 
 exports_files(["model_validation_test.cc"])
