@@ -21,12 +21,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#endif  // GOOGLE_CUDA
 
 namespace stream_executor {
 namespace gpu {
@@ -85,6 +87,7 @@ port::StatusOr<std::vector<uint8>> BundleGpuAsm(
 port::StatusOr<std::vector<uint8>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images);
 
+#if GOOGLE_CUDA
 // Maintains a cache of pointers to loaded kernels
 template <typename... Args>
 port::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
@@ -114,6 +117,7 @@ port::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
   CHECK(it != kernel_ptr_cache.end());
   return it->second;
 }
+#endif  // GOOGLE_CUDA
 
 }  // namespace stream_executor
 
