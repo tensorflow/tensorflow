@@ -165,6 +165,9 @@ Status FusedBatchNormExShape(shape_inference::InferenceContext* c);
 // Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
 
+// Shape function for _FusedBatchNormGradEx operations.
+Status FusedBatchNormGradExShape(shape_inference::InferenceContext* c);
+
 // Shape function for MatrixDiagPartV2 and MatrixDiagPartV3 operations.
 Status MatrixDiagPartV2Shape(shape_inference::InferenceContext* c);
 

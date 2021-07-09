@@ -324,7 +324,7 @@ REGISTER_OP("_FusedBatchNormGradEx")
     .Attr("activation_mode: string = \"Identity\"")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
-    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
+    .SetShapeFn(shape_inference::FusedBatchNormGradExShape)
     .Doc(R"doc(
 Internal FusedBatchNormGrad operation: reserved for internal use.
 
