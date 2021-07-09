@@ -575,17 +575,35 @@ Status WindowsFileSystem::IsDirectory(const string& fname,
 
 Status WindowsFileSystem::RenameFile(const string& src, const string& target,
                                      TransactionToken* token) {
-  Status result;
   // rename() is not capable of replacing the existing file as on Linux
   // so use OS API directly
   std::wstring ws_translated_src = Utf8ToWideChar(TranslateName(src));
   std::wstring ws_translated_target = Utf8ToWideChar(TranslateName(target));
-  if (!::MoveFileExW(ws_translated_src.c_str(), ws_translated_target.c_str(),
-                     MOVEFILE_REPLACE_EXISTING)) {
-    string context(strings::StrCat("Failed to rename: ", src, " to: ", target));
-    result = IOErrorFromWindowsError(context);
+
+  // Calling MoveFileExW with the MOVEFILE_REPLACE_EXISTING flag can fail if
+  // another process has a handle to the file that it didn't close yet. On the
+  // other hand, calling DeleteFileW + MoveFileExW will work in that scenario
+  // because it allows the process to keep using the old handle while also
+  // creating a new handle for the new file.
+  WIN32_FIND_DATAW find_file_data;
+  HANDLE target_file_handle =
+      ::FindFirstFileW(ws_translated_target.c_str(), &find_file_data);
+  if (target_file_handle != INVALID_HANDLE_VALUE) {
+    if (!::DeleteFileW(ws_translated_target.c_str())) {
+      ::FindClose(target_file_handle);
+      return IOErrorFromWindowsError(
+          strings::StrCat("Failed to rename: ", src, " to: ", target));
+    }
+    ::FindClose(target_file_handle);
   }
-  return result;
+
+  if (!::MoveFileExW(ws_translated_src.c_str(), ws_translated_target.c_str(),
+                     0)) {
+    return IOErrorFromWindowsError(
+        strings::StrCat("Failed to rename: ", src, " to: ", target));
+  }
+
+  return Status::OK();
 }
 
 Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
