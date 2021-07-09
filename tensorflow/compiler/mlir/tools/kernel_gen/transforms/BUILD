@@ -91,6 +91,7 @@ cc_library(
         "fuse_inner_parallel_loops_pass.cc",
         "gpu_kernel_to_blob_pass.cc",
         "kernel_lowering_passes.cc",
+        "lower_index_cast_pass.cc",
         "map_parallel_loops_to_gpu.cc",
         "parallel_loops_to_sequential.cc",
         "rewrite_tf_framework_assert.cc",

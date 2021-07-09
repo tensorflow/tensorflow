@@ -132,6 +132,12 @@ def FuseInnerParallelLoopsPass
   }];
 }
 
+def LowerIndexCastPass
+    : FunctionPass<"kernelgen-lower-index-cast"> {
+  let summary = "Lower index cast on tensors to tensor dialect";
+  let constructor = "transforms::CreateLowerIndexCastPass()";
+}
+
 def ShapeSimplification
     : FunctionPass<"kernelgen-shape-simplification"> {
   let summary = "Simplify shape ops";
