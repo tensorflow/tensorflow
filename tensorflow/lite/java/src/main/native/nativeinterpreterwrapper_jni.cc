@@ -254,7 +254,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_hasUnresolvedFlexOp(
     JNIEnv* env, jclass clazz, jlong handle) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   TFLITE_LOG(tflite::TFLITE_LOG_WARNING, "Not supported: hasUnresolvedFlexOp");
-  return false;
+  return JNI_FALSE;
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return JNI_FALSE;
