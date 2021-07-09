@@ -744,6 +744,7 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
  private:
   friend class PjRtStreamExecutorClient;
   friend class PjRtTpuClient;
+  friend class InternalPjRtTpuClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);
