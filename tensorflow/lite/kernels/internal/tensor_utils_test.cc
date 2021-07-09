@@ -2259,4 +2259,52 @@ BENCHMARK(BM_DotprodSparseMultiply)
     ->Args({2048, 2048, 1, 1})
     ->Args({2048, 2048, 8, 1});
 
+void BM_DotprodFloatMultiply(benchmark::State& state) {
+  const int rows = state.range(0);
+  const int cols = state.range(1);
+  const int batch = state.range(2);
+  std::vector<float> matrix(rows * cols);
+  std::fill(matrix.begin(), matrix.end(), 1.0);
+  std::vector<float> vector(cols * batch);
+  std::fill(vector.begin(), vector.end(), 0.3);
+  std::vector<float> output(rows * batch);
+  for (auto _ : state) {
+    std::fill(output.begin(), output.end(), 0.0);
+    tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        matrix.data(), rows, cols, vector.data(), batch, output.data());
+  }
+}
+
+BENCHMARK(BM_DotprodFloatMultiply)
+    ->Args({16, 16, 4})
+    ->Args({32, 32, 4})
+    ->Args({64, 64, 4})
+    ->Args({64, 256, 64})
+    ->Args({64, 256, 256})
+    ->Args({64, 256, 1024})
+    ->Args({64, 256, 12544})
+    ->Args({128, 128, 2})
+    ->Args({128, 128, 3})
+    ->Args({128, 128, 4})
+    ->Args({128, 128, 5})
+    ->Args({640, 640, 4})
+    ->Args({992, 992, 8})
+    ->Args({1024, 1024, 2})
+    ->Args({1024, 1024, 3})
+    ->Args({1024, 1024, 4})
+    ->Args({1024, 1024, 5})
+    ->Args({1024, 1024, 8})
+    ->Args({1024, 1024, 8})
+    ->Args({1024, 1024, 256})
+    ->Args({640, 2048, 2})
+    ->Args({640, 2048, 3})
+    ->Args({640, 2048, 4})
+    ->Args({640, 2048, 4})
+    ->Args({640, 2048, 8})
+    ->Args({2048, 2048, 3})
+    ->Args({2048, 2048, 4})
+    ->Args({2048, 2048, 4})
+    ->Args({2048, 2048, 5})
+    ->Args({2048, 2048, 8});
+
 #endif  // DOTPROD_BENCHMARKS
