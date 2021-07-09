@@ -7481,5 +7481,27 @@ ENTRY f {
                   m::Multiply(m::Convert(m::Clamp()), m::Constant()))));
 }
 
+TEST_F(AlgebraicSimplifierTest, AbsEliminationSelMaxBcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[32]{0} parameter(0)
+      p1 = pred[32]{0} parameter(1)
+      zero = f32[] constant(0.0)
+      bcast = f32[32] broadcast(zero), dimensions={}
+      m = f32[32]{0} maximum(p0, bcast)
+      s = f32[32]{0} select(p1, bcast, m)
+      ROOT a = f32[32]{0} abs(s)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Select(
+                  m::Parameter(1), m::Broadcast(m::ConstantScalar()),
+                  m::MaximumAnyOrder(m::Parameter(0),
+                                     m::Broadcast(m::ConstantScalar())))));
+}
+
 }  // namespace
 }  // namespace xla
