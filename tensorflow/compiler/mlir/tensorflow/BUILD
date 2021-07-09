@@ -1080,7 +1080,6 @@ cc_library(
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_ops_by_policy.cc",
-        "transforms/cluster_ops_by_policy_pass.cc",
         "transforms/cluster_outlining.cc",
         "transforms/cluster_tf_ops_pass.cc",
         "transforms/collection_ops_util.cc",
