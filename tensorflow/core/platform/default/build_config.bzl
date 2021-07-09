@@ -787,10 +787,7 @@ def tf_google_mobile_srcs_only_runtime():
     return []
 
 def if_llvm_aarch64_available(then, otherwise = []):
-    return select({
-        "//tensorflow:linux_aarch64": then,
-        "//conditions:default": otherwise,
-    })
+    return then
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
