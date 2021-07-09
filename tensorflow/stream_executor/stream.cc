@@ -368,13 +368,11 @@ Stream &Stream::ThenBatchNormalizationForward(
 
 Stream &Stream::ThenBatchNormalizationBackward(
     const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
-    const DeviceMemory<float> &scale, const DeviceMemory<float> &offset,
-    const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
-    const DeviceMemory<float> &y, const dnn::BatchDescriptor &x_desc,
+    const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
+    const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<float> *x_backprop,
-    DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
-    DeviceMemory<float> *side_input_backprop,
+    DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
+    DeviceMemory<float> *offset_backprop,
     DeviceMemory<uint8> *reserve_space_data,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
@@ -382,10 +380,9 @@ Stream &Stream::ThenBatchNormalizationBackward(
             PARAM(scale_backprop), PARAM(offset_backprop));
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     CheckError(dnn->DoBatchNormalizationBackward(
-        this, y_backprop, x, scale, offset, mean, inv_var, y, x_desc,
-        scale_offset_desc, epsilon, activation_mode, x_backprop, scale_backprop,
-        offset_backprop, side_input_backprop, reserve_space_data,
-        workspace_allocator));
+        this, y_backprop, x, scale, mean, inv_var, x_desc, scale_offset_desc,
+        epsilon, x_backprop, scale_backprop, offset_backprop,
+        reserve_space_data, workspace_allocator));
   } else {
     SetErrorAndLogNoDnnSupport();
   }
@@ -423,13 +420,11 @@ Stream &Stream::ThenBatchNormalizationForward(
 Stream &Stream::ThenBatchNormalizationBackward(
     const DeviceMemory<Eigen::half> &y_backprop,
     const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-    const DeviceMemory<float> &offset, const DeviceMemory<float> &mean,
-    const DeviceMemory<float> &inv_var, const DeviceMemory<Eigen::half> &y,
+    const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
     const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *x_backprop,
-    DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
-    DeviceMemory<Eigen::half> *side_input_backprop,
+    DeviceMemory<Eigen::half> *x_backprop, DeviceMemory<float> *scale_backprop,
+    DeviceMemory<float> *offset_backprop,
     DeviceMemory<uint8> *reserve_space_data,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
@@ -437,10 +432,9 @@ Stream &Stream::ThenBatchNormalizationBackward(
             PARAM(scale_backprop), PARAM(offset_backprop));
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     CheckError(dnn->DoBatchNormalizationBackward(
-        this, y_backprop, x, scale, offset, mean, inv_var, y, x_desc,
-        scale_offset_desc, epsilon, activation_mode, x_backprop, scale_backprop,
-        offset_backprop, side_input_backprop, reserve_space_data,
-        workspace_allocator));
+        this, y_backprop, x, scale, mean, inv_var, x_desc, scale_offset_desc,
+        epsilon, x_backprop, scale_backprop, offset_backprop,
+        reserve_space_data, workspace_allocator));
 
   } else {
     SetErrorAndLogNoDnnSupport();
