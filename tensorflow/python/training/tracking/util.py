@@ -2183,6 +2183,8 @@ class Checkpoint(tracking.AutoTrackable):
         model_checkpoint_path=file_path,
         all_model_checkpoint_paths=[file_path],
         save_relative_paths=True)
+    if not graph_building:
+      context.async_wait()  # Ensure save operations have completed.
     return file_path
 
   def read(self, save_path, options=None):
@@ -2342,6 +2344,8 @@ class Checkpoint(tracking.AutoTrackable):
 
     try:
       status = self.read(save_path, options=options)
+      if context.executing_eagerly():
+        context.async_wait()  # Ensure restore operations have completed.
     except errors_impl.NotFoundError as e:
       raise errors_impl.NotFoundError(
           None, None,
