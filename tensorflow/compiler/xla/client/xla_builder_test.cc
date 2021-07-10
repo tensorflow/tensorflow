@@ -610,7 +610,7 @@ TEST_F(XlaBuilderTest, SetDimensionSize) {
   EXPECT_TRUE(root_shape.is_dynamic_dimension(0));
 }
 
-TEST_F(XlaBuilderTest, RemoveDimensionSize) {
+TEST_F(XlaBuilderTest, RemoveDynamicDimension) {
   XlaBuilder b(TestName());
   auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10}), "p0");
   auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
@@ -622,6 +622,23 @@ TEST_F(XlaBuilderTest, RemoveDimensionSize) {
       module->entry_computation()->root_instruction()->shape();
   // Dynamic dimension has been removed.
   EXPECT_FALSE(root_shape.is_dynamic_dimension(0));
+}
+
+TEST_F(XlaBuilderTest, RemoveDynamicDimensionMultiDims) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10, 10}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
+  auto set_dim_size = SetDimensionSize(p0, p1, 0);
+  set_dim_size = SetDimensionSize(set_dim_size, p1, 1);
+  auto remove_dim_size = RemoveDynamicDimension(set_dim_size, 0);
+  remove_dim_size = RemoveDynamicDimension(remove_dim_size, 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          BuildHloModule(&b, /*root=*/remove_dim_size));
+  const Shape& root_shape =
+      module->entry_computation()->root_instruction()->shape();
+  // Dynamic dimensions are removed.
+  EXPECT_FALSE(root_shape.is_dynamic_dimension(0));
+  EXPECT_FALSE(root_shape.is_dynamic_dimension(1));
 }
 
 TEST_F(XlaBuilderTest, DynamicUnary) {

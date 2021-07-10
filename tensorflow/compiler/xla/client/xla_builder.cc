@@ -3456,15 +3456,14 @@ XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
 StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
                                                      XlaOp operand, XlaOp val,
                                                      int64 dimension) {
-  // Setting an op's dynamic dimension to the static size is a noop.
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
                       LookUpInstruction(val));
   if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
           HloOpcode::kConstant &&
-      shape.is_dynamic()) {
-    TF_ASSIGN_OR_RETURN(auto literal,
+      shape.is_dynamic_dimension(dimension)) {
+    TF_ASSIGN_OR_RETURN(auto constant_size,
                         Literal::CreateFromProto(val_proto->literal(), true));
-    if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
+    if (constant_size.Get<int32>({}) == shape.dimensions(dimension)) {
       return operand;
     }
   }
