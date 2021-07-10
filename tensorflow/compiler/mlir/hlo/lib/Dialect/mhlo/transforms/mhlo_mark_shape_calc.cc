@@ -57,21 +57,22 @@ struct MarkShapeCalc : public MarkShapeCalculationPassBase<MarkShapeCalc> {
 
   // for rule based placement strategy, the placement of the op in the list
   // is up to the placement of the dominant operand
-  const DenseMap<StringRef, /*dominant operand index*/ int> kPlaceRuleMap = {
-      {"mhlo.dynamic_gather", /*operand*/ 0}, {"mhlo.gather", /*operand*/ 0}};
+  const DenseMap<TypeID, /*dominant operand index*/ int> kPlaceRuleMap = {
+      {TypeID::get<DynamicGatherOp>(), /*operand*/ 0},
+      {TypeID::get<GatherOp>(), /*operand*/ 0}};
 
-  const DenseMap<StringRef, DenseSet<int>> kShapeCalcOperandMap = {
-      {"mhlo.real_dynamic_slice",
+  const DenseMap<TypeID, SmallVector<int, 3>> kShapeCalcOperandMap = {
+      {TypeID::get<RealDynamicSliceOp>(),
        {/*start_indices*/ 1, /*limit_indices*/ 2, /*strides*/ 3}},
-      {"mhlo.dynamic_pad",
+      {TypeID::get<DynamicPadOp>(),
        {/*edge_padding_low*/ 2, /*edge_padding_high*/ 3,
         /*interior_padding*/ 4}},
-      {"mhlo.dynamic_reshape", {/*shape*/ 1}},
-      {"mhlo.dynamic_iota", {/*shape*/ 0}},
-      {"mhlo.dynamic_broadcast_in_dim", {/*out_dim_size*/ 1}},
-      {"mhlo.dynamic_gather", {/*slice_sizes*/ 2}},
-      {"mhlo.dynamic_conv", {/*paddings*/ 2}},
-      {"mhlo.if", {/*pred*/ 0}}};
+      {TypeID::get<DynamicReshapeOp>(), {/*shape*/ 1}},
+      {TypeID::get<DynamicIotaOp>(), {/*shape*/ 0}},
+      {TypeID::get<DynamicBroadcastInDimOp>(), {/*out_dim_size*/ 1}},
+      {TypeID::get<DynamicGatherOp>(), {/*slice_sizes*/ 2}},
+      {TypeID::get<DynamicConvOp>(), {/*paddings*/ 2}},
+      {TypeID::get<IfOp>(), {/*pred*/ 0}}};
 
   // add output OP into marked set if it is a I64 scalar and placment is CPU.
   void markI64ReturnedCpuScalarOps(FuncOp func,
@@ -168,11 +169,11 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
       return;
     }
 
-    StringRef op_name = op->getName().getStringRef();
+    auto op_type_id = op->getAbstractOperation()->typeID;
     bool is_shape_calc_op = false;
     // Follow the rule of kPlaceRuleMap exist, or else follow
     // kShapeCalcOperandMap
-    auto it = kPlaceRuleMap.find(op_name);
+    auto it = kPlaceRuleMap.find(op_type_id);
     if (it != kPlaceRuleMap.end()) {
       auto dominant_idx = it->second;
       auto operand_ty =
@@ -182,22 +183,19 @@ void MarkShapeCalc::MarkRegardAsShapeCalcOps() {
         is_shape_calc_op = true;
       }
     } else {
-      DenseSet<int> shape_operand_indices;
-      auto iter = kShapeCalcOperandMap.find(op_name);
+      SmallVector<int, 3> shape_operand_indices;
+      auto iter = kShapeCalcOperandMap.find(op_type_id);
       if (iter != kShapeCalcOperandMap.end()) {
         shape_operand_indices = iter->second;
       }
-      for (int idx = 0; idx < op->getNumOperands(); ++idx) {
-        // if it is not "shape operand", then it must be "data operand"
-        if (shape_operand_indices.find(idx) == shape_operand_indices.end()) {
-          auto operand_ty =
-              op->getOperand(idx).getType().dyn_cast<RankedTensorType>();
-          if (!operand_ty) continue;
-          auto elem_type = operand_ty.getElementType();
-          if (elem_type.isInteger(32)) {
-            is_shape_calc_op = true;
-            break;
-          }
+      for (int idx : shape_operand_indices) {
+        auto operand_ty =
+            op->getOperand(idx).getType().dyn_cast<RankedTensorType>();
+        if (!operand_ty) continue;
+        auto elem_type = operand_ty.getElementType();
+        if (elem_type.isInteger(32)) {
+          is_shape_calc_op = true;
+          break;
         }
       }
     }
@@ -277,8 +275,8 @@ void MarkShapeCalc::markShapeCalculationOps(
     }
     // Mark operands into shape calculation set according to the lookup table.
     if (!marked_ops.contains(&op)) {
-      StringRef name_str = op.getName().getStringRef();
-      auto iter = kShapeCalcOperandMap.find(name_str);
+      auto op_type_id = op.getAbstractOperation()->typeID;
+      auto iter = kShapeCalcOperandMap.find(op_type_id);
       if (iter != kShapeCalcOperandMap.end()) {
         for (auto operand_idx : iter->second) {
           auto operand = op.getOperand(operand_idx).getDefiningOp();

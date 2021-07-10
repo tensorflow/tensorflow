@@ -78,7 +78,7 @@ def LegalizeToStandardPass : FunctionPass<"mhlo-legalize-to-std"> {
 }
 
 def MarkShapeCalculationPass : Pass<"mhlo-mark-shape-calc", "ModuleOp"> {
-  let summary = "Tell shape calculation OP from data computation OP and set attr";
+  let summary = "Identify and mark with an attribute operations performing shape calculation";
   let constructor = "createMarkShapeCalcOpPass()";
 }
 
