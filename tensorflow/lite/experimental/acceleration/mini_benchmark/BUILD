@@ -638,8 +638,6 @@ cc_test(
     tags = [
         "no_mac",
         "no_windows",
-        "nomsan",  # TODO(b/193070577): Remove this after fixing the tsan failure.
-        "notsan",  # TODO(b/193070577): Remove this after fixing the tsan failure.
         "tflite_not_portable_ios",
     ],
     deps = [

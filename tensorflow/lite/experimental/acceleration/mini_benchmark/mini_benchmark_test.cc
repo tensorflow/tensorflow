@@ -26,9 +26,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -115,15 +117,35 @@ class MiniBenchmarkTest : public ::testing::Test {
     mb_->TriggerMiniBenchmark();
   }
 
-  std::vector<int> FindBestDecisionEventIndexes(
-      const std::vector<tflite::MiniBenchmarkEventT>& events) {
-    std::vector<int> indexes;
-    for (int i = 0; i < events.size(); ++i) {
-      if (events[i].best_acceleration_decision != nullptr) {
-        indexes.push_back(i);
+  int CountBenchmarkEvents(
+      const std::vector<tflite::MiniBenchmarkEventT>& events,
+      tflite::BenchmarkEventType type) {
+    int num_events = 0;
+    for (const auto& event : events) {
+      if (event.benchmark_event != nullptr &&
+          event.benchmark_event->event_type == type) {
+        num_events++;
       }
     }
-    return indexes;
+    return num_events;
+  }
+
+  std::vector<tflite::MiniBenchmarkEventT> WaitForEvents(
+      std::function<bool(const std::vector<tflite::MiniBenchmarkEventT>&)>
+          exit_wait,
+      absl::Duration timeout = absl::Seconds(300)) {
+    std::vector<MiniBenchmarkEventT> events;
+    absl::Time deadline = absl::Now() + timeout;
+    while (absl::Now() < deadline) {
+      auto new_events = mb_->MarkAndGetEventsToLog();
+      for (int i = 0; i < new_events.size(); ++i) {
+        if (new_events[i].is_log_flushing_event) continue;
+        events.emplace_back(std::move(new_events[i]));
+      }
+      if (exit_wait(events)) break;
+      absl::SleepFor(absl::Milliseconds(200));
+    }
+    return events;
   }
 
   const std::string ns_ = "org.tensorflow.lite.mini_benchmark.test";
@@ -172,10 +194,19 @@ TEST_F(MiniBenchmarkTest, RunSuccessfully) {
   if (!should_perform_test_) return;
 
   TriggerBenchmark(proto::Delegate::XNNPACK, mobilenet_model_path_);
-  // TODO(b/181571324): as the mini-benchmark runs asynchronously, we have to
-  // wait for its completion or timeout. Implement a way to get such a
-  // notification to remove the hard-coded waiting duration.
-  absl::SleepFor(absl::Seconds(10));
+
+  // We will have at least 2 events: one for the default CPU execution and the
+  // other for XNNPACK delegate execution. Additional events might be
+  // platform-specific, such as those for failures when trying to set the CPU
+  // affinity of the mini-benchmark runner process.
+  auto events = WaitForEvents(
+      [this](
+          const std::vector<tflite::MiniBenchmarkEventT>& intermediate_events) {
+        const int num_end_events = CountBenchmarkEvents(
+            intermediate_events, tflite::BenchmarkEventType_END);
+        return num_end_events == 2;
+      });
+
   const ComputeSettingsT acceleration1 = mb_->GetBestAcceleration();
   EXPECT_NE(nullptr, acceleration1.tflite_settings);
 
@@ -189,17 +220,11 @@ TEST_F(MiniBenchmarkTest, RunSuccessfully) {
   EXPECT_EQ(model_id_, acceleration1.model_identifier_for_statistics);
   EXPECT_EQ(ns_, acceleration1.model_namespace_for_statistics);
 
-  auto events = mb_->MarkAndGetEventsToLog();
-
-  // We will have at least 3 events: 1st one for the best decision, 2nd one for
-  // the default CPU execution, 3rd one for XNNPACK delegate.
-  // Additional events might be platform-specific, such as those for failures
-  // when trying to set the CPU affinity of the mini-benchmark runner process.
-  EXPECT_GE(events.size(), 3);
-  const auto decision_index = FindBestDecisionEventIndexes(events);
-  EXPECT_EQ(1, decision_index.size());
-  const auto& decision =
-      events[decision_index.front()].best_acceleration_decision;
+  // As the best decision event has not been marked as to-be-logged, we should
+  // get one best decision event after the call.
+  events = mb_->MarkAndGetEventsToLog();
+  EXPECT_EQ(1, events.size());
+  const auto& decision = events.front().best_acceleration_decision;
   EXPECT_NE(nullptr, decision);
   EXPECT_EQ(tflite::Delegate_XNNPACK,
             decision->min_latency_event->tflite_settings->delegate);
@@ -209,14 +234,21 @@ TEST_F(MiniBenchmarkTest, BestAccelerationEventIsMarkedLoggedAfterRestart) {
   if (!should_perform_test_) return;
 
   TriggerBenchmark(proto::Delegate::XNNPACK, mobilenet_model_path_);
-  // TODO(b/181571324): as the mini-benchmark runs asynchronously, we have to
-  // wait for its completion or timeout. Implement a way to get such a
-  // notification to remove the hard-coded waiting duration.
-  absl::SleepFor(absl::Seconds(10));
+  // We will have at least 2 events: one for the default CPU execution and the
+  // other for XNNPACK delegate execution. Additional events might be
+  // platform-specific, such as those for failures when trying to set the CPU
+  // affinity of the mini-benchmark runner process.
+  WaitForEvents(
+      [this](
+          const std::vector<tflite::MiniBenchmarkEventT>& intermediate_events) {
+        const int num_end_events = CountBenchmarkEvents(
+            intermediate_events, tflite::BenchmarkEventType_END);
+        return num_end_events == 2;
+      });
   mb_->GetBestAcceleration();
 
-  // The best acceleration decision event was already collected above. So, we
-  // could retrieve the best acceleration immediately.
+  // The best acceleration decision event was already persisted to the storage
+  // above. So, we could retrieve the best acceleration immediately.
   TriggerBenchmark(proto::Delegate::XNNPACK, mobilenet_model_path_,
                    /*reset_storage=*/false);
   const ComputeSettingsT acceleration = mb_->GetBestAcceleration();
@@ -226,11 +258,11 @@ TEST_F(MiniBenchmarkTest, BestAccelerationEventIsMarkedLoggedAfterRestart) {
   EXPECT_EQ(model_id_, acceleration.model_identifier_for_statistics);
   EXPECT_EQ(ns_, acceleration.model_namespace_for_statistics);
 
-  // Note that we haven't marked mini-benchmark events to be logged, so we will
-  // expect non-empty to-log events.
+  // Similar to "RunSuccessfully' test above, the best decision event has not
+  // been marked as to-be-logged, we should get one best decision event after
+  // the call.
   auto events = mb_->MarkAndGetEventsToLog();
-  // Like the 'RunSuccessfully' test, we will have at least 3 events.
-  EXPECT_GE(events.size(), 3);
+  EXPECT_EQ(1, events.size());
 }
 
 TEST_F(MiniBenchmarkTest,
@@ -238,12 +270,22 @@ TEST_F(MiniBenchmarkTest,
   if (!should_perform_test_) return;
 
   TriggerBenchmark(proto::Delegate::XNNPACK, mobilenet_model_path_);
-  // TODO(b/181571324): as the mini-benchmark runs asynchronously, we have to
-  // wait for its completion or timeout. Implement a way to get such a
-  // notification to remove the hard-coded waiting duration.
-  absl::SleepFor(absl::Seconds(10));
+  // We will have at least 2 events: one for the default CPU execution and the
+  // other for XNNPACK delegate execution. Additional events might be
+  // platform-specific, such as those for failures when trying to set the CPU
+  // affinity of the mini-benchmark runner process.
+  WaitForEvents(
+      [this](
+          const std::vector<tflite::MiniBenchmarkEventT>& intermediate_events) {
+        const int num_end_events = CountBenchmarkEvents(
+            intermediate_events, tflite::BenchmarkEventType_END);
+        return num_end_events == 2;
+      });
   mb_->GetBestAcceleration();
-  auto events = mb_->MarkAndGetEventsToLog();
+  // There is no need to use WaitForEvents here but we can just mark
+  // mini-benchmark events to be logged because the GetBestAcceleration above
+  // generates events synchronously.
+  mb_->MarkAndGetEventsToLog();
 
   // The best acceleration decision event was already collected above. So, we
   // could retrieve the best acceleration immediately.
@@ -265,10 +307,22 @@ TEST_F(MiniBenchmarkTest, DelegatePluginNotSupported) {
   // test itself or the ":validator_runner_so_for_tests" target on Android,
   // one will expect a delegate plugin not-found error.
   TriggerBenchmark(proto::Delegate::HEXAGON, mobilenet_model_path_);
-  // TODO(b/181571324): as the mini-benchmark runs asynchronously, we have to
-  // wait for its completion or timeout. Implement a way to get such a
-  // notification to remove the hard-coded waiting duration.
-  absl::SleepFor(absl::Seconds(10));
+
+  // We will have at least 2 events: one for the default CPU execution and the
+  // other is for the Hexagon delegate being not supported. Additional events
+  // might be platform-specific, such as those for failures when trying to set
+  // the CPU affinity of the mini-benchmark runner process.
+  auto events = WaitForEvents(
+      [this](
+          const std::vector<tflite::MiniBenchmarkEventT>& intermediate_events) {
+        const int num_end_events =
+            CountBenchmarkEvents(intermediate_events,
+                                 tflite::BenchmarkEventType_END) +
+            CountBenchmarkEvents(intermediate_events,
+                                 tflite::BenchmarkEventType_ERROR);
+        return num_end_events == 2;
+      });
+
   const ComputeSettingsT acceleration = mb_->GetBestAcceleration();
   // As the best performance is achieved on the default CPU, there's no
   // acceleration settings.
@@ -276,11 +330,6 @@ TEST_F(MiniBenchmarkTest, DelegatePluginNotSupported) {
   EXPECT_EQ(model_id_, acceleration.model_identifier_for_statistics);
   EXPECT_EQ(ns_, acceleration.model_namespace_for_statistics);
 
-  auto events = mb_->MarkAndGetEventsToLog();
-  // Similarly, we will have at least 3 events: 1st one is for the best
-  // acceleration decision, 2nd one is for the default CPU execution, and the
-  // 3rd one is that the Hexagon delegate is not supported.
-  EXPECT_GE(events.size(), 3);
   // Check there is a Hexagon-delegate-not-supported event.
   bool is_found = false;
   for (const auto& event : events) {

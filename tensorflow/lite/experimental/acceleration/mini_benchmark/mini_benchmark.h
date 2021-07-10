@@ -37,6 +37,9 @@ class MiniBenchmark {
   // are found, the best settings are on CPU or if the settings do not contain
   // configurations to test or not all relevant fields are present, the returned
   // ComputeSettingsT will be an object created by the default constructor.
+  // Note: if we have successful mini-benchmark run events, the best
+  // acceleration configuration will be persisted on the local storage as a new
+  // mini-benchmark event.
   virtual ComputeSettingsT GetBestAcceleration() = 0;
 
   // Trigger the running of tests in the background in a separate process.
