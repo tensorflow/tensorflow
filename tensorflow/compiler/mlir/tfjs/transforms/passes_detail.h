@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,25 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_H_
-
-#include <memory>
+#ifndef TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_DETAIL_H_
+#define TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_DETAIL_H_
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-class FuncOp;
-
 namespace tfjs {
 
-// Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass();
-
-#define GEN_PASS_REGISTRATION
+#define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfjs/transforms/passes.h.inc"
 
 }  // namespace tfjs
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_DETAIL_H_
