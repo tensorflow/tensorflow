@@ -19661,6 +19661,32 @@ Semantics are documented at
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaVariadicReduceV2Op : TF_Op<"XlaVariadicReduceV2", [AttrSizedOperandSegments, NoSideEffect]> {
+  let summary = "Wraps the variadic XLA Reduce operator.";
+
+  let description = [{
+Semantics are documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
+
+This is an expanded version of XlaVariadicReduce, with support for
+operands of different dtypes, and improved shape inference.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{the input tensor(s)}]>:$inputs,
+    Arg<Variadic<TF_Tensor>, [{scalar initial value(s) for the reduction}]>:$init_values,
+
+    I64ArrayAttr:$dimensions_to_reduce,
+    SymbolRefAttr:$reducer
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_XlaVariadicSortOp : TF_Op<"XlaVariadicSort", [NoSideEffect]> {
   let summary = "Wraps the XLA Sort operator, documented at";
 
