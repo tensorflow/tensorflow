@@ -526,9 +526,9 @@ class ExponentialMovingAverage(object):
       `var`.
     """
     if var.ref() in self._averages:
-      return self._averages[var.ref()].op.name
+      return self._averages[var.ref()].name[:-len(":0")]
     return ops.get_default_graph().unique_name(
-        var.op.name + "/" + self.name, mark_as_used=False)
+        var.name[:-len(":0")] + "/" + self.name, mark_as_used=False)
 
   def variables_to_restore(self, moving_avg_variables=None):
     """Returns a map of names to `Variables` to restore.
