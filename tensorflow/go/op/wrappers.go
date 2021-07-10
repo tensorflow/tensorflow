@@ -15691,6 +15691,24 @@ func Lgamma(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Computes the gradient for the tanh of `x` wrt its input.
+//
+// Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`
+// is the corresponding input gradient.
+func TanhGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TanhGrad",
+		Input: []tf.Input{
+			y, dy,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Serializes the tree ensemble to a proto.
 //
 // Arguments:
@@ -19894,70 +19912,6 @@ func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units
 	}
 	opspec := tf.OpSpec{
 		Type: "ReaderNumWorkUnitsCompletedV2",
-		Input: []tf.Input{
-			reader_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DecodeRawAttr is an optional argument to DecodeRaw.
-type DecodeRawAttr func(optionalAttr)
-
-// DecodeRawLittleEndian sets the optional little_endian attribute to value.
-//
-// value: Whether the input `bytes` are in little-endian order.
-// Ignored for `out_type` values that are stored in a single byte like
-// `uint8`.
-// If not specified, defaults to true
-func DecodeRawLittleEndian(value bool) DecodeRawAttr {
-	return func(m optionalAttr) {
-		m["little_endian"] = value
-	}
-}
-
-// Reinterpret the bytes of a string as a vector of numbers.
-//
-// Arguments:
-//	bytes: All the elements must have the same length.
-//
-//
-// Returns A Tensor with one more dimension than the input `bytes`.  The
-// added dimension will have size equal to the length of the elements
-// of `bytes` divided by the number of bytes to represent `out_type`.
-func DecodeRaw(scope *Scope, bytes tf.Output, out_type tf.DataType, optional ...DecodeRawAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"out_type": out_type}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeRaw",
-		Input: []tf.Input{
-			bytes,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the number of records this Reader has produced.
-//
-// This is the same as the number of ReaderRead executions that have
-// succeeded.
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-func ReaderNumRecordsProducedV2(scope *Scope, reader_handle tf.Output) (records_produced tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderNumRecordsProducedV2",
 		Input: []tf.Input{
 			reader_handle,
 		},
@@ -29127,24 +29081,6 @@ func WindowDataset(scope *Scope, input_dataset tf.Output, size tf.Output, shift 
 			input_dataset, size, shift, stride, drop_remainder,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the gradient for the tanh of `x` wrt its input.
-//
-// Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`
-// is the corresponding input gradient.
-func TanhGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TanhGrad",
-		Input: []tf.Input{
-			y, dy,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -46306,6 +46242,101 @@ func BoostedTreesUpdateEnsemble(scope *Scope, tree_ensemble_handle tf.Output, fe
 	return scope.AddOperation(opspec)
 }
 
+// RestoreAttr is an optional argument to Restore.
+type RestoreAttr func(optionalAttr)
+
+// RestorePreferredShard sets the optional preferred_shard attribute to value.
+//
+// value: Index of file to open first if multiple files match
+// `file_pattern`.
+// If not specified, defaults to -1
+func RestorePreferredShard(value int64) RestoreAttr {
+	return func(m optionalAttr) {
+		m["preferred_shard"] = value
+	}
+}
+
+// Restores a tensor from checkpoint files.
+//
+// Reads a tensor stored in one or several files. If there are several files (for
+// instance because a tensor was saved as slices), `file_pattern` may contain
+// wildcard symbols (`*` and `?`) in the filename portion only, not in the
+// directory portion.
+//
+// If a `file_pattern` matches several files, `preferred_shard` can be used to hint
+// in which file the requested tensor is likely to be found. This op will first
+// open the file at index `preferred_shard` in the list of matching files and try
+// to restore tensors from that file.  Only if some tensors or tensor slices are
+// not found in that first file, then the Op opens all the files. Setting
+// `preferred_shard` to match the value passed as the `shard` input
+// of a matching `Save` Op may speed up Restore.  This attribute only affects
+// performance, not correctness.  The default value -1 means files are processed in
+// order.
+//
+// See also `RestoreSlice`.
+//
+// Arguments:
+//	file_pattern: Must have a single element. The pattern of the files from
+// which we read the tensor.
+//	tensor_name: Must have a single element. The name of the tensor to be
+// restored.
+//	dt: The type of the tensor to be restored.
+//
+// Returns The restored tensor.
+func Restore(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, dt tf.DataType, optional ...RestoreAttr) (tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dt": dt}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Restore",
+		Input: []tf.Input{
+			file_pattern, tensor_name,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Reorders a SparseTensor into the canonical, row-major ordering.
+//
+// Note that by convention, all sparse ops preserve the canonical ordering along
+// increasing dimension number. The only time ordering can be violated is during
+// manual manipulation of the indices and values vectors to add entries.
+//
+// Reordering does not affect the shape of the SparseTensor.
+//
+// If the tensor has rank `R` and `N` non-empty values, `input_indices` has
+// shape `[N, R]`, input_values has length `N`, and input_shape has length `R`.
+//
+// Arguments:
+//	input_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+// SparseTensor, possibly not in canonical ordering.
+//	input_values: 1-D.  `N` non-empty values corresponding to `input_indices`.
+//	input_shape: 1-D.  Shape of the input SparseTensor.
+//
+// Returns:
+//	output_indices: 2-D.  `N x R` matrix with the same indices as input_indices, but
+// in canonical row-major ordering.
+//	output_values: 1-D.  `N` non-empty values corresponding to `output_indices`.
+func SparseReorder(scope *Scope, input_indices tf.Output, input_values tf.Output, input_shape tf.Output) (output_indices tf.Output, output_values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseReorder",
+		Input: []tf.Input{
+			input_indices, input_values, input_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Creates a dataset that emits the outputs of `input_dataset` `count` times.
 //
 // Arguments:
@@ -48524,6 +48555,70 @@ func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_
 	return op.Output(0)
 }
 
+// DecodeRawAttr is an optional argument to DecodeRaw.
+type DecodeRawAttr func(optionalAttr)
+
+// DecodeRawLittleEndian sets the optional little_endian attribute to value.
+//
+// value: Whether the input `bytes` are in little-endian order.
+// Ignored for `out_type` values that are stored in a single byte like
+// `uint8`.
+// If not specified, defaults to true
+func DecodeRawLittleEndian(value bool) DecodeRawAttr {
+	return func(m optionalAttr) {
+		m["little_endian"] = value
+	}
+}
+
+// Reinterpret the bytes of a string as a vector of numbers.
+//
+// Arguments:
+//	bytes: All the elements must have the same length.
+//
+//
+// Returns A Tensor with one more dimension than the input `bytes`.  The
+// added dimension will have size equal to the length of the elements
+// of `bytes` divided by the number of bytes to represent `out_type`.
+func DecodeRaw(scope *Scope, bytes tf.Output, out_type tf.DataType, optional ...DecodeRawAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"out_type": out_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeRaw",
+		Input: []tf.Input{
+			bytes,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the number of records this Reader has produced.
+//
+// This is the same as the number of ReaderRead executions that have
+// succeeded.
+//
+// Arguments:
+//	reader_handle: Handle to a Reader.
+func ReaderNumRecordsProducedV2(scope *Scope, reader_handle tf.Output) (records_produced tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReaderNumRecordsProducedV2",
+		Input: []tf.Input{
+			reader_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // MatrixSetDiagV3Attr is an optional argument to MatrixSetDiagV3.
 type MatrixSetDiagV3Attr func(optionalAttr)
 
@@ -49606,101 +49701,6 @@ func ZerosLike(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// RestoreAttr is an optional argument to Restore.
-type RestoreAttr func(optionalAttr)
-
-// RestorePreferredShard sets the optional preferred_shard attribute to value.
-//
-// value: Index of file to open first if multiple files match
-// `file_pattern`.
-// If not specified, defaults to -1
-func RestorePreferredShard(value int64) RestoreAttr {
-	return func(m optionalAttr) {
-		m["preferred_shard"] = value
-	}
-}
-
-// Restores a tensor from checkpoint files.
-//
-// Reads a tensor stored in one or several files. If there are several files (for
-// instance because a tensor was saved as slices), `file_pattern` may contain
-// wildcard symbols (`*` and `?`) in the filename portion only, not in the
-// directory portion.
-//
-// If a `file_pattern` matches several files, `preferred_shard` can be used to hint
-// in which file the requested tensor is likely to be found. This op will first
-// open the file at index `preferred_shard` in the list of matching files and try
-// to restore tensors from that file.  Only if some tensors or tensor slices are
-// not found in that first file, then the Op opens all the files. Setting
-// `preferred_shard` to match the value passed as the `shard` input
-// of a matching `Save` Op may speed up Restore.  This attribute only affects
-// performance, not correctness.  The default value -1 means files are processed in
-// order.
-//
-// See also `RestoreSlice`.
-//
-// Arguments:
-//	file_pattern: Must have a single element. The pattern of the files from
-// which we read the tensor.
-//	tensor_name: Must have a single element. The name of the tensor to be
-// restored.
-//	dt: The type of the tensor to be restored.
-//
-// Returns The restored tensor.
-func Restore(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, dt tf.DataType, optional ...RestoreAttr) (tensor tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dt": dt}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Restore",
-		Input: []tf.Input{
-			file_pattern, tensor_name,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Reorders a SparseTensor into the canonical, row-major ordering.
-//
-// Note that by convention, all sparse ops preserve the canonical ordering along
-// increasing dimension number. The only time ordering can be violated is during
-// manual manipulation of the indices and values vectors to add entries.
-//
-// Reordering does not affect the shape of the SparseTensor.
-//
-// If the tensor has rank `R` and `N` non-empty values, `input_indices` has
-// shape `[N, R]`, input_values has length `N`, and input_shape has length `R`.
-//
-// Arguments:
-//	input_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
-// SparseTensor, possibly not in canonical ordering.
-//	input_values: 1-D.  `N` non-empty values corresponding to `input_indices`.
-//	input_shape: 1-D.  Shape of the input SparseTensor.
-//
-// Returns:
-//	output_indices: 2-D.  `N x R` matrix with the same indices as input_indices, but
-// in canonical row-major ordering.
-//	output_values: 1-D.  `N` non-empty values corresponding to `output_indices`.
-func SparseReorder(scope *Scope, input_indices tf.Output, input_values tf.Output, input_shape tf.Output) (output_indices tf.Output, output_values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseReorder",
-		Input: []tf.Input{
-			input_indices, input_values, input_shape,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
 // Returns a constant tensor on the host. Only for writing C++ tests.
 //
 // Arguments:
@@ -49796,442 +49796,6 @@ func InplaceAdd(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Outpu
 		Input: []tf.Input{
 			x, i, v,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a dataset with a range of values. Corresponds to python's xrange.
-//
-// Arguments:
-//	start: corresponds to start in python's xrange().
-//	stop: corresponds to stop in python's xrange().
-//	step: corresponds to step in python's xrange().
-//
-//
-func RangeDataset(scope *Scope, start tf.Output, stop tf.Output, step tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "RangeDataset",
-		Input: []tf.Input{
-			start, stop, step,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the absolute value of a tensor.
-//
-// Given a tensor `x`, this operation returns a tensor containing the absolute
-// value of each element in `x`. For example, if x is an input element and y is
-// an output element, this operation computes \\(y = |x|\\).
-func Abs(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Abs",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Wraps the XLA DotGeneral operator, documented at
-//
-//  https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
-// .
-//
-// Arguments:
-//	lhs: the LHS tensor
-//	rhs: the RHS tensor
-//	dimension_numbers: a serialized xla::DotDimensionNumbers proto.
-//	precision_config: a serialized xla::PrecisionConfig proto.
-//	preferred_element_type: The type of the tensor.
-func XlaDotV2(scope *Scope, lhs tf.Output, rhs tf.Output, dimension_numbers string, precision_config string, preferred_element_type tf.DataType) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config, "preferred_element_type": preferred_element_type}
-	opspec := tf.OpSpec{
-		Type: "XlaDotV2",
-		Input: []tf.Input{
-			lhs, rhs,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// A container for an iterator resource.
-//
-// Returns A handle to the iterator that can be passed to a "MakeIterator" or
-// "IteratorGetNext" op. In contrast to Iterator, AnonymousIterator prevents
-// resource sharing by name, and does not keep a reference to the resource
-// container.
-func AnonymousIterator(scope *Scope, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "AnonymousIterator",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// UniqueWithCountsV2Attr is an optional argument to UniqueWithCountsV2.
-type UniqueWithCountsV2Attr func(optionalAttr)
-
-// UniqueWithCountsV2OutIdx sets the optional out_idx attribute to value.
-// If not specified, defaults to DT_INT32
-func UniqueWithCountsV2OutIdx(value tf.DataType) UniqueWithCountsV2Attr {
-	return func(m optionalAttr) {
-		m["out_idx"] = value
-	}
-}
-
-// Finds unique elements along an axis of a tensor.
-//
-// This operation either returns a tensor `y` containing unique elements
-// along the `axis` of a tensor. The returned unique elements is sorted
-// in the same order as they occur along `axis` in `x`.
-// This operation also returns a tensor `idx` and a tensor `count`
-// that are the same size as the number of the elements in `x` along the
-// `axis` dimension. The `idx` contains the index in the unique output `y`
-// and the `count` contains the count in the unique output `y`.
-// In other words, for an `1-D` tensor `x` with `axis = None:
-//
-// `y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
-//
-// For example:
-//
-// ```
-// x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
-// y, idx, count = UniqueWithCountsV2(x, axis = [0])
-// y ==> [1, 2, 4, 7, 8]
-// idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
-// count ==> [2, 1, 3, 1, 2]
-// ```
-//
-// For a `2-D` tensor `x` with `axis = 0`:
-//
-// ```
-// x = tf.constant([[1, 0, 0],
-//                 [1, 0, 0],
-//                 [2, 0, 0]])
-// y, idx, count = UniqueWithCountsV2(x, axis=[0])
-// y ==> [[1, 0, 0],
-//        [2, 0, 0]]
-// idx ==> [0, 0, 1]
-// count ==> [2, 1]
-// ```
-//
-// For a `2-D` tensor `x` with `axis = 1`:
-//
-// ```
-// x = tf.constant([[1, 0, 0],
-//                 [1, 0, 0],
-//                 [2, 0, 0]])
-// y, idx, count = UniqueWithCountsV2(x, axis=[1])
-// y ==> [[1, 0],
-//        [1, 0],
-//        [2, 0]]
-// idx ==> [0, 1, 1]
-// count ==> [1, 2]
-// ```
-//
-// Arguments:
-//	x: A `Tensor`.
-//	axis: A `Tensor` of type `int32` (default: None). The axis of the Tensor to
-// find the unique elements.
-//
-// Returns:
-//	y: A `Tensor`. Unique elements along the `axis` of `Tensor` x.
-//	idx: A 1-D Tensor. Has the same type as x that contains the index of each
-// value of x in the output y.
-//	count: A 1-D Tensor. The count of each value of x in the output y.
-func UniqueWithCountsV2(scope *Scope, x tf.Output, axis tf.Output, optional ...UniqueWithCountsV2Attr) (y tf.Output, idx tf.Output, count tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "UniqueWithCountsV2",
-		Input: []tf.Input{
-			x, axis,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Returns the item in the list with the given index.
-//
-// input_handle: the list
-// index: the position in the list from which an element will be retrieved
-// item: the element at that position
-//
-//
-func TensorListGetItem(scope *Scope, input_handle tf.Output, index tf.Output, element_shape tf.Output, element_dtype tf.DataType) (item tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"element_dtype": element_dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorListGetItem",
-		Input: []tf.Input{
-			input_handle, index, element_shape,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns a diagonal tensor with a given diagonal values.
-//
-// Given a `diagonal`, this operation returns a tensor with the `diagonal` and
-// everything else padded with zeros. The diagonal is computed as follows:
-//
-// Assume `diagonal` has dimensions [D1,..., Dk], then the output is a tensor of
-// rank 2k with dimensions [D1,..., Dk, D1,..., Dk] where:
-//
-// `output[i1,..., ik, i1,..., ik] = diagonal[i1, ..., ik]` and 0 everywhere else.
-//
-// For example:
-//
-// ```
-// # 'diagonal' is [1, 2, 3, 4]
-// tf.diag(diagonal) ==> [[1, 0, 0, 0]
-//                        [0, 2, 0, 0]
-//                        [0, 0, 3, 0]
-//                        [0, 0, 0, 4]]
-// ```
-//
-// Arguments:
-//	diagonal: Rank k tensor where k is at most 1.
-func Diag(scope *Scope, diagonal tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Diag",
-		Input: []tf.Input{
-			diagonal,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Draw bounding boxes on a batch of images.
-//
-// Outputs a copy of `images` but draws on top of the pixels zero or more bounding
-// boxes specified by the locations in `boxes`. The coordinates of the each
-// bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
-// bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
-// height of the underlying image.
-//
-// For example, if an image is 100 x 200 pixels (height x width) and the bounding
-// box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
-// the bounding box will be `(40, 10)` to `(180, 50)` (in (x,y) coordinates).
-//
-// Parts of the bounding box may fall outside the image.
-//
-// Arguments:
-//	images: 4-D with shape `[batch, height, width, depth]`. A batch of images.
-//	boxes: 3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
-// boxes.
-//
-// Returns 4-D with the same shape as `images`. The batch of input images with
-// bounding boxes drawn on the images.
-func DrawBoundingBoxes(scope *Scope, images tf.Output, boxes tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DrawBoundingBoxes",
-		Input: []tf.Input{
-			images, boxes,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ComplexAttr is an optional argument to Complex.
-type ComplexAttr func(optionalAttr)
-
-// ComplexTout sets the optional Tout attribute to value.
-// If not specified, defaults to DT_COMPLEX64
-func ComplexTout(value tf.DataType) ComplexAttr {
-	return func(m optionalAttr) {
-		m["Tout"] = value
-	}
-}
-
-// Converts two real numbers to a complex number.
-//
-// Given a tensor `real` representing the real part of a complex number, and a
-// tensor `imag` representing the imaginary part of a complex number, this
-// operation returns complex numbers elementwise of the form \\(a + bj\\), where
-// *a* represents the `real` part and *b* represents the `imag` part.
-//
-// The input tensors `real` and `imag` must have the same shape.
-//
-// For example:
-//
-// ```
-// # tensor 'real' is [2.25, 3.25]
-// # tensor `imag` is [4.75, 5.75]
-// tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
-// ```
-func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAttr) (out tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Complex",
-		Input: []tf.Input{
-			real, imag,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DequantizeAttr is an optional argument to Dequantize.
-type DequantizeAttr func(optionalAttr)
-
-// DequantizeMode sets the optional mode attribute to value.
-// If not specified, defaults to "MIN_COMBINED"
-func DequantizeMode(value string) DequantizeAttr {
-	return func(m optionalAttr) {
-		m["mode"] = value
-	}
-}
-
-// DequantizeNarrowRange sets the optional narrow_range attribute to value.
-// If not specified, defaults to false
-func DequantizeNarrowRange(value bool) DequantizeAttr {
-	return func(m optionalAttr) {
-		m["narrow_range"] = value
-	}
-}
-
-// DequantizeAxis sets the optional axis attribute to value.
-// If not specified, defaults to -1
-func DequantizeAxis(value int64) DequantizeAttr {
-	return func(m optionalAttr) {
-		m["axis"] = value
-	}
-}
-
-// DequantizeDtype sets the optional dtype attribute to value.
-//
-// value: Type of the output tensor. Currently Dequantize supports float and bfloat16.
-// If 'dtype' is 'bfloat16', it only supports 'MIN_COMBINED' mode.
-// If not specified, defaults to DT_FLOAT
-func DequantizeDtype(value tf.DataType) DequantizeAttr {
-	return func(m optionalAttr) {
-		m["dtype"] = value
-	}
-}
-
-// Dequantize the 'input' tensor into a float or bfloat16 Tensor.
-//
-// [min_range, max_range] are scalar floats that specify the range for
-// the output. The 'mode' attribute controls exactly which calculations are
-// used to convert the float values to their quantized equivalents.
-//
-// In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
-//
-// ```
-// if T == qint8: in[i] += (range(T) + 1)/ 2.0
-// out[i] = min_range + (in[i]* (max_range - min_range) / range(T))
-// ```
-// here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
-//
-// *MIN_COMBINED Mode Example*
-//
-// If the input comes from a QuantizedRelu6, the output type is
-// quint8 (range of 0-255) but the possible range of QuantizedRelu6 is
-// 0-6.  The min_range and max_range values are therefore 0.0 and 6.0.
-// Dequantize on quint8 will take each value, cast to float, and multiply
-// by 6 / 255.
-// Note that if quantizedtype is qint8, the operation will additionally add
-// each value by 128 prior to casting.
-//
-// If the mode is 'MIN_FIRST', then this approach is used:
-//
-// ```c++
-// num_discrete_values = 1 << (# of bits in T)
-// range_adjust = num_discrete_values / (num_discrete_values - 1)
-// range = (range_max - range_min) * range_adjust
-// range_scale = range / num_discrete_values
-// const double offset_input = static_cast<double>(input) - lowest_quantized;
-// result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
-// ```
-//
-// If the mode is `SCALED`, dequantization is performed by multiplying each
-// input value by a scaling_factor. (Thus an input of 0 always maps to 0.0).
-//
-// The scaling_factor is determined from `min_range`, `max_range`, and
-// `narrow_range` in a way that is compatible with `QuantizeAndDequantize{V2|V3}`
-// and `QuantizeV2`, using the following algorithm:
-//
-// ```c++
-//
-//   const int min_expected_T = std::numeric_limits<T>::min() +
-//     (narrow_range ? 1 : 0);
-//   const int max_expected_T = std::numeric_limits<T>::max();
-//   const float max_expected_T = std::numeric_limits<float>::max();
-//
-//   const float scale_factor =
-//     (std::numeric_limits<T>::min() == 0) ? (max_range / max_expected_T)
-//                                          : std::max(min_range / min_expected_T,
-//                                                     max_range / max_expected_T);
-// ```
-//
-// Arguments:
-//
-//	min_range: The minimum scalar value possibly produced for the input.
-//	max_range: The maximum scalar value possibly produced for the input.
-func Dequantize(scope *Scope, input tf.Output, min_range tf.Output, max_range tf.Output, optional ...DequantizeAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Dequantize",
-		Input: []tf.Input{
-			input, min_range, max_range,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -50665,6 +50229,442 @@ func XlaGather(scope *Scope, operand tf.Output, start_indices tf.Output, slice_s
 			operand, start_indices, slice_sizes,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset with a range of values. Corresponds to python's xrange.
+//
+// Arguments:
+//	start: corresponds to start in python's xrange().
+//	stop: corresponds to stop in python's xrange().
+//	step: corresponds to step in python's xrange().
+//
+//
+func RangeDataset(scope *Scope, start tf.Output, stop tf.Output, step tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "RangeDataset",
+		Input: []tf.Input{
+			start, stop, step,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the absolute value of a tensor.
+//
+// Given a tensor `x`, this operation returns a tensor containing the absolute
+// value of each element in `x`. For example, if x is an input element and y is
+// an output element, this operation computes \\(y = |x|\\).
+func Abs(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Abs",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA DotGeneral operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
+// .
+//
+// Arguments:
+//	lhs: the LHS tensor
+//	rhs: the RHS tensor
+//	dimension_numbers: a serialized xla::DotDimensionNumbers proto.
+//	precision_config: a serialized xla::PrecisionConfig proto.
+//	preferred_element_type: The type of the tensor.
+func XlaDotV2(scope *Scope, lhs tf.Output, rhs tf.Output, dimension_numbers string, precision_config string, preferred_element_type tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config, "preferred_element_type": preferred_element_type}
+	opspec := tf.OpSpec{
+		Type: "XlaDotV2",
+		Input: []tf.Input{
+			lhs, rhs,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// A container for an iterator resource.
+//
+// Returns A handle to the iterator that can be passed to a "MakeIterator" or
+// "IteratorGetNext" op. In contrast to Iterator, AnonymousIterator prevents
+// resource sharing by name, and does not keep a reference to the resource
+// container.
+func AnonymousIterator(scope *Scope, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AnonymousIterator",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// UniqueWithCountsV2Attr is an optional argument to UniqueWithCountsV2.
+type UniqueWithCountsV2Attr func(optionalAttr)
+
+// UniqueWithCountsV2OutIdx sets the optional out_idx attribute to value.
+// If not specified, defaults to DT_INT32
+func UniqueWithCountsV2OutIdx(value tf.DataType) UniqueWithCountsV2Attr {
+	return func(m optionalAttr) {
+		m["out_idx"] = value
+	}
+}
+
+// Finds unique elements along an axis of a tensor.
+//
+// This operation either returns a tensor `y` containing unique elements
+// along the `axis` of a tensor. The returned unique elements is sorted
+// in the same order as they occur along `axis` in `x`.
+// This operation also returns a tensor `idx` and a tensor `count`
+// that are the same size as the number of the elements in `x` along the
+// `axis` dimension. The `idx` contains the index in the unique output `y`
+// and the `count` contains the count in the unique output `y`.
+// In other words, for an `1-D` tensor `x` with `axis = None:
+//
+// `y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+//
+// For example:
+//
+// ```
+// x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+// y, idx, count = UniqueWithCountsV2(x, axis = [0])
+// y ==> [1, 2, 4, 7, 8]
+// idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+// count ==> [2, 1, 3, 1, 2]
+// ```
+//
+// For a `2-D` tensor `x` with `axis = 0`:
+//
+// ```
+// x = tf.constant([[1, 0, 0],
+//                 [1, 0, 0],
+//                 [2, 0, 0]])
+// y, idx, count = UniqueWithCountsV2(x, axis=[0])
+// y ==> [[1, 0, 0],
+//        [2, 0, 0]]
+// idx ==> [0, 0, 1]
+// count ==> [2, 1]
+// ```
+//
+// For a `2-D` tensor `x` with `axis = 1`:
+//
+// ```
+// x = tf.constant([[1, 0, 0],
+//                 [1, 0, 0],
+//                 [2, 0, 0]])
+// y, idx, count = UniqueWithCountsV2(x, axis=[1])
+// y ==> [[1, 0],
+//        [1, 0],
+//        [2, 0]]
+// idx ==> [0, 1, 1]
+// count ==> [1, 2]
+// ```
+//
+// Arguments:
+//	x: A `Tensor`.
+//	axis: A `Tensor` of type `int32` (default: None). The axis of the Tensor to
+// find the unique elements.
+//
+// Returns:
+//	y: A `Tensor`. Unique elements along the `axis` of `Tensor` x.
+//	idx: A 1-D Tensor. Has the same type as x that contains the index of each
+// value of x in the output y.
+//	count: A 1-D Tensor. The count of each value of x in the output y.
+func UniqueWithCountsV2(scope *Scope, x tf.Output, axis tf.Output, optional ...UniqueWithCountsV2Attr) (y tf.Output, idx tf.Output, count tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniqueWithCountsV2",
+		Input: []tf.Input{
+			x, axis,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Draw bounding boxes on a batch of images.
+//
+// Outputs a copy of `images` but draws on top of the pixels zero or more bounding
+// boxes specified by the locations in `boxes`. The coordinates of the each
+// bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
+// bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+// height of the underlying image.
+//
+// For example, if an image is 100 x 200 pixels (height x width) and the bounding
+// box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
+// the bounding box will be `(40, 10)` to `(180, 50)` (in (x,y) coordinates).
+//
+// Parts of the bounding box may fall outside the image.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, depth]`. A batch of images.
+//	boxes: 3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
+// boxes.
+//
+// Returns 4-D with the same shape as `images`. The batch of input images with
+// bounding boxes drawn on the images.
+func DrawBoundingBoxes(scope *Scope, images tf.Output, boxes tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DrawBoundingBoxes",
+		Input: []tf.Input{
+			images, boxes,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ComplexAttr is an optional argument to Complex.
+type ComplexAttr func(optionalAttr)
+
+// ComplexTout sets the optional Tout attribute to value.
+// If not specified, defaults to DT_COMPLEX64
+func ComplexTout(value tf.DataType) ComplexAttr {
+	return func(m optionalAttr) {
+		m["Tout"] = value
+	}
+}
+
+// Converts two real numbers to a complex number.
+//
+// Given a tensor `real` representing the real part of a complex number, and a
+// tensor `imag` representing the imaginary part of a complex number, this
+// operation returns complex numbers elementwise of the form \\(a + bj\\), where
+// *a* represents the `real` part and *b* represents the `imag` part.
+//
+// The input tensors `real` and `imag` must have the same shape.
+//
+// For example:
+//
+// ```
+// # tensor 'real' is [2.25, 3.25]
+// # tensor `imag` is [4.75, 5.75]
+// tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
+// ```
+func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAttr) (out tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Complex",
+		Input: []tf.Input{
+			real, imag,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DequantizeAttr is an optional argument to Dequantize.
+type DequantizeAttr func(optionalAttr)
+
+// DequantizeMode sets the optional mode attribute to value.
+// If not specified, defaults to "MIN_COMBINED"
+func DequantizeMode(value string) DequantizeAttr {
+	return func(m optionalAttr) {
+		m["mode"] = value
+	}
+}
+
+// DequantizeNarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func DequantizeNarrowRange(value bool) DequantizeAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
+// DequantizeAxis sets the optional axis attribute to value.
+// If not specified, defaults to -1
+func DequantizeAxis(value int64) DequantizeAttr {
+	return func(m optionalAttr) {
+		m["axis"] = value
+	}
+}
+
+// DequantizeDtype sets the optional dtype attribute to value.
+//
+// value: Type of the output tensor. Currently Dequantize supports float and bfloat16.
+// If 'dtype' is 'bfloat16', it only supports 'MIN_COMBINED' mode.
+// If not specified, defaults to DT_FLOAT
+func DequantizeDtype(value tf.DataType) DequantizeAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Dequantize the 'input' tensor into a float or bfloat16 Tensor.
+//
+// [min_range, max_range] are scalar floats that specify the range for
+// the output. The 'mode' attribute controls exactly which calculations are
+// used to convert the float values to their quantized equivalents.
+//
+// In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
+//
+// ```
+// if T == qint8: in[i] += (range(T) + 1)/ 2.0
+// out[i] = min_range + (in[i]* (max_range - min_range) / range(T))
+// ```
+// here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
+//
+// *MIN_COMBINED Mode Example*
+//
+// If the input comes from a QuantizedRelu6, the output type is
+// quint8 (range of 0-255) but the possible range of QuantizedRelu6 is
+// 0-6.  The min_range and max_range values are therefore 0.0 and 6.0.
+// Dequantize on quint8 will take each value, cast to float, and multiply
+// by 6 / 255.
+// Note that if quantizedtype is qint8, the operation will additionally add
+// each value by 128 prior to casting.
+//
+// If the mode is 'MIN_FIRST', then this approach is used:
+//
+// ```c++
+// num_discrete_values = 1 << (# of bits in T)
+// range_adjust = num_discrete_values / (num_discrete_values - 1)
+// range = (range_max - range_min) * range_adjust
+// range_scale = range / num_discrete_values
+// const double offset_input = static_cast<double>(input) - lowest_quantized;
+// result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
+// ```
+//
+// If the mode is `SCALED`, dequantization is performed by multiplying each
+// input value by a scaling_factor. (Thus an input of 0 always maps to 0.0).
+//
+// The scaling_factor is determined from `min_range`, `max_range`, and
+// `narrow_range` in a way that is compatible with `QuantizeAndDequantize{V2|V3}`
+// and `QuantizeV2`, using the following algorithm:
+//
+// ```c++
+//
+//   const int min_expected_T = std::numeric_limits<T>::min() +
+//     (narrow_range ? 1 : 0);
+//   const int max_expected_T = std::numeric_limits<T>::max();
+//   const float max_expected_T = std::numeric_limits<float>::max();
+//
+//   const float scale_factor =
+//     (std::numeric_limits<T>::min() == 0) ? (max_range / max_expected_T)
+//                                          : std::max(min_range / min_expected_T,
+//                                                     max_range / max_expected_T);
+// ```
+//
+// Arguments:
+//
+//	min_range: The minimum scalar value possibly produced for the input.
+//	max_range: The maximum scalar value possibly produced for the input.
+func Dequantize(scope *Scope, input tf.Output, min_range tf.Output, max_range tf.Output, optional ...DequantizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Dequantize",
+		Input: []tf.Input{
+			input, min_range, max_range,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the item in the list with the given index.
+//
+// input_handle: the list
+// index: the position in the list from which an element will be retrieved
+// item: the element at that position
+//
+//
+func TensorListGetItem(scope *Scope, input_handle tf.Output, index tf.Output, element_shape tf.Output, element_dtype tf.DataType) (item tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorListGetItem",
+		Input: []tf.Input{
+			input_handle, index, element_shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns a diagonal tensor with a given diagonal values.
+//
+// Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+// everything else padded with zeros. The diagonal is computed as follows:
+//
+// Assume `diagonal` has dimensions [D1,..., Dk], then the output is a tensor of
+// rank 2k with dimensions [D1,..., Dk, D1,..., Dk] where:
+//
+// `output[i1,..., ik, i1,..., ik] = diagonal[i1, ..., ik]` and 0 everywhere else.
+//
+// For example:
+//
+// ```
+// # 'diagonal' is [1, 2, 3, 4]
+// tf.diag(diagonal) ==> [[1, 0, 0, 0]
+//                        [0, 2, 0, 0]
+//                        [0, 0, 3, 0]
+//                        [0, 0, 0, 4]]
+// ```
+//
+// Arguments:
+//	diagonal: Rank k tensor where k is at most 1.
+func Diag(scope *Scope, diagonal tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Diag",
+		Input: []tf.Input{
+			diagonal,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -51441,6 +51441,123 @@ func FinalizeDataset(scope *Scope, input_dataset tf.Output, output_types []tf.Da
 	return op.Output(0)
 }
 
+// QuantizeAndDequantizeAttr is an optional argument to QuantizeAndDequantize.
+type QuantizeAndDequantizeAttr func(optionalAttr)
+
+// QuantizeAndDequantizeSignedInput sets the optional signed_input attribute to value.
+// If not specified, defaults to true
+func QuantizeAndDequantizeSignedInput(value bool) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["signed_input"] = value
+	}
+}
+
+// QuantizeAndDequantizeNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func QuantizeAndDequantizeNumBits(value int64) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
+// QuantizeAndDequantizeRangeGiven sets the optional range_given attribute to value.
+// If not specified, defaults to false
+func QuantizeAndDequantizeRangeGiven(value bool) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["range_given"] = value
+	}
+}
+
+// QuantizeAndDequantizeInputMin sets the optional input_min attribute to value.
+// If not specified, defaults to 0
+func QuantizeAndDequantizeInputMin(value float32) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["input_min"] = value
+	}
+}
+
+// QuantizeAndDequantizeInputMax sets the optional input_max attribute to value.
+// If not specified, defaults to 0
+func QuantizeAndDequantizeInputMax(value float32) QuantizeAndDequantizeAttr {
+	return func(m optionalAttr) {
+		m["input_max"] = value
+	}
+}
+
+// Use QuantizeAndDequantizeV2 instead.
+//
+// DEPRECATED at GraphDef version 22: Replaced by QuantizeAndDequantizeV2
+func QuantizeAndDequantize(scope *Scope, input tf.Output, optional ...QuantizeAndDequantizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizeAndDequantize",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Sends the named tensor to another XLA computation. Wraps the XLA Send operator
+//
+// documented at
+//  https://www.tensorflow.org/performance/xla/operation_semantics#send .
+//
+// Arguments:
+//	tensor: The tensor to send.
+//	tensor_name: A string key that identifies the channel.
+//
+// Returns the created operation.
+func XlaSend(scope *Scope, tensor tf.Output, tensor_name string) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"tensor_name": tensor_name}
+	opspec := tf.OpSpec{
+		Type: "XlaSend",
+		Input: []tf.Input{
+			tensor,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Returns the index of a data point that should be added to the seed set.
+//
+// Entries in distances are assumed to be squared distances of candidate points to
+// the already sampled centers in the seed set. The op constructs one Markov chain
+// of the k-MC^2 algorithm and returns the index of one candidate point to be added
+// as an additional cluster center.
+//
+// Arguments:
+//	distances: Vector with squared distances to the closest previously sampled cluster center
+// for each candidate point.
+//	seed: Scalar. Seed for initializing the random number generator.
+//
+// Returns Scalar with the index of the sampled point.
+func KMC2ChainInitialization(scope *Scope, distances tf.Output, seed tf.Output) (index tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "KMC2ChainInitialization",
+		Input: []tf.Input{
+			distances, seed,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // TakeManySparseFromTensorsMapAttr is an optional argument to TakeManySparseFromTensorsMap.
 type TakeManySparseFromTensorsMapAttr func(optionalAttr)
 
@@ -51579,123 +51696,6 @@ func BoostedTreesMakeQuantileSummaries(scope *Scope, float_values []tf.Output, e
 		return
 	}
 	return summaries
-}
-
-// QuantizeAndDequantizeAttr is an optional argument to QuantizeAndDequantize.
-type QuantizeAndDequantizeAttr func(optionalAttr)
-
-// QuantizeAndDequantizeSignedInput sets the optional signed_input attribute to value.
-// If not specified, defaults to true
-func QuantizeAndDequantizeSignedInput(value bool) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["signed_input"] = value
-	}
-}
-
-// QuantizeAndDequantizeNumBits sets the optional num_bits attribute to value.
-// If not specified, defaults to 8
-func QuantizeAndDequantizeNumBits(value int64) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["num_bits"] = value
-	}
-}
-
-// QuantizeAndDequantizeRangeGiven sets the optional range_given attribute to value.
-// If not specified, defaults to false
-func QuantizeAndDequantizeRangeGiven(value bool) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["range_given"] = value
-	}
-}
-
-// QuantizeAndDequantizeInputMin sets the optional input_min attribute to value.
-// If not specified, defaults to 0
-func QuantizeAndDequantizeInputMin(value float32) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["input_min"] = value
-	}
-}
-
-// QuantizeAndDequantizeInputMax sets the optional input_max attribute to value.
-// If not specified, defaults to 0
-func QuantizeAndDequantizeInputMax(value float32) QuantizeAndDequantizeAttr {
-	return func(m optionalAttr) {
-		m["input_max"] = value
-	}
-}
-
-// Use QuantizeAndDequantizeV2 instead.
-//
-// DEPRECATED at GraphDef version 22: Replaced by QuantizeAndDequantizeV2
-func QuantizeAndDequantize(scope *Scope, input tf.Output, optional ...QuantizeAndDequantizeAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QuantizeAndDequantize",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the index of a data point that should be added to the seed set.
-//
-// Entries in distances are assumed to be squared distances of candidate points to
-// the already sampled centers in the seed set. The op constructs one Markov chain
-// of the k-MC^2 algorithm and returns the index of one candidate point to be added
-// as an additional cluster center.
-//
-// Arguments:
-//	distances: Vector with squared distances to the closest previously sampled cluster center
-// for each candidate point.
-//	seed: Scalar. Seed for initializing the random number generator.
-//
-// Returns Scalar with the index of the sampled point.
-func KMC2ChainInitialization(scope *Scope, distances tf.Output, seed tf.Output) (index tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "KMC2ChainInitialization",
-		Input: []tf.Input{
-			distances, seed,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Sends the named tensor to another XLA computation. Wraps the XLA Send operator
-//
-// documented at
-//  https://www.tensorflow.org/performance/xla/operation_semantics#send .
-//
-// Arguments:
-//	tensor: The tensor to send.
-//	tensor_name: A string key that identifies the channel.
-//
-// Returns the created operation.
-func XlaSend(scope *Scope, tensor tf.Output, tensor_name string) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"tensor_name": tensor_name}
-	opspec := tf.OpSpec{
-		Type: "XlaSend",
-		Input: []tf.Input{
-			tensor,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Computes the inverse permutation of a tensor.
