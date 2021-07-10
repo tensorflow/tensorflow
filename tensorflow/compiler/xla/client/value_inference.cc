@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/value_inference.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -56,6 +57,24 @@ Literal CreatePredLiteral(bool pred, const Shape& reference_shape) {
       literal.Broadcast(ShapeUtil::ChangeElementType(reference_shape, PRED), {})
           .ValueOrDie();
   return literal_broadcast;
+}
+
+Literal CreateS64Literal(int64 value, const Shape& reference_shape) {
+  if (reference_shape.IsTuple()) {
+    std::vector<Literal> sub_literals;
+    for (const Shape& shape : reference_shape.tuple_shapes()) {
+      sub_literals.emplace_back(CreateS64Literal(value, shape));
+    }
+    return Literal::MoveIntoTuple(absl::MakeSpan(sub_literals));
+  }
+  PrimitiveType element_type = reference_shape.element_type();
+  if (element_type == TOKEN) {
+    return LiteralUtil::CreateToken();
+  }
+  Literal literal = LiteralUtil::CreateR0<int64>(value);
+  return literal
+      .Broadcast(ShapeUtil::ChangeElementType(reference_shape, S64), {})
+      .ValueOrDie();
 }
 
 // Create a literal with garbage data. The data inside is undefined and
@@ -190,6 +209,21 @@ enum PostorderDFSNodeType {
   // similar to kValueIsDynamic, but views shape bound as static values.
   kBoundIsDynamic,
 };
+
+std::string PostorderDFSNodeTypeToString(PostorderDFSNodeType type) {
+  switch (type) {
+    case kConstantValue:
+      return "kConstantValue";
+    case kConstantUpperBound:
+      return "kConstantUpperBound";
+    case kConstantLowerBound:
+      return "kConstantLowerBound";
+    case kValueIsDynamic:
+      return "kValueIsDynamic";
+    case kBoundIsDynamic:
+      return "kBoundIsDynamic";
+  }
+}
 
 struct InferenceContext {
   explicit InferenceContext(ShapeIndex shape_index,
@@ -581,6 +615,22 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
                 .WithOperands(absl::MakeSpan(new_operands))
                 .Evaluate();
           });
+    }
+    case HloOpcode::kCustomCall: {
+      if (root->custom_call_target() == "SetBound") {
+        return PostorderDFSNode().AddVisit([root]() -> StatusOr<Literal> {
+          if (root->literal().shape().element_type() == TUPLE) {
+            // First literal of SetBound contains bounds, second literal
+            // contains dynamism indicators.
+            return Literal::CreateFromProto(root->literal().tuple_literals(0));
+          } else {
+            return Literal::CreateFromProto(root->literal());
+          }
+        });
+      }
+      return InvalidArgument(
+          "Upper-bound inferencing on custom call %s is not supported",
+          root->DebugString());
     }
     default:
       return AnalyzeConstantValueFallback(
@@ -1118,9 +1168,10 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
         TF_RET_CHECK(evaluated.contains(dep_id));
         literals.emplace_back(evaluated.at(dep_id).Clone());
       }
-      VLOG(1) << "start visiting with" << literals.size();
+      VLOG(1) << "Start visiting with dependency type: "
+              << PostorderDFSNodeTypeToString(item.type);
       TF_ASSIGN_OR_RETURN(auto literal, item.visit(absl::MakeSpan(literals)));
-      VLOG(1) << "end visiting: " << literal.ToString();
+      VLOG(1) << "End visiting: " << literal.ToString();
       evaluated[item.id] = std::move(literal);
       stack.pop_back();
       continue;
@@ -1187,6 +1238,158 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
   return result;
 }
 
+absl::optional<int64> ValueInference::CseOpHandle(int64 handle) {
+  auto inst = builder_->LookUpInstructionByHandle(handle).ValueOrDie();
+  HloOpcode opcode = StringToHloOpcode(inst->opcode()).ValueOrDie();
+  // For now, only handle kGetDimensionSize as that's the most duplicated one.
+  if (opcode != HloOpcode::kGetDimensionSize) {
+    return absl::nullopt;
+  }
+  int64 hash = inst->operand_ids(0);
+  hash =
+      tensorflow::Hash64Combine(hash, std::hash<int64>()(inst->dimensions(0)));
+  auto lookup = cse_map_.find(hash);
+  if (lookup == cse_map_.end()) {
+    cse_map_[hash] = handle;
+    return absl::nullopt;
+  }
+  auto equivalent_op =
+      builder_->LookUpInstructionByHandle(lookup->second).ValueOrDie();
+  // Check that the op is indeed equivalent to prevent hash collision --
+  // relatively easy to happen with 64 bits hash.
+  if (equivalent_op->opcode() != inst->opcode() ||
+      equivalent_op->operand_ids(0) != inst->operand_ids(0) ||
+      equivalent_op->dimensions(0) != inst->dimensions(0)) {
+    // Hash collision, don't CSE.
+    return absl::nullopt;
+  }
+  int64 cse = lookup->second;
+  if (handle != cse) {
+    // Successfully found a handle that's not the same as input but equivalent.
+    return cse;
+  }
+  return absl::nullopt;
+}
+
+StatusOr<Literal> ValueInference::SimplifyOp(int64 handle) {
+  if (auto cse_handle = CseOpHandle(handle)) {
+    // Use the CSE'd handle instead.
+    return SimplifyOp(*cse_handle);
+  }
+  auto inst = builder_->LookUpInstructionByHandle(handle).ValueOrDie();
+  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(inst->opcode()));
+  std::vector<Literal> operands;
+  auto output_shape = Shape(inst->shape());
+  switch (opcode) {
+    case HloOpcode::kSlice:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kReshape:
+    case HloOpcode::kBroadcast: {
+      for (auto operand_id : inst->operand_ids()) {
+        TF_ASSIGN_OR_RETURN(auto literal, SimplifyOp(operand_id));
+        operands.emplace_back(std::move(literal));
+      }
+      // We put handles into the tensor and evaluate the results into a literal.
+      // The literal also contain handles for each element position.
+      return HloProtoEvaluator(*inst)
+          .WithOperands(absl::MakeSpan(operands))
+          .WithPrimitiveType(S64)
+          .Evaluate();
+    }
+    case HloOpcode::kConvert: {
+      // Only identity kConvert can be optimized away.
+      auto operand = builder_->LookUpInstructionByHandle(inst->operand_ids(0))
+                         .ValueOrDie();
+      if (Shape::Equal()(output_shape, Shape(operand->shape()))) {
+        // Forward operand handle as result.
+        return LiteralUtil::CreateR0<int64>(inst->operand_ids(0));
+      } else {
+        return LiteralUtil::CreateR0<int64>(handle);
+      }
+    }
+    case HloOpcode::kAdd: {
+      // a + (b - a) => b
+      // a + b + (c - a) => b + c
+      if (output_shape.rank() == 0) {
+        TF_ASSIGN_OR_RETURN(auto lhs, SimplifyOp(inst->operand_ids(0)));
+        TF_ASSIGN_OR_RETURN(auto rhs, SimplifyOp(inst->operand_ids(1)));
+        int64 lhs_handle = lhs.Get<int64>({});
+        int64 rhs_handle = rhs.Get<int64>({});
+        if (lhs_handle == -1 || rhs_handle == -1) {
+          return CreateS64Literal(-1, output_shape);
+        }
+        // Recursive lambda needs explicit signature.
+        std::function<absl::optional<int64>(int64, int64)> can_be_optimized;
+        can_be_optimized = [this, &can_be_optimized](
+                               int64 lhs, int64 rhs) -> absl::optional<int64> {
+          auto rhs_inst = builder_->LookUpInstructionByHandle(rhs).ValueOrDie();
+          HloOpcode rhs_opcode =
+              StringToHloOpcode(rhs_inst->opcode()).ValueOrDie();
+          if (rhs_opcode == HloOpcode::kSubtract) {
+            auto sub_lhs_handle = SimplifyOp(rhs_inst->operand_ids(0))
+                                      .ValueOrDie()
+                                      .Get<int64>({});
+            auto sub_rhs_handle = SimplifyOp(rhs_inst->operand_ids(1))
+                                      .ValueOrDie()
+                                      .Get<int64>({});
+            if (sub_rhs_handle == lhs) {
+              // lhs + (sub_lhs - sub_rhs) = sub_lhs if lhs == sub_rhs
+              return sub_lhs_handle;
+            }
+          }
+
+          // Check the case for a + b + (c - a) => b + c
+          auto lhs_inst = builder_->LookUpInstructionByHandle(lhs).ValueOrDie();
+          HloOpcode lhs_opcode =
+              StringToHloOpcode(lhs_inst->opcode()).ValueOrDie();
+          if (lhs_opcode == HloOpcode::kAdd) {
+            auto add_lhs_handle = SimplifyOp(lhs_inst->operand_ids(0))
+                                      .ValueOrDie()
+                                      .Get<int64>({});
+            auto add_rhs_handle = SimplifyOp(lhs_inst->operand_ids(1))
+                                      .ValueOrDie()
+                                      .Get<int64>({});
+            if (auto optimized = can_be_optimized(add_lhs_handle, rhs)) {
+              return Add(XlaOp(add_rhs_handle, builder_),
+                         XlaOp(optimized.value(), builder_))
+                  .handle();
+            }
+            if (auto optimized = can_be_optimized(add_rhs_handle, rhs)) {
+              return Add(XlaOp(add_lhs_handle, builder_),
+                         XlaOp(optimized.value(), builder_))
+                  .handle();
+            }
+          }
+          return absl::nullopt;
+        };
+        if (auto optimized = can_be_optimized(lhs_handle, rhs_handle)) {
+          return LiteralUtil::CreateR0<int64>(optimized.value());
+        }
+        // Swap lhs and rhs.
+        if (auto optimized = can_be_optimized(rhs_handle, lhs_handle)) {
+          return LiteralUtil::CreateR0<int64>(optimized.value());
+        }
+        // This sum can't be optimized, return sum of lhs and rhs. Note that we
+        // can't just return the original sum as its lhs and rhs could be
+        // optimized and different.
+        XlaOp new_sum =
+            Add(XlaOp(lhs_handle, builder_), XlaOp(rhs_handle, builder_));
+
+        return LiteralUtil::CreateR0<int64>(new_sum.handle());
+      } else {
+        return CreateS64Literal(-1, output_shape);
+      }
+    }
+    default: {
+      if (output_shape.rank() == 0) {
+        return LiteralUtil::CreateR0<int64>(handle);
+      } else {
+        return CreateS64Literal(-1, output_shape);
+      }
+    }
+  }
+}
+
 StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
     XlaOp op, ValueInferenceMode mode) {
   PostorderDFSVisitor visitor(
@@ -1194,40 +1397,43 @@ StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
         return builder_->LookUpInstructionByHandle(handle).ValueOrDie();
       },
       [&](int64 handle) { return &(builder_->embedded_[handle]); });
+  int64 handle = op.handle();
+  if (builder_->GetShape(op).ValueOrDie().rank() == 0) {
+    TF_ASSIGN_OR_RETURN(auto result, SimplifyOp(handle));
+    auto optimized_handle = result.Get<int64>({});
+    if (optimized_handle != -1) {
+      handle = optimized_handle;
+    }
+  }
   switch (mode) {
     case ValueInferenceMode::kLowerBound: {
       TF_ASSIGN_OR_RETURN(
           Literal value,
-          visitor.PostOrderDFSVisit(op.handle(),
+          visitor.PostOrderDFSVisit(handle,
                                     PostorderDFSNodeType::kConstantLowerBound));
-      TF_ASSIGN_OR_RETURN(
-          Literal mask,
-          visitor.PostOrderDFSVisit(op.handle(),
-                                    PostorderDFSNodeType::kBoundIsDynamic));
+      TF_ASSIGN_OR_RETURN(Literal mask,
+                          visitor.PostOrderDFSVisit(
+                              handle, PostorderDFSNodeType::kBoundIsDynamic));
       return OptionalLiteral(std::move(value), std::move(mask));
     }
-
     case ValueInferenceMode::kUpperBound: {
       TF_ASSIGN_OR_RETURN(
           Literal value,
-          visitor.PostOrderDFSVisit(op.handle(),
+          visitor.PostOrderDFSVisit(handle,
                                     PostorderDFSNodeType::kConstantUpperBound));
-      TF_ASSIGN_OR_RETURN(
-          Literal mask,
-          visitor.PostOrderDFSVisit(op.handle(),
-                                    PostorderDFSNodeType::kBoundIsDynamic));
+      TF_ASSIGN_OR_RETURN(Literal mask,
+                          visitor.PostOrderDFSVisit(
+                              handle, PostorderDFSNodeType::kBoundIsDynamic));
 
       return OptionalLiteral(std::move(value), std::move(mask));
     }
     case ValueInferenceMode::kValue: {
-      TF_ASSIGN_OR_RETURN(
-          Literal value,
-          visitor.PostOrderDFSVisit(op.handle(),
-                                    PostorderDFSNodeType::kConstantValue));
-      TF_ASSIGN_OR_RETURN(
-          Literal mask,
-          visitor.PostOrderDFSVisit(op.handle(),
-                                    PostorderDFSNodeType::kValueIsDynamic));
+      TF_ASSIGN_OR_RETURN(Literal value,
+                          visitor.PostOrderDFSVisit(
+                              handle, PostorderDFSNodeType::kConstantValue));
+      TF_ASSIGN_OR_RETURN(Literal mask,
+                          visitor.PostOrderDFSVisit(
+                              handle, PostorderDFSNodeType::kValueIsDynamic));
       return OptionalLiteral(std::move(value), std::move(mask));
     }
   }

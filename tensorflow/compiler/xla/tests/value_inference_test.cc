@@ -550,8 +550,67 @@ TEST_F(UpperBoundInferenceTest, GetDimensionSizeDiv) {
   auto gds1 = GetDimensionSize(p, 1);
   // Upper bound of `second_dimension / first_dimension` is 3 / 1 = 3. Notice we
   // don't use 0 as the lower bound as it would create divide-by-zero error.
-  auto sub = Div(gds1, gds0);
-  EXPECT_EQ(ComputeUpperBoundLiteral(sub, &b).ValueOrDie().Get<int32>({}), 3);
+  auto div = Div(gds1, gds0);
+  EXPECT_EQ(ComputeUpperBoundLiteral(div, &b).ValueOrDie().Get<int32>({}), 3);
+}
+
+TEST_F(UpperBoundInferenceTest, SumSubtract) {
+  // If x = a, y = b - a
+  // upperbound(x + y) should be upperbound(b)
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, true}), "p0");
+  // The range of the first dimension is [0, 2]
+  auto gds0 = GetDimensionSize(p, 0);
+  // The range of the second dimension is [0, 3]
+  auto gds1 = GetDimensionSize(p, 1);
+  auto sub = Sub(gds1, gds0);
+  auto add = Add(sub, gds0);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).ValueOrDie().Get<int32>({}), 3);
+  auto add2 = Add(gds1, gds0);
+  // upperbound(gds1 - gds0 + gds1 + gds0) ==> upperbound(2 * gds1)
+  auto add3 = Add(sub, add2);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add3, &b).ValueOrDie().Get<int32>({}), 6);
+}
+
+TEST_F(UpperBoundInferenceTest, SumSubtractWithDataShuffling) {
+  // Similar to the test above, but with some data shuffling ops in it
+  // (broadcast, slice, reshape, etc).
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, true}), "p0");
+  // The range of the first dimension is [0, 2]
+  auto gds0 = GetDimensionSize(p, 0);
+  // The range of the second dimension is [0, 3]
+  auto gds1 = GetDimensionSize(p, 1);
+  auto broadcast = Broadcast(gds0, {1, 10});
+  auto slice = SliceInDim(broadcast, /*start_index=*/0, /*limit_index=*/1,
+                          /*stride=*/1, /*dimno=*/1);
+  gds0 = Reshape(slice, {});
+  auto sub = Sub(gds1, gds0);
+  auto add = Add(sub, gds0);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).ValueOrDie().Get<int32>({}), 3);
+  auto add2 = Add(gds1, gds0);
+  // upperbound(gds1 - gds0 + gds1 + gds0) ==> upperbound(2 * gds1)
+  auto add3 = Add(sub, add2);
+  EXPECT_EQ(ComputeUpperBoundLiteral(add3, &b).ValueOrDie().Get<int32>({}), 6);
+}
+
+TEST_F(UpperBoundInferenceTest, SumSubtractEquivalentGetDimensionSize) {
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, true}), "p0");
+  // The range of the first dimension is [0, 2]
+  auto gds0 = GetDimensionSize(p, 0);
+  // The range of the second dimension is [0, 3]
+  auto gds1 = GetDimensionSize(p, 1);
+  // gds2 is equivalent to gds0
+  auto gds2 = GetDimensionSize(p, 0);
+  auto sub = Sub(gds1, gds2);
+  auto add = Add(sub, gds0);
+  // upperbound(gds0 + gds1 - gds2) is equal to upperbound(gds1) if gds0 ==
+  // gds2.
+  EXPECT_EQ(ComputeUpperBoundLiteral(add, &b).ValueOrDie().Get<int32>({}), 3);
 }
 
 TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
