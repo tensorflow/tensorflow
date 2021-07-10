@@ -660,6 +660,23 @@ class ResourceGatherOp : public OpKernel {
     OP_REQUIRES(
         c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
         errors::InvalidArgument("params must be at least 1 dimensional"));
+    for (int i = 0; i < params.dims(); i++) {
+      OP_REQUIRES(
+          c, params.dim_size(i) > 0,
+          errors::InvalidArgument(
+              "The dimension size at index ", i,
+              " of input params is 0. There are no resources to gather."));
+    }
+    OP_REQUIRES(c, batch_dims_ <= params.NumElements(),
+                errors::InvalidArgument(
+                    "Input batch_dims cannot be greater than the number of "
+                    "elements in input params, but params have ",
+                    params.NumElements(), " and batch_dims is ", batch_dims_));
+    OP_REQUIRES(c, batch_dims_ < params.dims(),
+                errors::InvalidArgument(
+                    "Input batch_dims cannot be gerater than params dims, but "
+                    "params dims are ",
+                    params.dims(), " and batch_dims are ", batch_dims_));
 
     // Check that we have enough index space
     const int64 N = indices.NumElements();
