@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/core/shims/c/common.h"
