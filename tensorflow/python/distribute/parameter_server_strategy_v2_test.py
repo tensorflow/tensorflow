@@ -312,10 +312,15 @@ class ParameterServerStrategyV2Test(test.TestCase):
       for n in function.node_def:
         if n.op == "ResourceGather":
           found_resource_gather = True
+          resource_gather_device = n.device
         elif n.op == "Gather":
           found_gather = True
     self.assertTrue(found_resource_gather)
     self.assertFalse(found_gather)
+
+    # We also assert that the colocate_with in embedding_ops will not result in
+    # a hard-coded device string.
+    self.assertEmpty(resource_gather_device)
 
 
 class PartitionAwareIdentity(object):
