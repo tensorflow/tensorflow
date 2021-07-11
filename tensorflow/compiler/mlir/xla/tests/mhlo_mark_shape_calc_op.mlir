@@ -1,4 +1,4 @@
-// RUN: tf-opt --mhlo-disc-mark-shape-calc %s | FileCheck %s
+// RUN: tf-opt --mhlo-mark-shape-calc %s | FileCheck %s
 
 module {
   func @main(%arg : tensor<i64>) -> tensor<i64> attributes {tf.entry_function = {input_placements = "cpu", inputs = "input0", output_placements = "cpu", outputs = "output0"}}  {

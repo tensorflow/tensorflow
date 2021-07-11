@@ -157,14 +157,9 @@ bool IsSequenceStartingWith0(DenseIntElementsAttr attr) {
 }
 
 int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
-  for (int64_t i = 0; i < op.getNumArguments(); ++i) {
-    auto operand = op.getArgument(i);
-    if (operand == value) {
-      return i;
-    }
-  }
-  assert(false && "Exception in getArgumentIndex, value is not an operand");
-  return -1;
+  BlockArgument arg = value.dyn_cast<BlockArgument>();
+  if (!arg || arg.getOwner() != &op.front()) return -1;
+  return arg.getArgNumber();
 }
 
 }  // namespace hlo
