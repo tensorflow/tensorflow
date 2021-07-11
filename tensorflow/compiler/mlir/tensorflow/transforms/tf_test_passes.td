@@ -63,3 +63,12 @@ def TestClusteringPolicyPass : Pass<"tf-test-clustering-policy", "FuncOp"> {
   let summary = "Test pass for clustering based on the user defined policy";
   let constructor = "::mlir::tf_test::CreateTestClusteringPolicyPass()";
 }
+
+def TestSideEffectAnalysisPass : Pass<"tf-test-side-effect-analysis", "ModuleOp"> {
+  let summary = "Test pass for analyzing side-effect analysis result";
+  let description = [{
+    Adds "Predecessors" and "Successors" remarks for each op based on
+    the SideEffectAnalysis result. For testing purpose only.
+  }];
+  let constructor = "::mlir::tf_test::CreateTestSideEffectAnalysisPass()";
+}
