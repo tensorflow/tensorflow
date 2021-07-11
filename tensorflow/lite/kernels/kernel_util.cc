@@ -197,7 +197,7 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
     const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
-    int32_t* per_channel_multiplier, int* per_channel_shift) {
+    int32_t* per_channel_multiplier, int32_t* per_channel_shift) {
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
   return PopulateConvolutionQuantizationParams(
@@ -212,7 +212,8 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
     const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
-    int32_t* per_channel_multiplier, int* per_channel_shift, int num_channels) {
+    int32_t* per_channel_multiplier, int32_t* per_channel_shift,
+    int num_channels) {
   TF_LITE_ENSURE_EQ(context, input->quantization.type,
                     kTfLiteAffineQuantization);
   TF_LITE_ENSURE_EQ(context, filter->quantization.type,
@@ -430,18 +431,15 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
                                         TfLiteIntArray** output_shape) {
-  int dims1 = NumDimensions(input1);
-  int dims2 = NumDimensions(input2);
-  int out_dims = std::max(dims1, dims2);
-  if (NumElements(input1) == 0) {
-    *output_shape = TfLiteIntArrayCopy(input1->dims);
-    return kTfLiteOk;
-  }
+  const int dims1 = NumDimensions(input1);
+  const int dims2 = NumDimensions(input2);
+  const int out_dims = std::max(dims1, dims2);
+
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
   for (int i = 0; i < out_dims; ++i) {
-    int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
-    int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
+    const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
+    const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
     if (!(d1 == d2 || d1 == 1 || d2 == 1)) {
       context->ReportError(context,
                            "Given shapes, %s and %s, are not broadcastable.",
@@ -449,7 +447,12 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                            GetShapeDebugString(input2->dims).c_str());
       return kTfLiteError;
     }
-    shape->data[out_dims - i - 1] = std::max(d1, d2);
+
+    if (d1 == 0 || d2 == 0) {
+      shape->data[out_dims - i - 1] = 0;
+    } else {
+      shape->data[out_dims - i - 1] = std::max(d1, d2);
+    }
   }
   *output_shape = shape.release();
   return kTfLiteOk;
@@ -460,17 +463,20 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input2,
                                         const TfLiteTensor* input3,
                                         TfLiteIntArray** output_shape) {
-  int dims1 = NumDimensions(input1);
-  int dims2 = NumDimensions(input2);
-  int dims3 = NumDimensions(input3);
-  int out_dims = std::max(std::max(dims1, dims2), dims3);
+  const int dims1 = NumDimensions(input1);
+  const int dims2 = NumDimensions(input2);
+  const int dims3 = NumDimensions(input3);
+  const int out_dims = std::max(std::max(dims1, dims2), dims3);
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
       TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
   for (int i = 0; i < out_dims; ++i) {
-    int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
-    int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
-    int d3 = i >= dims3 ? 1 : SizeOfDimension(input3, dims3 - i - 1);
+    const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
+    const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
+    const int d3 = i >= dims3 ? 1 : SizeOfDimension(input3, dims3 - i - 1);
+    const int min_value = std::min(std::min(d1, d2), d3);
     int max_value = std::max(std::max(d1, d2), d3);
+    // If one dimention is 0, others must be 0 or 1.
+    if (min_value == 0) max_value = 0;
     if (!(d1 == 1 || d1 == max_value) || !(d2 == 1 || d2 == max_value) ||
         !(d3 == 1 || d3 == max_value)) {
       context->ReportError(

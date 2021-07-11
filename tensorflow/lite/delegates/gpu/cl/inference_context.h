@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -103,9 +104,12 @@ class InferenceContext {
   enum class TensorMemoryType { kStrongShape, kBuffer, kVariable, kConst };
 
   friend flatbuffers::Offset<data::InferenceContext> Encode(
-      const InferenceContext& inference, const std::vector<int64_t>& in_refs,
+      const CLDevice& device, const InferenceContext& inference,
+      const ProgramCache& program_cache, const std::vector<int64_t>& in_refs,
       std::vector<int64_t>& out_refs, flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const data::InferenceContext* fb_inference,
+  friend absl::Status Decode(const CLContext& context, const CLDevice& device,
+                             ProgramCache* program_cache,
+                             const data::InferenceContext* fb_inference,
                              InferenceContext* inference);
 
   void CopyInAndOutIds(const GraphFloat32& graph);

@@ -68,10 +68,6 @@ class HLOClient_NativeOpTrait<string name> : NativeOpTrait<name> {
 def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
 }
 
-def HLOClient_BroadcastingElementwise
-    : HLOClient_NativeOpTrait<"BroadcastingElementwise"> {
-}
-
 //===----------------------------------------------------------------------===//
 // CHLO binary elementwise op definitions.
 // From the client perspective, each of these support both explicit rank
@@ -89,7 +85,7 @@ def HLOClient_BroadcastingElementwise
 
 class HLOClient_BroadcastBinaryElementwiseOp<
   string mnemonic, list<OpTrait> traits> : HLOClient_Op<mnemonic, traits # [
-      HLOClient_BroadcastingElementwise, HLOClient_Broadcasting,
+      HLO_BroadcastingElementwise, HLOClient_Broadcasting,
       DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
       "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   let arguments = (ins
@@ -440,8 +436,8 @@ class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
     }
     LogicalResult reifyReturnTypeShapes(OpBuilder& builder, ValueRange operands,
         SmallVectorImpl<Value>& reifiedReturnShapes) {
-      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-          operands, &reifiedReturnShapes);
+      return ::mlir::mhlo::deriveShapeFromOperand(&builder, getOperation(),
+          operands.front(), &reifiedReturnShapes);
     }
   }];
 }
@@ -580,12 +576,12 @@ def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
   }];
 }
 
-def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
-    [NoSideEffect, HLOClient_Broadcasting, HLOClient_BroadcastingElementwise,
-     SameOperandsAndResultShape, InferTypeOpInterface,
-     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-         ["inferReturnTypeComponents"]>,
-     NativeOpTrait<"InferTensorType">]> {
+def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
+    HLOClient_Broadcasting, HLO_BroadcastingElementwise,
+    SameOperandsAndResultShape, InferTypeOpInterface,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
+    NativeOpTrait<"InferTensorType">]> {
   let summary = "Constant like operator";
 
   let description = [{
@@ -711,9 +707,9 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
 def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
     NoSideEffect,
     HLOClient_Broadcasting,
-    HLOClient_BroadcastingElementwise,
+    HLO_BroadcastingElementwise,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-    "inferReturnTypeComponents"]>]> {
+    "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{
@@ -831,6 +827,27 @@ def HLOClient_RankSpecializationClusterYieldOp
   }];
 
   let arguments = (ins Variadic<HLO_Tensor>:$results);
+}
+
+def HLOClient_DynamicReshapeOp: HLOClient_Op<"dynamic_reshape", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface>]> {
+  let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
+  let description = [{
+    Reshapes `operand` to `output_shape`. This allows a single dimension to be
+    specified as -1, and it will be computed by the op to create a valid
+    reshape.
+
+    Requires:
+    - The length of `output_shape` is equal to the rank of `result`.
+    - The number of elements in `operand` (that is, the product of extents of
+      its shape) is equal to the number of elements in `output_shape` (that is,
+      the product of values in `output_shape` with one dimension possibly
+      computed).
+    - All shape values should be at least -1, and only one extent can be -1.
+  }];
+
+  let arguments = (ins HLO_Tensor:$operand, HLO_DimensionTensor:$output_shape);
+  let results = (outs HLO_Tensor:$result);
 }
 
 #endif  // CHLO_OPS

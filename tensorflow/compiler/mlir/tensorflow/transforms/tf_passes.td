@@ -17,6 +17,22 @@ include "mlir/Pass/PassBase.td"
 
 // TF dialect passes.
 
+def TensorflowGPUFusion : FunctionPass<"tf-gpu-op-fusion"> {
+  let summary = "Fusion optimization for GPU targets";
+  let description = [{
+    This pass is performing fusion specific to GPU targets. This is an ad-hoc
+    pass for now, but should be integrated with some notion of "target" in the
+    MLIR pipeline in the future.
+  }];
+  let constructor = "TF::CreateGpuOpFusionPass()";
+}
+
+def MaterializePassthroughOp : FunctionPass<"tf-materialize-passthrough-op"> {
+  let summary = "Materialize the MlirPassthroughOp by replacing it with the "
+    "MLIR module attached as an attribute";
+  let constructor = "TF::CreateMaterializePassthroughOpPass()";
+}
+
 def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   let summary = "Simple Shape Inference on TensorFlow Dialect";
   // TODO(jpienaar): Write `description`.
@@ -139,6 +155,17 @@ def ExecutorDialectToFunctionalPass : FunctionPass<"tf-executor-to-functional-co
   }];
 
   let constructor = "CreateExecutorDialectToFunctionalConversionPass()";
+}
+
+def ExecutorIslandCoarseningPass : FunctionPass<"tf-executor-island-coarsening"> {
+  let summary = "Walks tf_executor::GraphOp and merges individual tf_executor::IslandOps.";
+  let description = [{
+    This pass performs whole graph analysis for a graph encapsulated into tf_executor::GraphOp.
+    The analysis identifies all IslandOps within the graph which could be merged together.
+    The goal is to merge as many islands as possible.
+    Once analysis is completed, the pass merges all IslandOps in a single scan.
+  }];
+  let constructor = "tf_executor::CreateTFExecutorIslandCoarseningPass()";
 }
 
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
@@ -300,6 +327,57 @@ def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
   }];
 
   let constructor = "TFDevice::CreateClusterOutliningPass()";
+}
+
+def LaunchOutliningPass : Pass<"tf-device-launch-outlining", "ModuleOp"> {
+  let summary = "Outlines regions of tf_device.launch operations";
+
+  let description = [{
+    This pass outlines the body of a `tf_device.launch` into a function and
+    replaces the `tf_device.launch` op with an equivalent `tf_device.launch_func`
+    op. Implicit operands will be captured and materialized as explicit arguments to
+    the newly created functions and associated `tf_device.launch_func` ops. The
+    `device` attribute from the `launch` op is transferred to `launch_func`.
+
+    For example, the following:
+
+    ```mlir
+    func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+      %launch = "tf_device.launch"() ( {
+        %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+        tf_device.return %identity : tensor<i32>
+      }) {device = "some_device"} : () -> (tensor<i32>)
+      return %launch : tensor<i32>
+    }
+    ```
+
+    will be transformed into:
+
+    ```mlir
+    func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+      %launch = "tf_device.launch_func"(%arg0) {device = "some_device", func = @_func} : (tensor<i32>) -> tensor<i32>
+      return %launch : tensor<i32>
+    }
+
+    func @_func(%arg0: tensor<i32>) -> tensor<i32> {
+      %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+      return %identity : tensor<i32>
+    }
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateLaunchOutliningPass()";
+}
+
+def ConvertLaunchFuncToTFCallPass : Pass<"tf-device-convert-launch-func-to-tf-call", "ModuleOp"> {
+  let summary = "Rewrites tf_device::LaunchFuncOp to TF::PartitionedCallOp";
+
+  let description = [{
+    This pass converts tf_device::LaunchFuncOp into an equivalent
+    TF::PartitionedCallOp so that it can be exported to TensorFlow GraphDef.
+  }];
+
+  let constructor = "TFDevice::CreateConvertLaunchFuncToTFCallPass()";
 }
 
 def MarkInputOutputAliasesPass : Pass<"tf-device-mark-input-output-aliases", "ModuleOp"> {
@@ -756,99 +834,6 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
   let constructor = "TFTPU::CreateTPURewritePass()";
 }
 
-def ClusterOpsByPolicyPass : FunctionPass<"cluster-ops-by-policy"> {
-  let summary = "Clusters ops according to specified policy.";
-
-  let description = [{
-    This pass clusters ops according to the policy specified by the pass options.
-    Clustered ops are moved to a tf_device::clusterOp region.
-
-    First you need to specify the 'oplist=<list of ops>' option. This option
-    specifies the names of the ops that should be clustered together. Then you need
-    to specify the algorithm for forming a cluster with a `mode=<algorithm>` option:
-
-    1. `use-def` (default): cluster ops together if they form a single use def-use
-       chain, that is, the next op in the list uses the result of the previous op
-       and is the only user of that result.
-    2. `union-find`: cluster ops together that are connected to each other with
-       potentially different use def chains using union-find algorithm.
-
-    For both algorithms the ops should be located in the same block, be assigned to
-    the same device and have no side effects.
-
-    For example, running this pass with options:
-      "oplist=tf.Cast,tf.Add algorithm=use-def"
-
-    ```mlir
-    func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
-      %0 = "tf.Cast"(%arg0) : (tensor<f32>) -> tensor<i32>
-      %1 = "SomeOp" (%arg1) : (tensor<i32>) -> tensor<i32>
-      %2 = "tf.Add"(%0, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-      return %2 : tensor<i32>
-    }
-    ```
-
-    will produce tf_device::opCluster enclosing tf.Add and tf.Neg:
-
-    ```mlir
-    func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
-      %0 = "SomeOp"(%arg1) : (tensor<i32>) -> tensor<i32>
-      %1 = "tf_device.cluster"() ( {
-        %2 = "tf.Cast"(%arg0) : (tensor<f32>) -> tensor<i32>
-        %3 = "tf.Add"(%2, %0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-        tf_device.return %3 : tensor<i32>
-      }) : () -> tensor<i32>
-      return %1 : tensor<i32>
-    }
-    ```
-
-    Running with `union-find` algorithm allows to cluster together operations that
-    do not form a single use-def chain:
-      "oplist=tf.Add,tf.Sub algorithm=union-find"
-
-    ```mlir
-    func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
-      %0 = "tf.Add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
-      %1 = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
-      %2 = "tf.Add"(%0, %1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
-      return %2 : tensor<i32>
-    }
-    ```
-
-    will produce tf_device::opCluster enclosing tf.Add and tf.Sub:
-
-    ```mlir
-    func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
-      %0 = "tf_device.cluster"() ( {
-        %1 = "tf.Add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
-        %2 = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
-        %3 = "tf.Add"(%1, %2) : (tensor<f32>, tensor<f32>) -> tensor<i32>
-        tf_device.return %3 : tensor<i32>
-      }) : () -> tensor<i32>
-      return %0 : tensor<i32>
-    }
-  }];
-
-  let constructor = "TFDevice::CreateClusterOpsByPolicyPass()";
-
-  let options = [
-   Option<"policy_name", "policy-name", "std::string", /*default=*/"",
-          "Adds a policy string attribute to all extracted clusters. This "
-          "attribute allows to distinguish clusters formed by different "
-          "policies or maybe other clustering algorithms.">,
-   Option<"min_cluster_size", "min-cluster-size", "int" , /*default=*/"1",
-          "Do not form clusters smaller of the given size.">,
-   Option<"algorithm", "algorithm", "std::string", /*default=*/"\"use-def\"",
-          "Clustering algorithm type: `use-def` or `union-find`">,
-   ListOption<"oplist", "oplist", "std::string",
-               "Cluster listed ops when they form a single use def-use chain, "
-               "such that each op's single user is the next op in the list.",
-               "llvm::cl::MiscFlags::CommaSeparated">
-  ];
-
-  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
-}
-
 def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
   let summary = "Verify module is suitable for export back to TF Graph";
   let description = [{
@@ -859,7 +844,7 @@ def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
   let constructor = "TF::CreateVerifySuitableForExportPass()";
 }
 
-def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-export", "FuncOp"> {
+def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-export", "ModuleOp"> {
   let summary = "Prepare TPU computation to be legal for export to TensorFlow";
   let description = [{
     Prepares TPU computation module attached to _TPUCompileMlir op for
@@ -890,6 +875,7 @@ def TensorArrayOpsDecompositionPass : Pass<"tf-tensor-array-ops-decomposition", 
     or that can be inferred from a later write, and 3) all elements have the same
     shape.
   }];
+  let dependentDialects = ["tensor::TensorDialect"];
 
   let constructor = "TF::CreateTensorArrayOpsDecompositionPass()";
 }
@@ -948,7 +934,7 @@ def PromoteVarHandlesToArgsPass : Pass<"tf-promote-var-handles-to-args", "Module
   let constructor = "TF::CreatePromoteVarHandlesToArgsPass()";
 }
 
-def TPUMergeVariablesWithExecutePass : FunctionPass<"tf-tpu-merge-variables-with-execute"> {
+def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute", "ModuleOp"> {
   let summary = "Merges device variable reads and updates into TPU execute ops";
 
   let description = [{
@@ -1188,3 +1174,91 @@ def TPUExtractHeadTailOutsideCompilationPass : Pass<"tf-tpu-extract-head-tail-ou
 
   let constructor = "TFTPU::CreateTPUExtractHeadTailOutsideCompilationPass()";
 }
+
+def TPUSpaceToDepthPass : Pass<"tf-tpu-space-to-depth-pass", "ModuleOp"> {
+  let summary = "Applies automatic space to depth transform for the first or frontier convolutions consume host inputs on TPU.";
+
+  let description = [{
+    Automatic space to depth transform is done by adding space to depth transform op after host input
+    and applying space to depth transform for the first convolution and its backprop filter on TPU.
+
+    For example, original program:
+
+    ```mlir
+    module {
+      func @while_body {
+        %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}: -> tensor<2x224x224x3xf32>
+        %device_launch = "tf_device.cluster_func"(%input,...) {func = @_func,...)
+        return ...
+      }
+      func @_func(%input: tensor<2x224x224x3xf32>, %filter: tensor<7x7x3x64xf32>) {
+        %6 = "tf.Conv2D"(%input, %filter)  {strides = [1, 2, 2, 1]}: (tensor<2x230x230x3xf32>, tensor<7x7x3x64xf32>) -> tensor<2x112x112x64xf32>
+      }
+    }
+    ```
+
+    The program will be transformed into:
+
+    ```mlir
+    module {
+      func @while_body {
+        %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"} -> tensor<2x224x224x3xf32>
+        %space_to_depth = "tf.SpaceToDepth"(%input) {block_size = 2, ...}: (tensor<2x224x224x3xf32>) -> tensor<2x112x112x12xf32>
+        %device_launch = "tf_device.cluster_func"(%space_to_depth,...) {func = @_func,...)
+        return ...
+      }
+      func @_func(%input: tensor<2x112x112x12xf32>, %filter: tensor<7x7x3x64xf32>) {
+        %filter_transform = "tf.Pad/tf.Transpose/tf.Reshape"(%filter): tensor<7x7x3x64xf32>) -> tensor<4x4x12x64xf32>
+        %conv = "tf.Conv2D"(%input, %filter_transfrom) {strides = [1, 1, 1, 1]}: (tensor<2x112x112x12xf32>, tensor<4x4x12x64xf32>) -> tensor<2x112x112x64xf32>
+      }
+    }
+    ```
+
+    This way, the first convolution with 3 feature dimension will be transformed
+    to 12 feature dimension, which has better performance on TPU.
+  }];
+
+  let constructor = "TFTPU::CreateTPUSpaceToDepthPass()";
+}
+
+def MergeControlFlowPass : Pass<"tf-merge-control-flow", "ModuleOp"> {
+  let summary = "Merges IfRegion ops together with a common predicate.";
+
+  let description = [{
+    This pass merges IfRegion ops together if they have the same predicate and it
+    is safe to do so (there are no intermediate dependencies, they are in the
+    same block, etc).
+
+    For example:
+
+    ```mlir
+    "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+     }) { is_stateless = true } : (tensor<i1>) -> ()
+    "tf.IfRegion"(%0) ( {
+      %2 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+      }) { is_stateless = true } : (tensor<i1>) -> ()
+    ```
+
+    Would be transformed to:
+
+    ```mlir
+    "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      %3 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+      }) { is_stateless = true } : (tensor<i1>) -> ()
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateMergeControlFlowPass()";
+}
+

@@ -1724,8 +1724,8 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
 Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
   parameters_that_must_be_donated_.reserve(executables_.size());
   for (auto& executable : executables_) {
-    TF_ASSIGN_OR_RETURN(absl::flat_hash_set<int> parameters_to_donate,
-                        GetParametersThatMustBeDonated(
+    TF_ASSIGN_OR_RETURN(std::vector<int> parameters_to_donate,
+                        ComputeParametersThatMustBeDonated(
                             executable->executable()->module(), tuple_inputs));
     parameters_that_must_be_donated_.emplace_back(
         std::move(parameters_to_donate));
@@ -1742,9 +1742,9 @@ absl::string_view PjRtStreamExecutorExecutable::name() const {
   }
 }
 
-bool PjRtStreamExecutorExecutable::MustDonateParameter(int executable_idx,
-                                                       int parameter) const {
-  return parameters_that_must_be_donated_[executable_idx].contains(parameter);
+absl::Span<int const> PjRtStreamExecutorExecutable::ParametersThatMustBeDonated(
+    int executable_idx) const {
+  return parameters_that_must_be_donated_[executable_idx];
 }
 
 StatusOr<std::vector<ExecutionInput>>
@@ -1824,6 +1824,9 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
 
   absl::flat_hash_set<BufferSequencingEvent*> events;
   device_buffers->reserve(argument_handles.size());
+  absl::Span<int const> donated_params =
+      ParametersThatMustBeDonated(executable_idx);
+  auto donate_it = donated_params.begin();
   for (int i = 0; i < argument_handles.size(); ++i) {
     auto* handle =
         tensorflow::down_cast<PjRtStreamExecutorBuffer*>(argument_handles[i]);
@@ -1833,7 +1836,10 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
           "device %s, but replica is assigned to device %s.",
           i, replica, handle->device()->DebugString(), device->DebugString());
     }
-    bool must_donate = MustDonateParameter(executable_idx, i);
+    bool must_donate = donate_it != donated_params.end() && *donate_it == i;
+    if (must_donate) {
+      ++donate_it;
+    }
     device_buffers->emplace_back(handle->GetBufferWithHold(
         must_donate ? PjRtStreamExecutorBuffer::ScopedHold::kDonation
                     : PjRtStreamExecutorBuffer::ScopedHold::kUsage));
@@ -1895,8 +1901,12 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   // too far, not for correctness. Placing it before the executable launch
   // allows the inputs for the next executable to be fetched even if the
   // launch is delayed.
-  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
-      device_state->compute_semaphore().ScopedAcquire(1));
+  std::shared_ptr<Semaphore::ScopedReservation> compute_reservation;
+  {
+    tensorflow::profiler::TraceMe traceme("ComputeSemaphoreAcquire");
+    compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+        device_state->compute_semaphore().ScopedAcquire(1));
+  }
 
   StatusOr<ExecutionOutput> result_buffer_or_status =
       executables_[executable_idx]->RunAsync(std::move(execution_inputs),
@@ -2260,11 +2270,16 @@ PjRtStreamExecutorExecutable::GetHloModules() const {
   return std::move(modules);
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
-    const XlaComputation& computation, CompileOptions options) {
-  tensorflow::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
-  VLOG(1) << "PjRtStreamExecutorClient::Compile";
-  ExecutableBuildOptions& build_options = options.executable_build_options;
+StatusOr<PjRtStreamExecutorClient::ExecutableExtras>
+PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
+  ExecutableExtras extras;
+  std::shared_ptr<DeviceAssignment>& device_assignment =
+      extras.device_assignment;
+  std::vector<PjRtStreamExecutorExecutable::LogicalDeviceIds>&
+      addressable_device_logical_ids = extras.addressable_device_logical_ids;
+  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+
+  ExecutableBuildOptions& build_options = options->executable_build_options;
   if (!build_options.compile_thread_pool()) {
     build_options.set_compile_thread_pool(thread_pool());
   }
@@ -2274,28 +2289,14 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
 
   int num_replicas;
   int num_partitions;
-  std::shared_ptr<DeviceAssignment> device_assignment;
   TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
-      options.compile_portable_executable, &options.executable_build_options,
+      options->compile_portable_executable, &options->executable_build_options,
       [this](int num_replicas, int num_partitions) {
         return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
       },
       &num_replicas, &num_partitions, &device_assignment));
 
-  std::vector<const Shape*> argument_layout_pointers;
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
-      computation,
-      [local_client = client()](Shape shape) {
-        return local_client->backend()
-            .transfer_manager()
-            ->ChooseCompactLayoutForShape(shape);
-      },
-      options.argument_layouts, &options.executable_build_options,
-      &argument_layout_pointers));
-
   // Find devices that are addressable by this client/task.
-  std::vector<PjRtExecutable::LogicalDeviceIds> addressable_device_logical_ids;
-  std::vector<PjRtDevice*> addressable_devices;
   if (device_assignment != nullptr) {
     addressable_device_logical_ids.reserve(num_replicas * num_partitions);
     addressable_devices.reserve(num_replicas * num_partitions);
@@ -2325,10 +2326,36 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
           addressable_devices.front()->local_hardware_id());
     }
   }
+  return extras;
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  tensorflow::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
+  VLOG(1) << "PjRtStreamExecutorClient::Compile";
+
+  TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
+  std::shared_ptr<DeviceAssignment>& device_assignment =
+      extras.device_assignment;
+  std::vector<PjRtStreamExecutorExecutable::LogicalDeviceIds>&
+      addressable_device_logical_ids = extras.addressable_device_logical_ids;
+  std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
+
+  std::vector<const Shape*> argument_layout_pointers;
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client()](Shape shape) {
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
-      client()->Compile(computation, argument_layout_pointers, build_options));
+      client()->Compile(computation, argument_layout_pointers,
+                        options.executable_build_options));
 
   auto executable = absl::make_unique<PjRtStreamExecutorExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,

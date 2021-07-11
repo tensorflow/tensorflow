@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
@@ -243,6 +245,15 @@ bool IsConvConstantsSupported(const GpuInfo& gpu_info,
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
     // BUG, some AMD GPUs crash without it
     return false;
+  }
+
+  if (gpu_info.IsApiOpenCl() && gpu_info.IsAdreno()) {
+    const std::string kBadDriver =
+        "OpenCL 2.0 QUALCOMM build: commit #7ff4f54 changeid #I4460aa6217 "
+        "Date: 12/30/18";
+    if (absl::StrContains(gpu_info.opencl_info.platform_version, kBadDriver)) {
+      return false;
+    }
   }
 
   const bool use_dot_conv =

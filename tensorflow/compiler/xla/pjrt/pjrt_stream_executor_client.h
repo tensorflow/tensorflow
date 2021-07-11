@@ -176,6 +176,19 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return absl::optional<std::string>();
   }
 
+  StatusOr<std::string> SerializeExecutable(
+      const PjRtExecutable& executable) const override {
+    return Unimplemented("SerializeExecutable not implemented on %s",
+                         platform_name());
+  }
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
+      CompileOptions options) override {
+    return Unimplemented("DeserializeExecutable not implemented on %s",
+                         platform_name());
+  }
+
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
 
   // Creates a buffer on the device without initializing or copying any data.
@@ -277,6 +290,16 @@ class PjRtStreamExecutorClient : public PjRtClient {
                                         std::function<void(Status)> on_ready) {
     return Unimplemented("Raw copies to host not implemented.");
   }
+
+  // Helper function for creating PjRtStreamExecutorExecutables. Modifies
+  // `options` in-place.
+  struct ExecutableExtras {
+    std::shared_ptr<DeviceAssignment> device_assignment;
+    std::vector<PjRtExecutable::LogicalDeviceIds>
+        addressable_device_logical_ids;
+    std::vector<PjRtDevice*> addressable_devices;
+  };
+  StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -707,6 +730,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
   void Delete() override { executables_.clear(); }
 
+  bool IsDeleted() override { return executables_.empty(); }
+
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
@@ -718,11 +743,16 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
  private:
   friend class PjRtStreamExecutorClient;
+  friend class PjRtTpuClient;
+  friend class InternalPjRtTpuClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);
 
-  virtual bool MustDonateParameter(int executable_idx, int parameter) const;
+  // Returns a sorted list of the parameters that must be donated. Derived
+  // classes may use custom logic.
+  virtual absl::Span<int const> ParametersThatMustBeDonated(
+      int executable_idx) const;
 
   virtual StatusOr<std::vector<ExecutionInput>>
   MakeExecutionInputsAndWaitForEvents(
@@ -761,9 +791,9 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   std::vector<std::shared_ptr<LocalExecutable>> executables_;
   // On device shapes of the executable parameters.
   std::vector<std::vector<Shape>> on_device_executable_parameter_shapes_;
-  // Per-executable set of parameters that have any aliased buffers and thus
-  // must be donated when executing the computation.
-  std::vector<absl::flat_hash_set<int>> parameters_that_must_be_donated_;
+  // Per-executable sorted vector of parameters that have any aliased buffers
+  // and thus must be donated when executing the computation.
+  std::vector<std::vector<int>> parameters_that_must_be_donated_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   // True if the executables were compiled expecting arguments in a single
@@ -782,13 +812,6 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
 };
-
-// Executables can donate buffers so that buffers can be aliased from inputs
-// to outputs. This function returns the list of parameters that must be
-// donated when executable is run. tuple_inputs reflects the option that
-// executable was compiled with.
-StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
-    const HloModule& hlo_module, bool tuple_inputs);
 
 }  // namespace xla
 

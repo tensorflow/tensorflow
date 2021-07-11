@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -1541,6 +1542,34 @@ TEST(CAPI, TestBitcastFrom_Reshape) {
 
   TF_DeleteTensor(a);
   TF_DeleteTensor(b);
+}
+
+TEST(CAPI, TestFromProto) {
+  Tensor t_cc(DT_FLOAT, TensorShape({2, 3}));
+  t_cc.flat<float>().setConstant(1.0);
+  tensorflow::TensorProto t_proto;
+  t_cc.AsProtoField(&t_proto);
+
+  TF_Buffer* t_buffer = TF_NewBuffer();
+  TF_CHECK_OK(MessageToBuffer(t_proto, t_buffer));
+
+  const int num_bytes = 6 * sizeof(float);
+  float* values =
+      reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
+          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+  int64_t dims[] = {2, 3};
+  bool deallocator_called = false;
+  TF_Tensor* t_c = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
+                                &Deallocator, &deallocator_called);
+
+  TF_Status* status = TF_NewStatus();
+  TF_TensorFromProto(t_buffer, t_c, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  EXPECT_EQ(1.0, *(static_cast<float*>(TF_TensorData(t_c))));
+  TF_DeleteStatus(status);
+  TF_DeleteTensor(t_c);
+  TF_DeleteBuffer(t_buffer);
 }
 
 REGISTER_OP("TestOpWithNoGradient")

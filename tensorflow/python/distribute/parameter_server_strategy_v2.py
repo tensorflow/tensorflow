@@ -31,6 +31,7 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import remote
@@ -38,6 +39,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
@@ -324,30 +326,27 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   actual variable components. If building model with `tf.Module` or Keras,
   the variable components are collected in the `variables` alike attributes.
 
+  It is recommended to use size-based partitioners like
+  `tf.distribute.experimental.partitioners.MinSizePartitioner` to avoid
+  partitioning small variables, which could have negative impact on model
+  training speed.
 
   ```python
-  class Dense(tf.Module):
-    def __init__(self, name=None):
-      super().__init__(name=name)
-      self.w = tf.Variable(tf.random.normal([100, 10]), name='w')
-
-    def __call__(self, x):
-      return x * self.w
-
-  # Partition the dense layer into 2 shards.
+  # Partition the embedding layer into 2 shards.
   variable_partitioner = (
-    tf.distribute.experimental.partitioners.FixedShardsPartitioner(
-      num_shards = 2))
+    tf.distribute.experimental.partitioners.MinSizePartitioner(
+      min_shard_bytes=(256 << 10),
+      max_shards = 2))
   strategy = tf.distribute.experimental.ParameterServerStrategy(
     cluster_resolver=...,
     variable_partitioner = variable_partitioner)
   with strategy.scope():
-    dense = Dense()
-  assert len(dense.variables) == 2
-  assert isinstance(dense.variables[0], tf.Variable)
-  assert isinstance(dense.variables[1], tf.Variable)
-  assert dense.variables[0].shape == (50, 10)
-  assert dense.variables[1].shape == (50, 10)
+    embedding = tf.keras.layers.Embedding(input_dim=1024, output_dim=1024)
+  assert len(embedding.variables) == 2
+  assert isinstance(embedding.variables[0], tf.Variable)
+  assert isinstance(embedding.variables[1], tf.Variable)
+  assert embedding.variables[0].shape == (512, 1024)
+  assert embedding.variables[1].shape == (512, 1024)
   ```
 
   The sharded variable container can be converted to a `Tensor` via
@@ -581,6 +580,34 @@ class ParameterServerStrategyV2Extended(
   @property
   def _num_replicas_in_sync(self):
     return self._num_gpus_per_worker or 1
+
+  def _create_var_creator(self, next_creator, **kwargs):
+    aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
+
+    def var_creator(**kwargs):
+      """Create an AggregatingVariable."""
+      # Create and wrap the variable.
+      v = next_creator(**kwargs)
+      wrapped_v = ps_values.CachingVariable(v)
+      wrapped = ps_values.AggregatingVariable(self._container_strategy(),
+                                              wrapped_v, aggregation)
+      return wrapped
+
+    if self._num_replicas_in_sync > 1:
+      if aggregation not in (
+          vs.VariableAggregation.NONE,
+          vs.VariableAggregation.SUM,
+          vs.VariableAggregation.MEAN,
+          vs.VariableAggregation.ONLY_FIRST_REPLICA
+      ):
+        raise ValueError("Invalid variable aggregation mode: " + aggregation +
+                         " for variable: " + kwargs["name"])
+      return var_creator
+    else:
+      def variable_creator_single_replica(**kwargs):
+        v = next_creator(**kwargs)
+        return ps_values.CachingVariable(v)
+      return variable_creator_single_replica
 
   def _create_variable(self, next_creator, **kwargs):
     """Implements StrategyExtendedV2._create_variable.

@@ -37,6 +37,13 @@ class TpuExecutable : public xla::TpuExecutableInterface {
 
   absl::string_view fingerprint() const override;
 
+  // The serialization is not guaranteed to be stable over time and has no
+  // compatibility guarantees (i.e. this is not a suitable long-term storage
+  // format).
+  StatusOr<std::string> Serialize() const;
+  static StatusOr<std::unique_ptr<TpuExecutable>> Deserialize(
+      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module);
+
  private:
   Status LoadProgramAndEnqueueToStream(
       const ServiceExecutableRunOptions& run_options,

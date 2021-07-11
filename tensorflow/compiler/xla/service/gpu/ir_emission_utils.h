@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -226,7 +227,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    absl::optional<CudaComputeCapability> cuda_compute_capability);
+    se::CudaComputeCapability cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -275,6 +276,15 @@ inline std::string MlirToString(mlir::Operation* op) {
   return s;
 }
 
+inline std::string MlirToString(const mlir::Location& loc) {
+  std::string s;
+  {
+    llvm::raw_string_ostream os(s);
+    loc.print(os);
+  }
+  return s;
+}
+
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
@@ -293,6 +303,8 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation> allocations);
+
+Shape GetShape(mlir::Value value);
 
 }  // namespace gpu
 }  // namespace xla

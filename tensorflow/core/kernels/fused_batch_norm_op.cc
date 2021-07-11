@@ -116,6 +116,15 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
       // Initialize the memory, to avoid sanitizer alerts.
       dummy_reserve_space->flat<U>()(0) = U();
     }
+
+    // If input is empty, return NaN mean/variance
+    if (x_input.shape().num_elements() == 0) {
+      functor::SetNanFunctor<CPUDevice, U> f;
+      f(context->eigen_device<CPUDevice>(), running_mean_output->flat<U>());
+      f(context->eigen_device<CPUDevice>(), running_var_output->flat<U>());
+      return;
+    }
+
     Tensor transformed_x;
     Tensor transformed_y;
     if (tensor_format == FORMAT_NCHW) {
@@ -254,6 +263,15 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
       // Initialize the memory, to avoid sanitizer alerts.
       dummy_reserve_space->flat<U>()(0) = U();
     }
+
+    // If input is empty, return NaN mean/variance
+    if (x_input.shape().num_elements() == 0) {
+      functor::SetNanFunctor<CPUDevice, U> f;
+      f(context->eigen_device<CPUDevice>(), batch_mean_output->flat<U>());
+      f(context->eigen_device<CPUDevice>(), batch_var_output->flat<U>());
+      return;
+    }
+
     Tensor transformed_x;
     Tensor transformed_y;
     if (tensor_format == FORMAT_NCHW) {
@@ -821,7 +839,7 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
     // If input is empty, return NaN mean/variance
     if (x.shape().num_elements() == 0) {
       OP_REQUIRES_OK(context, maybe_make_dummy_output());
-      functor::SetNanFunctor<U> f;
+      functor::SetNanFunctor<GPUDevice, U> f;
       f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
       f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
       return;
@@ -913,8 +931,8 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
         StreamExecutorUtil::AsDeviceMemory<U>(estimated_variance);
     auto side_input_ptr =
         side_input != nullptr
-            ? StreamExecutorUtil::AsDeviceMemory<U>(*side_input)
-            : se::DeviceMemory<U>();
+            ? StreamExecutorUtil::AsDeviceMemory<T>(*side_input)
+            : se::DeviceMemory<T>();
     auto batch_mean_ptr = StreamExecutorUtil::AsDeviceMemory<U>(*batch_mean);
 
     auto batch_var_ptr = StreamExecutorUtil::AsDeviceMemory<U>(*batch_var);

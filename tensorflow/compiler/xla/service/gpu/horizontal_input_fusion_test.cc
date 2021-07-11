@@ -202,7 +202,7 @@ TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
        kind=kLoop, calls=fused_computation.3
    gte.4 = f16[1024] get-tuple-element(fusion.3), index=0
    gte.5 = f16[1024]{0} get-tuple-element(fusion.3), index=1
-   ROOT tuple.1 = (f16[], f16[1024]{0}, f16[], f16[1024]{0})
+   ROOT tuple.1 = (f16[], f16[1024], f16[1024]{0}, f16[])
        tuple(gte.3, gte.4, gte.5, gte.6)
  }
 )")

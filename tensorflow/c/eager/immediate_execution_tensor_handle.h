@@ -36,9 +36,14 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   // Returns number of dimensions.
   virtual Status NumDims(int* num_dims) const = 0;
   // Returns number of elements across all dimensions.
-  virtual Status NumElements(int64* num_elements) const = 0;
+  virtual Status NumElements(int64_t* num_elements) const = 0;
   // Returns size of specified dimension
-  virtual Status Dim(int dim_index, int64* dim) const = 0;
+  //
+  // -1 indicates an unknown axis length; this is unreachable for most standard
+  // ImmediateExecutionTensorHandles, but comes up for example when computing
+  // the shape of a parallel tensor with component shapes differing across
+  // devices.
+  virtual Status Dim(int dim_index, int64_t* dim) const = 0;
 
   // Returns the device which created the handle.
   virtual const char* DeviceName(Status* status) const = 0;

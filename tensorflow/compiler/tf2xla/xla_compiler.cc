@@ -816,7 +816,7 @@ Status XlaCompiler::CompileFunction(
         /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
   }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    VLOG(1) << "Using MLIR bridge";
+    VLOG(1) << "Using MLIR bridge to compile the function";
     GraphDebugInfo debug_info;
 
     std::vector<std::string> valid_control_rets =
@@ -828,6 +828,7 @@ Status XlaCompiler::CompileFunction(
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
         debug_info, options_.shape_representation_fn, result));
   } else {
+    VLOG(1) << "Using the old bridge to compile the function";
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
   }
@@ -1157,8 +1158,10 @@ Status XlaCompiler::BuildArguments(
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
           if (arg.value_bound) {
-            // Propagate upper bound to arg_expression.
+            TF_RET_CHECK(arg.value_dynamism);
+            // Propagate upper bound and value dynamism to arg_expression.
             arg_expression.set_value_bound(arg.value_bound.value());
+            arg_expression.set_value_dynamism(arg.value_dynamism.value());
           }
         }
         break;

@@ -98,6 +98,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/190625515)
         "v1only",
     ],
 )
@@ -110,6 +111,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/193153560)
         "v1only",
     ],
 )

@@ -14,11 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -165,10 +171,10 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     }
   }
 
-  Status MakeSplitProvider(
-      std::unique_ptr<SplitProvider>* split_provider) const override {
-    *split_provider =
-        absl::make_unique<RangeSplitProvider>(start_, stop_, step_);
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    split_providers->push_back(
+        absl::make_unique<RangeSplitProvider>(start_, stop_, step_));
     return Status::OK();
   }
 
@@ -200,10 +206,12 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      split_provider_ = ctx->split_provider();
-      if (!split_provider_) {
+      if (ctx->split_providers().empty()) {
         counter_ = absl::make_unique<RangeCounter>(
             dataset()->start_, dataset()->stop_, dataset()->step_);
+      } else {
+        TF_ASSIGN_OR_RETURN(split_provider_,
+                            GetSingleSplitProvider(ctx, dataset()));
       }
       return Status::OK();
     }

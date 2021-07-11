@@ -128,3 +128,18 @@ func @inline_simple_var() -> tensor<2xi32> {
   return %result : tensor<2xi32>
 }
 
+// Test that simple TF operations can be inlined with devices assigned.
+
+func private @simple_callee_with_devices() -> (tensor<2xi32>, tensor<2xf32>)  {
+  %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
+  %cst_gpu = "tf.Const"() { value = dense<2.> : tensor<2xf32>, device = "/GPU:0" } : () -> tensor<2xf32>
+  return %cst, %cst_gpu : tensor<2xi32>, tensor<2xf32>
+}
+// CHECK-LABEL: func @inline_simple_with_devices(
+func @inline_simple_with_devices() -> tensor<2xi32> {
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"{{.*}}CPU{{.*}}i32
+  // CHECK-DAG: "tf.Const"{{.*}}GPU{{.*}}f32
+  // CHECK: return %[[CST]]
+  %result:2 = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @simple_callee_with_devices, device = "/CPU:0"} : () -> (tensor<2xi32>, tensor<2xf32>)
+  return %result#0 : tensor<2xi32>
+}

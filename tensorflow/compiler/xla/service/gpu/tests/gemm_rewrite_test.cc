@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -49,6 +50,13 @@ class GemmRewriteTest : public GpuCodegenTest {
     absl::Span<const BufferAllocation> allocations =
         gpu_executable->GetAllocations();
     CHECK_EQ(allocations.size(), expected_number_of_allocations);
+  }
+
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
   }
 };
 
@@ -351,6 +359,222 @@ ENTRY AddDotsFunc {
   // Bias should be fused into the multiplication.
   CheckNumberOfAllocations(hlo_text, 3);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(GemmRewriteTest, BF16Gemm) {
+  const char* hlo_text = R"(
+HloModule bf16gemm
+
+ENTRY bf16gemm {
+  %parameter.1 = bf16[12,4]{1,0} parameter(0)
+  %parameter.2 = bf16[4,8]{1,0} parameter(1)
+  ROOT %dot.8 = bf16[12,8] dot(bf16[12,4] %parameter.1, bf16[4,8] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: bf16[16,8]{1,0} custom-call(bf16[16,8]{1,0} {{.*}}, bf16[8,8]{1,0} {{.*}}), custom_call_target="__cublas$gemm"
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: bf16[12,8]{1,0} custom-call(bf16[12,4]{1,0} %parameter.1, bf16[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm"
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, BF16GemmStrided) {
+  const char* hlo_text = R"(
+HloModule bf16gemm
+
+ENTRY bf16gemm {
+  %parameter.1 = bf16[3,3,4] parameter(0)
+  %parameter.2 = bf16[3,3,2] parameter(1)
+  ROOT %dot.3 = bf16[3,4,2]{2,1,0} dot(bf16[3,3,4]{2,1,0} %parameter.1, bf16[3,3,2]{2,1,0} %parameter.2), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}, operand_precision={highest,highest}
+}
+
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+    ; CHECK: bf16[3,8,8]{2,1,0} custom-call(bf16[3,8,8]{2,1,0} {{.*}}, bf16[3,8,8]{2,1,0} {{.*}}), custom_call_target="__cublas$gemm"
+    )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+    ; CHECK: ROOT %custom-call = bf16[3,4,2]{2,1,0} custom-call(bf16[3,3,4]{2,1,0} %parameter.1, bf16[3,3,2]{2,1,0} %parameter.2), custom_call_target="__cublas$gemm"
+    )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, BF16GemmCodeGen) {
+  const char* hlo_text = R"(
+HloModule bf16codegendgemm
+
+ENTRY bf16gemm {
+  %parameter.1 = bf16[2]{0} parameter(0)
+  %parameter.2 = bf16[2]{0} parameter(1)
+  ROOT %dot.3 = bf16[] dot(bf16[2]{0} %parameter.1, bf16[2]{0} %parameter.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+}
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:  %param_1.3 = bf16[2]{0} parameter(1)
+; CHECK:  %convert.5 = f32[2]{0} convert(%param_1.3)
+; CHECK:  %param_0.3 = bf16[2]{0} parameter(0)
+; CHECK:  %convert.4 = f32[2]{0} convert(%param_0.3)
+; CHECK:  %multiply.1 = f32[2]{0} multiply(%convert.5, %convert.4)
+; CHECK:  %constant_1 = f32[] constant(0)
+; CHECK:  %reduce.1 = f32[] reduce(%multiply.1, %constant_1), dimensions={0}, to_apply=%scalar_add_computation
+; CHECK:  ROOT %convert.3 = bf16[] convert(%reduce.1)
+  )");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(GemmRewriteTest, BF16Transpose) {
+  const char* hlo_text = R"(
+HloModule broadcast
+
+ENTRY broadcast {
+  p = bf16[9] parameter(0)
+  ROOT out = bf16[1,9] broadcast(p), dimensions={1}
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: bf16[1,9]{1,0} bitcast
+; CHECK: bf16[1,9]{1,0} copy
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(GemmRewriteTest, Int8Gemm) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY int8gemm {
+  %parameter.1 = s8[12,4]{1,0} parameter(0)
+  %parameter.2 = s8[4,8]{1,0} parameter(1)
+  ROOT %dot.8 = s32[12,8] dot(s8[12,4] %parameter.1, s8[4,8] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm"
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} %bitcast, s32[4,8]{1,0} %bitcast.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, Int8GemmNoAlphaRewrite) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY int8gemm {
+  %parameter.1 = s8[12,4]{1,0} parameter(0)
+  %parameter.2 = s8[4,8]{1,0} parameter(1)
+  k = s32[] constant(2)
+  k_broadcast = s32[12,8] broadcast(k), dimensions={}
+  %dot.8 = s32[12,8] dot(s8[12,4] %parameter.1, s8[4,8] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot_multiplied = s32[12,8] multiply(%dot.8, k_broadcast)
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} %bitcast, s32[4,8]{1,0} %bitcast.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, Int8GemmNoBetaRewrite) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY int8gemm {
+  %parameter.1 = s8[12,4]{1,0} parameter(0)
+  %parameter.2 = s8[4,8]{1,0} parameter(1)
+  bias = s32[12,8] parameter(2)
+  %dot.8 = s32[12,8] dot(s8[12,4] %parameter.1, s8[4,8] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = s32[12,8] add(%dot.8, bias)
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} custom-call(s8[12,4]{1,0} %parameter.1, s8[4,8]{1,0} %parameter.2), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[12,8]{1,0} dot(s32[12,4]{1,0} %bitcast, s32[4,8]{1,0} %bitcast.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
+TEST_F(GemmRewriteTest, Int8GemmNotMultipleOfFour) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY int8gemm {
+  %parameter.1 = s8[13,4]{1,0} parameter(0)
+  %parameter.2 = s8[4,9]{1,0} parameter(1)
+  ROOT %dot.9 = s32[13,9] dot(s8[13,4] %parameter.1, s8[4,9] %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[16,12]{1,0} custom-call(s8[16,4]{1,0} %pad, s8[4,12]{1,0} %pad.1)
+  )",
+                      /*print_operand_shape=*/true);
+  } else {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK: s32[13,9]{1,0} dot(s32[13,4]{1,0} %bitcast, s32[4,9]{1,0} %bitcast.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  )",
+                      /*print_operand_shape=*/true);
+  }
 }
 
 }  // namespace

@@ -572,10 +572,10 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
 HloCollectiveInstruction::HloCollectiveInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      replica_groups_(replica_groups),
+      replica_groups_(SpanToVector(replica_groups)),
       constrain_layout_(constrain_layout) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -619,7 +619,7 @@ bool HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 
 HloAllGatherInstruction::HloAllGatherInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    int64 all_gather_dimension, const std::vector<ReplicaGroup>& replica_groups,
+    int64 all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
     bool constrain_layout, const absl::optional<int64>& channel_id,
     bool use_global_device_ids)
     : HloCollectiveInstruction(HloOpcode::kAllGather, shape, operands,
@@ -669,7 +669,7 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids)
     : HloCollectiveInstruction(opcode, shape, operands, replica_groups,
                                constrain_layout, channel_id),
@@ -727,18 +727,18 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
       constrain_layout(), channel_id(), use_global_device_ids());
 }
 
-HloAllReduceScatterInstruction::HloAllReduceScatterInstruction(
+HloReduceScatterInstruction::HloReduceScatterInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids,
     int64 scatter_dimension)
     : HloAllReduceInstructionBase(
-          HloOpcode::kAllReduceScatter, shape, operands, reduce_computation,
+          HloOpcode::kReduceScatter, shape, operands, reduce_computation,
           replica_groups, constrain_layout, channel_id, use_global_device_ids),
       scatter_dimension_(scatter_dimension) {}
 
-std::vector<string> HloAllReduceScatterInstruction::ExtraAttributesToStringImpl(
+std::vector<string> HloReduceScatterInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> result =
       HloAllReduceInstructionBase::ExtraAttributesToStringImpl(options);
@@ -746,35 +746,35 @@ std::vector<string> HloAllReduceScatterInstruction::ExtraAttributesToStringImpl(
   return result;
 }
 
-HloInstructionProto HloAllReduceScatterInstruction::ToProto() const {
+HloInstructionProto HloReduceScatterInstruction::ToProto() const {
   HloInstructionProto proto = HloAllReduceInstructionBase::ToProto();
   proto.add_dimensions(scatter_dimension_);
   return proto;
 }
 
-bool HloAllReduceScatterInstruction::IdenticalSlowPathIgnoringChannelIdValues(
+bool HloReduceScatterInstruction::IdenticalSlowPathIgnoringChannelIdValues(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
   const auto& casted_other =
-      static_cast<const HloAllReduceScatterInstruction&>(other);
+      static_cast<const HloReduceScatterInstruction&>(other);
   return HloAllReduceInstructionBase::IdenticalSlowPathIgnoringChannelIdValues(
              other, eq_computations) &&
          scatter_dimension_ == casted_other.scatter_dimension();
 }
 
 std::unique_ptr<HloInstruction>
-HloAllReduceScatterInstruction::CloneWithNewOperandsImpl(
+HloReduceScatterInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
-  return absl::make_unique<HloAllReduceScatterInstruction>(
+  return absl::make_unique<HloReduceScatterInstruction>(
       shape, new_operands, to_apply(), replica_groups(), constrain_layout(),
       channel_id(), use_global_device_ids(), scatter_dimension());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id,
     const absl::optional<int64>& split_dimension)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
@@ -2503,6 +2503,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     AppendOperand(operand);
   }
   AppendComputation(to_apply);
+  to_apply->SetCustomCallInstruction(this);
 }
 
 HloCustomCallInstruction::HloCustomCallInstruction(
@@ -2626,7 +2627,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     extra.push_back("custom_call_has_side_effect=true");
   }
   if (literal_.has_value()) {
-    extra.push_back(StrCat("literal=(", literal_->ToStringOneline(), ")"));
+    extra.push_back(StrCat("literal=", literal_->ToStringWithLayoutOneline()));
   }
   if (!output_to_operand_aliasing_.empty()) {
     std::vector<string> pair_strings;

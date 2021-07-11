@@ -58,7 +58,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleAllGather(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
-  Status HandleAllReduceScatter(HloInstruction* hlo) override;
   Status HandleAllReduceStart(HloInstruction* hlo) override;
   Status HandleAllReduceDone(HloInstruction* hlo) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
@@ -93,6 +92,7 @@ class ShapeVerifier : public DfsHloVisitor {
       HloInstruction* dynamic_update_slice) override;
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleMap(HloInstruction* map) override;
+  Status HandleReduceScatter(HloInstruction* hlo) override;
   Status HandleReduceWindow(HloInstruction* reduce_window) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
   Status HandleWhile(HloInstruction* xla_while) override;

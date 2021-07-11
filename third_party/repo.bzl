@@ -28,10 +28,11 @@ def _use_system_lib(ctx, name):
     return name in [n.strip() for n in syslibenv.split(",")]
 
 def _get_link_dict(ctx, link_files, build_file):
+    link_dict = {ctx.path(v): ctx.path(Label(k)) for k, v in link_files.items()}
     if build_file:
         # Use BUILD.bazel because it takes precedence over BUILD.
-        link_files = dict(link_files, **{build_file: "BUILD.bazel"})
-    return {ctx.path(v): ctx.path(Label(k)) for k, v in link_files.items()}
+        link_dict[ctx.path("BUILD.bazel")] = ctx.path(Label(build_file))
+    return link_dict
 
 def _tf_http_archive_impl(ctx):
     # Construct all paths early on to prevent rule restart. We want the

@@ -285,6 +285,18 @@ class TFL_NumElementsEqualsDimTrait<int x, int y, int j> :
     " of operand " # y,
     TFL_NumElementsEqualsDim<x, y, j>>;
 
+// Return true if number of elements of x-th operand equals to n.
+class TFL_NumElements<int x, int n> :
+  Or<[TFL_OperandIsUnrankedPred<x>,
+      CPred<"!$_op.getOperand(" # x #
+        ").getType().cast<ShapedType>().hasStaticShape()">,
+      CPred<"$_op.getOperand(" # x #
+        ").getType().cast<ShapedType>().getNumElements() == " # n>]>;
+
+class TFL_NumElementsTrait<int x, int n> :
+  PredOpTrait<"operand " # x # " has num of elements equals to  " # n,
+    TFL_NumElements<x, n>>;
+
 // tf.uint8 and tf.quint8 are mapped to the same tflite types, so they are equal
 // when used as element types.
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
@@ -1116,6 +1128,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
 def TFL_GatherNdOp : TFL_Op<"gather_nd", [
     NoSideEffect,
+    SameOperandsAndResultsScale,
     PredOpTrait<"params and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Gather_nd operator";
@@ -1136,6 +1149,7 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
 
 def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
     NoSideEffect,
+    SameOperandsAndResultsScale,
     TFL_OperandHasAtleastRank<0, 1>,
     TFL_OperandHasAtleastRank<1, 1>,
     PredOpTrait<"updates and output must have same element type",
@@ -2324,11 +2338,11 @@ def TFL_MulOp : TFL_Op<"mul", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$lhs,
-    TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$rhs,
+    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 
@@ -3022,8 +3036,7 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
     BinaryOpSameElementTypeConstraint,
     TFL_SameFirstOperandAndFirstResultElementType,
     ResultsBroadcastableShape,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Squared difference operator";
 
   let description = [{
@@ -3169,6 +3182,11 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   let verifier = [{ return Verify(*this); }];
 
   let hasFolder = 1;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input, "Value":$perm),
+    [{ BuildTransposeOp(&$_builder, $_state, input, perm); }]>
+  ];
 }
 
 def TFL_UnpackOp : TFL_Op<"unpack", [
@@ -3355,12 +3373,12 @@ def TFL_SplitOp : TFL_Op<"split", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$split_dim,
-    TFL_TensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$value,
+    TFL_TensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$value,
     Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
-    TFL_VariadicTensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
+    TFL_VariadicTensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -4734,7 +4752,7 @@ the dimension is padded with zeros.
   );
 }
 
-def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
+def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   let summary = "Returns a handle to a variable resource from its name.";
 
   let description = [{
@@ -4749,6 +4767,8 @@ def TFL_VarHandleOp : TFL_Op<"var_handle_op", []> {
   );
 
   let results = (outs TFL_ResourceTensor:$resource_handle);
+
+  let hasOptions = 1;
 }
 
 def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
@@ -4760,9 +4780,7 @@ this value or a subsequent newer value of the variable.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id,
+    TFL_ResourceTensor:$resource_id,
     TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$value
   );
 
@@ -4777,9 +4795,7 @@ Read variable data identified by 'resource_id'.
   }];
 
   let arguments = (ins
-    // TODO(b/149099381): Remove integer IDs after adding the new variable
-    // handle type.
-    TFL_TensorOf<[I32]>:$resource_id
+    TFL_ResourceTensor:$resource_id
   );
 
   let results = (outs TFL_TensorOf<[F32, F64, I1, UI8, I8, QI8, QUI8, I32, I64, QI16, Complex<F<32>>, Complex<F<64>>]>:$result);
@@ -4816,6 +4832,59 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
   let arguments = (ins
     TFL_TensorOf<[F32]>:$input,
     TFL_TensorOf<[F32]>:$filter,
+    TFL_TensorOfOrNone<[F32]>:$bias,
+    I32Attr:$dilation_d_factor,
+    I32Attr:$dilation_h_factor,
+    I32Attr:$dilation_w_factor,
+    TFL_AFAttr:$fused_activation_function,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_d,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
+  let results = (outs TFL_TensorOf<[F32]>:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "Conv3DOptions";
+}
+
+def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
+    NoSideEffect,
+    NoQuantizableResult,
+    AccumulatorUniformScale<2, 0, 1>,
+    TFL_OperandHasRank<0, 1>,
+    TFL_OperandHasRank<1, 5>,
+    TFL_OperandHasRank<2, 5>,
+    TFL_NumElementsTrait<0, 5>,
+    // Channel dimension in input and filter should match.
+    TFL_OperandsHaveSameDimsTrait<2, 1, 4, 4>,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 2>>,
+    PredOpTrait<"bias and output must have same element type",
+      Or<[
+        TFL_OperandIsNoneType<3>,
+        TFL_TCresVTEtIsSameAsOp<0, 3>]>>,
+    PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
+      Or<[
+        TFL_OperandIsNoneType<3>,
+        TFL_NumElementsEqualsDim<3, 1, 4>]>>]> {
+  let summary = "Transposed Convolution 3D operator";
+
+  let description = [{
+    Performs transposed convolution operation on 3D inputs.
+    Inputs:
+      `inputs[0]`: required: the shape of output tensor
+      `inputs[1]`: required: the filter weight tensor
+      `inputs[2]`: required: the input activation tensor
+      `inputs[3]`: optional: the bias tensor
+  }];
+
+  let arguments = (ins
+    TFL_I32Tensor:$output_shape,
+    TFL_TensorOf<[F32]>:$filter,
+    TFL_TensorOf<[F32]>:$input,
     TFL_TensorOfOrNone<[F32]>:$bias,
     I32Attr:$dilation_d_factor,
     I32Attr:$dilation_h_factor,
@@ -4965,6 +5034,30 @@ def TFL_HashtableSizeOp: TFL_Op<"hashtable_size", []> {
 
   let results = (outs
     TFL_I64Tensor:$out
+  );
+}
+
+def TFL_BroadcastArgsOp : TFL_Op<"broadcast_args",[
+    OperandsSameElementTypeConstraintBase<"BroadcastArgs op">,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRank<0, 1>,
+    TFL_OperandHasRank<1, 1>,
+    NoSideEffect]> {
+  let summary = "Return the shape of s0 op s1 with broadcast.";
+
+  let description = [{
+Given `s0` and `s1`, tensors that represent shapes, compute `r0`, the
+broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
+  }];
+
+  let arguments = (ins
+    TFL_I32OrI64Tensor:$s0,
+    TFL_I32OrI64Tensor:$s1
+  );
+
+  let results = (outs
+    TFL_I32OrI64Tensor:$r0
   );
 }
 

@@ -195,6 +195,7 @@ class SignatureRunner(object):
     if not signature_def_name:
       raise ValueError('None signature_def_name provided.')
     self._interpreter = interpreter
+    self._interpreter_wrapper = interpreter._interpreter
     self._signature_def_name = signature_def_name
     signature_defs = interpreter._get_full_signature_list()
     if signature_def_name not in signature_defs:
@@ -202,6 +203,10 @@ class SignatureRunner(object):
     self._signature_def = signature_defs[signature_def_name]
     self._outputs = self._signature_def['outputs'].items()
     self._inputs = self._signature_def['inputs']
+
+    self._subgraph_index = (
+        self._interpreter_wrapper.GetSubgraphIndexFromSignatureDefName(
+            self._signature_def_name))
 
   def __call__(self, **kwargs):
     """Runs the SignatureDef given the provided inputs in arguments.
@@ -220,26 +225,27 @@ class SignatureRunner(object):
       raise ValueError(
           'Invalid number of inputs provided for running a SignatureDef, '
           'expected %s vs provided %s' % (len(self._inputs), len(kwargs)))
+
     # Resize input tensors
     for input_name, value in kwargs.items():
       if input_name not in self._inputs:
         raise ValueError('Invalid Input name (%s) for SignatureDef' %
                          input_name)
-      self._interpreter.resize_tensor_input(self._inputs[input_name],
-                                            value.shape)
+      self._interpreter_wrapper.ResizeInputTensor(
+          self._inputs[input_name], np.array(value.shape, dtype=np.int32),
+          False, self._subgraph_index)
     # Allocate tensors.
-    self._interpreter.allocate_tensors()
+    self._interpreter_wrapper.AllocateTensors(self._subgraph_index)
     # Set the input values.
     for input_name, value in kwargs.items():
-      self._interpreter._set_input_tensor(
-          input_name, value=value, method_name=self._signature_def_name)
+      self._interpreter_wrapper.SetTensor(self._inputs[input_name], value,
+                                          self._subgraph_index)
 
-    # TODO(b/184696047): Needs to invoke the actual subgraph instead of main
-    #                    graph.
-    self._interpreter.invoke()
+    self._interpreter_wrapper.Invoke(self._subgraph_index)
     result = {}
     for output_name, output_index in self._outputs:
-      result[output_name] = self._interpreter.get_tensor(output_index)
+      result[output_name] = self._interpreter_wrapper.GetTensor(
+          output_index, self._subgraph_index)
     return result
 
 
@@ -559,10 +565,30 @@ class Interpreter(object):
     return tensor_details
 
   def get_input_details(self):
-    """Gets model input details.
+    """Gets model input tensor details.
 
     Returns:
-      A list of input details.
+      A list in which each item is a dictionary with details about
+      an input tensor. Each dictionary contains the following fields
+      that describe the tensor:
+
+      + `name`: The tensor name.
+      + `index`: The tensor index in the interpreter.
+      + `shape`: The shape of the tensor.
+      + `shape_signature`: Same as `shape` for models with known/fixed shapes.
+        If any dimension sizes are unkown, they are indicated with `-1`.
+      + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
+      + `quantization`: Deprecated, use `quantization_parameters`. This field
+        only works for per-tensor quantization, whereas
+        `quantization_parameters` works in all cases.
+      + `quantization_parameters`: A dictionary of parameters used to quantize
+        the tensor:
+        ~ `scales`: List of scales (one if per-tensor quantization).
+        ~ `zero_points`: List of zero_points (one if per-tensor quantization).
+        ~ `quantized_dimension`: Specifies the dimension of per-axis
+        quantization, in the case of multiple scales/zero_points.
+      + `sparsity_parameters`: A dictionary of parameters used to encode a
+        sparse tensor. This is empty if the tensor is dense.
     """
     return [
         self._get_tensor_details(i) for i in self._interpreter.InputIndices()
@@ -616,10 +642,12 @@ class Interpreter(object):
     self._interpreter.ResizeInputTensor(input_index, tensor_size, strict)
 
   def get_output_details(self):
-    """Gets model output details.
+    """Gets model output tensor details.
 
     Returns:
-      A list of output details.
+      A list in which each item is a dictionary with details about
+      an output tensor. The dictionary contains the same fields as
+      described for `get_input_details()`.
     """
     return [
         self._get_tensor_details(i) for i in self._interpreter.OutputIndices()
@@ -688,7 +716,7 @@ class Interpreter(object):
     Example,
     ```
     input_data = np.array([1.2, 1.4], np.float32)
-    signatures = interpreter.get_signature_list()
+    signatures = interpreter._get_full_signature_list()
     print(signatures)
     # {
     #   'add': {'inputs': {'x': 1, 'y': 0}, 'outputs': {'output_0': 4}}

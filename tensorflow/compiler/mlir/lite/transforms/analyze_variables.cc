@@ -49,6 +49,16 @@ class AnalyzeVariablesPass
   AnalyzeVariablesPass() = default;
   AnalyzeVariablesPass(const AnalyzeVariablesPass&) {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-analyze-variables-pass";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Analyze variables in the graph.";
+  }
+
   void runOnOperation() override {
     auto* context = &getContext();
     auto module = getOperation();
@@ -91,8 +101,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass() {
   return std::make_unique<AnalyzeVariablesPass>();
 }
 
-static PassRegistration<AnalyzeVariablesPass> pass(
-    "tfl-analyze-variables-pass", "Analyze variables in the graph.");
+static PassRegistration<AnalyzeVariablesPass> pass([] {
+  return CreateAnalyzeVariablesPass();
+});
 
 }  // namespace TFL
 }  // namespace mlir

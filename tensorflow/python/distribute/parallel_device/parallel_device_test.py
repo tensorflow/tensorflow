@@ -29,6 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
@@ -135,6 +136,29 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
 
     self.assertIn(self.device.components[0], outputs[0].backing_device)
     self.assertIn(self.device.components[1], outputs[1].backing_device)
+
+  def test_no_implicit_copyon(self):
+    a1 = constant_op.constant(1.)
+    a2 = constant_op.constant(2.)
+
+    with self.device:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          "First pack non-parallel tensors for each device"):
+        a1 + a2  # pylint:disable=pointless-statement
+
+  def test_one_replica_eager_control_flow(self):
+    device = parallel_device.ParallelDevice(components=[
+        "/job:localhost/device:{}:0".format(self.device_type),
+    ])
+    x = constant_op.constant([2, 3, 4])
+    with device:
+      x = device.pack([x])
+      if math_ops.reduce_any(math_ops.equal(x, constant_op.constant(4))):
+        y = constant_op.constant(1)
+      else:
+        y = constant_op.constant(2)
+    self.assertAllEqual([1], device.unpack(y))
 
   def test_string_representation(self):
     x = self.device.pack(
@@ -288,10 +312,10 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
   def test_collective_broadcast_in_function(self):
     if self.device_type == "TPU":
       self.skipTest("ParallelDevice broadcast collectives on TPUs need work")
-    c = constant_op.constant([2])
 
     @def_function.function
     def broadcast_send_recv(device_id):
+      c = constant_op.constant([2])
 
       @def_function.function
       def send():
@@ -481,16 +505,14 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
          constant_op.constant([5.])])
     with self.device:
       y = x * 2.
-    with self.assertRaisesRegex(Exception,
-                                "components do not all have the same shape"):
-      y.shape  # pylint: disable=pointless-statement
+    self.assertEqual([None], y.shape.as_list())
     self.assertAllClose([[2., 4.], [10.]], self.device.unpack(y))
 
     different_axes = self.device.pack(
         [constant_op.constant([1., 2.]),
          constant_op.constant([[5.]])])
     with self.assertRaisesRegex(Exception,
-                                "components do not all have the same shape"):
+                                "components do not all have the same rank"):
       different_axes.shape  # pylint: disable=pointless-statement
 
 

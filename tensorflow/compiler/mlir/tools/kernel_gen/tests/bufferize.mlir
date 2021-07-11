@@ -50,7 +50,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   %size = rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
   ^bb0(%i : index):
-    %elem = memref.dim %arg, %i : tensor<*xf32>
+    %elem = tensor.dim %arg, %i : tensor<*xf32>
     tensor.yield %elem : index
   } : tensor<?xindex>
   %c0 = constant 0 : index
@@ -251,10 +251,10 @@ func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
   return %result : tensor<4xf32>
 }
 
-// CHECK-LABEL: @subtensor
+// CHECK-LABEL: @slice
 // CHECK-SAME: (%[[T:.*]]: memref<3xi32>)
-func @subtensor(%t : tensor<3xi32>) -> tensor<1xi32> {
+func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
   // CHECK: memref.subview %[[T]][0] [1] [1] : memref<3xi32> to memref<1xi32>
-  %result = subtensor %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
+  %result = tensor.extract_slice %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
   return %result : tensor<1xi32>
 }

@@ -423,6 +423,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -565,5 +566,25 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "buffer_pool",
+    srcs = ["buffer_pool.cc"],
+    hdrs = ["buffer_pool.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "buffer_pool_test",
+    srcs = ["buffer_pool_test.cc"],
+    deps = [
+        ":buffer_pool",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

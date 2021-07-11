@@ -27,6 +27,7 @@ from six.moves import zip
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
 
@@ -91,6 +92,22 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
     return root
+
+  def _getSimpleModelWithVariables(self):
+
+    class SimpleModelWithOneVariable(tracking.AutoTrackable):
+      """Basic model with 1 variable."""
+
+      def __init__(self):
+        super(SimpleModelWithOneVariable, self).__init__()
+        self.var = variables.Variable(array_ops.zeros((1, 10), name='var'))
+
+      @def_function.function
+      def assign_add(self, x):
+        self.var.assign_add(x)
+        return self.var
+
+    return SimpleModelWithOneVariable()
 
   def _getMultiFunctionModel(self):
 

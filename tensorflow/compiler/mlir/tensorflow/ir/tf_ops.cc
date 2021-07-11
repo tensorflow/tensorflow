@@ -67,14 +67,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 // These are currently aliases and the alias will be removed, verified
 // equivalent until then.
-// TODO(b/178519687): Remvoe once addressed.
+// TODO(b/178519687): Remove once addressed.
 static_assert(std::is_same<tensorflow::int64, std::int64_t>::value,
               "tensorflow::int64 is expected to match std::int64_t");
 
@@ -103,6 +105,48 @@ struct TFDecodeAttributesInterface : public DialectDecodeAttributesInterface {
     return TensorFlowDialect::decode(input, output);
   }
 };
+
+// Helper function that implements the multi-device inlining policy behavior
+// for the inliner hook. In particular, for all function body nodes set unset
+// placement attributes to match the function call node.
+void MultiDeviceProcessInlinedCallBlocks(
+    Operation *call, iterator_range<Region::iterator> inlinedBlocks) {
+  using DeviceNameUtils = tensorflow::DeviceNameUtils;
+
+  // Duplicate of the logic in MultiDeviceFunctionBodyPlacer::BodyNodeDevice
+  // LINT.IfChange
+  auto device_id = Identifier::get("device", call->getContext());
+  auto caller_device = call->getAttrOfType<StringAttr>(device_id);
+  if (!caller_device) return;
+
+  DeviceNameUtils::ParsedName caller_parsed_device;
+  if (!DeviceNameUtils::ParseFullName(caller_device.getValue().str(),
+                                      &caller_parsed_device))
+    return;
+
+  MLIRContext *context = call->getContext();
+  auto node_device = [&](Operation *n) -> StringAttr {
+    auto device = n->getAttrOfType<StringAttr>(device_id);
+    if (!device || device.getValue().empty()) return caller_device;
+
+    DeviceNameUtils::ParsedName ndef_parsed_device;
+    if (!DeviceNameUtils::ParseFullName(device.getValue().str(),
+                                        &ndef_parsed_device))
+      return device;
+    DeviceNameUtils::MergeUnsetDevNames(&ndef_parsed_device,
+                                        caller_parsed_device);
+    return StringAttr::get(
+        context, DeviceNameUtils::ParsedNameToString(ndef_parsed_device));
+  };
+  // LINT.ThenChange(../../../../core/common_runtime/inline_function_utils.cc)
+
+  for (Block &block : inlinedBlocks) {
+    block.walk([&](Operation *op) {
+      if (op->getDialect() == call->getDialect())
+        op->setAttr(device_id, node_device(op));
+    });
+  }
+}
 
 struct TFInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
@@ -158,6 +202,23 @@ struct TFInlinerInterface : public DialectInlinerInterface {
       return nullptr;
     return builder.create<TF::CastOp>(conversion_loc, result_type, input,
                                       /*truncate=*/builder.getBoolAttr(false));
+  }
+
+  void processInlinedCallBlocks(
+      Operation *call,
+      iterator_range<Region::iterator> inlinedBlocks) const final {
+    bool has_lower_as_multi_device_function_attr = false;
+    if (auto lower = call->getAttrOfType<BoolAttr>(
+            tensorflow::LowerFunctionalOpsConstants::
+                kLowerAsMultiDeviceFunctionAttr))
+      has_lower_as_multi_device_function_attr = lower.getValue();
+    tensorflow::FunctionCallInlinePolicy policy =
+        tensorflow::GetFunctionCallInlinePolicy(
+            isa<PartitionedCallOp, StatefulPartitionedCallOp>(call),
+            has_lower_as_multi_device_function_attr);
+
+    if (policy == tensorflow::FunctionCallInlinePolicy::kMultiDevicePlacer)
+      return MultiDeviceProcessInlinedCallBlocks(call, inlinedBlocks);
   }
 };
 }  // end anonymous namespace
@@ -271,7 +332,6 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 TensorFlowDialect::~TensorFlowDialect() {
   delete fallback_effect_op_interface_;
 }
-
 
 // Parses a type registered to this dialect.
 Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {

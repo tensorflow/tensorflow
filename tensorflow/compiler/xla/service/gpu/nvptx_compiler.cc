@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
-#include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
@@ -84,12 +84,6 @@ void PrintCantFindCudaMessage(absl::string_view msg,
          "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
 }
 
-std::pair<int, int> ComputeCapability(stream_executor::StreamExecutor& se) {
-  int major, minor;
-  CHECK(se.GetDeviceDescription().cuda_compute_capability(&major, &minor));
-  return {major, minor};
-}
-
 }  // namespace
 
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
@@ -122,12 +116,14 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
-  pipeline.AddPass<CusolverRewriter>();
+  pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
   pipeline.AddPass<GpuConvPaddingLegalization>();
-  pipeline.AddPass<CudnnPadForConvolutions>(ComputeCapability(*stream_exec));
-  pipeline.AddPass<CudnnVectorizeConvolutions>(ComputeCapability(*stream_exec));
+  pipeline.AddPass<CudnnPadForConvolutions>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
+  pipeline.AddPass<CudnnVectorizeConvolutions>(
+      stream_exec->GetDeviceDescription().cuda_compute_capability());
   // CudnnConvPadForIntegerConvolutions and CudnnConvPadForTensorCores leave
   // behind unnecessary tuple/get-tuple-element pairs that TupleSimplifier
   // fixes.
@@ -135,28 +131,22 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
-  // AlgebraicSimplifier
-  {
-    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "algebraic_simplification_post_conv_rewriter");
-    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
-                                               /*allow_mixed_precision=*/false);
-
-    AlgebraicSimplifierOptions options;
-    // When transposes appear in a fusion node, we can easily adjust the
-    // multi-dimensional index to create the one needed for the operand. This
-    // is not as easy with bitcasts, because we don't have the information
-    // readily available which dimensions are permuted. In addition to that,
-    // if we have a transpose and a reshape next to each other, they will both
-    // be replaced by a bitcast, and we replace bitcast(bitcast) with one
-    // bitcast. This leads to having to linearize and then delinearize the
-    // index.
-    options.set_replace_transpose_with_bitcast(false);
-    options.set_enable_conv_operand_swap(false);
-    options.set_cudnn_batchnorm_forward_training_metadata(
-        kCudnnBatchNormForwardTrainingCallTarget);
-    pass.AddPass<AlgebraicSimplifier>(options);
-  }
+  // AlgebraicSimplifier  We run algsimp to a fixed point.
+  //
+  // When transposes appear in a fusion node, we can easily adjust the
+  // multi-dimensional index to create the one needed for the operand. This
+  // is not as easy with bitcasts, because we don't have the information
+  // readily available which dimensions are permuted. In addition to that,
+  // if we have a transpose and a reshape next to each other, they will both
+  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+  // bitcast. This leads to having to linearize and then delinearize the
+  // index.
+  AlgebraicSimplifierOptions options;
+  options.set_replace_transpose_with_bitcast(false);
+  options.set_enable_conv_operand_swap(false);
+  options.set_cudnn_batchnorm_forward_training_metadata(
+      kCudnnBatchNormForwardTrainingCallTarget);
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified
@@ -171,11 +161,23 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
-  // Pad the dimensions of matrices in dot operations to multiples of 8.
+
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
-  if (IsVoltaOrLater(*stream_exec)) {
-    pre_pipeline.AddPass<CublasGemmPadForTensorCores>();
+  if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::BF16,
+                                            /*pad_to_multiple_of=*/8);
+  }
+  if (stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::VOLTA)) {
+    // Pad gemms over S8 to multiples of 4 so cuBLAS can run them.
+    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::S8,
+                                            /*pad_to_multiple_of=*/4);
+
+    // Pad the dimensions of matrices in dot operations to multiples of 8.
+    pre_pipeline.AddPass<CublasPadForGemms>(PrimitiveType::F16,
+                                            /*pad_to_multiple_of=*/8);
   }
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
@@ -346,16 +348,7 @@ HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
 }
 
 GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
-  int cc_major, cc_minor;
-  if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                   &cc_minor)) {
-    LOG(WARNING)
-        << "Couldn't get compute capability for device; assuming sm_20.";
-    cc_major = 2;
-    cc_minor = 0;
-  }
-
-  return std::make_pair(cc_major, cc_minor);
+  return stream_exec->GetDeviceDescription().cuda_compute_capability();
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
@@ -365,9 +358,6 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    se::StreamExecutor* stream_exec,
                                    bool relocatable,
                                    const HloModule* debug_module) {
-  std::pair<int, int> compute_capability =
-      absl::get<std::pair<int, int>>(gpu_version);
-
   std::string libdevice_dir;
   {
     tensorflow::mutex_lock lock(mutex_);
@@ -400,7 +390,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, compute_capability.first, compute_capability.second,
+      stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
       module_config, relocatable);
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
@@ -408,8 +398,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 }
 
 std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
-    se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
-    int cc_minor, const HloModuleConfig& hlo_module_config, bool relocatable) {
+    se::StreamExecutor* stream_exec, const string& ptx,
+    se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
+    bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
   tensorflow::profiler::TraceMe activity(
       "PTX->CUBIN", tensorflow::profiler::TraceMeLevel::kInfo);
@@ -424,7 +415,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     tensorflow::mutex_lock lock(mutex_);
     std::tie(iter, inserted) = compilation_cache_.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(ptx, cc_major, cc_minor, relocatable),
+        std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable),
         std::forward_as_tuple());
     cache_ptx = &iter->first.ptx;
     cache_value = &iter->second;

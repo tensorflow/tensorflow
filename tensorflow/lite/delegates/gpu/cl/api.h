@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -81,17 +82,18 @@ class InferenceEnvironment {
   // Loading serialized_model is much faster than loading GraphFloat32.
   // serialized_model must be used with appropriate NewInferenceBuilder
   // method (see below).
+  // Normally BuildSerializedModel method need to be called whenever a model or
+  // OS GPU driver is updated.
   virtual absl::Status BuildSerializedModel(
       const InferenceOptions& options, GraphFloat32 model,
       std::vector<uint8_t>* serialized_model) = 0;
 
-  // std::unique_ptr<InferenceBuilder>* builder - required parameter
-  // std::vector<int64_t>* in_refs - optional, can be nullptr
-  // std::vector<int64_t>* out_refs - optional, can be nullptr
+  // Serialized model can became invalid when environment changes. In this case
+  // this call will fail and model must be regenerated(with
+  // BuildSerializedModel).
   virtual absl::Status NewInferenceBuilder(
       const absl::Span<const uint8_t> serialized_model,
-      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
-      std::vector<int64_t>* out_refs) = 0;
+      std::unique_ptr<InferenceBuilder>* builder) = 0;
 
   virtual absl::Status NewInferenceBuilder(
       const InferenceOptions& options, GraphFloat32 model,

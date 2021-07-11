@@ -49,6 +49,9 @@ def IsI32 : NativeCodeCall<
 def CreateTFCastOpF32 : NativeCodeCall<
     "CreateTFCastOpF32(&$_builder, $0.getLoc(), $1, $2)">;
 
+def CreateTensorScatterNdOp : NativeCodeCall<
+    "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
+
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
 //===----------------------------------------------------------------------===//
@@ -465,3 +468,66 @@ def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
                           (TF_SubOp $x, $x),
                           (TF_ConstOp (GetScalarOfType<0> $x)),
                           /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
+// TensorScatterUpdate op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_AddOp
+             (TF_MulOp
+                (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
+                   (CreateTensorScatterNdOp $input, $indices,
+                      (TF_OnesLikeOp $updates),
+                   (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+             $input),
+           (CreateTensorScatterNdOp $input, $indices, $updates,
+              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue)))>;
+
+//===----------------------------------------------------------------------===//
+// Selu op patterns.
+//===----------------------------------------------------------------------===//
+
+def getScale : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0), 1.0507009873554804934193349852946)"
+  >;
+
+def getScaledAlpha : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0), 1.7580993408473768599402175208123)"
+  >;
+
+// Selu(x) = scale * x if x > 0 else scaledAlpha * (exp(x) - 1). Here
+// scale is taken as a constant 1.0507009873554804934193349852946 and
+// scaledAlpha  is taken as a constant 1.7580993408473768599402175208123.
+
+def LowerSeluOp : Pat<(TF_SeluOp TF_FloatTensor:$features),
+                  (TF_SelectV2Op
+                    (TF_GreaterOp
+                      $features,
+                      (TF_ConstOp (GetScalarOfType<0> $features))),
+                    (TF_MulOp
+                      (TF_ConstOp (getScale $features)),
+                      $features),
+                    (TF_MulOp
+                      (TF_ConstOp (getScaledAlpha $features)),
+                      (TF_Expm1Op $features)))>;
+
+// SeluGradOp(gradients, outputs) = gradients * scale if outputs > 0
+// else gradients * (outputs + scaledAlpha). Here scale is taken as a
+// constant 1.0507009873554804934193349852946 and scaledAlpha is taken
+// as a constant 1.7580993408473768599402175208123.
+
+def LowerSeluGradOp : Pat<(TF_SeluGradOp AnyStaticShapeTensor:$gradients,
+                          TF_FloatTensor:$features),
+                      (TF_SelectV2Op
+                        (TF_GreaterOp
+                          $features,
+                          (TF_ConstOp (GetScalarOfType<0> $features))),
+                        (TF_MulOp
+                          $gradients,
+                          (TF_ConstOp (getScale $features))),
+                        (TF_MulOp
+                          $gradients,
+                          (TF_AddOp
+                            $features,
+                            (TF_ConstOp (getScaledAlpha $features)))))>;

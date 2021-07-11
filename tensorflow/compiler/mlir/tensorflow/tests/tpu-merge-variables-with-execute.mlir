@@ -93,17 +93,17 @@ func @merge_replicated_variables(
 
 // -----
 
-// Tests that the pass do not merge reads/assigns if there are interferencing
+// Tests that the pass do not merge reads/assigns if there are interfering
 // accesses in between.
 
-// CHECK-LABEL: func @interferencing_accesses
+// CHECK-LABEL: func @interfering_accesses
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>
 // CHECK-SAME: %[[ARG_1:.*]]: tensor<*x!tf.resource<tensor<64xf32>>>
 // CHECK-SAME: %[[ARG_2:.*]]: tensor<32xf32>
 // CHECK-SAME: %[[ARG_4:.*]]: tensor<*x!tf.resource<tensor<8xf32>>>
 // CHECK-SAME: %[[ARG_5:.*]]: tensor<*x!tf.resource<tensor<2xf32>>>
 // CHECK-SAME: %[[ARG_6:.*]]: tensor<2xf32>
-func @interferencing_accesses(
+func @interfering_accesses(
   %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<*x!tf.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg2: tensor<32xf32>,
@@ -156,8 +156,74 @@ func @interferencing_accesses(
 
 // -----
 
-// Tests that the pass do not merge for an execute node that has multiple inputs
-// read from the same variable.
+// Tests that the pass does merge reads/assigns if there are resource accesses
+// in between which are not interfering.
+// For %arg0 and %arg1 both reads and assigns are merged, for %arg3 and %arg4
+// only reads are merged.
+
+// CHECK-LABEL: func @non_interfering_accesses
+// CHECK-SAME: %[[ARG_0:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<32xf32>>>
+// CHECK-SAME: %[[ARG_1:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<64xf32>>>
+// CHECK-SAME: %[[ARG_2:[a-z0-9]+]]: tensor<32xf32>
+// CHECK-SAME: %[[ARG_3:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<8xf32>>>
+// CHECK-SAME: %[[ARG_4:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<2xf32>>>
+// CHECK-SAME: %[[ARG_5:[a-z0-9]+]]: tensor<2xf32>
+// CHECK-SAME: %[[ARG_6:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<32xf32>>>
+// CHECK-SAME: %[[ARG_7:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<2xf32>>>
+func @non_interfering_accesses(
+  %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
+  %arg1: tensor<*x!tf.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
+  %arg2: tensor<32xf32>,
+  %arg3: tensor<*x!tf.resource<tensor<8xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
+  %arg4: tensor<*x!tf.resource<tensor<2xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
+  %arg5: tensor<2xf32>,
+  %arg6: tensor<*x!tf.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
+  %arg7: tensor<*x!tf.resource<tensor<2xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<8xf32>) {
+  %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+  %read5 = "tf.ReadVariableOp"(%arg4) : (tensor<*x!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
+  // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_6]], %[[ARG_2]])
+  "tf.AssignVariableOp"(%arg6, %arg2) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+  // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_7]], %[[ARG_5]])
+  "tf.AssignVariableOp"(%arg7, %arg5) : (tensor<*x!tf.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+  %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf.resource<tensor<64xf32>>>) -> tensor<64xf32>
+  %read2 = "tf.ReadVariableOp"(%arg3) : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+  // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
+  %compile:2 = "tf_device.launch"() ( {
+    // CHECK: tf._TPUCompileMlir
+    %0:2 = "tf._TPUCompileMlir"() {
+      metadata = "",
+      mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {\0A    %0 = \22tf.A\22(%arg0, %arg1) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<32xf32>)\0A    return %0 : tensor<32xf32>\0A  }\0A}"
+    } : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+    tf_device.return %0#0, %0#1 : tensor<!tf.string>, tensor<2x!tf.string>
+  }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+  // CHECK: %[[EXE:.*]] = "tf_device.launch"
+  // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ARG_0]], %[[ARG_1]], %[[ARG_3]], %[[ARG_4]], %[[COMPILE]]#1)
+  // CHECK-SAME: device_var_reads_indices = [0, 1, 2, 3],
+  // CHECK-SAME: device_var_updates_indices = [0, 1, -1, -1]
+  %execute:3 = "tf_device.launch"() ( {
+    %0:3 = "tf.TPUExecute"(%read0, %read1, %read2, %read5, %compile#1) {
+      Targs = [tensor<32xf32>, tensor<64xf32>, tensor<8xf32>, tensor<2xf32>],
+      Tresults = [tensor<32xf32>, tensor<64xf32>, tensor<8xf32>]}
+      : (tensor<32xf32>, tensor<64xf32>, tensor<8xf32>, tensor<2xf32>, tensor<2x!tf.string>)
+        -> (tensor<32xf32>, tensor<64xf32>, tensor<8xf32>)
+    tf_device.return %0#0, %0#1, %0#2 : tensor<32xf32>, tensor<64xf32>, tensor<8xf32>
+  }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> (tensor<32xf32>, tensor<64xf32>, tensor<8xf32>)
+  // CHECK-NEXT: tf_device.return
+  // CHECK-NEXT: }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"}
+  // CHECK-NEXT: %[[READ:.*]] = "tf.ReadVariableOp"(%[[ARG_3]])
+  %read3 = "tf.ReadVariableOp"(%arg3) : (tensor<*x!tf.resource<tensor<8xf32>>>) -> tensor<8xf32>
+  // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_3]], %[[EXE]])
+  "tf.AssignVariableOp"(%arg3, %execute#2) : (tensor<*x!tf.resource<tensor<8xf32>>>, tensor<8xf32>) -> ()
+  "tf.AssignVariableOp"(%arg1, %execute#1) : (tensor<*x!tf.resource<tensor<64xf32>>>, tensor<64xf32>) -> ()
+  "tf.AssignVariableOp"(%arg0, %execute#0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+  // CHECK-NEXT: return %[[READ]]
+  return %read3 : tensor<8xf32>
+}
+
+// -----
+
+// Tests that the pass does not merge for an execute node that has multiple
+// inputs read from the same variable.
 
 // CHECK-LABEL: func @do_not_merge_multi_read
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>

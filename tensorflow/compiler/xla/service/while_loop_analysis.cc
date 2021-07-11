@@ -54,10 +54,14 @@ static optional<int64> GetGTEOperandIndex(const HloInstruction* instr,
   VLOG(2) << "GetGTEOperandIndex(" << instr->ToString() << ", "
           << gte_operand->ToString() << ")";
 
-  // Among the operands of `instr`, find one that is a get-tuple-element op.
-  auto gte_it = c_find_if(instr->operands(), [](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kGetTupleElement;
-  });
+  // Among the operands of `instr`, find one that is a get-tuple-element op or
+  // the one that is copy fed by a get-tuple-element.
+  auto gte_it =
+      absl::c_find_if(instr->operands(), [](const HloInstruction* instr) {
+        return (instr->opcode() == HloOpcode::kGetTupleElement) ||
+               (instr->opcode() == HloOpcode::kCopy &&
+                instr->operand(0)->opcode() == HloOpcode::kGetTupleElement);
+      });
   if (gte_it == instr->operands().end()) {
     VLOG(2) << "instr does not have a gte operand.";
     return nullopt;

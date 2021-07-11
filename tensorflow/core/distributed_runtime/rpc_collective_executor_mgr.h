@@ -82,5 +82,13 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
       TF_GUARDED_BY(sequence_mu_);
 };
 
+// Creates a distributed CollectiveExecutorMgr with production implementations
+// of each components. Cases that need to inject other implementations of these
+// components should call CollectiveExecutorMgr constructor directly.
+std::unique_ptr<RpcCollectiveExecutorMgr> CreateProdRpcCollectiveExecutorMgr(
+    const ConfigProto& config, const DeviceMgr* device_mgr,
+    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
+    WorkerCacheInterface* worker_cache, const string& default_worker_name);
+
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_COLLECTIVE_EXECUTOR_MGR_H_

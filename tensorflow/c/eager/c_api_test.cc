@@ -21,6 +21,7 @@ limitations under the License.
 
 // clang-format off
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -42,8 +43,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+
+#ifdef PLATFORM_GOOGLE
+#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
+#endif
 
 using tensorflow::string;
 
@@ -948,6 +953,98 @@ void ExecuteWithTracing(bool async) {
 TEST(CAPI, ExecuteWithTracing) { ExecuteWithTracing(false); }
 TEST(CAPI, ExecuteWithTracingAsync) { ExecuteWithTracing(true); }
 
+REGISTER_OP("TestNonCommUnavailable")
+    .Output("out: string")
+    .Doc(R"doc(Test non-communication op throwing Unavailable error.)doc");
+
+REGISTER_OP("TestCommUnavailable")
+    .Output("out: string")
+    .SetIsDistributedCommunication()
+    .Doc(R"doc(Test communication op throwing Unavailable error.)doc");
+
+// Kernel that throws an Unavailable error.
+class TestUnavailableErrorOp : public tensorflow::OpKernel {
+ public:
+  explicit TestUnavailableErrorOp(tensorflow::OpKernelConstruction* ctx)
+      : tensorflow::OpKernel(ctx) {}
+  void Compute(tensorflow::OpKernelContext* ctx) override {
+    ctx->SetStatus(tensorflow::errors::Unavailable("Test error."));
+  }
+};
+REGISTER_KERNEL_BUILDER(
+    Name("TestNonCommUnavailable").Device(tensorflow::DEVICE_DEFAULT),
+    TestUnavailableErrorOp);
+REGISTER_KERNEL_BUILDER(
+    Name("TestCommUnavailable").Device(tensorflow::DEVICE_DEFAULT),
+    TestUnavailableErrorOp);
+
+string FunctionWithErrorOp(const tensorflow::StringPiece op_name) {
+  const std::string& func_str =
+      "    signature {"
+      "      name: 'FunctionWith__OP_NAME__'"
+      "      output_arg {"
+      "        name: 'out'"
+      "        type: DT_STRING"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'error_op'"
+      "      op: '__OP_NAME__'"
+      "    }"
+      "    ret {"
+      "      key: 'out'"
+      "      value: 'error_op:out'"
+      "    }";
+  tensorflow::FunctionDef def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      tensorflow::str_util::StringReplace(func_str, "__OP_NAME__", op_name,
+                                          /*replace_all=*/true),
+      &def));
+  return def.SerializeAsString();
+}
+
+TEST(CAPI, ExecuteOpAndFunctionWithError) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(/*async=*/false));
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_Op* non_comm_op = TFE_NewOp(ctx, "TestNonCommUnavailable", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* retval[1] = {};
+  int num_retvals = 1;
+  TFE_Execute(non_comm_op, retval, &num_retvals, status);
+  EXPECT_EQ(TF_INTERNAL, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteOp(non_comm_op);
+
+  TFE_Op* comm_op = TFE_NewOp(ctx, "TestCommUnavailable", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Execute(comm_op, retval, &num_retvals, status);
+  EXPECT_EQ(TF_UNAVAILABLE, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteOp(comm_op);
+
+  const string& fdef1 = FunctionWithErrorOp("TestNonCommUnavailable");
+  TFE_ContextAddFunctionDef(ctx, fdef1.data(), fdef1.size(), status);
+  TFE_Op* fn1 = TFE_NewOp(ctx, "FunctionWithTestNonCommUnavailable", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Execute(fn1, retval, &num_retvals, status);
+  EXPECT_EQ(TF_INTERNAL, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteOp(fn1);
+
+  const string& fdef2 = FunctionWithErrorOp("TestCommUnavailable");
+  TFE_ContextAddFunctionDef(ctx, fdef2.data(), fdef2.size(), status);
+  TFE_Op* fn2 = TFE_NewOp(ctx, "FunctionWithTestCommUnavailable", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Execute(fn2, retval, &num_retvals, status);
+  EXPECT_EQ(TF_UNAVAILABLE, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteOp(fn2);
+
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+}
+
 string MatMulFunction() {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
@@ -1288,8 +1385,7 @@ void BM_ReadVariable(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_ReadVariable);
 
-// TODO(b/178003466): Fix and re-enable.
-TEST(CAPI, DISABLED_StringAttributes) {
+TEST(CAPI, StringAttributes) {
   // Test that TFE_OpSetAttrString doesn't hold on to the value after it
   // returns.
   TF_Status* status = TF_NewStatus();
@@ -1673,9 +1769,10 @@ TEST(CAPI, TestTFE_OpGetInputAndOutputLengthsFailForUnknownArguments) {
   TFE_DeleteContext(ctx);
 }
 
-TEST(CAPI, TestTFE_OpAddAttrs) {
+void TestOpAddAttrs(bool use_tfrt) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -1697,9 +1794,23 @@ TEST(CAPI, TestTFE_OpAddAttrs) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   tensorflow::AttrValueMap attr_values;
-  tensorflow::EagerOperation* op =
-      tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
-  op->Attrs().FillAttrValueMap(&attr_values);
+  if (use_tfrt) {
+#ifdef PLATFORM_GOOGLE
+    auto* op = tensorflow::down_cast<tfrt::tf::OperationInterface*>(
+        tensorflow::unwrap(copy_op));
+    auto* tfrt_op_attrs =
+        tensorflow::down_cast<const tfrt::tf::OpAttrsInterface*>(
+            op->GetOpAttrs());
+    tensorflow::DataType result;
+    tfrt_op_attrs->GetType("dtype", &result);
+    EXPECT_EQ(tensorflow::DT_FLOAT, result);
+    tfrt_op_attrs->GetFallbackAttrs()->FillAttrValueMap(&attr_values);
+#endif
+  } else {
+    tensorflow::EagerOperation* op =
+        tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
+    op->Attrs().FillAttrValueMap(&attr_values);
+  }
   EXPECT_EQ(tensorflow::DT_FLOAT, attr_values.find("dtype")->second.type());
 
   TF_DeleteStatus(status);
@@ -1707,6 +1818,13 @@ TEST(CAPI, TestTFE_OpAddAttrs) {
   TFE_DeleteOp(copy_op);
   TFE_DeleteContext(ctx);
 }
+
+TEST(CAPI, TestTFE_OpAddAttrs) { TestOpAddAttrs(/*use_tfrt=*/false); }
+
+#ifdef PLATFORM_GOOGLE
+TEST(CAPI, TestTFE_OpAddAttrs_TFRT) { TestOpAddAttrs(/*use_tfrt=*/true); }
+
+#endif
 
 TEST(CAPI, TestTFE_OpAttrsSerialize) {
   TF_Status* status = TF_NewStatus();

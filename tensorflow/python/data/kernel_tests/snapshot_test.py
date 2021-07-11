@@ -1148,7 +1148,7 @@ class LegacySnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(
-          test_base.default_test_combinations(),
+          test_base.graph_only_combinations(),
           combinations.combine(pending_snapshot_expiry_seconds=[None, 1])))
   def testCheckpointBeforeOneEpochThenRunFewStepsSmallShardMultiThread(
       self, pending_snapshot_expiry_seconds):

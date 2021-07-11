@@ -430,8 +430,11 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
   size_t im2col_type_size;
   TF_LITE_ENSURE_STATUS(GetSizeOfType(context, input->type, &im2col_type_size));
-  const size_t im2col_bytes = batches * out_height * out_width * channels_in *
-                              filter_height * filter_width * im2col_type_size;
+  // Note that we intentionally promote the first multiplicand (i.e. 'batches')
+  // to 'size_t' to avoid integer overflow here.
+  const size_t im2col_bytes = static_cast<size_t>(batches) * out_height *
+                              out_width * channels_in * filter_height *
+                              filter_width * im2col_type_size;
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(
       context, node, is_hybrid, data->is_hybrid_per_channel, kernel_type,
       im2col_bytes));

@@ -55,24 +55,24 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_CONV_2D:
       // If the op has signed int16 op_sig.inputs and op_sig.outputs, its
       // version 4.
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.inputs.at(1).type == TensorType_INT16 &&
-          op_sig.outputs.at(1).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt16 &&
+          op_sig.outputs.at(1).type == kTfLiteInt16) {
         return 4;
       }
 
       // If the op has signed int8 op_sig.inputs and op_sig.outputs, its
       // version 3.
-      if (op_sig.inputs.at(0).type == TensorType_INT8 &&
-          op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 3;
       }
       // If the op is a signed int8 hybrid operation, we need to return
       // version 2 or 5 if per channel.
-      if (op_sig.inputs.at(0).type == TensorType_FLOAT32 &&
-          op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         if (op_sig.ext_options.conv_2d.is_per_channel_quantized) {
           return 5;
         }
@@ -82,17 +82,17 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
       // If the op accepts int16, we return version 5.
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.inputs.at(1).type == TensorType_INT16 &&
-          op_sig.outputs.at(1).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt16 &&
+          op_sig.outputs.at(1).type == kTfLiteInt16) {
         return 5;
       }
 
       // If the op is a signed int8 hybrid operation, we need to return
       // version 4 or 6 if per-channel.
-      if (op_sig.inputs.at(0).type == TensorType_FLOAT32 &&
-          op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         if (op_sig.ext_options.depthwise_conv_2d.is_per_channel_quantized) {
           return 6;
         }
@@ -100,9 +100,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       // If the op has signed int8 op_sig.inputs and op_sig.outputs, its
       // version 3.
-      if (op_sig.inputs.at(0).type == TensorType_INT8 &&
-          op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 3;
       }
       auto depthwise_conv_params =
@@ -141,9 +141,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
 
       // Int16 fully fixed point kernel is at version 7.
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.inputs.at(1).type == TensorType_INT16 &&
-          op_sig.outputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt16 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 7;
       }
 
@@ -160,16 +160,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 5;
       }
       // Int8 fully fixed point kernel is at version 4.
-      if (op_sig.inputs.at(0).type == TensorType_INT8 &&
-          op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 4;
       }
       // If the op is a signed int8 hybrid operation, we need to return
       // version 3.
-      if (op_sig.inputs.at(0).type == TensorType_FLOAT32 &&
-          op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         if (fully_connected_params->asymmetric_quantize_inputs) {
           // This is to use the updated quantization scheme.
           return 9;
@@ -193,14 +193,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 5;
       }
 
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
       // If the op takes bool input, it is version 3.
-      if (op_sig.inputs.at(0).type == TensorType_BOOL) {
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
@@ -208,14 +208,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SVDF: {
       // Fully integer SVDF has int8 as input and is of version 3.
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 3;
       }
       // If the op is a signed int8 hybrid operation, we need to return
       // version 2.
-      if (op_sig.inputs.at(0).type == TensorType_FLOAT32 &&
-          op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         auto svdf_params =
             reinterpret_cast<TfLiteSVDFParams*>(op_sig.builtin_data);
         // This is to use the updated quantization scheme
@@ -228,8 +228,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_MUL:
+      // Version 5 supports int64 inputs
+      if (op_sig.inputs.at(0).type == kTfLiteInt64) {
+        return 5;
+      }
       // Version 4 supports int16 inputs
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
       // Version 3 supports have a rescale value greater than or equal to 1.
@@ -241,46 +245,46 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
            op_sig.ext_options.mul.output_scale) >= 1.0) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_MAX_POOL_2D:
     case BuiltinOperator_AVERAGE_POOL_2D:
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.outputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 3;
       }
 
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 5;
       }
       if (op_sig.inputs.at(0).dims.size() > 4) {
         return 4;
       }
       // If the op takes bool input, it is version 3.
-      if (op_sig.inputs.at(0).type == TensorType_BOOL) {
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_TRANSPOSE_CONV: {
       if (op_sig.inputs.size() == 4 &&
-          op_sig.inputs.at(3).type != kTensorTypeNone) {
+          op_sig.inputs.at(3).type != kTfLiteNoType) {
         return 3;
       }
       // If the op takes int8 input, it is version 2.
-      if (op_sig.inputs.at(1).type == TensorType_INT8) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
@@ -293,9 +297,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           reinterpret_cast<TfLiteLSTMParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(lstm_params != nullptr);
       if (lstm_params->kernel_type == kTfLiteLSTMFullKernel &&
-          op_sig.inputs.at(0).type == TensorType_FLOAT32 &&
-          op_sig.inputs.at(2).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+          op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(2).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         if (lstm_params->asymmetric_quantize_inputs) {
           return 4;
         }
@@ -310,27 +314,27 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPLIT:
       // If the op take in16 input, it is version 4.
-      if (op_sig.inputs.at(1).type == TensorType_INT16) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt16) {
         return 4;
       }
       // If the op take int8 input, it is version 2, for int32 it's version 3.
       // The input tensor is at index 1 not 0, 0 is the axis.
-      if (op_sig.inputs.at(1).type == TensorType_INT32) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt32) {
         return 3;
       }
-      if (op_sig.inputs.at(1).type == TensorType_INT8) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_SPARSE_TO_DENSE:
       // Version 3 supports Int8 and Uint8 type.
-      if (op_sig.inputs.at(2).type == TensorType_INT8 ||
-          op_sig.inputs.at(2).type == TensorType_UINT8) {
+      if (op_sig.inputs.at(2).type == kTfLiteInt8 ||
+          op_sig.inputs.at(2).type == kTfLiteUInt8) {
         return 3;
       }
       // Version 2 supports Int64 value type.
-      if (op_sig.inputs.at(2).type == TensorType_INT64) {
+      if (op_sig.inputs.at(2).type == kTfLiteInt64) {
         return 2;
       }
       return 1;
@@ -339,72 +343,75 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).dims.size() > 4) {
         return 5;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
       // Version 3 supports string input types.
-      if (op_sig.inputs.at(0).type == TensorType_STRING) {
+      if (op_sig.inputs.at(0).type == kTfLiteString) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_UNPACK:
       // If the op take int8/uint8 input, it is version 2.
-      if (op_sig.inputs.at(0).type == TensorType_INT8 ||
-          op_sig.inputs.at(0).type == TensorType_UINT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt8) {
         return 2;
       }
       // If the op take bool input, it is version 3.
-      if (op_sig.inputs.at(0).type == TensorType_BOOL) {
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.outputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
       // Version 3 supports signed int16 input types.
-      if (op_sig.inputs.at(0).type == TensorType_INT16 ||
-          op_sig.inputs.at(0).type == TensorType_FLOAT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 ||
+          op_sig.inputs.at(0).type == kTfLiteFloat16) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        if (op_sig.ext_options.dequantize.is_per_channel_quantized) {
+          return 5;
+        }
         return 2;
       }
       return 1;
 
     case BuiltinOperator_FLOOR_DIV:
-      if (op_sig.inputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_L2_NORMALIZATION:
-      if (op_sig.outputs.at(0).type == TensorType_INT8) {
+      if (op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_ABS:
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return op_sig.ext_options.abs.input_quantized ? 3 : 4;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8 ||
-          op_sig.inputs.at(0).type == TensorType_UINT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt8) {
         return 2;
       }
       return 1;
     case BuiltinOperator_RELU:
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8 ||
-          op_sig.inputs.at(0).type == TensorType_UINT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt8) {
         return 2;
       }
       return 1;
@@ -417,31 +424,31 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           strided_slice_params->new_axis_mask != 0) {
         return 6;
       }
-      if (op_sig.inputs.at(0).type == TensorType_STRING) {
+      if (op_sig.inputs.at(0).type == kTfLiteString) {
         return 5;
       }
       if (op_sig.ext_options.strided_slice.num_dims > 4) {
         return 4;
       }
       // If the op takes bool input, it is version 3.
-      if (op_sig.inputs.at(0).type == TensorType_BOOL) {
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
     }
     case BuiltinOperator_REVERSE_V2:
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_BOOL) {
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
         return 2;
       }
       return 1;
     case BuiltinOperator_RESIZE_BILINEAR: {
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
       auto resize_bilinear_params =
@@ -449,13 +456,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       TFLITE_DCHECK(resize_bilinear_params != nullptr);
       if (resize_bilinear_params->half_pixel_centers) {
         return 3;
-      } else if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
     }
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
       auto resize_nearest_neighbor_params =
@@ -465,7 +472,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (resize_nearest_neighbor_params->half_pixel_centers ||
           resize_nearest_neighbor_params->align_corners) {
         return 3;
-      } else if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
@@ -473,37 +480,37 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM:
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.outputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
       if (NeedBroadcastForBinaryInputs(op_sig) && GetInputMaxDims(op_sig) > 4) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_PACK:
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
 
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.outputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 3;
       }
       return 1;
 
     case BuiltinOperator_TILE:
-      if (op_sig.inputs.at(0).type == TensorType_STRING) {
+      if (op_sig.inputs.at(0).type == kTfLiteString) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_SQUEEZE:
-      if (op_sig.inputs.at(0).type == TensorType_STRING) {
+      if (op_sig.inputs.at(0).type == kTfLiteString) {
         return 2;
       }
       return 1;
@@ -513,47 +520,45 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).dims.size() != 4) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_ADD: {
-      if (!op_sig.inputs.empty() &&
-          op_sig.inputs.at(0).type == TensorType_INT64) {
+      if (!op_sig.inputs.empty() && op_sig.inputs.at(0).type == kTfLiteInt64) {
         return 4;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.outputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
         auto add_params =
             reinterpret_cast<TfLiteAddParams*>(op_sig.builtin_data);
         if (add_params && !add_params->pot_scale_int16) {
           return 3;
         }
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
     }
 
     case BuiltinOperator_SUB: {
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.outputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
         auto sub_params =
             reinterpret_cast<TfLiteSubParams*>(op_sig.builtin_data);
         if (sub_params && !sub_params->pot_scale_int16) {
           return 5;
         }
       }
-      if (!op_sig.inputs.empty() &&
-          op_sig.inputs.at(0).type == TensorType_INT64) {
+      if (!op_sig.inputs.empty() && op_sig.inputs.at(0).type == kTfLiteInt64) {
         return 4;
       }
       if (NeedBroadcastForBinaryInputs(op_sig) && GetInputMaxDims(op_sig) > 4) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
@@ -561,11 +566,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_GATHER_ND:
       if (!op_sig.inputs.empty() &&
-          (op_sig.inputs.at(0).type == TensorType_INT16)) {
+          (op_sig.inputs.at(0).type == kTfLiteInt16)) {
         return 3;
       }
-      if (!op_sig.inputs.empty() &&
-          op_sig.inputs.at(0).type == TensorType_STRING) {
+      if (!op_sig.inputs.empty() && op_sig.inputs.at(0).type == kTfLiteString) {
         return 2;
       }
       return 1;
@@ -577,23 +581,23 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
-      if (op_sig.inputs.at(0).type == TensorType_INT16 &&
-          op_sig.outputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 3;
       }
 
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_FILL:
       if (op_sig.inputs.size() >= 2) {
-        if (op_sig.inputs.at(1).type == TensorType_INT8 ||
-            op_sig.inputs.at(1).type == TensorType_INT16) {
+        if (op_sig.inputs.at(1).type == kTfLiteInt8 ||
+            op_sig.inputs.at(1).type == kTfLiteInt16) {
           return 3;
-        } else if ((op_sig.inputs.at(1).type == TensorType_BOOL ||
-                    op_sig.inputs.at(1).type == TensorType_STRING)) {
+        } else if ((op_sig.inputs.at(1).type == kTfLiteBool ||
+                    op_sig.inputs.at(1).type == kTfLiteString)) {
           return 2;
         }
       }
@@ -602,32 +606,32 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_EQUAL:
     case BuiltinOperator_NOT_EQUAL:
       if (!op_sig.inputs.empty()) {
-        if (op_sig.inputs.at(0).type == TensorType_STRING) {
+        if (op_sig.inputs.at(0).type == kTfLiteString) {
           return 3;
         }
-        if (op_sig.inputs.at(0).type == TensorType_INT8) {
+        if (op_sig.inputs.at(0).type == kTfLiteInt8) {
           return 2;
         }
       }
       return 1;
 
     case BuiltinOperator_LEAKY_RELU:
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_BATCH_MATMUL: {
       // In case of int16 inputs, the version is 3.
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
-      if (op_sig.inputs.at(0).type == TensorType_FLOAT32 &&
-          op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         auto batch_mat_mul_params =
             reinterpret_cast<TfLiteBatchMatMulParams*>(op_sig.builtin_data);
         if (batch_mat_mul_params &&
@@ -644,10 +648,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).dims.size() > 4) {
         return 4;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
@@ -659,17 +663,17 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
       // In case of int16 inputs, the version is 3.
-      if (op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
       }
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_RNN: {
-      if (op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         auto rnn_params =
             reinterpret_cast<TfLiteRNNParams*>(op_sig.builtin_data);
         if (rnn_params && rnn_params->asymmetric_quantize_inputs) {
@@ -682,8 +686,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
-      if (op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         auto sequence_rnn_params =
             reinterpret_cast<TfLiteSequenceRNNParams*>(op_sig.builtin_data);
         if (sequence_rnn_params &&
@@ -697,8 +701,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN: {
-      if (op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         auto bidirectional_sequence_rnn_params =
             reinterpret_cast<TfLiteBidirectionalSequenceRNNParams*>(
                 op_sig.builtin_data);
@@ -713,8 +717,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM: {
-      if (op_sig.inputs.at(1).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         auto bidirectional_sequence_lstm_params =
             reinterpret_cast<TfLiteBidirectionalSequenceLSTMParams*>(
                 op_sig.builtin_data);
@@ -731,9 +735,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
       // If the input tensor is float and a weight is int8, this is a version
       // 2 hybrid operation.
-      if (op_sig.inputs.at(0).type == TensorType_FLOAT32 &&
-          op_sig.inputs.at(2).type == TensorType_INT8 &&
-          op_sig.outputs.at(0).type == TensorType_FLOAT32) {
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(2).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32) {
         auto unidirectional_sequence_lstm_params =
             reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
                 op_sig.builtin_data);
@@ -762,7 +766,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:
     case BuiltinOperator_MIRROR_PAD:
-      if (op_sig.inputs.at(0).type == TensorType_INT8) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
@@ -771,8 +775,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     // changed because of builtin op code shortage problem.
     // Quantized broadcast_to is version 3
     case BuiltinOperator_BROADCAST_TO:
-      if (op_sig.inputs.at(0).type == TensorType_INT8 ||
-          op_sig.inputs.at(0).type == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
       }
       return 2;
@@ -796,7 +800,7 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
 
       auto builtin_code = GetBuiltinCode(op_code);
       if (builtin_code != BuiltinOperator_CUSTOM) {
-        OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
+        OpSignature op_sig = GetOpSignature(op_code, op, subgraph, model);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
         if (op_sig.builtin_data) {

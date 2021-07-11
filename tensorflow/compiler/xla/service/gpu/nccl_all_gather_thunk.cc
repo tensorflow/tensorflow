@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -41,7 +42,7 @@ namespace gpu {
 
 /*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
   return absl::c_all_of(op.operands(), [&](mlir::Value operand) {
-    Shape shape = TypeToShape(operand.getType());
+    Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type()) &&
            LayoutUtil::MinorToMajor(shape).back() == op.all_gather_dimension();
@@ -80,7 +81,7 @@ Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
                         ToNcclDataType(config_.config.operand_element_type[i]));
 
     VLOG(3) << absl::StreamFormat(
-        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, count=%d, "
+        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, buffer.element_count,
         static_cast<const void*>(comm), cu_stream);

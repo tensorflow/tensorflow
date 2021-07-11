@@ -278,8 +278,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
       // "atom.add.f64 requires sm_60 or higher."
       // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
       bool f64_atomic_add_supported =
-          ir_emitter_context_->cuda_compute_capability()->cc_major >= 6;
-
+          ir_emitter_context_->cuda_compute_capability().IsAtLeast(6);
       bool atomic_add_supported =
           element_type == F32 ||
           (f64_atomic_add_supported && element_type == F64);
@@ -460,6 +459,14 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
       binop_output_address));
 
   llvm::Value* cas_new_output = Load(cas_new_output_address, "cas_new_output");
+
+  // If cas_new_output == cas_old_output, we're not asking for anything to
+  // change, so we're done here!
+  llvm::Value* old_eq_new = ICmpEQ(cas_old_output, cas_new_output);
+  llvm::BasicBlock* loop_cas_bb = llvm::BasicBlock::Create(
+      b_.getContext(), "atomic_op_loop_cas", b_.GetInsertBlock()->getParent());
+  CondBr(old_eq_new, loop_exit_bb, loop_cas_bb);
+  b_.SetInsertPoint(loop_cas_bb);
 
   // Emit code to perform the atomicCAS operation
   // (cas_old_output, success) = atomicCAS(memory_address, cas_old_output,

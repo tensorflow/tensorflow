@@ -50,6 +50,11 @@ void TensorDeviceCopyConversionPass::runOnFunction() {
 
   auto should_fold_op_func = [&func_op](const mlir::Value &arg,
                                         const StringAttr &op_device) {
+    // Also in TFRT TPU, tensor transfer is handled specifically by D2H and
+    // H2D transfer kernels so tf.Identity is folded.
+    if (op_device && op_device.getValue().contains("TPU")) {
+      return true;
+    }
     if (BlockArgument block_arg = arg.dyn_cast<BlockArgument>()) {
       // Skip the folding logic if the block argument is not from the function
       // arguments. This can happen when the argument is from a while loop.
@@ -64,9 +69,8 @@ void TensorDeviceCopyConversionPass::runOnFunction() {
                    kDeviceAttr)) {
       return op_device == attr;
     }
-    // when arg device is not defined, fold op if op device is not defined
-    // either.
-    return !op_device;
+    // Fold tf.Identity when arg device is not defined.
+    return true;
   };
 
   func_op.walk([&should_fold_op_func](TF::IdentityOp op) {

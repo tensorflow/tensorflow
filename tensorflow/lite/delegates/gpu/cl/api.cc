@@ -700,12 +700,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   absl::Status Initialize(const InferenceEnvironmentOptions& env_options,
-                          const absl::Span<const uint8_t> serialized_model,
-                          std::vector<int64_t>* in_refs = nullptr,
-                          std::vector<int64_t>* out_refs = nullptr) {
-    if (in_refs && out_refs) {
-      RETURN_IF_ERROR(GetInOutRefs(serialized_model, in_refs, out_refs));
-    }
+                          const absl::Span<const uint8_t> serialized_model) {
     context_ = absl::make_unique<InferenceContext>();
     RETURN_IF_ERROR(
         context_->RestoreDeserialized(serialized_model, environment_));
@@ -971,8 +966,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
   absl::Status NewInferenceBuilder(
       const absl::Span<const uint8_t> serialized_model,
-      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
-      std::vector<int64_t>* out_refs) final {
+      std::unique_ptr<InferenceBuilder>* builder) final {
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
       // Ignore returned error. Cache is discarded.
@@ -983,8 +977,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     }
 
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
-    RETURN_IF_ERROR(builder_impl->Initialize(options_, serialized_model,
-                                             in_refs, out_refs));
+    RETURN_IF_ERROR(builder_impl->Initialize(options_, serialized_model));
     *builder = std::move(builder_impl);
     return absl::OkStatus();
   }

@@ -41,36 +41,35 @@ namespace tflite {
 
 // LINT.IfChange
 
-::tflite::TensorType GetTensorType(const ArrayDataType type) {
-  const std::map<ArrayDataType, ::tflite::TensorType> tensor_type_map = {
-      {ArrayDataType::kBool, ::tflite::TensorType_BOOL},
-      {ArrayDataType::kFloat, ::tflite::TensorType_FLOAT32},
-      {ArrayDataType::kInt8, ::tflite::TensorType_INT8},
-      {ArrayDataType::kUint8, ::tflite::TensorType_UINT8},
-      {ArrayDataType::kInt16, ::tflite::TensorType_INT16},
-      {ArrayDataType::kInt32, ::tflite::TensorType_INT32},
-      {ArrayDataType::kUint32, ::tflite::TensorType_UINT32},
-      {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
-      {ArrayDataType::kUint64, ::tflite::TensorType_UINT64},
-      {ArrayDataType::kString, ::tflite::TensorType_STRING},
-      {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64},
-      {ArrayDataType::kComplex128, ::tflite::TensorType_COMPLEX128},
-      {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16},
-      {ArrayDataType::kFloat64, ::tflite::TensorType_FLOAT64}};
+TfLiteType GetTensorType(const ArrayDataType type) {
+  const std::map<ArrayDataType, TfLiteType> tensor_type_map = {
+      {ArrayDataType::kBool, kTfLiteBool},
+      {ArrayDataType::kFloat, kTfLiteFloat32},
+      {ArrayDataType::kInt8, kTfLiteInt8},
+      {ArrayDataType::kUint8, kTfLiteUInt8},
+      {ArrayDataType::kInt16, kTfLiteInt16},
+      {ArrayDataType::kInt32, kTfLiteInt32},
+      {ArrayDataType::kUint32, kTfLiteUInt32},
+      {ArrayDataType::kInt64, kTfLiteInt64},
+      {ArrayDataType::kUint64, kTfLiteUInt64},
+      {ArrayDataType::kString, kTfLiteString},
+      {ArrayDataType::kComplex64, kTfLiteComplex64},
+      {ArrayDataType::kComplex128, kTfLiteComplex128},
+      {ArrayDataType::kFloat16, kTfLiteFloat16},
+      {ArrayDataType::kFloat64, kTfLiteFloat64}};
 
   auto it = tensor_type_map.find(type);
   if (it != tensor_type_map.end()) {
     return it->second;
   }
-  return static_cast<::tflite::TensorType>(-1);
+  return kTfLiteNoType;
 }
 
 ::tflite::OpSignature GetVersioningOpSig(
     const ::tflite::BuiltinOperator op, const OperatorSignature& op_signature) {
   std::vector<::tflite::OpSignatureTensorSpec> inputs, outputs;
   for (const auto& input_name : op_signature.op->inputs) {
-    ::tflite::OpSignatureTensorSpec tensor = {
-        static_cast<::tflite::TensorType>(-1)};
+    ::tflite::OpSignatureTensorSpec tensor = {kTfLiteNoType};
     if (op_signature.model->HasArray(input_name)) {
       const Array& input_array = op_signature.model->GetArray(input_name);
       tensor.type = GetTensorType(input_array.data_type);
@@ -81,8 +80,7 @@ namespace tflite {
     inputs.push_back(tensor);
   }
   for (const auto& output_name : op_signature.op->outputs) {
-    ::tflite::OpSignatureTensorSpec tensor = {
-        static_cast<::tflite::TensorType>(-1)};
+    ::tflite::OpSignatureTensorSpec tensor = {kTfLiteNoType};
     if (op_signature.model->HasArray(output_name)) {
       const Array& output_array = op_signature.model->GetArray(output_name);
       tensor.type = GetTensorType(output_array.data_type);

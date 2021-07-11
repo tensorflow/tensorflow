@@ -14,6 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/split_utils.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/platform/errors.h"
+
 namespace tensorflow {
 namespace data {
 namespace {
@@ -109,6 +115,68 @@ Status ShardingSplitProvider::Restore(
       reader));
   TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumToSkip), &num_to_skip_));
   return Status::OK();
+}
+
+StatusOr<std::shared_ptr<SplitProvider>> GetSingleSplitProvider(
+    IteratorContext* ctx, const DatasetBase* dataset) {
+  if (ctx->split_providers().size() != 1) {
+    return errors::FailedPrecondition(
+        "Failed to get single split provider for dataset ",
+        dataset->DebugString(), ". Found ", ctx->split_providers().size(),
+        " split providers");
+  }
+  return ctx->split_providers()[0];
+}
+
+StatusOr<std::vector<std::unique_ptr<SplitProvider>>> GetSplitProviders(
+    const DatasetBase* dataset) {
+  std::vector<std::unique_ptr<SplitProvider>> result;
+  std::vector<const DatasetBase*> inputs;
+  TF_RETURN_IF_ERROR(dataset->InputDatasets(&inputs));
+  for (const auto& input : inputs) {
+    std::vector<std::unique_ptr<SplitProvider>> providers;
+    TF_RETURN_IF_ERROR(input->MakeSplitProviders(&providers));
+    for (auto& provider : providers) {
+      result.push_back(std::move(provider));
+    }
+  }
+  return result;
+}
+
+StatusOr<std::vector<IteratorContext>> CreateInputIteratorContexts(
+    IteratorContext* ctx, const DatasetBase* dataset) {
+  std::vector<const DatasetBase*> inputs;
+  TF_RETURN_IF_ERROR(dataset->InputDatasets(&inputs));
+  std::vector<IteratorContext> result;
+  if (ctx->split_providers().empty()) {
+    for (int i = 0; i < inputs.size(); ++i) {
+      result.emplace_back(ctx);
+    }
+    return result;
+  }
+  int64 split_provider_index = 0;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    IteratorContext::Params params(ctx);
+    if (inputs[i]->num_sources() < 0) {
+      return errors::FailedPrecondition(
+          "Failed to determine the number of sources for dataset of type ",
+          inputs[i]->type_string());
+    }
+    params.split_providers.clear();
+    for (int j = 0; j < inputs[i]->num_sources(); ++j) {
+      params.split_providers.push_back(
+          ctx->split_providers()[split_provider_index + j]);
+    }
+    split_provider_index += inputs[i]->num_sources();
+    result.emplace_back(std::move(params));
+  }
+  if (split_provider_index != ctx->split_providers().size()) {
+    return errors::FailedPrecondition("Attempted to feed ",
+                                      ctx->split_providers().size(),
+                                      " split providers into a dataset with ",
+                                      split_provider_index, " sources");
+  }
+  return result;
 }
 
 }  // namespace data

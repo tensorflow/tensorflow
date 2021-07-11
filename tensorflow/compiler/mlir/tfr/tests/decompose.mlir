@@ -35,6 +35,19 @@ tfr.func @tf__fused_n(
 // CHECK-NEXT: tfr.return %[[bl]] : !tfr.tensor_list
 }
 
+// CHECK-LABEL: @tf__my_max_pool
+tfr.func @tf__my_max_pool(%input_: !tfr.tensor, %stride_w: i64{tfr.name="stride_w"}, %stride_h: i64{tfr.name="stride_h"}) -> (!tfr.tensor) {
+  %cst_1 = constant 1 : i64
+  %stride = "tfr.build_list"(%cst_1, %stride_w, %stride_h, %cst_1) : (i64, i64, i64, i64) -> !tfr.attr
+  %filter = tfr.constant [1, 2, 2, 1] -> !tfr.attr
+  %padding = tfr.constant "VALID" -> !tfr.attr
+  %explicit_paddings = tfr.constant [] -> !tfr.attr
+  %data_format = tfr.constant "NHWC" -> !tfr.attr
+  %MaxPool = tfr.call @tf__max_pool(%input_, %stride, %filter, %padding, %explicit_paddings, %data_format) : (!tfr.tensor, !tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr) -> (!tfr.tensor)
+  tfr.return %MaxPool : !tfr.tensor
+// CHECK: tf__max_pool
+}
+
 //------------------------
 
 // CHECK-LABEL: decompose_tf_no_op
@@ -106,6 +119,16 @@ func @attribute_propagate(%arg0: tensor<1x2x3x4x!tf.string>, %arg1: tensor<f32>,
 // CHECK-NEXT: return %[[back]] : tensor<f32>
 }
 
+// CHECK: attribute_cast
+func @attribute_cast(%arg0: tensor<1x4x4x1xf32>) -> tensor<1x2x2x1xf32> {
+  %0 = "tfr.cast"(%arg0) : (tensor<1x4x4x1xf32>) -> !tfr.tensor
+  %stride_i32 = constant 2 : i32
+  %1 = tfr.call @tf__my_max_pool(%0, %stride_i32, %stride_i32) : (!tfr.tensor, i32, i32) -> !tfr.tensor
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<1x2x2x1xf32>
+  return %2 : tensor<1x2x2x1xf32>
+// CHECK: tf__max_pool
+}
+
 // CHECK-LABEL: no_tf_canonicalization
 func @no_tf_canonicalization(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
   %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8x3xf32>, tensor<8x3xf32>) -> tensor<8x3xf32>
@@ -121,4 +144,13 @@ func @denied_attribute(%arg0: tensor<1x2x3x4x!tf.string>, %arg1: tensor<f32>, %a
   return %0#1 : tensor<f32>
 
 // CHECK-NEXT:   "tf.FusedN"(%arg0, %arg1, %arg2) {A = 0 : index, denied_attr}
+}
+
+// CHECK-LABEL: quantized_tensor
+func @quantized_tensor(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>> {
+  %0 = "tf.Intermediate"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
+  return %0 : tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
+
+// CHECK: "tfr.cast"(%[[arg0:.*]]) : (tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> !tfr.tensor
+// CHECK: "tfr.cast"(%[[result:.*]]) : (!tfr.tensor) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
 }

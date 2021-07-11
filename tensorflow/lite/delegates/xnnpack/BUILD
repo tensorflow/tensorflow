@@ -482,6 +482,39 @@ cc_test(
 )
 
 cc_test(
+    name = "channelwise_quantized_conv_2d_test",
+    srcs = ["channelwise_quantized_conv_2d_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "channelwise_quantized_depthwise_conv_2d_test",
+    srcs = ["channelwise_quantized_depthwise_conv_2d_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    tags = [
+        "nomsan",  # b/190188732
+    ],
+    deps = [
+        ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "conv_2d_test",
     srcs = ["conv_2d_test.cc"],
     linkopts = select({
@@ -767,69 +800,6 @@ cc_test(
 )
 
 cc_test(
-    name = "quantized_add_test",
-    srcs = ["quantized_add_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":quantized_add_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "quantized_conv_2d_test",
-    srcs = ["quantized_conv_2d_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":quantized_conv_2d_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "quantized_depthwise_conv_2d_test",
-    srcs = ["quantized_depthwise_conv_2d_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    tags = [
-        "nomsan",  # b/190188732
-    ],
-    deps = [
-        ":quantized_depthwise_conv_2d_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "quantized_fully_connected_test",
-    srcs = ["quantized_fully_connected_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":quantized_fully_connected_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "relu_test",
     srcs = ["relu_test.cc"],
     linkopts = select({
@@ -914,6 +884,69 @@ cc_test(
     deps = [
         ":test_main",
         ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_add_test",
+    srcs = ["signed_quantized_add_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_add_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_conv_2d_test",
+    srcs = ["signed_quantized_conv_2d_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_depthwise_conv_2d_test",
+    srcs = ["signed_quantized_depthwise_conv_2d_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    tags = [
+        "nomsan",  # b/190188732
+    ],
+    deps = [
+        ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_fully_connected_test",
+    srcs = ["signed_quantized_fully_connected_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_fully_connected_tester",
+        ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],

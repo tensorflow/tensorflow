@@ -39,12 +39,16 @@ namespace tensorflow {
 bool CudnnUseFrontend() {
   static bool result = [] {
     bool value = false;
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-    Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", false, &value);
-    if (!status.ok()) {
-      LOG(ERROR) << status;
+#if GOOGLE_CUDA
+    if (CUDNN_VERSION >= 8100) {
+      // cuDNN 8.1.0 + the frontend has issues regarding fused convolution.
+      Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND",
+                                         CUDNN_VERSION >= 8200, &value);
+      if (!status.ok()) {
+        LOG(ERROR) << status;
+      }
     }
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8100
+#endif  // GOOGLE_CUDA
     return value;
   }();
   return result;

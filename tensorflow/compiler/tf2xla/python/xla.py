@@ -377,6 +377,7 @@ def random_uniform(minval, maxval, dims, name=None):
 recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
 variadic_reduce = gen_xla_ops.xla_variadic_reduce
+variadic_reduce_v2 = gen_xla_ops.xla_variadic_reduce_v2
 
 ops.no_gradient("XlaVariadicReduce")
 
@@ -450,6 +451,12 @@ set_bound = gen_xla_ops.xla_set_bound
 #   p = xla_set_dynamic_dimension_size(array, dim, 3)
 #   assert(reduce_sum(p) == 6) # xla knows only the first 3 elements are valid.
 set_dynamic_dimension_size = gen_xla_ops.xla_set_dynamic_dimension_size
+
+
+# Inverse of xla_set_dynamic_dimension_size. Make an xla bounded dynamic
+# dimension into a static dimension. The bound of the size of dimension
+# `dim_index` becomes the static dimension size.
+remove_dynamic_dimension_size = gen_xla_ops.xla_remove_dynamic_dimension_size
 
 
 def reshape(x, new_sizes, dimensions=None, name=None):

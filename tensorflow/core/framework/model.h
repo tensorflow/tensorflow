@@ -377,10 +377,10 @@ class Node {
   double TotalProcessingTime(NodeValues* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
-  // Recursively produces a proto for this node and its subtree.
+  // Produces a proto for this node. Does not produce a proto for input nodes.
   virtual Status ToProto(ModelProto::Node* node_proto) const;
 
-  // Recursively restores a node and its subtree from the proto.
+  // Restores a node from the proto. Does not restore input nodes.
   static Status FromProto(ModelProto::Node node_proto,
                           std::shared_ptr<Node> output,
                           std::shared_ptr<Node>* node);

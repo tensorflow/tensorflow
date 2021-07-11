@@ -171,6 +171,10 @@ class XlaHloToLhloPass
  public:
   XlaHloToLhloPass() = default;
   XlaHloToLhloPass(const XlaHloToLhloPass&) {}
+  StringRef getArgument() const final { return "xla-hlo-to-lhlo-with-xla"; }
+  StringRef getDescription() const final {
+    return "Emit LHLO from HLO using the existing XLA implementation";
+  }
 
  private:
   void runOnOperation() final {
@@ -281,6 +285,12 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitAllGatherOp(instr);
     case HloOpcode::kAllReduce:
       return EmitAllReduceOp(instr);
+    case HloOpcode::kAllReduceStart:
+      return EmitAllReduceStartOp(instr);
+    case HloOpcode::kAllReduceDone:
+      return EmitAllReduceDoneOp(instr);
+    case HloOpcode::kReduceScatter:
+      return EmitReduceScatterOp(instr);
     case HloOpcode::kAnd:
       return CreateOpWithoutAttrs<lmhlo::AndOp>(instr);
     case HloOpcode::kAtan2:
@@ -1194,6 +1204,70 @@ StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   return all_reduce_op;
 }
 
+StatusOr<lmhlo_gpu::AllReduceStartOp> LhloDialectEmitter::EmitAllReduceStartOp(
+    const HloInstruction* instr) {
+  llvm::SmallVector<Value, 4> operands;
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+  }
+  // Only include result index {1}. {0} always aliases the inputs.
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{1}));
+
+  Location loc = getLocation(instr);
+  mlir::Type token_type = mlir::mhlo::TokenType::get(builder_.getContext());
+  std::array<mlir::Type, 1> result_types = {token_type};
+  lmhlo_gpu::AllReduceStartOp all_reduce_start_op =
+      builder_.create<lmhlo_gpu::AllReduceStartOp>(loc, result_types, operands);
+
+  auto* all_reduce = xla::Cast<xla::HloAllReduceInstruction>(instr);
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(all_reduce_start_op, instr, builder_));
+  all_reduce_start_op.use_global_device_idsAttr(
+      builder_.getBoolAttr(all_reduce->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &all_reduce_start_op.computation(),
+      &builder_));
+
+  TF_RET_CHECK(all_reduce_start_ops_.emplace(instr, all_reduce_start_op).second)
+      << "all-reduce-start already lowered";
+  return all_reduce_start_op;
+}
+
+StatusOr<lmhlo_gpu::AllReduceDoneOp> LhloDialectEmitter::EmitAllReduceDoneOp(
+    const HloInstruction* instr) {
+  auto it = all_reduce_start_ops_.find(instr->operand(0));
+  TF_RET_CHECK(it != all_reduce_start_ops_.end())
+      << "didn't find all-reduce-start op";
+
+  llvm::SmallVector<Value, 4> operands;
+  operands.push_back(it->second.token());
+  all_reduce_start_ops_.erase(it);
+
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+  }
+  // We don't need to add buffers for the outputs, as these always alias inputs.
+  return builder_.create<lmhlo_gpu::AllReduceDoneOp>(
+      getLocation(instr), /*resultTypes=*/llvm::None, operands);
+}
+
+StatusOr<lmhlo::ReduceScatterOp> LhloDialectEmitter::EmitReduceScatterOp(
+    const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto reduce_scatter_op,
+                      CreateOpWithoutAttrs<lmhlo::ReduceScatterOp>(instr));
+  auto* ars = xla::Cast<xla::HloReduceScatterInstruction>(instr);
+  TF_RETURN_IF_ERROR(
+      SetupCommonCollectiveOpAttributes(reduce_scatter_op, instr, builder_));
+  reduce_scatter_op.use_global_device_idsAttr(
+      builder_.getBoolAttr(ars->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
+      *instr->called_computations()[0], &reduce_scatter_op.computation(),
+      &builder_));
+  reduce_scatter_op.scatter_dimensionAttr(
+      builder_.getI64IntegerAttr(ars->scatter_dimension()));
+  return reduce_scatter_op;
+}
+
 StatusOr<lmhlo::CollectivePermuteOp>
 LhloDialectEmitter::EmitCollectivePermuteOp(const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto permute_op,
@@ -1850,8 +1924,6 @@ OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
   return module;
 }
 
-static PassRegistration<XlaHloToLhloPass> registration(
-    "xla-hlo-to-lhlo-with-xla",
-    "Emit LHLO from HLO using the existing XLA implementation");
+static PassRegistration<XlaHloToLhloPass> registration;
 
 }  // namespace mlir

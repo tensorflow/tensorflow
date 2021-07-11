@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include <utility>
+
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -163,8 +165,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         ++i_;
-        if (ctx->split_provider()) {
-          TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+        for (const auto& provider : ctx->split_providers()) {
+          TF_RETURN_IF_ERROR(provider->Reset());
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
@@ -235,7 +237,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         DCHECK(!*end_of_sequence || out_tensors->empty());
-        if (first_call_ && *end_of_sequence && !ctx->split_provider()) {
+        if (first_call_ && *end_of_sequence && ctx->split_providers().empty()) {
           // If the first call to GetNext() fails because the end of sequence
           // has been reached, we terminate the iteration immediately.
           // Otherwise, this iterator would loop infinitely and never produce a
@@ -247,8 +249,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         if (!*end_of_sequence) {
           return Status::OK();
         }
-        if (ctx->split_provider()) {
-          TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+        for (const auto& provider : ctx->split_providers()) {
+          TF_RETURN_IF_ERROR(provider->Reset());
         }
         input_impl_.reset();
         first_call_ = true;

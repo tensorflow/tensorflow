@@ -1626,6 +1626,43 @@ func @convert_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>
   return %0 : tensor<1x8x8x16xf32>
 }
 
+// CHECK-LABEL:   func @convert_conv2d_with_transpose(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<8x8x1x207xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x3x16x207xf32>) -> tensor<16x8x8x1xf32> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_2]]) : (tensor<8x8x1x207xf32>, tensor<4xi64>) -> tensor<1x8x8x207xf32>
+// CHECK:           %[[VAL_4:.*]] = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_5:.*]] = "tf.Transpose"(%[[VAL_1]], %[[VAL_4]]) : (tensor<3x3x16x207xf32>, tensor<4xi64>) -> tensor<3x3x207x16xf32>
+// CHECK:           %[[VAL_6:.*]] = "tf.Conv2D"(%[[VAL_3]], %[[VAL_5]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
+// CHECK:           %[[VAL_7:.*]] = "tf.Const"() {value = dense<[3, 1, 2, 0]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_8:.*]] = "tf.Transpose"(%[[VAL_6]], %[[VAL_7]]) : (tensor<1x8x8x16xf32>, tensor<4xi64>) -> tensor<16x8x8x1xf32>
+// CHECK:           return %[[VAL_8]] : tensor<16x8x8x1xf32>
+// CHECK:         }
+func @convert_conv2d_with_transpose(%arg0: tensor<8x8x1x207xf32>, %arg1: tensor<3x3x16x207xf32>) -> tensor<16x8x8x1xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers =
+       {input_batch_dimension = 2 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, kernel_input_feature_dimension = 3 : i64, kernel_output_feature_dimension = 2 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 3 : i64, output_feature_dimension = 0 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>},
+       feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = ["DEFAULT", "DEFAULT"], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
+       (tensor<8x8x1x207xf32>, tensor<3x3x16x207xf32>) -> tensor<16x8x8x1xf32>
+  return %0 : tensor<16x8x8x1xf32>
+}
+
+// CHECK-LABEL:   func @convert_conv2d_explicit_padding(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<64x8x8x8xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<8x8x8x64xf32>) -> tensor<64x3x3x64xf32> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Conv2D"(%[[VAL_0]], %[[VAL_1]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [0, 0, 1, 1, 1, 1, 0, 0], padding = "EXPLICIT", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<64x8x8x8xf32>, tensor<8x8x8x64xf32>) -> tensor<64x3x3x64xf32>
+// CHECK:           return %[[VAL_2]] : tensor<64x3x3x64xf32>
+// CHECK:         }
+func @convert_conv2d_explicit_padding(%arg0: tensor<64x8x8x8xf32>, %arg1: tensor<8x8x8x64xf32>) -> tensor<64x3x3x64xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {
+    input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+    kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+    output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>},
+    feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>,
+    precision_config = ["DEFAULT", "DEFAULT"], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<64x8x8x8xf32>, tensor<8x8x8x64xf32>) -> tensor<64x3x3x64xf32>
+  return %0 : tensor<64x3x3x64xf32>
+}
+
 // CHECK-LABEL:   func @convert_depthwise_conv2d(
 // CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<1x8x8x207xf32>,
 // CHECK-SAME:                                   %[[VAL_1:.*]]: tensor<3x3x1x3312xf32>) -> tensor<1x8x8x16xf32> {
@@ -1640,6 +1677,26 @@ func @convert_depthwise_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x1
        feature_group_count = 207 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = ["DEFAULT", "DEFAULT"], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
        (tensor<1x8x8x207xf32>, tensor<3x3x1x3312xf32>) -> tensor<1x8x8x16xf32>
   return %0 : tensor<1x8x8x16xf32>
+}
+
+// CHECK-LABEL:   func @convert_conv2d_back_prop_input(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<8x4x4x32xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[8, 8, 8, 64]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = "tf.ReverseV2"(%[[VAL_1]], %[[VAL_3]]) : (tensor<3x3x64x32xf32>, tensor<2xi64>) -> tensor<3x3x64x32xf32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_2]], %[[VAL_4]], %[[VAL_0]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true} : (tensor<4xi32>, tensor<3x3x64x32xf32>, tensor<8x4x4x32xf32>) -> tensor<8x8x8x64xf32>
+// CHECK:           return %[[VAL_5]] : tensor<8x8x8x64xf32>
+// CHECK:         }
+func @convert_conv2d_back_prop_input(%arg0: tensor<8x4x4x32xf32>, %arg1: tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {
+    input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+    kernel_input_feature_dimension = 3 : i64, kernel_output_feature_dimension = 2 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+    output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>},
+    feature_group_count = 1 : i64, lhs_dilation = dense<2> : tensor<2xi64>, padding = dense<[[2, 1], [2, 1]]> : tensor<2x2xi64>,
+    precision_config = ["DEFAULT", "DEFAULT"], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<8x4x4x32xf32>, tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32>
+  return %0 : tensor<8x8x8x64xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_valid_padding(

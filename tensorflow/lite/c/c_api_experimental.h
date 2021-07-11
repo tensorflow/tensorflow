@@ -40,7 +40,7 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResetVariableTensors(
 /// practice is making the provided `TfLiteRegistration` instance static.
 ///
 /// Code that uses this function should NOT call
-/// `TfLiteInterpreterOptionsSetOpResolver' on the same options object.
+/// `TfLiteInterpreterOptionsSetOpResolver` on the same options object.
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
@@ -58,8 +58,11 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
 /// remain valid for the duration of any created interpreter's lifetime. A
 /// common practice is making the provided `TfLiteRegistration` instance static.
 ///
+/// The lifetime of the string pointed to by `name` must be at least as long
+/// as the lifetime of the `TfLiteInterpreterOptions`.
+///
 /// Code that uses this function should NOT call
-/// `TfLiteInterpreterOptionsSetOpResolver' on the same options object.
+/// `TfLiteInterpreterOptionsSetOpResolver` on the same options object.
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
@@ -76,8 +79,11 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
 /// the operators in a single call.
 ///
 /// Code that uses this function should NOT call
-/// `TfLiteInterpreterOptionsAddBuiltin' or
-/// `TfLiteInterpreterOptionsAddCustomOp' on the same options object.
+/// `TfLiteInterpreterOptionsAddBuiltin` or
+/// `TfLiteInterpreterOptionsAddCustomOp` on the same options object.
+///
+/// If `op_resolver_user_data` is non-null, its lifetime must be at least as
+/// long as the lifetime of the `TfLiteInterpreterOptions`.
 ///
 /// WARNING: This is an experimental API and subject to change.
 void TfLiteInterpreterOptionsSetOpResolver(

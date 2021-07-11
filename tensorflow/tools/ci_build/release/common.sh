@@ -120,6 +120,9 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user --upgrade 'setuptools<53' pip wheel
 
   # LINT.IfChange(linux_pip_installations_orig)
+  # Remove any historical keras package if they are installed.
+  "${PIP_CMD}" list
+  "${PIP_CMD}" uninstall -y keras
   "${PIP_CMD}" install --user -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
   # LINT.ThenChange(:mac_pip_installations)
 }
@@ -146,6 +149,9 @@ function install_ubuntu_16_python_pip_deps {
   ${PIP_CMD} install --user --upgrade 'setuptools<53' pip wheel
 
   # LINT.IfChange(linux_pip_installations)
+  # Remove any historical keras package if they are installed.
+  ${PIP_CMD} list
+  ${PIP_CMD} uninstall -y keras
   ${PIP_CMD} install --user -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
   # LINT.ThenChange(:mac_pip_installations)
 }
@@ -158,6 +164,9 @@ function install_macos_pip_deps {
   ${PIP_CMD} install --upgrade 'setuptools<53' pip wheel
 
   # LINT.IfChange(mac_pip_installations)
+  # Remove any historical keras package if they are installed.
+  ${PIP_CMD} list
+  ${PIP_CMD} uninstall -y keras
   ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_mac.txt
   # LINT.ThenChange(:linux_pip_installations_orig)
   # LINT.ThenChange(:install_macos_pip_deps_no_venv)
@@ -174,6 +183,9 @@ function install_macos_pip_deps_no_venv {
   ${PIP_CMD} install --user --upgrade 'setuptools<53' pip wheel
 
   # LINT.IfChange(mac_pip_installations)
+  # Remove any historical keras package if they are installed.
+  ${PIP_CMD} list
+  ${PIP_CMD} uninstall -y keras
   ${PIP_CMD} install --user -r tensorflow/tools/ci_build/release/requirements_mac.txt
   # LINT.ThenChange(:install_macos_pip_deps)
 }
@@ -312,7 +324,7 @@ function test_xml_summary_exit {
 }
 
 # CPU size
-MAC_CPU_MAX_WHL_SIZE=190M
+MAC_CPU_MAX_WHL_SIZE=200M
 LINUX_CPU_MAX_WHL_SIZE=170M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size

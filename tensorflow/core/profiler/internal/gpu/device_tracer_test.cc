@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -39,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
@@ -382,10 +385,12 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   ASSERT_NE(cupti_host_plane, nullptr);
 
   XPlaneVisitor host_plane = CreateTfXPlaneVisitor(cupti_host_plane);
-  EXPECT_EQ(host_plane.NumLines(), 1);
+  // Expect at least one XLine for CUPTI activity events. There may be an
+  // additional line for CuptiTracerEventType Overhead.
+  EXPECT_GE(host_plane.NumLines(), 1);
 
   // These follow the order in which they were invoked above.
-  const StatType expected_stat_type[] = {
+  const std::array<StatType, 4> expected_event_stat_type = {
       kMemallocDetails,
       kMemsetDetails,
       kMemcpyDetails,
@@ -398,17 +403,20 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
     VLOG(3) << "Line " << line.Id() << "\n";
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
       VLOG(3) << " Event " << *event.Type() << "\n";
+
       absl::optional<XStatVisitor> stat =
-          event.GetStat(expected_stat_type[event_idx]);
-      EXPECT_TRUE(stat.has_value());
-      VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
-              << " " << stat->ToString() << "\n";
-      event_idx += 1;
+          event.GetStat(expected_event_stat_type[event_idx]);
+      // The stat may not exist if we're looking at the wrong line.
+      if (stat.has_value()) {
+        event_idx += 1;
+        VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
+                << " " << stat->ToString() << "\n";
+      }
     });
   });
 
-  // One host side event for each API call.
-  EXPECT_EQ(event_idx, 4);
+  // Expect that all stats show up. One host side event for each API call.
+  EXPECT_EQ(event_idx, expected_event_stat_type.size());
 
   const XPlane* cupti_device_plane = FindPlaneWithName(space, GpuPlaneName(0));
   ASSERT_NE(cupti_device_plane, nullptr);
@@ -438,7 +446,9 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
             if (absl::StartsWith(detail, "num_bytes:")) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
             } else if (absl::StartsWith(detail, "addr:")) {
-              (void)absl::SimpleAtoi(name_value[1], &addr);
+              std::stringstream hex_string;
+              hex_string << std::hex << name_value[1];
+              hex_string >> addr;
             } else if (absl::StartsWith(detail, "kind:")) {
               kind = name_value[1];
             }
@@ -503,6 +513,28 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   EXPECT_TRUE(found_activity_memory_host);
 #endif
 }
+
+void BM_CuptiTracer_ActivityBufferOverhead(::testing::benchmark::State& state) {
+  auto tracer = CreateGpuTracer();
+  CHECK_NOTNULL(tracer);
+
+  TF_EXPECT_OK(tracer->Start());
+  for (auto s : state) {
+    cudaFree(nullptr);
+  }
+  TF_EXPECT_OK(tracer->Stop());
+}
+
+BENCHMARK(BM_CuptiTracer_ActivityBufferOverhead);
+
+void BM_CudaFree(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    cudaFree(nullptr);
+  }
+}
+
+BENCHMARK(BM_CudaFree);
+
 #endif  // GOOGLE_CUDA
 
 }  // namespace

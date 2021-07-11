@@ -15,13 +15,13 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LhloLegalizeToLinalgPass : Pass<"lhlo-legalize-to-linalg", "FuncOp"> {
+def LhloLegalizeToLinalgPass : FunctionPass<"lhlo-legalize-to-linalg"> {
   let summary = "Legalize from LHLO dialect to Linalg dialect.";
   let constructor = "createLegalizeLhloToLinalgPass()";
 }
 
 
-def LhloFuseLinalgPass : Pass<"lhlo-fuse-linalg", "FuncOp"> {
+def LhloFuseLinalgPass : FunctionPass<"lhlo-fuse-linalg"> {
   let summary = "Greedily fuse linalg ops obtained after LHLO lowering.";
   let constructor = "createLhloFuseLinalgPass()";
   let options = [
@@ -34,25 +34,58 @@ def LhloFuseLinalgPass : Pass<"lhlo-fuse-linalg", "FuncOp"> {
 }
 
 
-def LhloLegalizeToAffinePass : Pass<"lhlo-legalize-to-affine", "FuncOp"> {
+def LhloLegalizeToAffinePass : FunctionPass<"lhlo-legalize-to-affine"> {
   let summary = "Legalize from LHLO dialect to affine dialect.";
   let constructor = "createLhloLegalizeToAffinePass()";
 }
 
 
-def LhloLegalizeToGpuPass : Pass<"lhlo-legalize-to-gpu", "FuncOp"> {
+def LhloLegalizeToGpuPass : FunctionPass<"lhlo-legalize-to-gpu"> {
   let summary = "Legalize from LHLO dialect to GPU dialect.";
   let constructor = "createLegalizeToGpuPass()";
 }
 
 
-def LhloLegalizeToParallelLoopsPass : Pass<"lhlo-legalize-to-parallel-loops", "FuncOp"> {
+def LhloLegalizeToParallelLoopsPass : FunctionPass<"lhlo-legalize-to-parallel-loops"> {
   let summary = "Legalize from LHLO dialect to parallel loops.";
   let constructor = "createLegalizeLhloToParallelLoopsPass()";
 }
 
-def LegalizeTensorLoadOpPass : Pass<"lhlo-legalize-tensor-load-op", "FuncOp"> {
+def LegalizeTensorLoadOpPass : FunctionPass<"lhlo-legalize-tensor-load-op"> {
   let summary = "Legalize tensor load ops that are inserted during mhlo to lmhlo conversion.";
   let constructor = "createLegalizeTensorLoadOpPass()";
 }
 
+def LhloFusionPass : FunctionPass<"lhlo-fusion"> {
+  let summary = "Fuse lmhlo ops to kLoop/kInput fusion patterns.";
+  let constructor = "createLhloFusionPass()";
+  let options = [
+    Option<"max_num_arguments_per_kernel_", "max-num-arguments-per-kernel", "int",
+           /*default=*/"64", "Maximum allowed number of arguments per fused kernel.">,
+  ];
+}
+
+def LhloFusionInlinerPass : FunctionPass<"lhlo-fusion-inliner"> {
+  let summary = "Inline the contents of its body to the parent region "
+    "after its body has been lowered";
+  let constructor = "createLhloFusionInlinerPass()";
+}
+
+def LhloLegalizeRootsToParallelLoopsPass : FunctionPass<"lhlo-legalize-roots-to-parallel-loops"> {
+  let summary = "Legalize the roots of lmhlo.fusion to parallel loops.";
+  let constructor = "createLhloLegalizeRootsToParallelLoopsPass()";
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "memref::MemRefDialect"
+  ];
+}
+
+def InputInlineFusionPass : FunctionPass<"input-inline-fusion"> {
+  let summary = "Fuse the rest of the lmhlo nodes into the parallel loops after the roots "
+    "has been expanded into loops in LhloLegalizeRootsToParallelLoops";
+  let constructor = "createInputInlineFusionPass()";
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "memref::MemRefDialect"
+  ];
+}

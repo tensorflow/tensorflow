@@ -18,8 +18,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -133,6 +135,11 @@ static bool ConvertBoolAttrForOptionWriter(
   return b;
 }
 
+static flatbuffers::Offset<flatbuffers::String> ConvertStrAttrForOptionWriter(
+    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
+  return builder->CreateString(str.str());
+}
+
 static tflite::TensorType ConvertTypeAttrForOptionWriter(
     mlir::Type type, flatbuffers::FlatBufferBuilder* builder) {
   return tflite::ConvertTypeToTensorType(type);
@@ -163,6 +170,11 @@ static tflite::LSTMKernelType ConvertTFL_LSTMKernelTypeAttrForOptionWriter(
 
 static mlir::Attribute BuildBoolAttr(bool value, mlir::Builder builder) {
   return builder.getBoolAttr(value);
+}
+
+static mlir::Attribute BuildStrAttr(llvm::StringRef str,
+                                    mlir::Builder builder) {
+  return builder.getStringAttr(str);
 }
 
 static mlir::Attribute BuildF32Attr(float value, mlir::Builder builder) {

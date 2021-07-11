@@ -29,11 +29,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -142,7 +141,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops,
+    bool emit_select_tf_ops, bool emit_custom_ops, bool allow_all_select_tf_ops,
     const std::unordered_set<std::string>& select_user_tf_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
@@ -172,7 +171,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
-    return Status::OK();
+    return statusHandler.ConsumeStatus();
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
@@ -182,6 +181,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
     options.emit_select_tf_ops = emit_select_tf_ops;
     options.select_user_tf_ops = select_user_tf_ops;
+    options.allow_all_select_tf_ops = allow_all_select_tf_ops;
     options.emit_custom_ops = emit_custom_ops;
     options.saved_model_tags = saved_model_tags;
     options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
@@ -201,6 +201,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
     options.emit_select_tf_ops = emit_select_tf_ops;
     options.select_user_tf_ops = select_user_tf_ops;
+    options.allow_all_select_tf_ops = allow_all_select_tf_ops;
     options.emit_custom_ops = emit_custom_ops;
     options.saved_model_tags = saved_model_tags;
     options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
@@ -246,7 +247,8 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
-    mlir::MLIRContext* context) {
+    bool enable_variable_lifting, mlir::MLIRContext* context,
+    std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
   // Register extra TF ops passed as OpDef.
   auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
   if (!extra_opdefs_status.ok()) return extra_opdefs_status;
@@ -260,7 +262,8 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, context, options);
+        input_filename, tags, exported_names, context, options,
+        enable_variable_lifting, saved_model_bundle);
 
     if (!module_or.status().ok()) return module_or.status();
     return module_or.ConsumeValueOrDie();

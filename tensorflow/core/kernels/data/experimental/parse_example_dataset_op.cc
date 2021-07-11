@@ -495,6 +495,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           for (size_t j = 0; j < num_return_values; j++) {
             result.return_values.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadTensor(
+                ctx->flr(),
                 full_name(
                     strings::StrCat(kInvocationResults, "[", i, "][", j, "]")),
                 &result.return_values.back()));

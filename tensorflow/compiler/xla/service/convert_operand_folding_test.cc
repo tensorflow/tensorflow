@@ -70,7 +70,7 @@ TEST_F(ConvertOperandFoldingTest, FloatingUpcastConvertFolded) {
                     op::Shape("f32[2,2]{1,0}")));
 }
 
-TEST_F(ConvertOperandFoldingTest, IntegralToFloatingConvertNotFolded) {
+TEST_F(ConvertOperandFoldingTest, IntegralToFloatingConvertFolded) {
   absl::string_view module_string = R"(
   HloModule module
 
@@ -86,14 +86,10 @@ TEST_F(ConvertOperandFoldingTest, IntegralToFloatingConvertNotFolded) {
                           ParseAndReturnVerifiedModule(module_string));
   TF_ASSERT_OK_AND_ASSIGN(bool folded,
                           ConvertOperandFolding().Run(module.get()));
-  EXPECT_FALSE(folded);
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      AllOf(
-          op::Dot(
-              AllOf(op::Convert(op::Parameter(0)), op::Shape("f16[2,3]{1,0}")),
-              AllOf(op::Convert(op::Parameter(1)), op::Shape("f32[3,2]{0,1}"))),
-          op::Shape("f32[2,2]{1,0}")));
+  EXPECT_TRUE(folded);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Dot(op::Parameter(0), op::Parameter(1)),
+                    op::Shape("f32[2,2]{1,0}")));
 }
 
 TEST_F(ConvertOperandFoldingTest, DowncastConvertNotFolded) {

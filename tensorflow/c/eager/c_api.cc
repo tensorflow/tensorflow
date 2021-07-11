@@ -148,6 +148,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       opts->async, device_mgr.release(),
       /*device_mgr_owned*/ true, r,
       /*cluster_flr=*/nullptr,
+      /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/opts->run_eager_op_as_function);
 #if !defined(IS_MOBILE_PLATFORM)
   eager_context->SetDistributedManager(

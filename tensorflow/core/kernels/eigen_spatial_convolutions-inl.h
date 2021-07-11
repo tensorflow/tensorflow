@@ -1613,8 +1613,8 @@ EIGEN_DEVICE_FUNC
                        Index padding_top = 0, Index padding_bottom = 0,
                        Index padding_left = 0, Index padding_right = 0) {
   typedef typename internal::traits<Input>::Index TensorIndex;
-  TensorRef<Tensor<typename internal::traits<Input>::Scalar,
-                   internal::traits<Input>::NumDimensions,
+  typedef typename internal::traits<Input>::Scalar InputScalar;
+  TensorRef<Tensor<InputScalar, internal::traits<Input>::NumDimensions,
                    internal::traits<Input>::Layout, TensorIndex> >
       in(input);
   TensorRef<Tensor<typename internal::traits<Kernel>::Scalar,
@@ -1741,17 +1741,18 @@ EIGEN_DEVICE_FUNC
                               /*row_inflate_stride=*/1,
                               /*col_inflate_stride=*/1, padding_top,
                               padding_bottom, padding_left, padding_right,
-                              /*padding_value=*/0)
+                              /*padding_value=*/static_cast<InputScalar>(0))
                           .reshape(pre_contract_dims),
                       contract_dims, output_kernel)
             .reshape(post_contract_dims),
         input
-            .extract_image_patches(kernelRows, kernelCols, row_stride,
-                                   col_stride, row_in_stride, col_in_stride,
-                                   /*row_inflate_stride=*/1,
-                                   /*col_inflate_stride=*/1, padding_top,
-                                   padding_bottom, padding_left, padding_right,
-                                   /*padding_value=*/0)
+            .extract_image_patches(
+                kernelRows, kernelCols, row_stride, col_stride, row_in_stride,
+                col_in_stride,
+                /*row_inflate_stride=*/1,
+                /*col_inflate_stride=*/1, padding_top, padding_bottom,
+                padding_left, padding_right,
+                /*padding_value=*/static_cast<InputScalar>(0))
             .reshape(pre_contract_dims)
             .contract(kernel.reshape(kernel_dims), contract_dims, output_kernel)
             .reshape(post_contract_dims));

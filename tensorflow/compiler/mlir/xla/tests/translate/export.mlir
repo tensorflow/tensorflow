@@ -27,6 +27,36 @@ func @main(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
+  %0 = "mhlo.reduce_scatter"(%arg0) ({
+  // Perform max reduction inside the region
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
+    channel_handle = {
+      handle = 5 : i64,
+      type = 2 : i64
+    },
+    scatter_dimension = 0 : i64
+  } : (tensor<10xf32>) -> tensor<5xf32>
+  return %0 : tensor<5xf32>
+}
+
+// CHECK:  %[[COMPUTATION:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
+// CHECK:  ROOT %[[RESULT:.*]] = f32[5] reduce-scatter(f32[10] %[[ARG0]])
+// CHECK-SAME:  channel_id=5
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2},{1,3}}
+// CHECK-SAME: dimensions={0}
+// CHECK-SAME:  to_apply=%[[COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
@@ -99,6 +129,36 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME:  channel_id=5
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,7}}
+// CHECK-SAME:  to_apply=%[[COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
+  %0 = "mhlo.reduce_scatter"(%arg0) ({
+  // Perform max reduction inside the region
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
+    channel_handle = {
+      handle = 5 : i64,
+      type = 2 : i64
+    },
+    scatter_dimension = 0 : i64
+  } : (tensor<10xf32>) -> tensor<5xf32>
+  return %0 : tensor<5xf32>
+}
+
+// CHECK:  %[[COMPUTATION:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
+// CHECK:  ROOT %[[RESULT:.*]] = f32[5] reduce-scatter(f32[10] %[[ARG0]])
+// CHECK-SAME:  channel_id=5
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2},{1,3}}
+// CHECK-SAME: dimensions={0}
 // CHECK-SAME:  to_apply=%[[COMPUTATION]]
 
 // -----

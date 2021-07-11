@@ -136,7 +136,7 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  if (has_schedule() && !to_remove->IsFusionComputation()) {
+  if (has_schedule() && !to_remove->IsCalledComputation()) {
     schedule_->remove_computation(to_remove);
   }
 
@@ -168,10 +168,10 @@ void HloModule::ReplaceComputations(
     for (auto* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kAllReduce:
-        case HloOpcode::kAllReduceScatter:
         case HloOpcode::kCall:
         case HloOpcode::kMap:
         case HloOpcode::kReduce:
+        case HloOpcode::kReduceScatter:
         case HloOpcode::kReduceWindow:
         case HloOpcode::kScatter:
         case HloOpcode::kSort: {

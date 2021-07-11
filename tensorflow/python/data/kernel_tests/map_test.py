@@ -940,7 +940,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = apply_map(dataset, lambda x: [x, "hello", 10])
     self.assertDatasetProduces(dataset, [(i, b"hello", 10) for i in range(10)])
 
-  @combinations.generate(test_base.default_test_combinations())
+  @combinations.generate(test_base.graph_only_combinations())
   def testWarnOnSeedFromOuterGraph(self):
     with ops.Graph().as_default() as g:
       g.seed = 10
@@ -1330,8 +1330,9 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testCore(self, num_parallel_calls):
+  def testCore(self, verify_fn, num_parallel_calls):
 
     tensor_slice_len = 7
     num_epochs = 2
@@ -1349,7 +1350,7 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return (dataset_ops.Dataset.from_tensor_slices(components).map(
           _map_fn, num_parallel_calls=num_parallel_calls).repeat(num_epochs))
 
-    self.run_core_tests(_build_ds, tensor_slice_len * num_epochs)
+    verify_fn(self, _build_ds, tensor_slice_len * num_epochs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -1383,8 +1384,9 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testCaptureConstantInMapFn(self, num_parallel_calls):
+  def testCaptureConstantInMapFn(self, verify_fn, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1392,12 +1394,13 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda x: x + constant_var, num_parallel_calls=num_parallel_calls))
 
-    self.run_core_tests(_build_ds, num_outputs)
+    verify_fn(self, _build_ds, num_outputs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testCaptureDefunInMapFn(self, num_parallel_calls):
+  def testCaptureDefunInMapFn(self, verify_fn, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1409,12 +1412,13 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return dataset_ops.Dataset.range(num_outputs).map(
           defun_fn, num_parallel_calls=num_parallel_calls)
 
-    self.run_core_tests(_build_ds, num_outputs)
+    verify_fn(self, _build_ds, num_outputs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testBuildDefunInMapFn(self, num_parallel_calls):
+  def testBuildDefunInMapFn(self, verify_fn, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1432,12 +1436,13 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       return dataset_ops.Dataset.range(num_outputs).map(
           defun_fn, num_parallel_calls=num_parallel_calls)
 
-    self.run_core_tests(_build_ds, num_outputs)
+    verify_fn(self, _build_ds, num_outputs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations(),
                          combinations.combine(num_parallel_calls=[None, 2])))
-  def testSparseCore(self, num_parallel_calls):
+  def testSparse(self, verify_fn, num_parallel_calls):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
@@ -1450,7 +1455,7 @@ class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           _sparse, num_parallel_calls=num_parallel_calls)
 
     num_outputs = 10
-    self.run_core_tests(lambda: _build_ds(num_outputs), num_outputs)
+    verify_fn(self, lambda: _build_ds(num_outputs), num_outputs=num_outputs)
 
 
 if __name__ == "__main__":

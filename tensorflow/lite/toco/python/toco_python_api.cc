@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "google/protobuf/text_format.h"
 #include "tensorflow/c/kernels.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {
+using mlir::lite::StringSet;
 
 void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
                                  toco::TocoFlags* toco_flags,
@@ -240,10 +242,44 @@ tflite::TensorType FromTocoDataTypeToTflitToTensorType(int inference_type) {
   }
 }
 
+int ToStringSet(PyObject* py_blocklist, StringSet* string_set) {
+  using tflite::python_utils::ConvertFromPyString;
+  // Ensure op_blocklist is non null
+  if (!py_blocklist) {
+    return 0;
+  }
+  if (PyList_Check(py_blocklist)) {
+    for (int i = 0; i < PyList_GET_SIZE(py_blocklist); ++i) {
+      PyObject* value = PyList_GetItem(py_blocklist, i);
+      char* str_buf;
+      Py_ssize_t length;
+      if (ConvertFromPyString(value, &str_buf, &length) == -1) {
+        return -1;
+      }
+      string_set->emplace(str_buf, length);
+    }
+  }
+  if (PySet_Check(py_blocklist)) {
+    auto* tmp = PySet_New(py_blocklist);
+    while (PySet_GET_SIZE(tmp)) {
+      PyObject* value = PySet_Pop(tmp);
+      char* str_buf;
+      Py_ssize_t length;
+      if (ConvertFromPyString(value, &str_buf, &length) == -1) {
+        return -1;
+      }
+      string_set->emplace(str_buf, length);
+    }
+  }
+  return 0;
+}
+
 PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool fully_quantize, int inference_type,
                             int input_data_type, int output_data_type,
-                            bool enable_numeric_verify) {
+                            bool enable_numeric_verify,
+                            bool enable_whole_model_verify,
+                            PyObject* op_blocklist, PyObject* node_blocklist) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -253,6 +289,18 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");
     return nullptr;
   }
+
+  StringSet blocklisted_ops;
+  StringSet blocklisted_nodes;
+  if (ToStringSet(op_blocklist, &blocklisted_ops) == -1) {
+    PyErr_Format(PyExc_ValueError, "Failed to convert op blocklist PyObject");
+    return nullptr;
+  }
+  if (ToStringSet(node_blocklist, &blocklisted_nodes) == -1) {
+    PyErr_Format(PyExc_ValueError, "Failed to convert node blocklist PyObject");
+    return nullptr;
+  }
+
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromBuffer(buf, length,
                                                error_reporter.get());
@@ -274,7 +322,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto status = mlir::lite::QuantizeModel(
       *tflite_model, input_type, output_type, inference_tensor_type, {},
       disable_per_channel, fully_quantize, &builder, error_reporter.get(),
-      enable_numeric_verify);
+      enable_numeric_verify, enable_whole_model_verify,
+      /*legacy_float_scale=*/true, blocklisted_ops, blocklisted_nodes);
 
   if (status != kTfLiteOk) {
     error_reporter->exception();
@@ -381,6 +430,17 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
   }
 
   Py_RETURN_TRUE;
+}
+
+const std::vector<std::string> RetrieveCollectedErrors() {
+  mlir::TFL::ErrorCollector* collector =
+      mlir::TFL::ErrorCollector::GetErrorCollector();
+  std::vector<std::string> collected_errors;
+  for (const auto& error_data : collector->CollectedErrors()) {
+    collected_errors.push_back(error_data.SerializeAsString());
+  }
+  collector->Clear();
+  return collected_errors;
 }
 
 }  // namespace toco
