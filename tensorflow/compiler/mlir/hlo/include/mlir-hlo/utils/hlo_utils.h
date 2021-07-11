@@ -16,10 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
 
-#include <set>
-#include <string>
-#include <unordered_map>
-
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -29,6 +25,7 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 // Attrs for OP type
+// TODO(disc): create and move to placement_utils.h
 constexpr llvm::StringRef kDiscShapeCalcAttr = "disc.shape_op";
 
 // Attrs for placement
