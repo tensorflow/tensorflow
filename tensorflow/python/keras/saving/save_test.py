@@ -239,7 +239,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     # See https://github.com/tensorflow/tensorflow/issues/35731 for details.
     inputs = keras.Input([10, 91], name='train_input')
     rnn_layers = [
-        keras.layers.LSTMCell(size, recurrent_dropout=.0, name='rnn_cell%d' % i)
+        keras.layers.LSTMCell(size, recurrent_dropout=0, name='rnn_cell%d' % i)
         for i, size in enumerate([512, 512])
     ]
     rnn_output = keras.layers.RNN(

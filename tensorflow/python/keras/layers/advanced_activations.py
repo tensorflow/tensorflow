@@ -408,7 +408,7 @@ class ReLU(Layer):
       to 0.
   """
 
-  def __init__(self, max_value=None, negative_slope=.0, threshold=.0, **kwargs):
+  def __init__(self, max_value=None, negative_slope=0, threshold=0, **kwargs):
     super(ReLU, self).__init__(**kwargs)
     if max_value is not None and max_value < 0.:
       raise ValueError('max_value of a ReLU layer cannot be a negative '

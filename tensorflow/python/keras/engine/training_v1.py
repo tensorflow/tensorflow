@@ -2105,7 +2105,7 @@ class Model(training_lib.Model):
                                           sample_weight=None,
                                           class_weight=None,
                                           batch_size=None,
-                                          validation_split=.0,
+                                          validation_split=0,
                                           shuffle=False,
                                           epochs=1,
                                           allow_partial_batch=False):
@@ -2219,7 +2219,7 @@ class Model(training_lib.Model):
                              check_steps=False,
                              steps_name='steps',
                              steps=None,
-                             validation_split=.0,
+                             validation_split=0,
                              shuffle=False,
                              extract_tensors_from_dataset=False):
     """Runs validation checks on input and target data passed by the user.

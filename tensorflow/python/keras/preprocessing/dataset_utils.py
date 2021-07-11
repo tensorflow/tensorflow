@@ -227,7 +227,7 @@ def check_validation_split_arg(validation_split, subset, shuffle, seed):
     subset: One of "training" or "validation". Only used if `validation_split`
       is set.
   """
-  if validation_split and not 0. < validation_split < 1.:
+  if validation_split and not 0 < validation_split < 1:
     raise ValueError(
         '`validation_split` must be between 0 and 1, received: %s' %
         (validation_split,))

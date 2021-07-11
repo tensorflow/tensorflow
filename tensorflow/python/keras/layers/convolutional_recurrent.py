@@ -605,7 +605,7 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
       inputs_c = inputs
       inputs_o = inputs
 
-    if .0 < self.recurrent_dropout < 1.:
+    if 0 < self.recurrent_dropout < 1.:
       h_tm1_i = h_tm1 * rec_dp_mask[0]
       h_tm1_f = h_tm1 * rec_dp_mask[1]
       h_tm1_c = h_tm1 * rec_dp_mask[2]

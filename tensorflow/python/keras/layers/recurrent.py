@@ -1208,7 +1208,7 @@ class DropoutRNNCellMixin(object):
     Returns:
       List of mask tensor, generated or cached mask based on context.
     """
-    if self.recurrent_dropout == .0:
+    if self.recurrent_dropout == 0:
       return None
     init_kwargs = dict(inputs=inputs, training=training, count=count)
     return self._recurrent_dropout_mask_cache.setdefault(kwargs=init_kwargs)
@@ -1785,7 +1785,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
 
     implementation = kwargs.pop('implementation', 1)
-    if self.recurrent_dropout != .0 and implementation != 1:
+    if self.recurrent_dropout != 0 and implementation != 1:
       logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
       self.implementation = 1
     else:
@@ -2348,7 +2348,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     implementation = kwargs.pop('implementation', 1)
-    if self.recurrent_dropout != .0 and implementation != 1:
+    if self.recurrent_dropout != 0 and implementation != 1:
       logging.debug(RECURRENT_DROPOUT_WARNING_MSG)
       self.implementation = 1
     else:
@@ -2453,7 +2453,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         x_c = backend.bias_add(x_c, b_c)
         x_o = backend.bias_add(x_o, b_o)
 
-      if .0 < self.recurrent_dropout < 1.:
+      if 0 < self.recurrent_dropout < 1.:
         h_tm1_i = h_tm1 * rec_dp_mask[0]
         h_tm1_f = h_tm1 * rec_dp_mask[1]
         h_tm1_c = h_tm1 * rec_dp_mask[2]

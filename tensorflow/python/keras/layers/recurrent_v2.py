@@ -402,7 +402,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self._could_use_gpu_kernel = (
         self.activation in (activations.tanh, nn.tanh) and
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
-        recurrent_dropout == .0 and not unroll and use_bias and
+        recurrent_dropout == 0 and not unroll and use_bias and
         reset_after and ops.executing_eagerly_outside_functions())
     if config.list_logical_devices('GPU'):
       # Only show the message when there is GPU available, user will not care
@@ -1129,7 +1129,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     self._could_use_gpu_kernel = (
         self.activation in (activations.tanh, nn.tanh) and
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
-        recurrent_dropout == .0 and not unroll and use_bias and
+        recurrent_dropout == 0 and not unroll and use_bias and
         ops.executing_eagerly_outside_functions())
     if config.list_logical_devices('GPU'):
       # Only show the message when there is GPU available, user will not care
