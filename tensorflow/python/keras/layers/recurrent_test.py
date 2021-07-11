@@ -1257,6 +1257,76 @@ class RNNTest(keras_parameterized.TestCase):
          np.zeros((batch, t, o2, o3))])
     self.assertEqual(model.output_shape, [(None, t, o1), (None, t, o2, o3)])
 
+  def test_stacked_rnn_with_nested_cell(self):
+    batch = 10
+    t = 5
+    i1,  i2,  i3  = 3, 4, 5
+    o11, o12, o13 = 2, 3, 4
+    o21, o22, o23 = 4, 5, 6
+
+    # test 1: use_tuple=False
+    cells = [NestedCell(o11, o12, o13),
+             NestedCell(o21, o22, o23)]
+    rnn = keras.layers.RNN(cells, return_sequences=True, return_state=True)
+
+    input_1 = keras.Input((t, i1))
+    input_2 = keras.Input((t, i2, i3))
+
+    output1, output2, state1, state2 = rnn((input_1, input_2))
+    s11, s12 = state1
+    s21, s22 = state2
+
+    self.assertEqual(output1.shape.as_list(), [None, t, o21])
+    self.assertEqual(output2.shape.as_list(), [None, t, o22, o23])
+    self.assertEqual(s11.shape.as_list(), [None, o11])
+    self.assertEqual(s12.shape.as_list(), [None, o12, o13])
+    self.assertEqual(s21.shape.as_list(), [None, o21])
+    self.assertEqual(s22.shape.as_list(), [None, o22, o23])
+
+    model = keras.models.Model([input_1, input_2], [output1, output2])
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        [np.zeros((batch, t, i1)),
+         np.zeros((batch, t, i2, i3))],
+        [np.zeros((batch, t, o21)),
+         np.zeros((batch, t, o22, o23))])
+    self.assertEqual(model.output_shape, [(None, t, o21), (None, t, o22, o23)])
+
+    # test 2: use_tuple=True
+    cells = [NestedCell(o11, o12, o13, use_tuple=True),
+             NestedCell(o21, o22, o23)]
+
+    rnn = keras.layers.RNN(cells, return_sequences=True, return_state=True)
+
+    input_1 = keras.Input((t, i1))
+    input_2 = keras.Input((t, i2, i3))
+
+    output1, output2, state1, state2 = rnn(NestedInput(t1=input_1, t2=input_2))
+    s11, s12 = state1
+    s21, s22 = state2
+
+    self.assertEqual(output1.shape.as_list(), [None, t, o21])
+    self.assertEqual(output2.shape.as_list(), [None, t, o22, o23])
+    self.assertEqual(s11.shape.as_list(), [None, o11])
+    self.assertEqual(s12.shape.as_list(), [None, o12, o13])
+    self.assertEqual(s21.shape.as_list(), [None, o21])
+    self.assertEqual(s22.shape.as_list(), [None, o22, o23])
+
+    model = keras.models.Model([input_1, input_2], [output1, output2])
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        [np.zeros((batch, t, i1)),
+         np.zeros((batch, t, i2, i3))],
+        [np.zeros((batch, t, o21)),
+         np.zeros((batch, t, o22, o23))])
+    self.assertEqual(model.output_shape, [(None, t, o21), (None, t, o22, o23)])
+
   def test_peephole_lstm_cell(self):
 
     def _run_cell(cell_fn, **kwargs):

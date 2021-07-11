@@ -161,19 +161,32 @@ class StackedRNNCells(Layer):
   def build(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
+    
+    def get_batch_input_shape(batch_size):
+      def _get_input_shape(dim):
+        shape = tensor_shape.TensorShape(dim).as_list()
+        return tuple([batch_size] + shape)
+      return _get_input_shape
+
     for cell in self.cells:
       if isinstance(cell, Layer) and not cell.built:
         with backend.name_scope(cell.name):
           cell.build(input_shape)
           cell.built = True
       if getattr(cell, 'output_size', None) is not None:
-        output_dim = cell.output_size
+        output_dims = cell.output_size
       elif _is_multiple_state(cell.state_size):
-        output_dim = cell.state_size[0]
+        output_dims = cell.state_size[0]
       else:
-        output_dim = cell.state_size
-      input_shape = tuple([input_shape[0]] +
-                          tensor_shape.TensorShape(output_dim).as_list())
+        output_dims = cell.state_size
+      batch_size = nest.flatten(input_shape)[0]
+      if nest.is_nested(output_dims):
+        input_shape = nest.map_structure(
+                          get_batch_input_shape(batch_size), output_dims)
+        input_shape = tuple(input_shape)
+      else:
+        input_shape = tuple([batch_size] +
+                        tensor_shape.TensorShape(output_dims).as_list())
     self.built = True
 
   def get_config(self):
@@ -556,6 +569,12 @@ class RNN(Layer):
       # remove the timestep from the input_shape
       return shape[1:] if self.time_major else (shape[0],) + shape[2:]
 
+    def get_state_spec(shape):
+      state_spec_shape = tensor_shape.TensorShape(shape).as_list()
+      # append batch dim
+      state_spec_shape = [None] + state_spec_shape
+      return InputSpec(shape=tuple(state_spec_shape))
+
     # Check whether the input shape contains any nested shapes. It could be
     # (tensor_shape(1, 2), tensor_shape(3, 4)) or (1, 2, 3) which is from numpy
     # inputs.
@@ -596,10 +615,14 @@ class RNN(Layer):
       # initial_state was passed in call, check compatibility
       self._validate_state_spec(state_size, self.state_spec)
     else:
-      self.state_spec = [
-          InputSpec(shape=[None] + tensor_shape.TensorShape(dim).as_list())
-          for dim in state_size
-      ]
+      if nest.is_nested(state_size):
+        self.state_spec = nest.map_structure(get_state_spec, state_size)
+      else:
+        self.state_spec = [
+            InputSpec(shape=[None] + tensor_shape.TensorShape(dim).as_list())
+            for dim in state_size
+        ]
+      self._validate_state_spec(state_size, self.state_spec)
     if self.stateful:
       self.reset_states()
     self.built = True
