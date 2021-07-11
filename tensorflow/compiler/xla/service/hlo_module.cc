@@ -667,17 +667,29 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
 }
 
 namespace {
-bool CompareComputationsByContent(const HloComputation* a,
-                                  const HloComputation* b) {
-  if (a->instruction_count() != b->instruction_count()) {
-    return a->instruction_count() < b->instruction_count();
+bool CompareComputationsByContent(const std::pair<HloComputation*, uint64>& a,
+                                  const std::pair<HloComputation*, uint64>& b) {
+  if (a.first->instruction_count() != b.first->instruction_count()) {
+    return a.first->instruction_count() < b.first->instruction_count();
   }
-  return a->ToString(HloPrintOptions::Fingerprint()) <
-         b->ToString(HloPrintOptions::Fingerprint());
+  return a.second < b.second;
 }
 
 void SortComputationsByContent(std::vector<HloComputation*>* computations) {
-  absl::c_sort(*computations, CompareComputationsByContent);
+  std::vector<std::pair<HloComputation*, uint64>> pairs;
+  pairs.reserve(computations->size());
+  // Iterate and call ToString() once per computation because it is expensive
+  // for a large computation.
+  for (auto* computation : *computations) {
+    pairs.emplace_back(computation,
+                       tensorflow::Fingerprint64(computation->ToString(
+                           HloPrintOptions::Fingerprint())));
+  }
+  absl::c_sort(pairs, CompareComputationsByContent);
+  computations->clear();
+  for (const auto& pair : pairs) {
+    computations->push_back(pair.first);
+  }
 }
 
 }  // anonymous namespace
