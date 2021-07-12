@@ -128,6 +128,21 @@ private:
     if (shapedA.hasStaticShape() != shapedB.hasStaticShape())
       return false;
 
+    // Compare the element Types of both shapes.
+    if (shapedA.getElementType() != shapedB.getElementType())
+      return false;
+
+    // If the shapes have different ranks, we cannot reuse them.
+    if (shapedA.getRank() != shapedB.getRank())
+      return false;
+
+    // Compare each dimension. If the dimensions are not equal no reuse is
+    // possible.
+    for (unsigned idx = 0, e = shapedA.getRank(); idx < e; ++idx) {
+      if (shapedA.getDimSize(idx) != shapedB.getDimSize(idx))
+        return false;
+    }
+
     // We need the actual alloc operation of both types. For aliases we need
     // to check for the defining OP of the alias' origin.
     Operation *defOpA = a.getDefiningOp();
