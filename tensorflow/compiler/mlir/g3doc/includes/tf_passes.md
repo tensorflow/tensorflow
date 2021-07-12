@@ -205,6 +205,46 @@ func @my_fn(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>
   return %identity, %identity_n#0 : tensor<i32>, tensor<i32>
 }
 ```
+### `-tf-executor-tpu-v1-island-inlining`: Inline calls to the nested TPU module.
+This pass inlines the islands calling into the nested module that was
+outlined, thus reversing the effect of the
+`-tf-executor-tpu-v1-island-outlining` pass.
+
+For example, the following:
+```mlir
+module {
+  func @foo(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = tf_executor.graph {
+      %outputs, %control = tf_executor.island wraps "tf.PartitionedCall"(%arg0) {f = @_tpu_v1_compat_outlined::@bar} : (tensor<f32>) -> tensor<f32>
+      tf_executor.fetch %outputs : tensor<f32>
+    }
+    return %0 : tensor<f32>
+  }
+  module @_tpu_v1_compat_outlined {
+    func nested @bar(%arg0: tensor<f32>) -> tensor<f32> {
+      %0 = "tf.opA"(%arg0) : (tensor<f32>) -> tensor<f32>
+      return %0 : tensor<f32>
+    }
+  }
+}
+```
+
+will be transformed into:
+
+```mlir
+module  {
+  func @foo(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = tf_executor.graph {
+      %outputs, %control = tf_executor.island {
+        %1 = "tf.opA"(%arg0) : (tensor<f32>) -> tensor<f32>
+        tf_executor.yield %1 : tensor<f32>
+      }
+      tf_executor.fetch %outputs : tensor<f32>
+    }
+    return %0 : tensor<f32>
+  }
+}
+```
 ### `-tf-functional-control-flow-to-regions`: Transforms functional control flow operations to their region-based counterparts
 This pass transforms functional control flow operations in the TensorFlow
 dialect to their region-based counterparts, i.e., `tf.If` is transformed to
@@ -851,6 +891,7 @@ func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
   }
   return
 }
+```
 
 A non replicated `tf_device.cluster_func` with the model parallelism:
 
