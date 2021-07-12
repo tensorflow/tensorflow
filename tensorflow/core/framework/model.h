@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -747,16 +748,18 @@ class Model {
                      OptimizationParams* optimization_params);
 
   // Enables publishing mode in which each existing model keeps a number of the
-  // latest optimization snapshots in a buffer. The snapshots can be accessed
-  // using `PublishLatest`.
+  // latest optimization snapshots in a buffer. Registers a metrics exporter to
+  // pull them. The snapshots can be accessed using `ExportModels`.
   static void EnablePublishing() {
+    metrics::RegisterTFDataModelExporter(&ExportModels);
     mutex_lock l(*publish_mu());
     publish_ = true;
   }
 
-  // If publishing is enabled, collects the latest optimization snapshot of each
-  // existing model and appends its proto to the given string.
-  static Status PublishLatest(absl::Cord* model);
+  // If publishing is enabled, returns a mapping from each existing model id to
+  // its latest optimization snapshot proto. The function is rate limited,
+  // frequent calls will return cached results.
+  static StatusOr<absl::flat_hash_map<uint64, string>*> ExportModels();
 
  private:
   static constexpr int64 kOptimizationPeriodMinMs = 10;

@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -91,6 +93,12 @@ void RecordTFDataServiceWorkerCreated();
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
+
+// Registers a function to get the most recent tf.data autotuning models. The
+// function is only called when the corresponding metric is accessed.
+// Registration can only happen once.
+void RegisterTFDataModelExporter(
+    StatusOr<absl::flat_hash_map<uint64, string>*> export_models());
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64 num_features);

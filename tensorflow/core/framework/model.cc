@@ -2029,11 +2029,21 @@ Status Model::SaveLoop() {
   }
 }
 
-Status Model::PublishLatest(absl::Cord* model) {
-  tf_shared_lock l(*publish_mu());
+StatusOr<absl::flat_hash_map<uint64, string>*> Model::ExportModels() {
+  static absl::Time cache_until = absl::InfinitePast();
+  static Status status = Status::OK();
+  static absl::flat_hash_map<uint64, string> cached_models;
+  constexpr int64 kMinSecondsBetweenCalls = 30;
+
+  mutex_lock l(*publish_mu());
+  if (absl::Now() < cache_until) {
+    // Return the last cached result.
+    TF_RETURN_IF_ERROR(status);
+    return &cached_models;
+  }
+
+  cached_models.clear();
   for (auto& pair : *snapshot_buffers()) {
-    model->Append(
-        absl::StrCat("Model #", reinterpret_cast<uint64>(pair.first), ":\n"));
     OptimizationSnapshot to_publish;
     {
       auto& snapshot_buffer = pair.second;
@@ -2047,13 +2057,16 @@ Status Model::PublishLatest(absl::Cord* model) {
     // parameters, `id_counter_` and `collect_resource_usage_` will have default
     // values but can be recovered from `output_` if needed.
     ModelProto model_proto;
-    TF_RETURN_IF_ERROR(ModelToProtoHelper(to_publish.output, &model_proto));
+    status = ModelToProtoHelper(to_publish.output, &model_proto);
+    TF_RETURN_IF_ERROR(status);
     OptimizationParams* saved_optimization_params =
         model_proto.mutable_optimization_params();
     *saved_optimization_params = to_publish.params;
-    model->Append(absl::StrCat(model_proto.DebugString(), "\n"));
+    cached_models[reinterpret_cast<uint64>(pair.first)] =
+        model_proto.DebugString();
   }
-  return Status::OK();
+  cache_until = absl::Now() + absl::Seconds(kMinSecondsBetweenCalls);
+  return &cached_models;
 }
 
 }  // namespace model
