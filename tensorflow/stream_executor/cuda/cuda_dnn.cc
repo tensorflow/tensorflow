@@ -3321,6 +3321,40 @@ cudnnBackendDescriptorType_t GetCudnnConvolutionType(
   return conv_mode;
 }
 
+// Cudnn only supports vectorization over the channel dimension (e.g., int8x4,
+// or int8x32).
+std::tuple<int, int> GetTensorVectorSizeAndDim(
+    const dnn::BatchDescriptor& tensor, dnn::DataType element_type) {
+  int vector_size = 1;
+  int vector_dim = -1;
+  if (element_type == dnn::DataType::kInt8) {
+    if (tensor.layout() == dnn::DataLayout::kBatchDepthYX4) {
+      vector_size = 4;
+      vector_dim = 1;
+    } else if (tensor.layout() == dnn::DataLayout::kBatchDepthYX32) {
+      vector_size = 32;
+      vector_dim = 1;
+    }
+  }
+  return std::make_tuple(vector_size, vector_dim);
+}
+
+std::tuple<int, int> GetTensorVectorSizeAndDim(
+    const dnn::FilterDescriptor& filter, dnn::DataType element_type) {
+  int vector_size = 1;
+  int vector_dim = -1;
+  if (element_type == dnn::DataType::kInt8) {
+    if (filter.layout() == dnn::FilterLayout::kOutputInputYX4) {
+      vector_size = 4;
+      vector_dim = 1;
+    } else if (filter.layout() == dnn::FilterLayout::kOutputInputYX32) {
+      vector_size = 32;
+      vector_dim = 1;
+    }
+  }
+  return std::make_tuple(vector_size, vector_dim);
+}
+
 port::StatusOr<std::unique_ptr<cudnn_frontend::OperationGraph>>
 GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
                        Stream* stream,
@@ -3333,90 +3367,63 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
   cudnnDataType_t cudnn_type = ToCudnnDataType(element_type);
 
   // x tensor.
-  std::vector<int64> input_strides64 =
-      input_descriptor.full_strides(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64> input_dims64 =
-      input_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64_t> input_strides(input_strides64.cbegin(),
-                                     input_strides64.cend());
-  std::vector<int64_t> input_dims(input_dims64.cbegin(), input_dims64.cend());
+  int vector_size, vector_dim;
+  std::tie(vector_size, vector_dim) =
+      GetTensorVectorSizeAndDim(input_descriptor, element_type);
+  std::vector<int64> input_dims = input_descriptor.vectorized_dims(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
+  std::vector<int64> input_strides = input_descriptor.vectorized_strides(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
+
+  if (vector_size == 32) {
+    return port::InternalError(
+        "cuDNN frontend doesn't support int8x32 at the "
+        "moment.");
+  }
+
   auto tensor_x = cudnn_frontend::TensorBuilder()
-                      .setDim(input_dims.size(), &input_dims[0])
-                      .setStrides(input_dims.size(), &input_strides[0])
+                      .setDim(input_dims.size(), input_dims.data())
+                      .setStrides(input_dims.size(), input_strides.data())
                       .setId('x')
                       .setAlignment(32)
                       .setDataType(cudnn_type)
+                      .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_x);
 
   // y tensor.
-  std::vector<int64> output_strides64 =
-      output_descriptor.full_strides(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64> output_dims64 =
-      output_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64_t> output_strides(output_strides64.cbegin(),
-                                      output_strides64.cend());
-  std::vector<int64_t> output_dims(output_dims64.cbegin(),
-                                   output_dims64.cend());
+  std::tie(vector_size, vector_dim) =
+      GetTensorVectorSizeAndDim(output_descriptor, element_type);
+  std::vector<int64> output_dims = output_descriptor.vectorized_dims(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
+  std::vector<int64> output_strides = output_descriptor.vectorized_strides(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
+
   auto tensor_y = cudnn_frontend::TensorBuilder()
-                      .setDim(output_dims.size(), &output_dims[0])
-                      .setStrides(output_dims.size(), &output_strides[0])
+                      .setDim(output_dims.size(), output_dims.data())
+                      .setStrides(output_dims.size(), output_strides.data())
                       .setId('y')
                       .setAlignment(32)
                       .setDataType(cudnn_type)
+                      .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_y);
 
-  // w tensor: Transform HWNC (XYIO) format to NCHW/NHWC.
-  std::vector<int64> filter_dims64(2 + filter_descriptor.ndims());
-  filter_dims64[0] = filter_descriptor.output_feature_map_count();
-  filter_dims64[1] = filter_descriptor.input_feature_map_count();
-  auto spatial_dims64 = filter_descriptor.input_filter_dims();
-  std::copy(spatial_dims64.begin(), spatial_dims64.end(),
-            filter_dims64.begin() + 2);
-  cudnnTensorFormat_t format;
-  dnn::DataLayout tensor_format;
-  switch (filter_descriptor.layout()) {
-    case dnn::FilterLayout::kOutputInputYX:
-      format = CUDNN_TENSOR_NCHW;
-      tensor_format = dnn::DataLayout::kBatchDepthYX;
-      break;
-    case dnn::FilterLayout::kOutputYXInput:
-      format = CUDNN_TENSOR_NHWC;
-      tensor_format = dnn::DataLayout::kBatchYXDepth;
-      break;
-    case dnn::FilterLayout::kOutputInputYX4:
-      format = CUDNN_TENSOR_NCHW_VECT_C;
-      tensor_format = dnn::DataLayout::kBatchDepthYX4;
-      break;
-    case dnn::FilterLayout::kOutputInputYX32:
-      format = CUDNN_TENSOR_NCHW_VECT_C;
-      tensor_format = dnn::DataLayout::kBatchDepthYX32;
-      break;
-    default:
-      LOG(FATAL) << "Unsupported filter format "
-                 << FilterLayoutString(filter_descriptor.layout());
-      break;
-  }
-  std::vector<int64> phys_dims = dnn::ReorderDims(
-      filter_dims64, dnn::DataLayout::kBatchDepthYX, tensor_format);
-  std::vector<int64> phys_strides(phys_dims.size());
-  phys_strides[spatial_dims64.size() + 1] = 1;
-  for (int i = spatial_dims64.size(); i >= 0; i--) {
-    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
-  }
-  std::vector<int64> filter_strides64 = dnn::ReorderDims(
-      phys_strides, tensor_format, dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64_t> filter_dims(filter_dims64.cbegin(),
-                                   filter_dims64.cend());
-  std::vector<int64_t> filter_strides(filter_strides64.cbegin(),
-                                      filter_strides64.cend());
+  // w tensor.
+  std::tie(vector_size, vector_dim) =
+      GetTensorVectorSizeAndDim(filter_descriptor, element_type);
+  std::vector<int64> filter_dims = filter_descriptor.vectorized_dims(
+      dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
+  std::vector<int64> filter_strides = filter_descriptor.vectorized_strides(
+      dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
+
   auto tensor_w = cudnn_frontend::TensorBuilder()
-                      .setDim(filter_dims.size(), &filter_dims[0])
-                      .setStrides(filter_dims.size(), &filter_strides[0])
+                      .setDim(filter_dims.size(), filter_dims.data())
+                      .setStrides(filter_dims.size(), filter_strides.data())
                       .setId('w')
                       .setAlignment(32)
                       .setDataType(cudnn_type)
+                      .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_w);
 
@@ -3424,50 +3431,38 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType element_type,
   auto mode = convolution_descriptor.convolution_not_crosscorr()
                   ? CUDNN_CONVOLUTION
                   : CUDNN_CROSS_CORRELATION;
-  int convDim = convolution_descriptor.ndims();
+
+  int conv_dim = convolution_descriptor.ndims();
+
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(element_type));
-  absl::Span<const int64> strides64 = convolution_descriptor.strides();
-  absl::Span<const int64> padding64 = convolution_descriptor.padding();
-  absl::Span<const int64> dilations64 = convolution_descriptor.dilations();
   CHECK_NE(convolution_descriptor.pad_alignment(),
            dnn::PadAlignment::kTensorFlowPadding)
       << "TensorFlow padding alignment is not supported.";
-  std::vector<int64_t> strides(convolution_descriptor.ndims());
-  std::vector<int64_t> padding(convolution_descriptor.ndims());
-  std::vector<int64_t> dilations(convolution_descriptor.ndims());
-  std::copy(strides64.cbegin(), strides64.cend(), strides.begin());
-  std::copy(padding64.cbegin(), padding64.cend(), padding.begin());
-  std::copy(dilations64.cbegin(), dilations64.cend(), dilations.begin());
-  auto conv_desc = cudnn_frontend::ConvDescBuilder()
-                       .setDataType(accumulator_type)
-                       .setMathMode(mode)
-                       .setNDims(convDim)
-                       .setStrides(convDim, &strides[0])
-                       .setPrePadding(convDim, &padding[0])
-                       .setPostPadding(convDim, &padding[0])
-                       .setDilation(convDim, &dilations[0])
-                       .build();
+
+  auto conv_desc =
+      cudnn_frontend::ConvDescBuilder()
+          .setComputePrecision(accumulator_type)
+          .setMathMode(mode)
+          .setNDims(conv_dim)
+          .setStrides(conv_dim, convolution_descriptor.strides().data())
+          .setPrePadding(conv_dim, convolution_descriptor.padding().data())
+          .setPostPadding(conv_dim, convolution_descriptor.padding().data())
+          .setDilation(conv_dim, convolution_descriptor.dilations().data())
+          .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
-  // TODO(kaixih@nvidia): Remove the redundant float/double alpha/beta when the
-  // cudnn frontend can deduce the compute type from the operation.
-  // Alpha is the scaling factor for input.
-  float falpha = 1.0;
-  double dalpha = 1.0;
-  // Beta is the scaling factor for output.
-  float fbeta = 0.0;
-  double dbeta = 0.0;
+  double alpha = 1.0;
+  double beta = 0.0;
 
   // CUDNN Operation
-  auto op_builder = cudnn_frontend::OperationBuilder(conv_mode);
-  op_builder.setxDesc(tensor_x).setyDesc(tensor_y).setwDesc(tensor_w).setcDesc(
-      conv_desc);
-  if (cudnn_type == CUDNN_DATA_DOUBLE) {
-    op_builder.setAlpha(dalpha).setBeta(dbeta);
-  } else {
-    op_builder.setAlpha(falpha).setBeta(fbeta);
-  }
-  auto op = op_builder.build();
+  auto op = cudnn_frontend::OperationBuilder(conv_mode)
+                .setxDesc(tensor_x)
+                .setyDesc(tensor_y)
+                .setwDesc(tensor_w)
+                .setcDesc(conv_desc)
+                .setAlpha(alpha)
+                .setBeta(beta)
+                .build();
   RETURN_MSG_IF_CUDNN_ERROR(op);
 
   // CUDNN OperationGraph
@@ -3507,36 +3502,43 @@ GetCudnnFusedOperationGraph(
   // Add    : input: tensor_conv, tensor_z; output: tensor_add (virtual)
   // BiasAdd: input: tensor_add, tensor_b;  output: tensor_bias (virtual)
   // Act    : input: tensor_bias;           output: tensor_y
-  std::vector<int64> input_strides64 =
-      input_descriptor.full_strides(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64> input_dims64 =
-      input_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64_t> input_strides(input_strides64.cbegin(),
-                                     input_strides64.cend());
-  std::vector<int64_t> input_dims(input_dims64.cbegin(), input_dims64.cend());
+  int vector_size, vector_dim;
+  std::tie(vector_size, vector_dim) =
+      GetTensorVectorSizeAndDim(input_descriptor, element_type);
+  std::vector<int64> input_dims = input_descriptor.vectorized_dims(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
+  std::vector<int64> input_strides = input_descriptor.vectorized_strides(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
+
+  if (vector_size == 32) {
+    return port::InternalError(
+        "cuDNN frontend doesn't support int8x32 at the "
+        "moment.");
+  }
+
   auto tensor_x = cudnn_frontend::TensorBuilder()
-                      .setDim(input_dims.size(), &input_dims[0])
-                      .setStrides(input_dims.size(), &input_strides[0])
+                      .setDim(input_dims.size(), input_dims.data())
+                      .setStrides(input_dims.size(), input_strides.data())
                       .setId('x')
                       .setAlignment(32)
                       .setDataType(cudnn_type)
+                      .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_x);
 
-  std::vector<int64> output_strides64 =
-      output_descriptor.full_strides(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64> output_dims64 =
-      output_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64_t> output_strides(output_strides64.cbegin(),
-                                      output_strides64.cend());
-  std::vector<int64_t> output_dims(output_dims64.cbegin(),
-                                   output_dims64.cend());
+  std::tie(vector_size, vector_dim) =
+      GetTensorVectorSizeAndDim(output_descriptor, element_type);
+  std::vector<int64> output_dims = output_descriptor.vectorized_dims(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
+  std::vector<int64> output_strides = output_descriptor.vectorized_strides(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   auto tensor_y = cudnn_frontend::TensorBuilder()
-                      .setDim(output_dims.size(), &output_dims[0])
-                      .setStrides(output_dims.size(), &output_strides[0])
+                      .setDim(output_dims.size(), output_dims.data())
+                      .setStrides(output_dims.size(), output_strides.data())
                       .setId('y')
                       .setAlignment(32)
                       .setDataType(cudnn_type)
+                      .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_y);
 
@@ -3546,78 +3548,44 @@ GetCudnnFusedOperationGraph(
                       .setId('z')
                       .setAlignment(32)
                       .setDataType(cudnn_type)
+                      .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_z);
 
-  // w tensor: Transform HWNC (XYIO) format to NCHW/NHWC.
-  std::vector<int64> filter_dims64(2 + filter_descriptor.ndims());
-  filter_dims64[0] = filter_descriptor.output_feature_map_count();
-  filter_dims64[1] = filter_descriptor.input_feature_map_count();
-  auto spatial_dims64 = filter_descriptor.input_filter_dims();
-  std::copy(spatial_dims64.begin(), spatial_dims64.end(),
-            filter_dims64.begin() + 2);
-  cudnnTensorFormat_t format;
-  dnn::DataLayout tensor_format;
-  switch (filter_descriptor.layout()) {
-    case dnn::FilterLayout::kOutputInputYX:
-      format = CUDNN_TENSOR_NCHW;
-      tensor_format = dnn::DataLayout::kBatchDepthYX;
-      break;
-    case dnn::FilterLayout::kOutputYXInput:
-      format = CUDNN_TENSOR_NHWC;
-      tensor_format = dnn::DataLayout::kBatchYXDepth;
-      break;
-    case dnn::FilterLayout::kOutputInputYX4:
-      format = CUDNN_TENSOR_NCHW_VECT_C;
-      tensor_format = dnn::DataLayout::kBatchDepthYX4;
-      break;
-    case dnn::FilterLayout::kOutputInputYX32:
-      format = CUDNN_TENSOR_NCHW_VECT_C;
-      tensor_format = dnn::DataLayout::kBatchDepthYX32;
-      break;
-    default:
-      LOG(FATAL) << "Unsupported filter format "
-                 << FilterLayoutString(filter_descriptor.layout());
-      break;
-  }
-  std::vector<int64> phys_dims = dnn::ReorderDims(
-      filter_dims64, dnn::DataLayout::kBatchDepthYX, tensor_format);
-  std::vector<int64> phys_strides(phys_dims.size());
-  phys_strides[spatial_dims64.size() + 1] = 1;
-  for (int i = spatial_dims64.size(); i >= 0; i--) {
-    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
-  }
-  std::vector<int64> filter_strides64 = dnn::ReorderDims(
-      phys_strides, tensor_format, dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64_t> filter_dims(filter_dims64.cbegin(),
-                                   filter_dims64.cend());
-  std::vector<int64_t> filter_strides(filter_strides64.cbegin(),
-                                      filter_strides64.cend());
+  std::tie(vector_size, vector_dim) =
+      GetTensorVectorSizeAndDim(filter_descriptor, element_type);
+  std::vector<int64> filter_dims = filter_descriptor.vectorized_dims(
+      dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
+  std::vector<int64> filter_strides = filter_descriptor.vectorized_strides(
+      dnn::FilterLayout::kOutputInputYX, vector_size, vector_dim);
   auto tensor_w = cudnn_frontend::TensorBuilder()
-                      .setDim(filter_dims.size(), &filter_dims[0])
-                      .setStrides(filter_dims.size(), &filter_strides[0])
+                      .setDim(filter_dims.size(), filter_dims.data())
+                      .setStrides(filter_dims.size(), filter_strides.data())
                       .setId('w')
                       .setAlignment(32)
                       .setDataType(cudnn_type)
+                      .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_w);
 
-  std::vector<int64> bias_strides64 =
-      bias_descriptor.full_strides(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64> bias_dims64 =
-      bias_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
-  std::vector<int64_t> bias_strides(bias_strides64.cbegin(),
-                                    bias_strides64.cend());
-  std::vector<int64_t> bias_dims(bias_dims64.cbegin(), bias_dims64.cend());
+  std::tie(vector_size, vector_dim) =
+      GetTensorVectorSizeAndDim(bias_descriptor, element_type);
+  std::vector<int64> bias_dims = bias_descriptor.vectorized_dims(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
+  std::vector<int64> bias_strides = bias_descriptor.vectorized_strides(
+      dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   auto tensor_b = cudnn_frontend::TensorBuilder()
-                      .setDim(bias_dims.size(), &bias_dims[0])
-                      .setStrides(bias_dims.size(), &bias_strides[0])
+                      .setDim(bias_dims.size(), bias_dims.data())
+                      .setStrides(bias_dims.size(), bias_strides.data())
                       .setId('b')
                       .setAlignment(32)
                       .setDataType(cudnn_type)
+                      .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_b);
 
+  std::tie(vector_size, vector_dim) =
+      GetTensorVectorSizeAndDim(output_descriptor, element_type);
   auto tensor_conv = cudnn_frontend::TensorBuilder()
                          .setDim(output_dims.size(), &output_dims[0])
                          .setStrides(output_dims.size(), &output_strides[0])
@@ -3625,6 +3593,7 @@ GetCudnnFusedOperationGraph(
                          .setId('C')
                          .setAlignment(32)
                          .setDataType(cudnn_type)
+                         .setVectorCountAndDimension(vector_size, vector_dim)
                          .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_conv);
 
@@ -3635,6 +3604,7 @@ GetCudnnFusedOperationGraph(
                         .setId('A')
                         .setAlignment(32)
                         .setDataType(cudnn_type)
+                        .setVectorCountAndDimension(vector_size, vector_dim)
                         .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_add);
 
@@ -3645,6 +3615,7 @@ GetCudnnFusedOperationGraph(
                          .setId('B')
                          .setAlignment(32)
                          .setDataType(cudnn_type)
+                         .setVectorCountAndDimension(vector_size, vector_dim)
                          .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_bias);
 
@@ -3652,74 +3623,53 @@ GetCudnnFusedOperationGraph(
   auto mode = convolution_descriptor.convolution_not_crosscorr()
                   ? CUDNN_CONVOLUTION
                   : CUDNN_CROSS_CORRELATION;
-  int convDim = convolution_descriptor.ndims();
+
+  int conv_dim = convolution_descriptor.ndims();
+
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(element_type));
-  absl::Span<const int64> strides64 = convolution_descriptor.strides();
-  absl::Span<const int64> padding64 = convolution_descriptor.padding();
-  absl::Span<const int64> dilations64 = convolution_descriptor.dilations();
   CHECK_NE(convolution_descriptor.pad_alignment(),
            dnn::PadAlignment::kTensorFlowPadding)
       << "TensorFlow padding alignment is not supported.";
-  std::vector<int64_t> strides(convolution_descriptor.ndims());
-  std::vector<int64_t> padding(convolution_descriptor.ndims());
-  std::vector<int64_t> dilations(convolution_descriptor.ndims());
-  std::copy(strides64.cbegin(), strides64.cend(), strides.begin());
-  std::copy(padding64.cbegin(), padding64.cend(), padding.begin());
-  std::copy(dilations64.cbegin(), dilations64.cend(), dilations.begin());
-  auto conv_desc = cudnn_frontend::ConvDescBuilder()
-                       .setDataType(accumulator_type)
-                       .setMathMode(mode)
-                       .setNDims(convDim)
-                       .setStrides(convDim, &strides[0])
-                       .setPrePadding(convDim, &padding[0])
-                       .setPostPadding(convDim, &padding[0])
-                       .setDilation(convDim, &dilations[0])
-                       .build();
+
+  auto conv_desc =
+      cudnn_frontend::ConvDescBuilder()
+          .setComputePrecision(accumulator_type)
+          .setMathMode(mode)
+          .setNDims(conv_dim)
+          .setStrides(conv_dim, convolution_descriptor.strides().data())
+          .setPrePadding(conv_dim, convolution_descriptor.padding().data())
+          .setPostPadding(conv_dim, convolution_descriptor.padding().data())
+          .setDilation(conv_dim, convolution_descriptor.dilations().data())
+          .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
-  // TODO(kaixih@nvidia): Remove the redundant float/double alpha/beta when the
-  // cudnn frontend can deduce the compute type from the operation.
-  bool use_float_scale = true;
-  if (element_type == dnn::DataType::kDouble) {
-    use_float_scale = false;
-  }
   // Beta is the scaling factor for output.
   double beta = 0.0;
-  float beta_float = 0.0f;
-
-  float alpha_float = static_cast<float>(alpha);
-  float alpha2_float = static_cast<float>(alpha2);
 
   // CUDNN Operation
-  auto conv_op_builder = cudnn_frontend::OperationBuilder(conv_mode);
-  conv_op_builder.setxDesc(tensor_x)
-      .setyDesc(tensor_conv)
-      .setwDesc(tensor_w)
-      .setcDesc(conv_desc);
-  if (use_float_scale) {
-    conv_op_builder.setAlpha(alpha_float).setBeta(beta_float);
-  } else {
-    conv_op_builder.setAlpha(alpha).setBeta(beta);
-  }
-  auto conv_op = conv_op_builder.build();
+  auto conv_op = cudnn_frontend::OperationBuilder(conv_mode)
+                     .setxDesc(tensor_x)
+                     .setyDesc(tensor_conv)
+                     .setwDesc(tensor_w)
+                     .setcDesc(conv_desc)
+                     .setAlpha(alpha)
+                     .setBeta(beta)
+                     .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_op);
 
   auto add_desc = cudnn_frontend::PointWiseDescBuilder()
                       .setMode(CUDNN_POINTWISE_ADD)
                       .setMathPrecision(cudnn_type)
                       .build();
-  auto add_op_builder = cudnn_frontend::OperationBuilder(
-      CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR);
-  add_op_builder.setxDesc(conv_op.getOutputTensor())
-      .setbDesc(tensor_z)
-      .setyDesc(tensor_add)
-      .setpwDesc(add_desc);
-  if (use_float_scale) {
-    add_op_builder.setAlpha(alpha_float).setAlpha2(alpha2_float);
-  } else {
-    add_op_builder.setAlpha(alpha).setAlpha2(alpha2);
-  }
-  auto add_op = add_op_builder.build();
+  auto add_op = cudnn_frontend::OperationBuilder(
+                    CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
+                    .setxDesc(conv_op.getOutputTensor())
+                    .setbDesc(tensor_z)
+                    .setyDesc(tensor_add)
+                    .setpwDesc(add_desc)
+                    .setAlpha(alpha)
+                    .setAlpha2(alpha2)
+                    .build();
   RETURN_MSG_IF_CUDNN_ERROR(add_op);
 
   auto bias_add_desc = cudnn_frontend::PointWiseDescBuilder()
