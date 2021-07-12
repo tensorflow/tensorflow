@@ -562,7 +562,6 @@ cc_library(
     name = "gpu_executable",
     srcs = [
         "bef_thunk.cc",
-        "collective_permute_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
@@ -585,7 +584,6 @@ cc_library(
     ]),
     hdrs = [
         "bef_thunk.h",
-        "collective_permute_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
@@ -1140,6 +1138,37 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "fusion_bitcast_lift",
+    srcs = ["fusion_bitcast_lift.cc"],
+    hdrs = ["fusion_bitcast_lift.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "fusion_bitcast_lift_test",
+    srcs = ["fusion_bitcast_lift_test.cc"],
+    tags = ["no_pip"],
+    deps = [
+        ":fusion_bitcast_lift",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "fusion_merger",
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
@@ -1345,15 +1374,15 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_all_reduce_scatter_creator",
-    srcs = ["gpu_all_reduce_scatter_creator.cc"],
-    hdrs = ["gpu_all_reduce_scatter_creator.h"],
+    name = "gpu_reduce_scatter_creator",
+    srcs = ["gpu_reduce_scatter_creator.cc"],
+    hdrs = ["gpu_reduce_scatter_creator.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:all_reduce_scatter_utils",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:reduce_scatter_utils",
     ],
 )
 
@@ -1380,9 +1409,9 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
+        ":fusion_bitcast_lift",
         ":fusion_merger",
         ":gemm_rewriter",
-        ":gpu_all_reduce_scatter_creator",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_copy_insertion",
@@ -1390,6 +1419,7 @@ cc_library(
         ":gpu_executable",
         ":gpu_hlo_schedule",
         ":gpu_layout_assignment",
+        ":gpu_reduce_scatter_creator",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
         ":gpu_spmd_partitioner",
@@ -1420,9 +1450,11 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:all_gather_broadcast_reorder",
         "//tensorflow/compiler/xla/service:all_gather_combiner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
+        "//tensorflow/compiler/xla/service:all_reduce_reassociate",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:async_all_reduce_creator",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
@@ -1459,6 +1491,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:operand_upcaster",
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:real_imag_expander",
+        "//tensorflow/compiler/xla/service:reduce_scatter_combiner",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:result_caster",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",

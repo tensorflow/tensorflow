@@ -770,7 +770,7 @@ Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleAllReduceScatter(const HloInstruction* hlo) {
+Status HloCostAnalysis::HandleReduceScatter(const HloInstruction* hlo) {
   return Status::OK();
 }
 

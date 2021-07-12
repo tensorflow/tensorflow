@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -43,14 +44,39 @@ class TransposePlan {
   // dims: the input shape, in elements.
   // permutation: for each output dimension, gives the number of the
   //   corresponding input dimension. Must be a permutation of [0..dims.size())
-  // input_strides_in_bytes: optional; the strides of the input array in
-  //   bytes. (N.B. not elements). If omitted, the array is assumed to be in
-  //   a dense major-to-minor layout.
+  // input_layout: either byte strides or an input tiling.
+  //
+  // A Striding represents the strides of the input array in bytes. (N.B. not
+  // elements).
+  //
+  // A Tiling is a tiling specification for the input or output array. May
+  // have fewer dimensions that `dims`, in which case the tiling applies to the
+  // minormost dimensions and any remaining dimensions are left untiled (i.e.,
+  // tile size 1). An empty tiling corresponds to an untiled dense
+  // major-to-minor layout.
+  //
+  // For more information about tiling, see
+  // https://www.tensorflow.org/xla/tiled_layout
+  // This class supports a single level of tiling. In addition, the same
+  // dimension currently cannot have different non-trivial tiling values in
+  // both the input and output.
+  //
+  // The size of the plan may be exponential in the number of non-trivial
+  // tiled dimensions. This is acceptable because in the intended use case for
+  // this code we expect at most 2 tiled dimensions on input and output.
+  //
+  // The input may have either a striding or a tiling but not both.
+  struct Tiling {
+    absl::Span<int64_t const> tiling;
+  };
+  struct Striding {
+    absl::Span<int64_t const> strides_in_bytes;
+  };
   static StatusOr<std::unique_ptr<TransposePlan>> Create(
       size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
       absl::Span<int64_t const> permutation,
-      absl::optional<absl::Span<int64_t const>> input_strides_in_bytes =
-          absl::nullopt);
+      absl::variant<Tiling, Striding> input_layout = Tiling{},
+      Tiling output_tiling = Tiling{});
 
   TransposePlan();
   ~TransposePlan();
@@ -67,16 +93,15 @@ class TransposePlan {
 
   size_t ElemSizeInBytes() const { return elem_size_in_bytes_; }
 
-  // Input and output size, in number of elements.
-  int64_t NumElems() const;
+  // Input and output size, in number of elements. Ignores any input striding,
+  // but accounts for tiling.
+  int64_t InputNumElems() const;
+  int64_t OutputNumElems() const;
 
   absl::Span<int64_t const> InputDims() const { return original_a_dims_; }
   absl::Span<int64_t const> OutputDims() const { return original_b_dims_; }
 
   absl::Span<int64_t const> InputStrides() const { return original_a_strides_; }
-  absl::Span<int64_t const> OutputStrides() const {
-    return original_b_strides_;
-  }
 
   struct Node;
 
@@ -87,16 +112,26 @@ class TransposePlan {
   static void RemoveTrivialDimensions(
       absl::InlinedVector<int64_t, 4>& a_dims,
       absl::InlinedVector<int64_t, 4>& permutation,
-      absl::InlinedVector<int64_t, 4>& lda);
+      absl::InlinedVector<int64_t, 4>& lda,
+      absl::InlinedVector<int64_t, 4>& lda_tile,
+      absl::InlinedVector<int64_t, 4>& a_tiling,
+      absl::InlinedVector<int64_t, 4>& b_tiling);
 
   // Collapses together dimensions that are adjacent both in `dims` and
   // `permutation`.
   static void CoalesceDimensions(absl::InlinedVector<int64_t, 4>& a_dims,
                                  absl::InlinedVector<int64_t, 4>& permutation,
-                                 absl::InlinedVector<int64_t, 4>& lda);
+                                 absl::InlinedVector<int64_t, 4>& lda,
+                                 absl::InlinedVector<int64_t, 4>& lda_tile,
+                                 absl::InlinedVector<int64_t, 4>& a_tiling,
+                                 absl::InlinedVector<int64_t, 4>& b_tiling);
 
  private:
-  Node* BuildPlanNode(absl::Span<int64_t const> inverse_permutation, int i);
+  // Performs plan initialization that cannot fail.
+  void Initialize();
+
+  void BuildPlanNodes(absl::Span<int64_t const> inverse_permutation, int i,
+                      absl::InlinedVector<Node*, 1>& output_nodes);
 
   // The signature of ExecuteTyped uses char* pointers because we perform
   // address calculations with strides in bytes; the strides need not be
@@ -110,10 +145,11 @@ class TransposePlan {
   // Number of elements in the input array.
   int64_t num_elems_;
 
+  // Description of the transpose, before any optimizations such as coalescing
+  // dimensions have been applied.
   absl::InlinedVector<int64_t, 4> original_a_dims_;
   absl::InlinedVector<int64_t, 4> original_a_strides_;
   std::vector<int64_t> original_b_dims_;
-  absl::InlinedVector<int64_t, 4> original_b_strides_;
 
   // Dimensions of the input array A.
   absl::InlinedVector<int64_t, 4> a_dims_;
@@ -126,9 +162,16 @@ class TransposePlan {
   // the corresponding dimension of A?
   absl::InlinedVector<int64_t, 4> permutation_;
 
-  // Leading-dimension sizes (strides) of each dimension.
+  // Leading-dimension sizes (byte strides) of each dimension.
   absl::InlinedVector<int64_t, 4> lda_;
+  absl::InlinedVector<int64_t, 4> lda_tile_;
   absl::InlinedVector<int64_t, 4> ldb_;
+  absl::InlinedVector<int64_t, 4> ldb_tile_;
+
+  // Tile sizes in each dimension. Has size equal to the number of dimensions.
+  // A 1 entry means that dimension is not tiled.
+  absl::InlinedVector<int64_t, 4> a_tiling_;
+  absl::InlinedVector<int64_t, 4> b_tiling_;
 
   // Order to traverse dimensions, from slowest-varying to fastest-varying.
   // The integers are dimension numbers in A.
@@ -140,9 +183,9 @@ class TransposePlan {
   // pointer jumping.
   std::vector<std::unique_ptr<Node>> nodes_;
 
-  // Root node of the plan, i.e., pointing to the outermost loop in the loop
-  // nest.
-  Node* root_node_;
+  // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
+  // nest. A plan may have multiple root nodes.
+  absl::InlinedVector<Node*, 1> root_nodes_;
 
   // Are the innermost (stride-1) dimensions the same dimension? This determines
   // whether the inner kernel is a transpose or a memcpy.
@@ -177,8 +220,9 @@ class TransposePlanCache {
   StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
       size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
       absl::Span<int64_t const> permutation,
-      absl::optional<absl::Span<int64_t const>> input_strides_in_bytes =
-          absl::nullopt);
+      absl::variant<TransposePlan::Tiling, TransposePlan::Striding>
+          input_layout = TransposePlan::Tiling{},
+      TransposePlan::Tiling output_tiling = TransposePlan::Tiling{});
 
  private:
   LRUCache<TransposePlanCacheKey,

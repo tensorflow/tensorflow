@@ -29,6 +29,11 @@ std::string ImmediateExecutionTensorHandle::DebugString() const {
   if (!SummarizeValue(value_string).ok()) {
     value_string = "<error computing value>";
   }
+  if (value_string.length() > 100) {
+    // The default NumPy-style output can be distractingly long in error
+    // messages.
+    value_string = absl::StrCat(value_string.substr(0, 100), " [...]");
+  }
   Status s;
   const char* device_name = DeviceName(&s);
   if (!s.ok()) {

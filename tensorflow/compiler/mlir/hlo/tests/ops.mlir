@@ -15,7 +15,7 @@ func private @invalid_type() -> !mhlo.foobar
 
 // CHECK-LABEL: func @reduce_scatter
 func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
-  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ( {
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -29,7 +29,7 @@ func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{operand scatter dimension has size 16, expected to be a multiple of result scatter dimension size 5}}
-  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ( {
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -43,7 +43,7 @@ func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x5xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x0xf32>) -> tensor<4x4xf32> {
   // expected-error@+1 {{operand scatter dimension cannot be zero}}
-  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ( {
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -57,7 +57,7 @@ func @invalid_reduce_scatter(%data: tensor<4x0xf32>) -> tensor<4x4xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x0xf32> {
   // expected-error@+1 {{result scatter dimension cannot be zero}}
-  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ( {
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -71,7 +71,7 @@ func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x0xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4xf32> {
   // expected-error@+1 {{operand and result should have same rank}}
-  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ( {
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -85,7 +85,7 @@ func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
   // expected-error@+1 {{scatter dim should be less than operand/result rank}}
-  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ( {
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -99,7 +99,7 @@ func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<3x4xf32> {
   // expected-error@+1 {{non scatter dimensions should be same for operand (4) and result (3)}}
-  %0 = "mhlo.all_reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ( {
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>

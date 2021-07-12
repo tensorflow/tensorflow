@@ -514,11 +514,8 @@ func @clip_static_broadcast(%arg0 : tensor<5xf32>, %arg1 : tensor<f32>, %arg2 : 
 
 // CHECK-LABEL: @clip_dynamic_broadcast
 func @clip_dynamic_broadcast(%arg0 : tensor<?xf32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<?xf32> {
-  // CHECK-DAG: [[SHP:%.+]] = shape.shape_of %arg0
-  // CHECK: [[SHPIDX:%.+]] = tensor.generate {
-  // CHECK: [[INDEX:%.+]] = tensor.extract [[SHP]][%arg3] : tensor<1xindex>
-  // CHECK: [[CAST:%.+]] = index_cast [[INDEX]] : index to i32
-  // CHECK: tensor.yield [[CAST]] : i32
+  // CHECK: [[SHP:%.+]] = shape.shape_of %arg0
+  // CHECK: [[SHPIDX:%.+]] = index_cast [[SHP]] : tensor<1xindex> to tensor<1xi32>
   // CHECK-DAG: [[BROADCAST_MIN:%.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, [[SHPIDX]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
   // CHECK-DAG: [[BROADCAST_MAX:%.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg2, [[SHPIDX]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
   // CHECK-DAG: [[CLAMP:%.+]] = "mhlo.clamp"([[BROADCAST_MIN]], %arg0, [[BROADCAST_MAX]])
@@ -888,6 +885,32 @@ func @floormod_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*x
   // CHECK-NOT: tf.FloorMod
   %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
   return %0: tensor<*xi32>
+}
+
+//===----------------------------------------------------------------------===//
+// OnesLike
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @ones_like
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<2x?xf32>)
+func @ones_like(%arg0: tensor<2x?xf32>) -> tensor<2x?xf32> {
+  // CHECK: %[[RES:.*]] = "chlo.constant_like"(%[[ARG]]) {value = 1.0{{.*}}}
+  // CHECK: return %[[RES]]
+  %0 = "tf.OnesLike"(%arg0) : (tensor<2x?xf32>) -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// ZerosLike
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @zeros_like
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<2x?xf32>)
+func @zeros_like(%arg0: tensor<2x?xf32>) -> tensor<2x?xf32> {
+  // CHECK: %[[RES:.*]] = "chlo.constant_like"(%[[ARG]]) {value = 0.0{{.*}}}
+  // CHECK: return %[[RES]]
+  %0 = "tf.ZerosLike"(%arg0) : (tensor<2x?xf32>) -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -1936,10 +1959,7 @@ func @rfft_1D_dynamic(%arg0: tensor<?xf32>) -> tensor<8xcomplex<f32>> {
 // CHECK-LABEL: func @shape_1D
 func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
   // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK: [[TENSOR:%.+]] = tensor.generate {
-  // CHECK: [[INDEX:%.+]] = tensor.extract [[SHAPE]][%arg1] : tensor<1xindex>
-  // CHECK: [[CAST:%.+]] = index_cast [[INDEX]] : index to i32
-  // CHECK: tensor.yield [[CAST]] : i32
+  // CHECK: [[TENSOR:%.+]] = index_cast [[SHAPE]] : tensor<1xindex> to tensor<1xi32>
   %0 = "tf.Shape"(%arg0) : (tensor<?xf32>) -> tensor<1xi32>
 
   // CHECK: return [[TENSOR]]
@@ -1949,10 +1969,7 @@ func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
 // CHECK-LABEL: func @shape_2D
 func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
   // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK: [[TENSOR:%.+]] = tensor.generate {
-  // CHECK: [[INDEX:%.+]] = tensor.extract [[SHAPE]][%arg1] : tensor<2xindex>
-  // CHECK: [[CAST:%.+]] = index_cast [[INDEX]] : index to i32
-  // CHECK: tensor.yield [[CAST]] : i32
+  // CHECK: [[TENSOR:%.+]] = index_cast [[SHAPE]] : tensor<2xindex> to tensor<2xi32>
   %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
 
   // CHECK: return [[TENSOR]]
@@ -1962,11 +1979,7 @@ func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
 // CHECK-LABEL: func @shape_rankless
 func @shape_rankless(%arg0: tensor<*xf32>) -> tensor<?xi32> {
   // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
-  // CHECK: [[RANK:%.+]] = rank %arg0
-  // CHECK: [[TENSOR:%.+]] = tensor.generate [[RANK]] {
-  // CHECK: [[INDEX:%.+]] = tensor.extract [[SHAPE]][%arg1] : tensor<?xindex>
-  // CHECK: [[CAST:%.+]] = index_cast [[INDEX]] : index to i32
-  // CHECK: tensor.yield [[CAST]] : i32
+  // CHECK: [[TENSOR:%.+]] = index_cast [[SHAPE]] : tensor<?xindex> to tensor<?xi32>
   %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
 
   // CHECK: return [[TENSOR]]
@@ -2523,14 +2536,25 @@ func @reshape(%arg0: tensor<2xf32>, %arg1: tensor<2xi32>) -> tensor<2x1xf32> {
 
 // CHECK-LABEL: reshape_dynamic
 func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
-  // CHECK:  "mhlo.dynamic_reshape"
+  // CHECK:  "chlo.dynamic_reshape"
+  // CHLO:  mhlo.compute_reshape_shape
+  // CHLO:  mhlo.dynamic_reshape
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: reshape_unranked
+// CHECK-SAME: %[[INPUT:.*]]: tensor<*xf32>
+// CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
 func @reshape_unranked(%arg0: tensor<*xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
-  // CHECK:  "tf.Reshape"
+  // CHECK:  "chlo.dynamic_reshape"
+  // CHLO:  shape.shape_of
+  // CHLO:  shape.num_elements
+  // CHLO:  mhlo.cstr_reshapable
+  // CHLO:  assuming{{.*}}{
+  // CHLO:   mhlo.compute_reshape_shape
+  // CHLO:   mhlo.dynamic_reshape
+  // CHLO:  }
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
 }

@@ -2094,6 +2094,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
                                      "XlaVariadicReduce",
+                                     "XlaVariadicReduceV2",
                                      "XlaVariadicSort",
                                      "XlaWhile",
                                      "Zeta",

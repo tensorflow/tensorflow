@@ -22,7 +22,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.platform import tf_logging as logging
 
 
-class OpCallbacksTest(tf.test.TestCase):
+class TFLiteAuthoringTest(tf.test.TestCase):
 
   def test_simple_cosh(self):
     @authoring.compatible
@@ -92,8 +92,8 @@ class OpCallbacksTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityError: op 'tf.ShuffleDatasetV3, tf.DummySeedGenerator, "
-        "tf.RangeDataset' is(are) not natively supported by "
+        "CompatibilityError: op 'tf.DummySeedGenerator, tf.RangeDataset, "
+        "tf.ShuffleDatasetV3' is(are) not natively supported by "
         "TensorFlow Lite. You need to provide a custom operator. "
         "https://www.tensorflow.org/lite/guide/ops_custom", log_messages)
 
@@ -236,7 +236,7 @@ class OpCallbacksTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityError: op 'tf.ShuffleDatasetV3, tf.RangeDataset' is(are) "
+        "CompatibilityError: op 'tf.RangeDataset, tf.ShuffleDatasetV3' is(are) "
         "not natively supported by TensorFlow Lite. You need to provide a "
         "custom operator. https://www.tensorflow.org/lite/guide/ops_custom",
         log_messages)

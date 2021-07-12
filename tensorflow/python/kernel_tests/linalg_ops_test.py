@@ -592,7 +592,7 @@ class EighTridiagonalTest(test.TestCase, parameterized.TestCase):
     atol = n * eps * np.amax(np.abs(eigvals_expected))
     self.assertAllClose(eigvals_expected, eigvals, atol=atol)
     if not eigvals_only:
-      self.check_orthogonality(eigvectors, np.sqrt(n) * eps)
+      self.check_orthogonality(eigvectors, 2 * np.sqrt(n) * eps)
       self.check_residual(matrix, eigvals, eigvectors, atol)
 
   @parameterized.parameters((np.float32), (np.float64), (np.complex64),

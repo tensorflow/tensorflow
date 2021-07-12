@@ -281,6 +281,15 @@ class BatchDescriptor {
   // layout.
   std::vector<int64> full_strides(const DataLayout& layout) const;
 
+  // Vectorized dimensions where users can specify the dimension that the number
+  // of dimensions is reported rather than the full number of elements.
+  std::vector<int64> vectorized_dims(const DataLayout& layout, int vector_size,
+                                     int vector_dim) const;
+
+  // Vectorized strides correspond to the vectorized_dims.
+  std::vector<int64> vectorized_strides(const DataLayout& layout,
+                                        int vector_size, int vector_dim) const;
+
   // Named-argument helpers for avoiding user error during construction.
   BatchDescriptor& set_count(int64 value) {
     tensor_.set_dimensions(0, value);
@@ -467,6 +476,15 @@ class FilterDescriptor {
   // Full strides of the underlying filter,
   // ordered according to a specific layout.
   std::vector<int64> full_strides(const FilterLayout& layout) const;
+
+  // Vectorized dimensions where users can specify the dimension that the number
+  // of dimensions is reported rather than the full number of elements.
+  std::vector<int64> vectorized_dims(const FilterLayout& layout,
+                                     int vector_size, int vector_dim) const;
+
+  // Vectorized strides correspond to the vectorized_dims.
+  std::vector<int64> vectorized_strides(const FilterLayout& layout,
+                                        int vector_size, int vector_dim) const;
 
  private:
   absl::Span<int64> input_filter_dims() {

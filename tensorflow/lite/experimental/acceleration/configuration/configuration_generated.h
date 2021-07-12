@@ -103,10 +103,8 @@ bool operator==(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs);
 bool operator!=(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs);
 bool operator==(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs);
 bool operator!=(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs);
-bool operator==(const EdgeTpuInactivePowerConfigT &lhs,
-                const EdgeTpuInactivePowerConfigT &rhs);
-bool operator!=(const EdgeTpuInactivePowerConfigT &lhs,
-                const EdgeTpuInactivePowerConfigT &rhs);
+bool operator==(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs);
+bool operator!=(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs);
 bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs);
 bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs);
 bool operator==(const CoralSettingsT &lhs, const CoralSettingsT &rhs);
@@ -127,26 +125,18 @@ bool operator==(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs);
 bool operator!=(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs);
 bool operator==(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs);
 bool operator!=(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs);
-bool operator==(const BestAccelerationDecisionT &lhs,
-                const BestAccelerationDecisionT &rhs);
-bool operator!=(const BestAccelerationDecisionT &lhs,
-                const BestAccelerationDecisionT &rhs);
-bool operator==(const BenchmarkInitializationFailureT &lhs,
-                const BenchmarkInitializationFailureT &rhs);
-bool operator!=(const BenchmarkInitializationFailureT &lhs,
-                const BenchmarkInitializationFailureT &rhs);
+bool operator==(const BestAccelerationDecisionT &lhs, const BestAccelerationDecisionT &rhs);
+bool operator!=(const BestAccelerationDecisionT &lhs, const BestAccelerationDecisionT &rhs);
+bool operator==(const BenchmarkInitializationFailureT &lhs, const BenchmarkInitializationFailureT &rhs);
+bool operator!=(const BenchmarkInitializationFailureT &lhs, const BenchmarkInitializationFailureT &rhs);
 bool operator==(const MiniBenchmarkEventT &lhs, const MiniBenchmarkEventT &rhs);
 bool operator!=(const MiniBenchmarkEventT &lhs, const MiniBenchmarkEventT &rhs);
 bool operator==(const ModelFileT &lhs, const ModelFileT &rhs);
 bool operator!=(const ModelFileT &lhs, const ModelFileT &rhs);
-bool operator==(const BenchmarkStoragePathsT &lhs,
-                const BenchmarkStoragePathsT &rhs);
-bool operator!=(const BenchmarkStoragePathsT &lhs,
-                const BenchmarkStoragePathsT &rhs);
-bool operator==(const MinibenchmarkSettingsT &lhs,
-                const MinibenchmarkSettingsT &rhs);
-bool operator!=(const MinibenchmarkSettingsT &lhs,
-                const MinibenchmarkSettingsT &rhs);
+bool operator==(const BenchmarkStoragePathsT &lhs, const BenchmarkStoragePathsT &rhs);
+bool operator!=(const BenchmarkStoragePathsT &lhs, const BenchmarkStoragePathsT &rhs);
+bool operator==(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSettingsT &rhs);
+bool operator!=(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSettingsT &rhs);
 
 enum ExecutionPreference {
   ExecutionPreference_ANY = 0,
@@ -159,21 +149,27 @@ enum ExecutionPreference {
 
 inline const ExecutionPreference (&EnumValuesExecutionPreference())[4] {
   static const ExecutionPreference values[] = {
-      ExecutionPreference_ANY, ExecutionPreference_LOW_LATENCY,
-      ExecutionPreference_LOW_POWER, ExecutionPreference_FORCE_CPU};
+    ExecutionPreference_ANY,
+    ExecutionPreference_LOW_LATENCY,
+    ExecutionPreference_LOW_POWER,
+    ExecutionPreference_FORCE_CPU
+  };
   return values;
 }
 
-inline const char *const *EnumNamesExecutionPreference() {
-  static const char *const names[5] = {"ANY", "LOW_LATENCY", "LOW_POWER",
-                                       "FORCE_CPU", nullptr};
+inline const char * const *EnumNamesExecutionPreference() {
+  static const char * const names[5] = {
+    "ANY",
+    "LOW_LATENCY",
+    "LOW_POWER",
+    "FORCE_CPU",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameExecutionPreference(ExecutionPreference e) {
-  if (flatbuffers::IsOutRange(e, ExecutionPreference_ANY,
-                              ExecutionPreference_FORCE_CPU))
-    return "";
+  if (flatbuffers::IsOutRange(e, ExecutionPreference_ANY, ExecutionPreference_FORCE_CPU)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesExecutionPreference()[index];
 }
@@ -191,23 +187,34 @@ enum Delegate {
 };
 
 inline const Delegate (&EnumValuesDelegate())[7] {
-  static const Delegate values[] = {Delegate_NONE,         Delegate_NNAPI,
-                                    Delegate_GPU,          Delegate_HEXAGON,
-                                    Delegate_XNNPACK,      Delegate_EDGETPU,
-                                    Delegate_EDGETPU_CORAL};
+  static const Delegate values[] = {
+    Delegate_NONE,
+    Delegate_NNAPI,
+    Delegate_GPU,
+    Delegate_HEXAGON,
+    Delegate_XNNPACK,
+    Delegate_EDGETPU,
+    Delegate_EDGETPU_CORAL
+  };
   return values;
 }
 
-inline const char *const *EnumNamesDelegate() {
-  static const char *const names[8] = {"NONE",          "NNAPI",   "GPU",
-                                       "HEXAGON",       "XNNPACK", "EDGETPU",
-                                       "EDGETPU_CORAL", nullptr};
+inline const char * const *EnumNamesDelegate() {
+  static const char * const names[8] = {
+    "NONE",
+    "NNAPI",
+    "GPU",
+    "HEXAGON",
+    "XNNPACK",
+    "EDGETPU",
+    "EDGETPU_CORAL",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameDelegate(Delegate e) {
-  if (flatbuffers::IsOutRange(e, Delegate_NONE, Delegate_EDGETPU_CORAL))
-    return "";
+  if (flatbuffers::IsOutRange(e, Delegate_NONE, Delegate_EDGETPU_CORAL)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesDelegate()[index];
 }
@@ -221,28 +228,29 @@ enum NNAPIExecutionPreference {
   NNAPIExecutionPreference_MAX = NNAPIExecutionPreference_NNAPI_SUSTAINED_SPEED
 };
 
-inline const NNAPIExecutionPreference (
-    &EnumValuesNNAPIExecutionPreference())[4] {
+inline const NNAPIExecutionPreference (&EnumValuesNNAPIExecutionPreference())[4] {
   static const NNAPIExecutionPreference values[] = {
-      NNAPIExecutionPreference_UNDEFINED,
-      NNAPIExecutionPreference_NNAPI_LOW_POWER,
-      NNAPIExecutionPreference_NNAPI_FAST_SINGLE_ANSWER,
-      NNAPIExecutionPreference_NNAPI_SUSTAINED_SPEED};
+    NNAPIExecutionPreference_UNDEFINED,
+    NNAPIExecutionPreference_NNAPI_LOW_POWER,
+    NNAPIExecutionPreference_NNAPI_FAST_SINGLE_ANSWER,
+    NNAPIExecutionPreference_NNAPI_SUSTAINED_SPEED
+  };
   return values;
 }
 
-inline const char *const *EnumNamesNNAPIExecutionPreference() {
-  static const char *const names[5] = {"UNDEFINED", "NNAPI_LOW_POWER",
-                                       "NNAPI_FAST_SINGLE_ANSWER",
-                                       "NNAPI_SUSTAINED_SPEED", nullptr};
+inline const char * const *EnumNamesNNAPIExecutionPreference() {
+  static const char * const names[5] = {
+    "UNDEFINED",
+    "NNAPI_LOW_POWER",
+    "NNAPI_FAST_SINGLE_ANSWER",
+    "NNAPI_SUSTAINED_SPEED",
+    nullptr
+  };
   return names;
 }
 
-inline const char *EnumNameNNAPIExecutionPreference(
-    NNAPIExecutionPreference e) {
-  if (flatbuffers::IsOutRange(e, NNAPIExecutionPreference_UNDEFINED,
-                              NNAPIExecutionPreference_NNAPI_SUSTAINED_SPEED))
-    return "";
+inline const char *EnumNameNNAPIExecutionPreference(NNAPIExecutionPreference e) {
+  if (flatbuffers::IsOutRange(e, NNAPIExecutionPreference_UNDEFINED, NNAPIExecutionPreference_NNAPI_SUSTAINED_SPEED)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesNNAPIExecutionPreference()[index];
 }
@@ -258,25 +266,27 @@ enum NNAPIExecutionPriority {
 
 inline const NNAPIExecutionPriority (&EnumValuesNNAPIExecutionPriority())[4] {
   static const NNAPIExecutionPriority values[] = {
-      NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
-      NNAPIExecutionPriority_NNAPI_PRIORITY_LOW,
-      NNAPIExecutionPriority_NNAPI_PRIORITY_MEDIUM,
-      NNAPIExecutionPriority_NNAPI_PRIORITY_HIGH};
+    NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
+    NNAPIExecutionPriority_NNAPI_PRIORITY_LOW,
+    NNAPIExecutionPriority_NNAPI_PRIORITY_MEDIUM,
+    NNAPIExecutionPriority_NNAPI_PRIORITY_HIGH
+  };
   return values;
 }
 
-inline const char *const *EnumNamesNNAPIExecutionPriority() {
-  static const char *const names[5] = {
-      "NNAPI_PRIORITY_UNDEFINED", "NNAPI_PRIORITY_LOW", "NNAPI_PRIORITY_MEDIUM",
-      "NNAPI_PRIORITY_HIGH", nullptr};
+inline const char * const *EnumNamesNNAPIExecutionPriority() {
+  static const char * const names[5] = {
+    "NNAPI_PRIORITY_UNDEFINED",
+    "NNAPI_PRIORITY_LOW",
+    "NNAPI_PRIORITY_MEDIUM",
+    "NNAPI_PRIORITY_HIGH",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameNNAPIExecutionPriority(NNAPIExecutionPriority e) {
-  if (flatbuffers::IsOutRange(e,
-                              NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
-                              NNAPIExecutionPriority_NNAPI_PRIORITY_HIGH))
-    return "";
+  if (flatbuffers::IsOutRange(e, NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED, NNAPIExecutionPriority_NNAPI_PRIORITY_HIGH)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesNNAPIExecutionPriority()[index];
 }
@@ -290,19 +300,26 @@ enum GPUBackend {
 };
 
 inline const GPUBackend (&EnumValuesGPUBackend())[3] {
-  static const GPUBackend values[] = {GPUBackend_UNSET, GPUBackend_OPENCL,
-                                      GPUBackend_OPENGL};
+  static const GPUBackend values[] = {
+    GPUBackend_UNSET,
+    GPUBackend_OPENCL,
+    GPUBackend_OPENGL
+  };
   return values;
 }
 
-inline const char *const *EnumNamesGPUBackend() {
-  static const char *const names[4] = {"UNSET", "OPENCL", "OPENGL", nullptr};
+inline const char * const *EnumNamesGPUBackend() {
+  static const char * const names[4] = {
+    "UNSET",
+    "OPENCL",
+    "OPENGL",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameGPUBackend(GPUBackend e) {
-  if (flatbuffers::IsOutRange(e, GPUBackend_UNSET, GPUBackend_OPENGL))
-    return "";
+  if (flatbuffers::IsOutRange(e, GPUBackend_UNSET, GPUBackend_OPENGL)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesGPUBackend()[index];
 }
@@ -318,25 +335,27 @@ enum GPUInferencePriority {
 
 inline const GPUInferencePriority (&EnumValuesGPUInferencePriority())[4] {
   static const GPUInferencePriority values[] = {
-      GPUInferencePriority_GPU_PRIORITY_AUTO,
-      GPUInferencePriority_GPU_PRIORITY_MAX_PRECISION,
-      GPUInferencePriority_GPU_PRIORITY_MIN_LATENCY,
-      GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE};
+    GPUInferencePriority_GPU_PRIORITY_AUTO,
+    GPUInferencePriority_GPU_PRIORITY_MAX_PRECISION,
+    GPUInferencePriority_GPU_PRIORITY_MIN_LATENCY,
+    GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE
+  };
   return values;
 }
 
-inline const char *const *EnumNamesGPUInferencePriority() {
-  static const char *const names[5] = {
-      "GPU_PRIORITY_AUTO", "GPU_PRIORITY_MAX_PRECISION",
-      "GPU_PRIORITY_MIN_LATENCY", "GPU_PRIORITY_MIN_MEMORY_USAGE", nullptr};
+inline const char * const *EnumNamesGPUInferencePriority() {
+  static const char * const names[5] = {
+    "GPU_PRIORITY_AUTO",
+    "GPU_PRIORITY_MAX_PRECISION",
+    "GPU_PRIORITY_MIN_LATENCY",
+    "GPU_PRIORITY_MIN_MEMORY_USAGE",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameGPUInferencePriority(GPUInferencePriority e) {
-  if (flatbuffers::IsOutRange(
-          e, GPUInferencePriority_GPU_PRIORITY_AUTO,
-          GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE))
-    return "";
+  if (flatbuffers::IsOutRange(e, GPUInferencePriority_GPU_PRIORITY_AUTO, GPUInferencePriority_GPU_PRIORITY_MIN_MEMORY_USAGE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesGPUInferencePriority()[index];
 }
@@ -344,31 +363,29 @@ inline const char *EnumNameGPUInferencePriority(GPUInferencePriority e) {
 enum GPUInferenceUsage {
   GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0,
   GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1,
-  GPUInferenceUsage_MIN =
-      GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
-  GPUInferenceUsage_MAX =
-      GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED
+  GPUInferenceUsage_MIN = GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
+  GPUInferenceUsage_MAX = GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED
 };
 
 inline const GPUInferenceUsage (&EnumValuesGPUInferenceUsage())[2] {
   static const GPUInferenceUsage values[] = {
-      GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
-      GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED};
+    GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
+    GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED
+  };
   return values;
 }
 
-inline const char *const *EnumNamesGPUInferenceUsage() {
-  static const char *const names[3] = {
-      "GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER",
-      "GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED", nullptr};
+inline const char * const *EnumNamesGPUInferenceUsage() {
+  static const char * const names[3] = {
+    "GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER",
+    "GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameGPUInferenceUsage(GPUInferenceUsage e) {
-  if (flatbuffers::IsOutRange(
-          e, GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
-          GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED))
-    return "";
+  if (flatbuffers::IsOutRange(e, GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER, GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesGPUInferenceUsage()[index];
 }
@@ -386,21 +403,27 @@ enum PlatformType {
 
 inline const PlatformType (&EnumValuesPlatformType())[4] {
   static const PlatformType values[] = {
-      PlatformType_MMIO, PlatformType_REFERENCE, PlatformType_SIMULATOR,
-      PlatformType_REMOTE_SIMULATOR};
+    PlatformType_MMIO,
+    PlatformType_REFERENCE,
+    PlatformType_SIMULATOR,
+    PlatformType_REMOTE_SIMULATOR
+  };
   return values;
 }
 
-inline const char *const *EnumNamesPlatformType() {
-  static const char *const names[5] = {"MMIO", "REFERENCE", "SIMULATOR",
-                                       "REMOTE_SIMULATOR", nullptr};
+inline const char * const *EnumNamesPlatformType() {
+  static const char * const names[5] = {
+    "MMIO",
+    "REFERENCE",
+    "SIMULATOR",
+    "REMOTE_SIMULATOR",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNamePlatformType(PlatformType e) {
-  if (flatbuffers::IsOutRange(e, PlatformType_MMIO,
-                              PlatformType_REMOTE_SIMULATOR))
-    return "";
+  if (flatbuffers::IsOutRange(e, PlatformType_MMIO, PlatformType_REMOTE_SIMULATOR)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesPlatformType()[index];
 }
@@ -422,34 +445,35 @@ enum EdgeTpuPowerState {
 
 inline const EdgeTpuPowerState (&EnumValuesEdgeTpuPowerState())[8] {
   static const EdgeTpuPowerState values[] = {
-      EdgeTpuPowerState_UNDEFINED_POWERSTATE,
-      EdgeTpuPowerState_TPU_CORE_OFF,
-      EdgeTpuPowerState_READY,
-      EdgeTpuPowerState_ACTIVE_MIN_POWER,
-      EdgeTpuPowerState_ACTIVE_VERY_LOW_POWER,
-      EdgeTpuPowerState_ACTIVE_LOW_POWER,
-      EdgeTpuPowerState_ACTIVE,
-      EdgeTpuPowerState_OVER_DRIVE};
+    EdgeTpuPowerState_UNDEFINED_POWERSTATE,
+    EdgeTpuPowerState_TPU_CORE_OFF,
+    EdgeTpuPowerState_READY,
+    EdgeTpuPowerState_ACTIVE_MIN_POWER,
+    EdgeTpuPowerState_ACTIVE_VERY_LOW_POWER,
+    EdgeTpuPowerState_ACTIVE_LOW_POWER,
+    EdgeTpuPowerState_ACTIVE,
+    EdgeTpuPowerState_OVER_DRIVE
+  };
   return values;
 }
 
-inline const char *const *EnumNamesEdgeTpuPowerState() {
-  static const char *const names[9] = {"UNDEFINED_POWERSTATE",
-                                       "TPU_CORE_OFF",
-                                       "READY",
-                                       "ACTIVE_MIN_POWER",
-                                       "ACTIVE_VERY_LOW_POWER",
-                                       "ACTIVE_LOW_POWER",
-                                       "ACTIVE",
-                                       "OVER_DRIVE",
-                                       nullptr};
+inline const char * const *EnumNamesEdgeTpuPowerState() {
+  static const char * const names[9] = {
+    "UNDEFINED_POWERSTATE",
+    "TPU_CORE_OFF",
+    "READY",
+    "ACTIVE_MIN_POWER",
+    "ACTIVE_VERY_LOW_POWER",
+    "ACTIVE_LOW_POWER",
+    "ACTIVE",
+    "OVER_DRIVE",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameEdgeTpuPowerState(EdgeTpuPowerState e) {
-  if (flatbuffers::IsOutRange(e, EdgeTpuPowerState_UNDEFINED_POWERSTATE,
-                              EdgeTpuPowerState_OVER_DRIVE))
-    return "";
+  if (flatbuffers::IsOutRange(e, EdgeTpuPowerState_UNDEFINED_POWERSTATE, EdgeTpuPowerState_OVER_DRIVE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesEdgeTpuPowerState()[index];
 }
@@ -467,21 +491,27 @@ enum FloatTruncationType {
 
 inline const FloatTruncationType (&EnumValuesFloatTruncationType())[4] {
   static const FloatTruncationType values[] = {
-      FloatTruncationType_UNSPECIFIED, FloatTruncationType_NO_TRUNCATION,
-      FloatTruncationType_BFLOAT16, FloatTruncationType_HALF};
+    FloatTruncationType_UNSPECIFIED,
+    FloatTruncationType_NO_TRUNCATION,
+    FloatTruncationType_BFLOAT16,
+    FloatTruncationType_HALF
+  };
   return values;
 }
 
-inline const char *const *EnumNamesFloatTruncationType() {
-  static const char *const names[5] = {"UNSPECIFIED", "NO_TRUNCATION",
-                                       "BFLOAT16", "HALF", nullptr};
+inline const char * const *EnumNamesFloatTruncationType() {
+  static const char * const names[5] = {
+    "UNSPECIFIED",
+    "NO_TRUNCATION",
+    "BFLOAT16",
+    "HALF",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameFloatTruncationType(FloatTruncationType e) {
-  if (flatbuffers::IsOutRange(e, FloatTruncationType_UNSPECIFIED,
-                              FloatTruncationType_HALF))
-    return "";
+  if (flatbuffers::IsOutRange(e, FloatTruncationType_UNSPECIFIED, FloatTruncationType_HALF)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesFloatTruncationType()[index];
 }
@@ -501,21 +531,30 @@ enum Performance {
 };
 
 inline const Performance (&EnumValuesPerformance())[5] {
-  static const Performance values[] = {Performance_UNDEFINED,
-                                       Performance_MAXIMUM, Performance_HIGH,
-                                       Performance_MEDIUM, Performance_LOW};
+  static const Performance values[] = {
+    Performance_UNDEFINED,
+    Performance_MAXIMUM,
+    Performance_HIGH,
+    Performance_MEDIUM,
+    Performance_LOW
+  };
   return values;
 }
 
-inline const char *const *EnumNamesPerformance() {
-  static const char *const names[6] = {"UNDEFINED", "MAXIMUM", "HIGH",
-                                       "MEDIUM",    "LOW",     nullptr};
+inline const char * const *EnumNamesPerformance() {
+  static const char * const names[6] = {
+    "UNDEFINED",
+    "MAXIMUM",
+    "HIGH",
+    "MEDIUM",
+    "LOW",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNamePerformance(Performance e) {
-  if (flatbuffers::IsOutRange(e, Performance_UNDEFINED, Performance_LOW))
-    return "";
+  if (flatbuffers::IsOutRange(e, Performance_UNDEFINED, Performance_LOW)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesPerformance()[index];
 }
@@ -535,31 +574,31 @@ enum BenchmarkEventType {
 
 inline const BenchmarkEventType (&EnumValuesBenchmarkEventType())[6] {
   static const BenchmarkEventType values[] = {
-      BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE,
-      BenchmarkEventType_START,
-      BenchmarkEventType_END,
-      BenchmarkEventType_ERROR,
-      BenchmarkEventType_LOGGED,
-      BenchmarkEventType_RECOVERED_ERROR};
+    BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE,
+    BenchmarkEventType_START,
+    BenchmarkEventType_END,
+    BenchmarkEventType_ERROR,
+    BenchmarkEventType_LOGGED,
+    BenchmarkEventType_RECOVERED_ERROR
+  };
   return values;
 }
 
-inline const char *const *EnumNamesBenchmarkEventType() {
-  static const char *const names[7] = {"UNDEFINED_BENCHMARK_EVENT_TYPE",
-                                       "START",
-                                       "END",
-                                       "ERROR",
-                                       "LOGGED",
-                                       "RECOVERED_ERROR",
-                                       nullptr};
+inline const char * const *EnumNamesBenchmarkEventType() {
+  static const char * const names[7] = {
+    "UNDEFINED_BENCHMARK_EVENT_TYPE",
+    "START",
+    "END",
+    "ERROR",
+    "LOGGED",
+    "RECOVERED_ERROR",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameBenchmarkEventType(BenchmarkEventType e) {
-  if (flatbuffers::IsOutRange(e,
-                              BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE,
-                              BenchmarkEventType_RECOVERED_ERROR))
-    return "";
+  if (flatbuffers::IsOutRange(e, BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE, BenchmarkEventType_RECOVERED_ERROR)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBenchmarkEventType()[index];
 }
@@ -573,22 +612,26 @@ enum BenchmarkStage {
 };
 
 inline const BenchmarkStage (&EnumValuesBenchmarkStage())[3] {
-  static const BenchmarkStage values[] = {BenchmarkStage_UNKNOWN,
-                                          BenchmarkStage_INITIALIZATION,
-                                          BenchmarkStage_INFERENCE};
+  static const BenchmarkStage values[] = {
+    BenchmarkStage_UNKNOWN,
+    BenchmarkStage_INITIALIZATION,
+    BenchmarkStage_INFERENCE
+  };
   return values;
 }
 
-inline const char *const *EnumNamesBenchmarkStage() {
-  static const char *const names[4] = {"UNKNOWN", "INITIALIZATION", "INFERENCE",
-                                       nullptr};
+inline const char * const *EnumNamesBenchmarkStage() {
+  static const char * const names[4] = {
+    "UNKNOWN",
+    "INITIALIZATION",
+    "INFERENCE",
+    nullptr
+  };
   return names;
 }
 
 inline const char *EnumNameBenchmarkStage(BenchmarkStage e) {
-  if (flatbuffers::IsOutRange(e, BenchmarkStage_UNKNOWN,
-                              BenchmarkStage_INFERENCE))
-    return "";
+  if (flatbuffers::IsOutRange(e, BenchmarkStage_UNKNOWN, BenchmarkStage_INFERENCE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBenchmarkStage()[index];
 }
@@ -600,7 +643,9 @@ struct ComputeSettingsT : public flatbuffers::NativeTable {
   std::string model_namespace_for_statistics;
   std::string model_identifier_for_statistics;
   std::unique_ptr<tflite::MinibenchmarkSettingsT> settings_to_test_locally;
-  ComputeSettingsT() : preference(tflite::ExecutionPreference_ANY) {}
+  ComputeSettingsT()
+      : preference(tflite::ExecutionPreference_ANY) {
+  }
 };
 
 struct ComputeSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -613,23 +658,19 @@ struct ComputeSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_SETTINGS_TO_TEST_LOCALLY = 12
   };
   tflite::ExecutionPreference preference() const {
-    return static_cast<tflite::ExecutionPreference>(
-        GetField<int32_t>(VT_PREFERENCE, 0));
+    return static_cast<tflite::ExecutionPreference>(GetField<int32_t>(VT_PREFERENCE, 0));
   }
   const tflite::TFLiteSettings *tflite_settings() const {
     return GetPointer<const tflite::TFLiteSettings *>(VT_TFLITE_SETTINGS);
   }
   const flatbuffers::String *model_namespace_for_statistics() const {
-    return GetPointer<const flatbuffers::String *>(
-        VT_MODEL_NAMESPACE_FOR_STATISTICS);
+    return GetPointer<const flatbuffers::String *>(VT_MODEL_NAMESPACE_FOR_STATISTICS);
   }
   const flatbuffers::String *model_identifier_for_statistics() const {
-    return GetPointer<const flatbuffers::String *>(
-        VT_MODEL_IDENTIFIER_FOR_STATISTICS);
+    return GetPointer<const flatbuffers::String *>(VT_MODEL_IDENTIFIER_FOR_STATISTICS);
   }
   const tflite::MinibenchmarkSettings *settings_to_test_locally() const {
-    return GetPointer<const tflite::MinibenchmarkSettings *>(
-        VT_SETTINGS_TO_TEST_LOCALLY);
+    return GetPointer<const tflite::MinibenchmarkSettings *>(VT_SETTINGS_TO_TEST_LOCALLY);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -644,46 +685,31 @@ struct ComputeSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(settings_to_test_locally()) &&
            verifier.EndTable();
   }
-  ComputeSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      ComputeSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<ComputeSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const ComputeSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  ComputeSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ComputeSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ComputeSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ComputeSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct ComputeSettingsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_preference(tflite::ExecutionPreference preference) {
-    fbb_.AddElement<int32_t>(ComputeSettings::VT_PREFERENCE,
-                             static_cast<int32_t>(preference), 0);
+    fbb_.AddElement<int32_t>(ComputeSettings::VT_PREFERENCE, static_cast<int32_t>(preference), 0);
   }
-  void add_tflite_settings(
-      flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings) {
+  void add_tflite_settings(flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings) {
     fbb_.AddOffset(ComputeSettings::VT_TFLITE_SETTINGS, tflite_settings);
   }
-  void add_model_namespace_for_statistics(
-      flatbuffers::Offset<flatbuffers::String> model_namespace_for_statistics) {
-    fbb_.AddOffset(ComputeSettings::VT_MODEL_NAMESPACE_FOR_STATISTICS,
-                   model_namespace_for_statistics);
+  void add_model_namespace_for_statistics(flatbuffers::Offset<flatbuffers::String> model_namespace_for_statistics) {
+    fbb_.AddOffset(ComputeSettings::VT_MODEL_NAMESPACE_FOR_STATISTICS, model_namespace_for_statistics);
   }
-  void add_model_identifier_for_statistics(
-      flatbuffers::Offset<flatbuffers::String>
-          model_identifier_for_statistics) {
-    fbb_.AddOffset(ComputeSettings::VT_MODEL_IDENTIFIER_FOR_STATISTICS,
-                   model_identifier_for_statistics);
+  void add_model_identifier_for_statistics(flatbuffers::Offset<flatbuffers::String> model_identifier_for_statistics) {
+    fbb_.AddOffset(ComputeSettings::VT_MODEL_IDENTIFIER_FOR_STATISTICS, model_identifier_for_statistics);
   }
-  void add_settings_to_test_locally(
-      flatbuffers::Offset<tflite::MinibenchmarkSettings>
-          settings_to_test_locally) {
-    fbb_.AddOffset(ComputeSettings::VT_SETTINGS_TO_TEST_LOCALLY,
-                   settings_to_test_locally);
+  void add_settings_to_test_locally(flatbuffers::Offset<tflite::MinibenchmarkSettings> settings_to_test_locally) {
+    fbb_.AddOffset(ComputeSettings::VT_SETTINGS_TO_TEST_LOCALLY, settings_to_test_locally);
   }
   explicit ComputeSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   ComputeSettingsBuilder &operator=(const ComputeSettingsBuilder &);
@@ -699,10 +725,8 @@ inline flatbuffers::Offset<ComputeSettings> CreateComputeSettings(
     tflite::ExecutionPreference preference = tflite::ExecutionPreference_ANY,
     flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings = 0,
     flatbuffers::Offset<flatbuffers::String> model_namespace_for_statistics = 0,
-    flatbuffers::Offset<flatbuffers::String> model_identifier_for_statistics =
-        0,
-    flatbuffers::Offset<tflite::MinibenchmarkSettings>
-        settings_to_test_locally = 0) {
+    flatbuffers::Offset<flatbuffers::String> model_identifier_for_statistics = 0,
+    flatbuffers::Offset<tflite::MinibenchmarkSettings> settings_to_test_locally = 0) {
   ComputeSettingsBuilder builder_(_fbb);
   builder_.add_settings_to_test_locally(settings_to_test_locally);
   builder_.add_model_identifier_for_statistics(model_identifier_for_statistics);
@@ -718,24 +742,19 @@ inline flatbuffers::Offset<ComputeSettings> CreateComputeSettingsDirect(
     flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings = 0,
     const char *model_namespace_for_statistics = nullptr,
     const char *model_identifier_for_statistics = nullptr,
-    flatbuffers::Offset<tflite::MinibenchmarkSettings>
-        settings_to_test_locally = 0) {
-  auto model_namespace_for_statistics__ =
-      model_namespace_for_statistics
-          ? _fbb.CreateString(model_namespace_for_statistics)
-          : 0;
-  auto model_identifier_for_statistics__ =
-      model_identifier_for_statistics
-          ? _fbb.CreateString(model_identifier_for_statistics)
-          : 0;
+    flatbuffers::Offset<tflite::MinibenchmarkSettings> settings_to_test_locally = 0) {
+  auto model_namespace_for_statistics__ = model_namespace_for_statistics ? _fbb.CreateString(model_namespace_for_statistics) : 0;
+  auto model_identifier_for_statistics__ = model_identifier_for_statistics ? _fbb.CreateString(model_identifier_for_statistics) : 0;
   return tflite::CreateComputeSettings(
-      _fbb, preference, tflite_settings, model_namespace_for_statistics__,
-      model_identifier_for_statistics__, settings_to_test_locally);
+      _fbb,
+      preference,
+      tflite_settings,
+      model_namespace_for_statistics__,
+      model_identifier_for_statistics__,
+      settings_to_test_locally);
 }
 
-flatbuffers::Offset<ComputeSettings> CreateComputeSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const ComputeSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<ComputeSettings> CreateComputeSettings(flatbuffers::FlatBufferBuilder &_fbb, const ComputeSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct NNAPISettingsT : public flatbuffers::NativeTable {
   typedef NNAPISettings TableType;
@@ -754,11 +773,11 @@ struct NNAPISettingsT : public flatbuffers::NativeTable {
       : execution_preference(tflite::NNAPIExecutionPreference_UNDEFINED),
         no_of_nnapi_instances_to_cache(0),
         allow_nnapi_cpu_on_android_10_plus(false),
-        execution_priority(
-            tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED),
+        execution_priority(tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED),
         allow_dynamic_dimensions(false),
         allow_fp16_precision_for_fp32(false),
-        use_burst_computation(false) {}
+        use_burst_computation(false) {
+  }
 };
 
 struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -786,8 +805,7 @@ struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return GetPointer<const flatbuffers::String *>(VT_MODEL_TOKEN);
   }
   tflite::NNAPIExecutionPreference execution_preference() const {
-    return static_cast<tflite::NNAPIExecutionPreference>(
-        GetField<int32_t>(VT_EXECUTION_PREFERENCE, 0));
+    return static_cast<tflite::NNAPIExecutionPreference>(GetField<int32_t>(VT_EXECUTION_PREFERENCE, 0));
   }
   int32_t no_of_nnapi_instances_to_cache() const {
     return GetField<int32_t>(VT_NO_OF_NNAPI_INSTANCES_TO_CACHE, 0);
@@ -799,8 +817,7 @@ struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return GetField<uint8_t>(VT_ALLOW_NNAPI_CPU_ON_ANDROID_10_PLUS, 0) != 0;
   }
   tflite::NNAPIExecutionPriority execution_priority() const {
-    return static_cast<tflite::NNAPIExecutionPriority>(
-        GetField<int32_t>(VT_EXECUTION_PRIORITY, 0));
+    return static_cast<tflite::NNAPIExecutionPriority>(GetField<int32_t>(VT_EXECUTION_PRIORITY, 0));
   }
   bool allow_dynamic_dimensions() const {
     return GetField<uint8_t>(VT_ALLOW_DYNAMIC_DIMENSIONS, 0) != 0;
@@ -823,78 +840,56 @@ struct NNAPISettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_NO_OF_NNAPI_INSTANCES_TO_CACHE) &&
            VerifyOffset(verifier, VT_FALLBACK_SETTINGS) &&
            verifier.VerifyTable(fallback_settings()) &&
-           VerifyField<uint8_t>(verifier,
-                                VT_ALLOW_NNAPI_CPU_ON_ANDROID_10_PLUS) &&
+           VerifyField<uint8_t>(verifier, VT_ALLOW_NNAPI_CPU_ON_ANDROID_10_PLUS) &&
            VerifyField<int32_t>(verifier, VT_EXECUTION_PRIORITY) &&
            VerifyField<uint8_t>(verifier, VT_ALLOW_DYNAMIC_DIMENSIONS) &&
            VerifyField<uint8_t>(verifier, VT_ALLOW_FP16_PRECISION_FOR_FP32) &&
            VerifyField<uint8_t>(verifier, VT_USE_BURST_COMPUTATION) &&
            verifier.EndTable();
   }
-  NNAPISettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      NNAPISettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<NNAPISettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  NNAPISettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(NNAPISettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<NNAPISettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct NNAPISettingsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_accelerator_name(
-      flatbuffers::Offset<flatbuffers::String> accelerator_name) {
+  void add_accelerator_name(flatbuffers::Offset<flatbuffers::String> accelerator_name) {
     fbb_.AddOffset(NNAPISettings::VT_ACCELERATOR_NAME, accelerator_name);
   }
-  void add_cache_directory(
-      flatbuffers::Offset<flatbuffers::String> cache_directory) {
+  void add_cache_directory(flatbuffers::Offset<flatbuffers::String> cache_directory) {
     fbb_.AddOffset(NNAPISettings::VT_CACHE_DIRECTORY, cache_directory);
   }
   void add_model_token(flatbuffers::Offset<flatbuffers::String> model_token) {
     fbb_.AddOffset(NNAPISettings::VT_MODEL_TOKEN, model_token);
   }
-  void add_execution_preference(
-      tflite::NNAPIExecutionPreference execution_preference) {
-    fbb_.AddElement<int32_t>(NNAPISettings::VT_EXECUTION_PREFERENCE,
-                             static_cast<int32_t>(execution_preference), 0);
+  void add_execution_preference(tflite::NNAPIExecutionPreference execution_preference) {
+    fbb_.AddElement<int32_t>(NNAPISettings::VT_EXECUTION_PREFERENCE, static_cast<int32_t>(execution_preference), 0);
   }
-  void add_no_of_nnapi_instances_to_cache(
-      int32_t no_of_nnapi_instances_to_cache) {
-    fbb_.AddElement<int32_t>(NNAPISettings::VT_NO_OF_NNAPI_INSTANCES_TO_CACHE,
-                             no_of_nnapi_instances_to_cache, 0);
+  void add_no_of_nnapi_instances_to_cache(int32_t no_of_nnapi_instances_to_cache) {
+    fbb_.AddElement<int32_t>(NNAPISettings::VT_NO_OF_NNAPI_INSTANCES_TO_CACHE, no_of_nnapi_instances_to_cache, 0);
   }
-  void add_fallback_settings(
-      flatbuffers::Offset<tflite::FallbackSettings> fallback_settings) {
+  void add_fallback_settings(flatbuffers::Offset<tflite::FallbackSettings> fallback_settings) {
     fbb_.AddOffset(NNAPISettings::VT_FALLBACK_SETTINGS, fallback_settings);
   }
-  void add_allow_nnapi_cpu_on_android_10_plus(
-      bool allow_nnapi_cpu_on_android_10_plus) {
-    fbb_.AddElement<uint8_t>(
-        NNAPISettings::VT_ALLOW_NNAPI_CPU_ON_ANDROID_10_PLUS,
-        static_cast<uint8_t>(allow_nnapi_cpu_on_android_10_plus), 0);
+  void add_allow_nnapi_cpu_on_android_10_plus(bool allow_nnapi_cpu_on_android_10_plus) {
+    fbb_.AddElement<uint8_t>(NNAPISettings::VT_ALLOW_NNAPI_CPU_ON_ANDROID_10_PLUS, static_cast<uint8_t>(allow_nnapi_cpu_on_android_10_plus), 0);
   }
-  void add_execution_priority(
-      tflite::NNAPIExecutionPriority execution_priority) {
-    fbb_.AddElement<int32_t>(NNAPISettings::VT_EXECUTION_PRIORITY,
-                             static_cast<int32_t>(execution_priority), 0);
+  void add_execution_priority(tflite::NNAPIExecutionPriority execution_priority) {
+    fbb_.AddElement<int32_t>(NNAPISettings::VT_EXECUTION_PRIORITY, static_cast<int32_t>(execution_priority), 0);
   }
   void add_allow_dynamic_dimensions(bool allow_dynamic_dimensions) {
-    fbb_.AddElement<uint8_t>(NNAPISettings::VT_ALLOW_DYNAMIC_DIMENSIONS,
-                             static_cast<uint8_t>(allow_dynamic_dimensions), 0);
+    fbb_.AddElement<uint8_t>(NNAPISettings::VT_ALLOW_DYNAMIC_DIMENSIONS, static_cast<uint8_t>(allow_dynamic_dimensions), 0);
   }
   void add_allow_fp16_precision_for_fp32(bool allow_fp16_precision_for_fp32) {
-    fbb_.AddElement<uint8_t>(
-        NNAPISettings::VT_ALLOW_FP16_PRECISION_FOR_FP32,
-        static_cast<uint8_t>(allow_fp16_precision_for_fp32), 0);
+    fbb_.AddElement<uint8_t>(NNAPISettings::VT_ALLOW_FP16_PRECISION_FOR_FP32, static_cast<uint8_t>(allow_fp16_precision_for_fp32), 0);
   }
   void add_use_burst_computation(bool use_burst_computation) {
-    fbb_.AddElement<uint8_t>(NNAPISettings::VT_USE_BURST_COMPUTATION,
-                             static_cast<uint8_t>(use_burst_computation), 0);
+    fbb_.AddElement<uint8_t>(NNAPISettings::VT_USE_BURST_COMPUTATION, static_cast<uint8_t>(use_burst_computation), 0);
   }
   explicit NNAPISettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   NNAPISettingsBuilder &operator=(const NNAPISettingsBuilder &);
@@ -910,13 +905,11 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(
     flatbuffers::Offset<flatbuffers::String> accelerator_name = 0,
     flatbuffers::Offset<flatbuffers::String> cache_directory = 0,
     flatbuffers::Offset<flatbuffers::String> model_token = 0,
-    tflite::NNAPIExecutionPreference execution_preference =
-        tflite::NNAPIExecutionPreference_UNDEFINED,
+    tflite::NNAPIExecutionPreference execution_preference = tflite::NNAPIExecutionPreference_UNDEFINED,
     int32_t no_of_nnapi_instances_to_cache = 0,
     flatbuffers::Offset<tflite::FallbackSettings> fallback_settings = 0,
     bool allow_nnapi_cpu_on_android_10_plus = false,
-    tflite::NNAPIExecutionPriority execution_priority =
-        tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
+    tflite::NNAPIExecutionPriority execution_priority = tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
     bool allow_dynamic_dimensions = false,
     bool allow_fp16_precision_for_fp32 = false,
     bool use_burst_computation = false) {
@@ -931,41 +924,42 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(
   builder_.add_use_burst_computation(use_burst_computation);
   builder_.add_allow_fp16_precision_for_fp32(allow_fp16_precision_for_fp32);
   builder_.add_allow_dynamic_dimensions(allow_dynamic_dimensions);
-  builder_.add_allow_nnapi_cpu_on_android_10_plus(
-      allow_nnapi_cpu_on_android_10_plus);
+  builder_.add_allow_nnapi_cpu_on_android_10_plus(allow_nnapi_cpu_on_android_10_plus);
   return builder_.Finish();
 }
 
 inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettingsDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const char *accelerator_name = nullptr,
-    const char *cache_directory = nullptr, const char *model_token = nullptr,
-    tflite::NNAPIExecutionPreference execution_preference =
-        tflite::NNAPIExecutionPreference_UNDEFINED,
+    const char *cache_directory = nullptr,
+    const char *model_token = nullptr,
+    tflite::NNAPIExecutionPreference execution_preference = tflite::NNAPIExecutionPreference_UNDEFINED,
     int32_t no_of_nnapi_instances_to_cache = 0,
     flatbuffers::Offset<tflite::FallbackSettings> fallback_settings = 0,
     bool allow_nnapi_cpu_on_android_10_plus = false,
-    tflite::NNAPIExecutionPriority execution_priority =
-        tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
+    tflite::NNAPIExecutionPriority execution_priority = tflite::NNAPIExecutionPriority_NNAPI_PRIORITY_UNDEFINED,
     bool allow_dynamic_dimensions = false,
     bool allow_fp16_precision_for_fp32 = false,
     bool use_burst_computation = false) {
-  auto accelerator_name__ =
-      accelerator_name ? _fbb.CreateString(accelerator_name) : 0;
-  auto cache_directory__ =
-      cache_directory ? _fbb.CreateString(cache_directory) : 0;
+  auto accelerator_name__ = accelerator_name ? _fbb.CreateString(accelerator_name) : 0;
+  auto cache_directory__ = cache_directory ? _fbb.CreateString(cache_directory) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   return tflite::CreateNNAPISettings(
-      _fbb, accelerator_name__, cache_directory__, model_token__,
-      execution_preference, no_of_nnapi_instances_to_cache, fallback_settings,
-      allow_nnapi_cpu_on_android_10_plus, execution_priority,
-      allow_dynamic_dimensions, allow_fp16_precision_for_fp32,
+      _fbb,
+      accelerator_name__,
+      cache_directory__,
+      model_token__,
+      execution_preference,
+      no_of_nnapi_instances_to_cache,
+      fallback_settings,
+      allow_nnapi_cpu_on_android_10_plus,
+      execution_priority,
+      allow_dynamic_dimensions,
+      allow_fp16_precision_for_fp32,
       use_burst_computation);
 }
 
-flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct GPUSettingsT : public flatbuffers::NativeTable {
   typedef GPUSettings TableType;
@@ -985,9 +979,7 @@ struct GPUSettingsT : public flatbuffers::NativeTable {
         inference_priority1(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO),
         inference_priority2(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO),
         inference_priority3(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO),
-        inference_preference(
-            tflite::
-                GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER) {
+        inference_preference(tflite::GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER) {
   }
 };
 
@@ -1011,24 +1003,19 @@ struct GPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return GetField<uint8_t>(VT_ENABLE_QUANTIZED_INFERENCE, 1) != 0;
   }
   tflite::GPUBackend force_backend() const {
-    return static_cast<tflite::GPUBackend>(
-        GetField<int32_t>(VT_FORCE_BACKEND, 0));
+    return static_cast<tflite::GPUBackend>(GetField<int32_t>(VT_FORCE_BACKEND, 0));
   }
   tflite::GPUInferencePriority inference_priority1() const {
-    return static_cast<tflite::GPUInferencePriority>(
-        GetField<int32_t>(VT_INFERENCE_PRIORITY1, 0));
+    return static_cast<tflite::GPUInferencePriority>(GetField<int32_t>(VT_INFERENCE_PRIORITY1, 0));
   }
   tflite::GPUInferencePriority inference_priority2() const {
-    return static_cast<tflite::GPUInferencePriority>(
-        GetField<int32_t>(VT_INFERENCE_PRIORITY2, 0));
+    return static_cast<tflite::GPUInferencePriority>(GetField<int32_t>(VT_INFERENCE_PRIORITY2, 0));
   }
   tflite::GPUInferencePriority inference_priority3() const {
-    return static_cast<tflite::GPUInferencePriority>(
-        GetField<int32_t>(VT_INFERENCE_PRIORITY3, 0));
+    return static_cast<tflite::GPUInferencePriority>(GetField<int32_t>(VT_INFERENCE_PRIORITY3, 0));
   }
   tflite::GPUInferenceUsage inference_preference() const {
-    return static_cast<tflite::GPUInferenceUsage>(
-        GetField<int32_t>(VT_INFERENCE_PREFERENCE, 0));
+    return static_cast<tflite::GPUInferenceUsage>(GetField<int32_t>(VT_INFERENCE_PREFERENCE, 0));
   }
   const flatbuffers::String *cache_directory() const {
     return GetPointer<const flatbuffers::String *>(VT_CACHE_DIRECTORY);
@@ -1048,64 +1035,46 @@ struct GPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_CACHE_DIRECTORY) &&
            verifier.VerifyString(cache_directory()) &&
            VerifyOffset(verifier, VT_MODEL_TOKEN) &&
-           verifier.VerifyString(model_token()) && verifier.EndTable();
+           verifier.VerifyString(model_token()) &&
+           verifier.EndTable();
   }
-  GPUSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      GPUSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<GPUSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  GPUSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(GPUSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<GPUSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct GPUSettingsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_is_precision_loss_allowed(bool is_precision_loss_allowed) {
-    fbb_.AddElement<uint8_t>(GPUSettings::VT_IS_PRECISION_LOSS_ALLOWED,
-                             static_cast<uint8_t>(is_precision_loss_allowed),
-                             0);
+    fbb_.AddElement<uint8_t>(GPUSettings::VT_IS_PRECISION_LOSS_ALLOWED, static_cast<uint8_t>(is_precision_loss_allowed), 0);
   }
   void add_enable_quantized_inference(bool enable_quantized_inference) {
-    fbb_.AddElement<uint8_t>(GPUSettings::VT_ENABLE_QUANTIZED_INFERENCE,
-                             static_cast<uint8_t>(enable_quantized_inference),
-                             1);
+    fbb_.AddElement<uint8_t>(GPUSettings::VT_ENABLE_QUANTIZED_INFERENCE, static_cast<uint8_t>(enable_quantized_inference), 1);
   }
   void add_force_backend(tflite::GPUBackend force_backend) {
-    fbb_.AddElement<int32_t>(GPUSettings::VT_FORCE_BACKEND,
-                             static_cast<int32_t>(force_backend), 0);
+    fbb_.AddElement<int32_t>(GPUSettings::VT_FORCE_BACKEND, static_cast<int32_t>(force_backend), 0);
   }
-  void add_inference_priority1(
-      tflite::GPUInferencePriority inference_priority1) {
-    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY1,
-                             static_cast<int32_t>(inference_priority1), 0);
+  void add_inference_priority1(tflite::GPUInferencePriority inference_priority1) {
+    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY1, static_cast<int32_t>(inference_priority1), 0);
   }
-  void add_inference_priority2(
-      tflite::GPUInferencePriority inference_priority2) {
-    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY2,
-                             static_cast<int32_t>(inference_priority2), 0);
+  void add_inference_priority2(tflite::GPUInferencePriority inference_priority2) {
+    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY2, static_cast<int32_t>(inference_priority2), 0);
   }
-  void add_inference_priority3(
-      tflite::GPUInferencePriority inference_priority3) {
-    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY3,
-                             static_cast<int32_t>(inference_priority3), 0);
+  void add_inference_priority3(tflite::GPUInferencePriority inference_priority3) {
+    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY3, static_cast<int32_t>(inference_priority3), 0);
   }
-  void add_inference_preference(
-      tflite::GPUInferenceUsage inference_preference) {
-    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PREFERENCE,
-                             static_cast<int32_t>(inference_preference), 0);
+  void add_inference_preference(tflite::GPUInferenceUsage inference_preference) {
+    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PREFERENCE, static_cast<int32_t>(inference_preference), 0);
   }
-  void add_cache_directory(
-      flatbuffers::Offset<flatbuffers::String> cache_directory) {
+  void add_cache_directory(flatbuffers::Offset<flatbuffers::String> cache_directory) {
     fbb_.AddOffset(GPUSettings::VT_CACHE_DIRECTORY, cache_directory);
   }
   void add_model_token(flatbuffers::Offset<flatbuffers::String> model_token) {
     fbb_.AddOffset(GPUSettings::VT_MODEL_TOKEN, model_token);
   }
   explicit GPUSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   GPUSettingsBuilder &operator=(const GPUSettingsBuilder &);
@@ -1121,14 +1090,10 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(
     bool is_precision_loss_allowed = false,
     bool enable_quantized_inference = true,
     tflite::GPUBackend force_backend = tflite::GPUBackend_UNSET,
-    tflite::GPUInferencePriority inference_priority1 =
-        tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
-    tflite::GPUInferencePriority inference_priority2 =
-        tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
-    tflite::GPUInferencePriority inference_priority3 =
-        tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
-    tflite::GPUInferenceUsage inference_preference =
-        tflite::GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
+    tflite::GPUInferencePriority inference_priority1 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferencePriority inference_priority2 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferencePriority inference_priority3 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferenceUsage inference_preference = tflite::GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
     flatbuffers::Offset<flatbuffers::String> cache_directory = 0,
     flatbuffers::Offset<flatbuffers::String> model_token = 0) {
   GPUSettingsBuilder builder_(_fbb);
@@ -1149,28 +1114,28 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettingsDirect(
     bool is_precision_loss_allowed = false,
     bool enable_quantized_inference = true,
     tflite::GPUBackend force_backend = tflite::GPUBackend_UNSET,
-    tflite::GPUInferencePriority inference_priority1 =
-        tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
-    tflite::GPUInferencePriority inference_priority2 =
-        tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
-    tflite::GPUInferencePriority inference_priority3 =
-        tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
-    tflite::GPUInferenceUsage inference_preference =
-        tflite::GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
-    const char *cache_directory = nullptr, const char *model_token = nullptr) {
-  auto cache_directory__ =
-      cache_directory ? _fbb.CreateString(cache_directory) : 0;
+    tflite::GPUInferencePriority inference_priority1 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferencePriority inference_priority2 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferencePriority inference_priority3 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferenceUsage inference_preference = tflite::GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
+    const char *cache_directory = nullptr,
+    const char *model_token = nullptr) {
+  auto cache_directory__ = cache_directory ? _fbb.CreateString(cache_directory) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
-  return tflite::CreateGPUSettings(_fbb, is_precision_loss_allowed,
-                                   enable_quantized_inference, force_backend,
-                                   inference_priority1, inference_priority2,
-                                   inference_priority3, inference_preference,
-                                   cache_directory__, model_token__);
+  return tflite::CreateGPUSettings(
+      _fbb,
+      is_precision_loss_allowed,
+      enable_quantized_inference,
+      force_backend,
+      inference_priority1,
+      inference_priority2,
+      inference_priority3,
+      inference_preference,
+      cache_directory__,
+      model_token__);
 }
 
-flatbuffers::Offset<GPUSettings> CreateGPUSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<GPUSettings> CreateGPUSettings(flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct HexagonSettingsT : public flatbuffers::NativeTable {
   typedef HexagonSettings TableType;
@@ -1182,7 +1147,8 @@ struct HexagonSettingsT : public flatbuffers::NativeTable {
       : debug_level(0),
         powersave_level(0),
         print_graph_profile(false),
-        print_graph_debug(false) {}
+        print_graph_debug(false) {
+  }
 };
 
 struct HexagonSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1193,7 +1159,9 @@ struct HexagonSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_PRINT_GRAPH_PROFILE = 8,
     VT_PRINT_GRAPH_DEBUG = 10
   };
-  int32_t debug_level() const { return GetField<int32_t>(VT_DEBUG_LEVEL, 0); }
+  int32_t debug_level() const {
+    return GetField<int32_t>(VT_DEBUG_LEVEL, 0);
+  }
   int32_t powersave_level() const {
     return GetField<int32_t>(VT_POWERSAVE_LEVEL, 0);
   }
@@ -1211,14 +1179,9 @@ struct HexagonSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_PRINT_GRAPH_DEBUG) &&
            verifier.EndTable();
   }
-  HexagonSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      HexagonSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<HexagonSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const HexagonSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  HexagonSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HexagonSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HexagonSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HexagonSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct HexagonSettingsBuilder {
@@ -1228,19 +1191,16 @@ struct HexagonSettingsBuilder {
     fbb_.AddElement<int32_t>(HexagonSettings::VT_DEBUG_LEVEL, debug_level, 0);
   }
   void add_powersave_level(int32_t powersave_level) {
-    fbb_.AddElement<int32_t>(HexagonSettings::VT_POWERSAVE_LEVEL,
-                             powersave_level, 0);
+    fbb_.AddElement<int32_t>(HexagonSettings::VT_POWERSAVE_LEVEL, powersave_level, 0);
   }
   void add_print_graph_profile(bool print_graph_profile) {
-    fbb_.AddElement<uint8_t>(HexagonSettings::VT_PRINT_GRAPH_PROFILE,
-                             static_cast<uint8_t>(print_graph_profile), 0);
+    fbb_.AddElement<uint8_t>(HexagonSettings::VT_PRINT_GRAPH_PROFILE, static_cast<uint8_t>(print_graph_profile), 0);
   }
   void add_print_graph_debug(bool print_graph_debug) {
-    fbb_.AddElement<uint8_t>(HexagonSettings::VT_PRINT_GRAPH_DEBUG,
-                             static_cast<uint8_t>(print_graph_debug), 0);
+    fbb_.AddElement<uint8_t>(HexagonSettings::VT_PRINT_GRAPH_DEBUG, static_cast<uint8_t>(print_graph_debug), 0);
   }
   explicit HexagonSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   HexagonSettingsBuilder &operator=(const HexagonSettingsBuilder &);
@@ -1252,8 +1212,10 @@ struct HexagonSettingsBuilder {
 };
 
 inline flatbuffers::Offset<HexagonSettings> CreateHexagonSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, int32_t debug_level = 0,
-    int32_t powersave_level = 0, bool print_graph_profile = false,
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t debug_level = 0,
+    int32_t powersave_level = 0,
+    bool print_graph_profile = false,
     bool print_graph_debug = false) {
   HexagonSettingsBuilder builder_(_fbb);
   builder_.add_powersave_level(powersave_level);
@@ -1263,14 +1225,14 @@ inline flatbuffers::Offset<HexagonSettings> CreateHexagonSettings(
   return builder_.Finish();
 }
 
-flatbuffers::Offset<HexagonSettings> CreateHexagonSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const HexagonSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<HexagonSettings> CreateHexagonSettings(flatbuffers::FlatBufferBuilder &_fbb, const HexagonSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct XNNPackSettingsT : public flatbuffers::NativeTable {
   typedef XNNPackSettings TableType;
   int32_t num_threads;
-  XNNPackSettingsT() : num_threads(0) {}
+  XNNPackSettingsT()
+      : num_threads(0) {
+  }
 };
 
 struct XNNPackSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1278,20 +1240,17 @@ struct XNNPackSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUM_THREADS = 4
   };
-  int32_t num_threads() const { return GetField<int32_t>(VT_NUM_THREADS, 0); }
+  int32_t num_threads() const {
+    return GetField<int32_t>(VT_NUM_THREADS, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_NUM_THREADS) &&
            verifier.EndTable();
   }
-  XNNPackSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      XNNPackSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<XNNPackSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  XNNPackSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(XNNPackSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<XNNPackSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct XNNPackSettingsBuilder {
@@ -1301,7 +1260,7 @@ struct XNNPackSettingsBuilder {
     fbb_.AddElement<int32_t>(XNNPackSettings::VT_NUM_THREADS, num_threads, 0);
   }
   explicit XNNPackSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   XNNPackSettingsBuilder &operator=(const XNNPackSettingsBuilder &);
@@ -1313,15 +1272,14 @@ struct XNNPackSettingsBuilder {
 };
 
 inline flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, int32_t num_threads = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t num_threads = 0) {
   XNNPackSettingsBuilder builder_(_fbb);
   builder_.add_num_threads(num_threads);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct EdgeTpuDeviceSpecT : public flatbuffers::NativeTable {
   typedef EdgeTpuDeviceSpec TableType;
@@ -1332,7 +1290,8 @@ struct EdgeTpuDeviceSpecT : public flatbuffers::NativeTable {
   EdgeTpuDeviceSpecT()
       : platform_type(tflite::EdgeTpuDeviceSpec_::PlatformType_MMIO),
         num_chips(0),
-        chip_family(0) {}
+        chip_family(0) {
+  }
 };
 
 struct EdgeTpuDeviceSpec FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1344,17 +1303,17 @@ struct EdgeTpuDeviceSpec FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_CHIP_FAMILY = 10
   };
   tflite::EdgeTpuDeviceSpec_::PlatformType platform_type() const {
-    return static_cast<tflite::EdgeTpuDeviceSpec_::PlatformType>(
-        GetField<int32_t>(VT_PLATFORM_TYPE, 0));
+    return static_cast<tflite::EdgeTpuDeviceSpec_::PlatformType>(GetField<int32_t>(VT_PLATFORM_TYPE, 0));
   }
-  int32_t num_chips() const { return GetField<int32_t>(VT_NUM_CHIPS, 0); }
-  const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
-      *device_paths() const {
-    return GetPointer<
-        const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *>(
-        VT_DEVICE_PATHS);
+  int32_t num_chips() const {
+    return GetField<int32_t>(VT_NUM_CHIPS, 0);
   }
-  int32_t chip_family() const { return GetField<int32_t>(VT_CHIP_FAMILY, 0); }
+  const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *device_paths() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *>(VT_DEVICE_PATHS);
+  }
+  int32_t chip_family() const {
+    return GetField<int32_t>(VT_CHIP_FAMILY, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_PLATFORM_TYPE) &&
@@ -1365,38 +1324,28 @@ struct EdgeTpuDeviceSpec FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_CHIP_FAMILY) &&
            verifier.EndTable();
   }
-  EdgeTpuDeviceSpecT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      EdgeTpuDeviceSpecT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<EdgeTpuDeviceSpec> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuDeviceSpecT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  EdgeTpuDeviceSpecT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(EdgeTpuDeviceSpecT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<EdgeTpuDeviceSpec> Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuDeviceSpecT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct EdgeTpuDeviceSpecBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_platform_type(
-      tflite::EdgeTpuDeviceSpec_::PlatformType platform_type) {
-    fbb_.AddElement<int32_t>(EdgeTpuDeviceSpec::VT_PLATFORM_TYPE,
-                             static_cast<int32_t>(platform_type), 0);
+  void add_platform_type(tflite::EdgeTpuDeviceSpec_::PlatformType platform_type) {
+    fbb_.AddElement<int32_t>(EdgeTpuDeviceSpec::VT_PLATFORM_TYPE, static_cast<int32_t>(platform_type), 0);
   }
   void add_num_chips(int32_t num_chips) {
     fbb_.AddElement<int32_t>(EdgeTpuDeviceSpec::VT_NUM_CHIPS, num_chips, 0);
   }
-  void add_device_paths(
-      flatbuffers::Offset<
-          flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-          device_paths) {
+  void add_device_paths(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> device_paths) {
     fbb_.AddOffset(EdgeTpuDeviceSpec::VT_DEVICE_PATHS, device_paths);
   }
   void add_chip_family(int32_t chip_family) {
     fbb_.AddElement<int32_t>(EdgeTpuDeviceSpec::VT_CHIP_FAMILY, chip_family, 0);
   }
   explicit EdgeTpuDeviceSpecBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   EdgeTpuDeviceSpecBuilder &operator=(const EdgeTpuDeviceSpecBuilder &);
@@ -1409,12 +1358,9 @@ struct EdgeTpuDeviceSpecBuilder {
 
 inline flatbuffers::Offset<EdgeTpuDeviceSpec> CreateEdgeTpuDeviceSpec(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::EdgeTpuDeviceSpec_::PlatformType platform_type =
-        tflite::EdgeTpuDeviceSpec_::PlatformType_MMIO,
+    tflite::EdgeTpuDeviceSpec_::PlatformType platform_type = tflite::EdgeTpuDeviceSpec_::PlatformType_MMIO,
     int32_t num_chips = 0,
-    flatbuffers::Offset<
-        flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-        device_paths = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> device_paths = 0,
     int32_t chip_family = 0) {
   EdgeTpuDeviceSpecBuilder builder_(_fbb);
   builder_.add_chip_family(chip_family);
@@ -1426,24 +1372,20 @@ inline flatbuffers::Offset<EdgeTpuDeviceSpec> CreateEdgeTpuDeviceSpec(
 
 inline flatbuffers::Offset<EdgeTpuDeviceSpec> CreateEdgeTpuDeviceSpecDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::EdgeTpuDeviceSpec_::PlatformType platform_type =
-        tflite::EdgeTpuDeviceSpec_::PlatformType_MMIO,
+    tflite::EdgeTpuDeviceSpec_::PlatformType platform_type = tflite::EdgeTpuDeviceSpec_::PlatformType_MMIO,
     int32_t num_chips = 0,
-    const std::vector<flatbuffers::Offset<flatbuffers::String>> *device_paths =
-        nullptr,
+    const std::vector<flatbuffers::Offset<flatbuffers::String>> *device_paths = nullptr,
     int32_t chip_family = 0) {
-  auto device_paths__ =
-      device_paths
-          ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(
-                *device_paths)
-          : 0;
-  return tflite::CreateEdgeTpuDeviceSpec(_fbb, platform_type, num_chips,
-                                         device_paths__, chip_family);
+  auto device_paths__ = device_paths ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*device_paths) : 0;
+  return tflite::CreateEdgeTpuDeviceSpec(
+      _fbb,
+      platform_type,
+      num_chips,
+      device_paths__,
+      chip_family);
 }
 
-flatbuffers::Offset<EdgeTpuDeviceSpec> CreateEdgeTpuDeviceSpec(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuDeviceSpecT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<EdgeTpuDeviceSpec> CreateEdgeTpuDeviceSpec(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuDeviceSpecT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct EdgeTpuInactivePowerConfigT : public flatbuffers::NativeTable {
   typedef EdgeTpuInactivePowerConfig TableType;
@@ -1451,19 +1393,18 @@ struct EdgeTpuInactivePowerConfigT : public flatbuffers::NativeTable {
   int64_t inactive_timeout_us;
   EdgeTpuInactivePowerConfigT()
       : inactive_power_state(tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE),
-        inactive_timeout_us(0) {}
+        inactive_timeout_us(0) {
+  }
 };
 
-struct EdgeTpuInactivePowerConfig FLATBUFFERS_FINAL_CLASS
-    : private flatbuffers::Table {
+struct EdgeTpuInactivePowerConfig FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef EdgeTpuInactivePowerConfigT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_INACTIVE_POWER_STATE = 4,
     VT_INACTIVE_TIMEOUT_US = 6
   };
   tflite::EdgeTpuPowerState inactive_power_state() const {
-    return static_cast<tflite::EdgeTpuPowerState>(
-        GetField<int32_t>(VT_INACTIVE_POWER_STATE, 0));
+    return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INACTIVE_POWER_STATE, 0));
   }
   int64_t inactive_timeout_us() const {
     return GetField<int64_t>(VT_INACTIVE_TIMEOUT_US, 0);
@@ -1474,37 +1415,25 @@ struct EdgeTpuInactivePowerConfig FLATBUFFERS_FINAL_CLASS
            VerifyField<int64_t>(verifier, VT_INACTIVE_TIMEOUT_US) &&
            verifier.EndTable();
   }
-  EdgeTpuInactivePowerConfigT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      EdgeTpuInactivePowerConfigT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<EdgeTpuInactivePowerConfig> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb,
-      const EdgeTpuInactivePowerConfigT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  EdgeTpuInactivePowerConfigT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(EdgeTpuInactivePowerConfigT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<EdgeTpuInactivePowerConfig> Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuInactivePowerConfigT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct EdgeTpuInactivePowerConfigBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_inactive_power_state(
-      tflite::EdgeTpuPowerState inactive_power_state) {
-    fbb_.AddElement<int32_t>(
-        EdgeTpuInactivePowerConfig::VT_INACTIVE_POWER_STATE,
-        static_cast<int32_t>(inactive_power_state), 0);
+  void add_inactive_power_state(tflite::EdgeTpuPowerState inactive_power_state) {
+    fbb_.AddElement<int32_t>(EdgeTpuInactivePowerConfig::VT_INACTIVE_POWER_STATE, static_cast<int32_t>(inactive_power_state), 0);
   }
   void add_inactive_timeout_us(int64_t inactive_timeout_us) {
-    fbb_.AddElement<int64_t>(EdgeTpuInactivePowerConfig::VT_INACTIVE_TIMEOUT_US,
-                             inactive_timeout_us, 0);
+    fbb_.AddElement<int64_t>(EdgeTpuInactivePowerConfig::VT_INACTIVE_TIMEOUT_US, inactive_timeout_us, 0);
   }
-  explicit EdgeTpuInactivePowerConfigBuilder(
-      flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+  explicit EdgeTpuInactivePowerConfigBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  EdgeTpuInactivePowerConfigBuilder &operator=(
-      const EdgeTpuInactivePowerConfigBuilder &);
+  EdgeTpuInactivePowerConfigBuilder &operator=(const EdgeTpuInactivePowerConfigBuilder &);
   flatbuffers::Offset<EdgeTpuInactivePowerConfig> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = flatbuffers::Offset<EdgeTpuInactivePowerConfig>(end);
@@ -1512,11 +1441,9 @@ struct EdgeTpuInactivePowerConfigBuilder {
   }
 };
 
-inline flatbuffers::Offset<EdgeTpuInactivePowerConfig>
-CreateEdgeTpuInactivePowerConfig(
+inline flatbuffers::Offset<EdgeTpuInactivePowerConfig> CreateEdgeTpuInactivePowerConfig(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::EdgeTpuPowerState inactive_power_state =
-        tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
+    tflite::EdgeTpuPowerState inactive_power_state = tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
     int64_t inactive_timeout_us = 0) {
   EdgeTpuInactivePowerConfigBuilder builder_(_fbb);
   builder_.add_inactive_timeout_us(inactive_timeout_us);
@@ -1524,16 +1451,12 @@ CreateEdgeTpuInactivePowerConfig(
   return builder_.Finish();
 }
 
-flatbuffers::Offset<EdgeTpuInactivePowerConfig>
-CreateEdgeTpuInactivePowerConfig(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuInactivePowerConfigT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<EdgeTpuInactivePowerConfig> CreateEdgeTpuInactivePowerConfig(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuInactivePowerConfigT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   typedef EdgeTpuSettings TableType;
   tflite::EdgeTpuPowerState inference_power_state;
-  std::vector<std::unique_ptr<tflite::EdgeTpuInactivePowerConfigT>>
-      inactive_power_configs;
+  std::vector<std::unique_ptr<tflite::EdgeTpuInactivePowerConfigT>> inactive_power_configs;
   int32_t inference_priority;
   std::unique_ptr<tflite::EdgeTpuDeviceSpecT> edgetpu_device_spec;
   std::string model_token;
@@ -1541,8 +1464,8 @@ struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   EdgeTpuSettingsT()
       : inference_power_state(tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE),
         inference_priority(-1),
-        float_truncation_type(
-            tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {}
+        float_truncation_type(tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
+  }
 };
 
 struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1556,29 +1479,22 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FLOAT_TRUNCATION_TYPE = 14
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
-    return static_cast<tflite::EdgeTpuPowerState>(
-        GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
+    return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
   }
-  const flatbuffers::Vector<
-      flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>
-      *inactive_power_configs() const {
-    return GetPointer<const flatbuffers::Vector<
-        flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> *>(
-        VT_INACTIVE_POWER_CONFIGS);
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> *inactive_power_configs() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> *>(VT_INACTIVE_POWER_CONFIGS);
   }
   int32_t inference_priority() const {
     return GetField<int32_t>(VT_INFERENCE_PRIORITY, -1);
   }
   const tflite::EdgeTpuDeviceSpec *edgetpu_device_spec() const {
-    return GetPointer<const tflite::EdgeTpuDeviceSpec *>(
-        VT_EDGETPU_DEVICE_SPEC);
+    return GetPointer<const tflite::EdgeTpuDeviceSpec *>(VT_EDGETPU_DEVICE_SPEC);
   }
   const flatbuffers::String *model_token() const {
     return GetPointer<const flatbuffers::String *>(VT_MODEL_TOKEN);
   }
   tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type() const {
-    return static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(
-        GetField<int32_t>(VT_FLOAT_TRUNCATION_TYPE, 0));
+    return static_cast<tflite::EdgeTpuSettings_::FloatTruncationType>(GetField<int32_t>(VT_FLOAT_TRUNCATION_TYPE, 0));
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -1594,50 +1510,34 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_FLOAT_TRUNCATION_TYPE) &&
            verifier.EndTable();
   }
-  EdgeTpuSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      EdgeTpuSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<EdgeTpuSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  EdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<EdgeTpuSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct EdgeTpuSettingsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_inference_power_state(
-      tflite::EdgeTpuPowerState inference_power_state) {
-    fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_INFERENCE_POWER_STATE,
-                             static_cast<int32_t>(inference_power_state), 0);
+  void add_inference_power_state(tflite::EdgeTpuPowerState inference_power_state) {
+    fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_INFERENCE_POWER_STATE, static_cast<int32_t>(inference_power_state), 0);
   }
-  void add_inactive_power_configs(
-      flatbuffers::Offset<flatbuffers::Vector<
-          flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>>
-          inactive_power_configs) {
-    fbb_.AddOffset(EdgeTpuSettings::VT_INACTIVE_POWER_CONFIGS,
-                   inactive_power_configs);
+  void add_inactive_power_configs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>> inactive_power_configs) {
+    fbb_.AddOffset(EdgeTpuSettings::VT_INACTIVE_POWER_CONFIGS, inactive_power_configs);
   }
   void add_inference_priority(int32_t inference_priority) {
-    fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_INFERENCE_PRIORITY,
-                             inference_priority, -1);
+    fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_INFERENCE_PRIORITY, inference_priority, -1);
   }
-  void add_edgetpu_device_spec(
-      flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec) {
-    fbb_.AddOffset(EdgeTpuSettings::VT_EDGETPU_DEVICE_SPEC,
-                   edgetpu_device_spec);
+  void add_edgetpu_device_spec(flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec) {
+    fbb_.AddOffset(EdgeTpuSettings::VT_EDGETPU_DEVICE_SPEC, edgetpu_device_spec);
   }
   void add_model_token(flatbuffers::Offset<flatbuffers::String> model_token) {
     fbb_.AddOffset(EdgeTpuSettings::VT_MODEL_TOKEN, model_token);
   }
-  void add_float_truncation_type(
-      tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type) {
-    fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_FLOAT_TRUNCATION_TYPE,
-                             static_cast<int32_t>(float_truncation_type), 0);
+  void add_float_truncation_type(tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type) {
+    fbb_.AddElement<int32_t>(EdgeTpuSettings::VT_FLOAT_TRUNCATION_TYPE, static_cast<int32_t>(float_truncation_type), 0);
   }
   explicit EdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   EdgeTpuSettingsBuilder &operator=(const EdgeTpuSettingsBuilder &);
@@ -1650,16 +1550,12 @@ struct EdgeTpuSettingsBuilder {
 
 inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::EdgeTpuPowerState inference_power_state =
-        tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
-    flatbuffers::Offset<flatbuffers::Vector<
-        flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>>
-        inactive_power_configs = 0,
+    tflite::EdgeTpuPowerState inference_power_state = tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>> inactive_power_configs = 0,
     int32_t inference_priority = -1,
     flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
     flatbuffers::Offset<flatbuffers::String> model_token = 0,
-    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type =
-        tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
+    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
   EdgeTpuSettingsBuilder builder_(_fbb);
   builder_.add_float_truncation_type(float_truncation_type);
   builder_.add_model_token(model_token);
@@ -1672,30 +1568,25 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
 
 inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::EdgeTpuPowerState inference_power_state =
-        tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
-    const std::vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>
-        *inactive_power_configs = nullptr,
+    tflite::EdgeTpuPowerState inference_power_state = tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
+    const std::vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> *inactive_power_configs = nullptr,
     int32_t inference_priority = -1,
     flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
     const char *model_token = nullptr,
-    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type =
-        tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
-  auto inactive_power_configs__ =
-      inactive_power_configs
-          ? _fbb.CreateVector<
-                flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(
-                *inactive_power_configs)
-          : 0;
+    tflite::EdgeTpuSettings_::FloatTruncationType float_truncation_type = tflite::EdgeTpuSettings_::FloatTruncationType_UNSPECIFIED) {
+  auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
   auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   return tflite::CreateEdgeTpuSettings(
-      _fbb, inference_power_state, inactive_power_configs__, inference_priority,
-      edgetpu_device_spec, model_token__, float_truncation_type);
+      _fbb,
+      inference_power_state,
+      inactive_power_configs__,
+      inference_priority,
+      edgetpu_device_spec,
+      model_token__,
+      float_truncation_type);
 }
 
-flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct CoralSettingsT : public flatbuffers::NativeTable {
   typedef CoralSettings TableType;
@@ -1706,7 +1597,8 @@ struct CoralSettingsT : public flatbuffers::NativeTable {
   CoralSettingsT()
       : performance(tflite::CoralSettings_::Performance_UNDEFINED),
         usb_always_dfu(false),
-        usb_max_bulk_in_queue_length(0) {}
+        usb_max_bulk_in_queue_length(0) {
+  }
 };
 
 struct CoralSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1721,8 +1613,7 @@ struct CoralSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return GetPointer<const flatbuffers::String *>(VT_DEVICE);
   }
   tflite::CoralSettings_::Performance performance() const {
-    return static_cast<tflite::CoralSettings_::Performance>(
-        GetField<int32_t>(VT_PERFORMANCE, 0));
+    return static_cast<tflite::CoralSettings_::Performance>(GetField<int32_t>(VT_PERFORMANCE, 0));
   }
   bool usb_always_dfu() const {
     return GetField<uint8_t>(VT_USB_ALWAYS_DFU, 0) != 0;
@@ -1731,21 +1622,17 @@ struct CoralSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return GetField<int32_t>(VT_USB_MAX_BULK_IN_QUEUE_LENGTH, 0);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) && VerifyOffset(verifier, VT_DEVICE) &&
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_DEVICE) &&
            verifier.VerifyString(device()) &&
            VerifyField<int32_t>(verifier, VT_PERFORMANCE) &&
            VerifyField<uint8_t>(verifier, VT_USB_ALWAYS_DFU) &&
            VerifyField<int32_t>(verifier, VT_USB_MAX_BULK_IN_QUEUE_LENGTH) &&
            verifier.EndTable();
   }
-  CoralSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      CoralSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<CoralSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const CoralSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  CoralSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(CoralSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<CoralSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const CoralSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct CoralSettingsBuilder {
@@ -1755,19 +1642,16 @@ struct CoralSettingsBuilder {
     fbb_.AddOffset(CoralSettings::VT_DEVICE, device);
   }
   void add_performance(tflite::CoralSettings_::Performance performance) {
-    fbb_.AddElement<int32_t>(CoralSettings::VT_PERFORMANCE,
-                             static_cast<int32_t>(performance), 0);
+    fbb_.AddElement<int32_t>(CoralSettings::VT_PERFORMANCE, static_cast<int32_t>(performance), 0);
   }
   void add_usb_always_dfu(bool usb_always_dfu) {
-    fbb_.AddElement<uint8_t>(CoralSettings::VT_USB_ALWAYS_DFU,
-                             static_cast<uint8_t>(usb_always_dfu), 0);
+    fbb_.AddElement<uint8_t>(CoralSettings::VT_USB_ALWAYS_DFU, static_cast<uint8_t>(usb_always_dfu), 0);
   }
   void add_usb_max_bulk_in_queue_length(int32_t usb_max_bulk_in_queue_length) {
-    fbb_.AddElement<int32_t>(CoralSettings::VT_USB_MAX_BULK_IN_QUEUE_LENGTH,
-                             usb_max_bulk_in_queue_length, 0);
+    fbb_.AddElement<int32_t>(CoralSettings::VT_USB_MAX_BULK_IN_QUEUE_LENGTH, usb_max_bulk_in_queue_length, 0);
   }
   explicit CoralSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   CoralSettingsBuilder &operator=(const CoralSettingsBuilder &);
@@ -1781,9 +1665,9 @@ struct CoralSettingsBuilder {
 inline flatbuffers::Offset<CoralSettings> CreateCoralSettings(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::String> device = 0,
-    tflite::CoralSettings_::Performance performance =
-        tflite::CoralSettings_::Performance_UNDEFINED,
-    bool usb_always_dfu = false, int32_t usb_max_bulk_in_queue_length = 0) {
+    tflite::CoralSettings_::Performance performance = tflite::CoralSettings_::Performance_UNDEFINED,
+    bool usb_always_dfu = false,
+    int32_t usb_max_bulk_in_queue_length = 0) {
   CoralSettingsBuilder builder_(_fbb);
   builder_.add_usb_max_bulk_in_queue_length(usb_max_bulk_in_queue_length);
   builder_.add_performance(performance);
@@ -1793,24 +1677,28 @@ inline flatbuffers::Offset<CoralSettings> CreateCoralSettings(
 }
 
 inline flatbuffers::Offset<CoralSettings> CreateCoralSettingsDirect(
-    flatbuffers::FlatBufferBuilder &_fbb, const char *device = nullptr,
-    tflite::CoralSettings_::Performance performance =
-        tflite::CoralSettings_::Performance_UNDEFINED,
-    bool usb_always_dfu = false, int32_t usb_max_bulk_in_queue_length = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *device = nullptr,
+    tflite::CoralSettings_::Performance performance = tflite::CoralSettings_::Performance_UNDEFINED,
+    bool usb_always_dfu = false,
+    int32_t usb_max_bulk_in_queue_length = 0) {
   auto device__ = device ? _fbb.CreateString(device) : 0;
-  return tflite::CreateCoralSettings(_fbb, device__, performance,
-                                     usb_always_dfu,
-                                     usb_max_bulk_in_queue_length);
+  return tflite::CreateCoralSettings(
+      _fbb,
+      device__,
+      performance,
+      usb_always_dfu,
+      usb_max_bulk_in_queue_length);
 }
 
-flatbuffers::Offset<CoralSettings> CreateCoralSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const CoralSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<CoralSettings> CreateCoralSettings(flatbuffers::FlatBufferBuilder &_fbb, const CoralSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct CPUSettingsT : public flatbuffers::NativeTable {
   typedef CPUSettings TableType;
   int32_t num_threads;
-  CPUSettingsT() : num_threads(-1) {}
+  CPUSettingsT()
+      : num_threads(-1) {
+  }
 };
 
 struct CPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1818,20 +1706,17 @@ struct CPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUM_THREADS = 4
   };
-  int32_t num_threads() const { return GetField<int32_t>(VT_NUM_THREADS, -1); }
+  int32_t num_threads() const {
+    return GetField<int32_t>(VT_NUM_THREADS, -1);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_NUM_THREADS) &&
            verifier.EndTable();
   }
-  CPUSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      CPUSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<CPUSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const CPUSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  CPUSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(CPUSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<CPUSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const CPUSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct CPUSettingsBuilder {
@@ -1841,7 +1726,7 @@ struct CPUSettingsBuilder {
     fbb_.AddElement<int32_t>(CPUSettings::VT_NUM_THREADS, num_threads, -1);
   }
   explicit CPUSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   CPUSettingsBuilder &operator=(const CPUSettingsBuilder &);
@@ -1853,15 +1738,14 @@ struct CPUSettingsBuilder {
 };
 
 inline flatbuffers::Offset<CPUSettings> CreateCPUSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, int32_t num_threads = -1) {
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t num_threads = -1) {
   CPUSettingsBuilder builder_(_fbb);
   builder_.add_num_threads(num_threads);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<CPUSettings> CreateCPUSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const CPUSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<CPUSettings> CreateCPUSettings(flatbuffers::FlatBufferBuilder &_fbb, const CPUSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct TFLiteSettingsT : public flatbuffers::NativeTable {
   typedef TFLiteSettings TableType;
@@ -1876,7 +1760,9 @@ struct TFLiteSettingsT : public flatbuffers::NativeTable {
   std::unique_ptr<tflite::CoralSettingsT> coral_settings;
   std::unique_ptr<tflite::FallbackSettingsT> fallback_settings;
   TFLiteSettingsT()
-      : delegate(tflite::Delegate_NONE), max_delegated_partitions(1) {}
+      : delegate(tflite::Delegate_NONE),
+        max_delegated_partitions(0) {
+  }
 };
 
 struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -1912,7 +1798,7 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return GetPointer<const tflite::CPUSettings *>(VT_CPU_SETTINGS);
   }
   int32_t max_delegated_partitions() const {
-    return GetField<int32_t>(VT_MAX_DELEGATED_PARTITIONS, 1);
+    return GetField<int32_t>(VT_MAX_DELEGATED_PARTITIONS, 0);
   }
   const tflite::EdgeTpuSettings *edgetpu_settings() const {
     return GetPointer<const tflite::EdgeTpuSettings *>(VT_EDGETPU_SETTINGS);
@@ -1942,61 +1828,49 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_CORAL_SETTINGS) &&
            verifier.VerifyTable(coral_settings()) &&
            VerifyOffset(verifier, VT_FALLBACK_SETTINGS) &&
-           verifier.VerifyTable(fallback_settings()) && verifier.EndTable();
+           verifier.VerifyTable(fallback_settings()) &&
+           verifier.EndTable();
   }
-  TFLiteSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      TFLiteSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<TFLiteSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  TFLiteSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(TFLiteSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<TFLiteSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct TFLiteSettingsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_delegate(tflite::Delegate delegate) {
-    fbb_.AddElement<int32_t>(TFLiteSettings::VT_DELEGATE,
-                             static_cast<int32_t>(delegate), 0);
+    fbb_.AddElement<int32_t>(TFLiteSettings::VT_DELEGATE, static_cast<int32_t>(delegate), 0);
   }
-  void add_nnapi_settings(
-      flatbuffers::Offset<tflite::NNAPISettings> nnapi_settings) {
+  void add_nnapi_settings(flatbuffers::Offset<tflite::NNAPISettings> nnapi_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_NNAPI_SETTINGS, nnapi_settings);
   }
   void add_gpu_settings(flatbuffers::Offset<tflite::GPUSettings> gpu_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_GPU_SETTINGS, gpu_settings);
   }
-  void add_hexagon_settings(
-      flatbuffers::Offset<tflite::HexagonSettings> hexagon_settings) {
+  void add_hexagon_settings(flatbuffers::Offset<tflite::HexagonSettings> hexagon_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_HEXAGON_SETTINGS, hexagon_settings);
   }
-  void add_xnnpack_settings(
-      flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings) {
+  void add_xnnpack_settings(flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_XNNPACK_SETTINGS, xnnpack_settings);
   }
   void add_cpu_settings(flatbuffers::Offset<tflite::CPUSettings> cpu_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_CPU_SETTINGS, cpu_settings);
   }
   void add_max_delegated_partitions(int32_t max_delegated_partitions) {
-    fbb_.AddElement<int32_t>(TFLiteSettings::VT_MAX_DELEGATED_PARTITIONS,
-                             max_delegated_partitions, 1);
+    fbb_.AddElement<int32_t>(TFLiteSettings::VT_MAX_DELEGATED_PARTITIONS, max_delegated_partitions, 0);
   }
-  void add_edgetpu_settings(
-      flatbuffers::Offset<tflite::EdgeTpuSettings> edgetpu_settings) {
+  void add_edgetpu_settings(flatbuffers::Offset<tflite::EdgeTpuSettings> edgetpu_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_EDGETPU_SETTINGS, edgetpu_settings);
   }
-  void add_coral_settings(
-      flatbuffers::Offset<tflite::CoralSettings> coral_settings) {
+  void add_coral_settings(flatbuffers::Offset<tflite::CoralSettings> coral_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_CORAL_SETTINGS, coral_settings);
   }
-  void add_fallback_settings(
-      flatbuffers::Offset<tflite::FallbackSettings> fallback_settings) {
+  void add_fallback_settings(flatbuffers::Offset<tflite::FallbackSettings> fallback_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_FALLBACK_SETTINGS, fallback_settings);
   }
   explicit TFLiteSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   TFLiteSettingsBuilder &operator=(const TFLiteSettingsBuilder &);
@@ -2015,7 +1889,7 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
     flatbuffers::Offset<tflite::HexagonSettings> hexagon_settings = 0,
     flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings = 0,
     flatbuffers::Offset<tflite::CPUSettings> cpu_settings = 0,
-    int32_t max_delegated_partitions = 1,
+    int32_t max_delegated_partitions = 0,
     flatbuffers::Offset<tflite::EdgeTpuSettings> edgetpu_settings = 0,
     flatbuffers::Offset<tflite::CoralSettings> coral_settings = 0,
     flatbuffers::Offset<tflite::FallbackSettings> fallback_settings = 0) {
@@ -2033,9 +1907,7 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
   return builder_.Finish();
 }
 
-flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct FallbackSettingsT : public flatbuffers::NativeTable {
   typedef FallbackSettings TableType;
@@ -2043,7 +1915,8 @@ struct FallbackSettingsT : public flatbuffers::NativeTable {
   bool allow_automatic_fallback_on_execution_error;
   FallbackSettingsT()
       : allow_automatic_fallback_on_compilation_error(false),
-        allow_automatic_fallback_on_execution_error(false) {}
+        allow_automatic_fallback_on_execution_error(false) {
+  }
 };
 
 struct FallbackSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2053,48 +1926,33 @@ struct FallbackSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_ALLOW_AUTOMATIC_FALLBACK_ON_EXECUTION_ERROR = 6
   };
   bool allow_automatic_fallback_on_compilation_error() const {
-    return GetField<uint8_t>(VT_ALLOW_AUTOMATIC_FALLBACK_ON_COMPILATION_ERROR,
-                             0) != 0;
+    return GetField<uint8_t>(VT_ALLOW_AUTOMATIC_FALLBACK_ON_COMPILATION_ERROR, 0) != 0;
   }
   bool allow_automatic_fallback_on_execution_error() const {
-    return GetField<uint8_t>(VT_ALLOW_AUTOMATIC_FALLBACK_ON_EXECUTION_ERROR,
-                             0) != 0;
+    return GetField<uint8_t>(VT_ALLOW_AUTOMATIC_FALLBACK_ON_EXECUTION_ERROR, 0) != 0;
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(
-               verifier, VT_ALLOW_AUTOMATIC_FALLBACK_ON_COMPILATION_ERROR) &&
-           VerifyField<uint8_t>(
-               verifier, VT_ALLOW_AUTOMATIC_FALLBACK_ON_EXECUTION_ERROR) &&
+           VerifyField<uint8_t>(verifier, VT_ALLOW_AUTOMATIC_FALLBACK_ON_COMPILATION_ERROR) &&
+           VerifyField<uint8_t>(verifier, VT_ALLOW_AUTOMATIC_FALLBACK_ON_EXECUTION_ERROR) &&
            verifier.EndTable();
   }
-  FallbackSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      FallbackSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<FallbackSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const FallbackSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  FallbackSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(FallbackSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<FallbackSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const FallbackSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct FallbackSettingsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_allow_automatic_fallback_on_compilation_error(
-      bool allow_automatic_fallback_on_compilation_error) {
-    fbb_.AddElement<uint8_t>(
-        FallbackSettings::VT_ALLOW_AUTOMATIC_FALLBACK_ON_COMPILATION_ERROR,
-        static_cast<uint8_t>(allow_automatic_fallback_on_compilation_error), 0);
+  void add_allow_automatic_fallback_on_compilation_error(bool allow_automatic_fallback_on_compilation_error) {
+    fbb_.AddElement<uint8_t>(FallbackSettings::VT_ALLOW_AUTOMATIC_FALLBACK_ON_COMPILATION_ERROR, static_cast<uint8_t>(allow_automatic_fallback_on_compilation_error), 0);
   }
-  void add_allow_automatic_fallback_on_execution_error(
-      bool allow_automatic_fallback_on_execution_error) {
-    fbb_.AddElement<uint8_t>(
-        FallbackSettings::VT_ALLOW_AUTOMATIC_FALLBACK_ON_EXECUTION_ERROR,
-        static_cast<uint8_t>(allow_automatic_fallback_on_execution_error), 0);
+  void add_allow_automatic_fallback_on_execution_error(bool allow_automatic_fallback_on_execution_error) {
+    fbb_.AddElement<uint8_t>(FallbackSettings::VT_ALLOW_AUTOMATIC_FALLBACK_ON_EXECUTION_ERROR, static_cast<uint8_t>(allow_automatic_fallback_on_execution_error), 0);
   }
   explicit FallbackSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   FallbackSettingsBuilder &operator=(const FallbackSettingsBuilder &);
@@ -2110,22 +1968,19 @@ inline flatbuffers::Offset<FallbackSettings> CreateFallbackSettings(
     bool allow_automatic_fallback_on_compilation_error = false,
     bool allow_automatic_fallback_on_execution_error = false) {
   FallbackSettingsBuilder builder_(_fbb);
-  builder_.add_allow_automatic_fallback_on_execution_error(
-      allow_automatic_fallback_on_execution_error);
-  builder_.add_allow_automatic_fallback_on_compilation_error(
-      allow_automatic_fallback_on_compilation_error);
+  builder_.add_allow_automatic_fallback_on_execution_error(allow_automatic_fallback_on_execution_error);
+  builder_.add_allow_automatic_fallback_on_compilation_error(allow_automatic_fallback_on_compilation_error);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<FallbackSettings> CreateFallbackSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const FallbackSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<FallbackSettings> CreateFallbackSettings(flatbuffers::FlatBufferBuilder &_fbb, const FallbackSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct BenchmarkMetricT : public flatbuffers::NativeTable {
   typedef BenchmarkMetric TableType;
   std::string name;
   std::vector<float> values;
-  BenchmarkMetricT() {}
+  BenchmarkMetricT() {
+  }
 };
 
 struct BenchmarkMetric FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2141,18 +1996,16 @@ struct BenchmarkMetric FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return GetPointer<const flatbuffers::Vector<float> *>(VT_VALUES);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) && VerifyOffset(verifier, VT_NAME) &&
-           verifier.VerifyString(name()) && VerifyOffset(verifier, VT_VALUES) &&
-           verifier.VerifyVector(values()) && verifier.EndTable();
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_NAME) &&
+           verifier.VerifyString(name()) &&
+           VerifyOffset(verifier, VT_VALUES) &&
+           verifier.VerifyVector(values()) &&
+           verifier.EndTable();
   }
-  BenchmarkMetricT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      BenchmarkMetricT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<BenchmarkMetric> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkMetricT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  BenchmarkMetricT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BenchmarkMetricT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BenchmarkMetric> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkMetricT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct BenchmarkMetricBuilder {
@@ -2165,7 +2018,7 @@ struct BenchmarkMetricBuilder {
     fbb_.AddOffset(BenchmarkMetric::VT_VALUES, values);
   }
   explicit BenchmarkMetricBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   BenchmarkMetricBuilder &operator=(const BenchmarkMetricBuilder &);
@@ -2187,16 +2040,18 @@ inline flatbuffers::Offset<BenchmarkMetric> CreateBenchmarkMetric(
 }
 
 inline flatbuffers::Offset<BenchmarkMetric> CreateBenchmarkMetricDirect(
-    flatbuffers::FlatBufferBuilder &_fbb, const char *name = nullptr,
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *name = nullptr,
     const std::vector<float> *values = nullptr) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
   auto values__ = values ? _fbb.CreateVector<float>(*values) : 0;
-  return tflite::CreateBenchmarkMetric(_fbb, name__, values__);
+  return tflite::CreateBenchmarkMetric(
+      _fbb,
+      name__,
+      values__);
 }
 
-flatbuffers::Offset<BenchmarkMetric> CreateBenchmarkMetric(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkMetricT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<BenchmarkMetric> CreateBenchmarkMetric(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkMetricT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct BenchmarkResultT : public flatbuffers::NativeTable {
   typedef BenchmarkResult TableType;
@@ -2205,7 +2060,10 @@ struct BenchmarkResultT : public flatbuffers::NativeTable {
   int32_t max_memory_kb;
   bool ok;
   std::vector<std::unique_ptr<tflite::BenchmarkMetricT>> metrics;
-  BenchmarkResultT() : max_memory_kb(0), ok(false) {}
+  BenchmarkResultT()
+      : max_memory_kb(0),
+        ok(false) {
+  }
 };
 
 struct BenchmarkResult FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2218,21 +2076,19 @@ struct BenchmarkResult FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_METRICS = 12
   };
   const flatbuffers::Vector<int64_t> *initialization_time_us() const {
-    return GetPointer<const flatbuffers::Vector<int64_t> *>(
-        VT_INITIALIZATION_TIME_US);
+    return GetPointer<const flatbuffers::Vector<int64_t> *>(VT_INITIALIZATION_TIME_US);
   }
   const flatbuffers::Vector<int64_t> *inference_time_us() const {
-    return GetPointer<const flatbuffers::Vector<int64_t> *>(
-        VT_INFERENCE_TIME_US);
+    return GetPointer<const flatbuffers::Vector<int64_t> *>(VT_INFERENCE_TIME_US);
   }
   int32_t max_memory_kb() const {
     return GetField<int32_t>(VT_MAX_MEMORY_KB, 0);
   }
-  bool ok() const { return GetField<uint8_t>(VT_OK, 0) != 0; }
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>>
-      *metrics() const {
-    return GetPointer<const flatbuffers::Vector<
-        flatbuffers::Offset<tflite::BenchmarkMetric>> *>(VT_METRICS);
+  bool ok() const {
+    return GetField<uint8_t>(VT_OK, 0) != 0;
+  }
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>> *metrics() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>> *>(VT_METRICS);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -2244,47 +2100,34 @@ struct BenchmarkResult FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_OK) &&
            VerifyOffset(verifier, VT_METRICS) &&
            verifier.VerifyVector(metrics()) &&
-           verifier.VerifyVectorOfTables(metrics()) && verifier.EndTable();
+           verifier.VerifyVectorOfTables(metrics()) &&
+           verifier.EndTable();
   }
-  BenchmarkResultT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      BenchmarkResultT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<BenchmarkResult> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  BenchmarkResultT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BenchmarkResultT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BenchmarkResult> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct BenchmarkResultBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_initialization_time_us(
-      flatbuffers::Offset<flatbuffers::Vector<int64_t>>
-          initialization_time_us) {
-    fbb_.AddOffset(BenchmarkResult::VT_INITIALIZATION_TIME_US,
-                   initialization_time_us);
+  void add_initialization_time_us(flatbuffers::Offset<flatbuffers::Vector<int64_t>> initialization_time_us) {
+    fbb_.AddOffset(BenchmarkResult::VT_INITIALIZATION_TIME_US, initialization_time_us);
   }
-  void add_inference_time_us(
-      flatbuffers::Offset<flatbuffers::Vector<int64_t>> inference_time_us) {
+  void add_inference_time_us(flatbuffers::Offset<flatbuffers::Vector<int64_t>> inference_time_us) {
     fbb_.AddOffset(BenchmarkResult::VT_INFERENCE_TIME_US, inference_time_us);
   }
   void add_max_memory_kb(int32_t max_memory_kb) {
-    fbb_.AddElement<int32_t>(BenchmarkResult::VT_MAX_MEMORY_KB, max_memory_kb,
-                             0);
+    fbb_.AddElement<int32_t>(BenchmarkResult::VT_MAX_MEMORY_KB, max_memory_kb, 0);
   }
   void add_ok(bool ok) {
-    fbb_.AddElement<uint8_t>(BenchmarkResult::VT_OK, static_cast<uint8_t>(ok),
-                             0);
+    fbb_.AddElement<uint8_t>(BenchmarkResult::VT_OK, static_cast<uint8_t>(ok), 0);
   }
-  void add_metrics(
-      flatbuffers::Offset<
-          flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>>>
-          metrics) {
+  void add_metrics(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>>> metrics) {
     fbb_.AddOffset(BenchmarkResult::VT_METRICS, metrics);
   }
   explicit BenchmarkResultBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   BenchmarkResultBuilder &operator=(const BenchmarkResultBuilder &);
@@ -2297,13 +2140,11 @@ struct BenchmarkResultBuilder {
 
 inline flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int64_t>> initialization_time_us =
-        0,
+    flatbuffers::Offset<flatbuffers::Vector<int64_t>> initialization_time_us = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> inference_time_us = 0,
-    int32_t max_memory_kb = 0, bool ok = false,
-    flatbuffers::Offset<
-        flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>>>
-        metrics = 0) {
+    int32_t max_memory_kb = 0,
+    bool ok = false,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::BenchmarkMetric>>> metrics = 0) {
   BenchmarkResultBuilder builder_(_fbb);
   builder_.add_metrics(metrics);
   builder_.add_max_memory_kb(max_memory_kb);
@@ -2317,27 +2158,22 @@ inline flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResultDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<int64_t> *initialization_time_us = nullptr,
     const std::vector<int64_t> *inference_time_us = nullptr,
-    int32_t max_memory_kb = 0, bool ok = false,
-    const std::vector<flatbuffers::Offset<tflite::BenchmarkMetric>> *metrics =
-        nullptr) {
-  auto initialization_time_us__ =
-      initialization_time_us
-          ? _fbb.CreateVector<int64_t>(*initialization_time_us)
-          : 0;
-  auto inference_time_us__ =
-      inference_time_us ? _fbb.CreateVector<int64_t>(*inference_time_us) : 0;
-  auto metrics__ =
-      metrics ? _fbb.CreateVector<flatbuffers::Offset<tflite::BenchmarkMetric>>(
-                    *metrics)
-              : 0;
-  return tflite::CreateBenchmarkResult(_fbb, initialization_time_us__,
-                                       inference_time_us__, max_memory_kb, ok,
-                                       metrics__);
+    int32_t max_memory_kb = 0,
+    bool ok = false,
+    const std::vector<flatbuffers::Offset<tflite::BenchmarkMetric>> *metrics = nullptr) {
+  auto initialization_time_us__ = initialization_time_us ? _fbb.CreateVector<int64_t>(*initialization_time_us) : 0;
+  auto inference_time_us__ = inference_time_us ? _fbb.CreateVector<int64_t>(*inference_time_us) : 0;
+  auto metrics__ = metrics ? _fbb.CreateVector<flatbuffers::Offset<tflite::BenchmarkMetric>>(*metrics) : 0;
+  return tflite::CreateBenchmarkResult(
+      _fbb,
+      initialization_time_us__,
+      inference_time_us__,
+      max_memory_kb,
+      ok,
+      metrics__);
 }
 
-flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct ErrorCodeT : public flatbuffers::NativeTable {
   typedef ErrorCode TableType;
@@ -2347,7 +2183,8 @@ struct ErrorCodeT : public flatbuffers::NativeTable {
   ErrorCodeT()
       : source(tflite::Delegate_NONE),
         tflite_error(0),
-        underlying_api_error(0) {}
+        underlying_api_error(0) {
+  }
 };
 
 struct ErrorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2360,7 +2197,9 @@ struct ErrorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::Delegate source() const {
     return static_cast<tflite::Delegate>(GetField<int32_t>(VT_SOURCE, 0));
   }
-  int32_t tflite_error() const { return GetField<int32_t>(VT_TFLITE_ERROR, 0); }
+  int32_t tflite_error() const {
+    return GetField<int32_t>(VT_TFLITE_ERROR, 0);
+  }
   int64_t underlying_api_error() const {
     return GetField<int64_t>(VT_UNDERLYING_API_ERROR, 0);
   }
@@ -2371,31 +2210,25 @@ struct ErrorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int64_t>(verifier, VT_UNDERLYING_API_ERROR) &&
            verifier.EndTable();
   }
-  ErrorCodeT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      ErrorCodeT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<ErrorCode> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const ErrorCodeT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  ErrorCodeT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ErrorCodeT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ErrorCode> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ErrorCodeT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct ErrorCodeBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_source(tflite::Delegate source) {
-    fbb_.AddElement<int32_t>(ErrorCode::VT_SOURCE, static_cast<int32_t>(source),
-                             0);
+    fbb_.AddElement<int32_t>(ErrorCode::VT_SOURCE, static_cast<int32_t>(source), 0);
   }
   void add_tflite_error(int32_t tflite_error) {
     fbb_.AddElement<int32_t>(ErrorCode::VT_TFLITE_ERROR, tflite_error, 0);
   }
   void add_underlying_api_error(int64_t underlying_api_error) {
-    fbb_.AddElement<int64_t>(ErrorCode::VT_UNDERLYING_API_ERROR,
-                             underlying_api_error, 0);
+    fbb_.AddElement<int64_t>(ErrorCode::VT_UNDERLYING_API_ERROR, underlying_api_error, 0);
   }
-  explicit ErrorCodeBuilder(flatbuffers::FlatBufferBuilder &_fbb) : fbb_(_fbb) {
+  explicit ErrorCodeBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   ErrorCodeBuilder &operator=(const ErrorCodeBuilder &);
@@ -2408,7 +2241,8 @@ struct ErrorCodeBuilder {
 
 inline flatbuffers::Offset<ErrorCode> CreateErrorCode(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::Delegate source = tflite::Delegate_NONE, int32_t tflite_error = 0,
+    tflite::Delegate source = tflite::Delegate_NONE,
+    int32_t tflite_error = 0,
     int64_t underlying_api_error = 0) {
   ErrorCodeBuilder builder_(_fbb);
   builder_.add_underlying_api_error(underlying_api_error);
@@ -2417,9 +2251,7 @@ inline flatbuffers::Offset<ErrorCode> CreateErrorCode(
   return builder_.Finish();
 }
 
-flatbuffers::Offset<ErrorCode> CreateErrorCode(
-    flatbuffers::FlatBufferBuilder &_fbb, const ErrorCodeT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<ErrorCode> CreateErrorCode(flatbuffers::FlatBufferBuilder &_fbb, const ErrorCodeT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct BenchmarkErrorT : public flatbuffers::NativeTable {
   typedef BenchmarkError TableType;
@@ -2432,7 +2264,8 @@ struct BenchmarkErrorT : public flatbuffers::NativeTable {
       : stage(tflite::BenchmarkStage_UNKNOWN),
         exit_code(0),
         signal(0),
-        mini_benchmark_error_code(0) {}
+        mini_benchmark_error_code(0) {
+  }
 };
 
 struct BenchmarkError FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2447,13 +2280,14 @@ struct BenchmarkError FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::BenchmarkStage stage() const {
     return static_cast<tflite::BenchmarkStage>(GetField<int32_t>(VT_STAGE, 0));
   }
-  int32_t exit_code() const { return GetField<int32_t>(VT_EXIT_CODE, 0); }
-  int32_t signal() const { return GetField<int32_t>(VT_SIGNAL, 0); }
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>>
-      *error_code() const {
-    return GetPointer<
-        const flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>> *>(
-        VT_ERROR_CODE);
+  int32_t exit_code() const {
+    return GetField<int32_t>(VT_EXIT_CODE, 0);
+  }
+  int32_t signal() const {
+    return GetField<int32_t>(VT_SIGNAL, 0);
+  }
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>> *error_code() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>> *>(VT_ERROR_CODE);
   }
   int32_t mini_benchmark_error_code() const {
     return GetField<int32_t>(VT_MINI_BENCHMARK_ERROR_CODE, 0);
@@ -2469,22 +2303,16 @@ struct BenchmarkError FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_MINI_BENCHMARK_ERROR_CODE) &&
            verifier.EndTable();
   }
-  BenchmarkErrorT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      BenchmarkErrorT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<BenchmarkError> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  BenchmarkErrorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BenchmarkErrorT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BenchmarkError> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct BenchmarkErrorBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_stage(tflite::BenchmarkStage stage) {
-    fbb_.AddElement<int32_t>(BenchmarkError::VT_STAGE,
-                             static_cast<int32_t>(stage), 0);
+    fbb_.AddElement<int32_t>(BenchmarkError::VT_STAGE, static_cast<int32_t>(stage), 0);
   }
   void add_exit_code(int32_t exit_code) {
     fbb_.AddElement<int32_t>(BenchmarkError::VT_EXIT_CODE, exit_code, 0);
@@ -2492,18 +2320,14 @@ struct BenchmarkErrorBuilder {
   void add_signal(int32_t signal) {
     fbb_.AddElement<int32_t>(BenchmarkError::VT_SIGNAL, signal, 0);
   }
-  void add_error_code(
-      flatbuffers::Offset<
-          flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>>>
-          error_code) {
+  void add_error_code(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>>> error_code) {
     fbb_.AddOffset(BenchmarkError::VT_ERROR_CODE, error_code);
   }
   void add_mini_benchmark_error_code(int32_t mini_benchmark_error_code) {
-    fbb_.AddElement<int32_t>(BenchmarkError::VT_MINI_BENCHMARK_ERROR_CODE,
-                             mini_benchmark_error_code, 0);
+    fbb_.AddElement<int32_t>(BenchmarkError::VT_MINI_BENCHMARK_ERROR_CODE, mini_benchmark_error_code, 0);
   }
   explicit BenchmarkErrorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   BenchmarkErrorBuilder &operator=(const BenchmarkErrorBuilder &);
@@ -2517,10 +2341,9 @@ struct BenchmarkErrorBuilder {
 inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(
     flatbuffers::FlatBufferBuilder &_fbb,
     tflite::BenchmarkStage stage = tflite::BenchmarkStage_UNKNOWN,
-    int32_t exit_code = 0, int32_t signal = 0,
-    flatbuffers::Offset<
-        flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>>>
-        error_code = 0,
+    int32_t exit_code = 0,
+    int32_t signal = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::ErrorCode>>> error_code = 0,
     int32_t mini_benchmark_error_code = 0) {
   BenchmarkErrorBuilder builder_(_fbb);
   builder_.add_mini_benchmark_error_code(mini_benchmark_error_code);
@@ -2534,21 +2357,21 @@ inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(
 inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkErrorDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     tflite::BenchmarkStage stage = tflite::BenchmarkStage_UNKNOWN,
-    int32_t exit_code = 0, int32_t signal = 0,
-    const std::vector<flatbuffers::Offset<tflite::ErrorCode>> *error_code =
-        nullptr,
+    int32_t exit_code = 0,
+    int32_t signal = 0,
+    const std::vector<flatbuffers::Offset<tflite::ErrorCode>> *error_code = nullptr,
     int32_t mini_benchmark_error_code = 0) {
-  auto error_code__ =
-      error_code ? _fbb.CreateVector<flatbuffers::Offset<tflite::ErrorCode>>(
-                       *error_code)
-                 : 0;
-  return tflite::CreateBenchmarkError(_fbb, stage, exit_code, signal,
-                                      error_code__, mini_benchmark_error_code);
+  auto error_code__ = error_code ? _fbb.CreateVector<flatbuffers::Offset<tflite::ErrorCode>>(*error_code) : 0;
+  return tflite::CreateBenchmarkError(
+      _fbb,
+      stage,
+      exit_code,
+      signal,
+      error_code__,
+      mini_benchmark_error_code);
 }
 
-flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct BenchmarkEventT : public flatbuffers::NativeTable {
   typedef BenchmarkEvent TableType;
@@ -2561,7 +2384,8 @@ struct BenchmarkEventT : public flatbuffers::NativeTable {
   BenchmarkEventT()
       : event_type(tflite::BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE),
         boottime_us(0),
-        wallclock_us(0) {}
+        wallclock_us(0) {
+  }
 };
 
 struct BenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2578,8 +2402,7 @@ struct BenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return GetPointer<const tflite::TFLiteSettings *>(VT_TFLITE_SETTINGS);
   }
   tflite::BenchmarkEventType event_type() const {
-    return static_cast<tflite::BenchmarkEventType>(
-        GetField<int32_t>(VT_EVENT_TYPE, 0));
+    return static_cast<tflite::BenchmarkEventType>(GetField<int32_t>(VT_EVENT_TYPE, 0));
   }
   const tflite::BenchmarkResult *result() const {
     return GetPointer<const tflite::BenchmarkResult *>(VT_RESULT);
@@ -2587,40 +2410,38 @@ struct BenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::BenchmarkError *error() const {
     return GetPointer<const tflite::BenchmarkError *>(VT_ERROR);
   }
-  int64_t boottime_us() const { return GetField<int64_t>(VT_BOOTTIME_US, 0); }
-  int64_t wallclock_us() const { return GetField<int64_t>(VT_WALLCLOCK_US, 0); }
+  int64_t boottime_us() const {
+    return GetField<int64_t>(VT_BOOTTIME_US, 0);
+  }
+  int64_t wallclock_us() const {
+    return GetField<int64_t>(VT_WALLCLOCK_US, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_TFLITE_SETTINGS) &&
            verifier.VerifyTable(tflite_settings()) &&
            VerifyField<int32_t>(verifier, VT_EVENT_TYPE) &&
            VerifyOffset(verifier, VT_RESULT) &&
-           verifier.VerifyTable(result()) && VerifyOffset(verifier, VT_ERROR) &&
+           verifier.VerifyTable(result()) &&
+           VerifyOffset(verifier, VT_ERROR) &&
            verifier.VerifyTable(error()) &&
            VerifyField<int64_t>(verifier, VT_BOOTTIME_US) &&
            VerifyField<int64_t>(verifier, VT_WALLCLOCK_US) &&
            verifier.EndTable();
   }
-  BenchmarkEventT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      BenchmarkEventT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<BenchmarkEvent> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  BenchmarkEventT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BenchmarkEventT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BenchmarkEvent> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct BenchmarkEventBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_tflite_settings(
-      flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings) {
+  void add_tflite_settings(flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings) {
     fbb_.AddOffset(BenchmarkEvent::VT_TFLITE_SETTINGS, tflite_settings);
   }
   void add_event_type(tflite::BenchmarkEventType event_type) {
-    fbb_.AddElement<int32_t>(BenchmarkEvent::VT_EVENT_TYPE,
-                             static_cast<int32_t>(event_type), 0);
+    fbb_.AddElement<int32_t>(BenchmarkEvent::VT_EVENT_TYPE, static_cast<int32_t>(event_type), 0);
   }
   void add_result(flatbuffers::Offset<tflite::BenchmarkResult> result) {
     fbb_.AddOffset(BenchmarkEvent::VT_RESULT, result);
@@ -2635,7 +2456,7 @@ struct BenchmarkEventBuilder {
     fbb_.AddElement<int64_t>(BenchmarkEvent::VT_WALLCLOCK_US, wallclock_us, 0);
   }
   explicit BenchmarkEventBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   BenchmarkEventBuilder &operator=(const BenchmarkEventBuilder &);
@@ -2649,11 +2470,11 @@ struct BenchmarkEventBuilder {
 inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings = 0,
-    tflite::BenchmarkEventType event_type =
-        tflite::BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE,
+    tflite::BenchmarkEventType event_type = tflite::BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE,
     flatbuffers::Offset<tflite::BenchmarkResult> result = 0,
     flatbuffers::Offset<tflite::BenchmarkError> error = 0,
-    int64_t boottime_us = 0, int64_t wallclock_us = 0) {
+    int64_t boottime_us = 0,
+    int64_t wallclock_us = 0) {
   BenchmarkEventBuilder builder_(_fbb);
   builder_.add_wallclock_us(wallclock_us);
   builder_.add_boottime_us(boottime_us);
@@ -2664,9 +2485,7 @@ inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(
   return builder_.Finish();
 }
 
-flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct BestAccelerationDecisionT : public flatbuffers::NativeTable {
   typedef BestAccelerationDecision TableType;
@@ -2674,11 +2493,12 @@ struct BestAccelerationDecisionT : public flatbuffers::NativeTable {
   std::unique_ptr<tflite::BenchmarkEventT> min_latency_event;
   int64_t min_inference_time_us;
   BestAccelerationDecisionT()
-      : number_of_source_events(0), min_inference_time_us(0) {}
+      : number_of_source_events(0),
+        min_inference_time_us(0) {
+  }
 };
 
-struct BestAccelerationDecision FLATBUFFERS_FINAL_CLASS
-    : private flatbuffers::Table {
+struct BestAccelerationDecision FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BestAccelerationDecisionT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUMBER_OF_SOURCE_EVENTS = 4,
@@ -2702,39 +2522,28 @@ struct BestAccelerationDecision FLATBUFFERS_FINAL_CLASS
            VerifyField<int64_t>(verifier, VT_MIN_INFERENCE_TIME_US) &&
            verifier.EndTable();
   }
-  BestAccelerationDecisionT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      BestAccelerationDecisionT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<BestAccelerationDecision> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  BestAccelerationDecisionT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BestAccelerationDecisionT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BestAccelerationDecision> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct BestAccelerationDecisionBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_number_of_source_events(int32_t number_of_source_events) {
-    fbb_.AddElement<int32_t>(
-        BestAccelerationDecision::VT_NUMBER_OF_SOURCE_EVENTS,
-        number_of_source_events, 0);
+    fbb_.AddElement<int32_t>(BestAccelerationDecision::VT_NUMBER_OF_SOURCE_EVENTS, number_of_source_events, 0);
   }
-  void add_min_latency_event(
-      flatbuffers::Offset<tflite::BenchmarkEvent> min_latency_event) {
-    fbb_.AddOffset(BestAccelerationDecision::VT_MIN_LATENCY_EVENT,
-                   min_latency_event);
+  void add_min_latency_event(flatbuffers::Offset<tflite::BenchmarkEvent> min_latency_event) {
+    fbb_.AddOffset(BestAccelerationDecision::VT_MIN_LATENCY_EVENT, min_latency_event);
   }
   void add_min_inference_time_us(int64_t min_inference_time_us) {
-    fbb_.AddElement<int64_t>(BestAccelerationDecision::VT_MIN_INFERENCE_TIME_US,
-                             min_inference_time_us, 0);
+    fbb_.AddElement<int64_t>(BestAccelerationDecision::VT_MIN_INFERENCE_TIME_US, min_inference_time_us, 0);
   }
   explicit BestAccelerationDecisionBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  BestAccelerationDecisionBuilder &operator=(
-      const BestAccelerationDecisionBuilder &);
+  BestAccelerationDecisionBuilder &operator=(const BestAccelerationDecisionBuilder &);
   flatbuffers::Offset<BestAccelerationDecision> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = flatbuffers::Offset<BestAccelerationDecision>(end);
@@ -2742,9 +2551,9 @@ struct BestAccelerationDecisionBuilder {
   }
 };
 
-inline flatbuffers::Offset<BestAccelerationDecision>
-CreateBestAccelerationDecision(
-    flatbuffers::FlatBufferBuilder &_fbb, int32_t number_of_source_events = 0,
+inline flatbuffers::Offset<BestAccelerationDecision> CreateBestAccelerationDecision(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t number_of_source_events = 0,
     flatbuffers::Offset<tflite::BenchmarkEvent> min_latency_event = 0,
     int64_t min_inference_time_us = 0) {
   BestAccelerationDecisionBuilder builder_(_fbb);
@@ -2754,18 +2563,17 @@ CreateBestAccelerationDecision(
   return builder_.Finish();
 }
 
-flatbuffers::Offset<BestAccelerationDecision> CreateBestAccelerationDecision(
-    flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<BestAccelerationDecision> CreateBestAccelerationDecision(flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct BenchmarkInitializationFailureT : public flatbuffers::NativeTable {
   typedef BenchmarkInitializationFailure TableType;
   int32_t initialization_status;
-  BenchmarkInitializationFailureT() : initialization_status(0) {}
+  BenchmarkInitializationFailureT()
+      : initialization_status(0) {
+  }
 };
 
-struct BenchmarkInitializationFailure FLATBUFFERS_FINAL_CLASS
-    : private flatbuffers::Table {
+struct BenchmarkInitializationFailure FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BenchmarkInitializationFailureT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_INITIALIZATION_STATUS = 4
@@ -2778,32 +2586,22 @@ struct BenchmarkInitializationFailure FLATBUFFERS_FINAL_CLASS
            VerifyField<int32_t>(verifier, VT_INITIALIZATION_STATUS) &&
            verifier.EndTable();
   }
-  BenchmarkInitializationFailureT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      BenchmarkInitializationFailureT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<BenchmarkInitializationFailure> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb,
-      const BenchmarkInitializationFailureT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  BenchmarkInitializationFailureT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BenchmarkInitializationFailureT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BenchmarkInitializationFailure> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkInitializationFailureT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct BenchmarkInitializationFailureBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_initialization_status(int32_t initialization_status) {
-    fbb_.AddElement<int32_t>(
-        BenchmarkInitializationFailure::VT_INITIALIZATION_STATUS,
-        initialization_status, 0);
+    fbb_.AddElement<int32_t>(BenchmarkInitializationFailure::VT_INITIALIZATION_STATUS, initialization_status, 0);
   }
-  explicit BenchmarkInitializationFailureBuilder(
-      flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+  explicit BenchmarkInitializationFailureBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  BenchmarkInitializationFailureBuilder &operator=(
-      const BenchmarkInitializationFailureBuilder &);
+  BenchmarkInitializationFailureBuilder &operator=(const BenchmarkInitializationFailureBuilder &);
   flatbuffers::Offset<BenchmarkInitializationFailure> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = flatbuffers::Offset<BenchmarkInitializationFailure>(end);
@@ -2811,27 +2609,25 @@ struct BenchmarkInitializationFailureBuilder {
   }
 };
 
-inline flatbuffers::Offset<BenchmarkInitializationFailure>
-CreateBenchmarkInitializationFailure(flatbuffers::FlatBufferBuilder &_fbb,
-                                     int32_t initialization_status = 0) {
+inline flatbuffers::Offset<BenchmarkInitializationFailure> CreateBenchmarkInitializationFailure(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t initialization_status = 0) {
   BenchmarkInitializationFailureBuilder builder_(_fbb);
   builder_.add_initialization_status(initialization_status);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<BenchmarkInitializationFailure>
-CreateBenchmarkInitializationFailure(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const BenchmarkInitializationFailureT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<BenchmarkInitializationFailure> CreateBenchmarkInitializationFailure(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkInitializationFailureT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct MiniBenchmarkEventT : public flatbuffers::NativeTable {
   typedef MiniBenchmarkEvent TableType;
   bool is_log_flushing_event;
   std::unique_ptr<tflite::BestAccelerationDecisionT> best_acceleration_decision;
-  std::unique_ptr<tflite::BenchmarkInitializationFailureT>
-      initialization_failure;
-  MiniBenchmarkEventT() : is_log_flushing_event(false) {}
+  std::unique_ptr<tflite::BenchmarkInitializationFailureT> initialization_failure;
+  std::unique_ptr<tflite::BenchmarkEventT> benchmark_event;
+  MiniBenchmarkEventT()
+      : is_log_flushing_event(false) {
+  }
 };
 
 struct MiniBenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2839,18 +2635,20 @@ struct MiniBenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_IS_LOG_FLUSHING_EVENT = 4,
     VT_BEST_ACCELERATION_DECISION = 6,
-    VT_INITIALIZATION_FAILURE = 8
+    VT_INITIALIZATION_FAILURE = 8,
+    VT_BENCHMARK_EVENT = 10
   };
   bool is_log_flushing_event() const {
     return GetField<uint8_t>(VT_IS_LOG_FLUSHING_EVENT, 0) != 0;
   }
   const tflite::BestAccelerationDecision *best_acceleration_decision() const {
-    return GetPointer<const tflite::BestAccelerationDecision *>(
-        VT_BEST_ACCELERATION_DECISION);
+    return GetPointer<const tflite::BestAccelerationDecision *>(VT_BEST_ACCELERATION_DECISION);
   }
   const tflite::BenchmarkInitializationFailure *initialization_failure() const {
-    return GetPointer<const tflite::BenchmarkInitializationFailure *>(
-        VT_INITIALIZATION_FAILURE);
+    return GetPointer<const tflite::BenchmarkInitializationFailure *>(VT_INITIALIZATION_FAILURE);
+  }
+  const tflite::BenchmarkEvent *benchmark_event() const {
+    return GetPointer<const tflite::BenchmarkEvent *>(VT_BENCHMARK_EVENT);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -2859,39 +2657,32 @@ struct MiniBenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(best_acceleration_decision()) &&
            VerifyOffset(verifier, VT_INITIALIZATION_FAILURE) &&
            verifier.VerifyTable(initialization_failure()) &&
+           VerifyOffset(verifier, VT_BENCHMARK_EVENT) &&
+           verifier.VerifyTable(benchmark_event()) &&
            verifier.EndTable();
   }
-  MiniBenchmarkEventT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      MiniBenchmarkEventT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<MiniBenchmarkEvent> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  MiniBenchmarkEventT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(MiniBenchmarkEventT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<MiniBenchmarkEvent> Pack(flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct MiniBenchmarkEventBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_is_log_flushing_event(bool is_log_flushing_event) {
-    fbb_.AddElement<uint8_t>(MiniBenchmarkEvent::VT_IS_LOG_FLUSHING_EVENT,
-                             static_cast<uint8_t>(is_log_flushing_event), 0);
+    fbb_.AddElement<uint8_t>(MiniBenchmarkEvent::VT_IS_LOG_FLUSHING_EVENT, static_cast<uint8_t>(is_log_flushing_event), 0);
   }
-  void add_best_acceleration_decision(
-      flatbuffers::Offset<tflite::BestAccelerationDecision>
-          best_acceleration_decision) {
-    fbb_.AddOffset(MiniBenchmarkEvent::VT_BEST_ACCELERATION_DECISION,
-                   best_acceleration_decision);
+  void add_best_acceleration_decision(flatbuffers::Offset<tflite::BestAccelerationDecision> best_acceleration_decision) {
+    fbb_.AddOffset(MiniBenchmarkEvent::VT_BEST_ACCELERATION_DECISION, best_acceleration_decision);
   }
-  void add_initialization_failure(
-      flatbuffers::Offset<tflite::BenchmarkInitializationFailure>
-          initialization_failure) {
-    fbb_.AddOffset(MiniBenchmarkEvent::VT_INITIALIZATION_FAILURE,
-                   initialization_failure);
+  void add_initialization_failure(flatbuffers::Offset<tflite::BenchmarkInitializationFailure> initialization_failure) {
+    fbb_.AddOffset(MiniBenchmarkEvent::VT_INITIALIZATION_FAILURE, initialization_failure);
+  }
+  void add_benchmark_event(flatbuffers::Offset<tflite::BenchmarkEvent> benchmark_event) {
+    fbb_.AddOffset(MiniBenchmarkEvent::VT_BENCHMARK_EVENT, benchmark_event);
   }
   explicit MiniBenchmarkEventBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   MiniBenchmarkEventBuilder &operator=(const MiniBenchmarkEventBuilder &);
@@ -2903,21 +2694,20 @@ struct MiniBenchmarkEventBuilder {
 };
 
 inline flatbuffers::Offset<MiniBenchmarkEvent> CreateMiniBenchmarkEvent(
-    flatbuffers::FlatBufferBuilder &_fbb, bool is_log_flushing_event = false,
-    flatbuffers::Offset<tflite::BestAccelerationDecision>
-        best_acceleration_decision = 0,
-    flatbuffers::Offset<tflite::BenchmarkInitializationFailure>
-        initialization_failure = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb,
+    bool is_log_flushing_event = false,
+    flatbuffers::Offset<tflite::BestAccelerationDecision> best_acceleration_decision = 0,
+    flatbuffers::Offset<tflite::BenchmarkInitializationFailure> initialization_failure = 0,
+    flatbuffers::Offset<tflite::BenchmarkEvent> benchmark_event = 0) {
   MiniBenchmarkEventBuilder builder_(_fbb);
+  builder_.add_benchmark_event(benchmark_event);
   builder_.add_initialization_failure(initialization_failure);
   builder_.add_best_acceleration_decision(best_acceleration_decision);
   builder_.add_is_log_flushing_event(is_log_flushing_event);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<MiniBenchmarkEvent> CreateMiniBenchmarkEvent(
-    flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<MiniBenchmarkEvent> CreateMiniBenchmarkEvent(flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct ModelFileT : public flatbuffers::NativeTable {
   typedef ModelFile TableType;
@@ -2925,7 +2715,11 @@ struct ModelFileT : public flatbuffers::NativeTable {
   int64_t fd;
   int64_t offset;
   int64_t length;
-  ModelFileT() : fd(0), offset(0), length(0) {}
+  ModelFileT()
+      : fd(0),
+        offset(0),
+        length(0) {
+  }
 };
 
 struct ModelFile FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
@@ -2939,24 +2733,27 @@ struct ModelFile FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *filename() const {
     return GetPointer<const flatbuffers::String *>(VT_FILENAME);
   }
-  int64_t fd() const { return GetField<int64_t>(VT_FD, 0); }
-  int64_t offset() const { return GetField<int64_t>(VT_OFFSET, 0); }
-  int64_t length() const { return GetField<int64_t>(VT_LENGTH, 0); }
+  int64_t fd() const {
+    return GetField<int64_t>(VT_FD, 0);
+  }
+  int64_t offset() const {
+    return GetField<int64_t>(VT_OFFSET, 0);
+  }
+  int64_t length() const {
+    return GetField<int64_t>(VT_LENGTH, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) && VerifyOffset(verifier, VT_FILENAME) &&
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_FILENAME) &&
            verifier.VerifyString(filename()) &&
            VerifyField<int64_t>(verifier, VT_FD) &&
            VerifyField<int64_t>(verifier, VT_OFFSET) &&
-           VerifyField<int64_t>(verifier, VT_LENGTH) && verifier.EndTable();
+           VerifyField<int64_t>(verifier, VT_LENGTH) &&
+           verifier.EndTable();
   }
-  ModelFileT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      ModelFileT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<ModelFile> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  ModelFileT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ModelFileT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ModelFile> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct ModelFileBuilder {
@@ -2965,14 +2762,17 @@ struct ModelFileBuilder {
   void add_filename(flatbuffers::Offset<flatbuffers::String> filename) {
     fbb_.AddOffset(ModelFile::VT_FILENAME, filename);
   }
-  void add_fd(int64_t fd) { fbb_.AddElement<int64_t>(ModelFile::VT_FD, fd, 0); }
+  void add_fd(int64_t fd) {
+    fbb_.AddElement<int64_t>(ModelFile::VT_FD, fd, 0);
+  }
   void add_offset(int64_t offset) {
     fbb_.AddElement<int64_t>(ModelFile::VT_OFFSET, offset, 0);
   }
   void add_length(int64_t length) {
     fbb_.AddElement<int64_t>(ModelFile::VT_LENGTH, length, 0);
   }
-  explicit ModelFileBuilder(flatbuffers::FlatBufferBuilder &_fbb) : fbb_(_fbb) {
+  explicit ModelFileBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   ModelFileBuilder &operator=(const ModelFileBuilder &);
@@ -2985,8 +2785,10 @@ struct ModelFileBuilder {
 
 inline flatbuffers::Offset<ModelFile> CreateModelFile(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> filename = 0, int64_t fd = 0,
-    int64_t offset = 0, int64_t length = 0) {
+    flatbuffers::Offset<flatbuffers::String> filename = 0,
+    int64_t fd = 0,
+    int64_t offset = 0,
+    int64_t length = 0) {
   ModelFileBuilder builder_(_fbb);
   builder_.add_length(length);
   builder_.add_offset(offset);
@@ -2996,25 +2798,31 @@ inline flatbuffers::Offset<ModelFile> CreateModelFile(
 }
 
 inline flatbuffers::Offset<ModelFile> CreateModelFileDirect(
-    flatbuffers::FlatBufferBuilder &_fbb, const char *filename = nullptr,
-    int64_t fd = 0, int64_t offset = 0, int64_t length = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *filename = nullptr,
+    int64_t fd = 0,
+    int64_t offset = 0,
+    int64_t length = 0) {
   auto filename__ = filename ? _fbb.CreateString(filename) : 0;
-  return tflite::CreateModelFile(_fbb, filename__, fd, offset, length);
+  return tflite::CreateModelFile(
+      _fbb,
+      filename__,
+      fd,
+      offset,
+      length);
 }
 
-flatbuffers::Offset<ModelFile> CreateModelFile(
-    flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<ModelFile> CreateModelFile(flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct BenchmarkStoragePathsT : public flatbuffers::NativeTable {
   typedef BenchmarkStoragePaths TableType;
   std::string storage_file_path;
   std::string data_directory_path;
-  BenchmarkStoragePathsT() {}
+  BenchmarkStoragePathsT() {
+  }
 };
 
-struct BenchmarkStoragePaths FLATBUFFERS_FINAL_CLASS
-    : private flatbuffers::Table {
+struct BenchmarkStoragePaths FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BenchmarkStoragePathsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_STORAGE_FILE_PATH = 4,
@@ -3031,33 +2839,25 @@ struct BenchmarkStoragePaths FLATBUFFERS_FINAL_CLASS
            VerifyOffset(verifier, VT_STORAGE_FILE_PATH) &&
            verifier.VerifyString(storage_file_path()) &&
            VerifyOffset(verifier, VT_DATA_DIRECTORY_PATH) &&
-           verifier.VerifyString(data_directory_path()) && verifier.EndTable();
+           verifier.VerifyString(data_directory_path()) &&
+           verifier.EndTable();
   }
-  BenchmarkStoragePathsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      BenchmarkStoragePathsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<BenchmarkStoragePaths> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  BenchmarkStoragePathsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BenchmarkStoragePathsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BenchmarkStoragePaths> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct BenchmarkStoragePathsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_storage_file_path(
-      flatbuffers::Offset<flatbuffers::String> storage_file_path) {
-    fbb_.AddOffset(BenchmarkStoragePaths::VT_STORAGE_FILE_PATH,
-                   storage_file_path);
+  void add_storage_file_path(flatbuffers::Offset<flatbuffers::String> storage_file_path) {
+    fbb_.AddOffset(BenchmarkStoragePaths::VT_STORAGE_FILE_PATH, storage_file_path);
   }
-  void add_data_directory_path(
-      flatbuffers::Offset<flatbuffers::String> data_directory_path) {
-    fbb_.AddOffset(BenchmarkStoragePaths::VT_DATA_DIRECTORY_PATH,
-                   data_directory_path);
+  void add_data_directory_path(flatbuffers::Offset<flatbuffers::String> data_directory_path) {
+    fbb_.AddOffset(BenchmarkStoragePaths::VT_DATA_DIRECTORY_PATH, data_directory_path);
   }
   explicit BenchmarkStoragePathsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   BenchmarkStoragePathsBuilder &operator=(const BenchmarkStoragePathsBuilder &);
@@ -3078,42 +2878,38 @@ inline flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePaths(
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<BenchmarkStoragePaths>
-CreateBenchmarkStoragePathsDirect(flatbuffers::FlatBufferBuilder &_fbb,
-                                  const char *storage_file_path = nullptr,
-                                  const char *data_directory_path = nullptr) {
-  auto storage_file_path__ =
-      storage_file_path ? _fbb.CreateString(storage_file_path) : 0;
-  auto data_directory_path__ =
-      data_directory_path ? _fbb.CreateString(data_directory_path) : 0;
-  return tflite::CreateBenchmarkStoragePaths(_fbb, storage_file_path__,
-                                             data_directory_path__);
+inline flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePathsDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *storage_file_path = nullptr,
+    const char *data_directory_path = nullptr) {
+  auto storage_file_path__ = storage_file_path ? _fbb.CreateString(storage_file_path) : 0;
+  auto data_directory_path__ = data_directory_path ? _fbb.CreateString(data_directory_path) : 0;
+  return tflite::CreateBenchmarkStoragePaths(
+      _fbb,
+      storage_file_path__,
+      data_directory_path__);
 }
 
-flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePaths(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePaths(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct MinibenchmarkSettingsT : public flatbuffers::NativeTable {
   typedef MinibenchmarkSettings TableType;
   std::vector<std::unique_ptr<tflite::TFLiteSettingsT>> settings_to_test;
   std::unique_ptr<tflite::ModelFileT> model_file;
   std::unique_ptr<tflite::BenchmarkStoragePathsT> storage_paths;
-  MinibenchmarkSettingsT() {}
+  MinibenchmarkSettingsT() {
+  }
 };
 
-struct MinibenchmarkSettings FLATBUFFERS_FINAL_CLASS
-    : private flatbuffers::Table {
+struct MinibenchmarkSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef MinibenchmarkSettingsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_SETTINGS_TO_TEST = 4,
     VT_MODEL_FILE = 6,
     VT_STORAGE_PATHS = 8
   };
-  const flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>>
-      *settings_to_test() const {
-    return GetPointer<const flatbuffers::Vector<
-        flatbuffers::Offset<tflite::TFLiteSettings>> *>(VT_SETTINGS_TO_TEST);
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>> *settings_to_test() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>> *>(VT_SETTINGS_TO_TEST);
   }
   const tflite::ModelFile *model_file() const {
     return GetPointer<const tflite::ModelFile *>(VT_MODEL_FILE);
@@ -3129,37 +2925,28 @@ struct MinibenchmarkSettings FLATBUFFERS_FINAL_CLASS
            VerifyOffset(verifier, VT_MODEL_FILE) &&
            verifier.VerifyTable(model_file()) &&
            VerifyOffset(verifier, VT_STORAGE_PATHS) &&
-           verifier.VerifyTable(storage_paths()) && verifier.EndTable();
+           verifier.VerifyTable(storage_paths()) &&
+           verifier.EndTable();
   }
-  MinibenchmarkSettingsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      MinibenchmarkSettingsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<MinibenchmarkSettings> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  MinibenchmarkSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(MinibenchmarkSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<MinibenchmarkSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct MinibenchmarkSettingsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_settings_to_test(
-      flatbuffers::Offset<
-          flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>>>
-          settings_to_test) {
-    fbb_.AddOffset(MinibenchmarkSettings::VT_SETTINGS_TO_TEST,
-                   settings_to_test);
+  void add_settings_to_test(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>>> settings_to_test) {
+    fbb_.AddOffset(MinibenchmarkSettings::VT_SETTINGS_TO_TEST, settings_to_test);
   }
   void add_model_file(flatbuffers::Offset<tflite::ModelFile> model_file) {
     fbb_.AddOffset(MinibenchmarkSettings::VT_MODEL_FILE, model_file);
   }
-  void add_storage_paths(
-      flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths) {
+  void add_storage_paths(flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths) {
     fbb_.AddOffset(MinibenchmarkSettings::VT_STORAGE_PATHS, storage_paths);
   }
   explicit MinibenchmarkSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-      : fbb_(_fbb) {
+        : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
   MinibenchmarkSettingsBuilder &operator=(const MinibenchmarkSettingsBuilder &);
@@ -3172,9 +2959,7 @@ struct MinibenchmarkSettingsBuilder {
 
 inline flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<
-        flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>>>
-        settings_to_test = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>>> settings_to_test = 0,
     flatbuffers::Offset<tflite::ModelFile> model_file = 0,
     flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths = 0) {
   MinibenchmarkSettingsBuilder builder_(_fbb);
@@ -3184,334 +2969,198 @@ inline flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<MinibenchmarkSettings>
-CreateMinibenchmarkSettingsDirect(
+inline flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettingsDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<flatbuffers::Offset<tflite::TFLiteSettings>>
-        *settings_to_test = nullptr,
+    const std::vector<flatbuffers::Offset<tflite::TFLiteSettings>> *settings_to_test = nullptr,
     flatbuffers::Offset<tflite::ModelFile> model_file = 0,
     flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths = 0) {
-  auto settings_to_test__ =
-      settings_to_test
-          ? _fbb.CreateVector<flatbuffers::Offset<tflite::TFLiteSettings>>(
-                *settings_to_test)
-          : 0;
-  return tflite::CreateMinibenchmarkSettings(_fbb, settings_to_test__,
-                                             model_file, storage_paths);
+  auto settings_to_test__ = settings_to_test ? _fbb.CreateVector<flatbuffers::Offset<tflite::TFLiteSettings>>(*settings_to_test) : 0;
+  return tflite::CreateMinibenchmarkSettings(
+      _fbb,
+      settings_to_test__,
+      model_file,
+      storage_paths);
 }
 
-flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
-inline bool operator==(const ComputeSettingsT &lhs,
-                       const ComputeSettingsT &rhs) {
-  return (lhs.preference == rhs.preference) &&
-         ((lhs.tflite_settings == rhs.tflite_settings) ||
-          (lhs.tflite_settings && rhs.tflite_settings &&
-           *lhs.tflite_settings == *rhs.tflite_settings)) &&
-         (lhs.model_namespace_for_statistics ==
-          rhs.model_namespace_for_statistics) &&
-         (lhs.model_identifier_for_statistics ==
-          rhs.model_identifier_for_statistics) &&
-         ((lhs.settings_to_test_locally == rhs.settings_to_test_locally) ||
-          (lhs.settings_to_test_locally && rhs.settings_to_test_locally &&
-           *lhs.settings_to_test_locally == *rhs.settings_to_test_locally));
+
+inline bool operator==(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs) {
+  return
+      (lhs.preference == rhs.preference) &&
+      ((lhs.tflite_settings == rhs.tflite_settings) || (lhs.tflite_settings && rhs.tflite_settings && *lhs.tflite_settings == *rhs.tflite_settings)) &&
+      (lhs.model_namespace_for_statistics == rhs.model_namespace_for_statistics) &&
+      (lhs.model_identifier_for_statistics == rhs.model_identifier_for_statistics) &&
+      ((lhs.settings_to_test_locally == rhs.settings_to_test_locally) || (lhs.settings_to_test_locally && rhs.settings_to_test_locally && *lhs.settings_to_test_locally == *rhs.settings_to_test_locally));
 }
 
-inline bool operator!=(const ComputeSettingsT &lhs,
-                       const ComputeSettingsT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline ComputeSettingsT *ComputeSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline ComputeSettingsT *ComputeSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ComputeSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void ComputeSettings::UnPackTo(
-    ComputeSettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void ComputeSettings::UnPackTo(ComputeSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = preference();
-    _o->preference = _e;
-  }
-  {
-    auto _e = tflite_settings();
-    if (_e)
-      _o->tflite_settings =
-          std::unique_ptr<tflite::TFLiteSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = model_namespace_for_statistics();
-    if (_e) _o->model_namespace_for_statistics = _e->str();
-  }
-  {
-    auto _e = model_identifier_for_statistics();
-    if (_e) _o->model_identifier_for_statistics = _e->str();
-  }
-  {
-    auto _e = settings_to_test_locally();
-    if (_e)
-      _o->settings_to_test_locally =
-          std::unique_ptr<tflite::MinibenchmarkSettingsT>(
-              _e->UnPack(_resolver));
-  }
+  { auto _e = preference(); _o->preference = _e; }
+  { auto _e = tflite_settings(); if (_e) _o->tflite_settings = std::unique_ptr<tflite::TFLiteSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = model_namespace_for_statistics(); if (_e) _o->model_namespace_for_statistics = _e->str(); }
+  { auto _e = model_identifier_for_statistics(); if (_e) _o->model_identifier_for_statistics = _e->str(); }
+  { auto _e = settings_to_test_locally(); if (_e) _o->settings_to_test_locally = std::unique_ptr<tflite::MinibenchmarkSettingsT>(_e->UnPack(_resolver)); }
 }
 
-inline flatbuffers::Offset<ComputeSettings> ComputeSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const ComputeSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<ComputeSettings> ComputeSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ComputeSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateComputeSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<ComputeSettings> CreateComputeSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const ComputeSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<ComputeSettings> CreateComputeSettings(flatbuffers::FlatBufferBuilder &_fbb, const ComputeSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const ComputeSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ComputeSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _preference = _o->preference;
-  auto _tflite_settings =
-      _o->tflite_settings
-          ? CreateTFLiteSettings(_fbb, _o->tflite_settings.get(), _rehasher)
-          : 0;
-  auto _model_namespace_for_statistics =
-      _o->model_namespace_for_statistics.empty()
-          ? 0
-          : _fbb.CreateString(_o->model_namespace_for_statistics);
-  auto _model_identifier_for_statistics =
-      _o->model_identifier_for_statistics.empty()
-          ? 0
-          : _fbb.CreateString(_o->model_identifier_for_statistics);
-  auto _settings_to_test_locally =
-      _o->settings_to_test_locally
-          ? CreateMinibenchmarkSettings(
-                _fbb, _o->settings_to_test_locally.get(), _rehasher)
-          : 0;
+  auto _tflite_settings = _o->tflite_settings ? CreateTFLiteSettings(_fbb, _o->tflite_settings.get(), _rehasher) : 0;
+  auto _model_namespace_for_statistics = _o->model_namespace_for_statistics.empty() ? 0 : _fbb.CreateString(_o->model_namespace_for_statistics);
+  auto _model_identifier_for_statistics = _o->model_identifier_for_statistics.empty() ? 0 : _fbb.CreateString(_o->model_identifier_for_statistics);
+  auto _settings_to_test_locally = _o->settings_to_test_locally ? CreateMinibenchmarkSettings(_fbb, _o->settings_to_test_locally.get(), _rehasher) : 0;
   return tflite::CreateComputeSettings(
-      _fbb, _preference, _tflite_settings, _model_namespace_for_statistics,
-      _model_identifier_for_statistics, _settings_to_test_locally);
+      _fbb,
+      _preference,
+      _tflite_settings,
+      _model_namespace_for_statistics,
+      _model_identifier_for_statistics,
+      _settings_to_test_locally);
 }
 
+
 inline bool operator==(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs) {
-  return (lhs.accelerator_name == rhs.accelerator_name) &&
-         (lhs.cache_directory == rhs.cache_directory) &&
-         (lhs.model_token == rhs.model_token) &&
-         (lhs.execution_preference == rhs.execution_preference) &&
-         (lhs.no_of_nnapi_instances_to_cache ==
-          rhs.no_of_nnapi_instances_to_cache) &&
-         ((lhs.fallback_settings == rhs.fallback_settings) ||
-          (lhs.fallback_settings && rhs.fallback_settings &&
-           *lhs.fallback_settings == *rhs.fallback_settings)) &&
-         (lhs.allow_nnapi_cpu_on_android_10_plus ==
-          rhs.allow_nnapi_cpu_on_android_10_plus) &&
-         (lhs.execution_priority == rhs.execution_priority) &&
-         (lhs.allow_dynamic_dimensions == rhs.allow_dynamic_dimensions) &&
-         (lhs.allow_fp16_precision_for_fp32 ==
-          rhs.allow_fp16_precision_for_fp32) &&
-         (lhs.use_burst_computation == rhs.use_burst_computation);
+  return
+      (lhs.accelerator_name == rhs.accelerator_name) &&
+      (lhs.cache_directory == rhs.cache_directory) &&
+      (lhs.model_token == rhs.model_token) &&
+      (lhs.execution_preference == rhs.execution_preference) &&
+      (lhs.no_of_nnapi_instances_to_cache == rhs.no_of_nnapi_instances_to_cache) &&
+      ((lhs.fallback_settings == rhs.fallback_settings) || (lhs.fallback_settings && rhs.fallback_settings && *lhs.fallback_settings == *rhs.fallback_settings)) &&
+      (lhs.allow_nnapi_cpu_on_android_10_plus == rhs.allow_nnapi_cpu_on_android_10_plus) &&
+      (lhs.execution_priority == rhs.execution_priority) &&
+      (lhs.allow_dynamic_dimensions == rhs.allow_dynamic_dimensions) &&
+      (lhs.allow_fp16_precision_for_fp32 == rhs.allow_fp16_precision_for_fp32) &&
+      (lhs.use_burst_computation == rhs.use_burst_computation);
 }
 
 inline bool operator!=(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline NNAPISettingsT *NNAPISettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline NNAPISettingsT *NNAPISettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new NNAPISettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void NNAPISettings::UnPackTo(
-    NNAPISettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void NNAPISettings::UnPackTo(NNAPISettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = accelerator_name();
-    if (_e) _o->accelerator_name = _e->str();
-  }
-  {
-    auto _e = cache_directory();
-    if (_e) _o->cache_directory = _e->str();
-  }
-  {
-    auto _e = model_token();
-    if (_e) _o->model_token = _e->str();
-  }
-  {
-    auto _e = execution_preference();
-    _o->execution_preference = _e;
-  }
-  {
-    auto _e = no_of_nnapi_instances_to_cache();
-    _o->no_of_nnapi_instances_to_cache = _e;
-  }
-  {
-    auto _e = fallback_settings();
-    if (_e)
-      _o->fallback_settings =
-          std::unique_ptr<tflite::FallbackSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = allow_nnapi_cpu_on_android_10_plus();
-    _o->allow_nnapi_cpu_on_android_10_plus = _e;
-  }
-  {
-    auto _e = execution_priority();
-    _o->execution_priority = _e;
-  }
-  {
-    auto _e = allow_dynamic_dimensions();
-    _o->allow_dynamic_dimensions = _e;
-  }
-  {
-    auto _e = allow_fp16_precision_for_fp32();
-    _o->allow_fp16_precision_for_fp32 = _e;
-  }
-  {
-    auto _e = use_burst_computation();
-    _o->use_burst_computation = _e;
-  }
+  { auto _e = accelerator_name(); if (_e) _o->accelerator_name = _e->str(); }
+  { auto _e = cache_directory(); if (_e) _o->cache_directory = _e->str(); }
+  { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
+  { auto _e = execution_preference(); _o->execution_preference = _e; }
+  { auto _e = no_of_nnapi_instances_to_cache(); _o->no_of_nnapi_instances_to_cache = _e; }
+  { auto _e = fallback_settings(); if (_e) _o->fallback_settings = std::unique_ptr<tflite::FallbackSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = allow_nnapi_cpu_on_android_10_plus(); _o->allow_nnapi_cpu_on_android_10_plus = _e; }
+  { auto _e = execution_priority(); _o->execution_priority = _e; }
+  { auto _e = allow_dynamic_dimensions(); _o->allow_dynamic_dimensions = _e; }
+  { auto _e = allow_fp16_precision_for_fp32(); _o->allow_fp16_precision_for_fp32 = _e; }
+  { auto _e = use_burst_computation(); _o->use_burst_computation = _e; }
 }
 
-inline flatbuffers::Offset<NNAPISettings> NNAPISettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<NNAPISettings> NNAPISettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateNNAPISettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(flatbuffers::FlatBufferBuilder &_fbb, const NNAPISettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const NNAPISettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
-  auto _accelerator_name = _o->accelerator_name.empty()
-                               ? 0
-                               : _fbb.CreateString(_o->accelerator_name);
-  auto _cache_directory =
-      _o->cache_directory.empty() ? 0 : _fbb.CreateString(_o->cache_directory);
-  auto _model_token =
-      _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const NNAPISettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _accelerator_name = _o->accelerator_name.empty() ? 0 : _fbb.CreateString(_o->accelerator_name);
+  auto _cache_directory = _o->cache_directory.empty() ? 0 : _fbb.CreateString(_o->cache_directory);
+  auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
   auto _execution_preference = _o->execution_preference;
   auto _no_of_nnapi_instances_to_cache = _o->no_of_nnapi_instances_to_cache;
-  auto _fallback_settings =
-      _o->fallback_settings
-          ? CreateFallbackSettings(_fbb, _o->fallback_settings.get(), _rehasher)
-          : 0;
-  auto _allow_nnapi_cpu_on_android_10_plus =
-      _o->allow_nnapi_cpu_on_android_10_plus;
+  auto _fallback_settings = _o->fallback_settings ? CreateFallbackSettings(_fbb, _o->fallback_settings.get(), _rehasher) : 0;
+  auto _allow_nnapi_cpu_on_android_10_plus = _o->allow_nnapi_cpu_on_android_10_plus;
   auto _execution_priority = _o->execution_priority;
   auto _allow_dynamic_dimensions = _o->allow_dynamic_dimensions;
   auto _allow_fp16_precision_for_fp32 = _o->allow_fp16_precision_for_fp32;
   auto _use_burst_computation = _o->use_burst_computation;
   return tflite::CreateNNAPISettings(
-      _fbb, _accelerator_name, _cache_directory, _model_token,
-      _execution_preference, _no_of_nnapi_instances_to_cache,
-      _fallback_settings, _allow_nnapi_cpu_on_android_10_plus,
-      _execution_priority, _allow_dynamic_dimensions,
-      _allow_fp16_precision_for_fp32, _use_burst_computation);
+      _fbb,
+      _accelerator_name,
+      _cache_directory,
+      _model_token,
+      _execution_preference,
+      _no_of_nnapi_instances_to_cache,
+      _fallback_settings,
+      _allow_nnapi_cpu_on_android_10_plus,
+      _execution_priority,
+      _allow_dynamic_dimensions,
+      _allow_fp16_precision_for_fp32,
+      _use_burst_computation);
 }
 
+
 inline bool operator==(const GPUSettingsT &lhs, const GPUSettingsT &rhs) {
-  return (lhs.is_precision_loss_allowed == rhs.is_precision_loss_allowed) &&
-         (lhs.enable_quantized_inference == rhs.enable_quantized_inference) &&
-         (lhs.force_backend == rhs.force_backend) &&
-         (lhs.inference_priority1 == rhs.inference_priority1) &&
-         (lhs.inference_priority2 == rhs.inference_priority2) &&
-         (lhs.inference_priority3 == rhs.inference_priority3) &&
-         (lhs.inference_preference == rhs.inference_preference) &&
-         (lhs.cache_directory == rhs.cache_directory) &&
-         (lhs.model_token == rhs.model_token);
+  return
+      (lhs.is_precision_loss_allowed == rhs.is_precision_loss_allowed) &&
+      (lhs.enable_quantized_inference == rhs.enable_quantized_inference) &&
+      (lhs.force_backend == rhs.force_backend) &&
+      (lhs.inference_priority1 == rhs.inference_priority1) &&
+      (lhs.inference_priority2 == rhs.inference_priority2) &&
+      (lhs.inference_priority3 == rhs.inference_priority3) &&
+      (lhs.inference_preference == rhs.inference_preference) &&
+      (lhs.cache_directory == rhs.cache_directory) &&
+      (lhs.model_token == rhs.model_token);
 }
 
 inline bool operator!=(const GPUSettingsT &lhs, const GPUSettingsT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline GPUSettingsT *GPUSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline GPUSettingsT *GPUSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new GPUSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void GPUSettings::UnPackTo(
-    GPUSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+inline void GPUSettings::UnPackTo(GPUSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = is_precision_loss_allowed();
-    _o->is_precision_loss_allowed = _e;
-  }
-  {
-    auto _e = enable_quantized_inference();
-    _o->enable_quantized_inference = _e;
-  }
-  {
-    auto _e = force_backend();
-    _o->force_backend = _e;
-  }
-  {
-    auto _e = inference_priority1();
-    _o->inference_priority1 = _e;
-  }
-  {
-    auto _e = inference_priority2();
-    _o->inference_priority2 = _e;
-  }
-  {
-    auto _e = inference_priority3();
-    _o->inference_priority3 = _e;
-  }
-  {
-    auto _e = inference_preference();
-    _o->inference_preference = _e;
-  }
-  {
-    auto _e = cache_directory();
-    if (_e) _o->cache_directory = _e->str();
-  }
-  {
-    auto _e = model_token();
-    if (_e) _o->model_token = _e->str();
-  }
+  { auto _e = is_precision_loss_allowed(); _o->is_precision_loss_allowed = _e; }
+  { auto _e = enable_quantized_inference(); _o->enable_quantized_inference = _e; }
+  { auto _e = force_backend(); _o->force_backend = _e; }
+  { auto _e = inference_priority1(); _o->inference_priority1 = _e; }
+  { auto _e = inference_priority2(); _o->inference_priority2 = _e; }
+  { auto _e = inference_priority3(); _o->inference_priority3 = _e; }
+  { auto _e = inference_preference(); _o->inference_preference = _e; }
+  { auto _e = cache_directory(); if (_e) _o->cache_directory = _e->str(); }
+  { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
 }
 
-inline flatbuffers::Offset<GPUSettings> GPUSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<GPUSettings> GPUSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateGPUSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const GPUSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const GPUSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _is_precision_loss_allowed = _o->is_precision_loss_allowed;
   auto _enable_quantized_inference = _o->enable_quantized_inference;
   auto _force_backend = _o->force_backend;
@@ -3519,1531 +3168,967 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(
   auto _inference_priority2 = _o->inference_priority2;
   auto _inference_priority3 = _o->inference_priority3;
   auto _inference_preference = _o->inference_preference;
-  auto _cache_directory =
-      _o->cache_directory.empty() ? 0 : _fbb.CreateString(_o->cache_directory);
-  auto _model_token =
-      _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
-  return tflite::CreateGPUSettings(_fbb, _is_precision_loss_allowed,
-                                   _enable_quantized_inference, _force_backend,
-                                   _inference_priority1, _inference_priority2,
-                                   _inference_priority3, _inference_preference,
-                                   _cache_directory, _model_token);
+  auto _cache_directory = _o->cache_directory.empty() ? 0 : _fbb.CreateString(_o->cache_directory);
+  auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
+  return tflite::CreateGPUSettings(
+      _fbb,
+      _is_precision_loss_allowed,
+      _enable_quantized_inference,
+      _force_backend,
+      _inference_priority1,
+      _inference_priority2,
+      _inference_priority3,
+      _inference_preference,
+      _cache_directory,
+      _model_token);
 }
 
-inline bool operator==(const HexagonSettingsT &lhs,
-                       const HexagonSettingsT &rhs) {
-  return (lhs.debug_level == rhs.debug_level) &&
-         (lhs.powersave_level == rhs.powersave_level) &&
-         (lhs.print_graph_profile == rhs.print_graph_profile) &&
-         (lhs.print_graph_debug == rhs.print_graph_debug);
+
+inline bool operator==(const HexagonSettingsT &lhs, const HexagonSettingsT &rhs) {
+  return
+      (lhs.debug_level == rhs.debug_level) &&
+      (lhs.powersave_level == rhs.powersave_level) &&
+      (lhs.print_graph_profile == rhs.print_graph_profile) &&
+      (lhs.print_graph_debug == rhs.print_graph_debug);
 }
 
-inline bool operator!=(const HexagonSettingsT &lhs,
-                       const HexagonSettingsT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const HexagonSettingsT &lhs, const HexagonSettingsT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline HexagonSettingsT *HexagonSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline HexagonSettingsT *HexagonSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new HexagonSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void HexagonSettings::UnPackTo(
-    HexagonSettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void HexagonSettings::UnPackTo(HexagonSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = debug_level();
-    _o->debug_level = _e;
-  }
-  {
-    auto _e = powersave_level();
-    _o->powersave_level = _e;
-  }
-  {
-    auto _e = print_graph_profile();
-    _o->print_graph_profile = _e;
-  }
-  {
-    auto _e = print_graph_debug();
-    _o->print_graph_debug = _e;
-  }
+  { auto _e = debug_level(); _o->debug_level = _e; }
+  { auto _e = powersave_level(); _o->powersave_level = _e; }
+  { auto _e = print_graph_profile(); _o->print_graph_profile = _e; }
+  { auto _e = print_graph_debug(); _o->print_graph_debug = _e; }
 }
 
-inline flatbuffers::Offset<HexagonSettings> HexagonSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const HexagonSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<HexagonSettings> HexagonSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HexagonSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateHexagonSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<HexagonSettings> CreateHexagonSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const HexagonSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<HexagonSettings> CreateHexagonSettings(flatbuffers::FlatBufferBuilder &_fbb, const HexagonSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const HexagonSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HexagonSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _debug_level = _o->debug_level;
   auto _powersave_level = _o->powersave_level;
   auto _print_graph_profile = _o->print_graph_profile;
   auto _print_graph_debug = _o->print_graph_debug;
-  return tflite::CreateHexagonSettings(_fbb, _debug_level, _powersave_level,
-                                       _print_graph_profile,
-                                       _print_graph_debug);
+  return tflite::CreateHexagonSettings(
+      _fbb,
+      _debug_level,
+      _powersave_level,
+      _print_graph_profile,
+      _print_graph_debug);
 }
 
-inline bool operator==(const XNNPackSettingsT &lhs,
-                       const XNNPackSettingsT &rhs) {
-  return (lhs.num_threads == rhs.num_threads);
+
+inline bool operator==(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs) {
+  return
+      (lhs.num_threads == rhs.num_threads);
 }
 
-inline bool operator!=(const XNNPackSettingsT &lhs,
-                       const XNNPackSettingsT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline XNNPackSettingsT *XNNPackSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline XNNPackSettingsT *XNNPackSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new XNNPackSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void XNNPackSettings::UnPackTo(
-    XNNPackSettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void XNNPackSettings::UnPackTo(XNNPackSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = num_threads();
-    _o->num_threads = _e;
-  }
+  { auto _e = num_threads(); _o->num_threads = _e; }
 }
 
-inline flatbuffers::Offset<XNNPackSettings> XNNPackSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<XNNPackSettings> XNNPackSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateXNNPackSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const XNNPackSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const XNNPackSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _num_threads = _o->num_threads;
-  return tflite::CreateXNNPackSettings(_fbb, _num_threads);
+  return tflite::CreateXNNPackSettings(
+      _fbb,
+      _num_threads);
 }
 
-inline bool operator==(const EdgeTpuDeviceSpecT &lhs,
-                       const EdgeTpuDeviceSpecT &rhs) {
-  return (lhs.platform_type == rhs.platform_type) &&
-         (lhs.num_chips == rhs.num_chips) &&
-         (lhs.device_paths == rhs.device_paths) &&
-         (lhs.chip_family == rhs.chip_family);
+
+inline bool operator==(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs) {
+  return
+      (lhs.platform_type == rhs.platform_type) &&
+      (lhs.num_chips == rhs.num_chips) &&
+      (lhs.device_paths == rhs.device_paths) &&
+      (lhs.chip_family == rhs.chip_family);
 }
 
-inline bool operator!=(const EdgeTpuDeviceSpecT &lhs,
-                       const EdgeTpuDeviceSpecT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline EdgeTpuDeviceSpecT *EdgeTpuDeviceSpec::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline EdgeTpuDeviceSpecT *EdgeTpuDeviceSpec::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new EdgeTpuDeviceSpecT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void EdgeTpuDeviceSpec::UnPackTo(
-    EdgeTpuDeviceSpecT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void EdgeTpuDeviceSpec::UnPackTo(EdgeTpuDeviceSpecT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = platform_type();
-    _o->platform_type = _e;
-  }
-  {
-    auto _e = num_chips();
-    _o->num_chips = _e;
-  }
-  {
-    auto _e = device_paths();
-    if (_e) {
-      _o->device_paths.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->device_paths[_i] = _e->Get(_i)->str();
-      }
-    }
-  }
-  {
-    auto _e = chip_family();
-    _o->chip_family = _e;
-  }
+  { auto _e = platform_type(); _o->platform_type = _e; }
+  { auto _e = num_chips(); _o->num_chips = _e; }
+  { auto _e = device_paths(); if (_e) { _o->device_paths.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->device_paths[_i] = _e->Get(_i)->str(); } } }
+  { auto _e = chip_family(); _o->chip_family = _e; }
 }
 
-inline flatbuffers::Offset<EdgeTpuDeviceSpec> EdgeTpuDeviceSpec::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuDeviceSpecT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<EdgeTpuDeviceSpec> EdgeTpuDeviceSpec::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuDeviceSpecT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateEdgeTpuDeviceSpec(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<EdgeTpuDeviceSpec> CreateEdgeTpuDeviceSpec(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuDeviceSpecT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<EdgeTpuDeviceSpec> CreateEdgeTpuDeviceSpec(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuDeviceSpecT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const EdgeTpuDeviceSpecT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const EdgeTpuDeviceSpecT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _platform_type = _o->platform_type;
   auto _num_chips = _o->num_chips;
-  auto _device_paths = _o->device_paths.size()
-                           ? _fbb.CreateVectorOfStrings(_o->device_paths)
-                           : 0;
+  auto _device_paths = _o->device_paths.size() ? _fbb.CreateVectorOfStrings(_o->device_paths) : 0;
   auto _chip_family = _o->chip_family;
-  return tflite::CreateEdgeTpuDeviceSpec(_fbb, _platform_type, _num_chips,
-                                         _device_paths, _chip_family);
+  return tflite::CreateEdgeTpuDeviceSpec(
+      _fbb,
+      _platform_type,
+      _num_chips,
+      _device_paths,
+      _chip_family);
 }
 
-inline bool operator==(const EdgeTpuInactivePowerConfigT &lhs,
-                       const EdgeTpuInactivePowerConfigT &rhs) {
-  return (lhs.inactive_power_state == rhs.inactive_power_state) &&
-         (lhs.inactive_timeout_us == rhs.inactive_timeout_us);
+
+inline bool operator==(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs) {
+  return
+      (lhs.inactive_power_state == rhs.inactive_power_state) &&
+      (lhs.inactive_timeout_us == rhs.inactive_timeout_us);
 }
 
-inline bool operator!=(const EdgeTpuInactivePowerConfigT &lhs,
-                       const EdgeTpuInactivePowerConfigT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline EdgeTpuInactivePowerConfigT *EdgeTpuInactivePowerConfig::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline EdgeTpuInactivePowerConfigT *EdgeTpuInactivePowerConfig::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new EdgeTpuInactivePowerConfigT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void EdgeTpuInactivePowerConfig::UnPackTo(
-    EdgeTpuInactivePowerConfigT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void EdgeTpuInactivePowerConfig::UnPackTo(EdgeTpuInactivePowerConfigT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = inactive_power_state();
-    _o->inactive_power_state = _e;
-  }
-  {
-    auto _e = inactive_timeout_us();
-    _o->inactive_timeout_us = _e;
-  }
+  { auto _e = inactive_power_state(); _o->inactive_power_state = _e; }
+  { auto _e = inactive_timeout_us(); _o->inactive_timeout_us = _e; }
 }
 
-inline flatbuffers::Offset<EdgeTpuInactivePowerConfig>
-EdgeTpuInactivePowerConfig::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuInactivePowerConfigT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<EdgeTpuInactivePowerConfig> EdgeTpuInactivePowerConfig::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuInactivePowerConfigT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateEdgeTpuInactivePowerConfig(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<EdgeTpuInactivePowerConfig>
-CreateEdgeTpuInactivePowerConfig(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuInactivePowerConfigT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<EdgeTpuInactivePowerConfig> CreateEdgeTpuInactivePowerConfig(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuInactivePowerConfigT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const EdgeTpuInactivePowerConfigT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const EdgeTpuInactivePowerConfigT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _inactive_power_state = _o->inactive_power_state;
   auto _inactive_timeout_us = _o->inactive_timeout_us;
-  return tflite::CreateEdgeTpuInactivePowerConfig(_fbb, _inactive_power_state,
-                                                  _inactive_timeout_us);
+  return tflite::CreateEdgeTpuInactivePowerConfig(
+      _fbb,
+      _inactive_power_state,
+      _inactive_timeout_us);
 }
 
-inline bool operator==(const EdgeTpuSettingsT &lhs,
-                       const EdgeTpuSettingsT &rhs) {
-  return (lhs.inference_power_state == rhs.inference_power_state) &&
-         (lhs.inactive_power_configs == rhs.inactive_power_configs) &&
-         (lhs.inference_priority == rhs.inference_priority) &&
-         ((lhs.edgetpu_device_spec == rhs.edgetpu_device_spec) ||
-          (lhs.edgetpu_device_spec && rhs.edgetpu_device_spec &&
-           *lhs.edgetpu_device_spec == *rhs.edgetpu_device_spec)) &&
-         (lhs.model_token == rhs.model_token) &&
-         (lhs.float_truncation_type == rhs.float_truncation_type);
+
+inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
+  return
+      (lhs.inference_power_state == rhs.inference_power_state) &&
+      (lhs.inactive_power_configs == rhs.inactive_power_configs) &&
+      (lhs.inference_priority == rhs.inference_priority) &&
+      ((lhs.edgetpu_device_spec == rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == *rhs.edgetpu_device_spec)) &&
+      (lhs.model_token == rhs.model_token) &&
+      (lhs.float_truncation_type == rhs.float_truncation_type);
 }
 
-inline bool operator!=(const EdgeTpuSettingsT &lhs,
-                       const EdgeTpuSettingsT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline EdgeTpuSettingsT *EdgeTpuSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline EdgeTpuSettingsT *EdgeTpuSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new EdgeTpuSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void EdgeTpuSettings::UnPackTo(
-    EdgeTpuSettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = inference_power_state();
-    _o->inference_power_state = _e;
-  }
-  {
-    auto _e = inactive_power_configs();
-    if (_e) {
-      _o->inactive_power_configs.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->inactive_power_configs[_i] =
-            std::unique_ptr<tflite::EdgeTpuInactivePowerConfigT>(
-                _e->Get(_i)->UnPack(_resolver));
-      }
-    }
-  }
-  {
-    auto _e = inference_priority();
-    _o->inference_priority = _e;
-  }
-  {
-    auto _e = edgetpu_device_spec();
-    if (_e)
-      _o->edgetpu_device_spec =
-          std::unique_ptr<tflite::EdgeTpuDeviceSpecT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = model_token();
-    if (_e) _o->model_token = _e->str();
-  }
-  {
-    auto _e = float_truncation_type();
-    _o->float_truncation_type = _e;
-  }
+  { auto _e = inference_power_state(); _o->inference_power_state = _e; }
+  { auto _e = inactive_power_configs(); if (_e) { _o->inactive_power_configs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->inactive_power_configs[_i] = std::unique_ptr<tflite::EdgeTpuInactivePowerConfigT>(_e->Get(_i)->UnPack(_resolver)); } } }
+  { auto _e = inference_priority(); _o->inference_priority = _e; }
+  { auto _e = edgetpu_device_spec(); if (_e) _o->edgetpu_device_spec = std::unique_ptr<tflite::EdgeTpuDeviceSpecT>(_e->UnPack(_resolver)); }
+  { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
+  { auto _e = float_truncation_type(); _o->float_truncation_type = _e; }
 }
 
-inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateEdgeTpuSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const EdgeTpuSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const EdgeTpuSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _inference_power_state = _o->inference_power_state;
-  auto _inactive_power_configs =
-      _o->inactive_power_configs.size()
-          ? _fbb.CreateVector<
-                flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(
-                _o->inactive_power_configs.size(),
-                [](size_t i, _VectorArgs *__va) {
-                  return CreateEdgeTpuInactivePowerConfig(
-                      *__va->__fbb, __va->__o->inactive_power_configs[i].get(),
-                      __va->__rehasher);
-                },
-                &_va)
-          : 0;
+  auto _inactive_power_configs = _o->inactive_power_configs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> (_o->inactive_power_configs.size(), [](size_t i, _VectorArgs *__va) { return CreateEdgeTpuInactivePowerConfig(*__va->__fbb, __va->__o->inactive_power_configs[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _inference_priority = _o->inference_priority;
-  auto _edgetpu_device_spec =
-      _o->edgetpu_device_spec
-          ? CreateEdgeTpuDeviceSpec(_fbb, _o->edgetpu_device_spec.get(),
-                                    _rehasher)
-          : 0;
-  auto _model_token =
-      _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
+  auto _edgetpu_device_spec = _o->edgetpu_device_spec ? CreateEdgeTpuDeviceSpec(_fbb, _o->edgetpu_device_spec.get(), _rehasher) : 0;
+  auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
   auto _float_truncation_type = _o->float_truncation_type;
   return tflite::CreateEdgeTpuSettings(
-      _fbb, _inference_power_state, _inactive_power_configs,
-      _inference_priority, _edgetpu_device_spec, _model_token,
+      _fbb,
+      _inference_power_state,
+      _inactive_power_configs,
+      _inference_priority,
+      _edgetpu_device_spec,
+      _model_token,
       _float_truncation_type);
 }
 
+
 inline bool operator==(const CoralSettingsT &lhs, const CoralSettingsT &rhs) {
-  return (lhs.device == rhs.device) && (lhs.performance == rhs.performance) &&
-         (lhs.usb_always_dfu == rhs.usb_always_dfu) &&
-         (lhs.usb_max_bulk_in_queue_length == rhs.usb_max_bulk_in_queue_length);
+  return
+      (lhs.device == rhs.device) &&
+      (lhs.performance == rhs.performance) &&
+      (lhs.usb_always_dfu == rhs.usb_always_dfu) &&
+      (lhs.usb_max_bulk_in_queue_length == rhs.usb_max_bulk_in_queue_length);
 }
 
 inline bool operator!=(const CoralSettingsT &lhs, const CoralSettingsT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline CoralSettingsT *CoralSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline CoralSettingsT *CoralSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new CoralSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void CoralSettings::UnPackTo(
-    CoralSettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void CoralSettings::UnPackTo(CoralSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = device();
-    if (_e) _o->device = _e->str();
-  }
-  {
-    auto _e = performance();
-    _o->performance = _e;
-  }
-  {
-    auto _e = usb_always_dfu();
-    _o->usb_always_dfu = _e;
-  }
-  {
-    auto _e = usb_max_bulk_in_queue_length();
-    _o->usb_max_bulk_in_queue_length = _e;
-  }
+  { auto _e = device(); if (_e) _o->device = _e->str(); }
+  { auto _e = performance(); _o->performance = _e; }
+  { auto _e = usb_always_dfu(); _o->usb_always_dfu = _e; }
+  { auto _e = usb_max_bulk_in_queue_length(); _o->usb_max_bulk_in_queue_length = _e; }
 }
 
-inline flatbuffers::Offset<CoralSettings> CoralSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const CoralSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<CoralSettings> CoralSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const CoralSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateCoralSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<CoralSettings> CreateCoralSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const CoralSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<CoralSettings> CreateCoralSettings(flatbuffers::FlatBufferBuilder &_fbb, const CoralSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const CoralSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const CoralSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _device = _o->device.empty() ? 0 : _fbb.CreateString(_o->device);
   auto _performance = _o->performance;
   auto _usb_always_dfu = _o->usb_always_dfu;
   auto _usb_max_bulk_in_queue_length = _o->usb_max_bulk_in_queue_length;
-  return tflite::CreateCoralSettings(_fbb, _device, _performance,
-                                     _usb_always_dfu,
-                                     _usb_max_bulk_in_queue_length);
+  return tflite::CreateCoralSettings(
+      _fbb,
+      _device,
+      _performance,
+      _usb_always_dfu,
+      _usb_max_bulk_in_queue_length);
 }
 
+
 inline bool operator==(const CPUSettingsT &lhs, const CPUSettingsT &rhs) {
-  return (lhs.num_threads == rhs.num_threads);
+  return
+      (lhs.num_threads == rhs.num_threads);
 }
 
 inline bool operator!=(const CPUSettingsT &lhs, const CPUSettingsT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline CPUSettingsT *CPUSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline CPUSettingsT *CPUSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new CPUSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void CPUSettings::UnPackTo(
-    CPUSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+inline void CPUSettings::UnPackTo(CPUSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = num_threads();
-    _o->num_threads = _e;
-  }
+  { auto _e = num_threads(); _o->num_threads = _e; }
 }
 
-inline flatbuffers::Offset<CPUSettings> CPUSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const CPUSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<CPUSettings> CPUSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const CPUSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateCPUSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<CPUSettings> CreateCPUSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const CPUSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<CPUSettings> CreateCPUSettings(flatbuffers::FlatBufferBuilder &_fbb, const CPUSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const CPUSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const CPUSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _num_threads = _o->num_threads;
-  return tflite::CreateCPUSettings(_fbb, _num_threads);
+  return tflite::CreateCPUSettings(
+      _fbb,
+      _num_threads);
 }
 
+
 inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
-  return (lhs.delegate == rhs.delegate) &&
-         ((lhs.nnapi_settings == rhs.nnapi_settings) ||
-          (lhs.nnapi_settings && rhs.nnapi_settings &&
-           *lhs.nnapi_settings == *rhs.nnapi_settings)) &&
-         ((lhs.gpu_settings == rhs.gpu_settings) ||
-          (lhs.gpu_settings && rhs.gpu_settings &&
-           *lhs.gpu_settings == *rhs.gpu_settings)) &&
-         ((lhs.hexagon_settings == rhs.hexagon_settings) ||
-          (lhs.hexagon_settings && rhs.hexagon_settings &&
-           *lhs.hexagon_settings == *rhs.hexagon_settings)) &&
-         ((lhs.xnnpack_settings == rhs.xnnpack_settings) ||
-          (lhs.xnnpack_settings && rhs.xnnpack_settings &&
-           *lhs.xnnpack_settings == *rhs.xnnpack_settings)) &&
-         ((lhs.cpu_settings == rhs.cpu_settings) ||
-          (lhs.cpu_settings && rhs.cpu_settings &&
-           *lhs.cpu_settings == *rhs.cpu_settings)) &&
-         (lhs.max_delegated_partitions == rhs.max_delegated_partitions) &&
-         ((lhs.edgetpu_settings == rhs.edgetpu_settings) ||
-          (lhs.edgetpu_settings && rhs.edgetpu_settings &&
-           *lhs.edgetpu_settings == *rhs.edgetpu_settings)) &&
-         ((lhs.coral_settings == rhs.coral_settings) ||
-          (lhs.coral_settings && rhs.coral_settings &&
-           *lhs.coral_settings == *rhs.coral_settings)) &&
-         ((lhs.fallback_settings == rhs.fallback_settings) ||
-          (lhs.fallback_settings && rhs.fallback_settings &&
-           *lhs.fallback_settings == *rhs.fallback_settings));
+  return
+      (lhs.delegate == rhs.delegate) &&
+      ((lhs.nnapi_settings == rhs.nnapi_settings) || (lhs.nnapi_settings && rhs.nnapi_settings && *lhs.nnapi_settings == *rhs.nnapi_settings)) &&
+      ((lhs.gpu_settings == rhs.gpu_settings) || (lhs.gpu_settings && rhs.gpu_settings && *lhs.gpu_settings == *rhs.gpu_settings)) &&
+      ((lhs.hexagon_settings == rhs.hexagon_settings) || (lhs.hexagon_settings && rhs.hexagon_settings && *lhs.hexagon_settings == *rhs.hexagon_settings)) &&
+      ((lhs.xnnpack_settings == rhs.xnnpack_settings) || (lhs.xnnpack_settings && rhs.xnnpack_settings && *lhs.xnnpack_settings == *rhs.xnnpack_settings)) &&
+      ((lhs.cpu_settings == rhs.cpu_settings) || (lhs.cpu_settings && rhs.cpu_settings && *lhs.cpu_settings == *rhs.cpu_settings)) &&
+      (lhs.max_delegated_partitions == rhs.max_delegated_partitions) &&
+      ((lhs.edgetpu_settings == rhs.edgetpu_settings) || (lhs.edgetpu_settings && rhs.edgetpu_settings && *lhs.edgetpu_settings == *rhs.edgetpu_settings)) &&
+      ((lhs.coral_settings == rhs.coral_settings) || (lhs.coral_settings && rhs.coral_settings && *lhs.coral_settings == *rhs.coral_settings)) &&
+      ((lhs.fallback_settings == rhs.fallback_settings) || (lhs.fallback_settings && rhs.fallback_settings && *lhs.fallback_settings == *rhs.fallback_settings));
 }
 
 inline bool operator!=(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline TFLiteSettingsT *TFLiteSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline TFLiteSettingsT *TFLiteSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new TFLiteSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void TFLiteSettings::UnPackTo(
-    TFLiteSettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void TFLiteSettings::UnPackTo(TFLiteSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = delegate();
-    _o->delegate = _e;
-  }
-  {
-    auto _e = nnapi_settings();
-    if (_e)
-      _o->nnapi_settings =
-          std::unique_ptr<tflite::NNAPISettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = gpu_settings();
-    if (_e)
-      _o->gpu_settings =
-          std::unique_ptr<tflite::GPUSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = hexagon_settings();
-    if (_e)
-      _o->hexagon_settings =
-          std::unique_ptr<tflite::HexagonSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = xnnpack_settings();
-    if (_e)
-      _o->xnnpack_settings =
-          std::unique_ptr<tflite::XNNPackSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = cpu_settings();
-    if (_e)
-      _o->cpu_settings =
-          std::unique_ptr<tflite::CPUSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = max_delegated_partitions();
-    _o->max_delegated_partitions = _e;
-  }
-  {
-    auto _e = edgetpu_settings();
-    if (_e)
-      _o->edgetpu_settings =
-          std::unique_ptr<tflite::EdgeTpuSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = coral_settings();
-    if (_e)
-      _o->coral_settings =
-          std::unique_ptr<tflite::CoralSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = fallback_settings();
-    if (_e)
-      _o->fallback_settings =
-          std::unique_ptr<tflite::FallbackSettingsT>(_e->UnPack(_resolver));
-  }
+  { auto _e = delegate(); _o->delegate = _e; }
+  { auto _e = nnapi_settings(); if (_e) _o->nnapi_settings = std::unique_ptr<tflite::NNAPISettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = gpu_settings(); if (_e) _o->gpu_settings = std::unique_ptr<tflite::GPUSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = hexagon_settings(); if (_e) _o->hexagon_settings = std::unique_ptr<tflite::HexagonSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = xnnpack_settings(); if (_e) _o->xnnpack_settings = std::unique_ptr<tflite::XNNPackSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = cpu_settings(); if (_e) _o->cpu_settings = std::unique_ptr<tflite::CPUSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = max_delegated_partitions(); _o->max_delegated_partitions = _e; }
+  { auto _e = edgetpu_settings(); if (_e) _o->edgetpu_settings = std::unique_ptr<tflite::EdgeTpuSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = coral_settings(); if (_e) _o->coral_settings = std::unique_ptr<tflite::CoralSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = fallback_settings(); if (_e) _o->fallback_settings = std::unique_ptr<tflite::FallbackSettingsT>(_e->UnPack(_resolver)); }
 }
 
-inline flatbuffers::Offset<TFLiteSettings> TFLiteSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<TFLiteSettings> TFLiteSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateTFLiteSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(flatbuffers::FlatBufferBuilder &_fbb, const TFLiteSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const TFLiteSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const TFLiteSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _delegate = _o->delegate;
-  auto _nnapi_settings =
-      _o->nnapi_settings
-          ? CreateNNAPISettings(_fbb, _o->nnapi_settings.get(), _rehasher)
-          : 0;
-  auto _gpu_settings =
-      _o->gpu_settings
-          ? CreateGPUSettings(_fbb, _o->gpu_settings.get(), _rehasher)
-          : 0;
-  auto _hexagon_settings =
-      _o->hexagon_settings
-          ? CreateHexagonSettings(_fbb, _o->hexagon_settings.get(), _rehasher)
-          : 0;
-  auto _xnnpack_settings =
-      _o->xnnpack_settings
-          ? CreateXNNPackSettings(_fbb, _o->xnnpack_settings.get(), _rehasher)
-          : 0;
-  auto _cpu_settings =
-      _o->cpu_settings
-          ? CreateCPUSettings(_fbb, _o->cpu_settings.get(), _rehasher)
-          : 0;
+  auto _nnapi_settings = _o->nnapi_settings ? CreateNNAPISettings(_fbb, _o->nnapi_settings.get(), _rehasher) : 0;
+  auto _gpu_settings = _o->gpu_settings ? CreateGPUSettings(_fbb, _o->gpu_settings.get(), _rehasher) : 0;
+  auto _hexagon_settings = _o->hexagon_settings ? CreateHexagonSettings(_fbb, _o->hexagon_settings.get(), _rehasher) : 0;
+  auto _xnnpack_settings = _o->xnnpack_settings ? CreateXNNPackSettings(_fbb, _o->xnnpack_settings.get(), _rehasher) : 0;
+  auto _cpu_settings = _o->cpu_settings ? CreateCPUSettings(_fbb, _o->cpu_settings.get(), _rehasher) : 0;
   auto _max_delegated_partitions = _o->max_delegated_partitions;
-  auto _edgetpu_settings =
-      _o->edgetpu_settings
-          ? CreateEdgeTpuSettings(_fbb, _o->edgetpu_settings.get(), _rehasher)
-          : 0;
-  auto _coral_settings =
-      _o->coral_settings
-          ? CreateCoralSettings(_fbb, _o->coral_settings.get(), _rehasher)
-          : 0;
-  auto _fallback_settings =
-      _o->fallback_settings
-          ? CreateFallbackSettings(_fbb, _o->fallback_settings.get(), _rehasher)
-          : 0;
+  auto _edgetpu_settings = _o->edgetpu_settings ? CreateEdgeTpuSettings(_fbb, _o->edgetpu_settings.get(), _rehasher) : 0;
+  auto _coral_settings = _o->coral_settings ? CreateCoralSettings(_fbb, _o->coral_settings.get(), _rehasher) : 0;
+  auto _fallback_settings = _o->fallback_settings ? CreateFallbackSettings(_fbb, _o->fallback_settings.get(), _rehasher) : 0;
   return tflite::CreateTFLiteSettings(
-      _fbb, _delegate, _nnapi_settings, _gpu_settings, _hexagon_settings,
-      _xnnpack_settings, _cpu_settings, _max_delegated_partitions,
-      _edgetpu_settings, _coral_settings, _fallback_settings);
+      _fbb,
+      _delegate,
+      _nnapi_settings,
+      _gpu_settings,
+      _hexagon_settings,
+      _xnnpack_settings,
+      _cpu_settings,
+      _max_delegated_partitions,
+      _edgetpu_settings,
+      _coral_settings,
+      _fallback_settings);
 }
 
-inline bool operator==(const FallbackSettingsT &lhs,
-                       const FallbackSettingsT &rhs) {
-  return (lhs.allow_automatic_fallback_on_compilation_error ==
-          rhs.allow_automatic_fallback_on_compilation_error) &&
-         (lhs.allow_automatic_fallback_on_execution_error ==
-          rhs.allow_automatic_fallback_on_execution_error);
+
+inline bool operator==(const FallbackSettingsT &lhs, const FallbackSettingsT &rhs) {
+  return
+      (lhs.allow_automatic_fallback_on_compilation_error == rhs.allow_automatic_fallback_on_compilation_error) &&
+      (lhs.allow_automatic_fallback_on_execution_error == rhs.allow_automatic_fallback_on_execution_error);
 }
 
-inline bool operator!=(const FallbackSettingsT &lhs,
-                       const FallbackSettingsT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const FallbackSettingsT &lhs, const FallbackSettingsT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline FallbackSettingsT *FallbackSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline FallbackSettingsT *FallbackSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new FallbackSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void FallbackSettings::UnPackTo(
-    FallbackSettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void FallbackSettings::UnPackTo(FallbackSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = allow_automatic_fallback_on_compilation_error();
-    _o->allow_automatic_fallback_on_compilation_error = _e;
-  }
-  {
-    auto _e = allow_automatic_fallback_on_execution_error();
-    _o->allow_automatic_fallback_on_execution_error = _e;
-  }
+  { auto _e = allow_automatic_fallback_on_compilation_error(); _o->allow_automatic_fallback_on_compilation_error = _e; }
+  { auto _e = allow_automatic_fallback_on_execution_error(); _o->allow_automatic_fallback_on_execution_error = _e; }
 }
 
-inline flatbuffers::Offset<FallbackSettings> FallbackSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const FallbackSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<FallbackSettings> FallbackSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FallbackSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateFallbackSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<FallbackSettings> CreateFallbackSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const FallbackSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<FallbackSettings> CreateFallbackSettings(flatbuffers::FlatBufferBuilder &_fbb, const FallbackSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const FallbackSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
-  auto _allow_automatic_fallback_on_compilation_error =
-      _o->allow_automatic_fallback_on_compilation_error;
-  auto _allow_automatic_fallback_on_execution_error =
-      _o->allow_automatic_fallback_on_execution_error;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const FallbackSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _allow_automatic_fallback_on_compilation_error = _o->allow_automatic_fallback_on_compilation_error;
+  auto _allow_automatic_fallback_on_execution_error = _o->allow_automatic_fallback_on_execution_error;
   return tflite::CreateFallbackSettings(
-      _fbb, _allow_automatic_fallback_on_compilation_error,
+      _fbb,
+      _allow_automatic_fallback_on_compilation_error,
       _allow_automatic_fallback_on_execution_error);
 }
 
-inline bool operator==(const BenchmarkMetricT &lhs,
-                       const BenchmarkMetricT &rhs) {
-  return (lhs.name == rhs.name) && (lhs.values == rhs.values);
+
+inline bool operator==(const BenchmarkMetricT &lhs, const BenchmarkMetricT &rhs) {
+  return
+      (lhs.name == rhs.name) &&
+      (lhs.values == rhs.values);
 }
 
-inline bool operator!=(const BenchmarkMetricT &lhs,
-                       const BenchmarkMetricT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const BenchmarkMetricT &lhs, const BenchmarkMetricT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline BenchmarkMetricT *BenchmarkMetric::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline BenchmarkMetricT *BenchmarkMetric::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkMetricT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void BenchmarkMetric::UnPackTo(
-    BenchmarkMetricT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void BenchmarkMetric::UnPackTo(BenchmarkMetricT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = name();
-    if (_e) _o->name = _e->str();
-  }
-  {
-    auto _e = values();
-    if (_e) {
-      _o->values.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->values[_i] = _e->Get(_i);
-      }
-    }
-  }
+  { auto _e = name(); if (_e) _o->name = _e->str(); }
+  { auto _e = values(); if (_e) { _o->values.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->values[_i] = _e->Get(_i); } } }
 }
 
-inline flatbuffers::Offset<BenchmarkMetric> BenchmarkMetric::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkMetricT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkMetric> BenchmarkMetric::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkMetricT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateBenchmarkMetric(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<BenchmarkMetric> CreateBenchmarkMetric(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkMetricT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkMetric> CreateBenchmarkMetric(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkMetricT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const BenchmarkMetricT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BenchmarkMetricT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _name = _o->name.empty() ? 0 : _fbb.CreateString(_o->name);
   auto _values = _o->values.size() ? _fbb.CreateVector(_o->values) : 0;
-  return tflite::CreateBenchmarkMetric(_fbb, _name, _values);
+  return tflite::CreateBenchmarkMetric(
+      _fbb,
+      _name,
+      _values);
 }
 
-inline bool operator==(const BenchmarkResultT &lhs,
-                       const BenchmarkResultT &rhs) {
-  return (lhs.initialization_time_us == rhs.initialization_time_us) &&
-         (lhs.inference_time_us == rhs.inference_time_us) &&
-         (lhs.max_memory_kb == rhs.max_memory_kb) && (lhs.ok == rhs.ok) &&
-         (lhs.metrics == rhs.metrics);
+
+inline bool operator==(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs) {
+  return
+      (lhs.initialization_time_us == rhs.initialization_time_us) &&
+      (lhs.inference_time_us == rhs.inference_time_us) &&
+      (lhs.max_memory_kb == rhs.max_memory_kb) &&
+      (lhs.ok == rhs.ok) &&
+      (lhs.metrics == rhs.metrics);
 }
 
-inline bool operator!=(const BenchmarkResultT &lhs,
-                       const BenchmarkResultT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline BenchmarkResultT *BenchmarkResult::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline BenchmarkResultT *BenchmarkResult::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkResultT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void BenchmarkResult::UnPackTo(
-    BenchmarkResultT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void BenchmarkResult::UnPackTo(BenchmarkResultT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = initialization_time_us();
-    if (_e) {
-      _o->initialization_time_us.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->initialization_time_us[_i] = _e->Get(_i);
-      }
-    }
-  }
-  {
-    auto _e = inference_time_us();
-    if (_e) {
-      _o->inference_time_us.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->inference_time_us[_i] = _e->Get(_i);
-      }
-    }
-  }
-  {
-    auto _e = max_memory_kb();
-    _o->max_memory_kb = _e;
-  }
-  {
-    auto _e = ok();
-    _o->ok = _e;
-  }
-  {
-    auto _e = metrics();
-    if (_e) {
-      _o->metrics.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->metrics[_i] = std::unique_ptr<tflite::BenchmarkMetricT>(
-            _e->Get(_i)->UnPack(_resolver));
-      }
-    }
-  }
+  { auto _e = initialization_time_us(); if (_e) { _o->initialization_time_us.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->initialization_time_us[_i] = _e->Get(_i); } } }
+  { auto _e = inference_time_us(); if (_e) { _o->inference_time_us.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->inference_time_us[_i] = _e->Get(_i); } } }
+  { auto _e = max_memory_kb(); _o->max_memory_kb = _e; }
+  { auto _e = ok(); _o->ok = _e; }
+  { auto _e = metrics(); if (_e) { _o->metrics.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->metrics[_i] = std::unique_ptr<tflite::BenchmarkMetricT>(_e->Get(_i)->UnPack(_resolver)); } } }
 }
 
-inline flatbuffers::Offset<BenchmarkResult> BenchmarkResult::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkResult> BenchmarkResult::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateBenchmarkResult(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkResultT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const BenchmarkResultT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
-  auto _initialization_time_us =
-      _o->initialization_time_us.size()
-          ? _fbb.CreateVector(_o->initialization_time_us)
-          : 0;
-  auto _inference_time_us = _o->inference_time_us.size()
-                                ? _fbb.CreateVector(_o->inference_time_us)
-                                : 0;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BenchmarkResultT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _initialization_time_us = _o->initialization_time_us.size() ? _fbb.CreateVector(_o->initialization_time_us) : 0;
+  auto _inference_time_us = _o->inference_time_us.size() ? _fbb.CreateVector(_o->inference_time_us) : 0;
   auto _max_memory_kb = _o->max_memory_kb;
   auto _ok = _o->ok;
-  auto _metrics =
-      _o->metrics.size()
-          ? _fbb.CreateVector<flatbuffers::Offset<tflite::BenchmarkMetric>>(
-                _o->metrics.size(),
-                [](size_t i, _VectorArgs *__va) {
-                  return CreateBenchmarkMetric(*__va->__fbb,
-                                               __va->__o->metrics[i].get(),
-                                               __va->__rehasher);
-                },
-                &_va)
-          : 0;
-  return tflite::CreateBenchmarkResult(_fbb, _initialization_time_us,
-                                       _inference_time_us, _max_memory_kb, _ok,
-                                       _metrics);
+  auto _metrics = _o->metrics.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::BenchmarkMetric>> (_o->metrics.size(), [](size_t i, _VectorArgs *__va) { return CreateBenchmarkMetric(*__va->__fbb, __va->__o->metrics[i].get(), __va->__rehasher); }, &_va ) : 0;
+  return tflite::CreateBenchmarkResult(
+      _fbb,
+      _initialization_time_us,
+      _inference_time_us,
+      _max_memory_kb,
+      _ok,
+      _metrics);
 }
 
+
 inline bool operator==(const ErrorCodeT &lhs, const ErrorCodeT &rhs) {
-  return (lhs.source == rhs.source) && (lhs.tflite_error == rhs.tflite_error) &&
-         (lhs.underlying_api_error == rhs.underlying_api_error);
+  return
+      (lhs.source == rhs.source) &&
+      (lhs.tflite_error == rhs.tflite_error) &&
+      (lhs.underlying_api_error == rhs.underlying_api_error);
 }
 
 inline bool operator!=(const ErrorCodeT &lhs, const ErrorCodeT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline ErrorCodeT *ErrorCode::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline ErrorCodeT *ErrorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ErrorCodeT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void ErrorCode::UnPackTo(
-    ErrorCodeT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+inline void ErrorCode::UnPackTo(ErrorCodeT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = source();
-    _o->source = _e;
-  }
-  {
-    auto _e = tflite_error();
-    _o->tflite_error = _e;
-  }
-  {
-    auto _e = underlying_api_error();
-    _o->underlying_api_error = _e;
-  }
+  { auto _e = source(); _o->source = _e; }
+  { auto _e = tflite_error(); _o->tflite_error = _e; }
+  { auto _e = underlying_api_error(); _o->underlying_api_error = _e; }
 }
 
-inline flatbuffers::Offset<ErrorCode> ErrorCode::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const ErrorCodeT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<ErrorCode> ErrorCode::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ErrorCodeT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateErrorCode(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<ErrorCode> CreateErrorCode(
-    flatbuffers::FlatBufferBuilder &_fbb, const ErrorCodeT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<ErrorCode> CreateErrorCode(flatbuffers::FlatBufferBuilder &_fbb, const ErrorCodeT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const ErrorCodeT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ErrorCodeT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _source = _o->source;
   auto _tflite_error = _o->tflite_error;
   auto _underlying_api_error = _o->underlying_api_error;
-  return tflite::CreateErrorCode(_fbb, _source, _tflite_error,
-                                 _underlying_api_error);
+  return tflite::CreateErrorCode(
+      _fbb,
+      _source,
+      _tflite_error,
+      _underlying_api_error);
 }
 
+
 inline bool operator==(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs) {
-  return (lhs.stage == rhs.stage) && (lhs.exit_code == rhs.exit_code) &&
-         (lhs.signal == rhs.signal) && (lhs.error_code == rhs.error_code) &&
-         (lhs.mini_benchmark_error_code == rhs.mini_benchmark_error_code);
+  return
+      (lhs.stage == rhs.stage) &&
+      (lhs.exit_code == rhs.exit_code) &&
+      (lhs.signal == rhs.signal) &&
+      (lhs.error_code == rhs.error_code) &&
+      (lhs.mini_benchmark_error_code == rhs.mini_benchmark_error_code);
 }
 
 inline bool operator!=(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline BenchmarkErrorT *BenchmarkError::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline BenchmarkErrorT *BenchmarkError::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkErrorT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void BenchmarkError::UnPackTo(
-    BenchmarkErrorT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void BenchmarkError::UnPackTo(BenchmarkErrorT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = stage();
-    _o->stage = _e;
-  }
-  {
-    auto _e = exit_code();
-    _o->exit_code = _e;
-  }
-  {
-    auto _e = signal();
-    _o->signal = _e;
-  }
-  {
-    auto _e = error_code();
-    if (_e) {
-      _o->error_code.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->error_code[_i] =
-            std::unique_ptr<tflite::ErrorCodeT>(_e->Get(_i)->UnPack(_resolver));
-      }
-    }
-  }
-  {
-    auto _e = mini_benchmark_error_code();
-    _o->mini_benchmark_error_code = _e;
-  }
+  { auto _e = stage(); _o->stage = _e; }
+  { auto _e = exit_code(); _o->exit_code = _e; }
+  { auto _e = signal(); _o->signal = _e; }
+  { auto _e = error_code(); if (_e) { _o->error_code.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->error_code[_i] = std::unique_ptr<tflite::ErrorCodeT>(_e->Get(_i)->UnPack(_resolver)); } } }
+  { auto _e = mini_benchmark_error_code(); _o->mini_benchmark_error_code = _e; }
 }
 
-inline flatbuffers::Offset<BenchmarkError> BenchmarkError::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkError> BenchmarkError::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateBenchmarkError(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkErrorT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const BenchmarkErrorT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BenchmarkErrorT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _stage = _o->stage;
   auto _exit_code = _o->exit_code;
   auto _signal = _o->signal;
-  auto _error_code =
-      _o->error_code.size()
-          ? _fbb.CreateVector<flatbuffers::Offset<tflite::ErrorCode>>(
-                _o->error_code.size(),
-                [](size_t i, _VectorArgs *__va) {
-                  return CreateErrorCode(*__va->__fbb,
-                                         __va->__o->error_code[i].get(),
-                                         __va->__rehasher);
-                },
-                &_va)
-          : 0;
+  auto _error_code = _o->error_code.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::ErrorCode>> (_o->error_code.size(), [](size_t i, _VectorArgs *__va) { return CreateErrorCode(*__va->__fbb, __va->__o->error_code[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _mini_benchmark_error_code = _o->mini_benchmark_error_code;
-  return tflite::CreateBenchmarkError(_fbb, _stage, _exit_code, _signal,
-                                      _error_code, _mini_benchmark_error_code);
+  return tflite::CreateBenchmarkError(
+      _fbb,
+      _stage,
+      _exit_code,
+      _signal,
+      _error_code,
+      _mini_benchmark_error_code);
 }
 
+
 inline bool operator==(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs) {
-  return ((lhs.tflite_settings == rhs.tflite_settings) ||
-          (lhs.tflite_settings && rhs.tflite_settings &&
-           *lhs.tflite_settings == *rhs.tflite_settings)) &&
-         (lhs.event_type == rhs.event_type) &&
-         ((lhs.result == rhs.result) ||
-          (lhs.result && rhs.result && *lhs.result == *rhs.result)) &&
-         ((lhs.error == rhs.error) ||
-          (lhs.error && rhs.error && *lhs.error == *rhs.error)) &&
-         (lhs.boottime_us == rhs.boottime_us) &&
-         (lhs.wallclock_us == rhs.wallclock_us);
+  return
+      ((lhs.tflite_settings == rhs.tflite_settings) || (lhs.tflite_settings && rhs.tflite_settings && *lhs.tflite_settings == *rhs.tflite_settings)) &&
+      (lhs.event_type == rhs.event_type) &&
+      ((lhs.result == rhs.result) || (lhs.result && rhs.result && *lhs.result == *rhs.result)) &&
+      ((lhs.error == rhs.error) || (lhs.error && rhs.error && *lhs.error == *rhs.error)) &&
+      (lhs.boottime_us == rhs.boottime_us) &&
+      (lhs.wallclock_us == rhs.wallclock_us);
 }
 
 inline bool operator!=(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline BenchmarkEventT *BenchmarkEvent::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline BenchmarkEventT *BenchmarkEvent::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkEventT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void BenchmarkEvent::UnPackTo(
-    BenchmarkEventT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void BenchmarkEvent::UnPackTo(BenchmarkEventT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = tflite_settings();
-    if (_e)
-      _o->tflite_settings =
-          std::unique_ptr<tflite::TFLiteSettingsT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = event_type();
-    _o->event_type = _e;
-  }
-  {
-    auto _e = result();
-    if (_e)
-      _o->result =
-          std::unique_ptr<tflite::BenchmarkResultT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = error();
-    if (_e)
-      _o->error =
-          std::unique_ptr<tflite::BenchmarkErrorT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = boottime_us();
-    _o->boottime_us = _e;
-  }
-  {
-    auto _e = wallclock_us();
-    _o->wallclock_us = _e;
-  }
+  { auto _e = tflite_settings(); if (_e) _o->tflite_settings = std::unique_ptr<tflite::TFLiteSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = event_type(); _o->event_type = _e; }
+  { auto _e = result(); if (_e) _o->result = std::unique_ptr<tflite::BenchmarkResultT>(_e->UnPack(_resolver)); }
+  { auto _e = error(); if (_e) _o->error = std::unique_ptr<tflite::BenchmarkErrorT>(_e->UnPack(_resolver)); }
+  { auto _e = boottime_us(); _o->boottime_us = _e; }
+  { auto _e = wallclock_us(); _o->wallclock_us = _e; }
 }
 
-inline flatbuffers::Offset<BenchmarkEvent> BenchmarkEvent::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkEvent> BenchmarkEvent::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateBenchmarkEvent(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const BenchmarkEventT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
-  auto _tflite_settings =
-      _o->tflite_settings
-          ? CreateTFLiteSettings(_fbb, _o->tflite_settings.get(), _rehasher)
-          : 0;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BenchmarkEventT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _tflite_settings = _o->tflite_settings ? CreateTFLiteSettings(_fbb, _o->tflite_settings.get(), _rehasher) : 0;
   auto _event_type = _o->event_type;
-  auto _result =
-      _o->result ? CreateBenchmarkResult(_fbb, _o->result.get(), _rehasher) : 0;
-  auto _error =
-      _o->error ? CreateBenchmarkError(_fbb, _o->error.get(), _rehasher) : 0;
+  auto _result = _o->result ? CreateBenchmarkResult(_fbb, _o->result.get(), _rehasher) : 0;
+  auto _error = _o->error ? CreateBenchmarkError(_fbb, _o->error.get(), _rehasher) : 0;
   auto _boottime_us = _o->boottime_us;
   auto _wallclock_us = _o->wallclock_us;
-  return tflite::CreateBenchmarkEvent(_fbb, _tflite_settings, _event_type,
-                                      _result, _error, _boottime_us,
-                                      _wallclock_us);
+  return tflite::CreateBenchmarkEvent(
+      _fbb,
+      _tflite_settings,
+      _event_type,
+      _result,
+      _error,
+      _boottime_us,
+      _wallclock_us);
 }
 
-inline bool operator==(const BestAccelerationDecisionT &lhs,
-                       const BestAccelerationDecisionT &rhs) {
-  return (lhs.number_of_source_events == rhs.number_of_source_events) &&
-         ((lhs.min_latency_event == rhs.min_latency_event) ||
-          (lhs.min_latency_event && rhs.min_latency_event &&
-           *lhs.min_latency_event == *rhs.min_latency_event)) &&
-         (lhs.min_inference_time_us == rhs.min_inference_time_us);
+
+inline bool operator==(const BestAccelerationDecisionT &lhs, const BestAccelerationDecisionT &rhs) {
+  return
+      (lhs.number_of_source_events == rhs.number_of_source_events) &&
+      ((lhs.min_latency_event == rhs.min_latency_event) || (lhs.min_latency_event && rhs.min_latency_event && *lhs.min_latency_event == *rhs.min_latency_event)) &&
+      (lhs.min_inference_time_us == rhs.min_inference_time_us);
 }
 
-inline bool operator!=(const BestAccelerationDecisionT &lhs,
-                       const BestAccelerationDecisionT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const BestAccelerationDecisionT &lhs, const BestAccelerationDecisionT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline BestAccelerationDecisionT *BestAccelerationDecision::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline BestAccelerationDecisionT *BestAccelerationDecision::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BestAccelerationDecisionT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void BestAccelerationDecision::UnPackTo(
-    BestAccelerationDecisionT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void BestAccelerationDecision::UnPackTo(BestAccelerationDecisionT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = number_of_source_events();
-    _o->number_of_source_events = _e;
-  }
-  {
-    auto _e = min_latency_event();
-    if (_e)
-      _o->min_latency_event =
-          std::unique_ptr<tflite::BenchmarkEventT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = min_inference_time_us();
-    _o->min_inference_time_us = _e;
-  }
+  { auto _e = number_of_source_events(); _o->number_of_source_events = _e; }
+  { auto _e = min_latency_event(); if (_e) _o->min_latency_event = std::unique_ptr<tflite::BenchmarkEventT>(_e->UnPack(_resolver)); }
+  { auto _e = min_inference_time_us(); _o->min_inference_time_us = _e; }
 }
 
-inline flatbuffers::Offset<BestAccelerationDecision>
-BestAccelerationDecision::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BestAccelerationDecision> BestAccelerationDecision::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateBestAccelerationDecision(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<BestAccelerationDecision>
-CreateBestAccelerationDecision(
-    flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BestAccelerationDecision> CreateBestAccelerationDecision(flatbuffers::FlatBufferBuilder &_fbb, const BestAccelerationDecisionT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const BestAccelerationDecisionT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BestAccelerationDecisionT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _number_of_source_events = _o->number_of_source_events;
-  auto _min_latency_event =
-      _o->min_latency_event
-          ? CreateBenchmarkEvent(_fbb, _o->min_latency_event.get(), _rehasher)
-          : 0;
+  auto _min_latency_event = _o->min_latency_event ? CreateBenchmarkEvent(_fbb, _o->min_latency_event.get(), _rehasher) : 0;
   auto _min_inference_time_us = _o->min_inference_time_us;
-  return tflite::CreateBestAccelerationDecision(_fbb, _number_of_source_events,
-                                                _min_latency_event,
-                                                _min_inference_time_us);
+  return tflite::CreateBestAccelerationDecision(
+      _fbb,
+      _number_of_source_events,
+      _min_latency_event,
+      _min_inference_time_us);
 }
 
-inline bool operator==(const BenchmarkInitializationFailureT &lhs,
-                       const BenchmarkInitializationFailureT &rhs) {
-  return (lhs.initialization_status == rhs.initialization_status);
+
+inline bool operator==(const BenchmarkInitializationFailureT &lhs, const BenchmarkInitializationFailureT &rhs) {
+  return
+      (lhs.initialization_status == rhs.initialization_status);
 }
 
-inline bool operator!=(const BenchmarkInitializationFailureT &lhs,
-                       const BenchmarkInitializationFailureT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const BenchmarkInitializationFailureT &lhs, const BenchmarkInitializationFailureT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline BenchmarkInitializationFailureT *BenchmarkInitializationFailure::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline BenchmarkInitializationFailureT *BenchmarkInitializationFailure::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkInitializationFailureT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void BenchmarkInitializationFailure::UnPackTo(
-    BenchmarkInitializationFailureT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void BenchmarkInitializationFailure::UnPackTo(BenchmarkInitializationFailureT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = initialization_status();
-    _o->initialization_status = _e;
-  }
+  { auto _e = initialization_status(); _o->initialization_status = _e; }
 }
 
-inline flatbuffers::Offset<BenchmarkInitializationFailure>
-BenchmarkInitializationFailure::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const BenchmarkInitializationFailureT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkInitializationFailure> BenchmarkInitializationFailure::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkInitializationFailureT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateBenchmarkInitializationFailure(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<BenchmarkInitializationFailure>
-CreateBenchmarkInitializationFailure(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const BenchmarkInitializationFailureT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkInitializationFailure> CreateBenchmarkInitializationFailure(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkInitializationFailureT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const BenchmarkInitializationFailureT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BenchmarkInitializationFailureT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _initialization_status = _o->initialization_status;
-  return tflite::CreateBenchmarkInitializationFailure(_fbb,
-                                                      _initialization_status);
+  return tflite::CreateBenchmarkInitializationFailure(
+      _fbb,
+      _initialization_status);
 }
 
-inline bool operator==(const MiniBenchmarkEventT &lhs,
-                       const MiniBenchmarkEventT &rhs) {
-  return (lhs.is_log_flushing_event == rhs.is_log_flushing_event) &&
-         ((lhs.best_acceleration_decision == rhs.best_acceleration_decision) ||
-          (lhs.best_acceleration_decision && rhs.best_acceleration_decision &&
-           *lhs.best_acceleration_decision ==
-               *rhs.best_acceleration_decision)) &&
-         ((lhs.initialization_failure == rhs.initialization_failure) ||
-          (lhs.initialization_failure && rhs.initialization_failure &&
-           *lhs.initialization_failure == *rhs.initialization_failure));
+
+inline bool operator==(const MiniBenchmarkEventT &lhs, const MiniBenchmarkEventT &rhs) {
+  return
+      (lhs.is_log_flushing_event == rhs.is_log_flushing_event) &&
+      ((lhs.best_acceleration_decision == rhs.best_acceleration_decision) || (lhs.best_acceleration_decision && rhs.best_acceleration_decision && *lhs.best_acceleration_decision == *rhs.best_acceleration_decision)) &&
+      ((lhs.initialization_failure == rhs.initialization_failure) || (lhs.initialization_failure && rhs.initialization_failure && *lhs.initialization_failure == *rhs.initialization_failure)) &&
+      ((lhs.benchmark_event == rhs.benchmark_event) || (lhs.benchmark_event && rhs.benchmark_event && *lhs.benchmark_event == *rhs.benchmark_event));
 }
 
-inline bool operator!=(const MiniBenchmarkEventT &lhs,
-                       const MiniBenchmarkEventT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const MiniBenchmarkEventT &lhs, const MiniBenchmarkEventT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline MiniBenchmarkEventT *MiniBenchmarkEvent::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline MiniBenchmarkEventT *MiniBenchmarkEvent::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new MiniBenchmarkEventT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void MiniBenchmarkEvent::UnPackTo(
-    MiniBenchmarkEventT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void MiniBenchmarkEvent::UnPackTo(MiniBenchmarkEventT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = is_log_flushing_event();
-    _o->is_log_flushing_event = _e;
-  }
-  {
-    auto _e = best_acceleration_decision();
-    if (_e)
-      _o->best_acceleration_decision =
-          std::unique_ptr<tflite::BestAccelerationDecisionT>(
-              _e->UnPack(_resolver));
-  }
-  {
-    auto _e = initialization_failure();
-    if (_e)
-      _o->initialization_failure =
-          std::unique_ptr<tflite::BenchmarkInitializationFailureT>(
-              _e->UnPack(_resolver));
-  }
+  { auto _e = is_log_flushing_event(); _o->is_log_flushing_event = _e; }
+  { auto _e = best_acceleration_decision(); if (_e) _o->best_acceleration_decision = std::unique_ptr<tflite::BestAccelerationDecisionT>(_e->UnPack(_resolver)); }
+  { auto _e = initialization_failure(); if (_e) _o->initialization_failure = std::unique_ptr<tflite::BenchmarkInitializationFailureT>(_e->UnPack(_resolver)); }
+  { auto _e = benchmark_event(); if (_e) _o->benchmark_event = std::unique_ptr<tflite::BenchmarkEventT>(_e->UnPack(_resolver)); }
 }
 
-inline flatbuffers::Offset<MiniBenchmarkEvent> MiniBenchmarkEvent::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<MiniBenchmarkEvent> MiniBenchmarkEvent::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateMiniBenchmarkEvent(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<MiniBenchmarkEvent> CreateMiniBenchmarkEvent(
-    flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<MiniBenchmarkEvent> CreateMiniBenchmarkEvent(flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const MiniBenchmarkEventT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const MiniBenchmarkEventT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _is_log_flushing_event = _o->is_log_flushing_event;
-  auto _best_acceleration_decision =
-      _o->best_acceleration_decision
-          ? CreateBestAccelerationDecision(
-                _fbb, _o->best_acceleration_decision.get(), _rehasher)
-          : 0;
-  auto _initialization_failure =
-      _o->initialization_failure
-          ? CreateBenchmarkInitializationFailure(
-                _fbb, _o->initialization_failure.get(), _rehasher)
-          : 0;
-  return tflite::CreateMiniBenchmarkEvent(_fbb, _is_log_flushing_event,
-                                          _best_acceleration_decision,
-                                          _initialization_failure);
+  auto _best_acceleration_decision = _o->best_acceleration_decision ? CreateBestAccelerationDecision(_fbb, _o->best_acceleration_decision.get(), _rehasher) : 0;
+  auto _initialization_failure = _o->initialization_failure ? CreateBenchmarkInitializationFailure(_fbb, _o->initialization_failure.get(), _rehasher) : 0;
+  auto _benchmark_event = _o->benchmark_event ? CreateBenchmarkEvent(_fbb, _o->benchmark_event.get(), _rehasher) : 0;
+  return tflite::CreateMiniBenchmarkEvent(
+      _fbb,
+      _is_log_flushing_event,
+      _best_acceleration_decision,
+      _initialization_failure,
+      _benchmark_event);
 }
 
+
 inline bool operator==(const ModelFileT &lhs, const ModelFileT &rhs) {
-  return (lhs.filename == rhs.filename) && (lhs.fd == rhs.fd) &&
-         (lhs.offset == rhs.offset) && (lhs.length == rhs.length);
+  return
+      (lhs.filename == rhs.filename) &&
+      (lhs.fd == rhs.fd) &&
+      (lhs.offset == rhs.offset) &&
+      (lhs.length == rhs.length);
 }
 
 inline bool operator!=(const ModelFileT &lhs, const ModelFileT &rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-inline ModelFileT *ModelFile::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline ModelFileT *ModelFile::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ModelFileT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void ModelFile::UnPackTo(
-    ModelFileT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+inline void ModelFile::UnPackTo(ModelFileT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = filename();
-    if (_e) _o->filename = _e->str();
-  }
-  {
-    auto _e = fd();
-    _o->fd = _e;
-  }
-  {
-    auto _e = offset();
-    _o->offset = _e;
-  }
-  {
-    auto _e = length();
-    _o->length = _e;
-  }
+  { auto _e = filename(); if (_e) _o->filename = _e->str(); }
+  { auto _e = fd(); _o->fd = _e; }
+  { auto _e = offset(); _o->offset = _e; }
+  { auto _e = length(); _o->length = _e; }
 }
 
-inline flatbuffers::Offset<ModelFile> ModelFile::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<ModelFile> ModelFile::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateModelFile(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<ModelFile> CreateModelFile(
-    flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<ModelFile> CreateModelFile(flatbuffers::FlatBufferBuilder &_fbb, const ModelFileT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const ModelFileT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ModelFileT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _filename = _o->filename.empty() ? 0 : _fbb.CreateString(_o->filename);
   auto _fd = _o->fd;
   auto _offset = _o->offset;
   auto _length = _o->length;
-  return tflite::CreateModelFile(_fbb, _filename, _fd, _offset, _length);
+  return tflite::CreateModelFile(
+      _fbb,
+      _filename,
+      _fd,
+      _offset,
+      _length);
 }
 
-inline bool operator==(const BenchmarkStoragePathsT &lhs,
-                       const BenchmarkStoragePathsT &rhs) {
-  return (lhs.storage_file_path == rhs.storage_file_path) &&
-         (lhs.data_directory_path == rhs.data_directory_path);
+
+inline bool operator==(const BenchmarkStoragePathsT &lhs, const BenchmarkStoragePathsT &rhs) {
+  return
+      (lhs.storage_file_path == rhs.storage_file_path) &&
+      (lhs.data_directory_path == rhs.data_directory_path);
 }
 
-inline bool operator!=(const BenchmarkStoragePathsT &lhs,
-                       const BenchmarkStoragePathsT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const BenchmarkStoragePathsT &lhs, const BenchmarkStoragePathsT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline BenchmarkStoragePathsT *BenchmarkStoragePaths::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline BenchmarkStoragePathsT *BenchmarkStoragePaths::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkStoragePathsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void BenchmarkStoragePaths::UnPackTo(
-    BenchmarkStoragePathsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void BenchmarkStoragePaths::UnPackTo(BenchmarkStoragePathsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = storage_file_path();
-    if (_e) _o->storage_file_path = _e->str();
-  }
-  {
-    auto _e = data_directory_path();
-    if (_e) _o->data_directory_path = _e->str();
-  }
+  { auto _e = storage_file_path(); if (_e) _o->storage_file_path = _e->str(); }
+  { auto _e = data_directory_path(); if (_e) _o->data_directory_path = _e->str(); }
 }
 
-inline flatbuffers::Offset<BenchmarkStoragePaths> BenchmarkStoragePaths::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkStoragePaths> BenchmarkStoragePaths::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateBenchmarkStoragePaths(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePaths(
-    flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePaths(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const BenchmarkStoragePathsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
-  auto _storage_file_path = _o->storage_file_path.empty()
-                                ? 0
-                                : _fbb.CreateString(_o->storage_file_path);
-  auto _data_directory_path = _o->data_directory_path.empty()
-                                  ? 0
-                                  : _fbb.CreateString(_o->data_directory_path);
-  return tflite::CreateBenchmarkStoragePaths(_fbb, _storage_file_path,
-                                             _data_directory_path);
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BenchmarkStoragePathsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _storage_file_path = _o->storage_file_path.empty() ? 0 : _fbb.CreateString(_o->storage_file_path);
+  auto _data_directory_path = _o->data_directory_path.empty() ? 0 : _fbb.CreateString(_o->data_directory_path);
+  return tflite::CreateBenchmarkStoragePaths(
+      _fbb,
+      _storage_file_path,
+      _data_directory_path);
 }
 
-inline bool operator==(const MinibenchmarkSettingsT &lhs,
-                       const MinibenchmarkSettingsT &rhs) {
-  return (lhs.settings_to_test == rhs.settings_to_test) &&
-         ((lhs.model_file == rhs.model_file) ||
-          (lhs.model_file && rhs.model_file &&
-           *lhs.model_file == *rhs.model_file)) &&
-         ((lhs.storage_paths == rhs.storage_paths) ||
-          (lhs.storage_paths && rhs.storage_paths &&
-           *lhs.storage_paths == *rhs.storage_paths));
+
+inline bool operator==(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSettingsT &rhs) {
+  return
+      (lhs.settings_to_test == rhs.settings_to_test) &&
+      ((lhs.model_file == rhs.model_file) || (lhs.model_file && rhs.model_file && *lhs.model_file == *rhs.model_file)) &&
+      ((lhs.storage_paths == rhs.storage_paths) || (lhs.storage_paths && rhs.storage_paths && *lhs.storage_paths == *rhs.storage_paths));
 }
 
-inline bool operator!=(const MinibenchmarkSettingsT &lhs,
-                       const MinibenchmarkSettingsT &rhs) {
-  return !(lhs == rhs);
+inline bool operator!=(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSettingsT &rhs) {
+    return !(lhs == rhs);
 }
 
-inline MinibenchmarkSettingsT *MinibenchmarkSettings::UnPack(
-    const flatbuffers::resolver_function_t *_resolver) const {
+
+inline MinibenchmarkSettingsT *MinibenchmarkSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new MinibenchmarkSettingsT();
   UnPackTo(_o, _resolver);
   return _o;
 }
 
-inline void MinibenchmarkSettings::UnPackTo(
-    MinibenchmarkSettingsT *_o,
-    const flatbuffers::resolver_function_t *_resolver) const {
+inline void MinibenchmarkSettings::UnPackTo(MinibenchmarkSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = settings_to_test();
-    if (_e) {
-      _o->settings_to_test.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->settings_to_test[_i] = std::unique_ptr<tflite::TFLiteSettingsT>(
-            _e->Get(_i)->UnPack(_resolver));
-      }
-    }
-  }
-  {
-    auto _e = model_file();
-    if (_e)
-      _o->model_file =
-          std::unique_ptr<tflite::ModelFileT>(_e->UnPack(_resolver));
-  }
-  {
-    auto _e = storage_paths();
-    if (_e)
-      _o->storage_paths = std::unique_ptr<tflite::BenchmarkStoragePathsT>(
-          _e->UnPack(_resolver));
-  }
+  { auto _e = settings_to_test(); if (_e) { _o->settings_to_test.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->settings_to_test[_i] = std::unique_ptr<tflite::TFLiteSettingsT>(_e->Get(_i)->UnPack(_resolver)); } } }
+  { auto _e = model_file(); if (_e) _o->model_file = std::unique_ptr<tflite::ModelFileT>(_e->UnPack(_resolver)); }
+  { auto _e = storage_paths(); if (_e) _o->storage_paths = std::unique_ptr<tflite::BenchmarkStoragePathsT>(_e->UnPack(_resolver)); }
 }
 
-inline flatbuffers::Offset<MinibenchmarkSettings> MinibenchmarkSettings::Pack(
-    flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<MinibenchmarkSettings> MinibenchmarkSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
   return CreateMinibenchmarkSettings(_fbb, _o, _rehasher);
 }
 
-inline flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(
-    flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher) {
+inline flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
   (void)_rehasher;
   (void)_o;
-  struct _VectorArgs {
-    flatbuffers::FlatBufferBuilder *__fbb;
-    const MinibenchmarkSettingsT *__o;
-    const flatbuffers::rehasher_function_t *__rehasher;
-  } _va = {&_fbb, _o, _rehasher};
-  (void)_va;
-  auto _settings_to_test =
-      _o->settings_to_test.size()
-          ? _fbb.CreateVector<flatbuffers::Offset<tflite::TFLiteSettings>>(
-                _o->settings_to_test.size(),
-                [](size_t i, _VectorArgs *__va) {
-                  return CreateTFLiteSettings(
-                      *__va->__fbb, __va->__o->settings_to_test[i].get(),
-                      __va->__rehasher);
-                },
-                &_va)
-          : 0;
-  auto _model_file =
-      _o->model_file ? CreateModelFile(_fbb, _o->model_file.get(), _rehasher)
-                     : 0;
-  auto _storage_paths = _o->storage_paths
-                            ? CreateBenchmarkStoragePaths(
-                                  _fbb, _o->storage_paths.get(), _rehasher)
-                            : 0;
-  return tflite::CreateMinibenchmarkSettings(_fbb, _settings_to_test,
-                                             _model_file, _storage_paths);
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const MinibenchmarkSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _settings_to_test = _o->settings_to_test.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::TFLiteSettings>> (_o->settings_to_test.size(), [](size_t i, _VectorArgs *__va) { return CreateTFLiteSettings(*__va->__fbb, __va->__o->settings_to_test[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _model_file = _o->model_file ? CreateModelFile(_fbb, _o->model_file.get(), _rehasher) : 0;
+  auto _storage_paths = _o->storage_paths ? CreateBenchmarkStoragePaths(_fbb, _o->storage_paths.get(), _rehasher) : 0;
+  return tflite::CreateMinibenchmarkSettings(
+      _fbb,
+      _settings_to_test,
+      _model_file,
+      _storage_paths);
 }
 
 }  // namespace tflite

@@ -27,7 +27,6 @@ from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -51,9 +50,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
-
-keras_optimizers_gauge = monitoring.BoolGauge(
-    "/tensorflow/api/keras/optimizers", "keras optimizer usage", "method")
 
 _DEFAULT_VALID_DTYPES = frozenset([
     dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
@@ -359,9 +355,6 @@ class OptimizerV2(trackable.Trackable):
     Raises:
       ValueError: in case of any invalid argument.
     """
-    # Instrument optimizer usages
-    keras_optimizers_gauge.get_cell(self.__class__.__name__).set(True)
-
     allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay", "global_clipnorm"}
     for k in kwargs:
       if k not in allowed_kwargs:

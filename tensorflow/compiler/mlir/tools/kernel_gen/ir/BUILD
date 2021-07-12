@@ -36,6 +36,7 @@ gentbl_cc_library(
     td_file = "tf_framework_ops.td",
     td_srcs = [
         "tf_status.td",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
     ],
@@ -73,6 +74,7 @@ cc_library(
         ":tf_framework_ops_inc_gen",
         ":tf_status_inc_gen",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffects",
     ],

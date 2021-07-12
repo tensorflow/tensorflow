@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/get_compiler_ir.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -24,27 +28,48 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
-static StatusOr<xla::LocalExecutable*> GetLocalExecutable(
-    const XlaCompiler::Options& options,
-    const XlaCompiler::CompileOptions& compile_options,
-    const NameAttrList& function, XlaCompilationCache* cache,
-    const std::vector<XlaCompiler::Argument>& args,
-    const XlaCompiler& compiler) {
-  const XlaCompiler::CompilationResult* compilation_result = nullptr;
-  xla::LocalExecutable* executable = nullptr;
-  TF_RETURN_IF_ERROR(cache->Compile(options, function, args, compile_options,
-                                    XlaCompilationCache::CompileMode::kStrict,
-                                    &compilation_result, &executable));
-  return executable;
+static StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
+    xla::LocalClient* local_client,
+    const XlaCompiler::CompilationResult& result,
+    const XlaCompiler::Options& options, const bool xla_dump_hlo = false) {
+  std::vector<const xla::Shape*> argument_layouts(
+      result.xla_input_shapes.size());
+  for (int i = 0, end = result.xla_input_shapes.size(); i < end; ++i) {
+    argument_layouts[i] = &result.xla_input_shapes[i];
+  }
+  xla::ExecutableBuildOptions build_options;
+  if (result.collective_reduce_info) {
+    build_options.set_num_replicas(result.collective_reduce_info->group_size);
+  }
+  build_options.set_device_ordinal(
+      options.device_ordinal != -1 ? options.device_ordinal
+                                   : local_client->default_device_ordinal());
+  build_options.set_result_layout(result.xla_output_shape);
+  build_options.set_device_allocator(options.device_allocator.get());
+  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
+  build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
+      options.detailed_logging);
+  // If any of the xla_dump_hlo_* flags is set, hlo_proto will be dumped in
+  // executable. The hlo_proto contains HLO modules and buffer assignment.
+  build_options.mutable_debug_options()->set_xla_dump_hlo_as_text(xla_dump_hlo);
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<xla::LocalExecutable>> executables,
+      local_client->Compile(*result.computation, argument_layouts,
+                            build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  return std::move(executables[0]);
 }
 
 StatusOr<std::string> GetCompilerIr(
@@ -123,13 +148,14 @@ StatusOr<std::string> GetCompilerIr(
           constant_arg_indices, inputs, variable_infos, dev);
   TF_RETURN_IF_ERROR(args.status());
 
+  xla::LocalClient* local_client = cache->client();
+  XlaCompiler::CompilationResult result;
+  TF_RETURN_IF_ERROR(
+      compiler.CompileFunction(compile_options, function, *args, &result));
+
   switch (stage) {
     case IrExportStage::HLO:
     case IrExportStage::HLO_SERIALIZED: {
-      XlaCompiler::CompilationResult result;
-      TF_RETURN_IF_ERROR(
-          compiler.CompileFunction(compile_options, function, *args, &result));
-
       TF_ASSIGN_OR_RETURN(xla::ProgramShape program_shape,
                           result.computation->GetProgramShape());
       xla::HloModuleConfig config(program_shape);
@@ -145,22 +171,26 @@ StatusOr<std::string> GetCompilerIr(
     }
     case IrExportStage::OPTIMIZED_HLO:
     case IrExportStage::OPTIMIZED_HLO_SERIALIZED: {
-      StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
-          options, compile_options, function, cache, *args, compiler);
-      TF_RETURN_IF_ERROR(executable.status());
-      xla::Executable* new_executable = (*executable)->executable();
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
+                          BuildExecutable(local_client, result, options));
+      xla::Executable* new_executable = executable->executable();
       if (stage == IrExportStage::OPTIMIZED_HLO_SERIALIZED) {
         return new_executable->module().ToProto().SerializeAsString();
       } else {
         return new_executable->module().ToString();
       }
     }
+    case IrExportStage::OPTIMIZED_HLO_PROTO_SERIALIZED: {
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
+                          BuildExecutable(local_client, result, options,
+                                          /*xla_dump_hlo=*/true));
+      return executable->executable()->hlo_proto()->SerializeAsString();
+    }
     case IrExportStage::OPTIMIZED_HLO_DOT: {
-      StatusOr<xla::LocalExecutable*> executable = GetLocalExecutable(
-          options, compile_options, function, cache, *args, compiler);
-      TF_RETURN_IF_ERROR(executable.status());
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
+                          BuildExecutable(local_client, result, options));
       StatusOr<std::string> graph = xla::RenderGraph(
-          *(*executable)->executable()->module().entry_computation(),
+          *executable->executable()->module().entry_computation(),
           "Visualization",
           /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,
           /*hlo_execution_profile=*/nullptr,

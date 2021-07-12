@@ -1981,7 +1981,8 @@ name=None))
     ...     deterministic=False)
 
     Args:
-      map_func: A function mapping a dataset element to a dataset.
+      map_func: A function that takes a dataset element and returns a
+        `tf.data.Dataset`.
       cycle_length: (Optional.) The number of input elements that will be
         processed concurrently. If not set, the tf.data runtime decides what it
         should be based on available CPU. If `num_parallel_calls` is set to

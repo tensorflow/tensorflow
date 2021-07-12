@@ -17,6 +17,9 @@ load(
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_disable_ptxas_warning_flags")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -191,6 +194,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "colorspace_op",
+    gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "colorspace_op",
     deps = IMAGE_DEPS,
 )

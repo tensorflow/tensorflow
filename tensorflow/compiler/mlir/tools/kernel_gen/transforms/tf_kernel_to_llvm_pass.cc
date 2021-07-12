@@ -18,7 +18,9 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
@@ -256,6 +258,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
     populateStdExpandOpsPatterns(patterns);
+    populateMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
     populateVectorToLLVMConversionPatterns(type_converter, patterns);

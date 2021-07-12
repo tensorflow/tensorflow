@@ -24,7 +24,8 @@ namespace xla {
 // compatible with each other, and hence might be combined, or different if not.
 absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
                                              const HloDomainMap* domain_map) {
-  if (instruction->opcode() != HloOpcode::kAllReduce) {
+  if (instruction->opcode() != HloOpcode::kAllReduce &&
+      instruction->opcode() != HloOpcode::kReduceScatter) {
     return absl::nullopt;
   }
 
@@ -34,7 +35,7 @@ absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
     return absl::nullopt;
   }
 
-  const auto* ar = Cast<HloAllReduceInstruction>(instruction);
+  const auto* ar = Cast<HloAllReduceInstructionBase>(instruction);
 
   std::vector<std::vector<int64_t>> replica_groups;
   replica_groups.reserve(ar->replica_groups().size());

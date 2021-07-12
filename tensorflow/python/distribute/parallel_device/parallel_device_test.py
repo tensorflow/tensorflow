@@ -147,6 +147,15 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
           "First pack non-parallel tensors for each device"):
         a1 + a2  # pylint:disable=pointless-statement
 
+  def test_error_message_length(self):
+    x = array_ops.ones([3, 3, 3, 3, 3, 3])
+
+    with self.device:
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"TensorHandle\((.|\n){1,150}\[...\], shape="):
+        array_ops.identity(x)
+
   def test_one_replica_eager_control_flow(self):
     device = parallel_device.ParallelDevice(components=[
         "/job:localhost/device:{}:0".format(self.device_type),
@@ -505,16 +514,14 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
          constant_op.constant([5.])])
     with self.device:
       y = x * 2.
-    with self.assertRaisesRegex(Exception,
-                                "components do not all have the same shape"):
-      y.shape  # pylint: disable=pointless-statement
+    self.assertEqual([None], y.shape.as_list())
     self.assertAllClose([[2., 4.], [10.]], self.device.unpack(y))
 
     different_axes = self.device.pack(
         [constant_op.constant([1., 2.]),
          constant_op.constant([[5.]])])
     with self.assertRaisesRegex(Exception,
-                                "components do not all have the same shape"):
+                                "components do not all have the same rank"):
       different_axes.shape  # pylint: disable=pointless-statement
 
 

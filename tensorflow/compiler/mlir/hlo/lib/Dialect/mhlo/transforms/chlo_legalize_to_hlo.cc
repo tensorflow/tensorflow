@@ -1341,6 +1341,37 @@ struct ConvertRankedDynamicBroadcastBinaryOp
   }
 };
 
+class ConvertDynamicReshapeOp
+    : public OpRewritePattern<chlo::DynamicReshapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(chlo::DynamicReshapeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto loc = op.getLoc();
+    auto tensor = op.operand();
+    auto shape = op.output_shape();
+
+    auto shape_ty = shape.getType().cast<ShapedType>();
+    auto result_ty = op.getType().cast<ShapedType>();
+
+    Value input_shape = rewriter.create<shape::ShapeOfOp>(loc, tensor);
+    Value num_els = rewriter.create<shape::NumElementsOp>(loc, input_shape);
+    Value cstr = rewriter.create<mhlo::CstrReshapableOp>(loc, num_els, shape);
+    rewriter.replaceOpWithNewOp<shape::AssumingOp>(
+        op, cstr, [&](OpBuilder &b, Location l) {
+          Value computed_shape = b.create<mhlo::ComputeReshapeShapeOp>(
+              l, shape_ty, num_els, shape);
+          SmallVector<Value> result;
+          result.push_back(b.create<mhlo::DynamicReshapeOp>(
+              l, result_ty, tensor, computed_shape));
+          return result;
+        });
+
+    return success();
+  }
+};
+
 #include "generated_chlo_legalize_to_hlo.inc"
 }  // namespace
 
@@ -1353,8 +1384,9 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
       context, patterns, 10);
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
-  patterns->insert<ConvertSelectOp>(context);
-  patterns->insert<ConvertConstantLikeOp>(context);
+  patterns
+      ->insert<ConvertConstantLikeOp, ConvertDynamicReshapeOp, ConvertSelectOp>(
+          context);
 }
 
 void PopulateDecomposeChloPatterns(MLIRContext *context,

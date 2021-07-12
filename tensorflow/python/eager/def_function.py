@@ -1042,7 +1042,8 @@ class Function(core.GenericFunction):
           stage=stage,
           function_name=fn_name,
           args=list(filtered_flat_args) + concrete_fn.captured_inputs)
-      if stage in ("hlo_serialized", "optimized_hlo_serialized"):
+      if stage in ("hlo_serialized", "optimized_hlo_serialized",
+                   "optimized_hlo_proto_serialized"):
         return res_bytes
       else:
         return res_bytes.decode("utf-8")

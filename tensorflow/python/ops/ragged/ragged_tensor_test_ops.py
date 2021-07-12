@@ -22,6 +22,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import string_ops
 
 
@@ -44,6 +45,7 @@ UNARY_FLOAT_OPS = [
     math_ops.digamma,
     math_ops.erf,
     math_ops.erfc,
+    math_ops.erfcinv,
     math_ops.erfinv,
     math_ops.exp,
     math_ops.expm1,
@@ -60,6 +62,7 @@ UNARY_FLOAT_OPS = [
     math_ops.negative,
     math_ops.real,
     math_ops.reciprocal,
+    math_ops.reciprocal_no_nan,
     math_ops.rint,
     math_ops.round,
     math_ops.rsqrt,
@@ -67,12 +70,18 @@ UNARY_FLOAT_OPS = [
     math_ops.sigmoid,
     math_ops.sin,
     math_ops.sinh,
+    math_ops.softplus,
     math_ops.sqrt,
     math_ops.square,
     math_ops.tan,
+    math_ops.tanh,
     array_ops.identity,
     array_ops.ones_like,
     array_ops.zeros_like,
+    special_math_ops.bessel_i0,
+    special_math_ops.bessel_i0e,
+    special_math_ops.bessel_i1,
+    special_math_ops.bessel_i1e,
 ]
 UNARY_BOOL_OPS = [
     math_ops.logical_not,
