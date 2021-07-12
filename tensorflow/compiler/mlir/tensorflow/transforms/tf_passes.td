@@ -168,6 +168,54 @@ def ExecutorIslandCoarseningPass : FunctionPass<"tf-executor-island-coarsening">
   let constructor = "tf_executor::CreateTFExecutorIslandCoarseningPass()";
 }
 
+def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining", "ModuleOp"> {
+  let summary = "Inline calls to the nested TPU module.";
+
+  let description = [{
+    This pass inlines the islands calling into the nested module that was
+    outlined, thus reversing the effect of the
+    `-tf-executor-tpu-v1-island-outlining` pass.
+
+    For example, the following:
+    ```mlir
+    module {
+      func @foo(%arg0: tensor<f32>) -> tensor<f32> {
+        %0 = tf_executor.graph {
+          %outputs, %control = tf_executor.island wraps "tf.PartitionedCall"(%arg0) {f = @_tpu_v1_compat_outlined::@bar} : (tensor<f32>) -> tensor<f32>
+          tf_executor.fetch %outputs : tensor<f32>
+        }
+        return %0 : tensor<f32>
+      }
+      module @_tpu_v1_compat_outlined {
+        func nested @bar(%arg0: tensor<f32>) -> tensor<f32> {
+          %0 = "tf.opA"(%arg0) : (tensor<f32>) -> tensor<f32>
+          return %0 : tensor<f32>
+        }
+      }
+    }
+    ```
+
+    will be transformed into:
+
+    ```mlir
+    module  {
+      func @foo(%arg0: tensor<f32>) -> tensor<f32> {
+        %0 = tf_executor.graph {
+          %outputs, %control = tf_executor.island {
+            %1 = "tf.opA"(%arg0) : (tensor<f32>) -> tensor<f32>
+            tf_executor.yield %1 : tensor<f32>
+          }
+          tf_executor.fetch %outputs : tensor<f32>
+        }
+        return %0 : tensor<f32>
+      }
+    }
+    ```
+  }];
+
+  let constructor = "tf_executor::CreateTFExecutorTPUV1IslandInliningPass()";
+}
+
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
   let summary = "Forms clusters from operations assigned to the same TPU computation";
 
@@ -791,6 +839,7 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
       }
       return
     }
+    ```
 
     A non replicated `tf_device.cluster_func` with the model parallelism:
 
