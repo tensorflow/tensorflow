@@ -158,7 +158,7 @@ HloComputation* HloModule::AddEmbeddedComputation(
 }
 
 void HloModule::ReplaceComputations(
-    const std::unordered_map<HloComputation*, HloComputation*>& replacements) {
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
   // representatives.
   std::vector<std::unique_ptr<HloComputation>> new_computations;

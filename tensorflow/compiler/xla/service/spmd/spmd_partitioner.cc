@@ -3347,7 +3347,7 @@ StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
       DoCodeMotionForWindowedDotGeneralLoops(new_computation, options));
 
   // Replace the original computation with the new SPMD computation.
-  std::unordered_map<HloComputation*, HloComputation*> replacement;
+  absl::flat_hash_map<HloComputation*, HloComputation*> replacement;
   replacement[computation] = new_computation;
   module->ReplaceComputations(replacement);
   return changed_;
@@ -3691,6 +3691,7 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
 
   if (changed) {
     HloPassPipeline pass("spmd-cleanup");
+    pass.AddPass<HloDCE>();
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<HloDCE>();
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);

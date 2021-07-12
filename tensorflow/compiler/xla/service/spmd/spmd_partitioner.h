@@ -517,9 +517,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   SpmdBuilder* builder() { return &b_; }
 
-  StatusOr<bool> DoPartition(HloComputation* computation,
-                             const HloSharding& root_sharding,
-                             const SpmdPartitionerOptions& options);
+  virtual StatusOr<bool> DoPartition(HloComputation* computation,
+                                     const HloSharding& root_sharding,
+                                     const SpmdPartitionerOptions& options);
 
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
@@ -530,6 +530,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     bool windowed_in_contracting_dims;
     bool windowed_in_batch_dims;
     bool operands_sharded_at_contracting_dims;
+    int64 num_partitions;
+    std::vector<ReplicaGroup> loop_replica_groups;
   };
 
  protected:
@@ -553,15 +555,16 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   int64* next_channel_id_;
   SpmdBuilder b_;
 
+  std::vector<WindowedDotGeneralLoop> windowed_dot_general_loops_;
+
   HloInstruction* partition_id_;
 
+ private:
   PartitionedHlo::ReshardCache reshard_cache_;
 
   // Mapping from the instruction in the original computation to the new SPMD
   // partitioned instruction.
   ConstHloInstructionMap<PartitionedHlo> partitioned_instructions_;
-
-  std::vector<WindowedDotGeneralLoop> windowed_dot_general_loops_;
 
   HloInstruction* visiting_hlo_;
   SpmdLogger* logger_;
