@@ -399,6 +399,8 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
   // The dimension on which data from different participants are concatenated.
   int64 all_gather_dimension() const { return all_gather_dimension_; }
 
+  void set_all_gather_dimension(int64 dim) { all_gather_dimension_ = dim; }
+
  protected:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
@@ -470,9 +472,9 @@ class HloAllReduceInstruction : public HloAllReduceInstructionBase {
       HloCloneContext* context) const override;
 };
 
-class HloAllReduceScatterInstruction : public HloAllReduceInstructionBase {
+class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
  public:
-  explicit HloAllReduceScatterInstruction(
+  explicit HloReduceScatterInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,

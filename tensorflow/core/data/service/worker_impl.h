@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -32,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -99,6 +102,14 @@ class DataServiceWorkerImpl {
   void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
   Status Heartbeat() TF_LOCKS_EXCLUDED(mu_);
+  // Gets the DatasetDef for `task_def`.
+  StatusOr<DatasetDef> GetDatasetDef(const TaskDef& task_def) const;
+  // Creates a dataset from `dataset_def`.
+  StatusOr<std::unique_ptr<standalone::Dataset>> MakeDataset(
+      const DatasetDef& dataset_def) const;
+  // Creates an iterator for `dataset`.
+  StatusOr<std::unique_ptr<standalone::Iterator>> MakeDatasetIterator(
+      standalone::Dataset& dataset, const TaskDef& task_def) const;
 
   const experimental::WorkerConfig config_;
   // The worker's own address.

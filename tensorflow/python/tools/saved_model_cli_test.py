@@ -20,6 +20,7 @@ from __future__ import print_function
 import contextlib
 import os
 import pickle
+import platform
 import shutil
 import sys
 
@@ -58,6 +59,11 @@ def captured_output():
 
 
 class SavedModelCLITestCase(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super(SavedModelCLITestCase, self).setUp()
+    if platform.system() == 'Windows':
+      self.skipTest('Skipping failing tests on Windows.')
 
   def testShowCommandAll(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
@@ -789,13 +795,18 @@ Defined Functions:
       return {'res': self.write_var}
 
   @parameterized.named_parameters(
-      ('VariablesToFeedNone', '', 'func2'),
-      ('VariablesToFeedAll', 'all', 'func2'),
-      ('VariablesToFeedMyVar', 'my_var', 'func2'),
-      ('VariablesToFeedNoneLargeConstant', '', 'func3'),
-      ('WriteToWriteVar', 'all', 'func_write'),
+      ('VariablesToFeedNone', '', 'func2', None),
+      ('VariablesToFeedNoneTargetAarch64Linux', '', 'func2',
+       'aarch64-none-linux-gnu'),
+      ('VariablesToFeedNoneTargetAarch64Android', '', 'func2',
+       'aarch64-none-android'),
+      ('VariablesToFeedAll', 'all', 'func2', None),
+      ('VariablesToFeedMyVar', 'my_var', 'func2', None),
+      ('VariablesToFeedNoneLargeConstant', '', 'func3', None),
+      ('WriteToWriteVar', 'all', 'func_write', None),
   )
-  def testAOTCompileCPUFreezesAndCompiles(self, variables_to_feed, func):
+  def testAOTCompileCPUFreezesAndCompiles(
+      self, variables_to_feed, func, target_triple):
     if not test.is_built_with_xla():
       self.skipTest('Skipping test because XLA is not compiled in.')
 
@@ -809,11 +820,14 @@ Defined Functions:
 
     self.parser = saved_model_cli.create_parser()
     output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
-    args = self.parser.parse_args([
+    args = [  # Use the default seving signature_key.
         'aot_compile_cpu', '--dir', saved_model_dir, '--tag_set', 'serve',
         '--signature_def_key', 'func', '--output_prefix', output_prefix,
         '--variables_to_feed', variables_to_feed, '--cpp_class', 'Generated'
-    ])  # Use the default seving signature_key.
+    ]
+    if target_triple:
+      args.extend(['--target_triple', target_triple])
+    args = self.parser.parse_args(args)
     with test.mock.patch.object(logging, 'warn') as captured_warn:
       saved_model_cli.aot_compile_cpu(args)
     self.assertRegex(

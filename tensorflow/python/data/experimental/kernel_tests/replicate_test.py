@@ -120,15 +120,17 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset1 = replicated_ds[self._device1]
     dataset2 = replicated_ds[self._device2]
     self.evaluate(counter_var.initializer)
+    with ops.device(self._device1):
+      self.assertDatasetProduces(
+          dataset1, range(1, 101), requires_initialization=True)
+    with ops.device(self._device2):
+      self.assertDatasetProduces(
+          dataset2, range(1, 101), requires_initialization=True)
+    # Iterate through the original device last so that replication happens
+    # before counter_var is modified. The order only matters in graph mode.
     with ops.device(self._device0):
       self.assertDatasetProduces(
           dataset0, range(1, 101), requires_initialization=True)
-    with ops.device(self._device1):
-      self.assertDatasetProduces(
-          dataset1, range(101, 201), requires_initialization=True)
-    with ops.device(self._device2):
-      self.assertDatasetProduces(
-          dataset2, range(201, 301), requires_initialization=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testExternalStatePolicyIgnore(self):
@@ -324,10 +326,10 @@ class EagerClusterReplicateTest(test_base.DatasetTestBase,
           dataset0, range(1, 101), requires_initialization=True)
     with ops.device(self._device1):
       self.assertDatasetProduces(
-          dataset1, range(101, 201), requires_initialization=True)
+          dataset1, range(1, 101), requires_initialization=True)
     with ops.device(self._device2):
       self.assertDatasetProduces(
-          dataset2, range(201, 301), requires_initialization=True)
+          dataset2, range(1, 101), requires_initialization=True)
 
 
 class GraphClusterReplicateTest(test_base.DatasetTestBase,

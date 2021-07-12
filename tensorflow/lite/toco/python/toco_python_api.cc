@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "google/protobuf/text_format.h"
 #include "tensorflow/c/kernels.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
@@ -429,6 +430,17 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
   }
 
   Py_RETURN_TRUE;
+}
+
+const std::vector<std::string> RetrieveCollectedErrors() {
+  mlir::TFL::ErrorCollector* collector =
+      mlir::TFL::ErrorCollector::GetErrorCollector();
+  std::vector<std::string> collected_errors;
+  for (const auto& error_data : collector->CollectedErrors()) {
+    collected_errors.push_back(error_data.SerializeAsString());
+  }
+  collector->Clear();
+  return collected_errors;
 }
 
 }  // namespace toco

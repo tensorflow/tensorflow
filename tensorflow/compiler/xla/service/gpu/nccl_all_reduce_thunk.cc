@@ -84,31 +84,63 @@ bool IsValidOperand(mlir::Value operand) {
          IsTypeSupportedByNccl(shape.element_type());
 }
 
+// Generally, the reduction op should be the only operation in the block, except
+// the terminator. However, if the type is bf16, the `BFloat16Normalization`
+// pass will have converted the op to float32 and added type conversions.
+// TODO(cjfj): Can we prevent the bf16 conversion for this computation?
+StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
+  TF_RET_CHECK(block.getNumArguments() == 2);
+  mlir::Operation* terminator = block.getTerminator();
+  TF_RET_CHECK(terminator);
+  TF_RET_CHECK(terminator->getNumOperands() == 1);
+  mlir::Value result = terminator->getOperand(0);
+  TF_RET_CHECK(block.getArgument(0).getType() == result.getType());
+  TF_RET_CHECK(block.getArgument(1).getType() == result.getType());
+
+  mlir::Operation* result_op = result.getDefiningOp();
+  TF_RET_CHECK(result_op);
+
+  // In the bf16 case, the type conversions and op might be fused.
+  if (mlir::isa<mlir::mhlo::FusionOp>(result_op)) {
+    return FindReductionOp(result_op->getRegion(0).front());
+  }
+
+  // Standard case.
+  if (absl::c_is_permutation(result_op->getOperands(), block.getArguments())) {
+    return result_op;
+  }
+
+  // bf16 case.
+  TF_RET_CHECK(mlir::isa<mlir::mhlo::ConvertOp>(result_op));
+  TF_RET_CHECK(result_op->getNumOperands() == 1);
+  mlir::Operation* reduction_op = result_op->getOperand(0).getDefiningOp();
+  TF_RET_CHECK(reduction_op);
+  TF_RET_CHECK(reduction_op->getNumOperands() == 2);
+  mlir::Value operand0 = reduction_op->getOperand(0);
+  mlir::Value operand1 = reduction_op->getOperand(1);
+  auto operand0_op = operand0.getDefiningOp<mlir::mhlo::ConvertOp>();
+  auto operand1_op = operand1.getDefiningOp<mlir::mhlo::ConvertOp>();
+  TF_RET_CHECK(operand0_op);
+  TF_RET_CHECK(operand1_op);
+  TF_RET_CHECK(operand0_op->getNumOperands() == 1);
+  TF_RET_CHECK(operand1_op->getNumOperands() == 1);
+  std::array<mlir::Value, 2> operands{operand0_op->getOperand(0),
+                                      operand1_op->getOperand(0)};
+  TF_RET_CHECK(absl::c_is_permutation(operands, block.getArguments()));
+  return reduction_op;
+}
+
 absl::optional<ReductionKind> MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
-  if (!llvm::hasSingleElement(block.without_terminator())) return absl::nullopt;
-  // The single operation should use both block arguments and produce a single
-  // result (all of the same type)
-  mlir::Operation* reduction_op = &block.front();
-  if (reduction_op->getNumOperands() != 2 || reduction_op->getNumResults() != 1)
-    return absl::nullopt;
-  mlir::BlockArgument arg0 =
-      reduction_op->getOperand(0).dyn_cast<mlir::BlockArgument>();
-  mlir::BlockArgument arg1 =
-      reduction_op->getOperand(1).dyn_cast<mlir::BlockArgument>();
-  mlir::OpResult result = reduction_op->getResult(0);
-  // Both operands should be block arguments of the reduction computation block
-  // and be different arguments of that block.
-  if (!arg0 || !arg1 || arg0.getOwner() != &block ||
-      arg1.getOwner() != &block || arg0 == arg1 ||
-      arg0.getType() != arg1.getType() || arg0.getType() != result.getType())
-    return absl::nullopt;
-  StatusOr<HloOpcode> opcode = MhloToHloOpcode(reduction_op);
+  StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
+  if (!reduction_op.ok()) return absl::nullopt;
+  StatusOr<HloOpcode> opcode = MhloToHloOpcode(*reduction_op);
   if (!opcode.ok()) return absl::nullopt;
   // Match the operation to a reduction kind. We can represent and/or of pred as
   // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
-  PrimitiveType type = GetShape(result).element_type();
+  PrimitiveType type =
+      TypeToShape(block.getArgument(0).getType()).element_type();
   if (type == PRED) {
     switch (opcode.ValueOrDie()) {
       case HloOpcode::kAnd:
@@ -282,34 +314,34 @@ Status NcclAllReduceDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   return Status::OK();
 }
 
-NcclAllReduceScatterThunk::NcclAllReduceScatterThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::AllReduceScatterOp op,
+NcclReduceScatterThunk::NcclReduceScatterThunk(
+    ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
     std::vector<NcclAllReduceThunk::Buffer> buffers)
-    : NcclAllReduceThunkBase(Thunk::kNcclAllReduceScatter, thunk_info,
+    : NcclAllReduceThunkBase(Thunk::kNcclReduceScatter, thunk_info,
                              impl::GetNcclAllReduceConfig(op),
                              std::move(buffers)) {}
 
-/*static*/ bool NcclAllReduceScatterThunk::CanImplement(
-    mlir::lmhlo::AllReduceScatterOp op) {
+/*static*/ bool NcclReduceScatterThunk::CanImplement(
+    mlir::lmhlo::ReduceScatterOp op) {
   return impl::CanImplement(op);
 }
 
-/*static*/ bool NcclAllReduceScatterThunk::IsDegenerate(
-    mlir::lmhlo::AllReduceScatterOp op, int64 replica_count,
+/*static*/ bool NcclReduceScatterThunk::IsDegenerate(
+    mlir::lmhlo::ReduceScatterOp op, int64 replica_count,
     int64 partition_count) {
   return impl::IsDegenerate(op, replica_count, partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode NcclAllReduceScatterThunk::GetGroupMode(
-    mlir::lmhlo::AllReduceScatterOp op) {
+/*static*/ CollectiveOpGroupMode NcclReduceScatterThunk::GetGroupMode(
+    mlir::lmhlo::ReduceScatterOp op) {
   return impl::GetGroupMode(op);
 }
 
-Status NcclAllReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
-                                                    ncclComm_t comm) {
+Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
+                                                 ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
   int device_ordinal = params.stream->parent()->device_ordinal();
-  VLOG(3) << "Performing all-reduce-scatter from device ordinal: "
+  VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
 
   ncclRedOp_t reduce_op = ToNcclReduction(config_.reduction_kind);
@@ -352,8 +384,7 @@ Status NcclAllReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
-  VLOG(3) << "Done performing all-reduce-scatter for ordinal: "
-          << device_ordinal;
+  VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
   return Status::OK();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(

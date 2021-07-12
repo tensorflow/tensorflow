@@ -61,8 +61,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:protobuf",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 

@@ -377,6 +377,7 @@ def random_uniform(minval, maxval, dims, name=None):
 recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
 variadic_reduce = gen_xla_ops.xla_variadic_reduce
+variadic_reduce_v2 = gen_xla_ops.xla_variadic_reduce_v2
 
 ops.no_gradient("XlaVariadicReduce")
 

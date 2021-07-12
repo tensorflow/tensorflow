@@ -67,6 +67,9 @@ CreateInitializeVariablesInSessionInitializerPass(tensorflow::Session* session);
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariablesPass(
     tensorflow::Session* session);
 
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
+
 }  // namespace tf_saved_model
 
 }  // namespace mlir

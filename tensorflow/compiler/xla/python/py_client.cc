@@ -488,7 +488,7 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
           transpose_cache_.GetOrCreate(
               primitive_util::ByteWidth(results_[i].type), dims,
               results_[i].reversed_layout,
-              /*input_strides_in_bytes=*/strides);
+              /*input_layout=*/TransposePlan::Striding{strides});
       if (!plan.ok()) {
         throw std::runtime_error(plan.status().ToString());
       }

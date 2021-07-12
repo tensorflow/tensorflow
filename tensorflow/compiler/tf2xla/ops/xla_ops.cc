@@ -668,8 +668,95 @@ Wraps the variadic XLA Reduce operator.
 Semantics are documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
 
+This version is limited to operands of the same dtype.
+XlaVariadicReduceV2 is a version that supports heterogeneous operands.
+
 input: the input tensor(s)
 init_value: scalar initial value(s) for the reduction
+reducer: a reducer function to apply
+dimensions_to_reduce: dimension numbers over which to reduce
+)doc");
+
+REGISTER_OP("XlaVariadicReduceV2")
+    .Input("inputs: T")
+    .Input("init_values: T")
+    .Attr("T: list(type) >= 1")
+    .Attr("dimensions_to_reduce: list(int)")
+    .Attr("reducer: func")
+    .Output("outputs: T")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<shape_inference::ShapeHandle> input_shapes;
+      TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
+      std::vector<shape_inference::ShapeHandle> init_values_shapes;
+      TF_RETURN_IF_ERROR(c->input("init_values", &init_values_shapes));
+      const int nr_inputs = input_shapes.size();
+      if (nr_inputs != init_values_shapes.size()) {
+        return errors::InvalidArgument(
+            "Must specify the same number of inputs and init_values. ", "Got ",
+            nr_inputs, " and ", init_values_shapes.size());
+      }
+      if (nr_inputs == 0) {
+        return errors::InvalidArgument("Must specify at least one input");
+      }
+
+      shape_inference::ShapeHandle input_shape = input_shapes[0];
+      for (int i = 1; i < nr_inputs; ++i) {
+        shape_inference::ShapeHandle merged;
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            c->Merge(input_shape, input_shapes[i], &merged),
+            "All inputs must have the same shape. Input ", i,
+            " (zero-based) has shape ", c->DebugString(input_shapes[i]),
+            " incompatible with the shape ", "inferred from previous inputs ",
+            c->DebugString(input_shape));
+        input_shape = merged;
+      }
+      // All outputs have the same shape
+      shape_inference::ShapeHandle output_shape = c->UnknownShape();
+
+      if (c->RankKnown(input_shape)) {
+        int rank = c->Rank(input_shape);
+
+        std::vector<int64> dimensions_to_reduce;
+        TF_RETURN_IF_ERROR(
+            c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
+        std::set<int64> dims_set(dimensions_to_reduce.begin(),
+                                 dimensions_to_reduce.end());
+
+        auto dim_in_range = [rank](int64 dim) {
+          return dim >= 0 && dim < rank;
+        };
+        const int dimensions_to_reduce_size = dimensions_to_reduce.size();
+        if (rank < dimensions_to_reduce_size ||
+            dims_set.size() != dimensions_to_reduce.size() ||
+            !absl::c_all_of(dimensions_to_reduce, dim_in_range)) {
+          return errors::InvalidArgument(
+              "Invalid dimensions_to_reduce argument to XlaVariadicReduceV2");
+        }
+
+        std::vector<shape_inference::DimensionHandle> output_dims;
+        for (int64 i = 0; i < rank; ++i) {
+          if (dims_set.find(i) == dims_set.end()) {
+            output_dims.emplace_back(c->Dim(input_shape, i));
+          }
+        }
+        output_shape = c->MakeShape(output_dims);
+      }
+      for (int i = 0; i < nr_inputs; ++i) {
+        c->set_output(i, output_shape);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Wraps the variadic XLA Reduce operator.
+
+Semantics are documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
+
+This is an expanded version of XlaVariadicReduce, with support for
+operands of different dtypes, and improved shape inference.
+
+inputs: the input tensor(s)
+init_values: scalar initial value(s) for the reduction
 reducer: a reducer function to apply
 dimensions_to_reduce: dimension numbers over which to reduce
 )doc");

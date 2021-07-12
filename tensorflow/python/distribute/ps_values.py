@@ -31,14 +31,15 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 
 
 # Variable used in PSStrategy TF 1, TF2 and CentralStorageStrategy.
-class AggregatingVariable(variables_lib.Variable, core.Tensor):
+class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
+                          core.Tensor):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):
@@ -165,6 +166,9 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
 
   def read_value(self):
     return self._v.read_value()
+
+  def sparse_read(self, indices, name=None):
+    return self._v.sparse_read(indices, name=name)
 
   def eval(self, session=None):
     return self._v.eval(session)
@@ -339,11 +343,10 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
     pass
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
-    return ops.convert_to_tensor(self.get(), dtype=dtype, name=name,
-                                 as_ref=as_ref)
+    return self._v._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-class CachingVariable(variables_lib.Variable, core.Tensor):
+class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
   """A wrapper around a variable that caches read value locally."""
 
   def __init__(self, v):
@@ -361,6 +364,9 @@ class CachingVariable(variables_lib.Variable, core.Tensor):
     if distribute_utils.caching_scope_local.in_caching_scope():
       return self.cached_read_value()
     return self._v.read_value()
+
+  def sparse_read(self, indices, name=None):
+    return self._v.sparse_read(indices, name=name)
 
   def cached_read_value(self):
     if (distribute_utils.caching_scope_local.new_cache_scope_count >
@@ -471,8 +477,7 @@ class CachingVariable(variables_lib.Variable, core.Tensor):
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     if distribute_utils.caching_scope_local.in_caching_scope():
       return self.cached_read_value()
-    return ops.convert_to_tensor(
-        self.get(), dtype=dtype, name=name, as_ref=as_ref)
+    return self._v._dense_var_to_tensor(dtype=dtype, name=name, as_ref=False)  # pylint: disable=protected-access
 
   @classmethod
   def _overload_overloadable_operators(cls):
@@ -524,4 +529,3 @@ ops.register_tensor_conversion_function(CachingVariable,
                                         _tensor_conversion_caching)
 
 CachingVariable._overload_overloadable_operators()  # pylint: disable=protected-access
-

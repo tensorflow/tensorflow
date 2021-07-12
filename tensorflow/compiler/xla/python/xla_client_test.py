@@ -2346,8 +2346,11 @@ def TestFactory(xla_backend,
         else:
           self.assertEqual(version, "<unknown>")
 
-    @unittest.skipIf(not external_tpu, "not implemented")
+    @unittest.skipIf(cloud_tpu or tfrt_tpu, "not implemented")
     def testExecutableSerialization(self):
+      if self.backend.platform != "tpu":
+        self.skipTest("Test requires tpu platform")
+
       c = self._NewComputation()
       ops.Add(
           ops.Constant(c, NumpyArrayS32([1, 2])),

@@ -2172,8 +2172,8 @@ xla_test(
 )
 
 xla_test(
-    name = "dynamism_inference_test",
-    srcs = ["dynamism_inference_test.cc"],
+    name = "value_inference_test",
+    srcs = ["value_inference_test.cc"],
     deps = [
         ":literal_test_util",
         ":test_macros_header",

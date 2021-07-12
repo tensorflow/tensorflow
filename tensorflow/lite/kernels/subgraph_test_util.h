@@ -90,6 +90,10 @@ class SubgraphBuilder {
   // No input and 1 output.
   void BuildCallOnceAndReadVariableSubgraph(Subgraph* graph);
 
+  // Build a subgraph with CallOnce op, ReadVariable op and Add op.
+  // No input and 1 output.
+  void BuildCallOnceAndReadVariablePlusOneSubgraph(Subgraph* graph);
+
   // Build a subgraph with a single Less op.
   // The subgraph is used as the condition subgraph for testing `While` op.
   // 3 inputs:

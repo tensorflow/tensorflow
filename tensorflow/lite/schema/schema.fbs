@@ -376,6 +376,7 @@ enum BuiltinOperator : int32 {
   VAR_HANDLE = 142,
   READ_VARIABLE = 143,
   ASSIGN_VARIABLE = 144,
+  BROADCAST_ARGS = 145,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 

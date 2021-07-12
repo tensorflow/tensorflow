@@ -3532,6 +3532,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["embedding_ops_test.py"],
     shard_count = 20,
+    tags = [
+        "no_cuda_asan",  # Size limit: b/192505612
+    ],
     xla_tags = [
         "no_cuda_asan",  # Size limit: b/192505612
     ],

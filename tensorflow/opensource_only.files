@@ -11,6 +11,7 @@ tensorflow/lite/core/shims/c/builtin_op_data.h
 tensorflow/lite/core/shims/c/c_api.h
 tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
+tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
 tensorflow/lite/core/shims/cc/create_op_resolver.h
@@ -30,7 +31,6 @@ tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl
 tensorflow/lite/java/src/main/native/BUILD
-tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
 tensorflow/opensource_only/BUILD
 tensorflow/python/autograph/core/config.py

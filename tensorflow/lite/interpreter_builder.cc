@@ -538,6 +538,7 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
     if (fb_signature_def->key() != nullptr) {
       signature_def.signature_def_key = fb_signature_def->key()->c_str();
     }
+    signature_def.subgraph_index = fb_signature_def->subgraph_index();
   }
   interpreter->SetSignatureDef(std::move(signature_defs));
   return kTfLiteOk;

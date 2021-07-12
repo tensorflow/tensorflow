@@ -68,7 +68,7 @@ def AllReduce(
     replica_groups: Sequence[_ReplicaGroup] = ...,
     channel_id: Optional[ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...) -> XlaOp: ...
-def AllReduceScatter(
+def ReduceScatter(
     operand: XlaOp,
     computation: XlaComputation,
     scatter_dimension: int,

@@ -585,6 +585,15 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_ensure_shape(self):
+    x = random_ops.random_uniform([3, 6, 7])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return array_ops.ensure_shape(x_i, [6, 7])
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_loop_variant_roll_shift(self):
     self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
                   "addressed.")
@@ -1375,6 +1384,7 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  @test_util.enable_control_flow_v2
   def test_tensor_list_reserve_while_loop(self):
     # Here a loop invariant TensorList is captured by a while_loop, which then
     # performs loop dependent operations on it, resulting in a loop variant
@@ -1382,8 +1392,6 @@ class TensorListTest(PForTestCase):
     # while_loop.
     # We handle this particular case by forcing vectorization of
     # TensorListReserve operation.
-    v2_enabled = control_flow_v2_toggles.control_flow_v2_enabled()
-    control_flow_v2_toggles.enable_control_flow_v2()
 
     def loop_fn(i):
       handle = list_ops.tensor_list_reserve([], 2, dtypes.int32)
@@ -1393,8 +1401,49 @@ class TensorListTest(PForTestCase):
       return list_ops.tensor_list_stack(out_handle, dtypes.int32)
 
     self._test_loop_fn(loop_fn, 2)
-    if not v2_enabled:
-      control_flow_v2_toggles.disable_control_flow_v2()
+
+  @test_util.enable_control_flow_v2
+  def test_tensor_list_while_loop_stacked_cond_stacked_list(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_from_tensor([20, 21, 22, 23, i], [])
+      _, out_handle = control_flow_ops.while_loop(
+          lambda j, _: j < i,
+          lambda j, h: (j + 1, list_ops.tensor_list_set_item(h, j, i)),
+          (0, handle))
+      return list_ops.tensor_list_stack(out_handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  @test_util.enable_control_flow_v2
+  def test_tensor_list_while_loop_stacked_cond_stacked_list_unknown_shape(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_reserve(None, 5, dtypes.int32)
+      _, handle = control_flow_ops.while_loop(
+          lambda j, _: j < 5,
+          lambda j, h: (j + 1, list_ops.tensor_list_set_item(h, j, 0)),
+          (0, handle))
+      _, out_handle = control_flow_ops.while_loop(
+          lambda j, _: j < i,
+          lambda j, h: (j + 1, list_ops.tensor_list_set_item(h, j, i)),
+          (0, handle))
+      return list_ops.tensor_list_stack(out_handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 5)
+
+  @test_util.enable_control_flow_v2
+  def test_tensor_list_while_loop_stacked_cond_unstacked_list(self):
+
+    def loop_fn(i):
+      handle = list_ops.tensor_list_from_tensor([20, 21, 22, 23, 24], [])
+      _, out_handle = control_flow_ops.while_loop(
+          lambda j, _: j < i,
+          lambda j, h: (j + 1, list_ops.tensor_list_set_item(h, j, i)),
+          (0, handle))
+      return list_ops.tensor_list_stack(out_handle, dtypes.int32)
+
+    self._test_loop_fn(loop_fn, 5)
 
   def test_tensor_list_addn_already_stacked(self):
 
