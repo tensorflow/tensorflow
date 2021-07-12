@@ -223,6 +223,7 @@ add_mlir_library(DiscRalToLLVM
   LINK_LIBS PUBLIC
   DiscRalDialect
   MLIRIR
+  MLIRLLVMCommonConversion
   MLIRPass
 )
 
