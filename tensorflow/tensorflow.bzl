@@ -3014,3 +3014,10 @@ tf_gen_options_header = rule(
         dependencies (if 'F' is undefined, '#if F()' results in an error).
     """,
 )
+
+# These flags are used selectively to disable benign ptxas warnings for some
+# build targets.  On clang "-Xcuda-ptxas --disable-warnings" is sufficient, but
+# that does not work on some versions of GCC.  So for now this is empty in the
+# open source build.
+def tf_disable_ptxas_warning_flags():
+    return []
