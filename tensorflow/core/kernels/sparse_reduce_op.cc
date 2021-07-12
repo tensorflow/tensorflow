@@ -217,6 +217,7 @@ class SparseReduceOp : public OpKernel {
     // Each group maps one-on-one onto a value in the reduced tensor.
     // g.group() provides the coordinates of a particular reduced value.
     sp.Reorder<T>(reduction.reorder_dims);
+    OP_REQUIRES_OK(ctx, sp.IndicesValid());
     for (const auto &g : sp.group(reduction.group_by_dims)) {
       Op::template Run<T>(ctx, reduced_val, g.template values<T>());
       const int64 idx = CoordinatesToFlatIndex(g.group(), output_strides);
