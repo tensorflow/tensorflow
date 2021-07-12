@@ -1381,7 +1381,7 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64 handle) {
       }
     }
     default: {
-      if (output_shape.rank() == 0) {
+      if (ShapeUtil::IsScalar(output_shape)) {
         return LiteralUtil::CreateR0<int64>(handle);
       } else {
         return CreateS64Literal(-1, output_shape);
@@ -1398,7 +1398,7 @@ StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
       },
       [&](int64 handle) { return &(builder_->embedded_[handle]); });
   int64 handle = op.handle();
-  if (builder_->GetShape(op).ValueOrDie().rank() == 0) {
+  if (ShapeUtil::IsScalar(builder_->GetShape(op).ValueOrDie())) {
     TF_ASSIGN_OR_RETURN(auto result, SimplifyOp(handle));
     auto optimized_handle = result.Get<int64>({});
     if (optimized_handle != -1) {
