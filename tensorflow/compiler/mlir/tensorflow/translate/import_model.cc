@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -1859,11 +1860,37 @@ mlir::Operation* ImporterBase::CreateOperation(
   mlir::OperationName name = inner_op->getName();
   if (!name.getAbstractOperation() &&
       // Skip unmodelled ops that are handled differently.
-      (node_type_name != "_Arg" && node_type_name != "_Retval")) {
-    if (node.op_def().is_stateful() &&
-        GetUnmodelledOpTypes().insert(name.getStringRef()).second) {
-      LOG(INFO) << "Op type `" << node.type_string()
+      (node_type_name != "_Arg" && node_type_name != "_Retval") &&
+      // Skip if warning already reported.
+      (GetUnmodelledOpTypes().insert(name.getStringRef()).second)) {
+    if (node.op_def().is_stateful()) {
+      LOG(INFO) << "[potentially conservative] Op type `" << node.type_string()
                 << "` is stateful but effects not modelled";
+    } else {
+      // See if any resource type is used.
+      bool resource = false;
+      std::function<bool(mlir::Type)> record_resource;
+      record_resource = [&](mlir::Type type) {
+        if (resource) return true;
+        if (type.isa<mlir::TF::ResourceType>()) {
+          resource = true;
+          return true;
+        }
+        if (auto with_subtype =
+                type.dyn_cast<mlir::SubElementTypeInterface>()) {
+          with_subtype.walkSubTypes([&](mlir::Type t) { record_resource(t); });
+        }
+        return resource;
+      };
+
+      for (mlir::Type t : inner_op->getResultTypes())
+        if (record_resource(t)) break;
+      for (mlir::Type t : inner_op->getOperandTypes())
+        if (record_resource(t)) break;
+      if (resource)
+        LOG(INFO) << "[potentially conservative] Op type `"
+                  << node.type_string()
+                  << "` has resource operands/results but effects not modelled";
     }
   }
 
