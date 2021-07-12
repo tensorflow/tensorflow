@@ -579,6 +579,9 @@ GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Double, double, double,
 GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/Int64, int64, int64,
                        baseline_maximum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Maximum, /*test_name=*/UInt8, uint8, uint8,
+                       baseline_maximum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Minmum`.
 
@@ -600,6 +603,9 @@ GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Double, double, double,
                        baseline_minimum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/Int64, int64, int64,
+                       baseline_minimum,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Minimum, /*test_name=*/UInt8, uint8, uint8,
                        baseline_minimum,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
