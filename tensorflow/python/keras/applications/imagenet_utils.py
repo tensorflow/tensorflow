@@ -187,8 +187,7 @@ def _preprocess_numpy_input(x, data_format, mode):
     x = x.astype(backend.floatx(), copy=False)
 
   if mode == 'tf':
-    x /= 127.5
-    x -= 1.
+    x /= 255.
     return x
   elif mode == 'torch':
     x /= 255.
