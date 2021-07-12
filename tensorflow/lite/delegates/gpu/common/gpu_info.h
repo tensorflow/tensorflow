@@ -351,6 +351,8 @@ struct GpuInfo {
   bool IsAMD() const;
   bool IsIntel() const;
 
+  bool IsGlsl() const;
+
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
 
