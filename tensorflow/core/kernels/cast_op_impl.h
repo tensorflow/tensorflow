@@ -63,6 +63,20 @@ CAST_FUNCTORS(Eigen::ThreadPoolDevice);
     };                                                                    \
   }
 
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+
+// The subset of types which are currently not supported yet with the MLIR
+// generated kernels.
+#define CURRY_SUBSET_TYPES3(FN, arg0, arg1) \
+  FN(arg0, arg1, uint8);                    \
+  FN(arg0, arg1, uint16);                   \
+  FN(arg0, arg1, uint32);                   \
+  FN(arg0, arg1, uint64);                   \
+  FN(arg0, arg1, std::complex<float>);      \
+  FN(arg0, arg1, std::complex<double>)
+
+#endif
+
 // The functions below are implemented in the cast_op_impl_*.cc files.
 CastFunctorType GetCpuCastFromBool(DataType dst_dtype);
 
