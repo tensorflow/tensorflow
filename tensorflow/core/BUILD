@@ -1238,7 +1238,6 @@ filegroup(
         "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/llvm_rtti:legacy_lib_core_all_headers",
-        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
         "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
         "//tensorflow/core/lib/wav:wav_io.h",
