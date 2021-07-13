@@ -255,6 +255,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
+    type_converter.addConversion([&](tf_framework::JITCallableType type) {
+      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+    });
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
