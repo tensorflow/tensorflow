@@ -29,19 +29,50 @@ limitations under the License.
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
 namespace tensorflow {
+namespace {
+template <class T>
+class StreamExecutorOutfeedDequeueOp : public TpuOutfeedDequeueOp<T> {
+ public:
+  explicit StreamExecutorOutfeedDequeueOp(OpKernelConstruction* ctx)
+      : TpuOutfeedDequeueOp<T>(
+            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+
+ private:
+  StreamExecutorOutfeedDequeueOp(const StreamExecutorOutfeedDequeueOp&) =
+      delete;
+  StreamExecutorOutfeedDequeueOp& operator=(
+      const StreamExecutorOutfeedDequeueOp&) = delete;
+};
 
 template <class T>
-TpuOutfeedDequeueOp<T>::TpuOutfeedDequeueOp(OpKernelConstruction* ctx)
-    : T(ctx, "outfeed_dequeue", 1) {
+class StreamExecutorOutfeedDequeueTupleOp : public TpuOutfeedDequeueTupleOp<T> {
+ public:
+  explicit StreamExecutorOutfeedDequeueTupleOp(OpKernelConstruction* ctx)
+      : TpuOutfeedDequeueTupleOp<T>(
+            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+
+ private:
+  StreamExecutorOutfeedDequeueTupleOp(
+      const StreamExecutorOutfeedDequeueTupleOp&) = delete;
+  StreamExecutorOutfeedDequeueTupleOp& operator=(
+      const StreamExecutorOutfeedDequeueTupleOp&) = delete;
+};
+
+}  // namespace
+
+template <class T>
+TpuOutfeedDequeueOp<T>::TpuOutfeedDequeueOp(
+    OpKernelConstruction* ctx,
+    std::unique_ptr<TpuTransferOpInterface> transfer_op)
+    : T(ctx, "outfeed_dequeue", 1, std::move(transfer_op)) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape_, &xla_shape_));
 }
 
 template <class T>
-Status TpuOutfeedDequeueOp<T>::DoWork(
-    OpKernelContext* ctx, xla::TpuTransferManagerInterface* transfer_manager,
-    stream_executor::StreamExecutor* stream_executor) {
+Status TpuOutfeedDequeueOp<T>::DoWork(OpKernelContext* ctx,
+                                      int device_ordinal) {
   Tensor* output;
   TF_RETURN_IF_ERROR(ctx->allocate_output(0, shape_, &output));
 
@@ -54,7 +85,7 @@ Status TpuOutfeedDequeueOp<T>::DoWork(
           << xla::ShapeUtil::HumanStringWithLayout(xla_shape_);
 
   TF_RETURN_IF_ERROR(
-      transfer_manager->TransferLiteralFromOutfeed(stream_executor, literal));
+      T::transfer_op_->TransferLiteralFromOutfeed(device_ordinal, literal));
 
   VLOG(1) << "TransferLiteralFromOutfeed complete.";
 
@@ -64,8 +95,10 @@ Status TpuOutfeedDequeueOp<T>::DoWork(
 // The OutfeedDequeueTuple op is used to retrieve multiple tensors from the
 // device outfeed queue.
 template <class T>
-TpuOutfeedDequeueTupleOp<T>::TpuOutfeedDequeueTupleOp(OpKernelConstruction* ctx)
-    : T(ctx, "outfeed_dequeue", 1) {
+TpuOutfeedDequeueTupleOp<T>::TpuOutfeedDequeueTupleOp(
+    OpKernelConstruction* ctx,
+    std::unique_ptr<TpuTransferOpInterface> transfer_op)
+    : T(ctx, "outfeed_dequeue", 1, std::move(transfer_op)) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &shapes_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
   OP_REQUIRES(
@@ -83,9 +116,8 @@ TpuOutfeedDequeueTupleOp<T>::TpuOutfeedDequeueTupleOp(OpKernelConstruction* ctx)
 }
 
 template <class T>
-Status TpuOutfeedDequeueTupleOp<T>::DoWork(
-    OpKernelContext* ctx, xla::TpuTransferManagerInterface* transfer_manager,
-    stream_executor::StreamExecutor* stream_executor) {
+Status TpuOutfeedDequeueTupleOp<T>::DoWork(OpKernelContext* ctx,
+                                           int device_ordinal) {
   VLOG(1) << "TransferLiteralFromOutfeed "
           << xla::ShapeUtil::HumanStringWithLayout(tuple_shape_);
 
@@ -97,7 +129,7 @@ Status TpuOutfeedDequeueTupleOp<T>::DoWork(
     TF_RETURN_IF_ERROR(
         HostTensorToMutableBorrowingLiteral(xla_shapes_[i], output, &literal));
     TF_RETURN_IF_ERROR(
-        transfer_manager->TransferLiteralFromOutfeed(stream_executor, literal));
+        T::transfer_op_->TransferLiteralFromOutfeed(device_ordinal, literal));
   }
   return Status::OK();
 }
@@ -107,29 +139,32 @@ Status TpuOutfeedDequeueTupleOp<T>::DoWork(
 // device_ordinal to indicate which TPU to receive outfeed from.
 REGISTER_KERNEL_BUILDER(
     Name("OutfeedDequeue").Device(DEVICE_TPU_NODE).HostMemory("output"),
-    TpuOutfeedDequeueOp<TpuTransferAsyncOpKernel>);
-REGISTER_KERNEL_BUILDER(Name("OutfeedDequeue").Device(DEVICE_CPU),
-                        TpuOutfeedDequeueOp<TpuTransferAsyncOpKernel>);
+    StreamExecutorOutfeedDequeueOp<TpuTransferAsyncOpKernel>);
+REGISTER_KERNEL_BUILDER(
+    Name("OutfeedDequeue").Device(DEVICE_CPU),
+    StreamExecutorOutfeedDequeueOp<TpuTransferAsyncOpKernel>);
 
 REGISTER_KERNEL_BUILDER(
     Name("OutfeedDequeueTuple").Device(DEVICE_TPU_NODE).HostMemory("outputs"),
-    TpuOutfeedDequeueTupleOp<TpuTransferAsyncOpKernel>);
-REGISTER_KERNEL_BUILDER(Name("OutfeedDequeueTuple").Device(DEVICE_CPU),
-                        TpuOutfeedDequeueTupleOp<TpuTransferAsyncOpKernel>);
+    StreamExecutorOutfeedDequeueTupleOp<TpuTransferAsyncOpKernel>);
+REGISTER_KERNEL_BUILDER(
+    Name("OutfeedDequeueTuple").Device(DEVICE_CPU),
+    StreamExecutorOutfeedDequeueTupleOp<TpuTransferAsyncOpKernel>);
 
 // Below ops take device_ordinal as an input tensor rather than a attribute.
 REGISTER_KERNEL_BUILDER(
     Name("OutfeedDequeueV2").Device(DEVICE_TPU_NODE).HostMemory("output"),
-    TpuOutfeedDequeueOp<TpuTransferAsyncDynamicOrdinalOpKernel>);
+    StreamExecutorOutfeedDequeueOp<TpuTransferAsyncDynamicOrdinalOpKernel>);
 REGISTER_KERNEL_BUILDER(
     Name("OutfeedDequeueV2").Device(DEVICE_CPU),
-    TpuOutfeedDequeueOp<TpuTransferAsyncDynamicOrdinalOpKernel>);
+    StreamExecutorOutfeedDequeueOp<TpuTransferAsyncDynamicOrdinalOpKernel>);
 
 REGISTER_KERNEL_BUILDER(
     Name("OutfeedDequeueTupleV2").Device(DEVICE_TPU_NODE).HostMemory("outputs"),
-    TpuOutfeedDequeueTupleOp<TpuTransferAsyncDynamicOrdinalOpKernel>);
-REGISTER_KERNEL_BUILDER(
-    Name("OutfeedDequeueTupleV2").Device(DEVICE_CPU),
-    TpuOutfeedDequeueTupleOp<TpuTransferAsyncDynamicOrdinalOpKernel>);
+    StreamExecutorOutfeedDequeueTupleOp<
+        TpuTransferAsyncDynamicOrdinalOpKernel>);
+REGISTER_KERNEL_BUILDER(Name("OutfeedDequeueTupleV2").Device(DEVICE_CPU),
+                        StreamExecutorOutfeedDequeueTupleOp<
+                            TpuTransferAsyncDynamicOrdinalOpKernel>);
 
 }  // namespace tensorflow
