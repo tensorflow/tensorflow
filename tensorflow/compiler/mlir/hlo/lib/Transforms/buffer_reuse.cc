@@ -157,10 +157,8 @@ private:
     // If all operands are equal the types are compatible.
     auto operandsA = defOpA->getOperands();
     auto operandsB = defOpB->getOperands();
-    if (!std::equal(operandsA.begin(), operandsA.end(), operandsB.begin(),
-                    operandsB.end()))
-      return false;
-    return true;
+    return std::equal(operandsA.begin(), operandsA.end(), operandsB.begin(),
+                    operandsB.end());
   }
 
   /// A Fixpoint iteration over the potential reuses to compute the actual
