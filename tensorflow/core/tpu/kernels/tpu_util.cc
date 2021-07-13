@@ -70,7 +70,7 @@ Status ShapeTensorToTensorShape(const Tensor& tensor, TensorShape* shape) {
   const int64 rank = tensor.NumElements();
   auto tensor_dims = tensor.flat<int64>();
   std::vector<int64> dims(rank);
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     dims[i] = tensor_dims(i);
   }
   return TensorShapeUtils::MakeShape(dims, shape);

@@ -79,7 +79,7 @@ xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
   const int64 rank = xla_shape.rank();
   std::vector<int32> permutation(rank);
   std::vector<int64> transposed_shapes(rank);
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     permutation[i] = xla_shape.layout().minor_to_major(rank - 1 - i);
     transposed_shapes[i] = xla_shape.dimensions(permutation[i]);
   }
@@ -131,8 +131,8 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
   if (!has_override) {
     *output_shape = input_shape;
     if (output_shape->IsTuple()) {
-      int64 tuple_elements = xla::ShapeUtil::TupleElementCount(*output_shape);
-      for (int64 i = 0; i < tuple_elements; ++i) {
+      int64_t tuple_elements = xla::ShapeUtil::TupleElementCount(*output_shape);
+      for (int64_t i = 0; i < tuple_elements; ++i) {
         xla::Shape* sub_shape =
             xla::ShapeUtil::GetMutableSubshape(output_shape, {i});
         *sub_shape->mutable_layout() = GetTPUInfeedLayout(*sub_shape).layout();
