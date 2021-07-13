@@ -2453,6 +2453,81 @@ func @dynamic_reduce_window_sum_nhwc(%arg0: tensor<?x?x?x?xf32>,
 
 // -----
 
+func @reduce_window_min_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
+                              %arg1: tensor<f32>) -> tensor<1x8x8x8x64xf32>{
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
+    %1 = mhlo.minimum %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {window_dimensions = dense<[1, 3, 3, 3, 1]> : tensor<5xi64>,
+      window_strides = dense<[1, 2, 2, 2, 1]> : tensor<5xi64>} : (tensor<1x17x17x17x64xf32>, tensor<f32>) -> tensor<1x8x8x8x64xf32>
+  return %0 : tensor<1x8x8x8x64xf32>
+}
+// CHECK-LABEL: func @reduce_window_min_ndhwc
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[WINDOW:.+]] = linalg.init_tensor [3, 3, 3] : tensor<3x3x3xf32>
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 8, 8, 8, 64] : tensor<1x8x8x8x64xf32>
+// CHECK:         %[[INIT_VAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT_VAL]], %[[INIT]]) : f32, tensor<1x8x8x8x64xf32> -> tensor<1x8x8x8x64xf32>
+// CHECK:         %[[RES:.+]] = linalg.pooling_ndhwc_min
+// CHECK-SAME:      {dilations = dense<1> : vector<3xi64>
+// CHECK-SAME:       strides = dense<2> : vector<3xi64>}
+// CHECK-SAME:      ins(%[[ARG0]], %[[WINDOW]] : tensor<1x17x17x17x64xf32>, tensor<3x3x3xf32>)
+// CHECK-SAME:      outs(%[[FILL]] : tensor<1x8x8x8x64xf32>) -> tensor<1x8x8x8x64xf32>
+
+// -----
+
+func @reduce_window_max_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
+                              %arg1: tensor<f32>) -> tensor<1x8x8x8x64xf32>{
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
+    %1 = mhlo.maximum %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {window_dimensions = dense<[1, 3, 3, 3, 1]> : tensor<5xi64>,
+      window_strides = dense<[1, 2, 2, 2, 1]> : tensor<5xi64>} : (tensor<1x17x17x17x64xf32>, tensor<f32>) -> tensor<1x8x8x8x64xf32>
+  return %0 : tensor<1x8x8x8x64xf32>
+}
+// CHECK-LABEL: func @reduce_window_max_ndhwc
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[WINDOW:.+]] = linalg.init_tensor [3, 3, 3] : tensor<3x3x3xf32>
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 8, 8, 8, 64] : tensor<1x8x8x8x64xf32>
+// CHECK:         %[[INIT_VAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT_VAL]], %[[INIT]]) : f32, tensor<1x8x8x8x64xf32> -> tensor<1x8x8x8x64xf32>
+// CHECK:         %[[RES:.+]] = linalg.pooling_ndhwc_max
+// CHECK-SAME:      {dilations = dense<1> : vector<3xi64>
+// CHECK-SAME:       strides = dense<2> : vector<3xi64>}
+// CHECK-SAME:      ins(%[[ARG0]], %[[WINDOW]] : tensor<1x17x17x17x64xf32>, tensor<3x3x3xf32>)
+// CHECK-SAME:      outs(%[[FILL]] : tensor<1x8x8x8x64xf32>) -> tensor<1x8x8x8x64xf32>
+
+// -----
+
+func @reduce_window_sum_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
+                              %arg1: tensor<f32>) -> tensor<1x8x8x8x64xf32>{
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {window_dimensions = dense<[1, 3, 3, 3, 1]> : tensor<5xi64>,
+      window_strides = dense<[1, 2, 2, 2, 1]> : tensor<5xi64>} : (tensor<1x17x17x17x64xf32>, tensor<f32>) -> tensor<1x8x8x8x64xf32>
+  return %0 : tensor<1x8x8x8x64xf32>
+}
+// CHECK-LABEL: func @reduce_window_sum_ndhwc
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[WINDOW:.+]] = linalg.init_tensor [3, 3, 3] : tensor<3x3x3xf32>
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 8, 8, 8, 64] : tensor<1x8x8x8x64xf32>
+// CHECK:         %[[INIT_VAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT_VAL]], %[[INIT]]) : f32, tensor<1x8x8x8x64xf32> -> tensor<1x8x8x8x64xf32>
+// CHECK:         %[[RES:.+]] = linalg.pooling_ndhwc_sum
+// CHECK-SAME:      {dilations = dense<1> : vector<3xi64>
+// CHECK-SAME:       strides = dense<2> : vector<3xi64>}
+// CHECK-SAME:      ins(%[[ARG0]], %[[WINDOW]] : tensor<1x17x17x17x64xf32>, tensor<3x3x3xf32>)
+// CHECK-SAME:      outs(%[[FILL]] : tensor<1x8x8x8x64xf32>) -> tensor<1x8x8x8x64xf32>
+
+// -----
+
 func @torch_index_select(%arg0: tensor<5x1x5xi32>,
                          %arg1: tensor<2xi32>) ->  tensor<2x1x5xi32> {
   %0 = "mhlo.torch_index_select"(%arg0, %arg1) {

@@ -1991,17 +1991,25 @@ struct ReduceWindowOpOnTensorsConversion
   /// operation. This class enumerates the different variants.
   enum class PoolingType {
     kInvalid,
-    kMin,
-    kMax,
-    kAdd,
+    k2DMin,
+    k3DMin,
+    k2DMax,
+    k3DMax,
+    k2DAdd,
+    k3DAdd,
   };
 
   static PoolingType getPoolingType(mhlo::ReduceWindowOp reduce_op,
                                     int result_index) {
+    auto rank =
+        reduce_op.getResultTypes()[result_index].cast<ShapedType>().getRank();
     if (Operation* op = reduce_op.getReductionOp(result_index)) {
-      if (isa<mhlo::MinOp>(*op)) return PoolingType::kMin;
-      if (isa<mhlo::MaxOp>(*op)) return PoolingType::kMax;
-      if (isa<mhlo::AddOp>(*op)) return PoolingType::kAdd;
+      if (isa<mhlo::MinOp>(*op) && rank == 4) return PoolingType::k2DMin;
+      if (isa<mhlo::MinOp>(*op) && rank == 5) return PoolingType::k3DMin;
+      if (isa<mhlo::MaxOp>(*op) && rank == 4) return PoolingType::k2DMax;
+      if (isa<mhlo::MaxOp>(*op) && rank == 5) return PoolingType::k3DMax;
+      if (isa<mhlo::AddOp>(*op) && rank == 4) return PoolingType::k2DAdd;
+      if (isa<mhlo::AddOp>(*op) && rank == 5) return PoolingType::k3DAdd;
     }
     return PoolingType::kInvalid;
   }
@@ -2011,47 +2019,55 @@ struct ReduceWindowOpOnTensorsConversion
       ConversionPatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
     int rank = op.getResultTypes()[0].cast<ShapedType>().getRank();
-    if (rank != 4) {
-      return rewriter.notifyMatchFailure(op, "expected NHWC pooling-based op");
+    if (rank != 4 && rank != 5) {
+      return rewriter.notifyMatchFailure(
+          op, "expected NHWC/NDHWC pooling-based op");
     }
 
     if (op.padding() && !isSplatValue(*op.padding(), 0)) {
       return rewriter.notifyMatchFailure(op, "require paddings are all zero");
     }
 
+    int last_dim = rank - 1;
     SmallVector<int64_t, 2> fake_window_shapes;
-    fake_window_shapes.push_back(op.window_dimensions().getValue<int64_t>(1));
-    fake_window_shapes.push_back(op.window_dimensions().getValue<int64_t>(2));
+    for (int i = 1; i < last_dim; ++i) {
+      fake_window_shapes.push_back(op.window_dimensions().getValue<int64_t>(i));
+    }
 
     if (op.window_strides() &&
         (op.window_strides().getValue().getValue<int64_t>(0) != 1 ||
-         op.window_strides().getValue().getValue<int64_t>(3) != 1)) {
+         op.window_strides().getValue().getValue<int64_t>(last_dim) != 1)) {
       return rewriter.notifyMatchFailure(
-          op, "expected window_strides to be [1,x,y,1]");
+          op, "expected window_strides to be [1,x,y,(z),1]");
     }
     if (op.window_dimensions() &&
         (op.window_dimensions().getValue<int64_t>(0) != 1 ||
-         op.window_dimensions().getValue<int64_t>(3) != 1)) {
+         op.window_dimensions().getValue<int64_t>(last_dim) != 1)) {
       return rewriter.notifyMatchFailure(
-          op, "expected window_dimensions to be [1,x,y,1]");
+          op, "expected window_dimensions to be [1,x,y,(z),1]");
     }
 
     Attribute strides;
+    SmallVector<int64_t> vec;
     if (op.window_stridesAttr()) {
-      strides = rewriter.getI64VectorAttr(
-          {op.window_strides().getValue().getValue<int64_t>(1),
-           op.window_strides().getValue().getValue<int64_t>(2)});
+      for (int i = 1; i < last_dim; ++i) {
+        vec.push_back(op.window_strides().getValue().getValue<int64_t>(i));
+      }
     } else {
-      strides = rewriter.getI64VectorAttr({1, 1});
+      vec.assign(rank - 2, 1);
     }
+    strides = rewriter.getI64VectorAttr(vec);
+
     Attribute dilations;
+    vec.clear();
     if (op.window_dilations()) {
-      dilations = rewriter.getI64VectorAttr(
-          {op.window_dilations().getValue().getValue<int64_t>(1),
-           op.window_dilations().getValue().getValue<int64_t>(2)});
+      for (int i = 1; i < last_dim; ++i) {
+        vec.push_back(op.window_dilations().getValue().getValue<int64_t>(i));
+      }
     } else {
-      dilations = rewriter.getI64VectorAttr({1, 1});
+      vec.assign(rank - 2, 1);
     }
+    dilations = rewriter.getI64VectorAttr(vec);
 
     SmallVector<Value> pooling_ops;
 
@@ -2105,31 +2121,57 @@ struct ReduceWindowOpOnTensorsConversion
       Value filled_init_tensor =
           rewriter.create<linalg::FillOp>(loc, init_value, init_tensor)
               .getResult(0);
+      // TODO(hanchung): Remove create_op_tc after migrating Linalg tc ops to
+      // Linalg yaml ops. The order of attributes is different.
+      auto create_op_tc = [&](auto* type_ptr) -> linalg::LinalgOp {
+        return cast<linalg::LinalgOp>(
+            rewriter
+                .create<std::remove_pointer_t<decltype(type_ptr)>>(
+                    loc, ArrayRef<Type>{result_type},
+                    ValueRange{input, fake_window_dims.getResult()},
+                    filled_init_tensor, dilations, strides)
+                .getOperation());
+      };
       auto create_op = [&](auto* type_ptr) -> linalg::LinalgOp {
         return cast<linalg::LinalgOp>(
             rewriter
                 .create<std::remove_pointer_t<decltype(type_ptr)>>(
                     loc, ArrayRef<Type>{result_type},
-                    ValueRange{args[0], fake_window_dims.getResult()},
-                    filled_init_tensor, dilations, strides)
+                    ValueRange{input, fake_window_dims.getResult()},
+                    filled_init_tensor, strides, dilations)
                 .getOperation());
       };
       linalg::LinalgOp pooling_op;
       PoolingType pooling_type = getPoolingType(op, result.getResultNumber());
       switch (pooling_type) {
-        case PoolingType::kMin: {
+        case PoolingType::k2DMin: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCMinFOp*>(nullptr));
+              create_op_tc(static_cast<linalg::PoolingNHWCMinFOp*>(nullptr));
           break;
         }
-        case PoolingType::kMax: {
+        case PoolingType::k3DMin: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCMaxFOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNdhwcMinOp*>(nullptr));
           break;
         }
-        case PoolingType::kAdd: {
+        case PoolingType::k2DMax: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCSumFOp*>(nullptr));
+              create_op_tc(static_cast<linalg::PoolingNHWCMaxFOp*>(nullptr));
+          break;
+        }
+        case PoolingType::k3DMax: {
+          pooling_op =
+              create_op(static_cast<linalg::PoolingNdhwcMaxOp*>(nullptr));
+          break;
+        }
+        case PoolingType::k2DAdd: {
+          pooling_op =
+              create_op_tc(static_cast<linalg::PoolingNHWCSumFOp*>(nullptr));
+          break;
+        }
+        case PoolingType::k3DAdd: {
+          pooling_op =
+              create_op(static_cast<linalg::PoolingNdhwcSumOp*>(nullptr));
           break;
         }
         case PoolingType::kInvalid:
