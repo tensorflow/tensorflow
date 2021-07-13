@@ -27,6 +27,7 @@ import os
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
@@ -856,8 +857,14 @@ class ParameterServerStrategyV2Extended(
   def _call_for_each_replica(self, fn, args, kwargs):
     self._assert_being_scheduled_by_cluster_coordinator()
 
-    return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
-                                              args, kwargs)
+    if not distribute_utils.caching_scope_local.in_caching_scope(
+    ) and self._num_replicas_in_sync > 1:
+      with distribute_utils.cache_variable_reads():
+        return mirrored_run.call_for_each_replica(self._container_strategy(),
+                                                  fn, args, kwargs)
+    else:
+      return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
+                                                args, kwargs)
 
   def _reduce(self, reduce_op, value):
     self._assert_being_scheduled_by_cluster_coordinator()

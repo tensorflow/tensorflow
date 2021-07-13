@@ -1130,6 +1130,37 @@ class StrategyIntegrationTest(test.TestCase):
         with distribute_utils.cache_variable_reads():
           v.read_value()
 
+  def testVariableCachingIsDoneForMultipleGPUs(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(
+          initial_value=1., aggregation=variable_scope.VariableAggregation.MEAN)
+
+      # Verify caching for multiple GPUs inside replica_fn
+      @def_function.function
+      def worker_fn():
+
+        def replica_fn():
+          t = v.read_value()  # Reads value 1.0 or cached value 1.0 for
+          # second replica
+          v.assign(constant_op.constant(5.0))  # v changes to 5.0
+          t = v.read_value()  # should return 1.0 for replicas > 1
+          return t  # Should be 1.0 instead of 5.0 for replicas > 1
+          # otherwise 5.0
+
+        run_result = self.strategy.run(replica_fn)
+        reduced_result = self.strategy.reduce('SUM', run_result, axis=None)
+        return reduced_result
+
+      result = self.coordinator.schedule(worker_fn)
+      result = result.fetch()
+      if self.strategy.num_replicas_in_sync > 1:
+        expected_result = 1.0 * self.strategy.num_replicas_in_sync
+      else:
+        expected_result = 5.0  # Caching scope not applied implicitly.
+      self.assertEqual(result, expected_result)
+
   def testDistributeDataset(self):
 
     def per_worker_dataset_fn():
