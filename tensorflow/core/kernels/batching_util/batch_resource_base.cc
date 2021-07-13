@@ -80,7 +80,7 @@ void RecordProcessedBatchSizeV2(int32 batch_size, const string& model_name,
       ->IncrementBy(1);
 }
 
-void RecordBatchDelayUs(int64 batch_delay_us, const string& model_name,
+void RecordBatchDelayUs(int64_t batch_delay_us, const string& model_name,
                         const string& op_name) {
   static auto* cell = monitoring::PercentileSampler<2>::New(
       {"/tensorflow/serving/batching/batch_delay_us",
@@ -92,7 +92,7 @@ void RecordBatchDelayUs(int64 batch_delay_us, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_delay_us));
 }
 
-void RecordBatchParamBatchTimeoutMicros(int64 batch_timeout_micros,
+void RecordBatchParamBatchTimeoutMicros(int64_t batch_timeout_micros,
                                         const string& model_name,
                                         const string& op_name) {
   static auto* cell = monitoring::Gauge<int64, 2>::New(
@@ -102,7 +102,7 @@ void RecordBatchParamBatchTimeoutMicros(int64 batch_timeout_micros,
   cell->GetCell(model_name, op_name)->Set(batch_timeout_micros);
 }
 
-void RecordBatchParamMaxBatchSize(int64 max_batch_size,
+void RecordBatchParamMaxBatchSize(int64_t max_batch_size,
                                   const string& model_name,
                                   const string& op_name) {
   static auto* cell = monitoring::Gauge<int64, 2>::New(
@@ -111,7 +111,7 @@ void RecordBatchParamMaxBatchSize(int64 max_batch_size,
   cell->GetCell(model_name, op_name)->Set(max_batch_size);
 }
 
-void RecordBatchParamMaxEnqueuedBatches(int64 max_enqueued_batches,
+void RecordBatchParamMaxEnqueuedBatches(int64_t max_enqueued_batches,
                                         const string& model_name,
                                         const string& op_name) {
   static auto* cell = monitoring::Gauge<int64, 2>::New(
@@ -165,7 +165,7 @@ using ::tensorflow::concat_split_util::Split;
 using TensorMatrix = std::vector<std::vector<Tensor>>;
 
 Status BatchResourceBase::RegisterInput(
-    int64 guid, OpKernelContext* context, const string& batcher_queue_name,
+    int64_t guid, OpKernelContext* context, const string& batcher_queue_name,
     AsyncOpKernel::DoneCallback done_callback) {
   std::unique_ptr<BatchTask> batch_components;
   TF_RETURN_IF_ERROR(CreateBatchTask(context, &batch_components));

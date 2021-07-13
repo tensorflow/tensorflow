@@ -240,7 +240,7 @@ class SDBSQueue : public BatchScheduler<TaskType> {
 template <typename TaskType>
 class SDBSBatch : public Batch<TaskType> {
  public:
-  SDBSBatch(SDBSQueue<TaskType>* queue, int64 creation_time_micros)
+  SDBSBatch(SDBSQueue<TaskType>* queue, int64_t creation_time_micros)
       : queue_(queue), creation_time_micros_(creation_time_micros) {}
 
   ~SDBSBatch() override {}
@@ -378,8 +378,8 @@ void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
     }
     if (batches_.empty()) {
       no_batch_count_++;
-      int64 sleep_time = batch_period_micros_ ? batch_period_micros_
-                                              : kIdleThreadSleepTimeMicros;
+      int64_t sleep_time = batch_period_micros_ ? batch_period_micros_
+                                                : kIdleThreadSleepTimeMicros;
       mu_.unlock();
       env()->SleepForMicroseconds(sleep_time);
       continue;
@@ -405,10 +405,10 @@ void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
     batch->queue()->ReleaseBatch(batch);
     auto callback = queues_and_callbacks_[batch->queue()];
     mu_.unlock();
-    int64 start_time = env()->NowMicros();
+    int64_t start_time = env()->NowMicros();
     callback(std::unique_ptr<Batch<TaskType>>(
         const_cast<internal::SDBSBatch<TaskType>*>(batch)));
-    int64 end_time = env()->NowMicros();
+    int64_t end_time = env()->NowMicros();
     mu_.lock();
     batch_count_++;
     batch_latency_sum_ += end_time - start_time;

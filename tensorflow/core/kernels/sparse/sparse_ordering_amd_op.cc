@@ -96,8 +96,8 @@ class CSROrderingAMDCPUOp : public OpKernel {
         10 * num_rows * (input_matrix->total_nnz() / batch_size);
     Shard(
         worker_threads.num_threads, worker_threads.workers, batch_size,
-        amd_cost_per_batch, [&](int64 batch_begin, int64 batch_end) {
-          for (int64 batch_index = batch_begin; batch_index < batch_end;
+        amd_cost_per_batch, [&](int64_t batch_begin, int64_t batch_end) {
+          for (int64_t batch_index = batch_begin; batch_index < batch_end;
                ++batch_index) {
             // Define an Eigen SparseMatrix Map to operate on the
             // CSRSparseMatrix component without copying the data.
