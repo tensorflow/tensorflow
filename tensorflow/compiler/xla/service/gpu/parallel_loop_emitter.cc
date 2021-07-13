@@ -68,6 +68,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   //     ...
   //   }
   // The part between [] are added only if blockDim.y > 1.
+  // blockIdx.y and gridDim.y are always 1.
 
   // Per the PTX documentation:
   //   "It is guaranteed that [...] 0  <=  %ctaid.x <  %nctaid.x"
@@ -76,7 +77,8 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   if (launch_dimensions_.thread_counts_per_block().y > 1) {
     // When blockDim.y > 1, then we are in the small row case. Each
     // blockDim.x do exatly to one row and blockDim.y map to some
-    // consecutive row.
+    // consecutive row. This prevents too small block size that isn't
+    // efficient.
     CHECK(launch_config_.row_vectorized);
     CHECK_EQ(shape_.dimensions().back(),
 	     launch_dimensions_.thread_counts_per_block().x *
