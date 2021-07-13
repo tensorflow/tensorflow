@@ -46,6 +46,10 @@ namespace transforms {
 // Pass to find and annotate candidates for buffer reuse.
 std::unique_ptr<FunctionPass> CreateBufferReusePass();
 
+// Pass to rewrite all TF operations to JIT invocations through the TF
+// framework.
+std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass();
+
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
     mlir::StringRef blob_annotation = {});

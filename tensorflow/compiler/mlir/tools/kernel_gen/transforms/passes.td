@@ -38,6 +38,11 @@ def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
   let constructor = "tf_framework::CreateRewriteTFFrameworkAssert()";
 }
 
+def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
+  let summary = "Pass to rewrite all TF operations to JIT invocations";
+  let constructor = "transforms::CreateTFToJITInvocationPass()";
+}
+
 def BufferReusePass : FunctionPass<"buffer-reuse"> {
   let summary = "Pass to find and annotate candidates for buffer reuse.";
   let constructor = "transforms::CreateBufferReusePass()";

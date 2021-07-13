@@ -47,6 +47,11 @@ namespace transforms {
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
                                       RewritePatternSet *patterns);
+
+/// Populate patterns to rewrite TF operations to TF framework JIT invocations.
+void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
+                                       RewritePatternSet *patterns);
+
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir

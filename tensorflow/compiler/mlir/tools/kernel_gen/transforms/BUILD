@@ -39,6 +39,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:MemRefDialect",
@@ -100,6 +101,7 @@ cc_library(
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",
         "tf_kernel_to_llvm_pass.cc",
+        "tf_to_jit_invocations.cc",
         "vectorization_pass.cc",
     ],
     hdrs = ["passes.h"],
@@ -157,6 +159,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:type_conversion",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
