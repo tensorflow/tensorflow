@@ -16,6 +16,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
+        "//platforms/darwinn/tools/mlir_fuzzer/...",
         "//tensorflow/compiler/...",
         "//tensorflow/core/tfrt/utils/...",
         "//tensorflow/cc/...",
