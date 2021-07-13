@@ -30,7 +30,6 @@ import time
 import weakref
 from six.moves import queue
 
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import values as values_lib
@@ -70,8 +69,6 @@ RemoteValueStatus = values_lib.RemoteValueStatus
 RemoteValue = values_lib.RemoteValue
 RemoteValueImpl = values_lib.RemoteValueImpl
 PerWorkerValues = values_lib.PerWorkerValues
-PerWorkerDistributedDataset = values_lib.PerWorkerDistributedDataset
-PerWorkerDistributedIterator = values_lib.PerWorkerDistributedIterator
 
 
 class InputError(Exception):
@@ -1102,11 +1099,7 @@ class ClusterCoordinator(object):
       a `tf.distribute.experimental.coordinator.PerWorkerValues` of the
       iterators (that are on the workers).
     """
-    input_workers = input_lib.InputWorkers(
-        [(w.device_name, [w.device_name]) for w in self._cluster.workers],
-        False)
-
-    return PerWorkerDistributedDataset(dataset_fn, input_workers, self)
+    return values_lib.get_per_worker_dataset(dataset_fn, self)
 
   def _create_per_worker_resources(self, fn, args=None, kwargs=None):
     """Synchronously create resources on the workers.

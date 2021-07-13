@@ -697,6 +697,21 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
         'error message is Failed copying input tensor from'):
       self.coordinator.join()
 
+  def testPassDatasetToCreatePerWorkerDataset(self):
+    dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(dataset)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(per_worker_dataset),))
+    result = result.fetch()
+    expected_result = math_ops.range(1., 5.)
+
+    self.assertAllEqual(result, (expected_result))
+
 
 class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):
   """Test basic functionality works with explicit maximum closure queue size.
@@ -1161,7 +1176,7 @@ class StrategyIntegrationTest(test.TestCase):
         expected_result = 5.0  # Caching scope not applied implicitly.
       self.assertEqual(result, expected_result)
 
-  def testDistributeDataset(self):
+  def testDistributedDatasetInsidePerWorkerDatasetFn(self):
 
     def per_worker_dataset_fn():
       dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
@@ -1171,10 +1186,30 @@ class StrategyIntegrationTest(test.TestCase):
     def worker_fn(iterator):
       return self.strategy.experimental_local_results(next(iterator))
 
-    distributed_dataset = self.coordinator.create_per_worker_dataset(
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(
         per_worker_dataset_fn)
     result = self.coordinator.schedule(
-        worker_fn, args=(iter(distributed_dataset),))
+        worker_fn, args=(iter(per_worker_dataset),))
+    result = result.fetch()
+    expected_result = array_ops.split(
+        math_ops.range(1., 5.),
+        num_or_size_splits=self.strategy.num_replicas_in_sync,
+        axis=0)
+
+    self.assertAllEqual(result, (expected_result))
+
+  def testPassDistributedDatasetToCreatePerWorkerDataset(self):
+    dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
+    distributed_dataset = self.strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return self.strategy.experimental_local_results(next(iterator))
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(
+        distributed_dataset)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(per_worker_dataset),))
     result = result.fetch()
     expected_result = array_ops.split(
         math_ops.range(1., 5.),
@@ -1290,10 +1325,6 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertEqual(self._map_fn_tracing_count, 1)
 
   def testCallingDistributeDatasetOutside(self):
-    with self.assertRaises(ValueError):
-      dataset = dataset_ops.DatasetV2.range(1, 2).batch(10)
-      self.strategy.experimental_distribute_dataset(dataset)
-
     with self.assertRaises(ValueError):
       self.strategy.distribute_datasets_from_function(
           lambda _: dataset_ops.DatasetV2.range(1, 2).batch(2))

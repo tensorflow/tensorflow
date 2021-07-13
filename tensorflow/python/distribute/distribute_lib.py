@@ -3424,7 +3424,7 @@ class ReplicaContext(ReplicaContextBase):
 
     Example usage:
 
-    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'CPU:0']) # 2 replicas
+    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'GPU:1']) # 2 replicas
     >>> with strategy.scope():
     ...   distributed_variable = tf.Variable(5.0)
     >>> distributed_variable

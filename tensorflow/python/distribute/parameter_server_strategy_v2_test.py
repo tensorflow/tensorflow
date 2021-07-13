@@ -247,13 +247,13 @@ class ParameterServerStrategyV2Test(test.TestCase):
     with self._assertRaisesUsageWarningWithSchedule():
       strategy.reduce("SUM", None, axis=None)
 
-  def testDistributeDatasetNotUsedWithClusterCoordinator(self):
+  def testDistributeDatasetUsedDirectly(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     dataset = dataset_ops.DatasetV2.range(3)
-    with self._assertRaisesUsageError():
-      def_function.function(
-          lambda: strategy.experimental_distribute_dataset(dataset))()
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+    with self.assertRaises(ValueError):
+      iter(distributed_dataset)
 
   def testDistributeDatasetFromFunctionNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
