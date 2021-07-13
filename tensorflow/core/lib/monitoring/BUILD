@@ -60,6 +60,7 @@ cc_library(
         ":metric_def",
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -201,6 +202,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "collection_registry.h",
         "counter.h",
         "gauge.h",
         "metric_def.h",

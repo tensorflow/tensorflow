@@ -3697,65 +3697,6 @@ bool MIOpenSupport::DoTransformTensor(Stream* stream,
   return false;
 }
 
-template <class T>
-bool MIOpenSupport::DoConvolveBackwardBiasImpl(
-    Stream* stream, int miopen_type,  // Actually miopenDataType_t.
-    const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<T>& input_data,
-    const dnn::BatchDescriptor& bias_descriptor,
-    DeviceMemory<T>* backward_bias_data) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  ScopedTensorDescriptor input_nd{input_descriptor,
-                                  static_cast<miopenDataType_t>(miopen_type)};
-  ScopedTensorDescriptor bias_nd{bias_descriptor,
-                                 static_cast<miopenDataType_t>(miopen_type)};
-
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  auto status = wrap::miopenConvolutionBackwardBias(
-      miopen.handle(), &alpha, input_nd.handle(), input_data.opaque(), &beta,
-      bias_nd.handle(), backward_bias_data->opaque());
-  if (status != miopenStatusSuccess) {
-    LOG(FATAL) << "failed to enqueue backward convolution on stream: "
-               << ToString(status);
-    return false;
-  }
-  return true;
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<double>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<double>* backward_bias_data) {
-  LOG(ERROR) << "miopen does not support double bwd bias yet";
-  return false;
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<float>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<float>* backward_bias_data) {
-  return DoConvolveBackwardBiasImpl(stream, miopenFloat, input_descriptor,
-                                    input_data, bias_descriptor,
-                                    backward_bias_data);
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<Eigen::half>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<Eigen::half>* backward_bias_data) {
-  return DoConvolveBackwardBiasImpl(stream, miopenHalf, input_descriptor,
-                                    input_data, bias_descriptor,
-                                    backward_bias_data);
-}
-
 bool MIOpenSupport::DoMatMul(Stream* stream,
                              const DeviceMemory<float>& input_data,
                              const DeviceMemory<float>& weights,

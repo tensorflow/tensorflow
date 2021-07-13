@@ -1385,8 +1385,7 @@ void BM_ReadVariable(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_ReadVariable);
 
-// TODO(b/178003466): Fix and re-enable.
-TEST(CAPI, DISABLED_StringAttributes) {
+TEST(CAPI, StringAttributes) {
   // Test that TFE_OpSetAttrString doesn't hold on to the value after it
   // returns.
   TF_Status* status = TF_NewStatus();

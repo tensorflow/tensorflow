@@ -322,17 +322,25 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
       executor->AllocateOwnedScalar<uint64>();
   stream_->ThenMemZero(out_param.ptr(), sizeof(uint64));
 
+#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ComparisonKernelT> comparison_kernel,
+      std::shared_ptr<ComparisonKernelT> loaded_kernel,
+      (LoadKernelOrGetPtr<DeviceMemory<uint8>, uint8, uint64,
+                          DeviceMemory<uint64>>(
+          executor, "redzone_checker", redzone_checker_ptx, compiled_ptx)));
+#else
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ComparisonKernelT> loaded_kernel,
       (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64,
                                    DeviceMemory<uint64>>(
           "redzone_checker", redzone_checker_ptx, compiled_ptx)));
+#endif  // GOOGLE_CUDA
 
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first, out_param.cref(),
-                               *comparison_kernel, buf_and_size.second,
+                               *loaded_kernel, buf_and_size.second,
                                redzone_size_, redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;

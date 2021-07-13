@@ -1,5 +1,4 @@
 // RUN: tfr-opt %s -verify-diagnostics -split-input-file | tfr-opt | FileCheck %s
-// RUN: tfr-opt %s -canonicalize -verify-diagnostics -split-input-file | FileCheck %s -check-prefix=CANON
 
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
@@ -73,15 +72,11 @@ func @get_shape(%arg0: !tfr.tensor) -> (!shape.shape, !shape.shape) {
 // -----
 
 // CHECK-LABEL: get_real_shape
-// CANON-LABEL: get_real_shape
 func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<2xindex> {
   %0 = "tfr.cast"(%arg0) : (tensor<1x2xf32>) -> !tfr.tensor
   %1 = tfr.get_shape %0 -> !shape.shape
   %2 = shape.to_extent_tensor %1 : !shape.shape -> tensor<2xindex>
   return %2 : tensor<2xindex>
-
-// CANON-NEXT: %[[e:.*]] = shape.const_shape [1, 2] : tensor<2xindex>
-// CANON-NEXT: return %[[e]] : tensor<2xindex>
 }
 
 // -----
@@ -122,7 +117,6 @@ func @constant() -> (!tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr) {
 // -----
 
 // CHECK-LABEL: equal
-// CANON-LABEL: equal
 func @equal() -> (i1, i1, i1, i1) {
   %0 = tfr.constant f32 -> !tfr.attr
   %1 = tfr.constant f32 -> !tfr.attr
@@ -136,10 +130,6 @@ func @equal() -> (i1, i1, i1, i1) {
   %same_str = tfr.equal %3,%4 -> i1
   %diff_str = tfr.equal %3,%5 -> i1
   return %same_type, %diff_type, %same_str, %diff_str  : i1, i1, i1, i1
-
-// CANON-DAG: %true = constant true
-// CANON-DAG: %false = constant false
-// CANON-NEXT: return %true, %false, %true, %false : i1, i1, i1, i1
 }
 
 // -----
@@ -161,29 +151,19 @@ func @constant_tensor_vector(%arg0: vector<1x2xi32>) -> tensor<1x2xi32> {
 // -----
 
 // CHECK-LABEL: constant_tensor_array
-// CANON-LABEL: constant_tensor_array
 func @constant_tensor_array() -> !tfr.tensor {
   %0 = tfr.constant [1, -1, 3] -> !tfr.attr
   %1 = "tfr.constant_tensor"(%0) : (!tfr.attr) -> !tfr.tensor
   return %1 : !tfr.tensor
-
-// CANON-NEXT: %[[RES:.*]] = "tf.Const"() {value = dense<[1, -1, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
-// CANON-NEXT: "tfr.cast"(%[[RES]]) : (tensor<3xi64>) -> !tfr.tensor
-// CANON-NEXT: return
 }
 
 // -----
 
 // CHECK-LABEL: constant_tensor_scalar
-// CANON-LABEL: constant_tensor_scalar
 func @constant_tensor_scalar() -> !tfr.tensor {
   %0 = "std.constant"() {value = 42 : i32} : () -> i32
   %1 = "tfr.constant_tensor"(%0) : (i32) -> !tfr.tensor
   return %1 : !tfr.tensor
-
-// CANON-NEXT: %[[RES:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
-// CANON-NEXT: "tfr.cast"(%[[RES]]) : (tensor<i32>) -> !tfr.tensor
-// CANON-NEXT: return
 }
 
 // -----
@@ -271,8 +251,8 @@ func @quant_raw_data(%arg0: !tfr.tensor) -> !tfr.tensor {
 
 // CHECK-LABEL: quant_qparam
 func @quant_qparam(%arg0: !tfr.tensor) -> (!tfr.tensor, !tfr.tensor) {
-  %0:2 = "tfr.quant_qparam"(%arg0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
-  return %0#0, %0#1 : !tfr.tensor, !tfr.tensor
+  %scale, %zp = tfr.quant_qparam(%arg0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
+  return %scale, %zp : !tfr.tensor, !tfr.tensor
 }
 
 // -----
@@ -286,21 +266,16 @@ func @quant_scale_factor(%arg0: f32, %arg1: !tfr.tensor_list) -> (!tfr.tensor) {
 // -----
 
 // CHECK-LABEL: build_const_list
-// CANON-LABEL: build_const_list
 func @build_const_list() -> !tfr.attr {
   %0 = "std.constant"() {value = 42 : i32} : () -> i32
   %1 = "std.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   return %2 : !tfr.attr
-
-// CANON-NEXT: %[[c:.*]] = tfr.constant [42 : i32, 41 : i32] -> !tfr.attr
-// CANON-NEXT: return %[[c]] : !tfr.attr
 }
 
 // -----
 
 // CHECK-LABEL: build_high_dim_const_list
-// CANON-LABEL: build_high_dim_const_list
 func @build_high_dim_const_list() -> !tfr.attr {
   %0 = "std.constant"() {value = 42 : i32} : () -> i32
   %1 = "std.constant"() {value = 41 : i32} : () -> i32
@@ -308,22 +283,15 @@ func @build_high_dim_const_list() -> !tfr.attr {
   %3 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   %4 = "tfr.build_list"(%2, %3) : (!tfr.attr, !tfr.attr) -> !tfr.attr
   return %4 : !tfr.attr
-
-// CANON-NEXT: %[[c:.*]] = tfr.constant {{\[}}[42 : i32, 41 : i32], [42 : i32, 41 : i32]] -> !tfr.attr
-// CANON-NEXT: return %[[c]] : !tfr.attr
 }
 
 // -----
 
 // CHECK-LABEL: get_length
-// CANON-LABEL: get_length
 func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
   %0 = "tfr.build_list"(%arg0, %arg1) : (!tfr.tensor<A>, !tfr.tensor<B>) -> !tfr.tensor_list
   %1 = "tfr.get_length"(%0) : (!tfr.tensor_list) -> index
   return %1 : index
-
-// CANON-NEXT: %[[c:.*]] = constant 2 : index
-// CANON-NEXT: return %[[c]] : index
 }
 
 // -----

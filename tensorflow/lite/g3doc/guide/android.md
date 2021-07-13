@@ -208,3 +208,21 @@ so you must include all header files in `tensorflow/lite/` from the TensorFlow
 repository. Additionally, you will need header files from
 [FlatBuffers](https://github.com/google/flatbuffers) and
 [Abseil](https://github.com/abseil/abseil-cpp).
+
+## Min SDK version of TFLite
+
+| Library                     | `minSdkVersion` | Device Requirements    |
+| --------------------------- | --------------- | ---------------------- |
+| tensorflow-lite             | 19              | NNAPI usage requires   |
+:                             :                 : API 27+                :
+| tensorflow-lite-gpu         | 19              | GLES 3.1 or OpenCL     |
+:                             :                 : (typically only        :
+:                             :                 : available on API 21+   :
+| tensorflow-lite-hexagon     | 19              | -                      |
+| tensorflow-lite-support     | 19              | -                      |
+| tensorflow-lite-task-vision | 21              | android.graphics.Color |
+:                             :                 : related API requires   :
+:                             :                 : API 26+                :
+| tensorflow-lite-task-text   | 21              | -                      |
+| tensorflow-lite-task-audio  | 23              | -                      |
+| tensorflow-lite-metadata    | 19              | -                      |

@@ -201,6 +201,17 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_slice_loop_variant_begin(self):
+    self.skipTest("TODO(b/191880259): re-enable once XLA compile times are "
+                  "addressed.")
+    x = random_ops.random_uniform([3, 2, 5, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return array_ops.slice(x1, begin=(0, 2 - i, i), size=(-1, 2, 1))
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_tile(self):
     x = random_ops.random_uniform([3, 2, 3])
 

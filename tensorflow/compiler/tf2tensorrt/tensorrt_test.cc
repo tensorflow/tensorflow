@@ -21,30 +21,13 @@ limitations under the License.
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
-namespace {
-
-class Logger : public nvinfer1::ILogger {
- public:
-  void log(nvinfer1::ILogger::Severity severity, const char* msg) override {
-    switch (severity) {
-      case Severity::kINFO:
-        LOG(INFO) << msg;
-        break;
-      case Severity::kWARNING:
-        LOG(WARNING) << msg;
-        break;
-      case Severity::kINTERNAL_ERROR:
-      case Severity::kERROR:
-        LOG(ERROR) << msg;
-        break;
-      default:
-        break;
-    }
-  }
-};
+namespace tensorrt {
 
 class ScopedWeights {
  public:
@@ -64,16 +47,21 @@ const char* kInputTensor = "input";
 const char* kOutputTensor = "output";
 
 // Creates a network to compute y=2x+3.
-nvinfer1::IHostMemory* CreateNetwork() {
-  Logger logger;
-  nvinfer1::IBuilder* builder = nvinfer1::createInferBuilder(logger);
+TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
+  Logger& logger = *Logger::GetLogger();
+  TrtUniquePtrType<nvinfer1::IBuilder> builder(
+      nvinfer1::createInferBuilder(logger));
   ScopedWeights weights(2.0);
   ScopedWeights bias(3.0);
-
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  TrtUniquePtrType<nvinfer1::INetworkDefinition> network(
+      builder->createNetworkV2(0L));
+#else
   nvinfer1::INetworkDefinition* network = builder->createNetwork();
+#endif
   // Add the input.
   auto input = network->addInput(kInputTensor, nvinfer1::DataType::kFLOAT,
-                                 nvinfer1::DimsCHW{1, 1, 1});
+                                 nvinfer1::Dims3{1, 1, 1});
   EXPECT_NE(input, nullptr);
   // Add the hidden layer.
   auto layer = network->addFullyConnected(*input, 1, weights.get(), bias.get());
@@ -84,14 +72,19 @@ nvinfer1::IHostMemory* CreateNetwork() {
   network->markOutput(*output);
   // Build the engine
   builder->setMaxBatchSize(1);
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  TrtUniquePtrType<nvinfer1::IBuilderConfig> builderConfig(
+      builder->createBuilderConfig());
+  builderConfig->setMaxWorkspaceSize(1 << 10);
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
+      builder->buildEngineWithConfig(*network, *builderConfig));
+#else
   builder->setMaxWorkspaceSize(1 << 10);
   auto engine = builder->buildCudaEngine(*network);
+#endif
   EXPECT_NE(engine, nullptr);
   // Serialize the engine to create a model, then close everything.
-  nvinfer1::IHostMemory* model = engine->serialize();
-  network->destroy();
-  engine->destroy();
-  builder->destroy();
+  TrtUniquePtrType<nvinfer1::IHostMemory> model(engine->serialize());
   return model;
 }
 
@@ -125,9 +118,9 @@ void Execute(nvinfer1::IExecutionContext* context, const float* input,
   cudaStreamSynchronize(stream);
 
   // Release the stream and the buffers
-  cudaStreamDestroy(stream);
   ASSERT_EQ(0, cudaFree(buffers[input_index]));
   ASSERT_EQ(0, cudaFree(buffers[output_index]));
+  cudaStreamDestroy(stream);
 }
 
 TEST(TensorrtTest, BasicFunctions) {
@@ -138,29 +131,25 @@ TEST(TensorrtTest, BasicFunctions) {
     return;
   }
 
-  // Create the network model.
-  nvinfer1::IHostMemory* model = CreateNetwork();
+  // Create a serialized engine
+  TrtUniquePtrType<nvinfer1::IHostMemory> model = CreateSerializedEngine();
   // Use the model to create an engine and then an execution context.
-  Logger logger;
-  nvinfer1::IRuntime* runtime = nvinfer1::createInferRuntime(logger);
-  nvinfer1::ICudaEngine* engine =
-      runtime->deserializeCudaEngine(model->data(), model->size(), nullptr);
-  model->destroy();
-  nvinfer1::IExecutionContext* context = engine->createExecutionContext();
+  Logger& logger = *Logger::GetLogger();
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime(
+      nvinfer1::createInferRuntime(logger));
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
+      runtime->deserializeCudaEngine(model->data(), model->size(), nullptr));
+  TrtUniquePtrType<nvinfer1::IExecutionContext> context(
+      engine->createExecutionContext());
 
   // Execute the network.
   float input = 1234;
   float output;
-  Execute(context, &input, &output);
+  Execute(context.get(), &input, &output);
   EXPECT_EQ(output, input * 2 + 3);
-
-  // Destroy the engine.
-  context->destroy();
-  engine->destroy();
-  runtime->destroy();
 }
 
-}  // namespace
+}  // namespace tensorrt
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

@@ -2223,7 +2223,7 @@ def sampled_softmax_loss_v2(weights,
   the full softmax loss.
 
   A common use case is to use this method for training, and calculate the full
-  sigmoid loss for evaluation or inference as in the following example:
+  softmax loss for evaluation or inference as in the following example:
 
   ```python
   if mode == "train":

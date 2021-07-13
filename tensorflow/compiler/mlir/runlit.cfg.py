@@ -50,13 +50,14 @@ if platform.system() == 'Windows':
       ToolSubst('FileCheck.exe', unresolved='fatal'),
       #  Handle these specially as they are strings searched for during testing.
       ToolSubst('count.exe', unresolved='fatal'),
-      ToolSubst('not.exe', unresolved='fatal')]
+      ToolSubst('not.exe', unresolved='fatal')
+  ]
 
   llvm_config.config.substitutions.append(
       ('%python', '"%s"' % (sys.executable)))
 
-  llvm_config.add_tool_substitutions(
-      tool_patterns, [llvm_config.config.llvm_tools_dir])
+  llvm_config.add_tool_substitutions(tool_patterns,
+                                     [llvm_config.config.llvm_tools_dir])
 else:
   llvm_config.use_default_substitutions()
 
@@ -70,12 +71,12 @@ tool_dirs = config.mlir_tf_tools_dirs + [
     config.mlir_tools_dir, config.llvm_tools_dir
 ]
 tool_names = [
-    'mlir-opt', 'mlir-hlo-opt', 'mlir-translate', 'tf-opt', 'tf_tfl_translate',
-    'tf_tfjs_translate', 'flatbuffer_to_string', 'flatbuffer_translate',
-    'tf-mlir-translate', 'mlir-tflite-runner', 'tfcompile',
-    'json_to_flatbuffer', 'xla-gpu-opt', 'xla-mlir-gpu-opt', 'xla-opt',
-    'hlo_to_llvm_ir', 'kernel-gen-opt', 'tf_to_kernel', 'tf_to_gpu_binary',
-    'xla-thunks-opt', 'tfjs-opt'
+    'mlir-opt', 'mlir-hlo-opt', 'mlir-translate', 'tf-opt', 'tf-reduce',
+    'tf_tfl_translate', 'tf_tfjs_translate', 'flatbuffer_to_string',
+    'flatbuffer_translate', 'tf-mlir-translate', 'mlir-tflite-runner',
+    'tfcompile', 'json_to_flatbuffer', 'xla-gpu-opt', 'xla-mlir-gpu-opt',
+    'xla-opt', 'hlo_to_llvm_ir', 'kernel-gen-opt', 'tf_to_kernel',
+    'tf_to_gpu_binary', 'xla-thunks-opt', 'tfjs-opt'
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

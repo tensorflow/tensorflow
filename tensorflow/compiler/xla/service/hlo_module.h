@@ -102,7 +102,8 @@ class HloModule {
   // computations to replace. We could speed it up by keeping track of users of
   // computations.
   void ReplaceComputations(
-      const std::unordered_map<HloComputation*, HloComputation*>& replacements);
+      const absl::flat_hash_map<HloComputation*, HloComputation*>&
+          replacements);
 
   const string& name() const { return name_; }
   void set_name(string name) { name_ = std::move(name); }
@@ -226,6 +227,7 @@ class HloModule {
   // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
+  HloModuleConfig& config() { return config_; }
   const HloModuleConfig& config() const { return config_; }
   void set_config(const HloModuleConfig& config) { config_ = config; }
 

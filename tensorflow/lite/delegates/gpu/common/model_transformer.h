@@ -53,6 +53,9 @@ enum class TransformStatus {
 struct TransformResult {
   TransformStatus status;
   std::string message;
+  bool operator==(const TransformResult& result) const {
+    return this->status == result.status && this->message == result.message;
+  }
 };
 
 // Class responsible for applying a transformation to a single node.
@@ -94,6 +97,9 @@ class ModelTransformer {
   // @return false if a graph is in the broken states can not be used any more
   bool Apply(const std::string& name, NodeTransformation* transformation);
 
+  // @return last recorded error for graph transformations.
+  const std::string& last_transformation_message() const;
+
  private:
   bool ApplyStartingWithNode(const std::string& name,
                              SequenceTransformation* transformation,
@@ -107,6 +113,8 @@ class ModelTransformer {
 
   GraphFloat32* graph_;
 
+  // TODO(b/163423950): Clean up messaging mechanism.
+  std::string last_transformation_message_;
   std::deque<NodeId> to_process_;
   absl::flat_hash_set<NodeId> processed_;
 };

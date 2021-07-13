@@ -554,6 +554,9 @@ class OpKernelContext {
     // The step being executed.
     int64 step_id = 0;
 
+    // Timestamp for the start of graph execution. Used for latency metrics.
+    int64 start_time_usecs = 0;
+
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
@@ -673,6 +676,8 @@ class OpKernelContext {
   Env* env() const { return params_->device->env(); }
 
   int64 step_id() const { return params_->step_id; }
+
+  int64 start_time_usecs() const { return params_->start_time_usecs; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 

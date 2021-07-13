@@ -138,6 +138,7 @@ tf_py_test(
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
     tags = [
+        "no_windows",  # TODO(b/192259628)
         "noasan",  # TODO(b/164696004)
         "notsan",  # TODO(b/164696004)
     ],
@@ -1490,6 +1491,9 @@ cuda_py_test(
     name = "unique_op_test",
     size = "small",
     srcs = ["unique_op_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/192259045)
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3063,7 +3067,6 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
-        "nogpu",  # TODO(b/153763253); flaky
         "optonly",  # times out
     ],
     deps = [
@@ -3279,6 +3282,14 @@ cuda_py_test(
     name = "sparse_tensor_dense_matmul_op_deterministic_test",
     size = "small",
     srcs = ["sparse_tensor_dense_matmul_op_deterministic_test.py"],
+    tags = [
+        "no_cuda_asan",
+        "noasan",
+        "notsan",
+    ],  # b/192492331
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],  # b/192492331
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -3503,6 +3514,12 @@ cuda_py_test(
     size = "medium",
     srcs = ["embedding_ops_test.py"],
     shard_count = 20,
+    tags = [
+        "no_cuda_asan",  # Size limit: b/192505612
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # Size limit: b/192505612
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

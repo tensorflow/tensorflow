@@ -22,15 +22,15 @@ class MetricsTest(test.TestCase):
 
   def test_increment_write(self):
     self.assertEqual(metrics.GetWrite(), 0)
-    metrics.IncrementWriteApi("foo")
-    self.assertEqual(metrics.GetWriteApi("foo"), 1)
+    metrics.IncrementWriteApi("foo", write_version="2")
+    self.assertEqual(metrics.GetWriteApi("foo", write_version="2"), 1)
     metrics.IncrementWrite()
     self.assertEqual(metrics.GetWrite(), 1)
 
   def test_increment_read(self):
     self.assertEqual(metrics.GetRead(), 0)
-    metrics.IncrementReadApi("bar")
-    self.assertEqual(metrics.GetReadApi("bar"), 1)
+    metrics.IncrementReadApi("bar", write_version="1")
+    self.assertEqual(metrics.GetReadApi("bar", write_version="1"), 1)
     metrics.IncrementRead()
     self.assertEqual(metrics.GetRead(), 1)
 

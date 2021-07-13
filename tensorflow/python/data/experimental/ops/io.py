@@ -21,7 +21,10 @@ from __future__ import print_function
 import multiprocessing
 import os
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import structure
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
@@ -39,7 +42,10 @@ nested_structure_coder = lazy_loader.LazyLoader(
 
 
 @tf_export("data.experimental.save", v1=[])
-def save(dataset, path, compression=None, shard_func=None):
+def save(dataset,
+         path,
+         compression=None,
+         shard_func=None):
   """Saves the content of the given dataset.
 
   Example usage:
@@ -83,7 +89,47 @@ def save(dataset, path, compression=None, shard_func=None):
       dataset to int64 shard IDs. If present, the function will be traced and
       executed as graph computation.
   """
+  if (context.executing_eagerly() and compat.forward_compatible(2021, 6, 29)):
+    save_dataset = _SaveDataset(dataset, path, shard_func, compression)
+    for _ in save_dataset:
+      pass
+  else:
+    dataset, shard_func, use_shard_func, path = _set_save_dataset_attributes(
+        dataset, shard_func, path)
+    gen_experimental_dataset_ops.save_dataset(
+        dataset._variant_tensor,   # pylint: disable=protected-access
+        path=path,
+        shard_func_other_args=shard_func.captured_inputs,
+        compression=compression,
+        shard_func=shard_func,
+        use_shard_func=use_shard_func)
 
+
+class _SaveDataset(dataset_ops.UnaryUnchangedStructureDataset):
+  """"A dataset that loads previously saved dataset."""
+
+  def __init__(self, dataset, path, shard_func, compression):
+    dataset, shard_func, use_shard_func, path = _set_save_dataset_attributes(
+        dataset, shard_func, path)
+    variant_tensor = gen_experimental_dataset_ops.save_dataset_v2(
+        dataset._variant_tensor,   # pylint: disable=protected-access
+        path=path,
+        shard_func_other_args=shard_func.captured_inputs,
+        shard_func=shard_func,
+        use_shard_func=use_shard_func,
+        compression=compression,
+        output_types=structure.get_flat_tensor_types(dataset.element_spec),
+        output_shapes=structure.get_flat_tensor_shapes(dataset.element_spec),
+        )
+    super(_SaveDataset, self).__init__(dataset, variant_tensor)
+
+  @property
+  def _functions(self):
+    return [self._shard_func]
+
+
+def _set_save_dataset_attributes(dataset, shard_func, path):
+  """Sets parameters for SaveDatasetOp and SaveDatasetV2Op."""
   if shard_func is None:
     use_shard_func = False
     shard_func = lambda *x: None  # a dummy function that will not be used
@@ -107,14 +153,8 @@ def save(dataset, path, compression=None, shard_func=None):
   shard_func.add_to_graph(ops.get_default_graph())
 
   # pylint: disable=protected-access
-  dataset = dataset._apply_debug_options()
-  gen_experimental_dataset_ops.save_dataset(
-      dataset._variant_tensor,
-      path=path,
-      shard_func_other_args=shard_func.captured_inputs,
-      compression=compression,
-      shard_func=shard_func,
-      use_shard_func=use_shard_func)
+  dataset._apply_debug_options()
+  return dataset, shard_func, use_shard_func, path,
 
 
 class _LoadDataset(dataset_ops.DatasetSource):

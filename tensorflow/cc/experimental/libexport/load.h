@@ -15,10 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_LOAD_H_
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_LOAD_H_
 
-#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
@@ -37,7 +37,7 @@ namespace libexport {
 class TFPackage {
  public:
   // Load a SavedModel, parsing the associated protobuf for later access.
-  static absl::StatusOr<TFPackage> Load(const std::string& path);
+  static tensorflow::StatusOr<TFPackage> Load(const std::string& path);
 
   // Reads and returns a list of variable checkpoint keys found in the
   // SavedModel.
@@ -64,7 +64,7 @@ class TFPackage {
     // look like for this.
     std::string shape_and_slice;
   };
-  absl::StatusOr<std::vector<CheckpointKey>> GetVariableCheckpointKeys();
+  tensorflow::StatusOr<std::vector<CheckpointKey>> GetVariableCheckpointKeys();
 
   // Retrieves the object graph from the SavedModel.
   //

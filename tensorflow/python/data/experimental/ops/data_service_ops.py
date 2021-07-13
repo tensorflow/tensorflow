@@ -32,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_AUTO = "AUTO"
@@ -54,6 +55,17 @@ class ProcessingMode(object):
       raise ValueError(
           "{0} is not a valid processing mode. Valid modes: {1}".format(
               mode, valid_modes))
+
+
+def _check_job_name(job_name):
+  if job_name is None:
+    return
+  if not isinstance(job_name, six.string_types):
+    raise ValueError(
+        "job_name must be a string, but job_name was of type "
+        "{0}. job_name={1}".format(type(job_name), job_name))
+  if not job_name:
+    raise ValueError("job_name must not be empty")
 
 
 class _DataServiceDatasetV2(dataset_ops.DatasetSource):
@@ -88,7 +100,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       data_transfer_protocol: (Optional.) The protocol to use for transferring
         data with the tf.data service. By default, data is transferred using
         gRPC.
-      job_name: (Optional.) The name of the job. This argument makes it possible
+      job_name: (Optional.) The name of the job. If provided, it must be a
+        non-empty string or Tensor. This argument makes it possible
         for multiple datasets to share the same job. The default behavior is
         that the dataset creates anonymous, exclusively owned jobs.
       consumer_index: (Optional.) The index of the consumer in the range from
@@ -268,7 +281,8 @@ def _distribute(processing_mode,
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
       address and `<protocol>` can optionally be used to override the default
       protocol to use. If it's a tuple, it should be (protocol, address).
-    job_name: (Optional.) The name of the job. This argument makes it possible
+    job_name: (Optional.) The name of the job. If provided, it must be a
+      non-empty string. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
@@ -523,7 +537,8 @@ def distribute(processing_mode,
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
       address and `<protocol>` can optionally be used to override the default
       protocol to use. If it's a tuple, it should be (protocol, address).
-    job_name: (Optional.) The name of the job. This argument makes it possible
+    job_name: (Optional.) The name of the job. If provided, it must be a
+      non-empty string. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
@@ -557,6 +572,7 @@ def distribute(processing_mode,
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
+  _check_job_name(job_name)
   return _distribute(
       processing_mode=processing_mode,
       service=service,
@@ -696,7 +712,8 @@ def _from_dataset_id(processing_mode,
     element_spec: A nested structure of `tf.TypeSpec`s representing the type of
       elements produced by the dataset. Use `tf.data.Dataset.element_spec` to
       see the element spec for a given dataset.
-    job_name: (Optional.) The name of the job. This argument makes it possible
+    job_name: (Optional.) The name of the job. If provided, it must be a
+      non-empty string or tensor. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
@@ -738,11 +755,11 @@ def _from_dataset_id(processing_mode,
         "Invalid compression argument: {}. Must be one of {}".format(
             compression, valid_compressions))
   if job_name is not None:
-    if not isinstance(job_name, six.string_types):
-      raise ValueError("job_name must be a string, but job_name was of type "
-                       "{0}. job_name={1}".format(type(job_name), job_name))
-    if not job_name:
-      raise ValueError("job_name must not be empty")
+    if not isinstance(job_name, six.string_types) and not isinstance(
+        job_name, ops.Tensor):
+      raise ValueError(
+          "job_name must be a string or Tensor, but job_name was of type "
+          "{0}. job_name={1}".format(type(job_name), job_name))
   if element_spec is None:
     raise ValueError("element_spec must not be None")
 
@@ -775,7 +792,7 @@ def _from_dataset_id(processing_mode,
         num_parallel_calls=dataset_ops.AUTOTUNE)
 
   # Disable autosharding for shared jobs.
-  if job_name:
+  if job_name is not None:
     options = dataset_ops.Options()
     options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
     dataset = dataset.with_options(options)
@@ -849,7 +866,8 @@ def from_dataset_id(processing_mode,
     element_spec: A nested structure of `tf.TypeSpec`s representing the type of
       elements produced by the dataset. Use `tf.data.Dataset.element_spec` to
       see the element spec for a given dataset.
-    job_name: (Optional.) The name of the job. This argument makes it possible
+    job_name: (Optional.) The name of the job. If provided, it must be a
+      non-empty string. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
       the dataset creates anonymous, exclusively owned jobs.
     consumer_index: (Optional.) The index of the consumer in the range from `0`
@@ -880,6 +898,11 @@ def from_dataset_id(processing_mode,
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
   """
+  _check_job_name(job_name)
+  if job_name is not None:
+    job_name = string_ops.string_join(
+        ["dataset_id=", string_ops.as_string(dataset_id), job_name], "/")
+
   return _from_dataset_id(
       processing_mode=processing_mode,
       service=service,

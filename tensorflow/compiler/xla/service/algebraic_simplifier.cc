@@ -127,6 +127,24 @@ bool IsPositive(const HloInstruction* hlo,
   }
 }
 
+absl::optional<double> GetConstantValue(const HloInstruction* inst) {
+  if (!ShapeUtil::IsEffectiveScalar(inst->shape())) {
+    return absl::nullopt;
+  }
+  switch (inst->shape().element_type()) {
+    case F16:
+      return static_cast<float>(inst->literal().GetFirstElement<half>());
+    case BF16:
+      return static_cast<float>(inst->literal().GetFirstElement<bfloat16>());
+    case F32:
+      return inst->literal().GetFirstElement<float>();
+    case F64:
+      return inst->literal().GetFirstElement<double>();
+    default:
+      return absl::nullopt;
+  }
+}
+
 bool IsNonNegative(const HloInstruction* hlo,
                    const AlgebraicSimplifierOptions& options) {
   // Utility only handles real types.
@@ -139,6 +157,23 @@ bool IsNonNegative(const HloInstruction* hlo,
     }
     case HloOpcode::kAbs: {
       return true;
+    }
+    case HloOpcode::kBroadcast: {
+      return IsNonNegative(hlo->operand(0), options);
+    }
+    case HloOpcode::kConstant: {
+      if (absl::optional<double> value = GetConstantValue(hlo)) {
+        return *value >= 0.0;
+      }
+      return false;
+    }
+    case HloOpcode::kMaximum: {
+      return IsNonNegative(hlo->operand(0), options) ||
+             IsNonNegative(hlo->operand(1), options);
+    }
+    case HloOpcode::kSelect: {
+      return IsNonNegative(hlo->operand(1), options) &&
+             IsNonNegative(hlo->operand(2), options);
     }
     default:
       return IsPositive(hlo, options);
@@ -571,17 +606,6 @@ bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
 
 namespace {
 
-float GetConstantValue(HloInstruction* inst) {
-  switch (inst->shape().element_type()) {
-    case BF16:
-      return static_cast<float>(inst->literal().GetFirstElement<bfloat16>());
-    case F32:
-      return inst->literal().GetFirstElement<float>();
-    default:
-      LOG(FATAL) << "Unsupported data type: " << inst->shape().element_type();
-  }
-}
-
 bool IsOpCodeMultiplyCommutative(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kMultiply:
@@ -685,7 +709,7 @@ Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
       CHECK_EQ(inst, user->operands()[index]);
 
       // When found a scalar multiply, save its scalar value.
-      values.push_back(GetConstantValue(multiplier));
+      values.push_back(*GetConstantValue(multiplier));
       // And remove the scalar multiply op.
       TF_RETURN_IF_ERROR(user->ReplaceOperandWith(index, operand));
       inst = operand;
@@ -712,7 +736,7 @@ Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
     if (Match(inst, m::MultiplyAnyOrder(
                         m::Op(&operand),
                         m::Broadcast(m::ConstantScalar(&multiplier))))) {
-      values.push_back(GetConstantValue(multiplier));
+      values.push_back(*GetConstantValue(multiplier));
 
       TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(operand));
       inst = operand;
@@ -1240,6 +1264,29 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
 
   if (options_.is_layout_sensitive()) {
     return Status::OK();
+  }
+
+  // concat(x, concat(y, z)) -> concat(x, y, z).  We only do this in
+  // layout-insensitive mode because some backends may have (late,
+  // layout-sensitive) passes that break up ops with many operands into smaller
+  // pieces.  This would undo that.
+  absl::InlinedVector<HloInstruction*, 8> unnested_concat_operands;
+  for (HloInstruction* operand : operands) {
+    if (operand->opcode() == HloOpcode::kConcatenate &&
+        operand->concatenate_dimension() ==
+            concatenate->concatenate_dimension()) {
+      for (HloInstruction* instr : operand->operands()) {
+        unnested_concat_operands.push_back(instr);
+      }
+    } else {
+      unnested_concat_operands.push_back(operand);
+    }
+  }
+  if (unnested_concat_operands.size() != concatenate->operand_count()) {
+    return ReplaceWithNewInstruction(
+        concatenate, HloInstruction::CreateConcatenate(
+                         concatenate->shape(), unnested_concat_operands,
+                         concatenate->concatenate_dimension()));
   }
 
   // Check if we can merge "adjacent" slice operands which take slices from the

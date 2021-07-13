@@ -119,7 +119,7 @@ TEST_F(HloLivenessAnalysisTest, NestedTupleAtEntryRoot) {
     constant.2 = s32[] constant(2)
     constant.3 = s32[] constant(3)
     tuple.1 = (s32[], s32[]) tuple(constant.2, constant.3)
-    ROOT tuple.2 = (s32[], s32[]) tuple(constant.1, tuple.1)
+    ROOT tuple.2 = (s32[], (s32[], s32[])) tuple(constant.1, tuple.1)
   })")
                     .ValueOrDie();
   const HloLivenessAnalysis& liveness = RunLiveness(module.get());
@@ -168,7 +168,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfNestedTuple) {
     constant.2 = s32[] constant(1)
     constant.3 = s32[] constant(2)
     tuple.1 = (s32[], s32[]) tuple(constant.2, constant.3)
-    tuple.2 = (s32[], s32[]) tuple(constant.1, tuple.1)
+    tuple.2 = (s32[], (s32[], s32[])) tuple(constant.1, tuple.1)
     ROOT get-tuple-element.1 = (s32[], s32[]) get-tuple-element(tuple.2), index=1
   })")
                     .ValueOrDie();
@@ -205,7 +205,7 @@ TEST_F(HloLivenessAnalysisTest, GteOfGteOfNestedTuple) {
     constant.2 = s32[] constant(1)
     constant.3 = s32[] constant(2)
     tuple.1 = (s32[], s32[]) tuple(constant.2, constant.3)
-    tuple.2 = (s32[], s32[]) tuple(constant.1, tuple.1)
+    tuple.2 = (s32[], (s32[], s32[])) tuple(constant.1, tuple.1)
     get-tuple-element.1 = (s32[], s32[]) get-tuple-element(tuple.2), index=1
     ROOT get-tuple-element.2 = s32[] get-tuple-element(get-tuple-element.1), index=0
   })")

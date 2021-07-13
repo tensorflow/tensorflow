@@ -59,6 +59,16 @@ class LegalizeVariables
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-legalize-variables-tf";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize TensorFlow variables to TensorFlow Lite dialect";
+  }
+
   void runOnOperation() override {
     auto module = getOperation();
     // If TFLite variable legalization is not allowed, then we skip this pass.
@@ -79,9 +89,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass() {
   return std::make_unique<LegalizeVariables>();
 }
 
-static PassRegistration<LegalizeVariables> pass(
-    "tfl-legalize-variables-tf",
-    "Legalize TensorFlow variables to TensorFlow Lite dialect");
+static PassRegistration<LegalizeVariables> pass;
 
 }  // namespace TFL
 }  // namespace mlir

@@ -80,6 +80,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/pjrt/transpose_kernels.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -104,6 +105,11 @@ struct TransposePlan::Node {
   // Next node in the plan. nullptr means this node represents the macrokernel.
   // TODO(phawkins): we may wish to avoid pointer jumping.
   Node* next;
+
+  // Is this dimension the innermost dimension in either A or B, and hence may
+  // have non-trivial blocking?
+  bool is_inner_dim_in_a = false;
+  bool is_inner_dim_in_b = false;
 };
 
 template <typename T, int inner_bs>
@@ -127,7 +133,7 @@ void MacroKernelBlocked(const char* __restrict a, int64_t lda, int outer_bs_a,
 // following by iterating over the linked Node data structure.
 template <typename T, int inner_bs>
 void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
-               int outer_bs_b, TransposePlan::Node* node) {
+               int outer_bs_b, TransposePlan::Node const* node) {
   DVLOG(10) << "Transpose " << outer_bs_a << " " << outer_bs_b;
   DCHECK_GT(outer_bs_a, 0);
   DCHECK_GT(outer_bs_b, 0);
@@ -149,11 +155,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
     }
     // Handle trailing elements that didn't fit in a complete macrokernel.
     // Only the innermost dimensions have non-trivial outer_bs blocking.
-    if (lda == sizeof(T)) {
-      // Only one of the input and output should have stride-1 dimensions at the
-      // same location. Otherwise we would have called the TransposeConstStride1
-      // case because we don't need to transpose the innermost dimensions.
-      DCHECK_NE(ldb, sizeof(T));
+    if (node->is_inner_dim_in_a) {
       // Repeatedly halve the outer block size, until size 1
       while (outer_bs_a > 1) {
         outer_bs_a /= 2;
@@ -169,8 +171,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
         MacroKernelBlocked<T, 1>(a + i * lda, lda_block, end - i, b + i * ldb,
                                  ldb_block, outer_bs_b * inner_bs);
       }
-    } else if (ldb == sizeof(T)) {
-      DCHECK_NE(lda, sizeof(T));  // Only stride-1 dimensions are blocked.
+    } else if (node->is_inner_dim_in_b) {
       while (outer_bs_b > 1) {
         outer_bs_b /= 2;
         if (i + outer_bs_b * inner_bs <= end) {
@@ -193,8 +194,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
       Transpose<T, inner_bs>(a + i * lda, outer_bs_a, b + i * ldb, outer_bs_b,
                              node->next);
     }
-    if (lda == sizeof(T)) {
-      DCHECK_GT(ldb, sizeof(T));
+    if (node->is_inner_dim_in_a) {
       while (outer_bs_a > 1) {
         outer_bs_a /= 2;
         if (i + outer_bs_a * inner_bs <= end) {
@@ -207,8 +207,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
         Transpose<T, 1>(a + i * lda, end - i, b + i * ldb,
                         outer_bs_b * inner_bs, node->next);
       }
-    } else if (ldb == sizeof(T)) {
-      DCHECK_GT(lda, sizeof(T));  // Only stride-1 dimensions are blocked.
+    } else if (node->is_inner_dim_in_b) {
       while (outer_bs_b > 1) {
         outer_bs_b /= 2;
         if (i + outer_bs_b * inner_bs <= end) {
@@ -227,7 +226,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
 
 template <typename T>
 void TransposeConstStride1(const char* __restrict a, char* __restrict b,
-                           TransposePlan::Node* node) {
+                           TransposePlan::Node const* node) {
   const int64_t start = node->start;
   const int64_t end = node->end;
   const int64_t lda = node->lda;
@@ -249,44 +248,68 @@ void TransposeConstStride1(const char* __restrict a, char* __restrict b,
 TransposePlan::TransposePlan() = default;
 TransposePlan::~TransposePlan() = default;
 
-static void ComputeStrides(int64_t elem_size_in_bytes,
-                           absl::Span<const int64_t> dims,
-                           absl::InlinedVector<int64_t, 4>& strides) {
-  strides.resize(dims.size());
+static void ComputeStrides(
+    int64_t elem_size_in_bytes, absl::Span<const int64_t> dims,
+    absl::Span<const int64_t> tiling,
+    absl::InlinedVector<int64_t, 4>& outer_tile_strides,
+    absl::InlinedVector<int64_t, 4>& inner_tile_strides) {
+  inner_tile_strides.resize(dims.size());
   int64_t acc = elem_size_in_bytes;
   for (int d = static_cast<int>(dims.size()) - 1; d >= 0; --d) {
-    strides[d] = acc;
-    acc *= dims[d];
+    inner_tile_strides[d] = acc;
+    acc *= tiling[d];
+  }
+  outer_tile_strides.resize(dims.size());
+  for (int d = static_cast<int>(dims.size()) - 1; d >= 0; --d) {
+    outer_tile_strides[d] = acc;
+    acc *= CeilOfRatio(dims[d], tiling[d]);
   }
 }
 
 void TransposePlan::RemoveTrivialDimensions(
     absl::InlinedVector<int64_t, 4>& a_dims,
     absl::InlinedVector<int64_t, 4>& permutation,
-    absl::InlinedVector<int64_t, 4>& lda) {
+    absl::InlinedVector<int64_t, 4>& lda,
+    absl::InlinedVector<int64_t, 4>& lda_tile,
+    absl::InlinedVector<int64_t, 4>& a_tiling,
+    absl::InlinedVector<int64_t, 4>& b_tiling) {
   int ndim = a_dims.size();
+  // How many positions has the i-th dimension of 'a' been moved to the left?
+  // -1 if the dimension is to be removed.
   std::vector<int> shift(ndim);
   absl::InlinedVector<int64_t, 4> updated_a_dims;
   absl::InlinedVector<int64_t, 4> updated_lda;
+  absl::InlinedVector<int64_t, 4> updated_lda_tile;
+  absl::InlinedVector<int64_t, 4> updated_a_tiling;
   updated_a_dims.reserve(ndim);
   updated_lda.reserve(ndim);
+  updated_lda_tile.reserve(ndim);
+  updated_a_tiling.reserve(ndim);
+  std::vector<int64_t> inv_permutation = InversePermutation(permutation);
   for (int a_dim = 0; a_dim < ndim; ++a_dim) {
-    if (a_dims[a_dim] != 1) {
+    int b_dim = inv_permutation[a_dim];
+    // A dimension is trivial if it has size 1 and is not tiled.
+    if (a_dims[a_dim] == 1 && a_tiling[a_dim] == 1 && b_tiling[b_dim] == 1) {
+      shift[a_dim] = -1;
+    } else {
       updated_a_dims.push_back(a_dims[a_dim]);
       updated_lda.push_back(lda[a_dim]);
+      updated_lda_tile.push_back(lda_tile[a_dim]);
+      updated_a_tiling.push_back(a_tiling[a_dim]);
       shift[a_dim] = a_dim + 1 - updated_a_dims.size();
-    } else {
-      shift[a_dim] = -1;
     }
   }
 
-  // Updates the permutation.
+  // Updates the permutation and tiling of b.
   absl::InlinedVector<int64_t, 4> updated_permutation;
+  absl::InlinedVector<int64_t, 4> updated_b_tiling;
   updated_permutation.reserve(updated_a_dims.size());
+  updated_b_tiling.reserve(updated_a_dims.size());
   for (int b_dim = 0; b_dim < ndim; ++b_dim) {
     int a_dim = permutation[b_dim];
     if (shift[a_dim] >= 0) {
       updated_permutation.push_back(a_dim - shift[a_dim]);
+      updated_b_tiling.push_back(b_tiling[b_dim]);
     }
   }
 
@@ -294,88 +317,233 @@ void TransposePlan::RemoveTrivialDimensions(
   a_dims = std::move(updated_a_dims);
   permutation = std::move(updated_permutation);
   lda = std::move(updated_lda);
+  lda_tile = std::move(updated_lda_tile);
+  a_tiling = std::move(updated_a_tiling);
+  b_tiling = std::move(updated_b_tiling);
 }
 
 void TransposePlan::CoalesceDimensions(
     absl::InlinedVector<int64_t, 4>& a_dims,
     absl::InlinedVector<int64_t, 4>& permutation,
-    absl::InlinedVector<int64_t, 4>& lda) {
+    absl::InlinedVector<int64_t, 4>& lda,
+    absl::InlinedVector<int64_t, 4>& lda_tile,
+    absl::InlinedVector<int64_t, 4>& a_tiling,
+    absl::InlinedVector<int64_t, 4>& b_tiling) {
   int ndim = a_dims.size();
+  // How many positions has the i-th dimension of 'a' been moved to the left?
+  // -1 if the dimension is to be removed.
   std::vector<int> shift(ndim, 0);
   absl::InlinedVector<int64_t, 4> updated_a_dims;
   absl::InlinedVector<int64_t, 4> updated_lda;
+  absl::InlinedVector<int64_t, 4> updated_lda_tile;
+  absl::InlinedVector<int64_t, 4> updated_a_tiling;
   updated_a_dims.reserve(ndim);
   updated_lda.reserve(ndim);
+  updated_lda_tile.reserve(ndim);
+  updated_a_tiling.reserve(ndim);
   std::vector<int64_t> inv_permutation = InversePermutation(permutation);
   for (int a_dim = 0; a_dim < ndim; ++a_dim) {
     // We can coalesce two dimensions if they appear consecutively
     // in both the input dimensions and the output dimensions, and the stride
     // of the outer dimension is the usual multiple of the inner dimension.
     if (a_dim > 0 && inv_permutation[a_dim - 1] + 1 == inv_permutation[a_dim] &&
-        lda[a_dim - 1] == lda[a_dim] * a_dims[a_dim]) {
+        lda[a_dim - 1] == lda[a_dim] * a_dims[a_dim] &&
+        a_tiling[a_dim - 1] == 1 && a_tiling[a_dim] == 1 &&
+        b_tiling[inv_permutation[a_dim]] == 1 &&
+        b_tiling[inv_permutation[a_dim - 1]] == 1) {
       updated_a_dims.back() *= a_dims[a_dim];
       updated_lda.back() = lda[a_dim];
       shift[a_dim] = -1;
     } else {
       updated_a_dims.push_back(a_dims[a_dim]);
       updated_lda.push_back(lda[a_dim]);
+      updated_lda_tile.push_back(lda_tile[a_dim]);
+      updated_a_tiling.push_back(a_tiling[a_dim]);
       shift[a_dim] = a_dim + 1 - updated_a_dims.size();
     }
   }
 
   // Updates the permutation.
   absl::InlinedVector<int64_t, 4> updated_permutation;
+  absl::InlinedVector<int64_t, 4> updated_b_tiling;
   updated_permutation.reserve(updated_a_dims.size());
+  updated_b_tiling.reserve(updated_a_dims.size());
   for (int b_dim = 0; b_dim < ndim; ++b_dim) {
     int a_dim = permutation[b_dim];
     if (shift[a_dim] >= 0) {
       updated_permutation.push_back(a_dim - shift[a_dim]);
+      updated_b_tiling.push_back(b_tiling[b_dim]);
     }
   }
   DCHECK(IsPermutation(updated_permutation));
   a_dims = std::move(updated_a_dims);
   permutation = std::move(updated_permutation);
   lda = std::move(updated_lda);
+  lda_tile = std::move(updated_lda_tile);
+  a_tiling = std::move(updated_a_tiling);
+  b_tiling = std::move(updated_b_tiling);
 }
 
-int64_t TransposePlan::NumElems() const { return num_elems_; }
+int64_t TransposePlan::InputNumElems() const {
+  int64_t size = 1;
+  for (size_t i = 0; i < a_dims_.size(); ++i) {
+    size *= RoundUpToNearest(a_dims_[i], a_tiling_[i]);
+  }
+  return size;
+}
+
+int64_t TransposePlan::OutputNumElems() const {
+  int64_t size = 1;
+  for (size_t i = 0; i < a_dims_.size(); ++i) {
+    size *= RoundUpToNearest(a_dims_[permutation_[i]], b_tiling_[i]);
+  }
+  return size;
+}
+
+// Parses and validates a tiling specification, and populates `tiling`.
+static Status ParseTilingSpecification(int ndim,
+                                       absl::Span<int64_t const> tiling_spec,
+                                       absl::InlinedVector<int64, 4>& tiling) {
+  tiling.resize(ndim, 1);
+  if (tiling_spec.size() > ndim) {
+    return InvalidArgument(
+        "Tiling (%s) must have at as many dimensions as the array (%d)",
+        absl::StrJoin(tiling_spec, ","), ndim);
+  }
+  if (absl::c_find_if(tiling_spec, [](int64_t d) { return d < 1; }) !=
+      tiling_spec.end()) {
+    return InvalidArgument("Tiling sizes (%s) must be >= 1",
+                           absl::StrJoin(tiling_spec, ","));
+  }
+  int offset = ndim;
+  offset -= tiling_spec.size();
+  absl::c_copy(tiling_spec, tiling.begin() + offset);
+  return Status::OK();
+}
 
 // Recursive helper function that builds a plan.
-TransposePlan::Node* TransposePlan::BuildPlanNode(
-    absl::Span<int64_t const> inverse_permutation, int i) {
+void TransposePlan::BuildPlanNodes(
+    absl::Span<int64_t const> inverse_permutation, int i,
+    absl::InlinedVector<TransposePlan::Node*, 1>& output_nodes) {
+  const int ndim = a_dims_.size();
+  DCHECK_GT(ndim, 0);
+  const int pos_stride1a = ndim - 1;
   const int pos_stride1b_in_a = permutation_.back();
-  const int pos_stride1a_in_b = inverse_permutation.back();
+  const int pos_stride1a_in_b = inverse_permutation[pos_stride1a];
+
+  absl::InlinedVector<TransposePlan::Node*, 1> current_nodes;
+  // Builds a sentinel node that says that we should invoke the kernel.
   nodes_.push_back(std::make_unique<Node>());
   Node* node = nodes_.back().get();
-  const int ndim = a_dims_.size();
-  if (i == loop_order_.size()) {
-    // Sentinel node that says that we should invoke the kernel.
-    node->next = nullptr;
-    node->start = node->end = node->inc = -1;
-    node->lda = lda_[pos_stride1b_in_a];
-    node->ldb = ldb_[pos_stride1a_in_b];
-    return node;
+  node->next = nullptr;
+  node->start = node->end = node->inc = -1;
+  node->lda = a_tiling_[pos_stride1b_in_a] > 1 ? lda_tile_[pos_stride1b_in_a]
+                                               : lda_[pos_stride1b_in_a];
+  node->ldb = b_tiling_[pos_stride1a_in_b] > 1 ? ldb_tile_[pos_stride1a_in_b]
+                                               : ldb_[pos_stride1a_in_b];
+  current_nodes = {node};
+
+  absl::InlinedVector<TransposePlan::Node*, 1> new_nodes;
+  for (int i = static_cast<int>(loop_order_.size()) - 1; i >= 0; --i) {
+    int a_dim = loop_order_[i];
+    int b_dim = inverse_permutation[a_dim];
+    DCHECK(a_tiling_[a_dim] == 1 || b_tiling_[b_dim] == 1 ||
+           a_tiling_[a_dim] == b_tiling_[b_dim]);
+    int64_t tile_size = std::max(a_tiling_[a_dim], b_tiling_[b_dim]);
+
+    new_nodes.clear();
+
+    DCHECK_GE(tile_size, 1);
+    absl::InlinedVector<TransposePlan::Node*, 1> partial_tile_nodes;
+    // If the dimension is tiled, generate two nested loops, one for inside the
+    // tile, one for outside.
+    if (tile_size > 1) {
+      bool has_partial_tile = (a_dims_[a_dim] % tile_size != 0);
+
+      auto make_tile_node = [&](Node* next_node, bool partial) {
+        nodes_.push_back(std::make_unique<Node>());
+        Node* node = nodes_.back().get();
+        node->start = 0;
+        node->end = partial ? a_dims_[a_dim] % tile_size : tile_size;
+        node->lda = a_tiling_[a_dim] > 1 ? lda_tile_[a_dim] : lda_[a_dim];
+        node->ldb = b_tiling_[b_dim] > 1 ? ldb_tile_[b_dim] : ldb_[b_dim];
+        node->inc = 1;
+        if (a_dim == pos_stride1a) {
+          node->inc = inner_block_elems_ * outer_block_elems_a_;
+          node->is_inner_dim_in_a = true;
+        } else if (a_dim == pos_stride1b_in_a) {
+          node->inc = inner_block_elems_ * outer_block_elems_b_;
+          node->is_inner_dim_in_b = true;
+        }
+        node->next = next_node;
+        return node;
+      };
+
+      for (Node* next_node : current_nodes) {
+        new_nodes.push_back(make_tile_node(next_node, /*partial=*/false));
+
+        // If the dimension size is not exactly divisible by the tile size,
+        // then add an additional loop that handles just the trailing partial
+        // tile.
+        if (has_partial_tile) {
+          partial_tile_nodes.push_back(
+              make_tile_node(next_node, /*partial=*/true));
+        }
+      }
+      std::swap(current_nodes, new_nodes);
+      new_nodes.clear();
+    }
+    auto make_node = [&](Node* next_node, bool partial) {
+      nodes_.push_back(std::make_unique<Node>());
+      Node* node = nodes_.back().get();
+      if (partial) {
+        // For trailing partial tiles, we only need visit the single entry at
+        // the end.
+        DCHECK_NE(a_dims_[a_dim] % tile_size, 0);
+        node->start = a_dims_[a_dim] / tile_size;
+        node->end = (a_dims_[a_dim] / tile_size) + 1;
+      } else {
+        node->start = 0;
+        // Note: this calculation is the floor. The case if tile_size does not
+        // exactly divide the dimension size is handled above.
+        node->end = a_dims_[a_dim] / tile_size;
+      }
+      node->lda = lda_[a_dim] * tile_size / a_tiling_[a_dim];
+      node->ldb = ldb_[b_dim] * tile_size / b_tiling_[b_dim];
+      node->inc = 1;
+      if (tile_size == 1 && a_dim == ndim - 1) {
+        node->inc = inner_block_elems_ * outer_block_elems_a_;
+        node->is_inner_dim_in_a = true;
+      } else if (tile_size == 1 && a_dim == pos_stride1b_in_a) {
+        node->inc = inner_block_elems_ * outer_block_elems_b_;
+        node->is_inner_dim_in_b = true;
+      }
+      node->next = next_node;
+      return node;
+    };
+    for (Node* next_node : current_nodes) {
+      if (tile_size > 1 && a_dims_[a_dim] == tile_size) {
+        new_nodes.push_back(next_node);
+      } else {
+        new_nodes.push_back(make_node(next_node, /*partial=*/false));
+      }
+    }
+    for (Node* next_node : partial_tile_nodes) {
+      if (a_dims_[a_dim] / tile_size == 0) {
+        new_nodes.push_back(next_node);
+      } else {
+        new_nodes.push_back(make_node(next_node, /*partial=*/true));
+      }
+    }
+    std::swap(current_nodes, new_nodes);
   }
-  int a_dim = loop_order_[i];
-  int b_dim = inverse_permutation[a_dim];
-  node->start = 0;
-  node->end = a_dims_[a_dim];
-  node->lda = lda_[a_dim];
-  node->ldb = ldb_[b_dim];
-  node->inc = 1;
-  if (a_dim == ndim - 1) {
-    node->inc = inner_block_elems_ * outer_block_elems_a_;
-  } else if (a_dim == pos_stride1b_in_a) {
-    node->inc = inner_block_elems_ * outer_block_elems_b_;
-  }
-  node->next = BuildPlanNode(inverse_permutation, i + 1);
-  return node;
+  output_nodes = std::move(current_nodes);
 }
 
 StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
     absl::Span<int64_t const> permutation,
-    absl::optional<absl::Span<int64_t const>> input_strides_in_bytes) {
+    absl::variant<Tiling, Striding> input_layout, Tiling output_tiling) {
   auto is_negative = [](int d) { return d < 0; };
   if (absl::c_find_if(dims, is_negative) != dims.end()) {
     return InvalidArgument("dims must be non-negative, got %s",
@@ -408,38 +576,44 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   }
   plan->num_elems_ = std::accumulate(dims.begin(), dims.end(), int64_t{1},
                                      std::multiplies<int64_t>());
+  plan->original_a_dims_.resize(ndim);
+  absl::c_copy(dims, plan->original_a_dims_.begin());
   plan->original_b_dims_ = Permute(dims, permutation);
-  ComputeStrides(plan->elem_size_in_bytes_, plan->original_b_dims_,
-                 plan->original_b_strides_);
 
-  if (input_strides_in_bytes) {
-    if (input_strides_in_bytes->size() != dims.size()) {
+  TF_RETURN_IF_ERROR(
+      ParseTilingSpecification(ndim, output_tiling.tiling, plan->b_tiling_));
+
+  // Handles strides.
+  if (absl::holds_alternative<Striding>(input_layout)) {
+    absl::Span<int64_t const> input_strides_in_bytes =
+        absl::get<Striding>(input_layout).strides_in_bytes;
+    if (input_strides_in_bytes.size() != dims.size()) {
       return InvalidArgument(
           "dims and input_strides_in_bytes must have equal sizes, got %d "
           "and %d",
-          dims.size(), input_strides_in_bytes->size());
+          dims.size(), input_strides_in_bytes.size());
     }
-    if (absl::c_find_if(*input_strides_in_bytes, is_negative) !=
-        input_strides_in_bytes->end()) {
+    if (absl::c_find_if(input_strides_in_bytes, is_negative) !=
+        input_strides_in_bytes.end()) {
       return InvalidArgument(
           "input_strides_in_bytes must be non-negative, got %s",
           absl::StrJoin(dims, ","));
     }
     plan->original_a_strides_.resize(ndim);
-    absl::c_copy(*input_strides_in_bytes, plan->original_a_strides_.begin());
+    absl::c_copy(input_strides_in_bytes, plan->original_a_strides_.begin());
     // Sort the dimensions from slowest-varying (largest strides) to
     // fastest-varying (smallest strides).
     std::vector<int64_t> dim_order(ndim);
     absl::c_iota(dim_order, 0);
-    absl::c_stable_sort(dim_order, [&](int a, int b) {
-      int64_t stride_a = input_strides_in_bytes->at(a);
-      int64_t stride_b = input_strides_in_bytes->at(b);
+    absl::c_stable_sort(dim_order, [&](int i, int j) {
+      int64_t stride_i = input_strides_in_bytes.at(i);
+      int64_t stride_j = input_strides_in_bytes.at(j);
       // If there is a dimension with size equal to the element size, sort it
       // last. This ensures that we place any stride-1 dimension last.
-      if (stride_a != elem_size_in_bytes && stride_b == elem_size_in_bytes) {
+      if (stride_i != elem_size_in_bytes && stride_j == elem_size_in_bytes) {
         return true;
       }
-      return stride_a > stride_b;
+      return stride_i > stride_j;
     });
     // dim_order maps new input dim -> old input dim, we need its inverse to
     // compute the new permutation.
@@ -448,126 +622,169 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     plan->a_dims_.reserve(ndim);
     plan->permutation_.reserve(ndim);
     for (int i = 0; i < ndim; ++i) {
-      plan->lda_.push_back(input_strides_in_bytes->at(dim_order[i]));
+      plan->lda_.push_back(input_strides_in_bytes.at(dim_order[i]));
       plan->a_dims_.push_back(dims[dim_order[i]]);
       plan->permutation_.push_back(inv_dim_order[permutation[i]]);
     }
-    plan->original_a_dims_.resize(ndim);
-    absl::c_copy(dims, plan->original_a_dims_.begin());
+    plan->lda_tile_.resize(ndim, 1);
+    plan->a_tiling_.resize(ndim, 1);
   } else {
-    plan->original_a_dims_.resize(ndim);
-    absl::c_copy(dims, plan->original_a_dims_.begin());
-    plan->a_dims_.resize(ndim);
-    absl::c_copy(dims, plan->a_dims_.begin());
+    TF_RETURN_IF_ERROR(ParseTilingSpecification(
+        ndim, absl::get<Tiling>(input_layout).tiling, plan->a_tiling_));
+
+    plan->a_dims_ = plan->original_a_dims_;
     plan->permutation_.resize(ndim);
     absl::c_copy(permutation, plan->permutation_.begin());
-    ComputeStrides(plan->elem_size_in_bytes_, plan->a_dims_, plan->lda_);
-    plan->original_a_strides_ = plan->lda_;
+    ComputeStrides(plan->elem_size_in_bytes_, plan->a_dims_, plan->a_tiling_,
+                   plan->lda_, plan->lda_tile_);
   }
-  permutation = {};
 
-  RemoveTrivialDimensions(plan->a_dims_, plan->permutation_, plan->lda_);
-  CoalesceDimensions(plan->a_dims_, plan->permutation_, plan->lda_);
+  for (int b_dim = 0; b_dim < plan->b_tiling_.size(); ++b_dim) {
+    int a_dim = plan->permutation_[b_dim];
+    if (plan->a_tiling_[a_dim] != 1 && plan->b_tiling_[b_dim] != 1 &&
+        plan->a_tiling_[a_dim] != plan->b_tiling_[b_dim]) {
+      return Unimplemented(
+          "Input and output have mismatched tilings for input dimension %d "
+          "(output dimension %d), tilings: %s and %s",
+          a_dim, b_dim, absl::StrJoin(plan->a_tiling_, ","),
+          absl::StrJoin(plan->b_tiling_, ","));
+    }
+  }
+
+  plan->Initialize();
+  VLOG(5) << plan->ToString();
+  return plan;
+}
+
+void TransposePlan::Initialize() {
+  RemoveTrivialDimensions(a_dims_, permutation_, lda_, lda_tile_, a_tiling_,
+                          b_tiling_);
+  CoalesceDimensions(a_dims_, permutation_, lda_, lda_tile_, a_tiling_,
+                     b_tiling_);
+
+  int ndim = a_dims_.size();
+
+  loop_order_.resize(ndim);
+  // TODO(phawkins): pick a good loop order.
+
+  absl::c_iota(loop_order_, 0);
+
+  int64_t stride_pos1a =
+      loop_order_.empty()
+          ? -1
+          : (a_tiling_[ndim - 1] > 1 ? lda_tile_[ndim - 1] : lda_[ndim - 1]);
 
   // If the plan is 0-dimensional, or the innermost dimension is not of stride
   // 1, adds a trivial size 1 dimension. The transpose kernels rely on the
-  // presence of a 1-element-stride innermost dimension in the input.
-  if (plan->lda_.empty() || plan->lda_.back() != plan->elem_size_in_bytes_) {
-    plan->permutation_.push_back(plan->a_dims_.size());
-    plan->a_dims_.push_back(1);
-    plan->lda_.push_back(elem_size_in_bytes);
+  // presence of a stride-1 innermost dimension in the input.
+  if (loop_order_.empty() || stride_pos1a != elem_size_in_bytes_) {
+    permutation_.push_back(a_dims_.size());
+    loop_order_.push_back(a_dims_.size());
+    a_dims_.push_back(1);
+    lda_.push_back(elem_size_in_bytes_);
+    lda_tile_.push_back(1);
+    a_tiling_.push_back(1);
+    b_tiling_.push_back(1);
+    ++ndim;
   }
 
-  ndim = static_cast<int>(plan->a_dims_.size());
+  const int pos_stride1a = ndim - 1;
 
-  plan->b_dims_ = Permute(plan->a_dims_, plan->permutation_);
-  ComputeStrides(plan->elem_size_in_bytes_, plan->b_dims_, plan->ldb_);
+  b_dims_ = Permute(a_dims_, permutation_);
+  ComputeStrides(elem_size_in_bytes_, b_dims_, b_tiling_, ldb_, ldb_tile_);
 
   // permutation maps dimensions of b to a
   // inverse_permutation maps dimensions of a to b
-  auto inverse_permutation = InversePermutation(plan->permutation_);
+  auto inverse_permutation = InversePermutation(permutation_);
 
-  plan->loop_order_.reserve(ndim);
-  // TODO(phawkins): pick a good loop order.
-  for (int i = 0; i < ndim; ++i) {
-    plan->loop_order_.push_back(i);
-  }
-
-  plan->inner_kernel_is_memcpy_ = plan->permutation_[ndim - 1] == ndim - 1;
-  if (plan->inner_kernel_is_memcpy_) {
+  inner_kernel_is_memcpy_ = (permutation_[ndim - 1] == pos_stride1a);
+  if (inner_kernel_is_memcpy_) {
     // The stride-1 loop must be innermost.
-    CHECK_EQ(plan->loop_order_.back(), ndim - 1);
+    CHECK_EQ(loop_order_.back(), ndim - 1);
   } else {
-    switch (plan->elem_size_in_bytes_) {
+    switch (elem_size_in_bytes_) {
       case 1:
-        plan->inner_block_elems_ = 16;
+        inner_block_elems_ = 16;
         break;
       case 2:
-        plan->inner_block_elems_ = 8;
+        inner_block_elems_ = 8;
         break;
       case 4:
-        plan->inner_block_elems_ = 8;
+        inner_block_elems_ = 8;
         break;
       case 8:
-        plan->inner_block_elems_ = 4;
+        inner_block_elems_ = 4;
         break;
       case 16:
-        plan->inner_block_elems_ = 4;
+        inner_block_elems_ = 4;
         break;
       default:
-        return Unimplemented("Unimplemented element size %d",
-                             plan->elem_size_in_bytes_);
+        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
     }
   }
 
   // Bound the block sizes so they are smaller than the stride-1 dimension size.
-  int64_t a_stride1_size = plan->a_dims_.back();
-  int64_t b_stride1_size = plan->a_dims_[plan->permutation_.back()];
-  while (plan->inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
-    plan->inner_block_elems_ /= 2;
-    plan->outer_block_elems_a_ *= 2;
-    plan->outer_block_elems_b_ *= 2;
+  int64_t a_stride1_size = a_tiling_[pos_stride1a] > 1 ? a_tiling_[pos_stride1a]
+                                                       : a_dims_[pos_stride1a];
+  int64_t b_stride1_size =
+      b_tiling_.back() > 1 ? b_tiling_.back() : b_dims_.back();
+
+  if (inner_kernel_is_memcpy_) {
+    a_stride1_size = b_stride1_size = std::min(a_stride1_size, b_stride1_size);
   }
-  while (plan->outer_block_elems_a_ > 1 &&
-         plan->inner_block_elems_ * plan->outer_block_elems_a_ >
-             a_stride1_size) {
-    plan->outer_block_elems_a_ /= 2;
+  while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
+    inner_block_elems_ /= 2;
+    outer_block_elems_a_ *= 2;
+    outer_block_elems_b_ *= 2;
   }
-  while (plan->outer_block_elems_b_ > 1 &&
-         plan->inner_block_elems_ * plan->outer_block_elems_b_ >
-             b_stride1_size) {
-    plan->outer_block_elems_b_ /= 2;
+  while (outer_block_elems_a_ > 1 &&
+         inner_block_elems_ * outer_block_elems_a_ > a_stride1_size) {
+    outer_block_elems_a_ /= 2;
   }
-  plan->root_node_ = plan->BuildPlanNode(inverse_permutation, 0);
-  VLOG(5) << plan->ToString();
-  return plan;
+  while (outer_block_elems_b_ > 1 &&
+         inner_block_elems_ * outer_block_elems_b_ > b_stride1_size) {
+    outer_block_elems_b_ /= 2;
+  }
+  BuildPlanNodes(inverse_permutation, 0, root_nodes_);
 }
 
 template <typename T>
 void TransposePlan::ExecuteTyped(const char* a, char* b) const {
   if (inner_kernel_is_memcpy_) {
-    TransposeConstStride1<T>(a, b, root_node_);
+    for (Node const* node : root_nodes_) {
+      TransposeConstStride1<T>(a, b, node);
+    }
   } else {
     switch (inner_block_elems_) {
       case 1:
-        Transpose<T, 1>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                        root_node_);
+        for (Node const* node : root_nodes_) {
+          Transpose<T, 1>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                          node);
+        }
         break;
       case 2:
-        Transpose<T, 2>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                        root_node_);
+        for (Node const* node : root_nodes_) {
+          Transpose<T, 2>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                          node);
+        }
         break;
       case 4:
-        Transpose<T, 4>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                        root_node_);
+        for (Node const* node : root_nodes_) {
+          Transpose<T, 4>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                          node);
+        }
         break;
       case 8:
-        Transpose<T, 8>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                        root_node_);
+        for (Node const* node : root_nodes_) {
+          Transpose<T, 8>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                          node);
+        }
         break;
       case 16:
-        Transpose<T, 16>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                         root_node_);
+        for (Node const* node : root_nodes_) {
+          Transpose<T, 16>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                           node);
+        }
         break;
       default:
         LOG(FATAL) << "Invalid inner_block_size " << inner_block_elems_;
@@ -585,26 +802,25 @@ void TransposePlan::Execute(const void* a, void* b) const {
   if (num_elems_ == 0) {
     return;
   }
-  DCHECK((static_cast<const char*>(a) + elem_size_in_bytes_ * num_elems_ <= b ||
-          static_cast<const char*>(b) + elem_size_in_bytes_ * num_elems_ <= a));
+  const char* ac = static_cast<const char*>(a);
+  char* bc = static_cast<char*>(b);
+  DCHECK((ac + elem_size_in_bytes_ * num_elems_ <= b ||
+          bc + elem_size_in_bytes_ * num_elems_ <= a));
   switch (elem_size_in_bytes_) {
     case 1:
-      ExecuteTyped<uint8_t>(static_cast<const char*>(a), static_cast<char*>(b));
+      ExecuteTyped<uint8_t>(ac, bc);
       break;
     case 2:
-      ExecuteTyped<uint16_t>(static_cast<const char*>(a),
-                             static_cast<char*>(b));
+      ExecuteTyped<uint16_t>(ac, bc);
       break;
     case 4:
-      ExecuteTyped<uint32_t>(static_cast<const char*>(a),
-                             static_cast<char*>(b));
+      ExecuteTyped<uint32_t>(ac, bc);
       break;
     case 8:
-      ExecuteTyped<uint64_t>(static_cast<const char*>(a),
-                             static_cast<char*>(b));
+      ExecuteTyped<uint64_t>(ac, bc);
       break;
     case 16:
-      ExecuteTyped<uint128>(static_cast<const char*>(a), static_cast<char*>(b));
+      ExecuteTyped<uint128>(ac, bc);
       break;
     default:
       LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes_;
@@ -623,16 +839,22 @@ static void PrintPlan(TransposePlan::Node const* node, int indent,
 }
 
 std::string TransposePlan::ToString() const {
-  std::string nodes;
-  PrintPlan(root_node_, /*indent=*/2, &nodes);
+  std::string nodes =
+      absl::StrJoin(root_nodes_, "\n", [](std::string* out, Node const* node) {
+        *out = "root:\n";
+        PrintPlan(node, /*indent=*/2, out);
+      });
   return absl::StrFormat(
-      "a_dims=%s b_dims=%s permutation=%s lda=%s ldb=%s loop_order=%s "
-      "outer_bs=[%d,%d] inner_bs=%d "
+      "a_dims=%s b_dims=%s permutation=%s a_tiling=%s b_tiling=%s "
+      "lda=%s lda_tile=%s ldb=%s ldb_tile=%s loop_order=%s "
+      "outer_bs=[%d,%d] inner_bs=%d\n"
       "nodes:\n%s",
       absl::StrJoin(a_dims_, ","),
       absl::StrJoin(Permute(a_dims_, permutation_), ","),
-      absl::StrJoin(permutation_, ","), absl::StrJoin(lda_, ","),
-      absl::StrJoin(ldb_, ","), absl::StrJoin(loop_order_, ","),
+      absl::StrJoin(permutation_, ","), absl::StrJoin(a_tiling_, ","),
+      absl::StrJoin(b_tiling_, ","), absl::StrJoin(lda_, ","),
+      absl::StrJoin(lda_tile_, ","), absl::StrJoin(ldb_, ","),
+      absl::StrJoin(ldb_tile_, ","), absl::StrJoin(loop_order_, ","),
       outer_block_elems_a_, outer_block_elems_b_, inner_block_elems_, nodes);
 }
 
@@ -640,7 +862,9 @@ struct TransposePlanCacheKey {
   size_t elem_size_in_bytes;
   absl::InlinedVector<int64_t, 4> dims;
   absl::InlinedVector<int64_t, 4> permutation;
-  absl::optional<absl::InlinedVector<int64_t, 4>> input_strides_in_bytes;
+  bool input_layout_is_tiling;
+  absl::InlinedVector<int64_t, 4> input_layout;
+  absl::InlinedVector<int64_t, 4> output_tiling;
 
   bool operator==(const TransposePlanCacheKey& other) const;
 };
@@ -649,19 +873,22 @@ bool TransposePlanCacheKey::operator==(
     const TransposePlanCacheKey& other) const {
   return elem_size_in_bytes == other.elem_size_in_bytes && dims == other.dims &&
          permutation == other.permutation &&
-         input_strides_in_bytes == other.input_strides_in_bytes;
+         input_layout_is_tiling == other.input_layout_is_tiling &&
+         input_layout == other.input_layout &&
+         output_tiling == other.output_tiling;
 }
 
 template <typename H>
 H AbslHashValue(H h, const TransposePlanCacheKey& key) {
-  h = H::combine(std::move(h), key.elem_size_in_bytes);
+  h = H::combine(std::move(h), key.elem_size_in_bytes,
+                 key.input_layout_is_tiling);
   h = H::combine_contiguous(std::move(h), key.dims.data(), key.dims.size());
   h = H::combine_contiguous(std::move(h), key.permutation.data(),
                             key.permutation.size());
-  if (key.input_strides_in_bytes) {
-    h = H::combine_contiguous(std::move(h), key.input_strides_in_bytes->data(),
-                              key.input_strides_in_bytes->size());
-  }
+  h = H::combine_contiguous(std::move(h), key.input_layout.data(),
+                            key.input_layout.size());
+  h = H::combine_contiguous(std::move(h), key.output_tiling.data(),
+                            key.output_tiling.size());
   return h;
 }
 
@@ -673,16 +900,26 @@ TransposePlanCache::~TransposePlanCache() = default;
 StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
     size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
     absl::Span<int64_t const> permutation,
-    absl::optional<absl::Span<int64_t const>> input_strides_in_bytes) {
+    absl::variant<TransposePlan::Tiling, TransposePlan::Striding> input_layout,
+    TransposePlan::Tiling output_tiling) {
   TransposePlanCacheKey key;
   key.elem_size_in_bytes = elem_size_in_bytes;
   key.dims.resize(dims.size());
   absl::c_copy(dims, key.dims.begin());
   key.permutation.resize(permutation.size());
   absl::c_copy(permutation, key.permutation.begin());
-  if (input_strides_in_bytes) {
-    key.input_strides_in_bytes = absl::InlinedVector<int64_t, 4>(
-        input_strides_in_bytes->begin(), input_strides_in_bytes->end());
+  if (absl::holds_alternative<TransposePlan::Striding>(input_layout)) {
+    absl::Span<int64_t const> input_strides_in_bytes =
+        absl::get<TransposePlan::Striding>(input_layout).strides_in_bytes;
+    key.input_layout = absl::InlinedVector<int64_t, 4>(
+        input_strides_in_bytes.begin(), input_strides_in_bytes.end());
+    key.input_layout_is_tiling = false;
+  } else {
+    absl::Span<int64_t const> input_tiling =
+        absl::get<TransposePlan::Tiling>(input_layout).tiling;
+    key.input_layout = absl::InlinedVector<int64_t, 4>(input_tiling.begin(),
+                                                       input_tiling.end());
+    key.input_layout_is_tiling = true;
   }
   return cache_.GetOrCreateIfAbsent(
       key,
@@ -691,7 +928,7 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<TransposePlan> plan,
             TransposePlan::Create(elem_size_in_bytes, dims, permutation,
-                                  input_strides_in_bytes));
+                                  input_layout, output_tiling));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });
 }

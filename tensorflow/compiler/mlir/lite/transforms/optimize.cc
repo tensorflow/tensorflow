@@ -95,6 +95,17 @@ class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
   explicit OptimizePass(bool enable_canonicalization) {
     enable_canonicalization_ = enable_canonicalization;
   }
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-optimize";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Optimize within the TensorFlow Lite dialect";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -1310,7 +1321,8 @@ struct RemoveReshapeAfterFullyConnected
     // Check that the reshape doesn't modify the last dimension and it restores
     // the input (batch) dimension with the exception of the feature (last)
     // dimension.
-    if (output_shape.getShape().back() != reshape_shape.getShape().back() ||
+    if (output_shape.getShape().empty() || reshape_shape.getShape().empty() ||
+        output_shape.getShape().back() != reshape_shape.getShape().back() ||
         input_shape.getShape().drop_back() !=
             reshape_shape.getShape().drop_back())
       return failure();
@@ -1450,8 +1462,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
   return std::make_unique<OptimizePass>(enable_canonicalization);
 }
 
-static PassRegistration<OptimizePass> pass(
-    "tfl-optimize", "Optimize within the TensorFlow Lite dialect");
+static PassRegistration<OptimizePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

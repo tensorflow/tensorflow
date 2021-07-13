@@ -818,7 +818,7 @@ TEST_F(OpLevelCostEstimatorTest, Conv2DExecutionTime) {
 
 TEST_F(OpLevelCostEstimatorTest, InvalidConv2DConfig) {
   // Convolution ops.
-  const std::vector<const std::string> conv_ops = {
+  const std::vector<std::string> conv_ops = {
       "Conv2D",
       "Conv2DBackpropFilter",
       "Conv2DBackpropInput",

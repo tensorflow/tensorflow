@@ -119,6 +119,16 @@ class PrepareCompositeFunctionsPass
  public:
   explicit PrepareCompositeFunctionsPass() {}
 
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-prepare-composite-funcs-tf";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Prepares composite functions in Tensorflow dialect of MLIR";
+  }
+
  private:
   // TODO(b/160915525): Consolidate FuncAttr and StringAttr into one.
   void ConvertTFImplements(FuncOp func, StringAttr attr);
@@ -364,9 +374,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
   return std::make_unique<PrepareCompositeFunctionsPass>();
 }
 
-static PassRegistration<PrepareCompositeFunctionsPass> pass(
-    "tfl-prepare-composite-funcs-tf",
-    "Prepares composite functions in Tensorflow dialect of MLIR ");
+static PassRegistration<PrepareCompositeFunctionsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

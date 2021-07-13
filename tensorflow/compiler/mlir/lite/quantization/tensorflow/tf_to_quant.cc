@@ -33,6 +33,16 @@ struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
 
   /// Performs the lowering to Quant ops dialect.
   void runOnFunction() override;
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-to-quant";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize TF to quant ops dialect";
+  }
 };
 
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
@@ -150,8 +160,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass() {
   return std::make_unique<LegalizeTFToQuant>();
 }
 
-static PassRegistration<LegalizeTFToQuant> pass(
-    "tf-to-quant", "Legalize TF to quant ops dialect");
+static PassRegistration<LegalizeTFToQuant> pass([] {
+  return CreateLegalizeTFToQuantPass();
+});
 
 }  // namespace TF
 }  // namespace mlir

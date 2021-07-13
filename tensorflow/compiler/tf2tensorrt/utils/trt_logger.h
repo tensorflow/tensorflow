@@ -28,7 +28,8 @@ namespace tensorrt {
 class Logger : public nvinfer1::ILogger {
  public:
   Logger(string name = "DefaultLogger") : name_(name) {}
-  void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
+  void log(nvinfer1::ILogger::Severity severity,
+           const char* msg) noexcept override;
 
   static Logger* GetLogger();
 

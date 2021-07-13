@@ -38,7 +38,6 @@ package_group(
     name = "friends",
     includes = [":internal"],
     packages = [
-        "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
         "//tensorflow_models/...",
         "//third_party/mlir_edge/model_curriculum/iree/...",
@@ -1119,6 +1118,9 @@ tf_cuda_cc_test(
     name = "fused_batchnorm_reserve_space_test",
     size = "medium",
     srcs = ["fused_batchnorm_reserve_space_test.cc"],
+    tags = [
+        "no_cuda_asan",  # TODO(b/193450885)
+    ],
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",

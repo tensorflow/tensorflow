@@ -485,7 +485,9 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase):
         'ERROR_NEEDS_CUSTOM_OPS').value()
     self.assertEqual(
         exported_error,
-        "\'tf.CustomAdd\' op is neither a custom op nor a flex op")
+        "\'tf.CustomAdd\' op is neither a custom op nor a flex op\n"
+        "Error code: ERROR_NEEDS_CUSTOM_OPS"
+    )
 
   def test_unsupported_control_flow_v1(self):
     filename = resource_loader.get_path_to_datafile(

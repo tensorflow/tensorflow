@@ -113,12 +113,14 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   }
   auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
                                    ProcessingMode(create_job.processing_mode()),
+                                   create_job.num_split_providers(),
                                    named_job_key, num_consumers);
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
   if (named_job_key.has_value()) {
-    DCHECK(!named_jobs_.contains(named_job_key.value()));
+    DCHECK(!named_jobs_.contains(named_job_key.value()) ||
+           named_jobs_[named_job_key.value()]->garbage_collected);
     named_jobs_[named_job_key.value()] = job;
   }
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
@@ -128,13 +130,14 @@ void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
   std::shared_ptr<Job> job = jobs_[produce_split.job_id()];
   DCHECK(job->distributed_epoch_state.has_value());
   DistributedEpochState& state = job->distributed_epoch_state.value();
-  DCHECK_EQ(produce_split.repetition(), state.repetition);
+  int64 provider_index = produce_split.split_provider_index();
+  DCHECK_EQ(produce_split.repetition(), state.repetitions[provider_index]);
   if (produce_split.finished()) {
-    state.repetition++;
-    state.split_provider_index = 0;
+    state.repetitions[provider_index]++;
+    state.indices[provider_index] = 0;
     return;
   }
-  state.split_provider_index++;
+  state.indices[provider_index]++;
 }
 
 void DispatcherState::AcquireJobClient(

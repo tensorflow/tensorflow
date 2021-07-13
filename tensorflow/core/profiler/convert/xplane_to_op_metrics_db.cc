@@ -248,7 +248,8 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
           /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });
   });
-  result.set_total_time_ps(last_op_offset_ps - first_op_offset_ps);
+  result.set_total_time_ps(
+      last_op_offset_ps ? last_op_offset_ps - first_op_offset_ps : 0);
   AddIdleOp(&result);
   return result;
 }

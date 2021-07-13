@@ -60,13 +60,14 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // definition in `dataset_def`.
   Status GetDatasetDef(int64 dataset_id, DatasetDef& dataset_def);
 
-  // Gets the next split for the specified job id and repetition.
-  Status GetSplit(int64 job_id, int64 repetition, Tensor& split,
-                  bool& end_of_splits);
+  // Gets the next split for the specified job id, repetition, and split
+  // provider index.
+  Status GetSplit(int64 job_id, int64 repetition, int64 split_provider_index,
+                  Tensor& split, bool& end_of_splits);
 
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `dataset_id`.
-  Status RegisterDataset(const GraphDef& dataset, int64& dataset_id);
+  Status RegisterDataset(const DatasetDef& dataset, int64& dataset_id);
 
   // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
   // absent or no matching job is found, creates a new job. The resulting job

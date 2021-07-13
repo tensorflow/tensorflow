@@ -1,6 +1,11 @@
 # Build file for OpenMP library that is part of llvm
 
-load("@rules_cc//cc:defs.bzl", "cc_binary")
+load(
+    "@org_tensorflow//tensorflow:tensorflow.bzl",
+    "if_linux_x86_64",
+    "if_macos",
+    "if_windows",
+)
 load(
     "@org_tensorflow//third_party/llvm:llvm.bzl",
     "cmake_var_string",
@@ -9,7 +14,9 @@ load(
 load(
     "@org_tensorflow//third_party/llvm_openmp:openmp.bzl",
     "dict_add",
+    "libiomp5_cc_binary",
 )
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = [
@@ -19,6 +26,11 @@ package(
 
 exports_files(["LICENSE.txt"])
 
+kmp_i18n_os_type = select({
+    "@org_tensorflow//tensorflow:windows": "win",
+    "//conditions:default": "lin",
+})
+
 genrule(
     name = "kmp_i18n_id",
     srcs = [
@@ -27,7 +39,7 @@ genrule(
         "runtime/src/i18n/en_US.txt",
     ],
     outs = ["include/kmp_i18n_id.inc"],
-    cmd = "perl $(location runtime/tools/message-converter.pl) --os=lin --prefix=kmp_i18n --enum=$@  $(location runtime/src/i18n/en_US.txt)",
+    cmd = "perl $(location runtime/tools/message-converter.pl) --os=" + kmp_i18n_os_type + " --prefix=kmp_i18n --enum=$@  $(location runtime/src/i18n/en_US.txt)",
 )
 
 genrule(
@@ -38,7 +50,16 @@ genrule(
         "runtime/src/i18n/en_US.txt",
     ],
     outs = ["include/kmp_i18n_default.inc"],
-    cmd = "perl $(location runtime/tools/message-converter.pl) --os=lin --prefix=kmp_i18n --default=$@ $(location runtime/src/i18n/en_US.txt)",
+    cmd = "perl $(location runtime/tools/message-converter.pl) --os=" + kmp_i18n_os_type + " --prefix=kmp_i18n --default=$@ $(location runtime/src/i18n/en_US.txt)",
+)
+
+genrule(
+    name = "generate_def",
+    srcs = [
+        "runtime/tools/generate-def.pl",
+    ],
+    outs = ["omp_dll.def"],
+    cmd = "perl $(location runtime/tools/generate-def.pl) -D arch_32e -D msvc_compat -D norm -o omp_dll.tmp external/llvm_openmp/runtime/src/dllexports; mv omp_dll.tmp $@",
 )
 
 # Bazel doesn't accept .txt as an input, rename the ldscript to .inc to workaround.
@@ -185,61 +206,29 @@ common_includes = [
     "include/",
 ]
 
-# TODO(Intel-tf) Replace the following 3 calls to cc_binary with cc_library.
-# cc_library should be used for files that are not independently executed. Using
-# cc_library results in linking errors. For e.g on Linux, the build fails
-# with the following error message.
-# ERROR: //tensorflow/BUILD:689:1: Linking of rule '//tensorflow:libtensorflow_framework.so.2.4.0' failed (Exit 1)
-# /usr/bin/ld.gold: error: symbol GOMP_parallel_loop_nonmonotonic_guided has undefined version VERSION
-# /usr/bin/ld.gold: error: symbol GOMP_parallel_start has undefined version GOMP_1.0
-# /usr/bin/ld.gold: error: symbol GOMP_cancellation_point has undefined version GOMP_4.0
-# /usr/bin/ld.gold: error: symbol omp_set_num_threads has undefined version OMP_1.0
-# ......
-# ......
+# Expand libiomp build rule based on platform.
+if_linux_x86_64(a = libiomp5_cc_binary(
+    "libiomp5.so",
+    cppsources,
+    srcdeps + headers,
+    common_includes,
+))
 
-cc_binary(
-    name = "libiomp5.so",
-    srcs = cppsources + [
-        #linux specific files
-        "runtime/src/z_Linux_util.cpp",
-        "runtime/src/kmp_gsupport.cpp",
-        "runtime/src/z_Linux_asm.S",
-    ] + headers + srcdeps,
-    additional_linker_inputs = [":ldscript"],
-    copts = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
-    includes = common_includes,
-    linkopts = ["-lpthread -ldl -Wl,--version-script=$(location :ldscript)"],
-    linkshared = True,
-    visibility = ["//visibility:public"],
-)
+if_macos(a = libiomp5_cc_binary(
+    "libiomp5.dylib",
+    cppsources,
+    srcdeps + headers,
+    common_includes,
+))
 
-cc_binary(
-    name = "libiomp5md.dll",
-    srcs = cppsources + [
-        #window specific files
-        "runtime/src/z_Windows_NT_util.cpp",
-        "runtime/src/z_Windows_NT-586_util.cpp",
-    ] + srcdeps + [":openmp_asm"],
-    copts = ["/Domp_EXPORTS /D_M_AMD64 /DOMPT_SUPPORT=0 /D_WINDOWS /D_WINNT /D_USRDLL"],
-    includes = common_includes,
-    linkopts = ["/MACHINE:X64"],
-    linkshared = True,
-    visibility = ["//visibility:public"],
-)
+if_windows(a = libiomp5_cc_binary(
+    "libiomp5md.dll",
+    cppsources,
+    srcdeps + headers,
+    common_includes,
+))
 
-# MacOS build has not been tested, however since the MacOS build of openmp
-# uses the same configuration as Linux, the following should work.
-cc_binary(
-    name = "libiomp5.dylib",
-    srcs = cppsources + [
-        #linux/MacOS specific files
-        "runtime/src/z_Linux_util.cpp",
-        "runtime/src/kmp_gsupport.cpp",
-        "runtime/src/z_Linux_asm.S",
-    ] + srcdeps,
-    copts = ["-Domp_EXPORTS -D_GNU_SOURCE -D_REENTRANT"],
-    includes = common_includes,
-    linkopts = ["-lpthread -ldl -Wl,--version-script=$(location :ldscript)"],
-    linkshared = True,
-    visibility = ["//visibility:public"],
+bzl_library(
+    name = "openmp_bzl",
+    srcs = ["openmp.bzl"],
 )

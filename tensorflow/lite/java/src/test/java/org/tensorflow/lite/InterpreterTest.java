@@ -68,32 +68,32 @@ public final class InterpreterTest {
 
   @Test
   public void testInterpreter() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    assertThat(interpreter).isNotNull();
-    assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
-    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-    assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
-    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-    interpreter.close();
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      assertThat(interpreter).isNotNull();
+      assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    }
   }
 
   @Test
   @SuppressWarnings("deprecation")
   public void testInterpreterWithOptions() throws Exception {
-    Interpreter interpreter =
+    try (Interpreter interpreter =
         new Interpreter(
             MODEL_BUFFER,
             new Interpreter.Options()
                 .setNumThreads(2)
                 .setUseNNAPI(true)
                 .setAllowFp16PrecisionForFp32(false)
-                .setAllowBufferHandleOutput(false));
-    assertThat(interpreter).isNotNull();
-    assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
-    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-    assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
-    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-    interpreter.close();
+                .setAllowBufferHandleOutput(false))) {
+      assertThat(interpreter).isNotNull();
+      assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    }
   }
 
   @Test
@@ -102,17 +102,17 @@ public final class InterpreterTest {
       System.err.println("Not testing with file model, since file paths aren't supported.");
       return;
     }
-    Interpreter interpreter = new Interpreter(new File(MODEL_PATH));
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {3.69f, 19.62f, 23.43f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.close();
+    try (Interpreter interpreter = new Interpreter(new File(MODEL_PATH))) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+      float[] outputOneD = parsedOutputs[0][0][0];
+      float[] expected = {3.69f, 19.62f, 23.43f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
   }
 
   @Test
@@ -120,17 +120,17 @@ public final class InterpreterTest {
     ByteBuffer byteBuffer = ByteBuffer.allocateDirect(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
     byteBuffer.put(MODEL_BUFFER);
-    Interpreter interpreter = new Interpreter(byteBuffer);
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {3.69f, 19.62f, 23.43f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.close();
+    try (Interpreter interpreter = new Interpreter(byteBuffer)) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+      float[] outputOneD = parsedOutputs[0][0][0];
+      float[] expected = {3.69f, 19.62f, 23.43f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
   }
 
   @Test
@@ -152,63 +152,64 @@ public final class InterpreterTest {
 
   @Test
   public void testRun() {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    Float[] oneD = {1.23f, 6.54f, 7.81f};
-    Float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    Float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    Float[][][][] fourD = {threeD, threeD};
-    Float[][][][] parsedOutputs = new Float[2][8][8][3];
-    try {
-      interpreter.run(fourD, parsedOutputs);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("cannot resolve DataType of [[[[Ljava.lang.Float;");
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      Float[] oneD = {1.23f, 6.54f, 7.81f};
+      Float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      Float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      Float[][][][] fourD = {threeD, threeD};
+      Float[][][][] parsedOutputs = new Float[2][8][8][3];
+      try {
+        interpreter.run(fourD, parsedOutputs);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e).hasMessageThat().contains("cannot resolve DataType of [[[[Ljava.lang.Float;");
+      }
     }
-    interpreter.close();
   }
 
   @Test
   public void testRunWithBoxedInputs() {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {3.69f, 19.62f, 23.43f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.close();
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+      float[] outputOneD = parsedOutputs[0][0][0];
+      float[] expected = {3.69f, 19.62f, 23.43f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
   }
 
   @Test
   public void testRunForMultipleInputsOutputs() {
-    Interpreter interpreter = new Interpreter(MULTIPLE_INPUTS_MODEL_BUFFER);
-    assertThat(interpreter.getInputTensorCount()).isEqualTo(4);
-    assertThat(interpreter.getInputTensor(0).index()).isGreaterThan(-1);
-    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-    assertThat(interpreter.getInputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
-    assertThat(interpreter.getInputTensor(2).dataType()).isEqualTo(DataType.FLOAT32);
-    assertThat(interpreter.getInputTensor(3).dataType()).isEqualTo(DataType.FLOAT32);
-    assertThat(interpreter.getOutputTensorCount()).isEqualTo(2);
-    assertThat(interpreter.getOutputTensor(0).index()).isGreaterThan(-1);
-    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-    assertThat(interpreter.getOutputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
+    try (Interpreter interpreter = new Interpreter(MULTIPLE_INPUTS_MODEL_BUFFER)) {
+      assertThat(interpreter.getInputTensorCount()).isEqualTo(4);
+      assertThat(interpreter.getInputTensor(0).index()).isGreaterThan(-1);
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getInputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getInputTensor(2).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getInputTensor(3).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(2);
+      assertThat(interpreter.getOutputTensor(0).index()).isGreaterThan(-1);
+      assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
 
-    float[] input0 = {1.23f};
-    float[] input1 = {2.43f};
-    Object[] inputs = {input0, input1, input0, input1};
-    float[] parsedOutput0 = new float[1];
-    float[] parsedOutput1 = new float[1];
-    Map<Integer, Object> outputs = new HashMap<>();
-    outputs.put(0, parsedOutput0);
-    outputs.put(1, parsedOutput1);
-    interpreter.runForMultipleInputsOutputs(inputs, outputs);
-    float[] expected0 = {4.89f};
-    float[] expected1 = {6.09f};
-    assertThat(parsedOutput0).usingTolerance(0.1f).containsExactly(expected0).inOrder();
-    assertThat(parsedOutput1).usingTolerance(0.1f).containsExactly(expected1).inOrder();
+      float[] input0 = {1.23f};
+      float[] input1 = {2.43f};
+      Object[] inputs = {input0, input1, input0, input1};
+      float[] parsedOutput0 = new float[1];
+      float[] parsedOutput1 = new float[1];
+      Map<Integer, Object> outputs = new HashMap<>();
+      outputs.put(0, parsedOutput0);
+      outputs.put(1, parsedOutput1);
+      interpreter.runForMultipleInputsOutputs(inputs, outputs);
+      float[] expected0 = {4.89f};
+      float[] expected1 = {6.09f};
+      assertThat(parsedOutput0).usingTolerance(0.1f).containsExactly(expected0).inOrder();
+      assertThat(parsedOutput1).usingTolerance(0.1f).containsExactly(expected1).inOrder();
+    }
   }
 
   @Test
@@ -316,24 +317,24 @@ public final class InterpreterTest {
 
   @Test
   public void testRunWithWrongInputType() {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    int[] oneD = {4, 3, 9};
-    int[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    int[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    int[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    try {
-      interpreter.run(fourD, parsedOutputs);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains(
-              "Cannot convert between a TensorFlowLite tensor with type "
-                  + "FLOAT32 and a Java object of type [[[[I (which is compatible with the"
-                  + " TensorFlowLite type INT32)");
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      int[] oneD = {4, 3, 9};
+      int[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      int[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      int[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      try {
+        interpreter.run(fourD, parsedOutputs);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "Cannot convert between a TensorFlowLite tensor with type "
+                    + "FLOAT32 and a Java object of type [[[[I (which is compatible with the"
+                    + " TensorFlowLite type INT32)");
+      }
     }
-    interpreter.close();
   }
 
   @Test
@@ -350,58 +351,60 @@ public final class InterpreterTest {
 
   @Test
   public void testRunWithWrongOutputType() {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    int[][][][] parsedOutputs = new int[2][8][8][3];
-    try {
-      interpreter.run(fourD, parsedOutputs);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains(
-              "Cannot convert between a TensorFlowLite tensor with type "
-                  + "FLOAT32 and a Java object of type [[[[I (which is compatible with the"
-                  + " TensorFlowLite type INT32)");
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      int[][][][] parsedOutputs = new int[2][8][8][3];
+      try {
+        interpreter.run(fourD, parsedOutputs);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "Cannot convert between a TensorFlowLite tensor with type "
+                    + "FLOAT32 and a Java object of type [[[[I (which is compatible with the"
+                    + " TensorFlowLite type INT32)");
+      }
     }
-    interpreter.close();
   }
 
   @Test
   public void testGetInputIndex() {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    try {
-      interpreter.getInputIndex("WrongInputName");
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains(
-              "'WrongInputName' is not a valid name for any input. Names of inputs and their "
-                  + "indexes are {input=0}");
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      try {
+        interpreter.getInputIndex("WrongInputName");
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "'WrongInputName' is not a valid name for any input. Names of inputs and their "
+                    + "indexes are {input=0}");
+      }
+      int index = interpreter.getInputIndex("input");
+      assertThat(index).isEqualTo(0);
     }
-    int index = interpreter.getInputIndex("input");
-    assertThat(index).isEqualTo(0);
   }
 
   @Test
   public void testGetOutputIndex() {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    try {
-      interpreter.getOutputIndex("WrongOutputName");
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains(
-              "'WrongOutputName' is not a valid name for any output. Names of outputs and their"
-                  + " indexes are {output=0}");
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      try {
+        interpreter.getOutputIndex("WrongOutputName");
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "'WrongOutputName' is not a valid name for any output. Names of outputs and their"
+                    + " indexes are {output=0}");
+      }
+      int index = interpreter.getOutputIndex("output");
+      assertThat(index).isEqualTo(0);
     }
-    int index = interpreter.getOutputIndex("output");
-    assertThat(index).isEqualTo(0);
   }
 
   @Test
@@ -412,17 +415,17 @@ public final class InterpreterTest {
     if (SupportedFeatures.supportsAllowFp16PrecisionForFp32()) {
       options.setAllowFp16PrecisionForFp32(true);
     }
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER, options);
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {3.69f, 19.62f, 23.43f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.close();
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER, options)) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+      float[] outputOneD = parsedOutputs[0][0][0];
+      float[] expected = {3.69f, 19.62f, 23.43f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
   }
 
   @Test
@@ -431,18 +434,18 @@ public final class InterpreterTest {
       System.err.println("Not testing XNNPACK, since it isn't supported.");
       return;
     }
-    Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true));
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {3.69f, 19.62f, 23.43f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.close();
+    try (Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true))) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+      float[] outputOneD = parsedOutputs[0][0][0];
+      float[] expected = {3.69f, 19.62f, 23.43f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
   }
 
   @Test
@@ -451,47 +454,49 @@ public final class InterpreterTest {
       System.err.println("Not testing XNNPACK, since it isn't supported.");
       return;
     }
-    Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true));
-    float[] input = {1.f};
-    float[] output = new float[1];
-    interpreter.run(input, output);
-    assertThat(output).usingTolerance(0.1f).containsExactly(new float[] {3.f}).inOrder();
+    try (Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(true))) {
+      float[] input = {1.f};
+      float[] output = new float[1];
+      interpreter.run(input, output);
+      assertThat(output).usingTolerance(0.1f).containsExactly(new float[] {3.f}).inOrder();
 
-    // The new input shape should trigger a resize. Inference should still work properly.
-    float[] input2 = {1.f, 2.f};
-    float[] output2 = new float[2];
-    interpreter.run(input2, output2);
-    assertThat(output2).usingTolerance(0.1f).containsExactly(new float[] {3.f, 6.f}).inOrder();
+      // The new input shape should trigger a resize. Inference should still work properly.
+      float[] input2 = {1.f, 2.f};
+      float[] output2 = new float[2];
+      interpreter.run(input2, output2);
+      assertThat(output2).usingTolerance(0.1f).containsExactly(new float[] {3.f, 6.f}).inOrder();
+    }
   }
 
   @Test
   public void testRedundantClose() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    interpreter.close();
-    interpreter.close();
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.close();
+      interpreter.close();
+    } // Also implicitly calls interpreter.close() for a third time.
   }
 
   @Test
   public void testNullInputs() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    try {
-      interpreter.run(null, new float[2][8][8][3]);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Expected failure.
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      try {
+        interpreter.run(null, new float[2][8][8][3]);
+        fail();
+      } catch (IllegalArgumentException e) {
+        // Expected failure.
+      }
     }
-    interpreter.close();
   }
 
   @Test
   public void testNullOutputs() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-    float[] input = {1.f};
-    interpreter.run(input, null);
-    float output = interpreter.getOutputTensor(0).asReadOnlyBuffer().getFloat(0);
-    assertThat(output).isEqualTo(3.f);
-    interpreter.close();
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      float[] input = {1.f};
+      interpreter.run(input, null);
+      float output = interpreter.getOutputTensor(0).asReadOnlyBuffer().getFloat(0);
+      assertThat(output).isEqualTo(3.f);
+    }
   }
 
   // Smoke test validating that flex model loading fails when the flex delegate is not linked.
@@ -519,21 +524,20 @@ public final class InterpreterTest {
             return getNativeHandleForDelegate();
           }
         };
-    Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate));
+    try (Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate))) {
 
-    // The native delegate stubs out the graph with a single op that produces the scalar value 7.
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {7.0f, 7.0f, 7.0f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-
-    interpreter.close();
+      // The native delegate stubs out the graph with a single op that produces the scalar value 7.
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+      float[] outputOneD = parsedOutputs[0][0][0];
+      float[] expected = {7.0f, 7.0f, 7.0f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
   }
 
   @Test
@@ -546,13 +550,13 @@ public final class InterpreterTest {
             return getNativeHandleForDelegate();
           }
         };
-    Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate));
-    // The delegate installs a custom buffer handle for all tensors, in turn allowing null to be
-    // provided for the inputs/outputs (as the client can reference the buffer directly).
-    interpreter.run(new float[2][8][8][3], null);
-    interpreter.run(null, new float[2][8][8][3]);
-    interpreter.close();
+    try (Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate))) {
+      // The delegate installs a custom buffer handle for all tensors, in turn allowing null to be
+      // provided for the inputs/outputs (as the client can reference the buffer directly).
+      interpreter.run(new float[2][8][8][3], null);
+      interpreter.run(null, new float[2][8][8][3]);
+    }
   }
 
   @Test
@@ -639,40 +643,41 @@ public final class InterpreterTest {
     }
     float[][][][] inputs = new float[2][8][8][3];
     float[][][][] parsedOutputs = new float[2][8][8][3];
-    Interpreter interpreter =
-        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setCancellable(true));
+    try (Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setCancellable(true))) {
 
-    // Part 1: Should be interrupted when flag is set to true.
-    try {
-      interpreter.setCancelled(true);
+      // Part 1: Should be interrupted when flag is set to true.
+      try {
+        interpreter.setCancelled(true);
+        interpreter.run(inputs, parsedOutputs);
+        fail();
+      } catch (IllegalArgumentException e) {
+        // TODO(b/168266570): Return InterruptedException.
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "Internal error: Failed to run on the given Interpreter: Client requested cancel"
+                    + " during Invoke()");
+      }
+
+      // Part 2: Should be resumed when flag is set to false.
+      interpreter.setCancelled(false);
       interpreter.run(inputs, parsedOutputs);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // TODO(b/168266570): Return InterruptedException.
-      assertThat(e)
-          .hasMessageThat()
-          .contains(
-              "Internal error: Failed to run on the given Interpreter: Client requested cancel"
-                  + " during Invoke()");
     }
-
-    // Part 2: Should be resumed when flag is set to false.
-    interpreter.setCancelled(false);
-    interpreter.run(inputs, parsedOutputs);
   }
 
   @Test
   public void testCancelInferenceOnNoncancellableInterpreter() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
-
-    try {
-      interpreter.setCancelled(true);
-      fail();
-    } catch (IllegalStateException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains(
-              "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      try {
+        interpreter.setCancelled(true);
+        fail();
+      } catch (IllegalStateException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+      }
     }
   }
 

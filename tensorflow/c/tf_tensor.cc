@@ -229,6 +229,12 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
   return tensor_.BitcastFrom(from.tensor_, type, s);
 }
 
+Status TensorInterface::FromProto(const tensorflow::TensorProto& from) {
+  bool success = tensor_.FromProto(from);
+  if (success) return Status::OK();
+  return errors::InvalidArgument("Unparseable tensor proto");
+}
+
 }  // namespace tensorflow
 
 // --------------------------------------------------------------------------

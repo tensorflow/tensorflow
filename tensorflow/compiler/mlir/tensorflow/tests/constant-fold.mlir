@@ -459,10 +459,10 @@ func @DontRemoveTrivialMul(%arg0: tensor<1x6x8x1xf32>) -> tensor<1x6x8x1xf32> {
   // CHECK: return %[[RESULT]] : tensor<1x6x8x1xf32>
 }
 
-// Do not fold if total result size is large (>256 KB) and more than 2 times
-// the size of operands.
+// Do not fold if the op doesn't follow the constant folding policy. It doesn't
+// fold if the  total result size is large (>256 KB) and more than 2 times the
+// size of operands.
 
-// LINT.IfChange(folding-policy-test)
 // CHECK-LABEL: DontFoldTile
 func @DontFoldTile() -> (tensor<8x10000xi32>) {
   %const_10000 = "tf.Const"() {value = dense<10000> : tensor<i32>} : () -> tensor<i32>
@@ -478,7 +478,19 @@ func @DontFoldTile() -> (tensor<8x10000xi32>) {
   // CHECK: return [[TILE]]
   return %3 : tensor<8x10000xi32>
 }
-// LINT.ThenChange(../transforms/constant_fold.cc:folding-policy)
+
+// Verifies that very large splat constants are not materialized as Tensors for
+// constant folding.
+// CHECK-LABEL: @giant_tensor_input
+func @giant_tensor_input() -> (tensor<*xf32>) {
+  %input = "tf.Const"() {value = dense<1.000000e+00> : tensor<1024x1024x1024x1024xf32>} : () -> tensor<1024x1024x1024x1024xf32>
+  %zero = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
+  %one = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK: tf.StridedSlice
+  %0 = "tf.StridedSlice"(%input, %zero, %one, %one) {begin_mask = 15 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1024x1024x1024x1024xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
+
+  return %0 : tensor<*xf32>
+}
 
 func @fold_conv() -> tensor<1x520x520x1xf32> {
   %0 = "tf.Const"() {value = dense<0.111111112> : tensor<3x3x1x1xf32>} : () -> tensor<3x3x1x1xf32>

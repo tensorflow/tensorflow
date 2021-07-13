@@ -524,8 +524,24 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  template <typename NativeT, typename std::enable_if<!std::is_floating_point<
-                                  NativeT>::value>::type* = nullptr>
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleAtan2(HloInstruction* atan2) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[atan2],
+        ElementWiseBinaryOp(atan2, [](ElementwiseT y, ElementwiseT x) {
+          // atan2(y,x) = -i * log((x + i * y)/sqrt(x**2+y**2))
+          auto i = ElementwiseT(0.0, 1.0);
+          return (-i) * (std::log((x + i * y) / std::sqrt(x * x + y * y)));
+        }));
+    return Status::OK();
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!std::is_floating_point<NativeT>::value &&
+                              !is_complex_t<NativeT>::value>::type* = nullptr>
   Status HandleAtan2(HloInstruction* atan2) {
     return UnsupportedTypeError(atan2);
   }

@@ -18,30 +18,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
-namespace test_util {
+namespace testing {
 
-struct GraphDefTestCase {
-  // Name for the test case.
-  std::string name;
-  // A dataset graph.
-  GraphDef graph_def;
-  // The expected output from iterating over the dataset represented by the
-  // graph.
-  std::vector<std::vector<Tensor>> output;
-};
-
-// Returns test data representing
+// Returns a test dataset representing
 // tf.data.Dataset.range(range).map(lambda x: x*x). Useful for testing dataset
 // graph execution.
-StatusOr<GraphDefTestCase> map_test_case(int64 range);
+StatusOr<DatasetDef> RangeSquareDataset(int64 range);
 
-}  // namespace test_util
+}  // namespace testing
 }  // namespace data
 }  // namespace tensorflow
 

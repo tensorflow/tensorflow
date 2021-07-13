@@ -135,6 +135,8 @@ class ParallelDevice {
       const std::vector<PartialTensorShape>& expected_output_shapes,
       TF_Status* status) const;
 
+  void AsyncWait(TFE_Context* context, TF_Status* status) const;
+
   // Device strings for component devices that only include a
   // worker/task/replica if any of those differ across components. Useful for
   // printing debug messages.

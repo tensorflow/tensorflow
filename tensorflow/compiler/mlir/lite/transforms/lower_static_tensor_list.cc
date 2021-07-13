@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -86,6 +87,16 @@ struct LowerStaticTensorListPass
   LowerStaticTensorListPass(const LowerStaticTensorListPass &) {}
   explicit LowerStaticTensorListPass(bool allow_tensorlist_pass_through) {
     this->allow_tensorlist_pass_through = allow_tensorlist_pass_through;
+  }
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tfl-lower-static-tensor-list";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Lower TensorList ops within TensorFlow Lite dialect";
   }
 
   void runOnOperation() override;
@@ -406,7 +417,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     // Here we assume that the element_shape won't be changed before calling
     // the first `TensorListSetItemOp`.
     if (auto shaped_type = element_shape.getType().dyn_cast<ShapedType>()) {
-      if (shaped_type.getRank() == 0) {
+      if (shaped_type.hasRank() && shaped_type.getRank() == 0) {
         bool element_shape_acquired = false;
         auto uses = op.getResult().getUses();
         for (auto &use : llvm::make_early_inc_range(uses)) {
@@ -1437,8 +1448,6 @@ std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
       allow_tensorlist_pass_through);
 }
 
-static PassRegistration<LowerStaticTensorListPass> pass(
-    "tfl-lower-static-tensor-list",
-    "Lower TensorList ops within TensorFlow Lite dialect");
+static PassRegistration<LowerStaticTensorListPass> pass;
 
 }  // namespace mlir

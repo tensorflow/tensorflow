@@ -52,6 +52,8 @@ constexpr const char* TfLiteValidationFunctionName() {
 // multiple threads must be guarded with a mutex).
 class ValidatorRunner {
  public:
+  static constexpr int64_t kDefaultEventTimeoutUs = 30 * 1000 * 1000;
+
   // Construct ValidatorRunner for a model and a file for storing results in.
   // The 'storage_path' must be specific for the model.
   // 'data_directory_path' must be suitable for extracting an executable file
@@ -90,7 +92,7 @@ class ValidatorRunner {
   // The returned events will be marked as logged and not returned again on
   // subsequent calls.
   std::vector<const BenchmarkEvent*> GetAndFlushEventsToLog(
-      int64_t timeout_us = 30 * 1000 * 1000);
+      int64_t timeout_us = kDefaultEventTimeoutUs);
 
  private:
   std::string model_path_;

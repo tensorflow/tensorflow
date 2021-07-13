@@ -131,14 +131,25 @@ class ShapeInference {
       absl::Span<const Shape* const> operand_shapes, int64 all_gather_dimension,
       int64 shard_count);
 
+  // Infers the shape produced by an all-gather-start with the given operand
+  // shape, concat dimension, and shard count.
+  static StatusOr<Shape> InferAllGatherStartShape(
+      absl::Span<const Shape* const> operand_shapes, int64 all_gather_dimension,
+      int64 shard_count);
+
+  // Infers the shape produced by an all-gather-done given a certain
+  // all-gather-start shape.
+  static StatusOr<Shape> InferAllGatherDoneShape(
+      const Shape& all_gather_start_shape);
+
   // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
   static StatusOr<Shape> InferAllReduceShape(
       absl::Span<const Shape* const> operand_shapes);
 
-  // Infers the shape produced by an all-reduce-scatter with the given operand
+  // Infers the shape produced by a reduce-scatter with the given operand
   // shape, scatter dimension, and shard count.
-  static StatusOr<Shape> InferAllReduceScatterShape(
+  static StatusOr<Shape> InferReduceScatterShape(
       absl::Span<const Shape* const> operand_shapes, int64 scatter_dimension,
       int64 shard_count);
 

@@ -56,6 +56,7 @@ def_file_filter_configure = repository_rule(
     implementation = _def_file_filter_configure_impl,
     environ = [
         "BAZEL_VC",
+        "BAZEL_VC_FULL_VERSION",
         "BAZEL_VS",
         "VS90COMNTOOLS",
         "VS100COMNTOOLS",

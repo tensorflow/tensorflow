@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
-
 #include "tensorflow/cc/experimental/libexport/metrics.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -100,7 +99,7 @@ Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
 
 Status SavedModelV2Bundle::Load(const std::string& export_dir,
                                 SavedModelV2Bundle* const bundle) {
-  metrics::ReadApi(kCCLoadBundleV2Label).IncrementBy(1);
+  metrics::ReadApi(kCCLoadBundleV2Label, "2").IncrementBy(1);
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModelProto(export_dir, &saved_model_proto));
 
