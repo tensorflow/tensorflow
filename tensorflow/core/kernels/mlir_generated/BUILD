@@ -130,6 +130,8 @@ tf_kernel_library(
         "gpu_op_neg.cc",
         "gpu_op_real.cc",
         "gpu_op_reciprocal.cc",
+        "gpu_op_rint.cc",
+        "gpu_op_round.cc",
         "gpu_op_rsqrt.cc",
         "gpu_op_sign.cc",
         "gpu_op_sin.cc",
@@ -138,9 +140,6 @@ tf_kernel_library(
         "gpu_op_square.cc",
         "gpu_op_tan.cc",
         "gpu_op_tanh.cc",
-    ]) + if_mlir_generated_experimental_kernels_enabled([
-        "gpu_op_rint.cc",
-        "gpu_op_round.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -176,6 +175,8 @@ tf_kernel_library(
         ":gpu_neg_kernels",
         ":gpu_real_kernels",
         ":gpu_reciprocal_kernels",
+        ":gpu_rint_kernels",
+        ":gpu_round_kernels",
         ":gpu_rsqrt_kernels",
         ":gpu_sign_kernels",
         ":gpu_sin_kernels",
@@ -185,9 +186,6 @@ tf_kernel_library(
         ":gpu_tan_kernels",
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
-    ]) + if_mlir_generated_experimental_kernels_enabled([
-        ":gpu_rint_kernels",
-        ":gpu_round_kernels",
     ]),
 )
 

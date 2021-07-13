@@ -20,8 +20,7 @@ namespace tensorflow {
 REGISTER2(UnaryOp, CPU, "Rint", functor::rint, float, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER2(UnaryOp, GPU, "Rint", functor::rint, float, double);
 #endif
 #endif
