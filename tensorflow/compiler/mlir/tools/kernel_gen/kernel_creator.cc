@@ -468,7 +468,7 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool generate_fatbin,
-    bool print_ptx, bool enable_ftz, bool cpu_codegen) {
+    bool print_ptx, bool enable_ftz, bool cpu_codegen, bool jit_compile) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
@@ -477,6 +477,9 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   mlir::registerROCDLDialectTranslation(registry);
   context.appendDialectRegistry(registry);
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
+
+  if (jit_compile)
+    return InternalError("JIT compilation is not yet implemented.");
 
   TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
                                     max_supported_rank, cpu_codegen));
