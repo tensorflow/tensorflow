@@ -60,7 +60,7 @@ class MultiOutputFusionTest : public HloTestBase {
     return opts;
   }
 
-  void RunTest2D(bool manual_fusion, int64 size) {
+  void RunTest2D(bool manual_fusion, int64_t size) {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewVerifiedModule();
 
