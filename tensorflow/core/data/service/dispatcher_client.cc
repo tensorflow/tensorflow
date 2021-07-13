@@ -125,11 +125,16 @@ Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::RegisterDataset(const DatasetDef& dataset,
-                                                    int64& dataset_id) {
+Status DataServiceDispatcherClient::RegisterDataset(
+    const DatasetDef& dataset, const absl::optional<std::string>& element_spec,
+    int64& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
+  if (element_spec.has_value()) {
+    req.set_element_spec(element_spec.value());
+  }
+
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrRegisterDataset(&client_ctx, req, &resp);
@@ -226,6 +231,22 @@ Status DataServiceDispatcherClient::GetWorkers(
   for (auto& worker : resp.workers()) {
     workers.push_back(worker);
   }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetElementSpec(int64 dataset_id,
+                                                   std::string& element_spec) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+
+  GetElementSpecRequest req;
+  req.set_dataset_id(dataset_id);
+  GetElementSpecResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status s = stub_->GetElementSpec(&ctx, req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get element_spec", s);
+  }
+  element_spec = resp.element_spec();
   return Status::OK();
 }
 

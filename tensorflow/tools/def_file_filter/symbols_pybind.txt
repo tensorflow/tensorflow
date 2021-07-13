@@ -88,6 +88,13 @@ tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 [//tensorflow/core/common_runtime:session_state]  # tf_session
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
+[//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
+tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
+tensorflow::data::DataServiceDispatcherClient::GetElementSpec
+
+[//tensorflow/core/data/service:grpc_util] # grpc_util
+tensorflow::data::grpc_util::Retry
+
 [//tensorflow/core/data/service:server_lib] # server_lib
 tensorflow::data::GrpcDataServerBase::Join
 tensorflow::data::GrpcDataServerBase::Start

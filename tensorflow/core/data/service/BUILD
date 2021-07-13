@@ -468,6 +468,8 @@ cc_header_only_library(
     name = "server_lib_headers_lib",
     features = ["-parse_headers"],
     deps = [
+        ":dispatcher_client",
+        ":grpc_util",
         ":server_lib",
     ],
 )

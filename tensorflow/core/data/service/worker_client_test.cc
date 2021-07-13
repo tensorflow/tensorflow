@@ -65,8 +65,9 @@ class WorkerClientTest : public ::testing::Test {
   StatusOr<int64> RegisterDataset(const int64 range) {
     TF_ASSIGN_OR_RETURN(DatasetDef dataset_def, RangeSquareDataset(range));
     int64 dataset_id = 0;
-    TF_RETURN_IF_ERROR(
-        dispatcher_client_->RegisterDataset(dataset_def, dataset_id));
+    absl::optional<std::string> element_spec;
+    TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
+        dataset_def, element_spec, dataset_id));
     return dataset_id;
   }
 
