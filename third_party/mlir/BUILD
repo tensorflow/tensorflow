@@ -1903,6 +1903,7 @@ cc_library(
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
         ":LinalgToStandard",
+        ":MathToLLVM",
         ":MathToLibm",
         ":MemRefToLLVM",
         ":OpenACCToLLVM",
@@ -4309,6 +4310,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "MathToLLVM",
+    srcs = glob(["lib/Conversion/MathToLLVM/*.cpp"]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob(["include/mlir/Conversion/MathToLLVM/*.h"]),
+    includes = ["include"],
+    deps = [
+        ":Analysis",
+        ":ConversionPassIncGen",
+        ":DataLayoutInterfaces",
+        ":IR",
+        ":LLVMCommonConversion",
+        ":LLVMDialect",
+        ":MathDialect",
+        ":Pass",
+        ":Support",
+        ":Transforms",
+    ],
+)
+
 alias(
     name = "LLVMTransforms",
     actual = "StandardToLLVM",
@@ -4907,6 +4927,7 @@ cc_library(
         ":LinalgToStandard",
         ":LinalgTransforms",
         ":MathDialect",
+        ":MathToLLVM",
         ":MathToLibm",
         ":MathTransforms",
         ":MemRefDialect",

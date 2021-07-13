@@ -207,6 +207,7 @@ add_mlir_library(DiscRalPasses
   LINK_LIBS PUBLIC
   DiscRalDialect
   MLIRIR
+  MLIRLLVMCommonConversion
   MLIRPass
 )
 
