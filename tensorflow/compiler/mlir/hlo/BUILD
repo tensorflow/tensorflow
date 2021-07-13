@@ -837,6 +837,20 @@ cc_library(
 )
 
 cc_library(
+    name = "mhlo_mark_shape_calc",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_mark_shape_calc.cc"],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "type_conversion",
     srcs = ["lib/Dialect/mhlo/transforms/type_conversion.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"],
@@ -1627,6 +1641,7 @@ cc_library(
         ":mhlo_canonicalize_reduction",
         ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
+        ":mhlo_mark_shape_calc",
         ":mhlo_to_mhlo_lowering_patterns",
         ":ral_inject_execution_context",
         ":ral_legalize_to_llvm",
