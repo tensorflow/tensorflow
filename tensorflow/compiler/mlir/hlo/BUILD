@@ -1705,8 +1705,8 @@ cc_library(
     deps = [
         ":hlo",
         ":transforms_pass_inc_gen",
-        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],

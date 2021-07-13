@@ -154,14 +154,12 @@ private:
         defOpA->getNumOperands() != defOpB->getNumOperands())
       return false;
 
-    // TODO: Fix for memref<?x5xi32> vs memref<5x?xi32>, also consider the
-    // basetype.
     // If all operands are equal the types are compatible.
-    for (auto const &pair :
-         llvm::zip(defOpA->getOperands(), defOpB->getOperands())) {
-      if (std::get<0>(pair) != std::get<1>(pair))
-        return false;
-    }
+    auto operandsA = defOpA->getOperands();
+    auto operandsB = defOpB->getOperands();
+    if (!std::equal(operandsA.begin(), operandsA.end(), operandsB.begin(),
+                    operandsB.end()))
+      return false;
     return true;
   }
 

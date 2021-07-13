@@ -30,7 +30,7 @@ namespace mlir {
 /// compute intervals starting at the first and ending with the last use of
 /// every alloc value.
 class UserangeAnalysis {
- public:
+public:
   /// A typedef declaration of an UseInterval, which represents an interval as a
   /// pair of begin to end.
   using UseInterval = std::pair<size_t, size_t>;
@@ -58,7 +58,7 @@ class UserangeAnalysis {
   /// Dumps the liveness information to the given stream.
   void dump(raw_ostream &os);
 
- private:
+private:
   using ValueSetT = BufferViewFlowAnalysis::ValueSetT;
   using OperationListT = Liveness::OperationListT;
 
@@ -78,8 +78,9 @@ class UserangeAnalysis {
   /// Merge two IntervalVectors into a new IntervalVector. Return a pair with
   /// the resulting IntervalVector and a boolean if there were interferences
   /// during merging.
-  std::pair<IntervalVector, bool> intervalMerge(
-      const IntervalVector &intervalA, const IntervalVector &intervalB) const;
+  std::pair<IntervalVector, bool>
+  intervalMerge(const IntervalVector &intervalA,
+                const IntervalVector &intervalB) const;
 
   /// Performs an interval union of the interval vectors from the given values.
   /// Returns an empty Optional if there is an interval interference.

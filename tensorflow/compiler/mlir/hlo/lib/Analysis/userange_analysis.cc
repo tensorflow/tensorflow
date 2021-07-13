@@ -35,8 +35,7 @@ public:
   /// Constructs an Userange builder.
   UserangeInfoBuilder(Liveness pLiveness, ValueSetT pValues,
                       OperationListT pOpList)
-      : values(std::move(pValues)),
-        opList(std::move(pOpList)),
+      : values(std::move(pValues)), opList(std::move(pOpList)),
         liveness(std::move(pLiveness)) {}
 
   /// Computes the userange of the current value by iterating over all of its
@@ -62,13 +61,14 @@ public:
     return currentUserange;
   }
 
- private:
+private:
   /// Find the top most Region of all values stored in the values set.
   Region *findTopRegion() const {
     Region *topRegion = nullptr;
     llvm::for_each(values, [&](Value v) {
       Region *other = v.getParentRegion();
-      if (!topRegion || topRegion->isAncestor(other)) topRegion = other;
+      if (!topRegion || topRegion->isAncestor(other))
+        topRegion = other;
     });
     return topRegion;
   }
@@ -145,7 +145,8 @@ public:
       if (successor == startBlock) {
         start = &successor->front();
         end = getStartOperation(successor);
-        if (start != end) addAllOperationsBetween(start, end->getPrevNode());
+        if (start != end)
+          addAllOperationsBetween(start, end->getPrevNode());
         // Else we need to check if the value is live in and the successor
         // has not been visited before. If so we also need to process it.
       } else if (visited.insert(successor).second) {
@@ -166,7 +167,8 @@ public:
         if (startBlocks.contains(&block)) {
           Operation *start = &block.front();
           Operation *end = getStartOperation(&block);
-          if (start != end) addAllOperationsBetween(start, end->getPrevNode());
+          if (start != end)
+            addAllOperationsBetween(start, end->getPrevNode());
 
           // If the block has never been seen before, we need to add all
           // operations inside.
@@ -181,7 +183,8 @@ public:
         // startBlock, we need to add all operations between the endOp of the
         // value and the end of the block.
         Operation *end = getEndOperation(&block);
-        if (end == &block.back()) continue;
+        if (end == &block.back())
+          continue;
         addAllOperationsBetween(end->getNextNode(), &block.back());
       }
     }
@@ -254,7 +257,8 @@ UserangeAnalysis::UserangeAnalysis(Operation *op,
   for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
     Value allocValue = std::get<0>(entry);
     OperationListT useList;
-    for (auto &use : allocValue.getUses()) useList.emplace_back(use.getOwner());
+    for (auto &use : allocValue.getUses())
+      useList.emplace_back(use.getOwner());
     UserangeInfoBuilder builder(liveness, {allocValue}, useList);
     OperationListT liveOperations = builder.computeUserange();
 
@@ -380,10 +384,12 @@ void UserangeAnalysis::gatherMemoryEffects(Operation *op) {
 size_t UserangeAnalysis::computeID(Value v, Operation *op) const {
   size_t doubledID = operationIds.find(op)->second * 2;
   auto mapIter = opReadWriteMap.find(op);
-  if (mapIter == opReadWriteMap.end()) return doubledID;
+  if (mapIter == opReadWriteMap.end())
+    return doubledID;
   auto reads = mapIter->second.first;
   auto writes = mapIter->second.second;
-  if (reads.contains(v) && !writes.contains(v)) return doubledID - 1;
+  if (reads.contains(v) && !writes.contains(v))
+    return doubledID - 1;
   return doubledID;
 }
 
