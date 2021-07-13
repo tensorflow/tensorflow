@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_ALL_REDUCE_CREATOR_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_ALL_REDUCE_CREATOR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -22,12 +22,19 @@ namespace xla {
 
 // Transforms each all-reduce instruction to a pair of all-reduce-start and
 // all-reduce-done.
-class AsyncAllReduceCreator : public HloModulePass {
+class AsyncCollectiveCreator : public HloModulePass {
  public:
-  AsyncAllReduceCreator() = default;
-  absl::string_view name() const override { return "async-all-reduce-creator"; }
+  explicit AsyncCollectiveCreator(bool convert_all_reduce = false,
+                                  bool convert_all_gather = false)
+      : convert_all_reduce_(convert_all_reduce),
+        convert_all_gather_(convert_all_gather) {}
+  absl::string_view name() const override { return "async-collective-creator"; }
 
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  bool convert_all_reduce_;
+  bool convert_all_gather_;
 };
 
 }  // namespace xla

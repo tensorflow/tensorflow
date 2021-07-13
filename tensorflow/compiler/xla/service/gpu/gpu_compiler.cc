@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/all_reduce_reassociate.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
-#include "tensorflow/compiler/xla/service/async_all_reduce_creator.h"
+#include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -474,7 +474,8 @@ Status GpuCompiler::OptimizeHloModule(
     if (hlo_module->config()
             .debug_options()
             .xla_gpu_enable_async_all_reduce()) {
-      pipeline.AddPass<AsyncAllReduceCreator>();
+      pipeline.AddPass<AsyncCollectiveCreator>(/*convert_all_reduce=*/true,
+                                               /*convert_all_gather=*/false);
     }
 
     pipeline.AddPass<CollectivesScheduleLinearizer>();

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/async_all_reduce_creator.h"
+#include "tensorflow/compiler/xla/service/async_collective_creator.h"
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -45,7 +45,9 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllReduce) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(AsyncAllReduceCreator().Run(hlo_module.get()).status());
+  TF_ASSERT_OK(AsyncCollectiveCreator(/*convert_all_reduce=*/true)
+                   .Run(hlo_module.get())
+                   .status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -55,6 +57,32 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllReduce) {
   ASSERT_THAT(done->operands(), SizeIs(1));
   const HloInstruction* start = done->operand(0);
   EXPECT_EQ(start->opcode(), HloOpcode::kAllReduceStart);
+}
+
+TEST_F(AsyncAllReduceCreatorTest, SplitsSingleAllGather) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[1] parameter(0)
+    ROOT ag = f32[8] all-gather(p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(AsyncCollectiveCreator(/*convert_all_reduce=*/false,
+                                      /*convert_all_gather=*/true)
+                   .Run(hlo_module.get())
+                   .status());
+
+  HloComputation* computation = hlo_module->entry_computation();
+  ASSERT_THAT(computation, NotNull());
+  ASSERT_EQ(computation->instruction_count(), 3);
+  const HloInstruction* done = computation->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAllGatherDone);
+  ASSERT_THAT(done->operands(), SizeIs(1));
+  const HloInstruction* start = done->operand(0);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAllGatherStart);
 }
 
 }  // namespace

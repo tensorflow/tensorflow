@@ -79,21 +79,22 @@ cc_library(
 )
 
 cc_library(
-    name = "async_all_reduce_creator",
-    srcs = ["async_all_reduce_creator.cc"],
-    hdrs = ["async_all_reduce_creator.h"],
+    name = "async_collective_creator",
+    srcs = ["async_collective_creator.cc"],
+    hdrs = ["async_collective_creator.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_casting_utils",
-        "//tensorflow/compiler/xla/service:hlo_pass",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_pass",
+        ":shape_inference",
     ],
 )
 
 tf_cc_test(
-    name = "async_all_reduce_creator_test",
-    srcs = ["async_all_reduce_creator_test.cc"],
+    name = "async_collective_creator_test",
+    srcs = ["async_collective_creator_test.cc"],
     deps = [
-        ":async_all_reduce_creator",
+        ":async_collective_creator",
         ":hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",

@@ -57,6 +57,8 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleCholesky(HloInstruction* hlo) override;
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleAllGather(HloInstruction* hlo) override;
+  Status HandleAllGatherStart(HloInstruction* hlo) override;
+  Status HandleAllGatherDone(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
   Status HandleAllReduceStart(HloInstruction* hlo) override;
   Status HandleAllReduceDone(HloInstruction* hlo) override;

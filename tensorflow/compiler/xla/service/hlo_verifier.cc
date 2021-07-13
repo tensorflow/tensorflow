@@ -303,28 +303,38 @@ static Status CheckReplicaGroups(HloInstruction* hlo,
   return Status::OK();
 }
 
-Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
+static Status CheckCommonAllGatherInvariants(HloInstruction* hlo,
+                                             int64* computed_shard_count) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
+  CHECK_NE(computed_shard_count, nullptr) << "Expected a shard count as input";
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ag->channel_id().has_value(),
                                                ag->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
 
+  int64_t shard_count;
   for (int64_t i = 0; i < ag->operand_count(); ++i) {
     TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(i)->shape().rank());
 
-    const Shape& output_shape =
-        (ag->operand_count() == 1) ? ag->shape() : ag->shape().tuple_shapes(i);
+    Shape output_shape;
+    if (hlo->opcode() == HloOpcode::kAllGather) {
+      output_shape = (ag->operand_count() == 1) ? ag->shape()
+                                                : ag->shape().tuple_shapes(i);
+    } else {
+      TF_RET_CHECK(hlo->opcode() == HloOpcode::kAllGatherStart);
+      output_shape = (ag->operand_count() == 1)
+                         ? ag->shape().tuple_shapes(1)
+                         : ag->shape().tuple_shapes(1).tuple_shapes(i);
+    }
     TF_RET_CHECK(ag->all_gather_dimension() < output_shape.rank());
+    if (i == 0) {
+      shard_count = CeilOfRatio(
+          output_shape.dimensions(ag->all_gather_dimension()),
+          ag->operand(i)->shape().dimensions(ag->all_gather_dimension()));
+    }
   }
 
-  const Shape& output0_shape =
-      (ag->operand_count() == 1) ? ag->shape() : ag->shape().tuple_shapes(0);
-
-  int64 shard_count = CeilOfRatio(
-      output0_shape.dimensions(ag->all_gather_dimension()),
-      ag->operand(0)->shape().dimensions(ag->all_gather_dimension()));
   int64 subgroup_size = GetSubgroupSize(ag, group_mode);
   // If replica and partition count is not explicitly set, it will have a
   // default value of 1, in which case the subgroup_size will be 1 as well. Skip
@@ -332,7 +342,14 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
   TF_RET_CHECK(subgroup_size == 1 || shard_count == subgroup_size)
       << "shard_count = " << shard_count
       << ", subgroup_size = " << subgroup_size << ", " << hlo->ToString();
+  *computed_shard_count = shard_count;
+  return Status::OK();
+}
 
+Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
+  auto ag = Cast<HloAllGatherInstruction>(hlo);
+  int64 shard_count;
+  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(hlo, &shard_count));
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -340,6 +357,24 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
   return CheckShape(
       ag, ShapeInference::InferAllGatherShape(
               operand_shapes, ag->all_gather_dimension(), shard_count));
+}
+
+Status ShapeVerifier::HandleAllGatherStart(HloInstruction* hlo) {
+  auto ag = Cast<HloAllGatherInstruction>(hlo);
+  int64 shard_count;
+  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(hlo, &shard_count));
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(
+      ag, ShapeInference::InferAllGatherStartShape(
+              operand_shapes, ag->all_gather_dimension(), shard_count));
+}
+
+Status ShapeVerifier::HandleAllGatherDone(HloInstruction* hlo) {
+  return CheckShape(
+      hlo, ShapeInference::InferAllGatherDoneShape(hlo->operand(0)->shape()));
 }
 
 Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
