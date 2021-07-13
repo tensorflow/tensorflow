@@ -163,7 +163,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       TF_RETURN_IF_ERROR(
           GetNodeAttr(metadata_node->attrs(), "computation_shape", &shape));
       if (!shape.empty()) {
-        int64 num_cores_per_replica = 1LL;
+        int64_t num_cores_per_replica = 1LL;
         for (int dim : shape) {
           num_cores_per_replica *= dim;
         }

@@ -130,16 +130,16 @@ TEST(PoolAllocatorTest, AutoResize) {
 
 TEST(PoolAllocatorTest, CudaHostAllocator) {
   int alloc_count = 0;
-  int64 alloc_size = 0;
+  int64_t alloc_size = 0;
   SubAllocator::Visitor alloc_visitor =
-      [&alloc_count, &alloc_size](void* ptr, int numa_node, int64 size) {
+      [&alloc_count, &alloc_size](void* ptr, int numa_node, int64_t size) {
         ++alloc_count;
         alloc_size += size;
       };
   int free_count = 0;
-  int64 free_size = 0;
+  int64_t free_size = 0;
   SubAllocator::Visitor free_visitor =
-      [&free_count, &free_size](void* ptr, int numa_node, int64 size) {
+      [&free_count, &free_size](void* ptr, int numa_node, int64_t size) {
         ++free_count;
         free_size += size;
       };

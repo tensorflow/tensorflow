@@ -132,7 +132,7 @@ EagerContext::EagerContext(
       core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
 }
 
-AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64 value) {
+AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64_t value) {
   return new TensorInterface(Tensor(value));
 }
 
