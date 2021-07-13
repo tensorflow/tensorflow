@@ -2,10 +2,6 @@ path: "tensorflow.random.experimental.Algorithm"
 tf_class {
   is_instance: "<enum \'Algorithm\'>"
   member {
-    name: "AUTO_SELECT"
-    mtype: "<enum \'Algorithm\'>"
-  }
-  member {
     name: "PHILOX"
     mtype: "<enum \'Algorithm\'>"
   }
