@@ -1365,13 +1365,17 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     super(TFLiteConverterV2, self).__init__(funcs, trackable_obj)
 
   @classmethod
-  def from_concrete_functions(cls, funcs):
+  def from_concrete_functions(cls, funcs, trackable_obj=None):
     """Creates a TFLiteConverter object from ConcreteFunctions.
 
     Args:
       funcs: List of TensorFlow ConcreteFunctions. The list should not contain
         duplicate elements. Currently converter can only convert a single
         ConcreteFunction. Converting multiple functions is under development.
+      trackable_obj:   An `AutoTrackable` object (typically `tf.module`)
+        associated with `funcs`. A reference to this object needs to be
+        maintained so that Variables do not get garbage collected since
+        functions have a weak reference to Variables.
 
     Returns:
       TFLiteConverter object.
@@ -1386,7 +1390,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
           message += (" To get the ConcreteFunction from a Function,"
                       " call get_concrete_function.")
         raise ValueError(message)
-    return cls(funcs)
+    return cls(funcs, trackable_obj)
 
   @classmethod
   def from_saved_model(cls, saved_model_dir, signature_keys=None, tags=None):
