@@ -945,6 +945,9 @@ cc_library(
         "eigen_convolution_helpers.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    defines = [
+        "EIGEN_ALTIVEC_USE_CUSTOM_PACK=0",
+    ],
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -3998,8 +4001,7 @@ cc_library(
     ],
 )
 
-NN_DEPS = [
-    ":conv_2d",
+NN_DEPS = if_cuda_or_rocm([":conv_2d"]) + [
     ":eigen_contraction_kernel",
     ":ops_util",
     "//tensorflow/core:framework",
