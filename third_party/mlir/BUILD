@@ -6498,6 +6498,7 @@ exports_files(
         "include/mlir/Dialect/Shape/IR/ShapeBase.td",
         "include/mlir/Dialect/Shape/IR/ShapeOps.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
+        "include/mlir/Dialect/Tensor/IR/TensorOps.td",
         "include/mlir/Dialect/Vector/VectorOps.td",
         "include/mlir/Dialect/X86Vector/X86Vector.td",
         "include/mlir/IR/OpAsmInterface.td",
