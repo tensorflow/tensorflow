@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 
@@ -1658,7 +1659,7 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
   explicit DynamicShapeRemovingVisitor(
       const DynamicPadder::OpSupportsDynamismHandler&
           op_supports_dynamism_handler,
-      const DynamicDimensionInference& dynamic_dimension_inference)
+      DynamicDimensionInference* dynamic_dimension_inference)
       : op_supports_dynamism_handler_(op_supports_dynamism_handler),
         dynamic_dimension_inference_(dynamic_dimension_inference) {}
 
@@ -1674,7 +1675,7 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
   static Status Run(HloComputation* computation,
                     const DynamicPadder::OpSupportsDynamismHandler&
                         op_supports_dynamism_handler,
-                    const DynamicDimensionInference& dynamic_shape_inference,
+                    DynamicDimensionInference* dynamic_shape_inference,
                     bool require_dynamic_output) {
     DynamicShapeRemovingVisitor visitor(op_supports_dynamism_handler,
                                         dynamic_shape_inference);
@@ -1683,8 +1684,9 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
     // conversion as root.
     if (require_dynamic_output) {
       HloInstruction* root = computation->root_instruction();
-      if (dynamic_shape_inference.HasDynamicDimension(root)) {
-        HloInstruction* new_root = visitor.ConvertToDynamic(root);
+      if (dynamic_shape_inference->HasDynamicDimension(root)) {
+        TF_ASSIGN_OR_RETURN(HloInstruction * new_root,
+                            visitor.ConvertToDynamic(root));
         computation->set_root_instruction(new_root);
       }
     }
@@ -1694,30 +1696,32 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
  private:
   // If a tensor produced by `inst` is in dynamic form, convert it to static and
   // returns the new instruction.
-  HloInstruction* ConvertToStatic(HloInstruction* inst);
+  StatusOr<HloInstruction*> ConvertToStatic(HloInstruction* inst);
 
   // If a tensor produced by `inst` is in static form, convert it to dynamic and
   // returns the new instruction.
-  HloInstruction* ConvertToDynamic(HloInstruction* inst);
+  StatusOr<HloInstruction*> ConvertToDynamic(HloInstruction* inst);
 
   const DynamicPadder::OpSupportsDynamismHandler& op_supports_dynamism_handler_;
 
-  const DynamicDimensionInference& dynamic_dimension_inference_;
+  DynamicDimensionInference* dynamic_dimension_inference_;
 };
 
-HloInstruction* DynamicShapeRemovingVisitor::ConvertToDynamic(
+StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
     HloInstruction* inst) {
   auto* comp = inst->parent();
   const Shape& shape = inst->shape();
   if (shape.IsTuple()) {
     std::vector<HloInstruction*> dynamic_operands;
     for (int64 i = 0; i < shape.tuple_shapes_size(); ++i) {
-      auto operand = inst->mutable_operand(i);
-      if (dynamic_dimension_inference_.HasDynamicDimension(operand)) {
-        // Recurse.
-        dynamic_operands.push_back(ConvertToDynamic(operand));
+      auto gte = comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+          shape.tuple_shapes(i), inst, i));
+      if (dynamic_dimension_inference_->HasDynamicDimension(inst, {i})) {
+        TF_RETURN_IF_ERROR(dynamic_dimension_inference_->Update(gte));
+        TF_ASSIGN_OR_RETURN(auto dynamic, ConvertToDynamic(gte));
+        dynamic_operands.push_back(dynamic);
       } else {
-        dynamic_operands.push_back(operand);
+        dynamic_operands.push_back(gte);
       }
     }
     return comp->AddInstruction(HloInstruction::CreateTuple(dynamic_operands));
@@ -1730,7 +1734,7 @@ HloInstruction* DynamicShapeRemovingVisitor::ConvertToDynamic(
     slice_operand.push_back(inst);
     for (int64 i = 0; i < output_shape.dimensions_size(); ++i) {
       auto dimension_size =
-          dynamic_dimension_inference_.GetDynamicSize(inst, {}, i);
+          dynamic_dimension_inference_->GetDynamicSize(inst, {}, i);
       if (dimension_size == nullptr) {
         dimension_size = comp->AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::CreateR0<int32>(output_shape.dimensions(i))));
@@ -1744,7 +1748,7 @@ HloInstruction* DynamicShapeRemovingVisitor::ConvertToDynamic(
   }
 }
 
-HloInstruction* DynamicShapeRemovingVisitor::ConvertToStatic(
+StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToStatic(
     HloInstruction* inst) {
   auto* comp = inst->parent();
   const Shape& shape = inst->shape();
@@ -1752,9 +1756,13 @@ HloInstruction* DynamicShapeRemovingVisitor::ConvertToStatic(
   if (shape.IsTuple()) {
     std::vector<HloInstruction*> static_operands;
     for (int64 i = 0; i < shape.tuple_shapes_size(); ++i) {
+      auto gte = comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+          shape.tuple_shapes(i), inst, i));
+      TF_RETURN_IF_ERROR(dynamic_dimension_inference_->Update(gte));
       auto operand = inst->mutable_operand(i);
       if (shape.tuple_shapes(i).is_dynamic()) {
-        static_operands.push_back(ConvertToStatic(operand));
+        TF_ASSIGN_OR_RETURN(auto static_inst, ConvertToStatic(gte));
+        static_operands.push_back(static_inst);
       } else {
         static_operands.push_back(operand);
       }
@@ -1812,7 +1820,8 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
     VLOG(1) << "op doesn't support dynamic tensor: " << hlo->ToString();
     for (int64 i = 0; i < hlo->operand_count(); ++i) {
       if (hlo->operand(i)->shape().is_dynamic()) {
-        auto static_operand = ConvertToStatic(hlo->mutable_operand(i));
+        TF_ASSIGN_OR_RETURN(auto static_operand,
+                            ConvertToStatic(hlo->mutable_operand(i)));
         TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(i, static_operand));
       }
     }
@@ -1827,8 +1836,9 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
     VLOG(1) << "op doesn't support static tensor: " << hlo->ToString();
     for (int64 i = 0; i < hlo->operand_count(); ++i) {
       auto operand = hlo->mutable_operand(i);
-      if (dynamic_dimension_inference_.HasDynamicDimension(operand)) {
-        auto dynamic_operand = ConvertToDynamic(hlo->mutable_operand(i));
+      if (dynamic_dimension_inference_->HasDynamicDimension(operand)) {
+        TF_ASSIGN_OR_RETURN(auto dynamic_operand,
+                            ConvertToDynamic(hlo->mutable_operand(i)));
         TF_RETURN_IF_ERROR(hlo->ReplaceOperandWith(i, dynamic_operand));
       }
     }
@@ -2044,7 +2054,8 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     bool require_dynamic_output =
         slice_dynamic_output_ && computation == module->entry_computation();
     TF_RETURN_IF_ERROR(DynamicShapeRemovingVisitor::Run(
-        computation, op_supports_dynamism_handler_, dynamic_dimension_inference,
+        computation, op_supports_dynamism_handler_,
+        &dynamic_dimension_inference,
         /*require_dynamic_output=*/require_dynamic_output));
   }
 

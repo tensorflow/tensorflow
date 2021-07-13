@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -251,9 +252,38 @@ ENTRY main {
   auto custom_call_1 =
       module_->entry_computation()->GetInstructionWithName("custom-call.1");
   EXPECT_THAT(custom_call_1,
-              op::CustomCall(
-                  "OpWithDynamicLowering",
-                  op::Tuple(op::Constant(), op::CustomCall("SliceToDynamic"))));
+              op::CustomCall("OpWithDynamicLowering",
+                             op::Tuple(op::GetTupleElement(),
+                                       op::CustomCall("SliceToDynamic"))));
+}
+
+TEST_F(DynamicPadderTest, DynamicOutputNestedTuple) {
+  const string hlo_text = R"(
+HloModule DynamicLowering
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  const2 = s32[] constant(4)
+  param_padded = s32[<=5] set-dimension-size(param, const),
+                dimensions={0}
+  // Create a tuple with static and dynamic componenet.
+  tuple0 = (s32[], s32[<=5]) tuple(const, param_padded)
+  ROOT tuple1 = (s32[], (s32[], s32[<=5])) tuple(const2, tuple0)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  TF_ASSERT_OK(TupleSimplifier().Run(module_.get()).status());
+  XLA_LOG_LINES(0, module_->ToString());
+
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::Constant(), op::Tuple()));
+  HloInstruction* nested_tuple = root->mutable_operand(1);
+  EXPECT_THAT(nested_tuple,
+              op::Tuple(op::Constant(), op::CustomCall("SliceToDynamic")));
 }
 
 TEST_F(DynamicPadderTest, ConvolutionTest) {
