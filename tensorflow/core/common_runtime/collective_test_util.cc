@@ -43,8 +43,9 @@ bool FailTestRMA::MaybeFail(const StatusCallback& done) {
   if (fail_now) {
     auto error = errors::Internal("Deliberate failure");
     LOG(INFO) << "triggering failure " << error;
-    SchedNonBlockingClosureAfter(
-        1000, [this, error] { buf_rendezvous()->StartAbort(error); });
+    buf_rendezvous()->StartAbort(error);
+    // The current call hasn't reached BufRendezvous yet, so we need to call
+    // its done separately.
     done(error);
     return true;
   }
