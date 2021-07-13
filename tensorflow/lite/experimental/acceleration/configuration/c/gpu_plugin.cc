@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,35 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements the Delegate Plugin for the NNAPI Delegate.
+// This file implements the Delegate Plugin for the GPU Delegate.
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/c/gpu_plugin.h"
 
 #include <memory>
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/nnapi_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/gpu_plugin.h"
 
 extern "C" {
 
 static TfLiteDelegate* CreateDelegate(const void* settings) {
   const ::tflite::TFLiteSettings* tflite_settings =
       static_cast<const ::tflite::TFLiteSettings*>(settings);
-  tflite::delegates::NnapiPlugin nnapi_plugin(*tflite_settings);
-  return new tflite::StatefulNnApiDelegate(nnapi_plugin.Options());
+  tflite::delegates::GpuPlugin gpu_plugin(*tflite_settings);
+  return TfLiteGpuDelegateV2Create(&gpu_plugin.Options());
 }
 
 static void DestroyDelegate(TfLiteDelegate* delegate) {
-  delete static_cast<tflite::StatefulNnApiDelegate*>(delegate);
+  TfLiteGpuDelegateV2Delete(delegate);
 }
 
-static int DelegateErrno(TfLiteDelegate* from_delegate) {
-  auto nnapi_delegate =
-      static_cast<tflite::StatefulNnApiDelegate*>(from_delegate);
-  return nnapi_delegate->GetNnApiErrno();
-}
+static int DelegateErrno(TfLiteDelegate* from_delegate) { return 0; }
 
 static constexpr TfLiteDelegatePlugin kPluginCApi{
     CreateDelegate,
@@ -49,7 +45,7 @@ static constexpr TfLiteDelegatePlugin kPluginCApi{
     DelegateErrno,
 };
 
-const TfLiteDelegatePlugin* TfLiteNnapiDelegatePluginCApi() {
+const TfLiteDelegatePlugin* TfLiteGpuDelegatePluginCApi() {
   return &kPluginCApi;
 }
 
