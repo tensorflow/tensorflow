@@ -960,7 +960,7 @@ class StrategyBase(object):
           input_fn, replication_mode=replication_mode)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
-  @deprecated(None,'use mirrored_strategy.run() instead')  
+  @deprecated(None,'use run() instead')  
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
     with self.scope():
