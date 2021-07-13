@@ -412,12 +412,16 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
 
 }  // namespace
 
-void populateExtraStdBufferizePattern(MLIRContext *context,
-                                      BufferizeTypeConverter *converter,
-                                      RewritePatternSet *patterns) {
-  patterns->insert<BufferizeAndConvertMinimumBroadcastShapesOp,
-                   BufferizeConstantOp, BufferizeDimOp, BufferizeRankOp>(
-      *converter, context);
+void populateExtraBufferizePatterns(MLIRContext *context,
+                                    BufferizeTypeConverter *converter,
+                                    RewritePatternSet *patterns) {
+  // clang-format off
+  patterns->insert<
+      BufferizeAndConvertMinimumBroadcastShapesOp,
+      BufferizeConstantOp,
+      BufferizeDimOp,
+      BufferizeRankOp>(*converter, context);
+  // clang-format on
 }
 
 }  // namespace transforms

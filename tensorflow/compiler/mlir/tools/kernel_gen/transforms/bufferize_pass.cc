@@ -200,7 +200,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     populateTensorBufferizePatterns(converter, patterns);
     populateStdBufferizePatterns(converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
-    populateExtraStdBufferizePattern(&getContext(), &converter, &patterns);
+    populateExtraBufferizePatterns(&getContext(), &converter, &patterns);
     populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
                                                       target);
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
