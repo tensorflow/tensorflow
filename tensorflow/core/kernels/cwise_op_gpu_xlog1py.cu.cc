@@ -25,10 +25,7 @@ namespace functor {
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 DEFINE_BINARY3(xlog1py, Eigen::half, float, double);
 
-// TODO(ROCm): enable complex64 / complex128 after compiler fix.
-#if GOOGLE_CUDA
 DEFINE_BINARY2(xlog1py, complex64, complex128);
-#endif
 #endif
 #endif
 
