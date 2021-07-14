@@ -40,6 +40,15 @@ struct FunctionalControlFlowToCFG
     registry.insert<tensor::TensorDialect>();
   }
 
+  StringRef getArgument() const final {
+    return "tf-functional-control-flow-to-cfg";
+  }
+
+  StringRef getDescription() const final {
+    return "Transform functional control flow Ops to MLIR Control Form Graph "
+           "(CFG) form";
+  }
+
   void runOnFunction() override;
 };
 
@@ -308,10 +317,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 
-static PassRegistration<FunctionalControlFlowToCFG> pass(
-    "tf-functional-control-flow-to-cfg",
-    "Transform functional control flow Ops to MLIR Control Form Graph "
-    "(CFG) form");
+static PassRegistration<FunctionalControlFlowToCFG> pass;
 
 }  // namespace TF
 }  // namespace mlir

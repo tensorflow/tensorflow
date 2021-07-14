@@ -47,6 +47,12 @@ namespace {
 // the end.
 struct UnrollBatchMatMulPass
     : public PassWrapper<UnrollBatchMatMulPass, FunctionPass> {
+  StringRef getArgument() const final { return "tf-unroll-batch-matmul"; }
+
+  StringRef getDescription() const final {
+    return "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.";
+  }
+
   void runOnFunction() override;
 };
 
@@ -321,9 +327,7 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   return success();
 }
 
-static PassRegistration<UnrollBatchMatMulPass> pass(
-    "tf-unroll-batch-matmul",
-    "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.");
+static PassRegistration<UnrollBatchMatMulPass> pass;
 
 std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
   return std::make_unique<UnrollBatchMatMulPass>();

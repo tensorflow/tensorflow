@@ -81,6 +81,12 @@ struct DecomposeTFOpsPass
   explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
       : external_tfr_module(external_tfr_module) {}
 
+  StringRef getArgument() const final { return "tfr-decompose"; }
+
+  StringRef getDescription() const final {
+    return "Decompose TF ops with the registered composition library.";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -320,8 +326,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(
 }
 
 static PassRegistration<DecomposeTFOpsPass> pass(
-    "tfr-decompose",
-    "Decompose TF ops with the registered composition library.",
     [] { return CreateDecomposeTFOpsPass(); });
 
 }  // namespace TFR

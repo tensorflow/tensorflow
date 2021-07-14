@@ -1525,6 +1525,12 @@ class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
   LegalizeHloToTf() = default;
   LegalizeHloToTf(const LegalizeHloToTf &) {}
 
+  StringRef getArgument() const final { return "tf-legalize-hlo"; }
+
+  StringRef getDescription() const final {
+    return "Legalize from HLO to the TF dialect";
+  }
+
   /// Performs the legalization to the TF dialect.
   void runOnFunction() override;
 };
@@ -1864,8 +1870,7 @@ void LegalizeHloToTf::runOnFunction() {
   }
 }
 
-static PassRegistration<LegalizeHloToTf> pass(
-    "tf-legalize-hlo", "Legalize from HLO to the TF dialect");
+static PassRegistration<LegalizeHloToTf> pass;
 
 }  // end namespace
 

@@ -41,6 +41,14 @@ class InitializeVariablesInSessionInitializerPass
       tensorflow::Session* session)
       : session_(session) {}
 
+  StringRef getArgument() const final {
+    return "tf-saved-model-initialize-variables-in-session-init";
+  }
+
+  StringRef getDescription() const final {
+    return "Initialize variables in session initializer function.";
+  }
+
   void runOnOperation() override;
 
  private:
