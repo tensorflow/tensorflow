@@ -419,7 +419,6 @@ class Interpreter {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
-  // WARNING: Experimental interface, subject to change
   // Change the dimensionality of a given tensor. This is only acceptable for
   // tensor indices that are inputs or variables. Only unknown dimensions can be
   // resized with this function. Unknown dimensions are indicated as `-1` in the
