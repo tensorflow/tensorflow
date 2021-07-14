@@ -38,6 +38,31 @@ static constexpr StringRef kCInterfaceAlloc = "_mlir_ciface_tf_alloc";
 static constexpr StringRef kCInterfaceDealloc = "_mlir_ciface_tf_dealloc";
 static constexpr StringRef kCInterfaceReportError =
     "_mlir_ciface_tf_report_error";
+static constexpr StringRef kCInterfaceJITCompile =
+    "_mlir_ciface_tf_jit_compile";
+static constexpr StringRef kJITCodeGlobalBaseName = "jit_module_code";
+static constexpr StringRef kErrorMessageGlobalBaseName = "error_message";
+
+Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
+                                       StringRef base_name, StringRef str) {
+  auto module =
+      builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
+  std::string global_name =
+      llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
+  Operation *global_constant =
+      SymbolTable::lookupNearestSymbolFrom(module, global_name);
+  if (global_constant) {
+    Value global_ptr = builder.create<LLVM::AddressOfOp>(
+        loc, cast<LLVM::GlobalOp>(global_constant));
+    Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
+                                                builder.getIndexAttr(0));
+    return builder.create<LLVM::GEPOp>(
+        loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)), global_ptr,
+        ValueRange{c0, c0});
+  }
+  return LLVM::createGlobalString(loc, builder, global_name, str,
+                                  LLVM::Linkage::Internal);
+}
 
 /// Base class for patterns converting TF Framework ops to function calls.
 template <typename OpTy>
@@ -245,6 +270,36 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
   }
 };
 
+class JITCompileFromStrOpConverter
+    : public ConvertToLLVMCallOpPattern<JITCompileFromStrOp> {
+  using ConvertToLLVMCallOpPattern<
+      JITCompileFromStrOp>::ConvertToLLVMCallOpPattern;
+
+  LogicalResult matchAndRewrite(
+      JITCompileFromStrOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    JITCompileFromStrOp::Adaptor transformed(operands);
+    if (transformed.ctx() == nullptr) return failure();
+    Value jit_module_code = CreateOrFindGlobalStringConstant(
+        op.getLoc(), rewriter, kJITCodeGlobalBaseName, op.code());
+    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+        op, getVoidPtrType(), tf_func_ref,
+        llvm::makeArrayRef({transformed.ctx(), jit_module_code}));
+    return success();
+  }
+
+ protected:
+  StringRef GetFuncName() const override { return kCInterfaceJITCompile; }
+
+  Type GetFuncType() const override {
+    auto i8_ptr_type =
+        LLVM::LLVMPointerType::get(IntegerType::get(getContext(), 8));
+    return LLVM::LLVMFunctionType::get(getVoidPtrType(),
+                                       {getVoidPtrType(), i8_ptr_type});
+  }
+};
+
 class ReportErrorOpConverter
     : public ConvertToLLVMCallOpPattern<ReportErrorOp> {
  public:
@@ -267,7 +322,6 @@ class ReportErrorOpConverter
         loc, typeConverter->convertType(rewriter.getI32Type()),
         transformed.error_code());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-
         op, llvm::None, tf_func_ref,
         llvm::makeArrayRef({transformed.ctx(), error_code, message_constant}));
     return success();
@@ -296,29 +350,9 @@ class ReportErrorOpConverter
       err_stream << " at ";
       loc.print(err_stream);
     }
-
     StringRef generated_error(err_stream.str());
-
-    std::string global_name =
-        llvm::formatv("error_message_{0}", llvm::hash_value(generated_error));
-
-    Operation *global_constant =
-        SymbolTable::lookupNearestSymbolFrom(module, global_name);
-
-    if (global_constant) {
-      Value globalPtr = builder.create<LLVM::AddressOfOp>(
-          loc, cast<LLVM::GlobalOp>(global_constant));
-
-      MLIRContext *ctx = &getTypeConverter()->getContext();
-      Value c0 = builder.create<LLVM::ConstantOp>(
-          loc, IntegerType::get(ctx, 64),
-          builder.getIntegerAttr(builder.getIndexType(), 0));
-      return builder.create<LLVM::GEPOp>(
-          loc, LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8)), globalPtr,
-          ValueRange{c0, c0});
-    }
-    return LLVM::createGlobalString(loc, builder, global_name, generated_error,
-                                    LLVM::Linkage::Internal);
+    return CreateOrFindGlobalStringConstant(
+        loc, builder, kErrorMessageGlobalBaseName, generated_error);
   }
 };
 
@@ -455,12 +489,12 @@ void PopulateTFFrameworkToLLVMConversionPatterns(LLVMTypeConverter *converter,
   // clang-format off
   patterns->insert<
       IsValidMemRefOpConverter,
+      JITCompileFromStrOpConverter,
       NullContextOpConverter,
       NullMemRefOpConverter,
       ReportErrorOpConverter,
       TFAllocOpConverter,
-      TFDeallocOpConverter
-    >(*converter);
+      TFDeallocOpConverter>(*converter);
   // clang-format on
 }
 

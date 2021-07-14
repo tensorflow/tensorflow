@@ -131,7 +131,6 @@ func @ranked_null_memref() {
 // CHECK-NEXT: %[[DESC_6:.*]] = llvm.insertvalue %[[C1]], %[[DESC_5]][3, 1]
 // CHECK-NEXT: %[[DESC_7:.*]] = llvm.insertvalue %[[C1_]], %[[DESC_6]][4, 1]
 
-
 // ----
 
 // CHECK-LABEL: llvm.func @is_valid_memref
@@ -154,3 +153,20 @@ func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 
 // CHECK-NEXT: %[[PRED:.*]] = llvm.or %[[NOT_NULL]], %[[IS_EMPTY_]]  : i1
 // CHECK-NEXT: llvm.return %[[PRED]]
+
+// -----
+
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr<i8>, !llvm.ptr<i8>) -> !llvm.ptr<i8>
+// CHECK: llvm.mlir.global internal constant @[[CODE:jit_module_code_[0-9]+]]("placeholder")
+
+// CHECK: @jit_compile_from_str(%[[CTX:.*]]: !llvm.ptr<i8>)
+func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
+    -> !tf_framework.jit_callable {
+  // CHECK: %[[ADDR:.*]] = llvm.mlir.addressof @[[CODE]]
+  // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : index)
+  // CHECK: %[[CODE_PTR:.*]] = llvm.getelementptr %[[ADDR]][%[[C0]], %[[C0]]]
+  // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile(%[[CTX]], %[[CODE_PTR]])
+  // CHECK: llvm.return %[[RES]]
+  %0 = tf_framework.jit_compile_from_str %ctx, "placeholder"
+  return %0 : !tf_framework.jit_callable
+}
