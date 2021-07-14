@@ -210,7 +210,9 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   auto result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
                                         num_bytes, pool_, cuda_stream_);
   if (result == CUDA_ERROR_OUT_OF_MEMORY) {
-    // This can fix some OOM when memory is tight.
+    // Doing a stream synchronization give the driver more flexibility
+    // for blocks coalescing and doing memory remapping. So it can
+    // solve some OOM cases when memory is tight.
     cuStreamSynchronize(cuda_stream_);
     result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
                                      num_bytes, pool_, cuda_stream_);
