@@ -48,13 +48,17 @@ inline void DivElementwise(int size, const ArithmeticParams& params,
   DivCheckArithmeticParams<T>(params);
 
   for (int i = 0; i < size; ++i) {
-    const int32_t input1_val = params.input1_offset + input1_data[i];
-    const int32_t input2_val = params.input2_offset + input2_data[i];
+    int32_t input1_val = params.input1_offset + input1_data[i];
+    int32_t input2_val = params.input2_offset + input2_data[i];
     TFLITE_DCHECK_NE(input2_val, 0);
+    if (input2_val < 0) {
+      // Invert signs to avoid a negative input2_val as input2_inv needs to be
+      // positive to be used as multiplier of MultiplyByQuantizedMultiplier.
+      input1_val = -input1_val;
+      input2_val = -input2_val;
+    }
     int recip_shift;
-    const int32_t input2_inv =
-        (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
-                         : -GetReciprocal(-input2_val, 31, &recip_shift);
+    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
     const int32_t unscaled_quotient =
         MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
@@ -116,15 +120,19 @@ inline void BroadcastDivSlowQuantized(
   DivCheckArithmeticParams<T>(params);
 
   auto div_func = [&](int indexes[N]) {
-    const int32_t input1_val =
+    int32_t input1_val =
         params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    const int32_t input2_val =
+    int32_t input2_val =
         params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
     TFLITE_DCHECK_NE(input2_val, 0);
+    if (input2_val < 0) {
+      // Invert signs to avoid a negative input2_val as input2_inv needs to be
+      // positive to be used as multiplier of MultiplyByQuantizedMultiplier.
+      input1_val = -input1_val;
+      input2_val = -input2_val;
+    }
     int recip_shift;
-    const int32_t input2_inv =
-        (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
-                         : -GetReciprocal(-input2_val, 31, &recip_shift);
+    const int32_t input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
     const int32_t unscaled_quotient =
         MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
