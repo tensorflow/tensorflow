@@ -718,11 +718,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
       &ret_node_names, &ret_types, &control_ret_node_names));
 
+  GraphDef graph_def;
+  graph->ToGraphDef(&graph_def);
+  FunctionLibraryDefinition reachable_lib_def =
+      lib_def->ReachableDefinitions(graph_def);
+  *graph_def.mutable_library() = reachable_lib_def.ToProto();
   if (options.graph_collector != nullptr) {
-    GraphDef def;
-    graph->ToGraphDef(&def);
-    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
-    options.graph_collector->CollectRawGraph(def);
+    options.graph_collector->CollectRawGraph(graph_def);
   }
 
   Device* default_device = nullptr;
@@ -749,7 +751,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   auto data = absl::make_unique<MultiDeviceFunctionData>(
       function_name, function_key, ret_node_names.size(),
-      lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
+      std::move(reachable_lib_def), std::move(ret_types));
 
   // The runtime shouldn't depend on duplication between the function library
   // owned by the graph and the one owned by the runtime. To ensure this, for

@@ -740,6 +740,7 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/data",
     ],
 )
 
