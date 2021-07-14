@@ -299,6 +299,7 @@ struct OpenClInfo {
   int max_work_group_size_z;
   int max_work_group_total_size;
   uint64_t image_pitch_alignment;
+  uint64_t base_addr_align_in_bits;
 
   // rtn is ROUND_TO_NEAREST
   // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
@@ -415,6 +416,7 @@ struct GpuInfo {
 
   OpenClInfo opencl_info;
   bool IsApiOpenCl() const;
+  bool IsCL11OrHigher() const;
   bool IsCL20OrHigher() const;
   bool IsCL30OrHigher() const;
 };

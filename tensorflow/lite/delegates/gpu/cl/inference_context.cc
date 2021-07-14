@@ -19,8 +19,10 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -137,6 +139,12 @@ bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
     }
   }
   return true;
+}
+
+// Calculates the total size of the assignment.
+size_t TotalSize(const ObjectsAssignment<size_t>& assignment) {
+  return std::accumulate(assignment.object_sizes.begin(),
+                         assignment.object_sizes.end(), static_cast<size_t>(0));
 }
 
 }  // namespace
@@ -597,10 +605,33 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
   RETURN_IF_ERROR(AssignObjectsToTensors(
       buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
 
-  shared_buffers_.resize(buffer_assignment.object_sizes.size());
-  for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
-    RETURN_IF_ERROR(CreateReadWriteBuffer(buffer_assignment.object_sizes[i],
-                                          context, &shared_buffers_[i]));
+  size_t base_align_bytes =
+      std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
+  OffsetsAssignment offset_assignment;
+  if (gpu_info.IsCL11OrHigher()) {
+    RETURN_IF_ERROR(AssignOffsetsToTensors(
+        buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
+        &offset_assignment, base_align_bytes));
+  }
+
+  bool use_offset_assignment =
+      gpu_info.IsCL11OrHigher() &&
+      offset_assignment.total_size < TotalSize(buffer_assignment);
+  if (use_offset_assignment) {
+    shared_buffers_.resize(offset_assignment.offsets.size());
+    RETURN_IF_ERROR(CreateReadWriteBuffer(offset_assignment.total_size, context,
+                                          &shared_buffers_parent_));
+    for (int i = 0; i < offset_assignment.offsets.size(); ++i) {
+      RETURN_IF_ERROR(CreateReadWriteSubBuffer(
+          shared_buffers_parent_, offset_assignment.offsets[i],
+          buffer_usage_records[i].tensor_size, context, &shared_buffers_[i]));
+    }
+  } else {
+    shared_buffers_.resize(buffer_assignment.object_sizes.size());
+    for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+      RETURN_IF_ERROR(CreateReadWriteBuffer(buffer_assignment.object_sizes[i],
+                                            context, &shared_buffers_[i]));
+    }
   }
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
@@ -613,7 +644,9 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
       if (created_tensors[tensor_index]) continue;
       const auto& shape = tensor_reserver_.Get(t.first).shape;
-      const int buffer_index = buffer_assignment.object_ids[tensor_index];
+      const int buffer_index = use_offset_assignment
+                                   ? tensor_index
+                                   : buffer_assignment.object_ids[tensor_index];
       if (t.second.storage_type == TensorStorageType::TEXTURE_2D ||
           t.second.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
         const int row_bytes_alignment =

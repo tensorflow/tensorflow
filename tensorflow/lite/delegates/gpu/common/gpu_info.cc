@@ -744,6 +744,13 @@ bool GpuInfo::IsApiOpenCl() const { return gpu_api == GpuApi::kOpenCl; }
 
 bool GpuInfo::IsGlsl() const { return IsApiOpenGl() || IsApiVulkan(); }
 
+bool GpuInfo::IsCL11OrHigher() const {
+  if (!IsApiOpenCl()) {
+    return false;
+  }
+  return opencl_info.cl_version != OpenClVersion::kCl1_0;
+}
+
 bool GpuInfo::IsCL20OrHigher() const {
   if (!IsApiOpenCl()) {
     return false;
