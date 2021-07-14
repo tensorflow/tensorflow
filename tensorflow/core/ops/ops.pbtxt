@@ -37052,6 +37052,13 @@ op {
     name: "external_state_policy"
     type: "int"
   }
+  attr {
+    name: "element_spec"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "Relu"
