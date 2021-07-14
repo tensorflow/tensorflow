@@ -89,11 +89,11 @@ absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
 }
 
 // Returns the number of runtime inputs of the given OpSignature.
-// runtime inputs are input tensors which are not constant tensors.
+// runtime inputs are input tensors which are not constant or optional tensors.
 int GetNumberOfRuntimeInputs(const OpSignature& op_sig) {
   int number_of_runtime_inputs = 0;
   for (auto& input : op_sig.inputs) {
-    if (!input.is_const) {
+    if (!input.is_const && input.type != kTfLiteNoType) {
       number_of_runtime_inputs++;
     }
   }
