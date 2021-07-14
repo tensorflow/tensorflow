@@ -249,19 +249,20 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
     ema = moving_averages.ExponentialMovingAverage(0.8)
     w_apply = ema.apply([w])
     w_assign = w.assign_sub([0.5])
-    return ema.average(w), w_assign, w_apply
+    return w_assign, w_apply, ema.average(w)
 
   @combinations.generate(all_combinations)
   def testReplicaContextGraph(self, distribution):
     if isinstance(distribution,
                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
-      self.skipTest("TPUStrategy removes ops from the outputs in strategy.run.")
+      self.skipTest("b/139550827: Cannot do variable.assign in replica context "
+                    "of TPUStrategy")
     if isinstance(distribution,
                   collective_all_reduce_strategy.CollectiveAllReduceStrategy):
       self.skipTest("b/160194267: Cannot do variable.assign([0.5]) in replica "
                     "context with MultiWorkerMirroredStrategy.")
     with distribution.scope():
-      ema_w, w_assign, w_apply = distribution.run(
+      w_assign, w_apply, ema_w = distribution.run(
           self._ema_replica_fn_graph)
     self.assertEqual(ema_w.name, "w/ExponentialMovingAverage:0")
     self.evaluate(variables.global_variables_initializer())
@@ -272,22 +273,10 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
         self.evaluate(distribution.experimental_local_results(ema_w))[0],
         [0.89999998])
 
-  @combinations.generate(combinations.combine(
-      distribution=[strategy_combinations.tpu_strategy], mode=["graph"]))
-  def testReplicaContextGraphTPUStrategy(self, distribution):
-    with distribution.scope():
-      ema_w, w_assign = distribution.run(
-          self._ema_replica_fn_graph)
-    self.evaluate(variables.global_variables_initializer())
-    self.evaluate(distribution.experimental_local_results(w_assign))
-    self.assertAllClose(
-        self.evaluate(distribution.experimental_local_results(ema_w))[0],
-        [0.89999998])
-
   @combinations.generate(all_combinations)
   def testCrossReplicaContextGraph(self, distribution):
     with distribution.scope():
-      ema_w, w_assign, w_apply = self._ema_replica_fn_graph()
+      w_assign, w_apply, ema_w = self._ema_replica_fn_graph()
     self.assertEqual(ema_w.name, "w/ExponentialMovingAverage:0")
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(distribution.experimental_local_results(w_apply))
