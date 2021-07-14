@@ -70,6 +70,23 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "tfr_decompose_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/generated_decompose.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/decompose_patterns.td",
+    td_srcs = [
+        ":tfr_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "tfr",
     srcs = [
@@ -120,6 +137,7 @@ cc_library(
     srcs = [
         "passes/canonicalize.cc",
         "passes/decompose.cc",
+        "passes/generated_decompose.inc",
         "passes/raise_to_tf.cc",
     ],
     hdrs = [
