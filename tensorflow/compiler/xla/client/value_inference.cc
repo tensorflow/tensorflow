@@ -564,6 +564,43 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
                 HloOpcode::kMaximum, lower_bound_abs, upper_bound_abs);
           });
     }
+    case HloOpcode::kSort: {
+      auto dfs = PostorderDFSNode();
+      InferenceContext dep_context = context;
+      dep_context.shape_index = {};
+      if (!context.shape_index.empty()) {
+        // Lazy evaluation: Only need to evaluate a subelement in a
+        // variadic-sort tensor.
+        dfs.AddDependency(root->operand_ids(context.shape_index[0]),
+                          PostorderDFSNodeType::kConstantUpperBound,
+                          dep_context);
+      } else {
+        for (int64 i = 0; i < root->operand_ids_size(); ++i) {
+          dfs.AddDependency(root->operand_ids(i),
+                            PostorderDFSNodeType::kConstantUpperBound,
+                            dep_context);
+        }
+      }
+
+      return dfs.AddVisit(
+          [root, context](absl::Span<Literal> operands) -> StatusOr<Literal> {
+            std::vector<Literal> results;
+            results.reserve(operands.size());
+            // Conservatively set each element of the tensor to the max value.
+            for (int64 i = 0; i < operands.size(); ++i) {
+              auto max = LiteralUtil::MaxElement(operands[i]);
+              results.emplace_back(
+                  max.Broadcast(operands[i].shape(), {}).ValueOrDie());
+            }
+            if (ShapeUtil::GetSubshape(Shape(root->shape()),
+                                       context.shape_index)
+                    .IsTuple()) {
+              return LiteralUtil::MakeTupleOwned(std::move(results));
+            } else {
+              return std::move(results[0]);
+            }
+          });
+    }
     case HloOpcode::kNegate: {
       // upper-bound(negate(operand)) = negate(lower-bound(operand))
       return PostorderDFSNode()
@@ -746,6 +783,27 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
             return HloProtoEvaluator(*root).WithOperands(operands).Evaluate();
           });
     }
+    case HloOpcode::kSort: {
+      PostorderDFSNode result;
+      for (auto operand_id : root->operand_ids()) {
+        result.AddDependency(operand_id, PostorderDFSNodeType::kConstantValue,
+                             context);
+      }
+      const HloComputationProto* computation_proto =
+          handle_to_computation(root->called_computation_ids(0));
+      return result.AddVisit(
+          [root, context, computation_proto](
+              absl::Span<Literal> operands) -> StatusOr<Literal> {
+            TF_ASSIGN_OR_RETURN(
+                auto computation,
+                HloComputation::CreateFromProto(*computation_proto, {}));
+            return HloProtoEvaluator(*root)
+                .WithOperands(operands)
+                .WithComputation(std::move(computation))
+                .WithSubshape(context.shape_index)
+                .Evaluate();
+          });
+    }
     default:
       return AnalyzeConstantValueFallback(
           handle, PostorderDFSNodeType::kConstantValue, context);
@@ -781,6 +839,66 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
             return LiteralUtil::CreateR0<bool>(
                 operand_proto->shape().is_dynamic_dimension(dimension));
           });
+    }
+    case HloOpcode::kSort: {
+      auto dfs = PostorderDFSNode();
+      InferenceContext dep_context = context;
+      dep_context.shape_index = {};
+
+      for (int64 i = 0; i < root->operand_ids_size(); ++i) {
+        dfs.AddDependency(root->operand_ids(i), type, dep_context);
+      }
+
+      return dfs.AddVisit([root, context, type](absl::Span<Literal> operands)
+                              -> StatusOr<Literal> {
+        bool all_operands_values_static = true;
+        for (int64 i = 0; i < operands.size(); ++i) {
+          all_operands_values_static &= operands[i].IsAll(0);
+        }
+        if (type == PostorderDFSNodeType::kValueIsDynamic) {
+          // If there is a single operand of a sort is dynamic, we
+          // conservatively say all results are dynamic.
+          return CreatePredLiteral(!all_operands_values_static,
+                                   ShapeUtil::GetSubshape(Shape(root->shape()),
+                                                          context.shape_index));
+        }
+        CHECK(type == PostorderDFSNodeType::kBoundIsDynamic);
+        // The condition for bounds are more relaxed than values. If we know the
+        // bounds of each element [B0, B1... Bn], all results have the same
+        // bound
+        // [max(B0, B1...), max(B0, B1...), ...]
+        if (!context.shape_index.empty()) {
+          int64 index = context.shape_index[0];
+          bool all_values_static = operands[index].IsAll(0);
+          return CreatePredLiteral(!all_values_static, operands[index].shape());
+        }
+
+        std::vector<Literal> results;
+        results.reserve(operands.size());
+        for (int64 i = 0; i < operands.size(); ++i) {
+          bool all_values_static = operands[i].IsAll(0);
+          results.emplace_back(
+              CreatePredLiteral(!all_values_static, operands[i].shape()));
+        }
+        if (!ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index)
+                 .IsTuple()) {
+          return std::move(results[0]);
+        }
+        return LiteralUtil::MakeTupleOwned(std::move(results));
+      });
+    }
+    case HloOpcode::kSetDimensionSize:
+      return result.AddVisit([root, type]() {
+        // If values in a tensor `t` with bound are [e0, e1, e2...], we can say
+        // the max value of each position is [max(t), max(t), max(t), ...]. The
+        // effective size of this tensor doesn't change the max value.
+        return CreatePredLiteral(
+            type == PostorderDFSNodeType::kValueIsDynamic,
+            ShapeUtil::MakeStaticShape(Shape(root->shape())));
+      });
+    case HloOpcode::kDynamicSlice: {
+      return result.AddVisit(
+          [root]() { return CreatePredLiteral(true, Shape(root->shape())); });
     }
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:

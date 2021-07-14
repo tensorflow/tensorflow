@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/value_inference.h"
+
 #include <memory>
 #include <utility>
 #include <vector>
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -625,6 +627,32 @@ TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
                    .ValueOrDie()
                    .Get<int32>({})
                    .has_value());
+}
+
+TEST_F(UpperBoundInferenceTest, KeyValueSort) {
+  XlaBuilder comparator_b("comparator");
+  auto p0 = Parameter(&comparator_b, 0, ShapeUtil::MakeShape(S32, {}), "p0");
+  auto p1 = Parameter(&comparator_b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
+  Parameter(&comparator_b, 2, ShapeUtil::MakeShape(S32, {}), "p2");
+  Parameter(&comparator_b, 3, ShapeUtil::MakeShape(S32, {}), "p3");
+  Compare(p0, p1, ComparisonDirection::kGe);
+  TF_ASSERT_OK_AND_ASSIGN(auto comparator, comparator_b.Build());
+
+  int64 elem_count = 17;
+  XlaBuilder b(TestName());
+  auto param = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {elem_count}), "p0");
+  auto iota = Iota(&b, S32, elem_count);
+  auto sort = Sort({param, iota}, comparator);
+  auto gte = GetTupleElement(sort, 1);
+
+  for (int64 i = 0; i < elem_count; ++i) {
+    auto result_first_elem =
+        ComputeUpperBoundLiteral(gte, &b).ValueOrDie().Get<int32>({i});
+    // We can infer the bound of sort.
+    EXPECT_TRUE(result_first_elem.has_value());
+    // The bound of the sort result is the max value in the input.
+    EXPECT_EQ(result_first_elem.value(), elem_count - 1);
+  }
 }
 
 }  // namespace
