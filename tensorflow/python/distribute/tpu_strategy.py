@@ -1493,6 +1493,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       filter_ops = lambda x: [o for o in x if not isinstance(o, ops.Operation)]
       if isinstance(result[0], list):
         result[0] = filter_ops(result[0])
+      if isinstance(result[0], tuple):
+        filtered = filter_ops(result[0])
+        # To keep current behavior for returning single values, do not wrap the
+        # result inside a tuple.
+        if len(filtered) > 1:
+          result[0] = tuple(filter_ops(result[0]))
 
       # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
       if result[0] is None or isinstance(result[0], ops.Operation):
