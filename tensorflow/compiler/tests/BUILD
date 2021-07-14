@@ -765,7 +765,7 @@ tf_xla_py_test(
     name = "ftrl_ops_test",
     size = "medium",
     srcs = ["ftrl_ops_test.py"],
-    enable_mlir_bridge = False,  # TODO(kramm): Set to True once b/191171827 is fixed.
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
