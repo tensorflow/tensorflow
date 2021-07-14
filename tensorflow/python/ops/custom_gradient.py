@@ -210,6 +210,40 @@ def custom_gradient(f=None):
   of `grad_vars`. Note here that default value of `variables` is set to `None`
   when no variables are used in the forward function.
 
+  It should be noted `tf.GradientTape` is still watching the forward pass of a
+  `tf.custom_gradient`, and will use the ops it watches. As a consequence,
+  calling `tf.function` while the tape is still watching leads
+  to a gradient graph being built. If an op is used in `tf.function` without
+  registered gradient, a `LookupError` will be raised.
+
+  Users can insert `tf.stop_gradient` to customize this behavior. This
+  is demonstrated in the example below. `tf.random.shuffle` does not have a
+  registered gradient. As a result `tf.stop_gradient` is used to avoid the
+  `LookupError`.
+
+  ```python
+  x = tf.constant([0.3, 0.5], dtype=tf.float32)
+
+  @tf.custom_gradient
+  def test_func_with_stop_grad(x):
+    @tf.function
+    def _inner_func():
+      # Avoid exception during the forward pass
+      return tf.stop_gradient(tf.random.shuffle(x))
+      # return tf.random.shuffle(x)  # This will raise
+
+    res = _inner_func()
+    def grad(upstream):
+      return upstream  # Arbitrarily defined custom gradient
+    return res, grad
+
+  with tf.GradientTape() as g:
+    g.watch(x)
+    res = test_func_with_stop_grad(x)
+
+  g.gradient(res, x)
+  ```
+
   See also `tf.RegisterGradient` which registers a gradient function for a
   primitive TensorFlow operation. `tf.custom_gradient` on the other hand allows
   for fine grained control over the gradient computation of a sequence of
