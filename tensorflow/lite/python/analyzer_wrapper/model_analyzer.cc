@@ -16,6 +16,7 @@ limitations under the License.
 #include <sstream>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
@@ -52,20 +53,38 @@ void dump_node(std::stringstream& out_stream, const int node_no,
   out_stream << "]\n";
 }
 
+class StreamErrorReporter : public ErrorReporter {
+ public:
+  explicit StreamErrorReporter(std::stringstream* out_stream)
+      : out_stream_(out_stream) {}
+  int Report(const char* format, va_list args) override {
+    char buffer[1024];
+    int size = vsnprintf(buffer, sizeof(buffer), format, args);
+    *out_stream_ << buffer;
+    return size;
+  }
+
+ private:
+  std::stringstream* out_stream_;
+};
+
 std::string model_analyzer(const std::string& model_file_or_buffer,
                            bool input_is_filepath,
                            bool check_gpu_compatibility) {
   std::stringstream out_stream;
+  StreamErrorReporter error_reporter(&out_stream);
   std::unique_ptr<FlatBufferModel> fb_model;
   if (input_is_filepath) {
-    fb_model = FlatBufferModel::BuildFromFile(model_file_or_buffer.c_str());
+    fb_model = FlatBufferModel::BuildFromFile(model_file_or_buffer.c_str(),
+                                              &error_reporter);
     if (!fb_model) {
       out_stream << "Failed to mmap model " << model_file_or_buffer;
       return out_stream.str();
     }
   } else {
     fb_model = FlatBufferModel::BuildFromBuffer(model_file_or_buffer.c_str(),
-                                                model_file_or_buffer.size());
+                                                model_file_or_buffer.size(),
+                                                &error_reporter);
     if (!fb_model) {
       out_stream << "Failed to mmap the given model buffer.";
       return out_stream.str();
