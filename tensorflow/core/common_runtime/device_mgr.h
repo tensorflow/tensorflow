@@ -162,7 +162,7 @@ class DynamicDeviceMgr : public DeviceMgr {
   std::unordered_map<string, int> device_type_counts_
       TF_GUARDED_BY(devices_mu_);
 
-  mutable Device* cpu_device_ TF_GUARDED_BY(devices_mu_);
+  mutable std::atomic<Device*> cpu_device_;  // memoize `HostCPU` result
 
   class DeviceCircularBuffer {
    public:
