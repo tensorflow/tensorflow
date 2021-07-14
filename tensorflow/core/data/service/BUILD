@@ -555,16 +555,18 @@ cc_library(
     hdrs = [
         "test_util.h",
     ],
-    data = ["//tensorflow/core/data/service/testdata"],
     deps = [
         ":common_proto_cc",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/framework:function_proto_cc",
+        "//tensorflow/core/framework:function_testlib",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:node_def_proto_cc",
-        "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -572,6 +574,7 @@ tf_cc_test(
     name = "test_util_test",
     srcs = ["test_util_test.cc"],
     deps = [
+        ":common_proto_cc",
         ":test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -579,9 +582,9 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:types",
     ],
 )
 
