@@ -727,8 +727,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
         &hlo_profile_index_map, &hlo_profile_printer_data));
   }
 
-  std::unique_ptr<Executable> cpu_executable;
-
   // Cache these flags here since we'll want to access them after the module's
   // ownership is std::moved.
   const bool embed_ir_in_executable =
@@ -810,17 +808,29 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   llvm::orc::ThreadSafeModule thread_safe_module(std::move(llvm_module),
                                                  std::move(llvm_context));
   cantFail((*jit)->AddModule(std::move(thread_safe_module)));
-  cpu_executable.reset(new CpuExecutable(
+
+  auto cpu_executable = absl::make_unique<CpuExecutable>(
       std::move(*jit), std::move(assignment), std::move(module), function_name,
-      std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map)));
+      std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map));
 
   if (embed_ir_in_executable) {
-    static_cast<CpuExecutable&>(*cpu_executable)
-        .set_ir_module_string(ir_module_string);
+    cpu_executable->set_ir_module_string(ir_module_string);
   }
 
+  // Dump computation proto state and buffer assignment for debug and test, if
+  // dump is enabled.
+  if (DumpingEnabledForHloModule(cpu_executable->module())) {
+    auto hlo_proto = absl::make_unique<HloProto>();
+    *hlo_proto->mutable_hlo_module() = cpu_executable->module().ToProto();
+    *hlo_proto->mutable_buffer_assignment() =
+        cpu_executable->buffer_assignment().ToProto();
+    cpu_executable->set_hlo_proto(std::move(hlo_proto));
+  }
+
+  cpu_executable->set_debug_info(
+      cpu_executable->buffer_assignment().GetStats().ToString());
   VLOG(1) << "Compilation finished";
-  return std::move(cpu_executable);
+  return std::unique_ptr<Executable>(std::move(cpu_executable));
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

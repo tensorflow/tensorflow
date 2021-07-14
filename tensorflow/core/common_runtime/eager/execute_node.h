@@ -205,7 +205,7 @@ class AsyncExecuteNode : public EagerNode {
     if (!status.ok()) {
       if (stack_trace_.has_value()) {
         status = Status(status.code(), status.error_message(),
-                        stack_trace_->ToStackFrames());
+                        stack_trace_->ToStackFrames({}, {}));
       }
       Abort(status);
       return status;

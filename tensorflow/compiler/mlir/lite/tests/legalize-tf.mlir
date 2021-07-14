@@ -2168,3 +2168,19 @@ func @mul_i64(%arg0: tensor<14xi64>, %arg1: tensor<14xi64>) -> tensor<14xi64> {
 // CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xi64>
 // CHECK:  return
 }
+
+func @broadcast_args(%arg0: tensor<3xi32>, %arg1: tensor<1xi32>) -> tensor<3xi32> {
+  %0 = "tf.BroadcastArgs"(%arg0, %arg1) : (tensor<3xi32>, tensor<1xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+
+// CHECK-LABEL:broadcast_args
+// CHECK:  "tfl.broadcast_args"(%arg0, %arg1) : (tensor<3xi32>, tensor<1xi32>) -> tensor<3xi32>
+}
+
+func @broadcast_args_i64(%arg0: tensor<3xi64>, %arg1: tensor<1xi64>) -> tensor<3xi64> {
+  %0 = "tf.BroadcastArgs"(%arg0, %arg1) : (tensor<3xi64>, tensor<1xi64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+
+// CHECK-LABEL:broadcast_args_i64
+// CHECK:  "tfl.broadcast_args"(%arg0, %arg1) : (tensor<3xi64>, tensor<1xi64>) -> tensor<3xi64>
+}

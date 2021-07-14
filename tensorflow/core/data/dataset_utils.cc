@@ -892,8 +892,8 @@ absl::flat_hash_map<string, int64> DatasetExperimentRegistry::Experiments() {
 namespace {
 
 REGISTER_DATASET_EXPERIMENT("enable_gradient_descent", 0);
-REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 50);
-REGISTER_DATASET_EXPERIMENT("max_parallelism", 5);
+REGISTER_DATASET_EXPERIMENT("parallelize_batch_copy", 100);
+REGISTER_DATASET_EXPERIMENT("max_parallelism", 20);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

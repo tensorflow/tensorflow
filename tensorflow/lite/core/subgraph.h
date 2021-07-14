@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
@@ -49,7 +50,8 @@ class Subgraph {
            TfLiteExternalContext** external_contexts,
            std::vector<std::unique_ptr<Subgraph>>* subgraphs,
            resource::ResourceMap* resources,
-           resource::ResourceIDMap* resource_ids);
+           resource::ResourceIDMap* resource_ids,
+           resource::InitializationStatusMap* initialization_status_map);
 
   Subgraph(const Subgraph&) = delete;
 
@@ -176,6 +178,12 @@ class Subgraph {
   // WARNING: Experimental interface, subject to change.
   // TODO(b/149099381): Move this function to an external context interface.
   resource::ResourceIDMap& resource_ids() { return *resource_ids_; }
+
+  // WARNING: Experimental interface, subject to change.
+  // TODO(b/149099381): Move this function to an external context interface.
+  resource::InitializationStatusMap& initialization_status_map() {
+    return *initialization_status_map_;
+  }
 
   size_t tensors_size() const { return tensors_.size(); }
 
@@ -763,6 +771,10 @@ class Subgraph {
   // A map of resources IDs. Owned by interpreter and shared by multiple
   // subgraphs.
   resource::ResourceIDMap* resource_ids_ = nullptr;
+
+  // A map of initialization statuses, that indicate whether the intialization
+  // subgraph invocation is done or not.
+  resource::InitializationStatusMap* initialization_status_map_;
 
   // Name of the subgraph (analogous to function name).
   std::string name_;

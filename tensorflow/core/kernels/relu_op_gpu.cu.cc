@@ -328,8 +328,7 @@ struct GeluGrad<GPUDevice, T> {
 
 }  // namespace functor
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 #define DEFINE_GPU_NO_MLIR_KERNELS(T)          \
   template struct functor::Relu<GPUDevice, T>; \
   template struct functor::Elu<GPUDevice, T>;  \

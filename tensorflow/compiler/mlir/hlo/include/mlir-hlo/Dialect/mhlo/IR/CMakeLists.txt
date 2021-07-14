@@ -55,6 +55,7 @@ add_mlir_hlo_dialect_separate_files(lhlo_ops NO)
 add_mlir_hlo_dialect_separate_files(lhlo_gpu_ops YES)
 
 add_mlir_interface(infer_fusibility_op_interface)
+add_mlir_interface(lhlo_structured_interface)
 
 function(add_disc_ral_dialect dialect)
   set(LLVM_TARGET_DEFINITIONS ${dialect}.td)

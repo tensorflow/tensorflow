@@ -1650,10 +1650,10 @@ ENTRY CRS {
 
 )"
 },
-// all-reduce-scatter
+// reduce-scatter
 {
-"AllReduceScatter",
-R"(HloModule ARS
+"ReduceScatter",
+R"(HloModule RS
 
 add {
   lhs = f32[] parameter(0)
@@ -1663,7 +1663,7 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT ars = f32[4]{0} all-reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+  ROOT ars = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
 }
 
 )"

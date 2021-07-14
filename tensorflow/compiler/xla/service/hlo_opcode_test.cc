@@ -52,7 +52,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kAfterAll:
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
-      case HloOpcode::kAllReduceScatter:
+      case HloOpcode::kReduceScatter:
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllToAll:
       case HloOpcode::kCall:

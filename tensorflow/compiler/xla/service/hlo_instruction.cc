@@ -427,8 +427,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
-    case HloOpcode::kAllReduceStart: {
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kReduceScatter: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "AllReduce should have 1 called computation but sees "
           << proto.called_computation_ids_size();
@@ -448,11 +448,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             CreateAllReduce(shape, all_operands(), computations(0),
                             replica_groups, proto.constrain_layout(),
                             channel_id, proto.use_global_device_ids());
-      } else if (opcode == HloOpcode::kAllReduceScatter) {
+      } else if (opcode == HloOpcode::kReduceScatter) {
         TF_RET_CHECK(proto.dimensions_size() == 1)
-            << "AllReduceScatter cannot have more than 1 scatter dimensions";
+            << "ReduceScatter cannot have more than 1 scatter dimensions";
         int64 scatter_dimension = proto.dimensions(0);
-        instruction = CreateAllReduceScatter(
+        instruction = CreateReduceScatter(
             shape, all_operands(), computations(0), replica_groups,
             proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
             scatter_dimension);
@@ -1120,13 +1120,13 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateAllReduceScatter(
+HloInstruction::CreateReduceScatter(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids,
     int64 scatter_dimension) {
-  return absl::make_unique<HloAllReduceScatterInstruction>(
+  return absl::make_unique<HloReduceScatterInstruction>(
       shape, operands, reduce_computation, replica_groups, constrain_layout,
       channel_id, use_global_device_ids, scatter_dimension);
 }
@@ -1799,7 +1799,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
@@ -2343,7 +2343,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kOutfeed:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
@@ -2550,7 +2550,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
@@ -2968,7 +2968,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kReduceWindow ||
                opcode() == HloOpcode::kReduce ||
                opcode() == HloOpcode::kAllReduce ||
-               opcode() == HloOpcode::kAllReduceScatter ||
+               opcode() == HloOpcode::kReduceScatter ||
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
@@ -3282,8 +3282,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAllGather(this);
     case HloOpcode::kAllReduce:
       return visitor->HandleAllReduce(this);
-    case HloOpcode::kAllReduceScatter:
-      return visitor->HandleAllReduceScatter(this);
+    case HloOpcode::kReduceScatter:
+      return visitor->HandleReduceScatter(this);
     case HloOpcode::kAllReduceStart:
       return visitor->HandleAllReduceStart(this);
     case HloOpcode::kAllReduceDone:

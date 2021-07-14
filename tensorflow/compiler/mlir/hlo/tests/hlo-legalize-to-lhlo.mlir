@@ -569,5 +569,13 @@ func @isfinite(%arg0: tensor<2x2xf32>) -> tensor<2x2xi1> {
   return %result : tensor<2x2xi1>
 }
 
+// -----
+
+// CHECK-LABEL: func @zero_inputs
+func @zero_inputs() -> tensor<100x100xf32> {
+  // CHECK: "lmhlo.constant"(%{{.*}})
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<100x100xf32>
+  return %0 : tensor<100x100xf32>
+}
 
 

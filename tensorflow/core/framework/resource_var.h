@@ -17,6 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/lib/core/status.h"
+
+// Forward declarations to avoid introducing a dependency on headers in
+// "tensorflow/core/graph/...".
+class GraphDefBuilder;
 
 namespace tensorflow {
 
@@ -66,6 +71,8 @@ class Var : public ResourceBase {
   // TODO(ebrevdo): Use LockSet instead of exposing mu.
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }
+
+  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override;
 
   std::string DebugString() const override {
     return strings::StrCat(DataTypeString(tensor_.dtype()), "/",

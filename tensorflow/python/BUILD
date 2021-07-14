@@ -2918,6 +2918,26 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "nn_fused_batchnorm_deterministic_test",
+    size = "medium",
+    srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
+    python_version = "PY3",
+    tags = ["no_rocm"],
+    deps = [
+        ":client_testlib",
+        ":config",
+        ":constant_op",
+        ":dtypes",
+        ":errors",
+        ":nn",
+        ":nn_grad",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "nn_fused_batchnorm_test",
     size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],

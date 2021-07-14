@@ -193,7 +193,7 @@ func @float_expm1(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @float_log
 func @float_log(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
-  // CHECK: log
+  // CHECK: math.log
   %0 = "mhlo.log"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -203,7 +203,7 @@ func @float_log(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @complex_log
 func @complex_log(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
   // CHECK: linalg.generic
-  // CHECK: log
+  // CHECK: complex.log
   %0 = "mhlo.log"(%arg0) : (tensor<2x2xcomplex<f32>>)
                          -> tensor<2x2xcomplex<f32>>
   return %0 : tensor<2x2xcomplex<f32>>
@@ -214,9 +214,21 @@ func @complex_log(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
 // CHECK-LABEL: func @float_log1p
 func @float_log1p(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
-  // CHECK: log1p
+  // CHECK: math.log1p
   %0 = "mhlo.log_plus_one"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_log1p
+func @complex_log1p(%arg0: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.log1p
+  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<2x2xcomplex<f32>>)
+                                  -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -1249,6 +1261,29 @@ func @dynamic_broadcast_in_dim(%scalar: tensor<f32>, %shape: tensor<2xi32>)
   } : (tensor<f32>, tensor<2xi32>) -> tensor<?x32xf32>
   return %result : tensor<?x32xf32>
 }
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0) -> ()>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0) -> (d0)>
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim(
+// CHECK-SAME: [[SHAPE:%.*]]: tensor<1xindex>, [[CSTARG:%.*]]: tensor<ui32>
+func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>, %cst: tensor<ui32>) -> tensor<?xui32> {
+  %result = "mhlo.dynamic_broadcast_in_dim"(%cst, %shape) {
+     broadcast_dimensions = dense<> : tensor<0xi64>
+  } : (tensor<ui32>, tensor<1xindex>) -> tensor<?xui32>
+  return %result : tensor<?xui32>
+}
+// CHECK: [[CST:%.*]] = unrealized_conversion_cast [[CSTARG]] : tensor<ui32> to tensor<i32>
+// CHECK: [[INIT:%.*]] = linalg.init_tensor
+// CHECK: [[GENERIC:%.*]] = linalg.generic
+// CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-SAME: ins([[CST]] : tensor<i32>) outs([[INIT]] : tensor<?xi32>)
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: i32, %[[RESULT:.*]]: i32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : i32
+// CHECK: [[RES:%.*]] = unrealized_conversion_cast [[GENERIC]] : tensor<?xi32> to tensor<?xui32>
+// CHECK: return [[RES]] : tensor<?xui32>
 
 // -----
 
@@ -2840,4 +2875,63 @@ func @const_splat() -> tensor<3xi16> {
   // CHECK: = constant dense<1> : tensor<3xi16>
   %cst = mhlo.constant dense<1> : tensor<3xi16>
   return %cst : tensor<3xi16>
+}
+
+// -----
+
+// CHECK-LABEL: compute_reshape_shape
+// CHECK-SAME: %[[NUM_ELS:.*]]: index
+// CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
+func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: %[[N1:.*]] = constant -1 : index
+  // CHECK: %[[IT:.*]] = index_cast %[[TARGET_SHAPE]] : tensor<2xi32> to tensor<2xindex>
+  // CHECK: %[[RANK:.*]] = shape.rank %[[IT]] : tensor<2xindex> -> index
+  // CHECK: %[[TOTAL:.*]] = shape.reduce(%[[IT]], %[[N1]]) : tensor<2xindex> -> index {
+  // CHECK:   ^bb0(%[[IDX:.*]]: index, %[[VAL:.*]]: index, %[[REDUCTION:.*]]: index): // no predecessors
+  // CHECK:   %[[NEW_RED:.*]] = muli %[[VAL]], %[[REDUCTION]] : index
+  // CHECK:   shape.yield %[[NEW_RED]] : index
+  // CHECK: }
+  // CHECK: %[[DYNAMIC_EXTENT:.*]] = divi_unsigned %[[NUM_ELS]], %[[TOTAL]] : index
+  // CHECK: %[[COMPUTED_SHAPE:.*]] = tensor.generate   {
+  // CHECK:   ^bb0(%[[ARG:.*]]: index):  // no predecessors
+  // CHECK:   %[[EXT1:.*]] = shape.get_extent %[[IT]], %[[ARG]] : tensor<2xindex>, index -> index
+  // CHECK:   %[[IS_DYNAMIC:.*]] = cmpi eq, %[[EXT1]], %[[N1]] : index
+  // CHECK:   %[[EXTENT:.*]] = select %[[IS_DYNAMIC]], %[[DYNAMIC_EXTENT]], %[[EXT1]] : index
+  // CHECK:   %[[EXTENT_INT:.*]] = index_cast %[[EXTENT]] : index to i32
+  // CHECK:   tensor.yield %[[EXTENT_INT]] : i32
+  // CHECK: } : tensor<2xi32>
+  %0 = "mhlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<2xi32>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: cstr_reshapable_op
+// CHECK-SAME: %[[NUM_ELS:.*]]: index
+// CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
+func @cstr_reshapable_op(%arg0: index, %arg1: tensor<2xi32>) -> !shape.witness {
+  // CHECK-DAG: %[[N1:.*]] = constant -1 : index
+  // CHECK-DAG: %[[C0:.*]] = constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = constant 2 : index
+  // CHECK: %[[IT0:.*]] = index_cast %[[TARGET_SHAPE]] : tensor<2xi32> to tensor<2xindex>
+  // CHECK: %[[VALID:.*]]:3 = shape.reduce(%[[IT0]], %[[C1]], %[[C0]], %[[C0]]) : tensor<2xindex> -> (index, index, index) {
+  // CHECK:   ^bb0(%[[IDX:.*]]: index, %[[VAL:.*]]: index, %[[PROD:.*]]: index, %[[DYN_DIMS:.*]]: index, %[[ILLEGAL_DIMS:.*]]: index): // no predecessors
+  // CHECK:   %[[V1:.*]] = cmpi eq, %[[N1]], %[[VAL]] : index
+  // CHECK:   %[[V2:.*]] = cmpi slt, %[[VAL]], %[[N1]] : index
+  // CHECK:   %[[V3:.*]] = select %[[V1]], %[[C1]], %[[C0]] : index
+  // CHECK:   %[[V4:.*]] = addi %[[V3]], %[[DYN_DIMS]] : index
+  // CHECK:   %[[V5:.*]] = select %[[V2]], %[[C1]], %[[C0]] : index
+  // CHECK:   %[[V6:.*]] = addi %[[V5]], %[[ILLEGAL_DIMS]] : index
+  // CHECK:   %[[V7:.*]] = select %[[V1]], %[[C1]], %[[VAL]] : index
+  // CHECK:   %[[V8:.*]] = muli %[[V7]], %[[PROD]] : index
+  // CHECK:   shape.yield %[[V8]], %[[V4]], %[[V6]] : index, index, index
+  // CHECK: }
+  // CHECK: %[[REM:.*]] = remi_signed %[[NUM_ELS]], %[[VALID]]#0 : index
+  // CHECK: %[[DIVISIBLE:.*]] = cmpi eq, %[[C0]], %[[REM]] : index
+  // CHECK: %[[NOT_TOO_DYNAMIC:.*]] = cmpi ult, %[[C2]], %[[VALID]]#1 : index
+  // CHECK: %[[ALL_VALID_DIMS:.*]] = cmpi eq, %[[C0]], %[[VALID]]#0 : index
+  // CHECK: %[[PARTIAL_AND:.*]] = and %[[NOT_TOO_DYNAMIC]], %[[ALL_VALID_DIMS]] : i1
+  // CHECK: %[[ALL_CSTRS:.*]] = and %[[DIVISIBLE]], %[[PARTIAL_AND]] : i1
+  // CHECK: %[[W:.*]] = shape.cstr_require %[[ALL_CSTRS]], "Required valid reshape shape input"
+  %0 = "mhlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<2xi32>) -> !shape.witness
+  return %0 : !shape.witness
 }

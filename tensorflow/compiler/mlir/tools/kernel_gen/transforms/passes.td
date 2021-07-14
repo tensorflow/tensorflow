@@ -60,6 +60,11 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
+def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
+  let summary = "Pass to transform the IR to be on signless integers.";
+  let constructor = "transforms::CreateConvertToSignlessPass()";
+}
+
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
   let summary = "Pass to transform a gpu module to nvvm.";
   let constructor = "transforms::CreateGpuKernelToNvvmPass()";
@@ -125,6 +130,12 @@ def FuseInnerParallelLoopsPass
     a passmanager alone ATM, as nested pass managers require operations to
     be closed from above.
   }];
+}
+
+def LowerIndexCastPass
+    : FunctionPass<"kernelgen-lower-index-cast"> {
+  let summary = "Lower index cast on tensors to tensor dialect";
+  let constructor = "transforms::CreateLowerIndexCastPass()";
 }
 
 def ShapeSimplification

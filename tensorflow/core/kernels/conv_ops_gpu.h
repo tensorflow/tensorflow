@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -132,20 +133,15 @@ class ConvParameters {
   uint64 hash() const { return hash_code_; }
 
   string ToString() const {
-    // clang-format off
-    return strings::StrCat(
-        batch_, ", ", in_depths_, ", ",
-        "(", str_util::Join(in_, ", "), "), ",
-        ::tensorflow::ToString(data_format_), ", ",
-        out_depths_, ", ",
-        "(", str_util::Join(filter_, ", "), "), ",
-        "(", str_util::Join(dilation_, ", "), "), ",
-        "(", str_util::Join(stride_, ", "), "), ",
-        "(", str_util::Join(padding_, ", "), "), ",
-        dtype_, ", ",
-        device_id_,
-        group_count_);
-    // clang-format on
+    return absl::StrFormat(
+        "batch=%d, in_depth=%d, in=(%s), out_depth=%d, filter=(%s), "
+        "%s, %s, dilation=(%s), stride=(%s), padding=(%s), group_count=%d, "
+        "device_id=%d",
+        batch_, in_depths_, absl::StrJoin(in_, ","), out_depths_,
+        absl::StrJoin(filter_, ","), DataTypeString(dtype_),
+        ::tensorflow::ToString(data_format_), absl::StrJoin(dilation_, ","),
+        absl::StrJoin(stride_, ","), absl::StrJoin(padding_, ","), group_count_,
+        device_id_);
   }
 
   // The purpose of this function is to disable winograd nonfused conv algorithm

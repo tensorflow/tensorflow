@@ -2508,9 +2508,10 @@ def async_wait():
   actual execution. Calling this method creates a synchronization barrier for
   all async op and function execution. It only returns when all pending nodes
   are finished, potentially raising exceptions if async execution results in
-  an error state.
+  an error state. It is a no-op if the context is not initialized.
   """
-  context().sync_executors()
+  if context()._context_handle is not None:  # pylint: disable=protected-access
+    context().sync_executors()
 
 
 @tf_export("experimental.async_clear_error")

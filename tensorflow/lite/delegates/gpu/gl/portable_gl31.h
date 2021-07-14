@@ -32,5 +32,6 @@ limitations under the License.
 #endif  // __ANDROID__
 
 #include <GLES3/gl31.h>
+#include <GLES3/gl32.h>
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_PORTABLE_GL31_H_

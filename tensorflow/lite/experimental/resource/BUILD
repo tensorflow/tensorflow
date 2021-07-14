@@ -8,10 +8,12 @@ package(
 cc_library(
     name = "resource",
     srcs = [
+        "initialization_status.cc",
         "resource_variable.cc",
         "static_hashtable.cc",
     ],
     hdrs = [
+        "initialization_status.h",
         "lookup_interfaces.h",
         "lookup_util.h",
         "resource_base.h",

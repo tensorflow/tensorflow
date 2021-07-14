@@ -58,3 +58,8 @@ def wrapped_experimental_mlir_sparsify(input_data_str):
 def wrapped_register_custom_opdefs(custom_opdefs_list):
   """Wraps RegisterCustomOpdefs with lazy loader."""
   return _pywrap_toco_api.RegisterCustomOpdefs(custom_opdefs_list)
+
+
+def wrapped_retrieve_collected_errors():
+  """Wraps RetrieveCollectedErrors with lazy loader."""
+  return _pywrap_toco_api.RetrieveCollectedErrors()

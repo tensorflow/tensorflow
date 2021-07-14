@@ -170,10 +170,13 @@ add_mlir_library(MhloLhloToLinalg
 
 add_mlir_library(LmhloPasses
   fusion_utils.cc
+  input_inline_fusion_pass.cc
   legalize_tensor_load_op.cc
+  lhlo_elemental_utils.cc
   lhlo_fuse_linalg.cc
   lhlo_fusion.cc
   lhlo_fusion_inliner.cc
+  lhlo_legalize_roots_to_loops.cc
   lhlo_legalize_to_affine.cc
   lhlo_legalize_to_gpu.cc
   lhlo_legalize_to_parallel_loops.cc
@@ -207,10 +210,27 @@ add_mlir_library(DiscRalPasses
   MLIRPass
 )
 
+add_mlir_library(DiscRalToLLVM
+  ral_legalize_to_llvm.cc
+
+  DEPENDS
+  MLIRdisc_ral_opsIncGen
+  MLIRDiscRalPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  DiscRalDialect
+  MLIRIR
+  MLIRPass
+)
+
 add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   DiscRalPasses
+  DiscRalToLLVM
   MhloPasses
   MhloToLhloConversion
   MhloToMemrefConversion

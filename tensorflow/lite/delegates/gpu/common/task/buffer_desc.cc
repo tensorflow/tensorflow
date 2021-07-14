@@ -35,6 +35,11 @@ GPUResources BufferDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   desc.element_size = element_size;
   desc.memory_type = memory_type;
   desc.attributes = attributes;
+  if (gpu_info.IsApiOpenGl() &&
+      memory_type == tflite::gpu::MemoryType::CONSTANT) {
+    desc.attributes.push_back(
+        std::to_string(size / (element_size * SizeOf(element_type))));
+  }
   resources.buffers.push_back({"buffer", desc});
   return resources;
 }
@@ -44,7 +49,7 @@ absl::Status BufferDescriptor::PerformSelector(
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Read") {
-    return PerformReadSelector(args, result);
+    return PerformReadSelector(gpu_info, args, result);
   } else if (selector == "GetPtr") {
     return PerformGetPtrSelector(args, template_args, result);
   } else {
@@ -54,14 +59,34 @@ absl::Status BufferDescriptor::PerformSelector(
 }
 
 absl::Status BufferDescriptor::PerformReadSelector(
-    const std::vector<std::string>& args, std::string* result) const {
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
   if (args.size() != 1) {
     return absl::NotFoundError(
         absl::StrCat("BufferDescriptor Read require one argument, but ",
                      args.size(), " was passed"));
   }
-  *result = absl::StrCat("buffer[", args[0], "]");
-  return absl::OkStatus();
+  if (gpu_info.IsApiOpenGl()) {
+    if (element_type == DataType::FLOAT16) {
+      if (memory_type == MemoryType::CONSTANT) {
+        const std::string arg0 = "(" + args[0] + ")";
+        *result =
+            absl::StrCat("vec4(unpackHalf2x16(buffer[", arg0, " / 2][", arg0,
+                         " % 2 == 0 ? 0 : 2]), unpackHalf2x16(buffer[", arg0,
+                         " / 2][", arg0, " % 2 == 0 ? 1 : 3]))");
+      } else {
+        *result =
+            absl::StrCat("vec4(unpackHalf2x16(buffer[", args[0],
+                         "].x), unpackHalf2x16(buffer[", args[0], "].y))");
+      }
+    } else {
+      *result = absl::StrCat("buffer[", args[0], "]");
+    }
+    return absl::OkStatus();
+  } else {
+    *result = absl::StrCat("buffer[", args[0], "]");
+    return absl::OkStatus();
+  }
 }
 
 absl::Status BufferDescriptor::PerformGetPtrSelector(

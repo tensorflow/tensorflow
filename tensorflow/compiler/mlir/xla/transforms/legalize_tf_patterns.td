@@ -16,6 +16,7 @@ limitations under the License.
 // This is the legalization pattern definition file for TF to XLA.
 
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Shape/IR/ShapeOps.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -438,6 +439,20 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
           )]>;
 
 //===----------------------------------------------------------------------===//
+// Lower `tf.ZerosLike`
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_ZerosLikeOp AnyTensor:$arg),
+          (HLO_ConstantLike<"0"> $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Lower `tf.OnesLike`
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_OnesLikeOp AnyTensor:$arg),
+          (HLO_ConstantLike<"1"> $arg)>;
+
+//===----------------------------------------------------------------------===//
 // Elu op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -649,8 +664,12 @@ def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutat
 // TODO(hinsu): Update once HLO supports dynamic reshaping ops.
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res $arg, $ignored),
-            (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
+            (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)],
+            (addBenefit 2)>;
 }
+
+def : Pat<(TF_ReshapeOp:$res $arg, $shape),
+          (HLOClient_DynamicReshapeOp $arg, $shape)>;
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 def : Pat<(TF_SignOp $x), (HLO_SignOp $x)>;

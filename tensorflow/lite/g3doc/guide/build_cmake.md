@@ -119,13 +119,19 @@ Here is the list of available options. You can override it with
 `-D<option_name>=[ON|OFF]`. For example, `-DTFLITE_ENABLE_XNNPACK=OFF` to
 disable XNNPACK which is enabled by default.
 
-Option Name           | Feature                                  | Default
---------------------- | ---------------------------------------- | ------------
-TFLITE_ENABLE_RUY     | Enable RUY matrix multiplication library | OFF
-TFLITE_ENABLE_NNAPI   | Enable NNAPI delegate                    | ON (Android)
-TFLITE_ENABLE_GPU     | Enable GPU delegate                      | OFF
-TFLITE_ENABLE_XNNPACK | Enable XNNPACK delegate                  | ON
-TFLITE_ENABLE_MMAP    | Enable MMAP (unsupported on Windows)     | ON
+| Option Name           | Feature        | Android | Linux | macOS | Windows |
+| --------------------- | -------------- | ------- | ----- | ----- | ------- |
+| TFLITE_ENABLE_RUY     | Enable RUY     | ON      | OFF   | OFF   | OFF     |
+:                       : matrix         :         :       :       :         :
+:                       : multiplication :         :       :       :         :
+:                       : library        :         :       :       :         :
+| TFLITE_ENABLE_NNAPI   | Enable NNAPI   | ON      | OFF   | N/A   | N/A     |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_GPU     | Enable GPU     | OFF     | OFF   | N/A   | N/A     |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_XNNPACK | Enable XNNPACK | ON      | ON    | ON    | ON      |
+:                       : delegate       :         :       :       :         :
+| TFLITE_ENABLE_MMAP    | Enable MMAP    | ON      | ON    | ON    | N/A     |
 
 ## Create a CMake project which uses TensorFlow Lite
 

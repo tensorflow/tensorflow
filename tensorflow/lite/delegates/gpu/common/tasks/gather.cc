@@ -41,9 +41,8 @@ std::string GetGatherCode(const OperationDef& op_def) {
        "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  int4 ind = CONVERT_TO_INT4(args.indices.Read(0, 0, X / 4));\n";
-  c += "  int ind_ar[4] = {ind.x, ind.y, ind.z, ind.w};\n";
-  c += "  int src_x = ind_ar[X % 4];\n";
+  c += "  FLT4 ind = args.indices.Read(0, 0, X / 4);\n";
+  c += "  int src_x = INIT_INT(SELECT_BY_INDEX_FROM_FLT4(ind, X % 4));\n";
   c += "  FLT4 result = args.src_tensor.Read(src_x, Y, S);\n";
   c += "  args.dst_tensor.Write(result, X, Y, S);\n";
   c += "}\n";

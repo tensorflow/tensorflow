@@ -117,6 +117,18 @@ struct CanonicalDebugOptions {
       should_dump_pass = [](string_view) { return false; };
     }
 
+    // Initialize should_dump_pipeline. If the option was not specified, dump
+    // all pipelines. Otherwise dump only those pipelines that user asked for
+    // explicitly.
+    if (!opts.xla_dump_hlo_pipeline_re().empty()) {
+      string pattern = opts.xla_dump_hlo_pipeline_re();
+      should_dump_pipeline = [pattern](string_view pipeline_name) {
+        return RE2::PartialMatch(pipeline_name, pattern);
+      };
+    } else {
+      should_dump_pipeline = [](string_view) { return true; };
+    }
+
     // Output dirs "sponge" and "test_undeclared_outputs_dir" (case-insensitive)
     // have a special meaning: Dump into the directory specified by the
     // environment variable TEST_UNDECLARED_OUTPUTS_DIR.
@@ -129,6 +141,7 @@ struct CanonicalDebugOptions {
                       "is not set, so cannot dump anywhere.";
         should_dump_module = [](string_view) { return false; };
         should_dump_pass = [](string_view) { return false; };
+        should_dump_pipeline = [](string_view) { return false; };
       }
     }
   }
@@ -138,6 +151,7 @@ struct CanonicalDebugOptions {
   string dump_to;
   std::function<bool(string_view module_name)> should_dump_module;
   std::function<bool(string_view pass_name)> should_dump_pass;
+  std::function<bool(string_view pipeline_name)> should_dump_pipeline;
 
   // dump_ir isn't present here because this file is mostly concerned with
   // dumping HLO.
@@ -535,6 +549,10 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
 
   if (!opts.should_dump_pass(before_pass_name) &&
       !opts.should_dump_pass(after_pass_name)) {
+    return {};
+  }
+
+  if (!opts.should_dump_pipeline(pipeline_name)) {
     return {};
   }
 

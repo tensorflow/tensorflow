@@ -64,6 +64,7 @@ def _make_worker(dispatcher_address, shutdown_quiet_period_ms=0, port=0):
   return server_lib.WorkerServer(config_proto, start=False)
 
 
+# pylint: disable=protected-access
 class TestWorker(object):
   """A tf.data service worker."""
 
@@ -74,12 +75,11 @@ class TestWorker(object):
     self._running = False
 
   def stop(self):
-    self._server._stop()  # pylint: disable=protected-access
+    self._server._stop()
     self._running = False
 
   def start(self):
     self._server.start()
-    # pylint: disable=protected-access
     self._port = int(self._server._address.split(":")[1])
     self._running = True
 
@@ -93,16 +93,16 @@ class TestWorker(object):
     self._server = _make_worker(self._dispatcher_address,
                                 self._shutdown_quiet_period_ms, port)
     self._server.start()
-    # pylint: disable=protected-access
     self._port = int(self._server._address.split(":")[1])
     self._running = True
 
+  def join(self):
+    self._server.join()
+
   def num_tasks(self):
-    # pylint: disable=protected-access
     return self._server._num_tasks()
 
   def worker_address(self):
-    # pylint: disable=protected-access
     return self._server._address
 
 

@@ -121,6 +121,42 @@ inline void UpdateStateValues(Node::ModelParameters* parameters) {
   }
 }
 
+// Recursively produces protos for nodes in a subtree of `output` node and
+// appends them to nodes of the given model.
+Status ModelToProtoHelper(std::shared_ptr<Node> output, ModelProto* model) {
+  model->set_output(output->id());
+  std::list<std::shared_ptr<Node>> to_serialize = {output};
+  auto& nodes = *model->mutable_nodes();
+  while (!to_serialize.empty()) {
+    const std::shared_ptr<Node> node = to_serialize.front();
+    to_serialize.pop_front();
+    TF_RETURN_IF_ERROR(node->ToProto(&(nodes[node->id()])));
+    for (auto input : node->inputs()) {
+      to_serialize.push_back(input);
+    }
+  }
+  return Status::OK();
+}
+
+// Recursively produces node tree rooted in `output` from the given model proto.
+Status ModelFromProtoHelper(ModelProto model, std::shared_ptr<Node>* output) {
+  TF_RETURN_IF_ERROR(Node::FromProto(model.nodes().at(model.output()),
+                                     /*output=*/nullptr, output));
+  std::list<std::shared_ptr<Node>> to_restore_inputs = {*output};
+  while (!to_restore_inputs.empty()) {
+    std::shared_ptr<Node> node = to_restore_inputs.front();
+    to_restore_inputs.pop_front();
+    for (int64 input_id : model.nodes().at(node->id()).inputs()) {
+      std::shared_ptr<Node> input;
+      TF_RETURN_IF_ERROR(
+          Node::FromProto(model.nodes().at(input_id), node, &input));
+      node->add_input(input);
+      to_restore_inputs.push_back(input);
+    }
+  }
+  return Status::OK();
+}
+
 // The first input of InterleaveMany corresponds to the input dataset whose
 // elements are used to create the (derived) input datasets whose elements are
 // interleaved as output.
@@ -1481,10 +1517,9 @@ Status Node::ToProto(ModelProto::Node* node_proto) const {
     parameter_proto->set_tunable(parameter.second->state->tunable);
   }
 
-  // Produce protos for all inputs.
+  // Add input node ids.
   for (auto const& input : inputs_) {
-    ModelProto::Node* input_proto = node_proto->add_inputs();
-    TF_RETURN_IF_ERROR(input->ToProto(input_proto));
+    node_proto->add_inputs(input->id());
   }
   return Status::OK();
 }
@@ -1529,41 +1564,29 @@ Status Node::FromProto(ModelProto::Node node_proto,
                        std::shared_ptr<Node>* node) {
   // Note that parameters are restored in `FromProtoHelper`.
   Args args = {node_proto.id(), node_proto.name(), std::move(output)};
-  std::shared_ptr<Node> restored_node;
   switch (node_proto.node_class()) {
     case NodeClass::INTERLEAVE_MANY:
-      restored_node = std::make_shared<InterleaveMany>(args);
+      *node = std::make_shared<InterleaveMany>(args);
       break;
     case NodeClass::ASYNC_INTERLEAVE_MANY:
-      restored_node = std::make_shared<AsyncInterleaveMany>(
+      *node = std::make_shared<AsyncInterleaveMany>(
           args, /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
       break;
     case NodeClass::KNOWN_RATIO:
-      restored_node = std::make_shared<KnownRatio>(args, node_proto.ratio());
+      *node = std::make_shared<KnownRatio>(args, node_proto.ratio());
       break;
     case NodeClass::ASYNC_KNOWN_RATIO:
-      restored_node = std::make_shared<AsyncKnownRatio>(
+      *node = std::make_shared<AsyncKnownRatio>(
           args, node_proto.ratio(), node_proto.memory_ratio(),
           /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
       break;
     case NodeClass::UNKNOWN_RATIO:
-      restored_node = std::make_shared<UnknownRatio>(args);
+      *node = std::make_shared<UnknownRatio>(args);
       break;
     default:
-      restored_node = std::make_shared<Unknown>(args);
+      *node = std::make_shared<Unknown>(args);
   }
-  TF_RETURN_IF_ERROR(FromProtoHelper(node_proto, restored_node));
-
-  // Restore all input nodes as well.
-  int64 num_inputs = node_proto.inputs_size();
-  for (int64 i = 0; i < num_inputs; i++) {
-    const ModelProto::Node& input_proto = node_proto.inputs(i);
-    std::shared_ptr<Node> input;
-    TF_RETURN_IF_ERROR(FromProto(input_proto, restored_node, &input));
-    restored_node->add_input(input);
-  }
-  (*node) = std::move(restored_node);
-  return Status::OK();
+  return FromProtoHelper(node_proto, *node);
 }
 
 bool Model::publish_ = false;
@@ -1913,21 +1936,17 @@ double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
 }
 
 Status Model::ToProto(ModelProto* model_proto) {
-  ModelProto::Node* output_proto = model_proto->mutable_output();
   tf_shared_lock l(mu_);
-  TF_RETURN_IF_ERROR(output_->ToProto(output_proto));
   model_proto->set_id_counter(id_counter_);
   model_proto->set_collect_resource_usage(collect_resource_usage_);
-  return Status::OK();
+  return ModelToProtoHelper(output_, model_proto);
 }
 
 Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
   std::unique_ptr<Model> restored_model = std::make_unique<Model>();
-  std::shared_ptr<Node> output;
-  TF_RETURN_IF_ERROR(
-      Node::FromProto(model_proto.output(), /*output=*/nullptr, &output));
   mutex_lock l(restored_model->mu_);
-  restored_model->output_ = output;
+  TF_RETURN_IF_ERROR(
+      ModelFromProtoHelper(model_proto, &restored_model->output_));
   restored_model->id_counter_ = model_proto.id_counter();
   restored_model->collect_resource_usage_.store(
       model_proto.collect_resource_usage());
@@ -2028,8 +2047,7 @@ Status Model::PublishLatest(absl::Cord* model) {
     // parameters, `id_counter_` and `collect_resource_usage_` will have default
     // values but can be recovered from `output_` if needed.
     ModelProto model_proto;
-    ModelProto::Node* node_proto = model_proto.mutable_output();
-    TF_RETURN_IF_ERROR(to_publish.output->ToProto(node_proto));
+    TF_RETURN_IF_ERROR(ModelToProtoHelper(to_publish.output, &model_proto));
     OptimizationParams* saved_optimization_params =
         model_proto.mutable_optimization_params();
     *saved_optimization_params = to_publish.params;

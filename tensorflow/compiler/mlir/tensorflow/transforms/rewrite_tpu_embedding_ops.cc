@@ -30,6 +30,13 @@ namespace {
 struct RewriteTPUEmbeddingOps
     : public PassWrapper<RewriteTPUEmbeddingOps, FunctionPass> {
   void runOnFunction() override;
+
+  StringRef getArgument() const final { return "tf-rewrite-tpu-embedding-ops"; }
+
+  StringRef getDescription() const final {
+    return "Rewrites TPU embedding send/recv ops by adding TPU embedding "
+           "deduplication data";
+  }
 };
 
 // Rewrites the given op to `OpT` op after adding the given operand at the end.
@@ -116,10 +123,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass() {
   return std::make_unique<RewriteTPUEmbeddingOps>();
 }
 
-static PassRegistration<RewriteTPUEmbeddingOps> pass(
-    "tf-rewrite-tpu-embedding-ops",
-    "Rewrites TPU embedding send/recv ops by adding TPU embedding "
-    "deduplication data");
+static PassRegistration<RewriteTPUEmbeddingOps> pass;
 
 }  // namespace TF
 }  // namespace mlir
