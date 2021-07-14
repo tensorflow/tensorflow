@@ -1275,7 +1275,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   }
 
   bool IsIdentityPermutation(const std::vector<int64>& perm) {
-    for (int64 i = 0, end = perm.size(); i < end; ++i) {
+    for (int64_t i = 0, end = perm.size(); i < end; ++i) {
       if (i != perm[i]) {
         return false;
       }
@@ -2627,7 +2627,7 @@ class ReplaceMulWithBroadcastByTile : public ArithmeticOptimizerStage {
     // 1. Create constant node with correct tile multiples
     Tensor multiples(DT_INT32, TensorShape({output_shape.dim_size()}));
     for (int i = 0; i < output_shape.dim_size(); ++i) {
-      int64 size = output_shape.dim(i).size() / input_shape.dim(i).size();
+      int64_t size = output_shape.dim(i).size() / input_shape.dim(i).size();
       if (TF_PREDICT_FALSE(size >= INT_MAX)) {
         return Status(error::OUT_OF_RANGE, "int32 overflow");
       }
@@ -3032,7 +3032,7 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
 
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
       AttrSlice attrs(**it);
-      int64 axis, n;
+      int64_t axis, n;
       TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "axis", &axis));
       TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &n));
 
@@ -3042,7 +3042,7 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
         return Status(error::OUT_OF_RANGE, "axis value out of range of dims");
       }
 
-      int64 m = multiples->flat<int32>()(dims[axis]) * n;
+      int64_t m = multiples->flat<int32>()(dims[axis]) * n;
       if (TF_PREDICT_FALSE(m > INT_MAX)) {
         return Status(error::OUT_OF_RANGE, "int32 overflow");
       }
@@ -3753,7 +3753,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
         CheckInputs(node, pack, &pack_output_shape, &pack_axis, &return_early));
     if (return_early) return Status::OK();
 
-    int64 slice_start_value;
+    int64_t slice_start_value;
     bool found;
     bool must_expand_dims;
     TF_RETURN_IF_ERROR(GetSliceAxis(node, pack, pack_output_shape, pack_axis,
@@ -3964,9 +3964,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     if (!is_simple_slice) return Status::OK();
 
     int begin_index = -1;
-    int64 begin_value = 0;
+    int64_t begin_value = 0;
     for (int i = 0, end = slice_begin_vec.size(); i < end; ++i) {
-      const int64 v = slice_begin_vec[i];
+      const int64_t v = slice_begin_vec[i];
       if (v != 0) {
         if (begin_index != -1) {
           // At least two start values that are nonzero.
@@ -3978,9 +3978,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     }
 
     int end_index = -1;
-    int64 end_value = 0;
+    int64_t end_value = 0;
     for (int i = 0, end = slice_begin_vec.size(); i < end; ++i) {
-      const int64 v = slice_end_vec[i];
+      const int64_t v = slice_end_vec[i];
       if (v != pack_output_shape.dim_size(i)) {
         if (end_index != -1) {
           // At least two end values that are nonzero.
@@ -4002,7 +4002,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
       return Status::OK();
     }
     *slice_start_value = (begin_index == -1) ? 0 : begin_value;
-    const int64 slice_end_value =
+    const int64_t slice_end_value =
         (end_index == -1) ? pack_output_shape.dim_size(slice_axis) : end_value;
     if (slice_end_value != *slice_start_value + 1) {
       // Not slicing a single value out.
@@ -4030,7 +4030,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
   }
 
   Status RewriteGraph(const NodeDef* node, const NodeDef* pack,
-                      int64 slice_start_value, int pack_axis,
+                      int64_t slice_start_value, int pack_axis,
                       bool must_expand_dims, string* simplified_node_name) {
     const string& input_slice = pack->input(slice_start_value);
 

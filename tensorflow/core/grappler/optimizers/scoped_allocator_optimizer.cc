@@ -213,7 +213,7 @@ Status RemoveEdge(const string& input_edge_name, const string& from_node_name,
 // `edge_name` gives the name of the edge from `input` to `op`, and
 // `output_index` is the output index of this edge on `input`.
 Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
-                         int64 invocation_count, GraphDef* graph,
+                         int64_t invocation_count, GraphDef* graph,
                          NodeMap* node_map, const DataType& dtype,
                          NodeDef* input, const string& edge_name,
                          int output_index, NodeDef* op, NodeDef** new_input,
@@ -255,7 +255,7 @@ Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
 // Populates *inputs with all of the non-control inputs of ops.
 // Returns error if it fails to find exactly one input for each op,
 // or if some input is not of type dtype.
-Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
+Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64_t invocation_count,
                  GraphDef* graph, const GraphProperties& graph_properties,
                  NodeMap* node_map, const std::vector<NodeDef*>& ops,
                  DataType dtype, std::vector<InputDesc>* inputs) {
@@ -444,7 +444,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
   // and checking whether there are any considerations that prevent use
   // of a single ScopedAllocator for all of those inputs.
   Status AnalyzeInputs(ScopedAllocatorOptimizer* sa_opti,
-                       int64 invocation_count, GraphDef* graph,
+                       int64_t invocation_count, GraphDef* graph,
                        NodeMap* node_map, const std::vector<NodeDef*>& ops,
                        const std::set<string>& op_instance_names,
                        string* device_name, DataType* dtype,
@@ -470,9 +470,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     std::vector<ScopedAllocator::Field> sa_fields;
     // Calculate the field embedding boundaries and thereby the
     // required size of the backing tensor.
-    int64 num_bytes = ScopedAllocatorMgr::PopulateFields(
+    int64_t num_bytes = ScopedAllocatorMgr::PopulateFields(
         0 /*scope_id*/, *input_shapes, *dtype, &sa_fields);
-    int64 num_elts = num_bytes / DataTypeSize(*dtype);
+    int64_t num_elts = num_bytes / DataTypeSize(*dtype);
     VLOG(2) << "num_bytes " << num_bytes << " num_elts=" << num_elts;
     *sa_shape = TensorShape({num_elts});
     return Status::OK();
@@ -818,7 +818,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
   //
   // There must be no non-control edges between Nodes in 'ops'.
   // Control edges among these nodes will be dropped.
-  Status Rewrite(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
+  Status Rewrite(ScopedAllocatorOptimizer* sa_opti, int64_t invocation_count,
                  GraphDef* graph, const string& op_name,
                  const std::vector<NodeDef*>& ops, bool* applied) override {
     if (VLOG_IS_ON(1)) {
@@ -1082,7 +1082,7 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
   // so we include an optimizer invocation count in every generated
   // name.
   static std::atomic<int64> invocation_counter(1);
-  const int64 invocation_count =
+  const int64_t invocation_count =
       invocation_counter.fetch_add(1, std::memory_order_seq_cst);
   VLOG(1) << "ProcessGraphDef " << invocation_count;
   Status status;
