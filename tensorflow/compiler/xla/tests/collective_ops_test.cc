@@ -1079,7 +1079,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatter) {
   const char* const kModuleStr = R"(
   HloModule test
   add {
@@ -1115,7 +1115,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter)) {
   LiteralTestUtil::ExpectR1Equal<uint32>({19, 21, 23, 25}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter_Dim1)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   const char* const kModuleStr = R"(
   HloModule test
   add {
