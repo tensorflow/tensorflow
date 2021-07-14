@@ -802,6 +802,61 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, DynamicReverseSingleDim) {
+  const string hlo_text = R"(
+HloModule DynamicConcat
+
+ENTRY main {
+  param_0 = s32[3] parameter(0)
+  size = s32[] constant(2)
+  param_padded_0 = s32[<=3] set-dimension-size(param_0, size), dimensions={0}
+  ROOT %reverse = s32[<=3]
+    reverse(s32[<=3] param_padded_0),
+    dimensions={0}
+}
+)";
+
+  // Input has upper bound of 3, dynamic dimension is 2. Using -1 as padding.
+  Literal operand_0 =
+      LiteralUtil::CreateR1<int32>({1, 2, -1});  // Dynamic operand.
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand_0}, false);
+  result.SetDynamicSize(0, 2);
+  Literal expected = LiteralUtil::CreateR1<int32>({2, 1});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicReverseMultiDims) {
+  const string hlo_text = R"(
+HloModule DynamicConcat
+
+ENTRY main {
+  param_0 = s32[3, 3] parameter(0)
+  size = s32[] constant(2)
+  param_padded_0 = s32[<=3, 3] set-dimension-size(param_0, size), dimensions={0}
+  param_padded_1 = s32[<=3, <=3] set-dimension-size(param_padded_0, size), 
+    dimensions={1}
+  ROOT %reverse = s32[<=3, <=3]
+    reverse(s32[<=3, <=3] param_padded_1),
+    dimensions={0, 1}
+}
+)";
+
+  // Input has upper bound of 3, dynamic dimension is 2. Using -1 as padding.
+  Literal operand_0 = LiteralUtil::CreateR2<int32>(
+      {{1, 2, -1}, {3, 4, -1}, {-1, -1, -1}});  // Dynamic operand.
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand_0}, false);
+  result.SetDynamicSize(0, 2);
+  result.SetDynamicSize(1, 2);
+  Literal expected = LiteralUtil::CreateR2<int32>({{4, 3}, {2, 1}});
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DynamicDimensionReduce) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1

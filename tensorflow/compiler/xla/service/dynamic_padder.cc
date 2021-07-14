@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -748,6 +749,94 @@ Status RewriteDynamicReshapeSingleGroup(
   // Shouldn't get here;
   TF_RET_CHECK(false);
   return Status::OK();
+}
+
+StatusOr<bool> RewriteReverse(
+    HloInstruction* reverse,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  // When we have [A, B, C, D, E] and reverse them, we get [E, D, C, B, A].
+  // However, if the dynamic size is 2, we expect B, A to be in front:
+  // [B, A, P, P, P].
+  //
+  // We do this by running a pad and dynamic slice on the result:
+  // [A, B, C, D, E]
+  //      |
+  //    reverse
+  //      |
+  // [E, D, C, B, A]
+  //      |
+  //     pad # Use pad to double the size of the dimension to avoid OOB.
+  //      |
+  // [E, D, C, B, A, P, P, P, P, P]
+  //      |
+  //  dynamic slice
+  //      |
+  // [B, A, P, P, P]
+  auto reverse_dims = reverse->dimensions();
+  HloComputation* comp = reverse->parent();
+  const Shape& reverse_shape = reverse->shape();
+  std::set<int64> dynamic_reverse_dims;
+  for (int64 reverse_dim : reverse_dims) {
+    HloInstruction* dynamic_size =
+        dynamic_dimension_inference->GetDynamicSize(reverse, {}, reverse_dim);
+    if (dynamic_size == nullptr) {
+      // Reverse dimension is not dynamic -- no rewrite needed.
+      continue;
+    }
+    dynamic_reverse_dims.insert(reverse_dim);
+  }
+
+  if (dynamic_reverse_dims.empty()) {
+    // We only need to rewrite dynamic dimensions that are also reverse
+    // dimensions.
+    return false;
+  }
+
+  PaddingConfig padding;
+  // Doubles dynamic dimension size using a pad.
+  Shape pad_shape = reverse_shape;
+  for (int i = 0; i < reverse_shape.rank(); ++i) {
+    auto dimension = padding.add_dimensions();
+    if (dynamic_reverse_dims.count(i) > 0) {
+      dimension->set_edge_padding_low(0);
+      dimension->set_edge_padding_high(reverse_shape.dimensions(i));
+      dimension->set_interior_padding(0);
+      pad_shape.set_dimensions(i, 2 * pad_shape.dimensions(i));
+    }
+  }
+  HloInstruction* cloned_reverse = comp->AddInstruction(reverse->Clone());
+  HloInstruction* zero = comp->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(pad_shape.element_type())));
+  HloInstruction* pad = comp->AddInstruction(
+      HloInstruction::CreatePad(pad_shape, cloned_reverse, zero, padding));
+  std::vector<HloInstruction*> start_indices;
+  start_indices.reserve(reverse_shape.rank());
+  for (int i = 0; i < reverse_shape.rank(); ++i) {
+    if (dynamic_reverse_dims.count(i) > 0) {
+      // Start at bound_size - dynamic_size.
+      HloInstruction* bound_size =
+          comp->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<int32>(reverse_shape.dimensions(i))));
+      HloInstruction* dynamic_size =
+          dynamic_dimension_inference->GetDynamicSize(reverse, {}, i);
+      HloInstruction* start_offset =
+          comp->AddInstruction(HloInstruction::CreateBinary(
+              ShapeUtil::MakeScalarShape(S32), HloOpcode::kSubtract, bound_size,
+              dynamic_size));
+      start_indices.push_back(start_offset);
+    } else {
+      HloInstruction* zero = comp->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+      start_indices.push_back(zero);
+    }
+  }
+  HloInstruction* dynamic_reverse =
+      comp->AddInstruction(HloInstruction::CreateDynamicSlice(
+          reverse_shape, pad, start_indices, reverse_shape.dimensions()));
+  TF_RETURN_IF_ERROR(comp->ReplaceInstruction(reverse, dynamic_reverse));
+  TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+      reverse, dynamic_reverse, {}));
+  return true;
 }
 
 HloInstruction* RewriteInputWithDynamicPadding(
@@ -1931,6 +2020,11 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       if (inst->opcode() == HloOpcode::kConcatenate) {
         TF_ASSIGN_OR_RETURN(
             changed, RewriteDynamicConcat(inst, &dynamic_dimension_inference));
+        continue;
+      }
+      if (inst->opcode() == HloOpcode::kReverse) {
+        TF_ASSIGN_OR_RETURN(changed,
+                            RewriteReverse(inst, &dynamic_dimension_inference));
         continue;
       }
       if (inst->opcode() == HloOpcode::kSort) {
