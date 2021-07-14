@@ -17,18 +17,22 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/container/flat_hash_set.h"
+
 namespace tensorflow {
 namespace grappler {
 namespace utils {
 
-inline bool IsCommutativeOp(string op) {
+inline const bool IsCommutativeOp(const string& op) {
   // TODO(intel-tf): Add more ops to this list if needed.
-  static const std::vector<string> commutative_ops = {"Add", "AddV2", "Mul"};
-  return std::find(commutative_ops.begin(), commutative_ops.end(), op) !=
-         commutative_ops.end();
+  static const auto* commutative_ops =
+      new absl::flat_hash_set<string>({"Add", "AddV2", "Mul"});
+  return commutative_ops->contains(op);
 }
 
-// op1 could be wildcard `*`, while op2 is some registered op in tensorflow.
+// op1 is an op name in the pattern and it could be wildcard `*` or some
+// registered op in tensorflow. op2 is an op name in the computation graph and
+// is always one of the registered ops in tensorflow.
 inline bool IsSame(string op1, string op2) { return op1 == "*" || op1 == op2; }
 
 // A subgraph pattern syntax implicitly defines a DAG having a single root. We
