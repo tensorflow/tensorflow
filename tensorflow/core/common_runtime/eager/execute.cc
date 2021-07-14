@@ -631,7 +631,8 @@ Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
         *arg_def = arg;
         arg_def->set_name(EscapeOrigName(arg.name()));
         if (!arg.type_attr().empty()) {
-          arg_def->set_type_attr(EscapeOrigName(arg.type_attr()));
+          // Don't escape: type attrs are still referenced by the original name.
+          arg_def->set_type_attr(arg.type_attr());
         }
       }
     }

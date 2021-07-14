@@ -18,6 +18,8 @@ import time
 from tensorflow.python.eager import benchmarks_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -106,6 +108,10 @@ class RunEagerOpAsFunctionTest(test.TestCase):
   def setUp(self):
     super().setUp()
     self._m_2_by_2 = random_ops.random_uniform((2, 2))
+
+  def testArrayFill(self):
+    array_ops.fill(
+        constant_op.constant([2], dtype=dtypes.int64), constant_op.constant(1))
 
   def testMatmul(self):
     math_ops.matmul(self._m_2_by_2, self._m_2_by_2)

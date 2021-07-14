@@ -737,6 +737,7 @@ cuda_py_test(
         ":context",
         ":test",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
     ],
