@@ -976,7 +976,6 @@ cc_library(
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
-        "@local_config_rocm//rocm:rocblas",
     ]),
 )
 
