@@ -4079,7 +4079,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
       if (item == Py_None) {
         absl::StrAppend(&result->str, kNone);
       } else {
-        absl::StrAppend(&result->str, MakeInt(item));
+        absl::StrAppend(&result->str, MakeInt(item), kShapeDelim);
       }
     }
   }
@@ -4357,8 +4357,8 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
   if (!thread_local_data) {
     thread_local_data.reset(new EagerContextThreadLocalData());
 
-    Safe_PyObjectPtr is_eager(PyObject_CallFunctionObjArgs(
-        defaults->second.is_eager.get(), nullptr));
+    Safe_PyObjectPtr is_eager(
+        PyObject_CallFunctionObjArgs(defaults->second.is_eager.get(), nullptr));
     if (!is_eager) return nullptr;
     thread_local_data->is_eager = PyObject_IsTrue(is_eager.get());
 
