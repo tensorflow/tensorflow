@@ -2640,6 +2640,44 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "reduce_scatter_decomposer",
+    srcs = ["reduce_scatter_decomposer.cc"],
+    hdrs = ["reduce_scatter_decomposer.h"],
+    deps = [
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_creation_utils",
+        ":hlo_module_config",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "reduce_scatter_decomposer_test",
+    srcs = ["reduce_scatter_decomposer_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":reduce_scatter_decomposer",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "batch_dot_simplification",
     srcs = ["batch_dot_simplification.cc"],
     hdrs = ["batch_dot_simplification.h"],
