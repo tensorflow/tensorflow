@@ -40,6 +40,8 @@ static constexpr StringRef kCInterfaceReportError =
     "_mlir_ciface_tf_report_error";
 static constexpr StringRef kCInterfaceJITCompile =
     "_mlir_ciface_tf_jit_compile";
+static constexpr StringRef kCInterfaceJITExecute =
+    "_mlir_ciface_tf_jit_execute";
 static constexpr StringRef kJITCodeGlobalBaseName = "jit_module_code";
 static constexpr StringRef kErrorMessageGlobalBaseName = "error_message";
 
@@ -300,6 +302,71 @@ class JITCompileFromStrOpConverter
   }
 };
 
+class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
+ public:
+  using ConvertToLLVMCallOpPattern<JITExecuteOp>::ConvertToLLVMCallOpPattern;
+
+  LogicalResult matchAndRewrite(
+      JITExecuteOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // Currently, only unary ops are supported.
+    // The TF context must be known for a succesful lowering.
+    // TODO(frgossen): Generalize this runtime interface to n-ary kernels.
+    JITExecuteOp::Adaptor transformed(operands, op->getAttrDictionary());
+    if (transformed.ctx() == nullptr || op.operands().size() != 1 ||
+        op.getNumResults() != 1) {
+      return failure();
+    }
+
+    // Allocate result on stack.
+    auto loc = op.getLoc();
+    Type result_ty =
+        getTypeConverter()->convertType(op->getResultTypes().front());
+    Type result_ptr_ty = LLVM::LLVMPointerType::get(result_ty);
+    Value c1 = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI64Type(),
+        rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+    auto result_ptr =
+        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, c1, llvm::None);
+    auto result_void_ptr =
+        rewriter.create<LLVM::BitcastOp>(loc, getVoidPtrType(), result_ptr);
+
+    // Find all the operands and unpack the one argument.
+    SmallVector<Value, 8> forward_operands = {
+        transformed.ctx(), transformed.callable(), result_void_ptr};
+    UnrankedMemRefDescriptor::unpack(
+        rewriter, loc, transformed.operands().front(), forward_operands);
+
+    // Materialize call.
+    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    rewriter.create<LLVM::CallOp>(loc, llvm::None, tf_func_ref,
+                                  forward_operands);
+
+    // Copy result (including the descriptor) to a stack-allocated buffer and
+    // free the old descriptor.
+    llvm::SmallVector<Value, 1> final_result = {
+        rewriter.create<LLVM::LoadOp>(loc, result_ptr)};
+    if (failed(copyUnrankedDescriptors(rewriter, loc, op->getResultTypes(),
+                                       final_result,
+                                       /*toDynamic=*/false))) {
+      return failure();
+    }
+
+    rewriter.replaceOp(op, final_result.front());
+    return success();
+  }
+
+ protected:
+  StringRef GetFuncName() const override { return kCInterfaceJITExecute; }
+
+  Type GetFuncType() const override {
+    auto i64_ty = IntegerType::get(getContext(), 64);
+    return LLVM::LLVMFunctionType::get(
+        getVoidType(), {getVoidPtrType(), getVoidPtrType(), getVoidPtrType(),
+                        i64_ty, getVoidPtrType()});
+  }
+};
+
 class ReportErrorOpConverter
     : public ConvertToLLVMCallOpPattern<ReportErrorOp> {
  public:
@@ -490,6 +557,7 @@ void PopulateTFFrameworkToLLVMConversionPatterns(LLVMTypeConverter *converter,
   patterns->insert<
       IsValidMemRefOpConverter,
       JITCompileFromStrOpConverter,
+      JITExecuteOpConverter,
       NullContextOpConverter,
       NullMemRefOpConverter,
       ReportErrorOpConverter,
