@@ -418,11 +418,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "gpu_softplus_op",
-    srcs = if_mlir_generated_experimental_kernels_enabled([
+    srcs = if_mlir_generated_gpu_kernels_enabled([
         "gpu_op_softplus.cc",
     ]),
     tags = ["manual"],
-    deps = if_mlir_generated_experimental_kernels_enabled([
+    deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_softplus_kernels",
         "//third_party/eigen3",
