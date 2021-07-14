@@ -170,7 +170,7 @@ Status CalculateFlops(const GraphDef& graph,
   *total_flops = 0;
   for (const NodeDef& node : graph.node()) {
     if (floppable_ops.count(node.op())) {
-      int64 current_flops = 0;
+      int64_t current_flops = 0;
       // This is a very crude approximation to FLOPs that only looks at a few
       // op types that commonly form the bulk of the computation for many
       // models. It's included here because getting even an approximate value
@@ -179,30 +179,30 @@ Status CalculateFlops(const GraphDef& graph,
       if ((node.op() == "Conv2D") || (node.op() == "QuantizedConv2D")) {
         const TensorShape& filter_shape = found_shapes[node.input(1)];
         const TensorShape& output_shape = found_shapes[node.name()];
-        int64 filter_height = filter_shape.dim_size(0);
-        int64 filter_width = filter_shape.dim_size(1);
-        int64 filter_in_depth = filter_shape.dim_size(2);
-        int64 output_count = output_shape.num_elements();
+        int64_t filter_height = filter_shape.dim_size(0);
+        int64_t filter_width = filter_shape.dim_size(1);
+        int64_t filter_in_depth = filter_shape.dim_size(2);
+        int64_t output_count = output_shape.num_elements();
         current_flops =
             output_count * filter_in_depth * filter_height * filter_width * 2;
       } else if ((node.op() == "MatMul") || (node.op() == "QuantizedMatMul")) {
         const bool transpose_a = node.attr().at("transpose_a").b();
         const TensorShape& a_shape = found_shapes[node.input(0)];
         const TensorShape& output_shape = found_shapes[node.name()];
-        int64 k;
+        int64_t k;
         if (transpose_a) {
           k = a_shape.dim_size(0);
         } else {
           k = a_shape.dim_size(1);
         }
-        int64 output_count = output_shape.num_elements();
+        int64_t output_count = output_shape.num_elements();
         current_flops = k * output_count * 2;
       } else if (node.op() == "DepthwiseConv2dNative") {
         const TensorShape& filter_shape = found_shapes[node.input(1)];
         const TensorShape& output_shape = found_shapes[node.name()];
-        int64 filter_height = filter_shape.dim_size(0);
-        int64 filter_width = filter_shape.dim_size(1);
-        int64 output_count = output_shape.num_elements();
+        int64_t filter_height = filter_shape.dim_size(0);
+        int64_t filter_width = filter_shape.dim_size(1);
+        int64_t output_count = output_shape.num_elements();
         current_flops = output_count * filter_height * filter_width * 2;
       }
       (*flops_by_op)[node.op()] += current_flops;
@@ -335,7 +335,7 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
   Stat<int64> stat;
   const bool until_max_time = num_runs <= 0;
   for (int i = 0; until_max_time || i < num_runs; ++i) {
-    int64 time;
+    int64_t time;
     Status run_status =
         RunBenchmark(inputs, outputs, targets, session, stats, &time);
     stat.UpdateStat(time);
@@ -489,10 +489,10 @@ int Main(int argc, char** argv) {
   std::unique_ptr<StatSummarizer> stats;
   std::unique_ptr<GraphDef> graph_def;
 
-  int64 initialization_start_us = Env::Default()->NowMicros();
+  int64_t initialization_start_us = Env::Default()->NowMicros();
   Status initialize_status =
       InitializeSession(num_threads, graph, &session, &graph_def);
-  int64 initialization_end_us = Env::Default()->NowMicros();
+  int64_t initialization_end_us = Env::Default()->NowMicros();
   double initialization_time_s =
       (initialization_end_us - initialization_start_us) / 1000000.0;
   LOG(INFO) << "Initialized session in " << initialization_time_s << "s";
@@ -567,8 +567,8 @@ int Main(int argc, char** argv) {
 
   // If requested, run through the graph first to preinitialize everything
   // before the benchmarking runs.
-  int64 warmup_time_us = 0;
-  int64 num_warmup_runs = 0;
+  int64_t warmup_time_us = 0;
+  int64_t num_warmup_runs = 0;
   if (warmup_runs > 0) {
     Status warmup_time_status =
         TimeMultipleRuns(inter_inference_sleep_seconds, warmup_runs, -1.0,
@@ -583,8 +583,8 @@ int Main(int argc, char** argv) {
   // Capture overall inference time without stat logging overhead. This is the
   // timing data that can be compared to other libraries.
   SleepSeconds(inter_benchmark_sleep_seconds);
-  int64 no_stat_time_us = 0;
-  int64 no_stat_num_runs = 0;
+  int64_t no_stat_time_us = 0;
+  int64_t no_stat_num_runs = 0;
   Status no_stat_time_status = TimeMultipleRuns(
       inter_inference_sleep_seconds, max_num_runs, max_benchmark_time_seconds,
       inputs, output_layers, target_layers, session.get(), nullptr,
@@ -598,8 +598,8 @@ int Main(int argc, char** argv) {
   // Run again to gather detailed log stats to get a better idea of where
   // relative time is going within the graph.
   SleepSeconds(inter_benchmark_sleep_seconds);
-  int64 stat_time_us = 0;
-  int64 stat_num_runs = 0;
+  int64_t stat_time_us = 0;
+  int64_t stat_num_runs = 0;
   Status stat_time_status = TimeMultipleRuns(
       inter_inference_sleep_seconds, max_num_runs, max_benchmark_time_seconds,
       inputs, output_layers, target_layers, session.get(), stats.get(),
@@ -622,7 +622,7 @@ int Main(int argc, char** argv) {
   }
 
   if (show_flops) {
-    int64 total_flops;
+    int64_t total_flops;
     std::unordered_map<string, int64> flops_by_op;
     Status flop_status = CalculateFlops(*graph_def, inputs, session.get(),
                                         &total_flops, &flops_by_op);
@@ -653,7 +653,7 @@ int Main(int argc, char** argv) {
 
   if (!benchmark_name.empty() && !output_prefix.empty()) {
     // Compute the total number of values per input.
-    int64 total_size = inputs[0].shape.num_elements();
+    int64_t total_size = inputs[0].shape.num_elements();
 
     // Throughput in MB/s
     const double throughput =
