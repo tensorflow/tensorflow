@@ -494,28 +494,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     }
 
     // Now apply the user-supplied delegates.
-    try {
-      for (Delegate delegate : options.delegates) {
-        applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
-        delegates.add(delegate);
-      }
-      if (options.useNNAPI != null && options.useNNAPI.booleanValue()) {
-        NnApiDelegate optionalNnApiDelegate = new NnApiDelegate();
-        ownedDelegates.add(optionalNnApiDelegate);
-        applyDelegate(interpreterHandle, errorHandle, optionalNnApiDelegate.getNativeHandle());
-      }
-    } catch (IllegalArgumentException e) {
-      // Suppress exceptions where a delegate fails to apply after the flex delegate is successfuly
-      // applied. This can be a common occurrence, as the flex delegate makes the graph dynamic,
-      // which is typically unsupported by most delegates (e.g., NNAPI, GPU delegates). We should
-      // still log an error to indicate that the delegate application was a no-op.
-      // TODO(b/142678372): Fix the flex delegate to not unconditionally mark graphs as dynamic.
-      boolean shouldSuppressException =
-          originalGraphHasUnresolvedFlexOp && !hasUnresolvedFlexOp(interpreterHandle);
-      if (!shouldSuppressException) {
-        throw e;
-      }
-      System.err.println("Ignoring failed delegate application: " + e);
+    for (Delegate delegate : options.delegates) {
+      applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
+      delegates.add(delegate);
+    }
+    if (options.useNNAPI != null && options.useNNAPI.booleanValue()) {
+      NnApiDelegate optionalNnApiDelegate = new NnApiDelegate();
+      ownedDelegates.add(optionalNnApiDelegate);
+      applyDelegate(interpreterHandle, errorHandle, optionalNnApiDelegate.getNativeHandle());
     }
   }
 
