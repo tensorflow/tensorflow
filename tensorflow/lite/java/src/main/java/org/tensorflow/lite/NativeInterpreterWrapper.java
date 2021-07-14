@@ -369,6 +369,15 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     if (inputName == null) {
       throw new IllegalArgumentException("Invalid input tensor name provided (null)");
     }
+    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, methodName);
+    if (subgraphIndex == -1) {
+      throw new IllegalArgumentException("Invalid input method name provided: " + methodName);
+    }
+    if (subgraphIndex > 0) {
+      int tensorIndex = getInputTensorIndexFromSignature(interpreterHandle, inputName, methodName);
+      return Tensor.fromSubgraphAndIndex(interpreterHandle, subgraphIndex, tensorIndex);
+    }
+
     initTensorIndexesMaps();
     int tensorIndex = getInputTensorIndexFromSignature(interpreterHandle, inputName, methodName);
     if (!tensorToInputsIndexes.containsKey(tensorIndex)) {
@@ -432,6 +441,16 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     if (outputName == null) {
       throw new IllegalArgumentException("Invalid output tensor name provided (null)");
     }
+    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, methodName);
+    if (subgraphIndex == -1) {
+      throw new IllegalArgumentException("Invalid input method name provided: " + methodName);
+    }
+    if (subgraphIndex > 0) {
+      int tensorIndex =
+          getOutputTensorIndexFromSignature(interpreterHandle, outputName, methodName);
+      return Tensor.fromSubgraphAndIndex(interpreterHandle, subgraphIndex, tensorIndex);
+    }
+
     initTensorIndexesMaps();
     int tensorIndex = getOutputTensorIndexFromSignature(interpreterHandle, outputName, methodName);
     if (!tensorToOutputsIndexes.containsKey(tensorIndex)) {
@@ -553,6 +572,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private final List<AutoCloseable> ownedDelegates = new ArrayList<>();
 
   private static native boolean hasUnresolvedFlexOp(long interpreterHandle);
+
+  private static native int getSubgraphIndexFromSignature(
+      long interpreterHandle, String methodName);
 
   private static native int getInputTensorIndex(long interpreterHandle, int inputIdx);
 

@@ -344,6 +344,26 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureOutputs(
 }
 
 JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getSubgraphIndexFromSignature(
+    JNIEnv* env, jclass clazz, jlong handle, jstring method_name) {
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+  ThrowException(env, tflite::jni::kUnsupportedOperationException,
+                 "Not supported: getSubgraphIndexFromSignature");
+  return -1;
+#else
+  Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return -1;
+  const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
+
+  int32_t subgraph_index =
+      interpreter->GetSubgraphIndexFromSignatureDefName(method_name_ptr);
+  // Release the memory before returning.
+  env->ReleaseStringUTFChars(method_name, method_name_ptr);
+  return subgraph_index;
+#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
+}
+
+JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndexFromSignature(
     JNIEnv* env, jclass clazz, jlong handle, jstring signature_input_name,
     jstring method_name) {
