@@ -44,14 +44,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this(byteBuffer, /* options= */ null);
   }
 
-  NativeInterpreterWrapper(String modelPath, Interpreter.Options options) {
+  NativeInterpreterWrapper(String modelPath, InterpreterImpl.Options options) {
     TensorFlowLite.init();
     long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     long modelHandle = createModel(modelPath, errorHandle);
     init(errorHandle, modelHandle, options);
   }
 
-  NativeInterpreterWrapper(ByteBuffer buffer, Interpreter.Options options) {
+  NativeInterpreterWrapper(ByteBuffer buffer, InterpreterImpl.Options options) {
     TensorFlowLite.init();
     if (buffer == null
         || (!(buffer instanceof MappedByteBuffer)
@@ -66,9 +66,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     init(errorHandle, modelHandle, options);
   }
 
-  private void init(long errorHandle, long modelHandle, Interpreter.Options options) {
+  private void init(long errorHandle, long modelHandle, InterpreterImpl.Options options) {
     if (options == null) {
-      options = new Interpreter.Options();
+      options = new InterpreterImpl.Options();
     }
     this.errorHandle = errorHandle;
     this.modelHandle = modelHandle;
@@ -473,7 +473,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   void setCancelled(boolean value) {
     if (cancellationFlagHandle == 0) {
       throw new IllegalStateException(
-          "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+          "Cannot cancel the inference. Have you called InterpreterApi.Options.setCancellable?");
     }
     setCancelled(interpreterHandle, cancellationFlagHandle, value);
   }
@@ -481,7 +481,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void setCancelled(
       long interpreterHandle, long cancellationFlagHandle, boolean value);
 
-  private void applyDelegates(Interpreter.Options options) {
+  private void applyDelegates(InterpreterImpl.Options options) {
     // First apply the flex delegate if necessary. This ensures the graph is fully resolved before
     // applying other delegates.
     boolean originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);

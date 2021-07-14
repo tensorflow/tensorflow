@@ -676,7 +676,8 @@ public final class InterpreterTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+                "Cannot cancel the inference. "
+                    + "Have you called InterpreterApi.Options.setCancellable?");
       }
     }
   }

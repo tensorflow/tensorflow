@@ -29,7 +29,7 @@ public interface Delegate {
    * Returns a native handle to the TensorFlow Lite delegate implementation.
    *
    * <p>Note: The Java {@link Delegate} maintains ownership of the native delegate instance, and
-   * must ensure its existence for the duration of usage with any {@link Interpreter}.
+   * must ensure its existence for the duration of usage with any {@link InterpreterApi} instance.
    *
    * @return The native delegate handle. In C/C++, this should be a pointer to
    *     'TfLiteOpaqueDelegate'.
