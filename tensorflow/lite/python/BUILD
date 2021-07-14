@@ -595,6 +595,7 @@ py_test(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     python_version = "PY3",
     deps = [
