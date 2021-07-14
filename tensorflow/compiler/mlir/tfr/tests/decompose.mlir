@@ -1,4 +1,4 @@
-// RUN: tfr-opt %s -tfr-decompose -verify-diagnostics -split-input-file | FileCheck %s
+// RUN: tfr-opt %s -tfr-decompose -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @tf__fake_no_op
 tfr.func @tf__fake_no_op(%arg0: !tfr.tensor) -> !tfr.tensor {
@@ -146,11 +146,26 @@ func @denied_attribute(%arg0: tensor<1x2x3x4x!tf.string>, %arg1: tensor<f32>, %a
 // CHECK-NEXT:   "tf.FusedN"(%arg0, %arg1, %arg2) {A = 0 : index, denied_attr}
 }
 
-// CHECK-LABEL: quantized_tensor
-func @quantized_tensor(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>> {
+// CHECK-LABEL: remove_quantized_io
+func @remove_quantized_io(
+  %arg0: tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>,
+  %arg1: tensor<1x10xf32>) -> (tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>, tensor<1x10xf32>) {
   %0 = "tf.Intermediate"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
-  return %0 : tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
+  %1 = "tf.Intermediate"(%arg1) : (tensor<1x10xf32>) -> tensor<1x10xf32>
+  return %0, %1 : tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>, tensor<1x10xf32>
 
-// CHECK: "tfr.cast"(%[[arg0:.*]]) : (tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> !tfr.tensor
-// CHECK: "tfr.cast"(%[[result:.*]]) : (!tfr.tensor) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
+// CHECK: %[[quant_0:.*]] = "tfr.cast"(%[[arg0:.*]]) : (tensor<1x10xi8>) -> !tfr.tensor
+// CHECK: %[[quant_1:.*]] = tfr.call @tf__risc(%[[quant_0]])
+// CHECK-NOT: quant.uniform
+// CHECK: %[[quant_2:.*]] = "tfr.cast"(%[[quant_1]]) : (!tfr.tensor) -> tensor<1x10xi8>
+// CHECK: return %[[quant_2]], %[[float:.*]] : tensor<1x10xi8>, tensor<1x10xf32>
 }
+
+// CHECK-LABEL: quant_input_multiple_users
+// expected-error@+1 {{The argument with type tensor<1x10x!quant.uniform<i8:f32, 1.000000e-01>> should have one user}}
+func @quant_input_multiple_users(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1>>) -> (!tfr.tensor, !tfr.tensor) {
+  %0 = "tfr.cast"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.1>>) -> !tfr.tensor
+  %1 = "tfr.cast"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.1>>) -> !tfr.tensor
+  return %0, %1 : !tfr.tensor, !tfr.tensor
+}
+
