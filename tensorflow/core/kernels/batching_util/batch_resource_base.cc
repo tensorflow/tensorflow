@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/util/incremental_barrier.h"
@@ -44,6 +45,7 @@ void RecordPaddingSize(int32 padding_size, const string& model_name,
       ->Add(static_cast<double>(padding_size));
 }
 
+// TODO(b/181883417): Replace with RecordInputBatchSizeV2.
 void RecordInputBatchSize(int32 batch_size, const string& model_name,
                           const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
@@ -53,6 +55,19 @@ void RecordInputBatchSize(int32 batch_size, const string& model_name,
        "model_name", "op_name"},
       /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
       /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
+}
+
+void RecordInputBatchSizeV2(int32 batch_size, const string& model_name,
+                            const string& op_name) {
+  static auto* cell = tensorflow::monitoring::Sampler<2>::New(
+      {"/tensorflow/serving/batching/input_batch_size_v2",
+       "Tracks the batch size distribution on the inputs by model_name (if "
+       "available).",
+       "model_name", "op_name"},
+      // It's 14 buckets with the last bucket being 2^13 to DBL_MAX;
+      // so the limits are [1, 2, 4, 8, ..., 8 * 1024, DBL_MAX].
+      monitoring::Buckets::Exponential(1, 2, 14));
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
@@ -190,6 +205,8 @@ Status BatchResourceBase::RegisterInput(
   }
   RecordInputBatchSize(tensors[0].shape().dim_size(0), GetModelName(context),
                        context->op_kernel().name_view().data());
+  RecordInputBatchSizeV2(tensors[0].shape().dim_size(0), GetModelName(context),
+                         context->op_kernel().name());
   RecordBatchParamBatchTimeoutMicros(
       batcher_queue_options_.batch_timeout_micros, GetModelName(context),
       context->op_kernel().name_view().data());
