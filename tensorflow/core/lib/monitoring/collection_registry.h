@@ -250,7 +250,7 @@ class CollectionRegistry {
   friend class test_util::CollectionRegistryTestAccess;
   friend class internal::Collector;
 
-  CollectionRegistry(Env* env);
+  explicit CollectionRegistry(Env* env);
 
   // Unregisters the metric from this registry. This is private because the
   // public interface provides a Registration handle which automatically calls
@@ -302,15 +302,34 @@ inline void CollectValue(int64 value, Point* const point) {
 }
 
 template <>
+inline void CollectValue(std::function<int64()> value_fn, Point* const point) {
+  point->value_type = ValueType::kInt64;
+  point->int64_value = value_fn();
+}
+
+template <>
 inline void CollectValue(std::string value, Point* const point) {
   point->value_type = ValueType::kString;
   point->string_value = std::move(value);
 }
 
 template <>
+inline void CollectValue(std::function<std::string()> value_fn,
+                         Point* const point) {
+  point->value_type = ValueType::kString;
+  point->string_value = value_fn();
+}
+
+template <>
 inline void CollectValue(bool value, Point* const point) {
   point->value_type = ValueType::kBool;
   point->bool_value = value;
+}
+
+template <>
+inline void CollectValue(std::function<bool()> value_fn, Point* const point) {
+  point->value_type = ValueType::kBool;
+  point->bool_value = value_fn();
 }
 
 template <>
@@ -338,7 +357,7 @@ inline void CollectValue(Percentiles value, Point* const point) {
 // This class is thread-safe.
 class Collector {
  public:
-  Collector(const uint64 collection_time_millis)
+  explicit Collector(const uint64 collection_time_millis)
       : collected_metrics_(new CollectedMetrics()),
         collection_time_millis_(collection_time_millis) {}
 
