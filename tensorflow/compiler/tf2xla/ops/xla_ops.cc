@@ -375,7 +375,24 @@ REGISTER_OP("XlaDynamicSlice")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+      shape_inference::ShapeHandle size_indices_shape = c->input(2);
+      if (!c->RankKnown(size_indices_shape)) {
+        return UnchangedRank(c);
+      }
+      if (c->Rank(size_indices_shape) != 1) {
+        return errors::InvalidArgument("size_indices must be a 1D tensor");
+      }
+      shape_inference::ShapeHandle size_indices_value;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &size_indices_value));
+      if (!c->RankKnown(size_indices_value)) {
+        // If we cannot tell the rank of the output from the value of
+        // size_indices, perhaps we can find it from the rank of first operand.
+        return UnchangedRank(c);
+      }
+      c->set_output(0, size_indices_value);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Wraps the XLA DynamicSlice operator, documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#dynamicslice
