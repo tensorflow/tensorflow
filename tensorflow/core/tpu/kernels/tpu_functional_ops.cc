@@ -309,7 +309,7 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
 int64 RemoveDescendantNodeOfArg(Graph* graph,
                                 const std::string& node_type_to_remove,
                                 const std::set<std::string>& must_be_child_of) {
-  int64 nodes_removed = 0;
+  int64_t nodes_removed = 0;
   std::vector<std::pair<const Edge*, std::vector<const Edge*>>> edges_to_remove;
 
   for (Node* node : graph->nodes()) {
@@ -440,7 +440,7 @@ Status ConvertEdgeShapesToTensorShapes(
     VLOG(2) << iter.first << ", rank: " << iter.second.size();
     const int64 rank = iter.second.size();
     std::vector<int64> dims(rank);
-    for (int64 d = 0; d < rank; ++d) {
+    for (int64_t d = 0; d < rank; ++d) {
       VLOG(2) << " dim[" << d << "]: " << iter.second.at(d);
       dims[d] = iter.second.at(d);
     }
@@ -1582,19 +1582,17 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
     int num_cores_per_replica, bool enable_spmd_xla_partitioning) {
   // Currently variable deduplication is not supported for XLA SPMD
   // partitioning. It is possible that it could be supported in the future.
-  const bool enable_variable_deduplication =
+  bool enable_variable_deduplication =
       runtime_params_.enable_variable_deduplication;
-  if (enable_spmd_xla_partitioning && num_cores_per_replica > 1 &&
-      enable_variable_deduplication) {
+  if (enable_spmd_xla_partitioning && num_cores_per_replica > 1) {
     // If enable_spmd_xla_partitioning is true, the user set the
     // enable_auto_xla_input_sharding flag. Warn them that only one of the flags
     // can be set safely when num_cores_per_replica > 1. If
     // num_cores_per_replica==1, enable_spmd_xla_partitioning is effectively a
     // no-op so we can skip this check.
-    return errors::InvalidArgument(
-        "The following flags are incompatible when num_cores_per_replica > 1: "
-        "enable_auto_xla_input_sharding and enable_variable_deduplication. "
-        "Only enable one of the flags.");
+    LOG(WARNING) << "Disabling variable deduplication because it is not "
+                    "compatible with enable_auto_xla_input_sharding.";
+    enable_variable_deduplication = false;
   }
   std::vector<Node*> tpu_resource_args;
   std::vector<int> arg_indices;
@@ -2328,7 +2326,7 @@ Status TPUPartitionedCallOp::PartitionHelper(
     // per-worker shards at the remote worker(s).
     return node->assigned_device_name();
   };
-  int64 edge_name_counter = 0;
+  int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
     return strings::StrCat(prefix, "/_", ++edge_name_counter);
   };
@@ -2440,9 +2438,9 @@ Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
         node->AddAttr(kSendDevice, device);
         node->ClearAttr(kSendDeviceIncarnation);
         const Device* d = device_set.FindDeviceByName(device);
-        int64 send_incarnation = (d == nullptr)
-                                     ? PartitionOptions::kIllegalIncarnation
-                                     : d->attributes().incarnation();
+        int64_t send_incarnation = (d == nullptr)
+                                       ? PartitionOptions::kIllegalIncarnation
+                                       : d->attributes().incarnation();
         node->AddAttr(kSendDeviceIncarnation, send_incarnation);
       }
       attr = node->attrs().Find(kRecvDevice);

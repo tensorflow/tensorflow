@@ -183,8 +183,8 @@ class CSRSparseMatMulCPUOp : public OpKernel {
 
     // Parallelize matrix multiplication across batches.
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
-          matmul_cost_per_batch, [&](int64 batch_begin, int64 batch_end) {
-            for (int64 batch_idx = batch_begin; batch_idx < batch_end;
+          matmul_cost_per_batch, [&](int64_t batch_begin, int64_t batch_end) {
+            for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
                  ++batch_idx) {
               // For each batch, map the CSRSparseMatrix as Eigen SparseMatrix
               // without copying the underlying data.
@@ -225,8 +225,8 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     // tensors.
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           (3 * total_nnz) / batch_size /* cost per unit */,
-          [&](int64 batch_begin, int64 batch_end) {
-            for (int64 batch_idx = batch_begin; batch_idx < batch_end;
+          [&](int64_t batch_begin, int64_t batch_end) {
+            for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
                  ++batch_idx) {
               const SparseMatrix& output_matrix = output_matrices[batch_idx];
               const int64 nnz = output_matrix.nonZeros();

@@ -208,6 +208,10 @@ class Node {
   // Is this node a function output
   bool IsRetval() const { return class_ == NC_RETVAL; }
 
+  bool IsDistributedCommunication() const {
+    return op_def().is_distributed_communication();
+  }
+
   template <typename T>
   void AddAttr(const std::string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
@@ -878,6 +882,10 @@ inline bool IsScopedAllocator(const Node* n) { return n->IsScopedAllocator(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
+}
+
+inline bool IsDistributedCommunication(const Node* n) {
+  return n->IsDistributedCommunication();
 }
 
 // NOTE: We declare Reference type of NodeIter and NeighborIter as Node* (see

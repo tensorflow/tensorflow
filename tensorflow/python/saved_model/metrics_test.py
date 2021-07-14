@@ -57,45 +57,53 @@ class MetricsTests(test.TestCase):
 
   def test_python_save(self):
     write_count = metrics.GetWrite()
-    save_api_count = metrics.GetWriteApi(save._SAVE_V2_LABEL)
+    save_api_count = metrics.GetWriteApi(save._SAVE_V2_LABEL, write_version="2")
     _ = self._create_save_v2_model()
 
     self.assertEqual(
-        metrics.GetWriteApi(save._SAVE_V2_LABEL), save_api_count + 1)
+        metrics.GetWriteApi(save._SAVE_V2_LABEL, write_version="2"),
+        save_api_count + 1)
     self.assertEqual(metrics.GetWrite(), write_count + 1)
 
   def test_builder_save(self):
     write_count = metrics.GetWrite()
+    save_builder_count = metrics.GetWriteApi(
+        builder_impl._SAVE_BUILDER_LABEL, write_version="1")
     _ = self._create_save_v1_model()
 
-    self.assertEqual(metrics.GetWriteApi(builder_impl._SAVE_BUILDER_LABEL), 1)
+    self.assertEqual(
+        metrics.GetWriteApi(
+            builder_impl._SAVE_BUILDER_LABEL, write_version="1"),
+        save_builder_count + 1)
     self.assertEqual(metrics.GetWrite(), write_count + 1)
 
   def test_load_v2(self):
     read_count = metrics.GetRead()
-    load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL)
+    load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL, write_version="2")
 
     save_dir = self._create_save_v2_model()
     load.load(save_dir)
 
     self.assertEqual(
-        metrics.GetReadApi(load._LOAD_V2_LABEL), load_v2_count + 1)
+        metrics.GetReadApi(load._LOAD_V2_LABEL, write_version="2"),
+        load_v2_count + 1)
     self.assertEqual(metrics.GetRead(), read_count + 1)
 
   def test_load_v1_in_v2(self):
-    # This test is expected to increment both the load_v2 and load_v1_in_v2
-    # cells for the ReadApi counter.
     read_count = metrics.GetRead()
-    load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL)
-    load_v1_v2_count = metrics.GetReadApi(load_v1_in_v2._LOAD_V1_V2_LABEL)
+    load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL, write_version="2")
+    load_v1_v2_count = metrics.GetReadApi(
+        load_v1_in_v2._LOAD_V1_V2_LABEL, write_version="1")
 
     save_dir = self._create_save_v1_model()
     load.load(save_dir)
 
+    # Check that `load_v2` was *not* incremented.
     self.assertEqual(
-        metrics.GetReadApi(load._LOAD_V2_LABEL), load_v2_count + 1)
+        metrics.GetReadApi(load._LOAD_V2_LABEL, write_version="2"),
+        load_v2_count)
     self.assertEqual(
-        metrics.GetReadApi(load_v1_in_v2._LOAD_V1_V2_LABEL),
+        metrics.GetReadApi(load_v1_in_v2._LOAD_V1_V2_LABEL, write_version="1"),
         load_v1_v2_count + 1)
     self.assertEqual(metrics.GetRead(), read_count + 1)
 
@@ -108,7 +116,8 @@ class MetricsTests(test.TestCase):
       loader.load(sess, ["foo"])
     ops.enable_eager_execution()
 
-    self.assertEqual(metrics.GetReadApi(loader_impl._LOADER_LABEL), 1)
+    self.assertEqual(
+        metrics.GetReadApi(loader_impl._LOADER_LABEL, write_version="1"), 1)
     self.assertEqual(metrics.GetRead(), read_count + 1)
 
 

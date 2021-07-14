@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import functools
 import os
 import re
 import threading
@@ -31,7 +30,6 @@ import time
 import weakref
 from six.moves import queue
 
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import values as values_lib
@@ -71,13 +69,12 @@ RemoteValueStatus = values_lib.RemoteValueStatus
 RemoteValue = values_lib.RemoteValue
 RemoteValueImpl = values_lib.RemoteValueImpl
 PerWorkerValues = values_lib.PerWorkerValues
-PerWorkerDistributedDataset = values_lib.PerWorkerDistributedDataset
-PerWorkerDistributedIterator = values_lib.PerWorkerDistributedIterator
 
 
 class InputError(Exception):
 
   def __init__(self, original_exception):
+    self.original_exception = original_exception
     message = ("Input has an error, the original exception is %r, "
                "error message is %s." %
                (original_exception, str(original_exception)))
@@ -92,10 +89,11 @@ def _maybe_rebuild_remote_values(worker, structure):
     if isinstance(val, RemoteValue):
       if val._status is RemoteValueStatus.ABORTED:  # pylint: disable=protected-access
         try:
-          with worker.failure_handler.wait_on_failure(
-              on_recovery_fn=functools.partial(val._rebuild_on, worker),  # pylint: disable=protected-access
-              worker_device_name=worker.device_name):
-            val._rebuild_on(worker)  # pylint: disable=protected-access
+          # This attempts to rebuild the resource on the worker, which may fail
+          # if the worker or PS is unavailable. If it fails, the original
+          # RemoteValue that requests a result will receive an `InputError`,
+          # which gets handled by `wait_on_failure` in `process_closure`.
+          val._rebuild_on(worker)  # pylint: disable=protected-access
         except Exception as e:  # pylint: disable=broad-except
           val._set_error(e)  # pylint: disable=protected-access
 
@@ -493,7 +491,7 @@ class WorkerPreemptionHandler(object):
     assert self._should_preemption_thread_run
     try:
       yield
-    except errors.OpError as e:
+    except (errors.OpError, InputError) as e:
       # If the error is due to temporary connectivity issues between worker and
       # ps, put back closure, ignore error and do not mark worker as failure.
       if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
@@ -517,7 +515,12 @@ class WorkerPreemptionHandler(object):
           on_failure_fn()
         return
 
+      # This reraises the error, if it's not considered recoverable; otherwise,
+      # the following failure recovery logic run. At this time, only worker
+      # unavailability is recoverable. PS unavailability as well as other
+      # errors in the user function is not recoverable.
       self._validate_preemption_failure(e)
+
       logging.error("Worker %s failed with %r:%s", worker_device_name, e, e)
       if on_failure_fn:
         on_failure_fn()
@@ -639,9 +642,10 @@ class Worker(object):
           on_recovery_fn=self._set_resources_aborted,
           worker_device_name=self.device_name):
         closure.execute_on(self)
-        # TODO(yuefengz): we don't have to materialize results every step.
         with metric_utils.monitored_timer("remote_value_fetch"):
-          closure.output_remote_value.fetch()
+          # Copy the remote tensor to local (the coordinator) in case worker
+          # becomes unavailable at a later time.
+          closure.output_remote_value.get()
         self._cluster._closure_queue.mark_finished()  # pylint: disable=protected-access
     except Exception as e:  # pylint: disable=broad-except
       # Avoid logging the derived cancellation error
@@ -902,16 +906,18 @@ class ClusterCoordinator(object):
     Raises:
       ValueError: if the strategy being used is not supported.
     """
-    if not isinstance(strategy,
-                      parameter_server_strategy_v2.ParameterServerStrategyV2):
-      raise ValueError(
-          "Only `tf.distribute.experimental.ParameterServerStrategy` "
-          "is supported to work with "
-          "`tf.distribute.experimental.coordinator.ClusterCoordinator` "
-          "currently.")
-    self._strategy = strategy
-    self.strategy.extended._used_with_coordinator = True
-    self._cluster = Cluster(strategy)
+    if not getattr(self, "_has_initialized", False):
+      if not isinstance(strategy,
+                        parameter_server_strategy_v2.ParameterServerStrategyV2):
+        raise ValueError(
+            "Only `tf.distribute.experimental.ParameterServerStrategy` "
+            "is supported to work with "
+            "`tf.distribute.experimental.coordinator.ClusterCoordinator` "
+            "currently.")
+      self._strategy = strategy
+      self.strategy.extended._used_with_coordinator = True
+      self._cluster = Cluster(strategy)
+      self._has_initialized = True
 
   def __del__(self):
     self._cluster.stop()
@@ -1093,11 +1099,7 @@ class ClusterCoordinator(object):
       a `tf.distribute.experimental.coordinator.PerWorkerValues` of the
       iterators (that are on the workers).
     """
-    input_workers = input_lib.InputWorkers(
-        [(w.device_name, [w.device_name]) for w in self._cluster.workers],
-        False)
-
-    return PerWorkerDistributedDataset(dataset_fn, input_workers, self)
+    return values_lib.get_per_worker_dataset(dataset_fn, self)
 
   def _create_per_worker_resources(self, fn, args=None, kwargs=None):
     """Synchronously create resources on the workers.
@@ -1188,12 +1190,22 @@ def _extract_failed_ps_instances(err_msg):
 
 def _is_ps_failure(error):
   """Whether the error is considered a parameter server failure."""
+
+  # For an `InputError`, extract the original error and assess it accordingly.
+  if isinstance(error, InputError):
+    error = error.original_exception
+
   return (isinstance(error, errors.UnavailableError) and
           _RPC_ERROR_FROM_PS in str(error))
 
 
 def _is_worker_failure(error):
   """Whether the error is considered a worker failure."""
+
+  # For an `InputError`, extract the original error and assess it accordingly.
+  if isinstance(error, InputError):
+    error = error.original_exception
+
   if _JOB_WORKER_STRING_IDENTIFIER not in str(error):
     return False
   if _RPC_ERROR_FROM_PS in str(error):

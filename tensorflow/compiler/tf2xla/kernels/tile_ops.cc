@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific Tile Op.
 
 #include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -62,35 +64,49 @@ class TileOp : public XlaOpKernel {
       return;
     }
 
-    std::vector<int64> multiples;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("multiples", &multiples));
+    std::vector<int64> multiples_bounds;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(
+                            "multiples", &multiples_bounds,
+                            xla::ValueInferenceMode::kUpperBound));
+
     std::vector<int64> output_dims(input_shape.dims());
     for (int64 i = 0; i < input_shape.dims(); ++i) {
-      OP_REQUIRES(ctx, multiples[i] >= 0,
+      OP_REQUIRES(ctx, multiples_bounds[i] >= 0,
                   errors::InvalidArgument("Expected multiples[", i,
                                           "] >= 0, but got ", output_dims[i]));
-      output_dims[i] = input_shape.dim_size(i) * multiples[i];
+      output_dims[i] = input_shape.dim_size(i) * multiples_bounds[i];
     }
 
-    // If all multiples are 1, than the input is the same as the output.
-    if (absl::c_all_of(multiples,
-                       [](int64 multiple) { return multiple == 1; })) {
-      ctx->SetOutput(0, input);
-      return;
+    std::vector<bool> multiples_are_dynamic;
+
+    OP_REQUIRES_OK(ctx, ctx->ResolveInputDynamismIntoPredVector(
+                            1, &multiples_are_dynamic));
+
+    bool all_multiples_are_static = absl::c_all_of(
+        multiples_are_dynamic, [](bool dynamic) { return !dynamic; });
+    // If a value is static, it means the upper bound is the value itself:
+    // constant_value = constant_upper_boudn = counstant_lower_bound
+    if (all_multiples_are_static) {
+      // If all multiples are 1, than the input is the same as the output.
+      if (absl::c_all_of(multiples_bounds,
+                         [](int64 multiple) { return multiple == 1; })) {
+        ctx->SetOutput(0, input);
+        return;
+      }
     }
-    std::vector<int64> dynamic_multiples;
-    ctx->set_dynamic_dimension_is_minus_one(true);
-    // The multiplier can be a dynamic value.
-    OP_REQUIRES_OK(
-        ctx, ctx->ConstantInputAsIntVector("multiples", &dynamic_multiples));
 
     auto result_or = BroadcastTo(ctx->Input("input"), output_dims);
 
     OP_REQUIRES_OK(ctx, result_or.status());
     auto result = result_or.ValueOrDie();
-    for (int64 i = 0; i < dynamic_multiples.size(); ++i) {
-      // If a dimension is dynamic, call set-dimension-size on the output.
-      if (dynamic_multiples[i] == -1) {
+    if (!all_multiples_are_static) {
+      // Some values of multiples are unknown at compile time, this is a dynamic
+      // tile op. We need to call set dimension size.
+      for (int64 i = 0; i < multiples_are_dynamic.size(); ++i) {
+        if (!multiples_are_dynamic[i]) {
+          continue;
+        }
+        // If a dimension is dynamic, call set-dimension-size on the output.
         auto dynamic_dim_size =
             xla::Slice(ctx->Input("multiples"), {i}, {i + 1}, {1});
         dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});

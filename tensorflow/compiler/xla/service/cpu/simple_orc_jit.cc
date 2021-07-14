@@ -85,7 +85,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
 }
 
 SimpleOrcJIT::SimpleOrcJIT(
-    std::unique_ptr<llvm::orc::TargetProcessControl> target_process_control,
+    std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control,
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
@@ -166,7 +166,7 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
   auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
   auto target_process_control =
-      llvm::orc::SelfTargetProcessControl::Create(std::move(SSP));
+      llvm::orc::SelfExecutorProcessControl::Create(std::move(SSP));
   if (!target_process_control) {
     return target_process_control.takeError();
   }

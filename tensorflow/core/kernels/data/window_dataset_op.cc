@@ -246,9 +246,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         DataTypeVector output_types({dataset()->input_->output_dtypes()[idx]});
         std::vector<PartialTensorShape> output_shapes(
             {dataset()->input_->output_shapes()[idx]});
-        TF_RETURN_IF_ERROR(NewWindowDataset(window_component_elements,
-                                            output_types, output_shapes,
-                                            &window_dataset));
+        TF_RETURN_IF_ERROR(NewWindow(window_component_elements, output_types,
+                                     output_shapes, &window_dataset));
         out_tensors->emplace_back(DT_VARIANT, TensorShape({}));
         TF_RETURN_IF_ERROR(
             StoreDatasetInVariantTensor(window_dataset, &out_tensors->back()));
@@ -310,6 +309,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         buffer_[i].result.resize(vector_size);
         for (int64 j = 0; j < vector_size; j++) {
           TF_RETURN_IF_ERROR(reader->ReadTensor(
+              ctx->flr(),
               full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
               &buffer_[i].result[j]));
         }

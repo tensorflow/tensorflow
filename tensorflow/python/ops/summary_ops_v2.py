@@ -132,17 +132,21 @@ def _should_record_summaries_internal(default_state):
   return math_ops.logical_and(cond_distributed, cond)
 
 
-def _should_record_summaries_v2():
-  """Returns boolean Tensor which is true if summaries should be recorded.
+@tf_export("summary.should_record_summaries", v1=[])
+def should_record_summaries():
+  """Returns boolean Tensor which is True if summaries will be recorded.
 
-  If no recording status has been set, this defaults to True, unlike the public
-  should_record_summaries().
+  If no default summary writer is currently registered, this always returns
+  False. Otherwise, this reflects the recording condition has been set via
+  `tf.summary.record_if()` (except that it may return False for some replicas
+  when using `tf.distribute.Strategy`). If no recording condition is active,
+  it defaults to True.
   """
   return _should_record_summaries_internal(default_state=True)
 
 
-@tf_export("summary.should_record_summaries", v1=[])
-def should_record_summaries():
+# Legacy symbol used by tf.contrib.summary.should_record_summaries.
+def _legacy_contrib_should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
   return _should_record_summaries_internal(default_state=False)
 
@@ -357,8 +361,15 @@ class _ResourceSummaryWriter(SummaryWriter):
         self._closed = True
 
 
-class _TrackableResourceSummaryWriter(_ResourceSummaryWriter,
-                                      tracking.TrackableResource):
+class _MultiMetaclass(
+    type(_ResourceSummaryWriter), type(tracking.TrackableResource)):
+  pass
+
+
+class _TrackableResourceSummaryWriter(
+    _ResourceSummaryWriter,
+    tracking.TrackableResource,
+    metaclass=_MultiMetaclass):
   """A `_ResourceSummaryWriter` subclass that implements `TrackableResource`."""
 
   def __init__(self, create_fn, init_op_fn):
@@ -756,7 +767,7 @@ def write(tag, tensor, step=None, metadata=None, name=None):
           return constant_op.constant(True)
 
     op = smart_cond.smart_cond(
-        _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+        should_record_summaries(), record, _nothing, name="summary_cond")
     if not context.executing_eagerly():
       ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
     return op
@@ -808,7 +819,7 @@ def write_raw_pb(tensor, step=None, name=None):
 
     with ops.device("cpu:0"):
       op = smart_cond.smart_cond(
-          _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+          should_record_summaries(), record, _nothing, name="summary_cond")
       if not context.executing_eagerly():
         ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
       return op
@@ -840,7 +851,7 @@ def summary_writer_function(name, tensor, function, family=None):
     return control_flow_ops.no_op()
   with ops.device("cpu:0"):
     op = smart_cond.smart_cond(
-        should_record_summaries(), record, _nothing, name="")
+        _legacy_contrib_should_record_summaries(), record, _nothing, name="")
     if not context.executing_eagerly():
       ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
   return op
@@ -1044,7 +1055,7 @@ def graph(graph_data):
   if writer is None:
     return constant_op.constant(False)
   with ops.device("cpu:0"):
-    if not _should_record_summaries_v2():
+    if not should_record_summaries():
       return constant_op.constant(False)
 
     if isinstance(graph_data, (ops.Graph, graph_pb2.GraphDef)):

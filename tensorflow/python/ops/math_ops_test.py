@@ -762,21 +762,30 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
-                            (np.complex128))
+  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
+                            (dtypes.float32), (dtypes.float64),
+                            (dtypes.complex64), (dtypes.complex128))
   def testBasic(self, dtype):
-    nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)
-    divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
+    nums = np.arange(-10, 10, .25).reshape(80, 1)
+    divs = np.arange(-3, 3, .25).reshape(1, 24)
 
-    np_result = np.true_divide(nums, divs)
-    np_result[:, divs[0] == 0] = 0
+    tf_nums = constant_op.constant(nums, dtype=dtype)
+    tf_divs = constant_op.constant(divs, dtype=dtype)
+
+    # Use tf versions for expected value to ensure inputs are identical
+    # (e.g. in the case of bfloat16).
+    np_nums = self.evaluate(tf_nums)
+    np_divs = self.evaluate(tf_divs)
+    np_result = np.true_divide(np_nums, np_divs)
+    np_result[:, np_divs[0] == 0] = 0
 
     with test_util.use_gpu():
-      tf_result = math_ops.div_no_nan(nums, divs)
-      self.assertAllClose(tf_result, np_result)
+      tf_result = math_ops.div_no_nan(tf_nums, tf_divs)
+      self.assertAllCloseAccordingToType(tf_result, np_result)
 
-  @parameterized.parameters((np.float32), (np.float64), (np.complex64),
-                            (np.complex128))
+  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
+                            (dtypes.float32), (dtypes.float64),
+                            (dtypes.complex64), (dtypes.complex128))
   def testSmall(self, dtype):
     # Choose values whose squared magnitude underflows to zero/subnormal.
     zero = constant_op.constant([0, 0, 0, 0], dtype=dtype)
@@ -1068,6 +1077,67 @@ class ErfcinvTest(test_util.TensorFlowTestCase):
     values = np.random.uniform(0.1, 1.9, size=int(1e4)).astype(np.float32)
     approx_id = math_ops.erfc(math_ops.erfcinv(values))
     self.assertAllClose(values, self.evaluate(approx_id))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ArgMaxMinTest(test_util.TensorFlowTestCase):
+
+  def _generateRandomTensor(self, dtype, shape):
+    if dtype.is_integer:
+      array = np.random.default_rng().integers(
+          low=dtype.min, high=dtype.max, size=shape, endpoint=True)
+      return constant_op.constant(array, dtype=dtype)
+    else:
+      array = np.random.default_rng().uniform(low=-1.0, high=1.0, size=shape)
+      return constant_op.constant(array, dtype=dtype)
+
+  def _getValidDtypes(self):
+    return (dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64,
+            dtypes.int32, dtypes.int64)
+
+  def testArgMax(self):
+    shape = (24, 8)
+    for dtype in self._getValidDtypes():
+      tf_values = self._generateRandomTensor(dtype, shape)
+      np_values = self.evaluate(tf_values)
+      for axis in range(0, len(shape)):
+        np_max = np.argmax(np_values, axis=axis)
+        tf_max = math_ops.argmax(tf_values, axis=axis)
+        self.assertAllEqual(tf_max, np_max)
+
+  def testArgMaxReturnsFirstOccurence(self):
+    for dtype in self._getValidDtypes():
+      values = constant_op.constant(
+          [[10, 11, 15, 15, 10], [12, 12, 10, 10, 12]], dtype=dtype)
+      self.assertAllEqual(
+          math_ops.argmax(values, axis=1),
+          np.argmax(self.evaluate(values), axis=1))
+
+      # Long tensor to ensure works with multithreading/GPU
+      values = array_ops.zeros(shape=(193681,), dtype=dtype)
+      self.assertAllEqual(math_ops.argmax(values), 0)
+
+  def testArgMin(self):
+    shape = (24, 8)
+    for dtype in self._getValidDtypes():
+      tf_values = self._generateRandomTensor(dtype, shape)
+      np_values = self.evaluate(tf_values)
+      for axis in range(0, len(shape)):
+        np_min = np.argmin(np_values, axis=axis)
+        tf_min = math_ops.argmin(tf_values, axis=axis)
+        self.assertAllEqual(tf_min, np_min)
+
+  def testArgMinReturnsFirstOccurence(self):
+    for dtype in self._getValidDtypes():
+      values = constant_op.constant(
+          [[10, 11, 15, 15, 10], [12, 12, 10, 10, 12]], dtype=dtype)
+      self.assertAllEqual(
+          math_ops.argmin(values, axis=1),
+          np.argmin(self.evaluate(values), axis=1))
+
+      # Long tensor to ensure works with multithreading/GPU
+      values = array_ops.zeros(shape=(193681,), dtype=dtype)
+      self.assertAllEqual(math_ops.argmin(values), 0)
 
 
 if __name__ == "__main__":

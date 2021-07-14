@@ -50,7 +50,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   %size = rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
   ^bb0(%i : index):
-    %elem = memref.dim %arg, %i : tensor<*xf32>
+    %elem = tensor.dim %arg, %i : tensor<*xf32>
     tensor.yield %elem : index
   } : tensor<?xindex>
   %c0 = constant 0 : index
@@ -251,10 +251,20 @@ func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
   return %result : tensor<4xf32>
 }
 
-// CHECK-LABEL: @subtensor
+// CHECK-LABEL: @slice
 // CHECK-SAME: (%[[T:.*]]: memref<3xi32>)
-func @subtensor(%t : tensor<3xi32>) -> tensor<1xi32> {
+func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
   // CHECK: memref.subview %[[T]][0] [1] [1] : memref<3xi32> to memref<1xi32>
-  %result = subtensor %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
+  %result = tensor.extract_slice %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
   return %result : tensor<1xi32>
+}
+
+// CHECK-LABEL: @jit_execute
+// CHECK-SAME: (%[[F:.*]]: !tf_framework.jit_callable, %[[ARG:.*]]: memref<*xf32>) -> memref<*xf32>
+func @jit_execute(%f : !tf_framework.jit_callable, %arg : tensor<*xf32>)
+    -> tensor<*xf32> {
+  // CHECK: %[[RES:.*]] = tf_framework.jit_execute %[[F]](%[[ARG]]) : memref<*xf32> -> memref<*xf32>
+  // CHECK: return %[[RES]] : memref<*xf32>
+  %0 = tf_framework.jit_execute %f(%arg) : tensor<*xf32> -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }

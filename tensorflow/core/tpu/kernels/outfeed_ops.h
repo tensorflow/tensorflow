@@ -28,11 +28,11 @@ namespace tensorflow {
 template <class T>
 class TpuOutfeedDequeueOp : public T {
  public:
-  explicit TpuOutfeedDequeueOp(OpKernelConstruction* ctx);
+  explicit TpuOutfeedDequeueOp(
+      OpKernelConstruction* ctx,
+      std::unique_ptr<TpuTransferOpInterface> transfer_op);
 
-  Status DoWork(OpKernelContext* ctx,
-                xla::TpuTransferManagerInterface* transfer_manager,
-                stream_executor::StreamExecutor* stream_executor) override;
+  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   TensorShape shape_;
@@ -49,11 +49,11 @@ class TpuOutfeedDequeueOp : public T {
 template <class T>
 class TpuOutfeedDequeueTupleOp : public T {
  public:
-  explicit TpuOutfeedDequeueTupleOp(OpKernelConstruction* ctx);
+  explicit TpuOutfeedDequeueTupleOp(
+      OpKernelConstruction* ctx,
+      std::unique_ptr<TpuTransferOpInterface> transfer_op);
 
-  Status DoWork(OpKernelContext* ctx,
-                xla::TpuTransferManagerInterface* transfer_manager,
-                stream_executor::StreamExecutor* stream_executor) override;
+  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   std::vector<TensorShape> shapes_;

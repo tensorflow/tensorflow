@@ -16,6 +16,7 @@
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     default_visibility = [
@@ -70,11 +71,31 @@ java_lite_proto_library(
     deps = [":configuration_proto"],
 )
 
+# TODO(b/191428000): The automatic generation is temporarily disabled until
+# https://github.com/google/flatbuffers/pull/6486 is landed and tensorflow
+# flatbuffer version updated.
+# Until that time you need to build configuration_for_generation_generated.h
+# and copy the result to configuration_generated.h.
+genrule(
+    name = "copy_configuration_fbs",
+    srcs = ["configuration.fbs"],
+    outs = ["configuration_for_generation.fbs"],
+    cmd = "cp $(<) $(@)",
+)
+
 flatbuffer_cc_library(
-    name = "configuration_fbs",
-    srcs = [":configuration.fbs"],
-    compatible_with = get_compatible_with_portable(),
+    name = "configuration_fbs_for_generation",
+    srcs = [":configuration_for_generation.fbs"],
     flatc_args = DEFAULT_FLATC_ARGS + ["--gen-compare"],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "configuration_fbs",
+    hdrs = ["configuration_generated.h"],
+    compatible_with = get_compatible_with_portable(),
+    linkstatic = True,
+    deps = ["@flatbuffers//:runtime_cc"],
 )
 
 flatbuffer_java_library(
@@ -97,6 +118,31 @@ cc_library(
 )
 
 cc_library(
+    name = "flatbuffer_to_proto",
+    srcs = [
+        "flatbuffer_to_proto.cc",
+    ],
+    hdrs = ["flatbuffer_to_proto.h"],
+    deps = [
+        ":configuration_cc_proto",
+        ":configuration_fbs",
+        "//tensorflow/lite:minimal_logging",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "flatbuffer_to_proto_test",
+    srcs = ["flatbuffer_to_proto_test.cc"],
+    deps = [
+        ":configuration_cc_proto",
+        ":configuration_fbs",
+        ":flatbuffer_to_proto",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "delegate_registry",
     srcs = ["delegate_registry.cc"],
     hdrs = ["delegate_registry.h"],
@@ -105,6 +151,18 @@ cc_library(
         "//tensorflow/lite/c:common",
         "@com_google_absl//absl/synchronization",
     ],
+)
+
+cc_library_with_tflite(
+    name = "delegate_plugin_converter",
+    srcs = ["delegate_plugin_converter.cc"],
+    hdrs = ["delegate_plugin_converter.h"],
+    tflite_deps = [
+        "//tensorflow/lite/core/shims:delegate_plugin",
+        "//tensorflow/lite/core/shims:delegate_registry",
+        "//tensorflow/lite/core/shims:common",
+    ],
+    deps = ["@com_google_absl//absl/memory"],
 )
 
 cc_library(
@@ -172,7 +230,18 @@ cc_library(
 
 cc_library(
     name = "gpu_plugin",
+    deps = [
+        ":gpu_plugin_impl",
+    ],
+)
+
+cc_library(
+    name = "gpu_plugin_impl",
     srcs = ["gpu_plugin.cc"],
+    hdrs = ["gpu_plugin.h"],
+    visibility = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
+    ],
     deps = [
         ":configuration_fbs",
         ":delegate_registry",

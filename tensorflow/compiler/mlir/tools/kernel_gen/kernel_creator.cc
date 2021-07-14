@@ -121,8 +121,8 @@ struct RemoveUnusedBufferCastOperations
                                mlir::FunctionPass> {
   void runOnFunction() override {
     getFunction().walk([](mlir::memref::BufferCastOp op) {
-      // Drop all tensor_to_memref that have no more users. Currently this will
-      // not happen, as tensor_to_memref has a side-effect. See
+      // Drop all buffercast that have no more users. Currently this will
+      // not happen, as buffercast has a side-effect. See
       // https://reviews.llvm.org/D91967 for a dicsussion.
       if (op.memref().getUsers().empty()) {
         op.erase();
@@ -250,6 +250,10 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  // Now that all compute operations are converted to standard (as a sideeffect
+  // of bufferizing to memref dialect) we can remove the remaining references
+  // to unsigned types.
+  pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
   // Find candidates for buffer reuse. This is only successful if buffer size
   // equality can be determined based on `linalg.generic` operations.
   pm.addNestedPass<mlir::FuncOp>(
@@ -326,22 +330,18 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // end up on the device, whereas allocations for shape computation and host
   // side things remain on the host.
   // Longer term, this should be handled by proper device placement.
-  pm.addPass(mlir::kernel_gen::tf_framework::
-                 CreateEmbedTFFrameworkFunctionAndAllocPass());
+  pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   // Now lower the shape computations, bufferize all remaining ops and insert
   // deallocs.
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   // TODO(herhut): Enable once no-longer broken.
-  // This depends on https://bugs.llvm.org/show_bug.cgi?id=49142 being fixed.
-  // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
-  // TODO(herhut): Depends on https://bugs.llvm.org/show_bug.cgi?id=48385.
-  // We also cannot properly free temporaries until
-  // https://llvm.discourse.group/t/remove-tight-coupling-of-the-bufferdeallocation-pass-to-std-and-linalg-operations/2162
-  // is resolved.
-  // pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
-  // pm.addNestedPass<mlir::FuncOp>(mlir::createCopyRemovalPass());
+  // Free all temporaries,
+  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferDeallocationPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+
   // Apply the mapping and go to GPU. We cannot do this earlier due to missing
   // interfaces on the GPU dialect.
   // TODO(b/174830459): Move up once implemented.
@@ -366,8 +366,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addPass(::mlir::createLowerToCFGPass());
   if (cpu_codegen) pm.addPass(::mlir::createConvertVectorToLLVMPass());
   // Map asserts to the tensorflow framework.
-  pm.addPass(
-      mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkAssertPass());
+  pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (embed_memref_prints) {
     pm.addNestedPass<::mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
@@ -469,7 +468,7 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool generate_fatbin,
-    bool print_ptx, bool enable_ftz, bool cpu_codegen) {
+    bool print_ptx, bool enable_ftz, bool cpu_codegen, bool jit_compile) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
@@ -478,6 +477,9 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   mlir::registerROCDLDialectTranslation(registry);
   context.appendDialectRegistry(registry);
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
+
+  if (jit_compile)
+    return InternalError("JIT compilation is not yet implemented.");
 
   TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
                                     max_supported_rank, cpu_codegen));

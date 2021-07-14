@@ -24,12 +24,60 @@ limitations under the License.
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
-#define TENSORFLOW_INCLUDED_FROM_PERCENTILE_SAMPLER_H  // prevent accidental use
-                                                       // of
-// mobile_percentile_sampler.h
-#include "tensorflow/core/lib/monitoring/mobile_percentile_sampler.h"
-#undef TENSORFLOW_INCLUDED_FROM_PERCENTILE_SAMPLER_H
-#else
+
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/core/lib/monitoring/types.h"
+#include "tensorflow/core/platform/macros.h"
+
+namespace tensorflow {
+namespace monitoring {
+
+class PercentileSamplerCell {
+ public:
+  void Add(double sample) {}
+
+  Percentiles value() const { return Percentiles(); }
+};
+
+template <int NumLabels>
+class PercentileSampler {
+ public:
+  static PercentileSampler* New(
+      const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
+          metric_def,
+      std::vector<double> percentiles, size_t max_samples,
+      UnitOfMeasure unit_of_measure);
+
+  template <typename... Labels>
+  PercentileSamplerCell* GetCell(const Labels&... labels) {
+    return &default_cell_;
+  }
+
+  Status GetStatus() { return Status::OK(); }
+
+ private:
+  PercentileSamplerCell default_cell_;
+
+  PercentileSampler() = default;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(PercentileSampler);
+};
+
+template <int NumLabels>
+PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
+    const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
+    /* metric_def */,
+    std::vector<double> /* percentiles */, size_t /* max_samples */,
+    UnitOfMeasure /* unit_of_measure */) {
+  return new PercentileSampler<NumLabels>();
+}
+
+}  // namespace monitoring
+}  // namespace tensorflow
+
+#else  // IS_MOBILE_PLATFORM
 
 #include <cmath>
 #include <map>

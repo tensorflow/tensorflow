@@ -19,9 +19,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 #include "tensorflow/lite/python/metrics_wrapper/converter_error_data.pb.h"
 
@@ -45,55 +42,16 @@ class ErrorCollector {
   // Clear the set of collected errors.
   void Clear() { collected_errors_.clear(); }
 
+  // Returns the global instance of ErrorCollector.
+  static ErrorCollector* GetErrorCollector();
+
  private:
   ErrorCollector() {}
-  friend ErrorCollector *GetErrorCollector();
 
   ConverterErrorDataSet collected_errors_;
+
+  static ErrorCollector* error_collector_instance_;
 };
-
-// Returns the global instance of ErrorCollector.
-ErrorCollector *GetErrorCollector();
-
-// Collects errors when running the pass manager.
-class ErrorCollectorInstrumentation : public PassInstrumentation {
-  using ConverterErrorData = tflite::metrics::ConverterErrorData;
-  using ErrorCode = ConverterErrorData::ErrorCode;
-
- public:
-  explicit ErrorCollectorInstrumentation(MLIRContext *context);
-
- private:
-  // Instrumentation hooks. These hooks don't need to be thread-safe. The pass
-  // manager runs each pass for the entire module, then it walks through
-  // each op in the module and runs the pass on them, may be in async mode.
-  void runBeforePass(Pass *pass, Operation *module) override;
-  void runAfterPass(Pass *pass, Operation *module) override;
-  void runAfterPassFailed(Pass *pass, Operation *module) override;
-
-  // The handler to capture error messages.
-  std::unique_ptr<ScopedDiagnosticHandler> handler_;
-  // A map from location to op name.
-  std::unordered_map<Location, std::string, LocationHash> loc_to_name_;
-  // Stores the error message for errors without op name and error code.
-  std::string common_error_message_;
-  // Name of the running pass.
-  std::string pass_name_;
-  // Pointer to the global ErrorCollector instance.
-  ErrorCollector *error_collector_;
-};
-
-// Prefix when adding error code as a note in Diagnostic.
-constexpr char kErrorCodePrefix[] = "Error code: ";
-
-// Adds error code to a newly created InFlightDiagnostic.
-inline InFlightDiagnostic AttachErrorCode(InFlightDiagnostic &&diag,
-                                          int error_code) {
-  using tflite::metrics::ConverterErrorData;
-  diag.attachNote() << kErrorCodePrefix
-                    << ConverterErrorData::ErrorCode_Name(error_code);
-  return std::move(diag);
-}
 
 }  // namespace TFL
 }  // namespace mlir

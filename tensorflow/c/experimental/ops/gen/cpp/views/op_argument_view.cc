@@ -34,6 +34,8 @@ string OpArgumentView::Initializer() const {
   return absl::Substitute(" = $0", default_value_);
 }
 
+bool OpArgumentView::HasDefaultValue() const { return !default_value_.empty(); }
+
 OpArgumentView::OpArgumentView(string type, string var, string def)
     : type_name_(type), variable_name_(var), default_value_(def) {}
 

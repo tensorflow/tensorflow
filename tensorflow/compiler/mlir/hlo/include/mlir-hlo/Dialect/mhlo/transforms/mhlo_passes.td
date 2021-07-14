@@ -26,15 +26,19 @@ def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
   ];
 }
 
+def HloCanonicalizeReductionPass : FunctionPass<"hlo-canonicalize-reduction"> {
+  let summary = "canonicalize reduction ops to be suitable for codegen.";
+  let constructor = "createHloCanonicalizeReductionPass()";
+}
+
 def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to LHLO dialect.";
   let constructor = "createLegalizeToLhloPass()";
-  let options = [
-    Option<"convert_to_lmhlo_only_", "convert-to-lmhlo-only", "bool",
-           /*default=*/"false", "If enabled, simply lower all mhlo ops to their lmhlo counterparts, "
-          "otherwise, some metadata-only ops (e.g. reshape) may be lowerred "
-          "to memref dialect to elide some buffer copy.">,
-  ];
+}
+
+def HloLegalizeToMemrefPass : FunctionPass<"hlo-legalize-to-memref"> {
+  let summary = "Legalize from HLO dialect to memref dialect.";
+  let constructor = "createLegalizeToMemrefPass()";
 }
 
 def LegalizeControlFlowPass : FunctionPass<"mhlo-legalize-control-flow"> {
@@ -45,6 +49,11 @@ def LegalizeControlFlowPass : FunctionPass<"mhlo-legalize-control-flow"> {
 def LegalizeControlFlowToScfPass : FunctionPass<"mhlo-control-flow-to-scf"> {
   let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createControlFlowToScfPass()";
+}
+
+def LegalizeEinsumToDotGeneralPass : FunctionPass<"mhlo-legalize-einsum-to-dot-general"> {
+  let summary = "Legalizes einsum ops to dot_general ops.";
+  let constructor = "createLegalizeEinsumToDotGeneralPass()";
 }
 
 def LegalizeGatherToTorchIndexSelectPass : FunctionPass<"mhlo-legalize-gather-to-torch-index-select"> {
@@ -58,16 +67,19 @@ def LegalizeTanhToApproximationPass : FunctionPass<"mhlo-legalize-trigonometric-
   let constructor = "createLegalizeTrigonometricToApproximationPass()";
 }
 
-
 def HloLegalizeToLinalgPass : FunctionPass<"hlo-legalize-to-linalg"> {
   let summary = "Legalize from HLO dialect to Linalg dialect.";
   let constructor = "createLegalizeHloToLinalgPass()";
 }
 
-
 def LegalizeToStandardPass : FunctionPass<"mhlo-legalize-to-std"> {
   let summary = "Legalize from MHLO dialect to standard dialect.";
   let constructor = "createLegalizeToStdPass()";
+}
+
+def MarkShapeCalculationPass : Pass<"mhlo-mark-shape-calc", "ModuleOp"> {
+  let summary = "Identify and mark with an attribute operations performing shape calculation";
+  let constructor = "createMarkShapeCalcOpPass()";
 }
 
 def LowerComplexPass : FunctionPass<"mhlo-test-lower-complex"> {

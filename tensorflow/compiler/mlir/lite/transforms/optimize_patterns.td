@@ -39,7 +39,8 @@ def ExtractSingleElementAsFloat : NativeCodeCall<
 
 // Checks if the value has rank at most 'n'.
 class HasRankAtMost<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
@@ -586,7 +587,7 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
       (ValueOp:$value (MoveOp:$move $input, $move_def)),
       (MoveOp (ValueOp $input), $move_def),
-      [(HasOneUse $move)]>;
+      [(SameElementType $input, $value), (HasOneUse $move)]>;
   }
 }
 
@@ -871,3 +872,98 @@ def OptimizeSliceOp : Pat<
   (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
   (replaceWithValue $input),
   [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
+
+def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
+
+def IsLastElementEqualsOne : Constraint<CPred<
+  "TFL::IsLastElementEqualsOne($0)">>;
+
+def IsOneHotIndexAttribute : Constraint<CPred<
+  "TFL::IsOneHotIndexAttribute($0)">>;
+
+// Replace
+//   Equal(Reshape(X, shape), indices)
+// With
+//   OneHot(X, N, true, false, -1)
+// where
+//  - last value in shape is 1
+//  - indices is a incrementing series from 0 to N-1. (N elements total.)
+def ReshapeEqualOpToOneHotOp : Pat<
+  (TFL_EqualOp (TFL_ReshapeOp $x, (ConstantOp $shape)),
+               (ConstantOp $series)),
+  (TFL_OneHotOp $x,
+                (ConstantOp (GetNumElementsOrOne $series)),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
+                (ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
+                ConstantAttr<I32Attr, "-1">),
+  [(IsLastElementEqualsOne $shape),
+   (IsOneHotIndexAttribute $series)]>;
+
+def F32ElementsVal : Constraint<CPred<
+  "$0.getType().cast<TensorType>().getElementType().isF32()">,
+  "32 bit float tensor">;
+def I32ElementsVal : Constraint<CPred<
+  "$0.getType().cast<TensorType>().getElementType().isInteger(32)">,
+  "32 bit integer tensor">;
+
+def ConvertSingleElementAttrToFloatAttr :
+  NativeCodeCall<"ConvertSingleElementAttrToFloatAttr($0)">;
+
+// Replace
+//   (float)OneHot(index, depth, on_val, off_val, axis)
+// With
+//   OneHot(index, depth, (float)on_val, (float)off_val, axis)
+def FuseOneHotAndCastToFloat : Pat<
+  (TFL_CastOp:$output (TFL_OneHotOp $indices,
+                                    $depth,
+                                    (ConstantOp $on_val),
+                                    (ConstantOp $off_val),
+                                    $axis)),
+  (TFL_OneHotOp $indices,
+                $depth,
+                (ConstantOp (ConvertSingleElementAttrToFloatAttr $on_val)),
+                (ConstantOp (ConvertSingleElementAttrToFloatAttr $off_val)),
+                $axis),
+  [(F32ElementsVal $output)]>;
+
+// Replace
+//   OneHot(index, depth, on=1.0f, off=0.0f, axis=-1) * filter
+// With
+//   EmbeddingLookup(index, Transpose(filter))
+//
+// OneHot with on=1 off=0 axis=-1, where `index` is a single element tensor,
+// creates a tensor of size depth, and all values are 0, except for the element
+// at `index`, which is 1. Multiplying such a tensor with a 2D filter esentially
+// returns the single column in filter as a 1D tensor. If the input has multiple
+// elements, repeat this for every entry, forming the higher dimensions in the
+// result tensor. For instance, if:
+//   input = [1, 2]
+//   depth = 4
+//   filter = [[5, 7, 11, 13], [17, 19, 23, 29]]
+// then:
+//   onehot = [[0, 1, 0, 0], [0, 0, 1, 0]]
+//   result = [[ 7, 19],   # == 1st column in filter
+//             [11, 23]]   # == 2nd column in filter
+// This is exactly what the EmbeddedLookup operator is doing, on the transposed
+// matrix, without doing any arithmetic but only memcpy.
+def ReplaceOneHotFullyConnectedWithLookup : Pat<
+  (TFL_FullyConnectedOp
+    (TFL_OneHotOp
+      $indices,
+      (ConstantOp $depth),
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
+      ConstantAttr<I32Attr, "-1">),
+    $filter,
+    $bias,
+    TFL_AF_None,
+    TFL_FCWO_Default,
+    ConstBoolAttrFalse),
+  (TFL_EmbeddingLookupOp
+    $indices,
+    (TFL_TransposeOp
+      $filter,
+      (ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}"> ))),
+  [(I32ElementsVal $indices),     // lookup is not implemented for i64
+   (OperandHasRank<1> $indices),  // lookup isn't implemented for any other rank
+   (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later

@@ -127,6 +127,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
         "//tensorflow/cc/experimental/libexport:metrics",
+        "//tensorflow/cc/experimental/libexport:util",
     ]),
     alwayslink = 1,
 )
@@ -138,6 +139,7 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/cc/experimental/libexport:metrics",
+        "//tensorflow/cc/experimental/libexport:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:strcat",
@@ -260,6 +262,7 @@ filegroup(
         "testdata/StaticHashTableModule/**",
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
+        "testdata/SimpleV1Model/**",
     ]),
 )
 

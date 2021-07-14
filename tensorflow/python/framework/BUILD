@@ -951,6 +951,7 @@ py_library(
         ":auto_control_deps",
         ":ops",
         ":sparse_tensor",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
@@ -1024,6 +1025,7 @@ tpu_py_test(
     name = "config_test_tpu",
     size = "small",
     srcs = ["config_test.py"],
+    disable_tfrt = True,  # TODO(tfrt-devs): Update this test to call initialize_tpu_system
     main = "config_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # test_ops are not available in pip.

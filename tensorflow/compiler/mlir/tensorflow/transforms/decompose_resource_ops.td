@@ -339,6 +339,21 @@ def DecomposeResourceGather : Pat<
     $batch_dims
   )>;
 
+// Pattern to decompose tf.ResourceScatterAdd into tf.ReadVariable,
+// tf.TensorScatterAdd, and tf.AssignVariable.
+def DecomposeResourceScatterAdd : Pat<
+  (TF_ResourceScatterAddOp:$src_op
+    $resource, $indices, NonScalarType:$updates),
+  (TF_AssignVariableOp
+    $resource,
+    (TF_TensorScatterAddOp
+      (CreateTFReadVariableOp $src_op, $updates, $resource),
+      (TF_ExpandDimsOp $indices,
+       (TF_ConstOp (GetScalarOfType<-1> $indices))),
+      $updates
+    )
+  )>;
+
 // Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
 // tf.TensorScatterUpdate, and tf.AssignVariable.
 // TODO(b/178725329): Support scalar `updates` during decomposition.
@@ -349,7 +364,8 @@ def DecomposeResourceScatterUpdate : Pat<
     $resource,
     (TF_TensorScatterUpdateOp
       (CreateTFReadVariableOp $src_op, $updates, $resource),
-      $indices,
+      (TF_ExpandDimsOp $indices,
+       (TF_ConstOp (GetScalarOfType<-1> $indices))),
       $updates
     )
   )>;

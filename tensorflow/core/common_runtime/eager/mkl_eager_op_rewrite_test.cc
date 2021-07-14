@@ -61,7 +61,7 @@ class EagerOpRewriteTest : public ::testing::Test {
     std::unique_ptr<tensorflow::EagerOperation> out_op;
     EXPECT_EQ(Status::OK(),
               EagerOpRewriteRegistry::Global()->RunRewrite(
-                  EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op));
+                  EagerOpRewriteRegistry::POST_PLACEMENT, orig_op, &out_op));
 
     // actual_op_name is same as original op name if rewrite didn't happen.
     string actual_op_name = orig_op->Name();

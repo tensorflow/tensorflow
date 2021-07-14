@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
@@ -50,7 +51,8 @@ struct CanonicalDebugOptions {
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_module_metadata(opts.xla_dump_module_metadata()),
-        dump_compress_protos(opts.xla_dump_compress_protos()) {
+        dump_compress_protos(opts.xla_dump_compress_protos()),
+        dump_hlo_metadata(!opts.xla_dump_disable_metadata()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -115,6 +117,18 @@ struct CanonicalDebugOptions {
       should_dump_pass = [](string_view) { return false; };
     }
 
+    // Initialize should_dump_pipeline. If the option was not specified, dump
+    // all pipelines. Otherwise dump only those pipelines that user asked for
+    // explicitly.
+    if (!opts.xla_dump_hlo_pipeline_re().empty()) {
+      string pattern = opts.xla_dump_hlo_pipeline_re();
+      should_dump_pipeline = [pattern](string_view pipeline_name) {
+        return RE2::PartialMatch(pipeline_name, pattern);
+      };
+    } else {
+      should_dump_pipeline = [](string_view) { return true; };
+    }
+
     // Output dirs "sponge" and "test_undeclared_outputs_dir" (case-insensitive)
     // have a special meaning: Dump into the directory specified by the
     // environment variable TEST_UNDECLARED_OUTPUTS_DIR.
@@ -127,6 +141,7 @@ struct CanonicalDebugOptions {
                       "is not set, so cannot dump anywhere.";
         should_dump_module = [](string_view) { return false; };
         should_dump_pass = [](string_view) { return false; };
+        should_dump_pipeline = [](string_view) { return false; };
       }
     }
   }
@@ -136,6 +151,7 @@ struct CanonicalDebugOptions {
   string dump_to;
   std::function<bool(string_view module_name)> should_dump_module;
   std::function<bool(string_view pass_name)> should_dump_pass;
+  std::function<bool(string_view pipeline_name)> should_dump_pipeline;
 
   // dump_ir isn't present here because this file is mostly concerned with
   // dumping HLO.
@@ -150,6 +166,7 @@ struct CanonicalDebugOptions {
   int64 dump_max_hlo_modules;
   bool dump_module_metadata;
   bool dump_compress_protos;
+  bool dump_hlo_metadata;
 };
 
 Status WriteStringToFile(tensorflow::Env* env, const string& fname,
@@ -264,10 +281,11 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
   std::vector<absl::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
+    HloPrintOptions print_options;
+    print_options.set_print_backend_config(true);
+    print_options.set_print_metadata(opts.dump_hlo_metadata);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-        StrCat(filename, ".txt"),
-        module.ToString(HloPrintOptions().set_print_backend_config(true)),
-        opts));
+        StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
           StrCat(filename, "-buffer-assignment.txt"),
@@ -410,15 +428,27 @@ string TimestampFor(const HloModule& module) {
   return std::to_string(timestamp_emplace.first->second);
 }
 
-static string FilenameFor(int unique_id, string_view prefix,
-                          string_view suffix) {
-  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
-                   unique_id, suffix);
+static string FilenameFor(int unique_id, string_view module_name,
+                          string_view prefix, string_view suffix) {
+  string filename;
+  if (!prefix.empty()) {
+    absl::StrAppend(&filename, prefix, ".");
+  }
+  absl::StrAppendFormat(&filename, "module_%04d", unique_id);
+  if (!module_name.empty()) {
+    absl::StrAppend(&filename, ".", module_name);
+  }
+  absl::StrAppend(&filename, ".", suffix);
+  // Skip the module name if the resulting length is too long.
+  if (!module_name.empty() && filename.size() > 255) {
+    return FilenameFor(unique_id, "", prefix, suffix);
+  }
+  return filename;
 }
 
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
-  return FilenameFor(module.unique_id(), prefix, suffix);
+  return FilenameFor(module.unique_id(), module.name(), prefix, suffix);
 }
 
 void DumpToFileInDir(const HloModule& module, string_view file_prefix,
@@ -435,10 +465,11 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
 }
 
 void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
-                             string_view file_prefix, string_view file_suffix,
-                             string_view contents) {
-  DumpToFileInDirOrStdoutImpl(FilenameFor(unique_id, file_prefix, file_suffix),
-                              contents, CanonicalDebugOptions(debug_options));
+                             string_view module_name, string_view file_prefix,
+                             string_view file_suffix, string_view contents) {
+  DumpToFileInDirOrStdoutImpl(
+      FilenameFor(unique_id, module_name, file_prefix, file_suffix), contents,
+      CanonicalDebugOptions(debug_options));
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
@@ -518,6 +549,10 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
 
   if (!opts.should_dump_pass(before_pass_name) &&
       !opts.should_dump_pass(after_pass_name)) {
+    return {};
+  }
+
+  if (!opts.should_dump_pipeline(pipeline_name)) {
     return {};
   }
 

@@ -24,13 +24,13 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import io
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
-from tensorflow.python.framework import errors
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -135,79 +135,72 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     for _ in range(30):
       self.evaluate(next_element())
 
-  # TODO(b/189484146): Migrate the load checkpointing tests to use the
-  # checkpoint_test_base library once the library has eager support.
-  @combinations.generate(test_base.eager_only_combinations())
-  def testLoadCheckpointUnusedIterator(self):
-    dataset = dataset_ops.Dataset.range(3)
+
+class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
+
+  def _build_ds(self):
+    return io.load(self._save_dir)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    dataset = dataset_ops.Dataset.range(42)
     io.save(dataset, self._save_dir)
-    loaded_dataset = io.load(self._save_dir)
-    iterator = iter(loaded_dataset)
-    get_next = iterator.get_next
+    verify_fn(self, self._build_ds, num_outputs=42)
 
-    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
-    save_path = checkpoint.save(self._checkpoint_prefix)
-    self.assertAllEqual(0, get_next())
-    self.assertAllEqual(1, get_next())
-    checkpoint.restore(save_path).run_restore_ops()
-    self.assertAllEqual(0, get_next())
-    self.assertAllEqual(1, get_next())
-    self.assertAllEqual(2, get_next())
-    with self.assertRaises(errors.OutOfRangeError):
-      get_next()
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testLoadCheckpointFullyUsedIterator(self):
-    dataset = dataset_ops.Dataset.range(3)
-    io.save(dataset, self._save_dir)
-    loaded_dataset = io.load(self._save_dir)
-    iterator = iter(loaded_dataset)
-    get_next = iterator.get_next
+class SaveCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):
 
-    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
-    self.assertAllEqual(0, get_next())
-    self.assertAllEqual(1, get_next())
-    self.assertAllEqual(2, get_next())
-    save_path = checkpoint.save(self._checkpoint_prefix)
-    checkpoint.restore(save_path).run_restore_ops()
-    with self.assertRaises(errors.OutOfRangeError):
-      get_next()
+  def _build_ds(self):
+    dataset = dataset_ops.Dataset.range(42)
+    return io._SaveDataset(
+        dataset=dataset, path=self._save_dir, shard_func=None, compression=None)
+
+  # This tests checkpointing for the _SaveDataset, which is internally
+  # consumed in the save() function. The purpose of this test is to
+  # thoroughly test the checkpointing functionality of the internal dataset.
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(self, self._build_ds, num_outputs=42)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testLoadCheckpointExhaustedIterator(self):
-    dataset = dataset_ops.Dataset.range(3)
-    io.save(dataset, self._save_dir)
-    loaded_dataset = io.load(self._save_dir)
-    iterator = iter(loaded_dataset)
-    get_next = iterator.get_next
-
-    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
-    self.assertAllEqual(0, get_next())
-    self.assertAllEqual(1, get_next())
-    self.assertAllEqual(2, get_next())
-    with self.assertRaises(errors.OutOfRangeError):
-      get_next()
-    save_path = checkpoint.save(self._checkpoint_prefix)
-    checkpoint.restore(save_path).run_restore_ops()
-    with self.assertRaises(errors.OutOfRangeError):
-      get_next()
+  def testSaveCheckpointingAPI(self):
+    dataset = dataset_ops.Dataset.range(40)
+    checkpoint_args = {"directory": self._checkpoint_prefix, "max_to_keep": 50}
+    io.save(dataset, self._save_dir, checkpoint_args=checkpoint_args)
+    num_checkpoint_files = len(list(os.listdir(self._checkpoint_prefix)))
+    # By default, we checkpoint every increment. Each checkpoint writes a
+    # file containing the data and a file containing the index. There is
+    # also an overall checkpoint file. Thus, we expect (2 * 40) + 1 files.
+    self.assertEqual(81, num_checkpoint_files)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testLoadCheckpointIteratorMultipleBreaks(self):
-    dataset = dataset_ops.Dataset.range(3)
-    io.save(dataset, self._save_dir)
-    loaded_dataset = io.load(self._save_dir)
-    iterator = iter(loaded_dataset)
-    get_next = iterator.get_next
+  def testSaveCheckpointingAPICustomCheckpointInterval(self):
+    dataset = dataset_ops.Dataset.range(40)
+    step_counter = variables.Variable(0, trainable=False)
+    checkpoint_args = {
+        "checkpoint_interval": 5,
+        "step_counter": step_counter,
+        "directory": self._checkpoint_prefix,
+        "max_to_keep": 10,
+    }
+    io.save(dataset, self._save_dir, checkpoint_args=checkpoint_args)
+    num_checkpoint_files = len(list(os.listdir(self._checkpoint_prefix)))
+    # We expect (2 * 8) + 1 files.
+    self.assertEqual(17, num_checkpoint_files)
 
-    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
-    for i in range(len(dataset)):
-      save_path = checkpoint.save(self._checkpoint_prefix)
-      self.assertAllEqual(i, get_next())
-      checkpoint.restore(save_path).run_restore_ops()
-      self.assertAllEqual(i, get_next())
-    with self.assertRaises(errors.OutOfRangeError):
-      get_next()
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSaveCheckpointingAPIIncorrectArgs(self):
+    dataset = dataset_ops.Dataset.range(42)
+    checkpoint_args = {
+        "directory": self._checkpoint_prefix,
+        "incorrect_arg": "incorrect_arg"
+    }
+    with self.assertRaises(TypeError):
+      io.save(dataset, self._save_dir, checkpoint_args=checkpoint_args)
 
 
 if __name__ == "__main__":

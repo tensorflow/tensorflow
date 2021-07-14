@@ -66,7 +66,7 @@ Node* MatrixTriangularSolve(Graph* g, Node* in0, Node* in1) {
 }
 
 template <typename T>
-static Graph* BandedTriangularSolve(int64 num_bands, int64 n, int64 m,
+static Graph* BandedTriangularSolve(int64_t num_bands, int64_t n, int64_t m,
                                     bool use_banded_solver, DataType type) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor in0(type, TensorShape({num_bands, n}));

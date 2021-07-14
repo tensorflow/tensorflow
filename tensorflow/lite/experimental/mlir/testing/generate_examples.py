@@ -30,6 +30,7 @@ import tensorflow.compat.v1 as tf
 from tensorflow.lite.experimental.mlir.testing import mlir_convert
 # pylint: disable=unused-import
 from tensorflow.lite.experimental.mlir.testing.op_tests.batchmatmul import make_batchmatmul_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_args import make_broadcast_args_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_gradient_args import make_broadcast_gradient_args_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.broadcast_to import make_broadcast_to_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.complex_abs import make_complex_abs_tests
@@ -49,11 +50,14 @@ from tensorflow.lite.experimental.mlir.testing.op_tests.irfft2d import make_irff
 from tensorflow.lite.experimental.mlir.testing.op_tests.is_finite import make_is_finite_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.max_pool_with_argmax import make_max_pool_with_argmax_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.parse_example import make_parse_example_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.pool3d import make_avg_pool3d_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.pool3d import make_max_pool3d_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.real import make_real_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.reciprocal import make_reciprocal_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.rfft import make_rfft_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.rfft2d import make_rfft2d_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.roll import make_roll_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.roll import make_roll_with_constant_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.segment_sum import make_segment_sum_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.shape_to_strided_slice import make_shape_to_strided_slice_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.softplus import make_softplus_tests
@@ -87,7 +91,6 @@ MLIR_CONVERTER_KNOWN_BUGS = {
     # int64.
     r"div.*dtype=tf\.int64": "119126484",
     r"floor_div.*dtype=tf\.int64": "119126484",
-    r"mul.*dtype=tf\.int64": "119126484",
     r"relu.*dtype=tf\.int64": "119126484",
     r"squared_difference.*dtype=tf\.int64": "119126484",
     # Post-training quantization support missing for below op in mlir.

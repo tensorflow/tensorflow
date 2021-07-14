@@ -860,10 +860,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if context.executing_eagerly():
       # In async remote eager, we want to sync the executors before exiting the
       # program.
-      def async_wait():
-        if context.context()._context_handle is not None:  # pylint: disable=protected-access
-          context.async_wait()
-      atexit.register(async_wait)
+      atexit.register(context.async_wait)
 
     # Flag to turn on VariablePolicy.
     self._use_var_policy = True
@@ -1465,6 +1462,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             rank = input_tensor.shape.rank
           else:
             rank = np.ndim(input_tensor)
+          if rank is None:
+            raise ValueError(
+                "input tensor {} to TPUStrategy.run() has unknown rank, "
+                "which is not allowed".format(input_tensor))
           maximum_shape = tensor_shape.TensorShape([None] * rank)
           maximum_shapes.append(maximum_shape)
         maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
@@ -1492,6 +1493,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       filter_ops = lambda x: [o for o in x if not isinstance(o, ops.Operation)]
       if isinstance(result[0], list):
         result[0] = filter_ops(result[0])
+      if isinstance(result[0], tuple):
+        filtered = filter_ops(result[0])
+        # To keep current behavior for returning single values, do not wrap the
+        # result inside a tuple.
+        if len(filtered) > 1:
+          result[0] = tuple(filter_ops(result[0]))
 
       # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
       if result[0] is None or isinstance(result[0], ops.Operation):

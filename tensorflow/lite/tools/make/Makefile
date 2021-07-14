@@ -1,3 +1,6 @@
+$(warning "WARNING: Using Makefile to build TensorFlow Lite will be deprecated soon.")
+$(warning "WARNING: Please use CMake instead.")
+
 # Make uses /bin/sh by default, which is incompatible with the bashisms seen
 # below.
 SHELL := /bin/bash
@@ -352,7 +355,6 @@ micro: $(LIB_PATH)
 # Hack for generating schema files bypassing flatbuffer parsing
 tensorflow/lite/schema/schema_generated.h:
 	@cp -u tensorflow/lite/schema/schema_generated.h.oss tensorflow/lite/schema/schema_generated.h
-	@cp -u tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h.oss tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): tensorflow/lite/schema/schema_generated.h $(LIB_OBJS)

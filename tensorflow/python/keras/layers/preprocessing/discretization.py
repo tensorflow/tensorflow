@@ -161,9 +161,9 @@ class Discretization(base_preprocessing_layer.PreprocessingLayer):
   >>> layer = tf.keras.layers.experimental.preprocessing.Discretization(
   ...          bin_boundaries=[0., 1., 2.])
   >>> layer(input)
-  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 4), dtype=int64, numpy=
   array([[0, 2, 3, 1],
-         [1, 3, 2, 1]], dtype=int32)>
+         [1, 3, 2, 1]])>
 
   Bucketize float values based on a number of buckets to compute.
   >>> input = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
@@ -171,9 +171,9 @@ class Discretization(base_preprocessing_layer.PreprocessingLayer):
   ...          num_bins=4, epsilon=0.01)
   >>> layer.adapt(input)
   >>> layer(input)
-  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  <tf.Tensor: shape=(2, 4), dtype=int64, numpy=
   array([[0, 2, 3, 2],
-         [1, 3, 3, 1]], dtype=int32)>
+         [1, 3, 3, 1]])>
   """
 
   def __init__(self,
@@ -192,8 +192,6 @@ class Discretization(base_preprocessing_layer.PreprocessingLayer):
         bin_boundaries = kwargs["bins"]
       del kwargs["bins"]
     super().__init__(streaming=True, **kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell("Discretization").set(
-        True)
     if num_bins is not None and num_bins < 0:
       raise ValueError("`num_bins` must be must be greater than or equal to 0. "
                        "You passed `num_bins={}`".format(num_bins))

@@ -77,8 +77,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleTriangularSolve(const HloInstruction* hlo) override;
   Status HandleCholesky(const HloInstruction* hlo) override;
   Status HandleAllGather(const HloInstruction* hlo) override;
+  Status HandleAllGatherStart(const HloInstruction* hlo) override;
+  Status HandleAllGatherDone(const HloInstruction* hlo) override;
   Status HandleAllReduce(const HloInstruction* crs) override;
-  Status HandleAllReduceScatter(const HloInstruction* hlo) override;
+  Status HandleReduceScatter(const HloInstruction* hlo) override;
   Status HandleAllReduceStart(const HloInstruction* hlo) override;
   Status HandleAllReduceDone(const HloInstruction* hlo) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;

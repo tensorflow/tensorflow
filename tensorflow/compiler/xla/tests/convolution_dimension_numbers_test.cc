@@ -35,11 +35,11 @@ namespace xla {
 namespace {
 
 StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
-    int64 input_batch, int64 input_feature, int64 input_first_spatial,
-    int64 input_second_spatial, int64 output_batch, int64 output_feature,
-    int64 output_first_spatial, int64 output_second_spatial,
-    int64 kernel_output_feature, int64 kernel_input_feature,
-    int64 kernel_first_spatial, int64 kernel_second_spatial) {
+    int64_t input_batch, int64_t input_feature, int64_t input_first_spatial,
+    int64_t input_second_spatial, int64_t output_batch, int64_t output_feature,
+    int64_t output_first_spatial, int64_t output_second_spatial,
+    int64_t kernel_output_feature, int64_t kernel_input_feature,
+    int64_t kernel_first_spatial, int64_t kernel_second_spatial) {
   ConvolutionDimensionNumbers dimension_numbers;
   dimension_numbers.set_input_batch_dimension(input_batch);
   dimension_numbers.set_input_feature_dimension(input_feature);
@@ -105,14 +105,14 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
   ConvolutionDimensionNumbers dim_nums =
       XlaBuilder::CreateDefaultConvDimensionNumbers();
   // Swap batch_dimension and feature_dimension.
-  int64 old_input_batch_dim = dim_nums.input_batch_dimension();
-  int64 old_output_batch_dim = dim_nums.output_batch_dimension();
+  int64_t old_input_batch_dim = dim_nums.input_batch_dimension();
+  int64_t old_output_batch_dim = dim_nums.output_batch_dimension();
   dim_nums.set_input_batch_dimension(dim_nums.input_feature_dimension());
   dim_nums.set_output_batch_dimension(dim_nums.output_feature_dimension());
   dim_nums.set_input_feature_dimension(old_input_batch_dim);
   dim_nums.set_output_feature_dimension(old_output_batch_dim);
   // Swap kernel_input_feature_dimension and kernel_output_feature_dimension.
-  int64 old_kernel_input_feature_dim =
+  int64_t old_kernel_input_feature_dim =
       dim_nums.kernel_input_feature_dimension();
   dim_nums.set_kernel_input_feature_dimension(
       dim_nums.kernel_output_feature_dimension());

@@ -79,7 +79,7 @@ xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
   const int64 rank = xla_shape.rank();
   std::vector<int32> permutation(rank);
   std::vector<int64> transposed_shapes(rank);
-  for (int64 i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < rank; ++i) {
     permutation[i] = xla_shape.layout().minor_to_major(rank - 1 - i);
     transposed_shapes[i] = xla_shape.dimensions(permutation[i]);
   }
@@ -131,8 +131,8 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
   if (!has_override) {
     *output_shape = input_shape;
     if (output_shape->IsTuple()) {
-      int64 tuple_elements = xla::ShapeUtil::TupleElementCount(*output_shape);
-      for (int64 i = 0; i < tuple_elements; ++i) {
+      int64_t tuple_elements = xla::ShapeUtil::TupleElementCount(*output_shape);
+      for (int64_t i = 0; i < tuple_elements; ++i) {
         xla::Shape* sub_shape =
             xla::ShapeUtil::GetMutableSubshape(output_shape, {i});
         *sub_shape->mutable_layout() = GetTPUInfeedLayout(*sub_shape).layout();
@@ -374,38 +374,53 @@ class PrelinearizeTupleOp : public OpKernel {
   PrelinearizeTupleOp& operator=(const PrelinearizeTupleOp&) = delete;
 };
 
-// The InfeedEnqueuePrelinearizedBufferOp op is used to transfer prelinearized
-// buffers to the device infeed queue.
-class InfeedEnqueuePrelinearizedBufferOp : public TpuTransferAsyncOpKernel {
+class StreamExecutorInfeedEnqueueOp : public TpuInfeedEnqueueOp {
  public:
-  explicit InfeedEnqueuePrelinearizedBufferOp(OpKernelConstruction* ctx)
-      : TpuTransferAsyncOpKernel(ctx, "prelinearized_buffers_to_infeed", 8) {}
+  explicit StreamExecutorInfeedEnqueueOp(OpKernelConstruction* ctx)
+      : TpuInfeedEnqueueOp(ctx,
+                           absl::make_unique<StreamExecutorTransferOpImpl>()) {}
 
-  Status DoWork(OpKernelContext* ctx,
-                xla::TpuTransferManagerInterface* transfer_manager,
-                stream_executor::StreamExecutor* stream_executor) override {
-    const Tensor& input_tensor = ctx->input(0);
-    const LinearizedBuffersWrapper* wrapper =
-        input_tensor.scalar<tensorflow::Variant>()()
-            .get<LinearizedBuffersWrapper>();
-    TF_RETURN_IF_ERROR(transfer_manager->TransferBuffersToInfeed(
-        stream_executor, wrapper->buffers));
+ private:
+  StreamExecutorInfeedEnqueueOp(const StreamExecutorInfeedEnqueueOp&) = delete;
+  StreamExecutorInfeedEnqueueOp& operator=(
+      const StreamExecutorInfeedEnqueueOp&) = delete;
+};
 
-    return Status::OK();
-  }
+class StreamExecutorInfeedEnqueueTupleOp : public TpuInfeedEnqueueTupleOp {
+ public:
+  explicit StreamExecutorInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
+      : TpuInfeedEnqueueTupleOp(
+            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+
+ private:
+  StreamExecutorInfeedEnqueueTupleOp(
+      const StreamExecutorInfeedEnqueueTupleOp&) = delete;
+  StreamExecutorInfeedEnqueueTupleOp& operator=(
+      const StreamExecutorInfeedEnqueueTupleOp&) = delete;
+};
+
+class StreamExecutorInfeedEnqueuePrelinearizedBufferOp
+    : public InfeedEnqueuePrelinearizedBufferOp {
+ public:
+  explicit StreamExecutorInfeedEnqueuePrelinearizedBufferOp(
+      OpKernelConstruction* ctx)
+      : InfeedEnqueuePrelinearizedBufferOp(
+            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   // InfeedEnqueuePrelinearizedBufferOp is neither copyable nor movable.
-  InfeedEnqueuePrelinearizedBufferOp(
-      const InfeedEnqueuePrelinearizedBufferOp&) = delete;
-  InfeedEnqueuePrelinearizedBufferOp& operator=(
-      const InfeedEnqueuePrelinearizedBufferOp&) = delete;
+  StreamExecutorInfeedEnqueuePrelinearizedBufferOp(
+      const StreamExecutorInfeedEnqueuePrelinearizedBufferOp&) = delete;
+  StreamExecutorInfeedEnqueuePrelinearizedBufferOp& operator=(
+      const StreamExecutorInfeedEnqueuePrelinearizedBufferOp&) = delete;
 };
-
 }  // anonymous namespace
 
-TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(OpKernelConstruction* ctx)
-    : TpuTransferAsyncOpKernel(ctx, "infeed_enqueue", 8) {
+TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(
+    OpKernelConstruction* ctx,
+    std::unique_ptr<TpuTransferOpInterface> transfer_op)
+    : TpuTransferAsyncOpKernel(ctx, "infeed_enqueue", 8,
+                               std::move(transfer_op)) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   xla::Shape shape;
@@ -414,9 +429,7 @@ TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(OpKernelConstruction* ctx)
                  GetInfeedShapeWithLayout(ctx, "layout", shape, &xla_shape_));
 }
 
-Status TpuInfeedEnqueueOp::DoWork(
-    OpKernelContext* ctx, xla::TpuTransferManagerInterface* transfer_manager,
-    stream_executor::StreamExecutor* stream_executor) {
+Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
   const Tensor& input_tensor = ctx->input(0);
 
   // Validate runtime shape and fail if it doesn't match the contract.
@@ -443,12 +456,15 @@ Status TpuInfeedEnqueueOp::DoWork(
 
   // Transfer the given literal to the Infeed interface of the device.
   TF_RETURN_IF_ERROR(
-      transfer_manager->TransferLiteralToInfeed(stream_executor, literal));
+      transfer_op_->TransferLiteralToInfeed(device_ordinal, literal));
   return Status::OK();
 }
 
-TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
-    : TpuTransferAsyncOpKernel(ctx, "infeed_enqueue", 8) {
+TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
+    OpKernelConstruction* ctx,
+    std::unique_ptr<TpuTransferOpInterface> transfer_op)
+    : TpuTransferAsyncOpKernel(ctx, "infeed_enqueue", 8,
+                               std::move(transfer_op)) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &shapes_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
   OP_REQUIRES(
@@ -468,9 +484,8 @@ TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
                                     &tuple_shape_));
 }
 
-Status TpuInfeedEnqueueTupleOp::DoWork(
-    OpKernelContext* ctx, xla::TpuTransferManagerInterface* transfer_manager,
-    stream_executor::StreamExecutor* stream_executor) {
+Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
+                                       int device_ordinal) {
   OpInputList values;
   TF_RETURN_IF_ERROR(ctx->input_list("inputs", &values));
   if (values.size() != shapes_.size()) {
@@ -511,9 +526,26 @@ Status TpuInfeedEnqueueTupleOp::DoWork(
 
   // Transfer the given literal to the Infeed interface of the device.
   TF_RETURN_IF_ERROR(
-      transfer_manager->TransferLiteralToInfeed(stream_executor, tuple));
+      transfer_op_->TransferLiteralToInfeed(device_ordinal, tuple));
 
   VLOG(1) << "TransferLiteralToInfeed complete.";
+
+  return Status::OK();
+}
+
+InfeedEnqueuePrelinearizedBufferOp::InfeedEnqueuePrelinearizedBufferOp(
+    OpKernelConstruction* ctx,
+    std::unique_ptr<TpuTransferOpInterface> transfer_op)
+    : TpuTransferAsyncOpKernel(ctx, "prelinearized_buffers_to_infeed", 8,
+                               std::move(transfer_op)) {}
+Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
+                                                  int device_ordinal) {
+  const Tensor& input_tensor = ctx->input(0);
+  const LinearizedBuffersWrapper* wrapper =
+      input_tensor.scalar<tensorflow::Variant>()()
+          .get<LinearizedBuffersWrapper>();
+  TF_RETURN_IF_ERROR(
+      transfer_op_->TransferBuffersToInfeed(device_ordinal, wrapper->buffers));
 
   return Status::OK();
 }
@@ -523,15 +555,15 @@ Status TpuInfeedEnqueueTupleOp::DoWork(
 // which TPU to send infeed to.
 REGISTER_KERNEL_BUILDER(
     Name("InfeedEnqueue").Device(DEVICE_TPU_NODE).HostMemory("input"),
-    TpuInfeedEnqueueOp);
+    StreamExecutorInfeedEnqueueOp);
 REGISTER_KERNEL_BUILDER(Name("InfeedEnqueue").Device(DEVICE_CPU),
-                        TpuInfeedEnqueueOp);
+                        StreamExecutorInfeedEnqueueOp);
 
 REGISTER_KERNEL_BUILDER(
     Name("InfeedEnqueueTuple").Device(DEVICE_TPU_NODE).HostMemory("inputs"),
-    TpuInfeedEnqueueTupleOp);
+    StreamExecutorInfeedEnqueueTupleOp);
 REGISTER_KERNEL_BUILDER(Name("InfeedEnqueueTuple").Device(DEVICE_CPU),
-                        TpuInfeedEnqueueTupleOp);
+                        StreamExecutorInfeedEnqueueTupleOp);
 
 // Prelinearize ops run on CPU as part of tf.data input pipeline.
 REGISTER_KERNEL_BUILDER(Name("Prelinearize").Device(DEVICE_CPU),
@@ -543,6 +575,6 @@ REGISTER_KERNEL_BUILDER(Name("PrelinearizeTuple").Device(DEVICE_CPU),
 // select the right device to infeed.
 REGISTER_KERNEL_BUILDER(
     Name("InfeedEnqueuePrelinearizedBuffer").Device(DEVICE_CPU),
-    InfeedEnqueuePrelinearizedBufferOp);
+    StreamExecutorInfeedEnqueuePrelinearizedBufferOp);
 
 }  // namespace tensorflow

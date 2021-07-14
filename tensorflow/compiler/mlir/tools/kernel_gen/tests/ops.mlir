@@ -30,7 +30,13 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 }
 
 // CHECK-LABEL: func @assert
-func @assert(%ctx: !tf_framework.op_kernel_context) {
+func @assert(%ctx: !tf_framework.op_kernel_context, %cond: i1) {
+  tf_framework.assert %ctx, %cond, "ALREADY_EXISTS", "Or maybe not"
+  return
+}
+
+// CHECK-LABEL: func @report_error
+func @report_error(%ctx: !tf_framework.op_kernel_context) {
   tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome"
   return
 }
@@ -45,4 +51,59 @@ func @null_memref() {
 func @null_context() {
   tf_framework.null_context : !tf_framework.op_kernel_context
   return
+}
+
+// CHECK-LABEL: func @is_valid_memref
+func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
+  %pred = tf_framework.is_valid_memref(%buf) : memref<?xf32> -> i1
+  return %pred : i1
+}
+
+// CHECK-LABEL: func @jit_compile_wo_ctx
+func @jit_compile_wo_ctx() -> !tf_framework.jit_callable {
+  %callable = tf_framework.jit_compile {
+  ^bb0(%arg : tensor<2x?xf32>):
+    tf_framework.jit_compile_yield %arg : tensor<2x?xf32>
+  }
+  return %callable : !tf_framework.jit_callable
+}
+
+// CHECK-LABEL: func @jit_compile
+func @jit_compile(%ctx : !tf_framework.op_kernel_context)
+    -> !tf_framework.jit_callable {
+  %callable = tf_framework.jit_compile %ctx {
+  ^bb0(%arg : tensor<2x?xf32>):
+    tf_framework.jit_compile_yield %arg : tensor<2x?xf32>
+  }
+  return %callable : !tf_framework.jit_callable
+}
+
+// CHECK-LABEL: func @jit_compile_from_str_wo_ctx
+func @jit_compile_from_str_wo_ctx() -> !tf_framework.jit_callable {
+  %callable = tf_framework.jit_compile_from_str "lalala"
+  return %callable : !tf_framework.jit_callable
+}
+
+// CHECK-LABEL: func @jit_compile_from_str
+func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
+    -> !tf_framework.jit_callable {
+  %callable = tf_framework.jit_compile_from_str %ctx , "syntax error for later"
+  return %callable : !tf_framework.jit_callable
+}
+
+// CHECK-LABEL: func @jit_execute_wo_ctx
+func @jit_execute_wo_ctx(%callable : !tf_framework.jit_callable,
+    %arg : tensor<2x?xf32>) -> tensor<2x?xf32> {
+  %0 = tf_framework.jit_execute %callable(%arg)
+      : tensor<2x?xf32> -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
+}
+
+// CHECK-LABEL: func @jit_execute
+func @jit_execute(%ctx : !tf_framework.op_kernel_context,
+    %callable : !tf_framework.jit_callable, %arg : tensor<2x?xf32>)
+    -> tensor<2x?xf32> {
+  %0 = tf_framework.jit_execute ctx = %ctx, %callable(%arg)
+      : tensor<2x?xf32> -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
 }

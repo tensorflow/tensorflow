@@ -279,6 +279,7 @@ filegroup(
         "ops_util.cc",
         "rendezvous.cc",
         "resource_mgr.cc",
+        "resource_var.cc",
         "run_handler.cc",
         "run_handler_util.cc",
         "tensor_slice.cc",
@@ -411,6 +412,7 @@ filegroup(
         "resource_mgr.cc",
         "resource_mgr.h",
         "resource_op_kernel.h",
+        "resource_var.cc",
         "resource_var.h",
         "rng_alg.h",
         "run_handler.cc",
@@ -819,8 +821,11 @@ cc_library(
     hdrs = ["shape_inference.h"],
     deps = [
         ":bounds_check",
+        ":full_type_proto_cc",
+        ":full_type_util",
         ":node_def_proto_cc",
         ":node_def_util",
+        ":op_def_proto_cc",
         ":tensor",
         ":tensor_shape",
         ":tensor_shape_proto_cc",
@@ -952,12 +957,12 @@ cc_library(
     srcs = ["node_properties.cc"],
     hdrs = ["node_properties.h"],
     deps = [
+        ":full_type_proto_cc",
         ":node_def_proto_cc",
         ":node_def_util",
         ":op",
         ":op_def_proto_cc",
         ":tensor",
-        ":types_proto_cc",
         "//tensorflow/core/lib/core:status",
     ],
 )
@@ -990,8 +995,16 @@ cc_library(
     srcs = ["full_type_util.cc"],
     hdrs = ["full_type_util.h"],
     deps = [
+        ":attr_value_proto_cc",
         ":full_type_proto_cc",
+        ":node_def_proto_cc",
+        ":node_def_util",
         ":op_def_builder",
+        ":op_def_proto_cc",
+        ":tensor",
+        ":types_proto_cc",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

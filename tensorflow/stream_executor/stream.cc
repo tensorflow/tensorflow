@@ -394,7 +394,8 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &offset,
     const DeviceMemory<float> &estimated_mean,
     const DeviceMemory<float> &estimated_variance,
-    const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
+    const DeviceMemory<Eigen::half> &side_input,
+    const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
@@ -537,52 +538,6 @@ Stream &Stream::ThenSeparableConvolve(
     SetErrorAndLogNoDnnSupport();
   }
   return *this;
-}
-
-template <typename T>
-Stream &Stream::ThenConvolveBackwardBiasImpl(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<T> &input_data,
-    const dnn::BatchDescriptor &bias_descriptor,
-    DeviceMemory<T> *backward_bias_data) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data), PARAM(bias_descriptor),
-            PARAM(backward_bias_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoConvolveBackwardBias(this, input_descriptor, input_data,
-                                           bias_descriptor,
-                                           backward_bias_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveBackwardBias(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<double> &input_data,
-    const dnn::BatchDescriptor &bias_descriptor,
-    DeviceMemory<double> *backward_bias_data) {
-  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
-                                      bias_descriptor, backward_bias_data);
-}
-
-Stream &Stream::ThenConvolveBackwardBias(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<float> &input_data,
-    const dnn::BatchDescriptor &bias_descriptor,
-    DeviceMemory<float> *backward_bias_data) {
-  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
-                                      bias_descriptor, backward_bias_data);
-}
-
-Stream &Stream::ThenConvolveBackwardBias(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<Eigen::half> &input_data,
-    const dnn::BatchDescriptor &bias_descriptor,
-    DeviceMemory<Eigen::half> *backward_bias_data) {
-  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
-                                      bias_descriptor, backward_bias_data);
 }
 
 Stream &Stream::ThenMatMul(const DeviceMemory<float> &input_data,

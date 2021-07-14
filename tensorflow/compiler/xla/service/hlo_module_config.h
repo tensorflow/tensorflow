@@ -241,6 +241,17 @@ class HloModuleConfig {
     return &layout_config_;
   }
 
+  const std::vector<std::vector<bool>>& phase_ordering_config() const {
+    return phase_ordering_config_;
+  }
+
+  std::vector<std::vector<bool>>* mutable_phase_ordering_config() {
+    return &phase_ordering_config_;
+  }
+
+  const int phase_index() const { return phase_index_; }
+  void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -282,7 +293,7 @@ class HloModuleConfig {
 
   bool alias_passthrough_params_ = false;
 
-  bool content_aware_computation_sorting_ = false;
+  bool content_aware_computation_sorting_ = true;
 
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
@@ -302,6 +313,16 @@ class HloModuleConfig {
   // Layout configuration, where layout_config_[v][i] controls the layout
   // decision i of operation v.
   std::vector<std::vector<std::vector<int64>>> layout_config_;
+
+  // Phase ordering configuration, where phase_ordering_config[v][i] controls
+  // whether a specific pass with index i (e.g. 0 = DCE, 1 = CSE, etc.) is
+  // inserted after pass v in pipeline. See tuning::PhaseOrderingConfig for
+  // details on what indices (i) correspond to which passes.
+  std::vector<std::vector<bool>> phase_ordering_config_;
+  // Index (v) corresponding to current passes being added for phase ordering.
+  // This is the variable that stores state to allow us to use the same
+  // config across functions during compilation.
+  int phase_index_;
 };
 
 }  // namespace xla

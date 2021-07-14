@@ -16,7 +16,6 @@
 # pylint: disable=g-classes-have-attributes
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.platform import tf_logging as logging
@@ -342,7 +341,6 @@ class IntegerLookup(index_lookup.IndexLookup):
         sparse=sparse,
         pad_to_max_tokens=pad_to_max_tokens,
         **kwargs)
-    base_preprocessing_layer.keras_kpl_gauge.get_cell("IntegerLookup").set(True)
 
   def set_vocabulary(self, vocabulary, idf_weights=None):
     if isinstance(vocabulary, str):

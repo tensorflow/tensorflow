@@ -24,8 +24,8 @@ limitations under the License.
 namespace tensorflow {
 namespace generator {
 
-Controller::Controller(PathConfig controller_config, Env* env)
-    : env_(env), controller_config_(controller_config) {
+Controller::Controller(PathConfig path_config, Env* env)
+    : env_(env), path_config_(path_config) {
   // Load the Op and API definitions
   InitializeOpApi();
 
@@ -35,8 +35,12 @@ Controller::Controller(PathConfig controller_config, Env* env)
 Controller::~Controller() { delete api_def_map_; }
 
 const void Controller::WriteFile(const string& file_path,
-                                 const SourceCode& code) {
+                                 const SourceCode& code) const {
   TF_CHECK_OK(WriteStringToFile(env_, file_path, code.Render())) << file_path;
+}
+
+const std::vector<OpSpec>& Controller::GetModelOps() const {
+  return operators_;
 }
 
 void Controller::InitializeOpApi() {
@@ -46,7 +50,7 @@ void Controller::InitializeOpApi() {
   // python/api_def_Xyz.pbtxt to override base/api_def_Xyz.pbtxt, for example.
   api_def_map_ = new ApiDefMap(op_list_);
   for (const auto& op : op_list_.op()) {
-    for (const auto& dir : controller_config_.api_dirs) {
+    for (const auto& dir : path_config_.api_dirs) {
       const string file_name = absl::Substitute("api_def_$0.pbtxt", op.name());
       const string file_path = io::JoinPath(dir, file_name);
       if (env_->FileExists(file_path).ok()) {
@@ -63,7 +67,7 @@ void Controller::InitializeOpApi() {
 
 void Controller::BuildModel() {
   // Build the internal data model for the requested ops
-  for (const auto& op_name : controller_config_.op_names) {
+  for (const auto& op_name : path_config_.op_names) {
     const OpDef* op_def = nullptr;
     TF_CHECK_OK(OpRegistry::Global()->LookUpOpDef(op_name, &op_def));
     CHECK(op_def != nullptr);  // Crash OK

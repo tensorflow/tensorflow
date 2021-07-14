@@ -44,11 +44,10 @@ class FillOpModel : public SingleOpModel {
                        value_type value, TestType input_tensor_types) {
     if (input_tensor_types == TestType::kDynamic) {
       dims_ = AddInput(dims_tensor_type);
-      value_ = AddInput(GetTensorType<value_type>());
     } else {
       dims_ = AddConstInput(dims_tensor_type, dims_data, dims_shape);
-      value_ = AddConstInput(GetTensorType<value_type>(), {value}, {});
     }
+    value_ = AddInput(GetTensorType<value_type>());
     output_ = AddOutput(GetTensorType<value_type>());
     SetBuiltinOp(BuiltinOperator_FILL, BuiltinOptions_FillOptions,
                  CreateFillOptions(builder_).Union());
@@ -58,8 +57,8 @@ class FillOpModel : public SingleOpModel {
       if (dims_data.size() > 0) {
         PopulateTensor<dims_type>(dims_, dims_data);
       }
-      PopulateTensor<value_type>(value_, {value});
     }
+    PopulateTensor<value_type>(value_, {value});
   }
 
   std::vector<value_type> GetOutput() {

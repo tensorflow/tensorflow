@@ -26,13 +26,10 @@ namespace gpu {
 
 ConditionalThunk::ConditionalThunk(
     ThunkInfo thunk_info, ConditionalThunkConfig config,
-    const BufferAllocation::Slice& branch_index_buffer_index,
-    absl::Span<const BufferAllocation::Slice> branch_operand_buffer_indexes)
+    const BufferAllocation::Slice& branch_index_buffer_index)
     : Thunk(Kind::kConditional, thunk_info),
       config_(std::move(config)),
-      branch_index_buffer_index_(branch_index_buffer_index),
-      branch_operand_buffer_indexes_(branch_operand_buffer_indexes.begin(),
-                                     branch_operand_buffer_indexes.end()) {}
+      branch_index_buffer_index_(branch_index_buffer_index) {}
 
 Status ConditionalThunk::Initialize(const GpuExecutable& executable,
                                     se::StreamExecutor* executor) {

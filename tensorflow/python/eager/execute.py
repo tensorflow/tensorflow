@@ -302,7 +302,7 @@ def args_to_mixed_eager_tensors(lists, ctx):
   assert len(lists) > 1
 
   # Generate an error if len(lists[i]) is not the same for all i.
-  lists_ret = []
+  lists_ret = [[]]
   for l in lists[1:]:
     if len(l) != len(lists[0]):
       raise ValueError(

@@ -34,27 +34,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
-  LOG(INFO) << "Reading SavedModel from: " << export_dir;
-
-  const string saved_model_pb_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePb);
-  if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                           saved_model_proto);
-  }
-  const string saved_model_pbtxt_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                         saved_model_proto);
-  }
-  return Status(error::Code::NOT_FOUND,
-                "Could not find SavedModel .pb or .pbtxt at supplied export "
-                "directory path: " +
-                    export_dir);
-}
-
 // Swap tensor_content field of Const Op Tensors in the named functions
 static Status SwapTensorContent(MetaGraphDef* meta_graph_def) {
   GraphDef graph_def = *meta_graph_def->mutable_graph_def();
@@ -113,8 +92,28 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
           " }. To inspect available tag-sets in the SavedModel, please "
           "use the SavedModel CLI: `saved_model_cli`"));
 }
-
 }  // namespace
+
+Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
+  LOG(INFO) << "Reading SavedModel from: " << export_dir;
+
+  const string saved_model_pb_path =
+      io::JoinPath(export_dir, kSavedModelFilenamePb);
+  if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
+    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                           saved_model_proto);
+  }
+  const string saved_model_pbtxt_path =
+      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
+  if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
+    return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                         saved_model_proto);
+  }
+  return Status(error::Code::NOT_FOUND,
+                "Could not find SavedModel .pb or .pbtxt at supplied export "
+                "directory path: " +
+                    export_dir);
+}
 
 Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
                                       const std::unordered_set<string>& tags,

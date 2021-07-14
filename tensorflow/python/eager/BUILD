@@ -268,9 +268,11 @@ cuda_py_test(
     size = "small",
     srcs = ["context_test.py"],
     python_version = "PY3",
+    xla_enabled = True,
     deps = [
         ":context",
         ":test",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
     ],
 )
 
@@ -615,6 +617,7 @@ py_library(
         "//tensorflow/python:func_graph",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
+        "//tensorflow/python:handle_data_util",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",

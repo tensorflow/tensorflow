@@ -1279,7 +1279,6 @@ py_library(
         ":array_ops",
         ":control_flow_util_v2",
         ":functional_ops_gen",
-        ":gradients",
         ":gradients_util",
         ":handle_data_util",
         ":pywrap_tensorflow",
@@ -1310,6 +1309,7 @@ py_library(
         ":control_flow_util_v2",
         ":functional_ops_gen",
         ":gradients_util",
+        ":handle_data_util",
         ":list_ops",
         ":map_ops",
         ":tensor_array_ops",
@@ -2304,7 +2304,6 @@ py_library(
         ":special_math_ops_gen",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/python/framework:for_generated_wrappers",
-        "@functools32_archive//:functools32",
         "@opt_einsum_archive//:opt_einsum",
     ],
 )
@@ -2919,6 +2918,26 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "nn_fused_batchnorm_deterministic_test",
+    size = "medium",
+    srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
+    python_version = "PY3",
+    tags = ["no_rocm"],
+    deps = [
+        ":client_testlib",
+        ":config",
+        ":constant_op",
+        ":dtypes",
+        ":errors",
+        ":nn",
+        ":nn_grad",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "nn_fused_batchnorm_test",
     size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
@@ -3153,8 +3172,9 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
-        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
@@ -3215,7 +3235,7 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
-        "//tensorflow/cc/experimental/libexport:metrics",  # SavedModel metrics
+        "//tensorflow/cc/experimental/libexport:metrics_impl",  # SavedModel metrics
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/compiler/jit:flags",  # tfe
@@ -3224,6 +3244,8 @@ filegroup(
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:session_state",  # tf_session
+        "//tensorflow/core/data/service:dispatcher_client",  # dispatcher_client
+        "//tensorflow/core/data/service:grpc_util",  # grpc_util
         "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
@@ -3768,7 +3790,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )

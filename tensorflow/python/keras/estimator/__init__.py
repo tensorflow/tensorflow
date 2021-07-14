@@ -14,16 +14,11 @@
 # ==============================================================================
 """Keras estimator API."""
 
-from tensorflow.python.eager import monitoring
 from tensorflow.python.util.tf_export import keras_export
 
 # Keras has undeclared dependency on tensorflow/estimator:estimator_py.
 # As long as you depend //third_party/py/tensorflow:tensorflow target
 # everything will work as normal.
-
-_model_to_estimator_usage_gauge = monitoring.BoolGauge(
-    '/tensorflow/api/keras/model_to_estimator',
-    'Whether tf.keras.estimator.model_to_estimator() is called.', 'version')
 
 
 # LINT.IfChange
@@ -159,12 +154,11 @@ def model_to_estimator(
   """
 
   try:
-    from tensorflow_estimator.python.estimator import keras as keras_lib  # pylint: disable=g-import-not-at-top
+    from tensorflow_estimator.python.estimator import keras_lib  # pylint: disable=g-import-not-at-top
   except ImportError:
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
         'installation.')
-  _model_to_estimator_usage_gauge.get_cell('v1').set(True)
   return keras_lib.model_to_estimator(  # pylint:disable=unexpected-keyword-arg
       keras_model=keras_model,
       keras_model_path=keras_model_path,
@@ -347,12 +341,11 @@ def model_to_estimator_v2(keras_model=None,
   """
 
   try:
-    from tensorflow_estimator.python.estimator import keras as keras_lib  # pylint: disable=g-import-not-at-top
+    from tensorflow_estimator.python.estimator import keras_lib  # pylint: disable=g-import-not-at-top
   except ImportError:
     raise NotImplementedError(
         'tf.keras.estimator.model_to_estimator function not available in your '
         'installation.')
-  _model_to_estimator_usage_gauge.get_cell('v2').set(True)
   return keras_lib.model_to_estimator(  # pylint:disable=unexpected-keyword-arg
       keras_model=keras_model,
       keras_model_path=keras_model_path,
@@ -363,4 +356,4 @@ def model_to_estimator_v2(keras_model=None,
       use_v2_estimator=True,
       metric_names_map=metric_names_map,
       export_outputs=export_outputs)
-# LINT.ThenChange(//tensorflow_estimator/python/estimator/keras.py)
+# LINT.ThenChange(//tensorflow_estimator/python/estimator/keras_lib.py)

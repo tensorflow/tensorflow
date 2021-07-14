@@ -3075,7 +3075,7 @@ port::Status MIOpenSupport::DoConvolve(
 
 bool MIOpenSupport::GetConvolveAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -3486,7 +3486,7 @@ bool MIOpenSupport::GetRnnAlgorithms(
 
 bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -3501,7 +3501,7 @@ bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
 
 bool MIOpenSupport::GetConvolveBackwardFilterAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -3517,7 +3517,8 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
     const DeviceMemory<float>& estimated_variance,
-    const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<Eigen::half>& side_input,
+    const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
@@ -3559,7 +3560,7 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
     const DeviceMemory<U>& estimated_mean,
     const DeviceMemory<U>& estimated_variance,
-    const DeviceMemory<U>& side_input, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<T>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
@@ -3694,65 +3695,6 @@ bool MIOpenSupport::DoTransformTensor(Stream* stream,
   // ROCM TODO implement this operation
   LOG(ERROR) << "transform tensor not implemented yet";
   return false;
-}
-
-template <class T>
-bool MIOpenSupport::DoConvolveBackwardBiasImpl(
-    Stream* stream, int miopen_type,  // Actually miopenDataType_t.
-    const dnn::BatchDescriptor& input_descriptor,
-    const DeviceMemory<T>& input_data,
-    const dnn::BatchDescriptor& bias_descriptor,
-    DeviceMemory<T>* backward_bias_data) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  ScopedTensorDescriptor input_nd{input_descriptor,
-                                  static_cast<miopenDataType_t>(miopen_type)};
-  ScopedTensorDescriptor bias_nd{bias_descriptor,
-                                 static_cast<miopenDataType_t>(miopen_type)};
-
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  auto status = wrap::miopenConvolutionBackwardBias(
-      miopen.handle(), &alpha, input_nd.handle(), input_data.opaque(), &beta,
-      bias_nd.handle(), backward_bias_data->opaque());
-  if (status != miopenStatusSuccess) {
-    LOG(FATAL) << "failed to enqueue backward convolution on stream: "
-               << ToString(status);
-    return false;
-  }
-  return true;
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<double>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<double>* backward_bias_data) {
-  LOG(ERROR) << "miopen does not support double bwd bias yet";
-  return false;
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<float>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<float>* backward_bias_data) {
-  return DoConvolveBackwardBiasImpl(stream, miopenFloat, input_descriptor,
-                                    input_data, bias_descriptor,
-                                    backward_bias_data);
-}
-
-bool MIOpenSupport::DoConvolveBackwardBias(
-    Stream* stream, const BatchDescriptor& input_descriptor,
-    const DeviceMemory<Eigen::half>& input_data,
-    const BatchDescriptor& bias_descriptor,
-    DeviceMemory<Eigen::half>* backward_bias_data) {
-  return DoConvolveBackwardBiasImpl(stream, miopenHalf, input_descriptor,
-                                    input_data, bias_descriptor,
-                                    backward_bias_data);
 }
 
 bool MIOpenSupport::DoMatMul(Stream* stream,

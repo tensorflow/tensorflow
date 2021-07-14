@@ -399,6 +399,30 @@ TEST_F(SelectAndScatterShapeInferenceTest, SelectAndScatterWrongSelectShape4) {
               HasSubstr("Select function's second parameter"));
 }
 
+TEST_F(ShapeInferenceTest, AllGatherStart) {
+  const Shape operand = ShapeUtil::MakeShape(F32, {1, 8, 4});
+  const Shape expected_shape = ShapeUtil::MakeTupleShape(
+      {operand, ShapeUtil::MakeShape(F32, {8, 8, 4})});
+
+  auto inferred_ag_shape = ShapeInference::InferAllGatherStartShape(
+      {&operand}, /*all_gather_dimension=*/0, /*shard_count=*/8);
+  EXPECT_TRUE(inferred_ag_shape.ok());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_shape.ValueOrDie(), expected_shape));
+}
+
+TEST_F(ShapeInferenceTest, AllGatherDone) {
+  const Shape input_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 8, 4}),
+                                 ShapeUtil::MakeShape(F32, {8, 8, 4})});
+  const Shape expected_shape = ShapeUtil::MakeShape(F32, {8, 8, 4});
+
+  auto inferred_ag_done_shape =
+      ShapeInference::InferAllGatherDoneShape(input_shape);
+  EXPECT_TRUE(inferred_ag_done_shape.ok());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_ag_done_shape.ValueOrDie(), expected_shape));
+}
+
 TEST_F(ShapeInferenceTest, Convolve) {
   ConvolutionDimensionNumbers dnums;
 

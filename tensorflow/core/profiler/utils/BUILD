@@ -568,3 +568,23 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "buffer_pool",
+    srcs = ["buffer_pool.cc"],
+    hdrs = ["buffer_pool.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "buffer_pool_test",
+    srcs = ["buffer_pool_test.cc"],
+    deps = [
+        ":buffer_pool",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)

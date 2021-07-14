@@ -15,9 +15,11 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 
 namespace tflite {
 
@@ -50,16 +52,29 @@ void dump_node(std::stringstream& out_stream, const int node_no,
   out_stream << "]\n";
 }
 
-std::string model_analyzer(const std::string& model_file_path) {
+std::string model_analyzer(const std::string& model_file_or_buffer,
+                           bool input_is_filepath,
+                           bool check_gpu_compatibility) {
   std::stringstream out_stream;
-  auto fb_model = FlatBufferModel::BuildFromFile(model_file_path.c_str());
-  if (!fb_model) {
-    out_stream << "Failed to mmap model " << model_file_path;
-    return out_stream.str();
+  std::unique_ptr<FlatBufferModel> fb_model;
+  if (input_is_filepath) {
+    fb_model = FlatBufferModel::BuildFromFile(model_file_or_buffer.c_str());
+    if (!fb_model) {
+      out_stream << "Failed to mmap model " << model_file_or_buffer;
+      return out_stream.str();
+    }
+  } else {
+    fb_model = FlatBufferModel::BuildFromBuffer(model_file_or_buffer.c_str(),
+                                                model_file_or_buffer.size());
+    if (!fb_model) {
+      out_stream << "Failed to mmap the given model buffer.";
+      return out_stream.str();
+    }
   }
   const ::tflite::Model* model = fb_model->GetModel();
   auto* subgraphs = model->subgraphs();
   for (int i = 0; i < subgraphs->Length(); ++i) {
+    std::vector<int> gpu_incompatibile_nodes;
     const SubGraph* subgraph = subgraphs->Get(i);
     out_stream << "Subgraph#" << i;
     if (subgraph->name()) {
@@ -76,6 +91,20 @@ std::string model_analyzer(const std::string& model_file_path) {
           model->operator_codes()->Get(op->opcode_index());
       out_stream << "  ";  // indents for operators
       dump_node(out_stream, /*node_no=*/j, op_code, op, subgraph);
+      if (check_gpu_compatibility) {
+        auto status =
+            CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
+        if (!status.ok()) {
+          gpu_incompatibile_nodes.push_back(j);
+          out_stream << "GPU COMPATIBILITY WARNING: " << status.message()
+                     << "\n";
+        }
+      }
+    }
+    if (!gpu_incompatibile_nodes.empty()) {
+      out_stream << "\nGPU COMPATIBILITY WARNING: Subgraph#" << i
+                 << " has GPU delegate compatibility issues with nodes "
+                 << absl::StrJoin(gpu_incompatibile_nodes, ", ") << "\n";
     }
   }
   return out_stream.str();

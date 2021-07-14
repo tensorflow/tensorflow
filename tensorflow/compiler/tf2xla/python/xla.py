@@ -252,7 +252,8 @@ def conv(lhs,
          feature_group_count=1,
          precision_config=None,
          preferred_element_type=None,
-         name=None):
+         name=None,
+         use_v2=False):
   """Wraps the XLA ConvGeneralDilated operator.
 
   ConvGeneralDilated is the most general form of XLA convolution and is
@@ -270,7 +271,8 @@ def conv(lhs,
     feature_group_count: number of feature groups for grouped convolution.
     precision_config: a `xla.PrecisionConfig` proto.
     preferred_element_type: the result `dtype`.
-    name: an optional name for the operator
+    name: an optional name for the operator.
+    use_v2: an optional request to use the XlaConvV2 op even if not necessary.
 
   Returns:
     A tensor representing the output of the convolution.
@@ -281,7 +283,7 @@ def conv(lhs,
   needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  if needs_v2:
+  if needs_v2 or use_v2:
     return gen_xla_ops.xla_conv_v2(
         lhs,
         rhs,
@@ -319,14 +321,15 @@ def dot_general(lhs,
                 dimension_numbers,
                 precision_config=None,
                 preferred_element_type=None,
-                name=None):
+                name=None,
+                use_v2=False):
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
   needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  if needs_v2:
+  if needs_v2 or use_v2:
     return gen_xla_ops.xla_dot_v2(
         lhs,
         rhs,
@@ -377,6 +380,7 @@ def random_uniform(minval, maxval, dims, name=None):
 recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
 variadic_reduce = gen_xla_ops.xla_variadic_reduce
+variadic_reduce_v2 = gen_xla_ops.xla_variadic_reduce_v2
 
 ops.no_gradient("XlaVariadicReduce")
 
@@ -450,6 +454,12 @@ set_bound = gen_xla_ops.xla_set_bound
 #   p = xla_set_dynamic_dimension_size(array, dim, 3)
 #   assert(reduce_sum(p) == 6) # xla knows only the first 3 elements are valid.
 set_dynamic_dimension_size = gen_xla_ops.xla_set_dynamic_dimension_size
+
+
+# Inverse of xla_set_dynamic_dimension_size. Make an xla bounded dynamic
+# dimension into a static dimension. The bound of the size of dimension
+# `dim_index` becomes the static dimension size.
+remove_dynamic_dimension_size = gen_xla_ops.xla_remove_dynamic_dimension_size
 
 
 def reshape(x, new_sizes, dimensions=None, name=None):

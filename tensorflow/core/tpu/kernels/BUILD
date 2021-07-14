@@ -5,7 +5,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
 load(
@@ -34,6 +34,7 @@ tf_kernel_library(
         ":infeed_ops",
         ":outfeed_ops",
         ":replication_ops",
+        ":sharding_util_ops",
         ":topk_ops",
         ":tpu_compile_op",
         ":tpu_configuration_ops",
@@ -117,6 +118,7 @@ tf_kernel_library(
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         ":tpu_pod_state",
+        ":tpu_fingerprint_lookup",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
@@ -1042,4 +1044,52 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_op_consts",
     ] + if_static(["//tensorflow/core/common_runtime:rendezvous_mgr"]),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "sharding_util_ops",
+    srcs = ["sharding_util_ops.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/framework:kernel_def_proto_cc",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "sharding_util_ops_test",
+    srcs = ["sharding_util_ops_test.cc"],
+    deps = [
+        ":sharding_util_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:resource_variable_ops",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
 )

@@ -142,8 +142,12 @@ struct CollectivePermuteParticipantData : xla::ParticipantData {
   CollectivePermuteParticipantData(const xla::RendezvousKey& rendezvous_key_p,
                                    xla::int64 device_ordinal_p,
                                    se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+      : ParticipantData(rendezvous_key_p),
+        device_ordinal(device_ordinal_p),
+        stream(stream_p) {}
 
+  xla::int64 device_ordinal;
+  se::Stream* stream;
   int replica_id;
   se::DeviceMemoryBase source_data;
   se::DeviceMemoryBase destination_data;
@@ -154,17 +158,21 @@ struct CollectivePermuteParticipantData : xla::ParticipantData {
     return absl::StrFormat(
         "CollectivePermuteParticipantData{replica_id=%d, "
         "source_data=%p, destination_data=%p, byte_size=%d, "
-        "replica_ids_to_copy_to=[%s]}",
+        "replica_ids_to_copy_to=[%s], device_ordinal=%d, stream=%p}",
         replica_id, source_data.opaque(), destination_data.opaque(), byte_size,
-        absl::StrJoin(replica_ids_to_copy_to, ", "));
+        absl::StrJoin(replica_ids_to_copy_to, ", "), device_ordinal, stream);
   }
 };
 
 struct AllToAllParticipantData : xla::ParticipantData {
   AllToAllParticipantData(const xla::RendezvousKey& rendezvous_key_p,
                           xla::int64 device_ordinal_p, se::Stream* stream_p)
-      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+      : ParticipantData(rendezvous_key_p),
+        device_ordinal(device_ordinal_p),
+        stream(stream_p) {}
 
+  xla::int64 device_ordinal;
+  se::Stream* stream;
   std::vector<se::DeviceMemoryBase> source_buffers;
   std::vector<se::DeviceMemoryBase> destination_buffers;
   int replica_id;
@@ -181,10 +189,11 @@ struct AllToAllParticipantData : xla::ParticipantData {
     return absl::StrFormat(
         "AllToAllParticipantData{replica_id=%d, "
         "replica_ids_to_copy_to=[%s], source_buffers=[%s], "
-        "destination_buffers=[%s]}",
+        "destination_buffers=[%s], device_ordinal=%d, stream=%p}",
         replica_id, absl::StrJoin(replica_ids_to_copy_to, ", "),
         absl::StrJoin(source_buffers, ", ", addr_formatter),
-        absl::StrJoin(destination_buffers, ", ", addr_formatter));
+        absl::StrJoin(destination_buffers, ", ", addr_formatter),
+        device_ordinal, stream);
   }
 };
 

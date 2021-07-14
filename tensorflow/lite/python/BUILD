@@ -536,6 +536,7 @@ py_test(
         ":lite",
         ":metrics_nonportable",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -584,7 +585,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/lite/tools:visualize",
+        "//tensorflow/lite/tools:visualize_lib",
     ],
 )
 
@@ -592,15 +593,14 @@ py_test(
     name = "analyzer_test",
     srcs = ["analyzer_test.py"],
     data = [
+        "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
-        "//tensorflow/lite/python/testdata:interpreter_test_data",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     python_version = "PY3",
-    tags = [
-        "no_mac",  # b/191191684
-    ],
     deps = [
         ":analyzer",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
