@@ -405,6 +405,33 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
     self.assertEqual(4, next(component_iterators[1]).numpy())
     self.assertEqual(2, self.device.unpack(parallel_sample)[1].numpy())
 
+  def test_pack_structure(self):
+    x_parts = [{"a": constant_op.constant(float(i))}
+               for i in range(len(self.device.components))]
+    x = self.device.pack(x_parts)
+    self.assertAllClose([{"a": 0.}, {"a": 1.}], self.device.unpack(x))
+
+  def test_pack_variable_value(self):
+    x_parts = [variables.Variable(i)
+               for i in range(len(self.device.components))]
+    x = self.device.pack(x_parts)
+    with self.device:
+      x1 = self.device.pack(x_parts)
+    for v in x_parts:
+      v.assign(-10)  # Mutating the variable does not affect previous reads.
+    self.assertAllClose([0, 1], self.device.unpack(x))
+    self.assertAllClose([0, 1], self.device.unpack(x1))
+
+  def test_unpack_variable_value(self):
+    x_parts = [constant_op.constant(i)
+               for i in range(len(self.device.components))]
+    x = self.device.pack(x_parts)
+    with self.device:
+      v = variables.Variable(x)
+      v_unpacked = self.device.unpack(v)
+      v.assign(-10)  # Mutating the variable does not affect previous reads.
+    self.assertAllClose([0, 1], v_unpacked)
+
   def test_saved_model(self):
     different_values = self.device.pack(
         [constant_op.constant(-1.),
