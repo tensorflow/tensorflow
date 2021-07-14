@@ -70,6 +70,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kFinishTask:
       FinishTask(update.finish_task());
       break;
+    case Update::kSetElementSpec:
+      SetElementSpec(update.set_element_spec());
+      break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
   }
@@ -119,7 +122,8 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
   if (named_job_key.has_value()) {
-    DCHECK(!named_jobs_.contains(named_job_key.value()));
+    DCHECK(!named_jobs_.contains(named_job_key.value()) ||
+           named_jobs_[named_job_key.value()]->garbage_collected);
     named_jobs_[named_job_key.value()] = job;
   }
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
@@ -256,6 +260,24 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   }
   VLOG(3) << "Job " << task->job->job_id << " finished: " << all_finished;
   jobs_[task->job->job_id]->finished = all_finished;
+}
+
+void DispatcherState::SetElementSpec(
+    const SetElementSpecUpdate& set_element_spec) {
+  int64 dataset_id = set_element_spec.dataset_id();
+  std::string element_spec = set_element_spec.element_spec();
+  DCHECK(!id_element_spec_info_.contains(dataset_id));
+  id_element_spec_info_[dataset_id] = element_spec;
+}
+
+Status DispatcherState::GetElementSpec(int64 dataset_id,
+                                       std::string& element_spec) const {
+  auto it = id_element_spec_info_.find(dataset_id);
+  if (it == id_element_spec_info_.end()) {
+    return errors::NotFound("Element_spec with key ", dataset_id, " not found");
+  }
+  element_spec = it->second;
+  return Status::OK();
 }
 
 int64 DispatcherState::NextAvailableDatasetId() const {

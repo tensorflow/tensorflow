@@ -553,6 +553,9 @@ TEST(OpVersionTest, VersioningDequantizeTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
+  fake_op_sig.ext_options.dequantize.is_per_channel_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
   fake_op_sig = {
       .op = BuiltinOperator_DEQUANTIZE,
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),

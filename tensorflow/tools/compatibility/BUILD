@@ -173,6 +173,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_windows",
+        "nomsan",
         "v1only",
     ],
     deps = [

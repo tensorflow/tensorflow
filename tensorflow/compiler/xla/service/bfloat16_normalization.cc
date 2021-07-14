@@ -508,7 +508,7 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
   // TODO(b/112040122): Correctly normalize variadic reduce.
   if ((hlo->opcode() == HloOpcode::kSort ||
        hlo->opcode() == HloOpcode::kAllReduce ||
-       hlo->opcode() == HloOpcode::kAllReduceScatter) &&
+       hlo->opcode() == HloOpcode::kReduceScatter) &&
       hlo->shape().IsTuple()) {
     return HandleMultipleOutputs(hlo);
   }

@@ -1,5 +1,4 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "pybind_extension")
@@ -475,7 +474,7 @@ cc_library(
         "kernel_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + micro_copts(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -555,6 +554,7 @@ BUILTIN_KERNEL_SRCS = [
     "batch_to_space_nd.cc",
     "bidirectional_sequence_lstm.cc",
     "bidirectional_sequence_rnn.cc",
+    "broadcast_args.cc",
     "broadcast_to.cc",
     "call_once.cc",
     "cast.cc",
@@ -1085,6 +1085,19 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "broadcast_args_test",
+    size = "small",
+    srcs = ["broadcast_args_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
     ],
 )
 

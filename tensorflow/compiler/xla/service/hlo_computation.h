@@ -131,6 +131,12 @@ class HloComputation {
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
                                  const std::string& new_name = "");
 
+  // Replace the old parameter at index param_no with
+  // `instruction`. Updates uses and root instruction. Removes old
+  // instruction from computation. No check is done on the shape.
+  HloInstruction* ReplaceParameter(int64 param_no,
+                                   std::unique_ptr<HloInstruction> instruction);
+
   // Remove the param_no'th parameter from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
@@ -161,7 +167,7 @@ class HloComputation {
       std::unique_ptr<HloInstruction> instruction);
 
   // Replaces an old parameter with a new parameter. Adds the new parameter
-  // instruction to the entry computation.
+  // instruction to the entry computation.  Updates users instruction.
   Status ReplaceEntryComputationParameter(
       int64 param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
@@ -357,6 +363,10 @@ class HloComputation {
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 
+  // As ReplaceInstruction, but the new instruction can have a different shape.
+  Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
+                                              HloInstruction* new_instruction);
+
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
   const HloModule* parent() const { return parent_; }
@@ -475,6 +485,24 @@ class HloComputation {
     is_fusion_computation_ |= (fusion_instruction != nullptr);
   }
 
+  // Returns if this computation is a custom-call computation.
+  bool IsCustomCallComputation() const { return is_custom_call_computation_; }
+
+  // Returns the owning custom call instruction, or nullptr if this is not a
+  // custom call computation.
+  HloInstruction* CustomCallInstruction() const {
+    return custom_call_instruction_;
+  }
+  void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
+    custom_call_instruction_ = custom_call_instruction;
+    is_custom_call_computation_ |= (custom_call_instruction != nullptr);
+  }
+
+  // Returns if this computation is invoked by an Hlo instruction.
+  bool IsCalledComputation() const {
+    return IsFusionComputation() || IsCustomCallComputation();
+  }
+
   // Clear the unique ID of the computation so that it can be re-assigned, such
   // as for the purpose of compacting the unique IDs.
   void ClearUniqueIdInternal() { unique_id_ = -1; }
@@ -559,6 +587,14 @@ class HloComputation {
   // need to regard such computations as fusion computations for HLO scheduling
   // purposes.
   bool is_fusion_computation_;
+
+  // If this computation is a custom-call computation, this field points to the
+  // corresponding custom-call instruction (if it is live). Otherwise, this is
+  // null.
+  HloInstruction* custom_call_instruction_;
+
+  // Determines whether this computation is a custom-call computation. A
+  bool is_custom_call_computation_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

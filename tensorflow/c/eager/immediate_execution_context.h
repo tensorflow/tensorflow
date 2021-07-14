@@ -179,6 +179,9 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual void SetReuseRendezvousForFunctions(
       bool reuse_rendezvous_for_functions) = 0;
 
+  // Resets the global rendezvous used for functions.
+  virtual void ResetGlobalRendezvousForFunction() = 0;
+
   //===--------------------------------------------------------------------===//
   // Following are features in current TF Eager Runtime.
   // TODO(tfrt-devs): Figure out a way to deprecate following features after

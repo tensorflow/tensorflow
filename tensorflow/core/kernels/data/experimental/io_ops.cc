@@ -38,6 +38,11 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+/* static */ constexpr const char* const SaveDatasetOp::kCompression;
+/* static */ constexpr const char* const SaveDatasetOp::kPath;
+/* static */ constexpr const char* const SaveDatasetOp::kShardFunc;
+/* static */ constexpr const char* const SaveDatasetOp::kShardFuncOtherArgs;
+/* static */ constexpr const char* const SaveDatasetOp::kUseShardFunc;
 /* static */ constexpr const int SaveDatasetOp::kFileFormatVersion;
 /* static */ constexpr const char* const SaveDatasetV2Op::kInputDataset;
 /* static */ constexpr const char* const SaveDatasetV2Op::kPath;
@@ -49,8 +54,14 @@ namespace experimental {
 /* static */ constexpr const char* const SaveDatasetV2Op::kShardFuncOtherArgs;
 /* static */ constexpr const char* const SaveDatasetV2Op::kUseShardFunc;
 /* static */ constexpr const char* const SaveDatasetV2Op::kShardFuncTarguments;
+/* static */ constexpr const int SaveDatasetV2Op::kFileFormatVersion;
 /* static */ constexpr const char* const LoadDatasetOp::kCompression;
+/* static */ constexpr const char* const LoadDatasetOp::kDatasetType;
+/* static */ constexpr const char* const LoadDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const LoadDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const LoadDatasetOp::kPath;
 /* static */ constexpr const char* const LoadDatasetOp::kReaderFunc;
+/* static */ constexpr const char* const LoadDatasetOp::kReaderFuncOtherArgs;
 /* static */ constexpr const char* const LoadDatasetOp::kReaderFuncTarguments;
 
 SaveDatasetOp::SaveDatasetOp(OpKernelConstruction* ctx)
@@ -280,7 +291,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
         /*inputs=*/
         {std::make_pair(0, input_graph_node), std::make_pair(1, path_node)},
         /*list_inputs=*/
-        {std::make_pair(1, shard_func_other_args)},
+        {std::make_pair(2, shard_func_other_args)},
         /*attrs=*/
         {std::make_pair(kCompression, compression_attr),
          std::make_pair(kShardFunc, shard_func_attr),
@@ -358,9 +369,9 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
             mutex_lock wsl(writer_status_mu_);
             TF_RETURN_IF_ERROR(writer_status_);
           }
-          return WriteMetadataFile(ctx->env(), dataset()->path_, run_id_,
-                                   dataset()->output_dtypes(),
-                                   /*num_elements=*/0, /*finalized=*/true);
+          return WriteMetadataFile(
+              ctx->env(), dataset()->path_, run_id_, dataset()->output_dtypes(),
+              dataset()->Cardinality(), /*finalized=*/true);
         }
         (num_elements_)++;
 

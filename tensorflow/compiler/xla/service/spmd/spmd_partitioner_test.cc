@@ -37,7 +37,7 @@ namespace op = xla::testing::opcode_matchers;
 class SpmdPartitioningTest : public HloTestBase {
  public:
   StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
-      absl::string_view hlo_module, int64 num_devices,
+      absl::string_view hlo_module, int64_t num_devices,
       bool conv_halo_exchange_always_on_lhs = true,
       bool choose_faster_windowed_einsum = false) {
     // Some tests (BackpropFilter convs) set this flag false to test two
@@ -4568,6 +4568,26 @@ ENTRY entry {
                 op::Broadcast(op::Compare(op::PartitionId(), op::Constant())),
                 op::Rng(), op::Broadcast(op::Constant()))),
             op::Shape("s32[4]")));
+}
+
+TEST_F(SpmdPartitioningTest, ManualRng) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = s32[] parameter(0), sharding={manual}
+  %rhs = s32[] parameter(1), sharding={manual}
+  ROOT %rng = s32[4]{0} rng(%lhs, %rhs),
+      distribution=rng_uniform, sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Rng(op::Parameter(0), op::Parameter(1)),
+                          op::Shape("s32[4]")));
 }
 
 TEST_F(SpmdPartitioningTest, PartitionedRng) {

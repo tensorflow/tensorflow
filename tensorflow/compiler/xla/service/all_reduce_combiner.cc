@@ -131,7 +131,12 @@ StatusOr<bool> AllReduceCombiner::Run(HloModule* module) {
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
-    auto key_fn = [&domain_map](const HloInstruction* instruction) {
+    auto key_fn =
+        [&domain_map](
+            const HloInstruction* instruction) -> absl::optional<AllReduceKey> {
+      if (instruction->opcode() != HloOpcode::kAllReduce) {
+        return absl::nullopt;
+      }
       return GetAllReduceKey(instruction, domain_map.get());
     };
 

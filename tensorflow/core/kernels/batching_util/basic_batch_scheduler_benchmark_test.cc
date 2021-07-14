@@ -38,7 +38,7 @@ class LoadInjector {
   // Run 'injector' 'num_injection' times, with average inter-injection spacing
   // as 'average_injection_interval_micros' (in microseconds).
   virtual void InjectLoad(std::function<void()> injector, int num_injections,
-                          int64 average_injection_interval_micros) const = 0;
+                          int64_t average_injection_interval_micros) const = 0;
 };
 
 // A load injector that uses uniform inter-injection spacing, i.e. each pair of
@@ -50,7 +50,7 @@ class UniformLoadInjector : public LoadInjector {
   ~UniformLoadInjector() override = default;
 
   void InjectLoad(std::function<void()> injector, int num_injections,
-                  int64 average_injection_interval_micros) const override;
+                  int64_t average_injection_interval_micros) const override;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(UniformLoadInjector);
@@ -70,7 +70,7 @@ void UniformLoadInjector::InjectLoad(
     const int64 next_injection_time_micros =
         start_time_micros +
         (num_injections_performed * average_injection_interval_micros);
-    int64 now_micros = Env::Default()->NowMicros();
+    int64_t now_micros = Env::Default()->NowMicros();
     while (now_micros < next_injection_time_micros) {
       const int64 kSleepThresholdMicros = 1000;
       if (next_injection_time_micros - now_micros >= kSleepThresholdMicros) {
@@ -183,7 +183,7 @@ class LatencyBenchmark {
  public:
   LatencyBenchmark(
       const BasicBatchScheduler<BenchmarkBatchTask>::Options& scheduler_options,
-      int64 task_injection_interval_micros, int batch_cpu_cost);
+      int64_t task_injection_interval_micros, int batch_cpu_cost);
 
   LatencyBenchmark(const LatencyBenchmark&) = delete;
   LatencyBenchmark& operator=(const LatencyBenchmark&) = delete;
@@ -229,7 +229,7 @@ class LatencyBenchmark {
 
 LatencyBenchmark::LatencyBenchmark(
     const BasicBatchScheduler<BenchmarkBatchTask>::Options& scheduler_options,
-    int64 task_injection_interval_micros, int batch_cpu_cost)
+    int64_t task_injection_interval_micros, int batch_cpu_cost)
     : scheduler_options_(scheduler_options),
       task_injection_interval_micros_(task_injection_interval_micros),
       batch_cpu_cost_(batch_cpu_cost) {}
@@ -335,7 +335,7 @@ void LatencyBenchmark::PerformBatchCpuWork() const {
 }
 
 static void RunThroughputBenchmark(::testing::benchmark::State& state,
-                                   int64 batch_timeout_micros,
+                                   int64_t batch_timeout_micros,
                                    int num_batch_threads) {
   BasicBatchScheduler<BenchmarkBatchTask>::Options scheduler_options;
   const int kMaxBatchSize = 100;
@@ -386,8 +386,8 @@ BENCHMARK(ThroughputBM_LargeTimeout)
     ->Arg(32)
     ->Arg(64);
 
-static void RunLatencyBenchmark(int64 task_injection_interval_micros,
-                                int64 batch_timeout_micros) {
+static void RunLatencyBenchmark(int64_t task_injection_interval_micros,
+                                int64_t batch_timeout_micros) {
   BasicBatchScheduler<BenchmarkBatchTask>::Options scheduler_options;
   const int kMaxBatchSize = 100;
   scheduler_options.max_batch_size = kMaxBatchSize;

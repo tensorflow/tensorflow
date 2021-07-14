@@ -34,7 +34,8 @@ absl::Status RunModelSample(const std::string& model_name) {
   auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
   GraphFloat32 graph_cl;
   ops::builtin::BuiltinOpResolver op_resolver;
-  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl));
+  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl,
+                                      /*allow_quant_ops*/ true));
 
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));

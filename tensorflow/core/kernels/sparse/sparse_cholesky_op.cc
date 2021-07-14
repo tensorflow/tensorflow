@@ -82,7 +82,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ExtractVariantFromInput(ctx, 0, &input_matrix));
     const Tensor& input_permutation_indices = ctx->input(1);
 
-    int64 num_rows;
+    int64_t num_rows;
     int batch_size;
     OP_REQUIRES_OK(ctx, ValidateInputs(*input_matrix, input_permutation_indices,
                                        &batch_size, &num_rows));
@@ -111,8 +111,8 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     std::atomic<int64> invalid_input_index(-1);
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           sparse_cholesky_cost_per_batch,
-          [&](int64 batch_begin, int64 batch_end) {
-            for (int64 batch_index = batch_begin; batch_index < batch_end;
+          [&](int64_t batch_begin, int64_t batch_end) {
+            for (int64_t batch_index = batch_begin; batch_index < batch_end;
                  ++batch_index) {
               // Define an Eigen SparseMatrix Map to operate on the
               // CSRSparseMatrix component without copying the data.
@@ -190,8 +190,8 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     // SparseMatrixSparseMatMul.
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           (3 * total_nnz) / batch_size /* cost per unit */,
-          [&](int64 batch_begin, int64 batch_end) {
-            for (int64 batch_index = batch_begin; batch_index < batch_end;
+          [&](int64_t batch_begin, int64_t batch_end) {
+            for (int64_t batch_index = batch_begin; batch_index < batch_end;
                  ++batch_index) {
               const SparseMatrix& cholesky_factor =
                   sparse_cholesky_factors[batch_index];

@@ -41,7 +41,7 @@ tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 bazel_args=(
   --config=opt \
   --config=short_logs \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
+  --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
   --linkopt=-lrt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --noincompatible_strict_action_env \

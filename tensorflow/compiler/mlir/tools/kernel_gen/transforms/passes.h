@@ -46,6 +46,10 @@ namespace transforms {
 // Pass to find and annotate candidates for buffer reuse.
 std::unique_ptr<FunctionPass> CreateBufferReusePass();
 
+// Pass to rewrite all TF operations to JIT invocations through the TF
+// framework.
+std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass();
+
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
     mlir::StringRef blob_annotation = {});
@@ -61,6 +65,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
+
+// Pass to replace unsigned types with signless integers.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
 
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
@@ -95,6 +102,9 @@ CreateGpuKernelToNvvmPass();
 /// Pass that transforms gpu modules in standard dialect to ROCDL.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
 CreateGpuKernelToRocdlPass();
+
+// Pass to lower index cast on tensors to tensor dialect.
+std::unique_ptr<FunctionPass> CreateLowerIndexCastPass();
 
 // Pass to simplify shape ops.
 std::unique_ptr<FunctionPass> CreateShapeSimplification();

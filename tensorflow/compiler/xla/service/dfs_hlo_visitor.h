@@ -117,8 +117,10 @@ class DfsHloVisitorBase {
   virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
   virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGather(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllGatherStart(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllGatherDone(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduce(HloInstructionPtr hlo) = 0;
-  virtual Status HandleAllReduceScatter(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReduceScatter(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduceStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllReduceDone(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;

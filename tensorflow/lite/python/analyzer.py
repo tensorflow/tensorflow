@@ -53,13 +53,18 @@ class ModelAnalyzer:
   """Provides a collection of TFLite model analyzer tools."""
 
   @staticmethod
-  def analyze(model_path=None, model_content=None, result_format="txt"):
+  def analyze(model_path=None,
+              model_content=None,
+              result_format="txt",
+              gpu_compatibility=False):
     """Analyzes the given tflite_model.
 
     Args:
       model_path: TFLite flatbuffer model path.
       model_content: TFLite flatbuffer model object.
       result_format: txt|mlir|html|webserver.
+      gpu_compatibility: Whether to check GPU delegate compatibility.
+          It only works with 'txt' output for now.
 
     Returns:
       Analyzed report with the given result_format.
@@ -74,7 +79,8 @@ class ModelAnalyzer:
       input_is_filepath = False
 
     if result_format == "txt":
-      return _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath)
+      return _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath,
+                                             gpu_compatibility)
     elif result_format == "mlir":
       return _analyzer_wrapper.FlatBufferToMlir(tflite_model, input_is_filepath)
     elif result_format == "html":

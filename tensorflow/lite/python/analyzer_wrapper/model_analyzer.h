@@ -22,7 +22,8 @@ namespace tflite {
 // Returns a brief dump of the given TFLite file or model.
 // It examines the model file itself without instantiating TFLite interpreters.
 std::string model_analyzer(const std::string& model_file_or_buffer,
-                           bool input_is_filepath);
+                           bool input_is_filepath,
+                           bool check_gpu_compatibility);
 
 }  // namespace tflite
 

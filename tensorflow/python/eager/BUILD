@@ -268,9 +268,11 @@ cuda_py_test(
     size = "small",
     srcs = ["context_test.py"],
     python_version = "PY3",
+    xla_enabled = True,
     deps = [
         ":context",
         ":test",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
     ],
 )
 

@@ -27,7 +27,7 @@ namespace spmd {
 
 // Creates a custom op that rotates data along `dim` with the given amount.
 std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
-    HloInstruction* input, int64 dim, int64 amount);
+    HloInstruction* input, int64_t dim, int64_t amount);
 
 }  // namespace spmd
 }  // namespace xla

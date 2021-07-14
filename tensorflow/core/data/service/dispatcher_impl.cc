@@ -435,6 +435,10 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
 
   int64 id;
   TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
+  if (!request->element_spec().empty()) {
+    TF_RETURN_IF_ERROR(SetElementSpec(id, request->element_spec()));
+  }
+
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
   return Status::OK();
@@ -452,6 +456,32 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
   return Apply(update);
+}
+
+Status DataServiceDispatcherImpl::SetElementSpec(
+    int64 dataset_id, const std::string& element_spec)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Update update;
+  SetElementSpecUpdate* set_element_spec = update.mutable_set_element_spec();
+  set_element_spec->set_dataset_id(dataset_id);
+  set_element_spec->set_element_spec(element_spec);
+  TF_RETURN_IF_ERROR(Apply(update));
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetElementSpec(
+    const GetElementSpecRequest* request, GetElementSpecResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+  VLOG(4) << "Read the element spec.";
+  int64 dataset_id = request->dataset_id();
+
+  std::string element_spec;
+  TF_RETURN_IF_ERROR(state_.GetElementSpec(dataset_id, element_spec));
+  VLOG(3) << "Get the `element_spec` for registered dataset with dataset id: "
+          << dataset_id << ".";
+  *response->mutable_element_spec() = element_spec;
+  return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::GetOrCreateJob(
@@ -474,13 +504,17 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
       if (s.ok()) {
         TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
                                                request->dataset_id()));
-        int64 job_client_id;
-        TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
-        response->set_job_client_id(job_client_id);
-        VLOG(3) << "Found existing job for name=" << key.value().name
-                << ", index=" << key.value().index
-                << ". job_id: " << job->job_id;
-        return Status::OK();
+        // If the matching job was already garbage-collected, we fall through to
+        // re-create the job.
+        if (!job->garbage_collected) {
+          int64 job_client_id;
+          TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+          response->set_job_client_id(job_client_id);
+          VLOG(3) << "Found existing job for name=" << key.value().name
+                  << ", index=" << key.value().index
+                  << ". job_id: " << job->job_id;
+          return Status::OK();
+        }
       } else if (!errors::IsNotFound(s)) {
         return s;
       }

@@ -64,6 +64,15 @@ namespace cutil = TF::collection_ops_util;
 struct TensorListOpsDecompositionPass
     : public PassWrapper<TensorListOpsDecompositionPass,
                          OperationPass<ModuleOp>> {
+  StringRef getArgument() const final {
+    return "tf-tensor-list-ops-decomposition";
+  }
+
+  StringRef getDescription() const final {
+    return "Decompose tensor list operations into operations on buffers and "
+           "sizes. Needs static shapes.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -958,10 +967,7 @@ void TensorListOpsDecompositionPass::runOnOperation() {
   }
 }
 
-static PassRegistration<TensorListOpsDecompositionPass> pass(
-    "tf-tensor-list-ops-decomposition",
-    "Decompose tensor list operations into operations on buffers and sizes. "
-    "Needs static shapes.");
+static PassRegistration<TensorListOpsDecompositionPass> pass;
 
 }  // namespace
 

@@ -44,6 +44,8 @@ using ::testing::ElementsAreArray;
 
 class DequantizeOpModel : public SingleOpModel {
  public:
+  explicit DequantizeOpModel() {}
+
   DequantizeOpModel(TensorType type, std::initializer_list<int> shape,
                     float scale, int32_t zero_point, int version) {
     const TensorData input_tensor_data = {type, shape, 0, 0, scale, zero_point};
@@ -66,7 +68,7 @@ class DequantizeOpModel : public SingleOpModel {
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
- private:
+ protected:
   int input_;
   int output_;
 };
@@ -114,6 +116,54 @@ TEST(DequantizeOpTest, Int16) {
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-64.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 65.5})));
+}
+
+class DequantizePerChannelOpModel : public DequantizeOpModel {
+ public:
+  DequantizePerChannelOpModel(TensorType type, std::initializer_list<int> shape,
+                              std::initializer_list<float> scales,
+                              std::initializer_list<int64_t> zero_points,
+                              int channel_dim, int version) {
+    std::vector<float> per_channel_scales(scales);
+    std::vector<int64_t> input_offsets(zero_points);
+    const TensorData input_tensor_data = {
+        type,          shape,      0, 0, 0.0f, 0, true, per_channel_scales,
+        input_offsets, channel_dim};
+    input_ = AddInput(input_tensor_data);
+    output_ = AddOutput({TensorType_FLOAT32, shape});
+    SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
+                 CreateDequantizeOptions(builder_).Union());
+
+    resolver_ = absl::make_unique<SingleOpResolver>(
+        BuiltinOperator_DEQUANTIZE, ops::builtin::Register_DEQUANTIZE(),
+        version);
+
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
+TEST(DequantizePerChannelOpTest, Uint8) {
+  // [-63.5, 64] -> scale=0.5 zero_point=127 for UINT8
+  DequantizePerChannelOpModel m(TensorType_UINT8, {2, 5}, {0.5, 0.5},
+                                {127, 127}, 0, 5);
+
+  m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
+}
+
+TEST(DequantizePerChannelOpTest, Int8) {
+  // [-63.5, 64] -> scale=0.5, zero_point=1 for INT8
+  DequantizePerChannelOpModel m(TensorType_INT8, {2, 5}, {0.5, 0.5}, {-1, -1},
+                                0, 5);
+
+  m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
 }
 
 }  // namespace

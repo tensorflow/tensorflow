@@ -7,7 +7,7 @@ import "tensorflow/core/data/service/common.proto";
 // Message representing journaled dispatcher metadata updates. When we apply
 // one of these changes to the dispatcher's in-memory state, we also write an
 // Update message to the journal.
-// Next tag: 13
+// Next tag: 14
 message Update {
   oneof update_type {
     RegisterDatasetUpdate register_dataset = 1;
@@ -22,6 +22,7 @@ message Update {
     ClientHeartbeatUpdate client_heartbeat = 10;
     CreateTaskUpdate create_task = 3;
     FinishTaskUpdate finish_task = 4;
+    SetElementSpecUpdate set_element_spec = 13;
   }
 }
 
@@ -128,4 +129,9 @@ message CreateTaskUpdate {
 // Next tag: 2
 message FinishTaskUpdate {
   int64 task_id = 1;
+}
+
+message SetElementSpecUpdate {
+  int64 dataset_id = 1;
+  bytes element_spec = 2;
 }

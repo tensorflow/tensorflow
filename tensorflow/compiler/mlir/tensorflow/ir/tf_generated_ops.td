@@ -6011,6 +6011,23 @@ A placeholder op for a value that will be fed into the computation.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_InitializeTableOp : TF_Op<"InitializeTable", []> {
+  let summary = [{
+Table initializer that takes two tensors for keys and values respectively.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Handle to a table which will be initialized.}], [TF_LookupTableWrite]>:$table_handle,
+    Arg<TF_Tensor, [{Keys of type Tkey.}]>:$keys,
+    Arg<TF_Tensor, [{Values of type Tval.}]>:$values
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tkey = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tval = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_InitializeTableFromDatasetOp : TF_Op<"InitializeTableFromDataset", []> {
   let summary = "";
 
@@ -6039,7 +6056,7 @@ Where to extract the key and value from a line is specified by `key_index` and
   }];
 
   let arguments = (ins
-    Arg<TF_StrTensor, [{Handle to a table which will be initialized.}]>:$table_handle,
+    Arg<TF_StrTensor, [{Handle to a table which will be initialized.}], [TF_LookupTableWrite]>:$table_handle,
     Arg<TF_StrTensor, [{Filename of a vocabulary text file.}]>:$filename,
 
     Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
@@ -19642,6 +19659,32 @@ Semantics are documented at
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaVariadicReduceV2Op : TF_Op<"XlaVariadicReduceV2", [AttrSizedOperandSegments, NoSideEffect]> {
+  let summary = "Wraps the variadic XLA Reduce operator.";
+
+  let description = [{
+Semantics are documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
+
+This is an expanded version of XlaVariadicReduce, with support for
+operands of different dtypes, and improved shape inference.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{the input tensor(s)}]>:$inputs,
+    Arg<Variadic<TF_Tensor>, [{scalar initial value(s) for the reduction}]>:$init_values,
+
+    I64ArrayAttr:$dimensions_to_reduce,
+    SymbolRefAttr:$reducer
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
 def TF_XlaVariadicSortOp : TF_Op<"XlaVariadicSort", [NoSideEffect]> {

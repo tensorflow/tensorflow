@@ -2362,6 +2362,8 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
@@ -2416,7 +2418,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     // AllReduce is variadic so it needs to be careful to assign the same layout
     // to the corresponding input argument and Tuple index.
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
       return false;

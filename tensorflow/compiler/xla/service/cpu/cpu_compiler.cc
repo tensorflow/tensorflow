@@ -361,37 +361,40 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<DynamicPadder>();
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
-  {
-    auto& pass =
-        pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
-                                               /*allow_mixed_precision=*/false);
 
-    pass.AddPass<TreeReductionRewriter>();
+  // Run the following passes to a fixed point.
+  [&pipeline =
+       pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
+    pipeline.AddInvariantCheckerDebug<HloVerifier>(
+        /*layout_sensitive=*/false,
+        /*allow_mixed_precision=*/false);
+
+    pipeline.AddPass<TreeReductionRewriter>();
     AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
-    pass.AddPass<AlgebraicSimplifier>(options);
-    pass.AddPass<SortSimplifier>();
-    pass.AddPass<HloDCE>();
-    pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<SortSimplifier>();
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
-    pass.AddPass<ZeroSizedHloElimination>();
+    pipeline.AddPass<ZeroSizedHloElimination>();
 
-    pass.AddPass<WhileLoopInvariantCodeMotion>();
-    pass.AddPass<TupleSimplifier>();
-    pass.AddPass<WhileLoopConstantSinking>();
-    pass.AddPass<WhileLoopSimplifier>();
+    pipeline.AddPass<WhileLoopInvariantCodeMotion>();
+    pipeline.AddPass<TupleSimplifier>();
+    pipeline.AddPass<WhileLoopConstantSinking>();
+    pipeline.AddPass<WhileLoopSimplifier>();
 
     // TODO(b/134075051): Re-enable after b/134075051 is fixed.
-    // pass.AddPass<SliceSinker>();
+    // pipeline.AddPass<SliceSinker>();
 
-    pass.AddPass<HloDCE>();
-    pass.AddPass<ReshapeMover>();
-    pass.AddPass<HloConstantFolding>();
-    pass.AddPass<ConditionalSimplifier>();
-  }
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<ReshapeMover>();
+    pipeline.AddPass<HloConstantFolding>();
+    pipeline.AddPass<ConditionalSimplifier>();
+  }();
+
   pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64) {
     return sort->operand(0)->shape().element_type() == F32;
   });
@@ -432,20 +435,20 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  {
-    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "simplification after layout assignment");
-    pass.AddInvariantCheckerDebug<HloVerifier>(
+  // Run this to a fixed point.
+  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+       "simplification after layout assignment")] {
+    pipeline.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
-    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
-    pass.AddPass<HloDCE>();
-    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-  }
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  }();
 
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
@@ -724,8 +727,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
         &hlo_profile_index_map, &hlo_profile_printer_data));
   }
 
-  std::unique_ptr<Executable> cpu_executable;
-
   // Cache these flags here since we'll want to access them after the module's
   // ownership is std::moved.
   const bool embed_ir_in_executable =
@@ -807,17 +808,29 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   llvm::orc::ThreadSafeModule thread_safe_module(std::move(llvm_module),
                                                  std::move(llvm_context));
   cantFail((*jit)->AddModule(std::move(thread_safe_module)));
-  cpu_executable.reset(new CpuExecutable(
+
+  auto cpu_executable = absl::make_unique<CpuExecutable>(
       std::move(*jit), std::move(assignment), std::move(module), function_name,
-      std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map)));
+      std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map));
 
   if (embed_ir_in_executable) {
-    static_cast<CpuExecutable&>(*cpu_executable)
-        .set_ir_module_string(ir_module_string);
+    cpu_executable->set_ir_module_string(ir_module_string);
   }
 
+  // Dump computation proto state and buffer assignment for debug and test, if
+  // dump is enabled.
+  if (DumpingEnabledForHloModule(cpu_executable->module())) {
+    auto hlo_proto = absl::make_unique<HloProto>();
+    *hlo_proto->mutable_hlo_module() = cpu_executable->module().ToProto();
+    *hlo_proto->mutable_buffer_assignment() =
+        cpu_executable->buffer_assignment().ToProto();
+    cpu_executable->set_hlo_proto(std::move(hlo_proto));
+  }
+
+  cpu_executable->set_debug_info(
+      cpu_executable->buffer_assignment().GetStats().ToString());
   VLOG(1) << "Compilation finished";
-  return std::move(cpu_executable);
+  return std::unique_ptr<Executable>(std::move(cpu_executable));
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

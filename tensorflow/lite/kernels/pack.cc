@@ -145,8 +145,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
     }
   }
-
-  return kTfLiteOk;
 }
 
 }  // namespace

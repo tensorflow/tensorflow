@@ -135,38 +135,16 @@ MinibenchmarkStatus Validator::CheckModel(bool load_only) {
   }
   if (!model_path_.empty()) {
     model_ = FlatBufferModel::VerifyAndBuildFromFile(model_path_.c_str());
+  } else if (MMAPAllocation::IsSupported()) {
+    auto allocation = std::make_unique<MMAPAllocation>(
+        model_fd_, model_offset_, model_size_, tflite::DefaultErrorReporter());
+    if (!allocation->valid()) {
+      return kMinibenchmarkModelReadFailed;
+    }
+    model_ =
+        FlatBufferModel::VerifyAndBuildFromAllocation(std::move(allocation));
   } else {
-    if (model_size_ > 100 * 1024 * 1024) {
-      return kMinibenchmarkModelTooLarge;
-    }
-    model_bytes_.resize(model_size_);
-#ifndef _WIN32
-    if (lseek(model_fd_, model_offset_, SEEK_SET) == -1) {
-      return kMinibenchmarkSeekToModelOffsetFailed;
-    }
-    int bytes_read_so_far = 0;
-    while (true) {
-      int to_read = model_size_ - bytes_read_so_far;
-      int bytes_read = TEMP_FAILURE_RETRY(
-          read(model_fd_, model_bytes_.data() + bytes_read_so_far, to_read));
-      if (bytes_read < 0) {
-        return kMinibenchmarkModelReadFailed;
-      }
-      bytes_read_so_far += bytes_read;
-      if (bytes_read == 0 && bytes_read_so_far < model_size_) {
-        return kMinibenchmarkModelReadFailed;
-      }
-      if (bytes_read_so_far == model_size_) {
-        break;
-      }
-    }
-#else  // _WIN32
-    if (model_offset_ != 0) {
-      return kMinibenchmarkUnsupportedPlatform;
-    }
-#endif
-    model_ = FlatBufferModel::VerifyAndBuildFromBuffer(
-        reinterpret_cast<const char*>(model_bytes_.data()), model_size_);
+    return kMinibenchmarkUnsupportedPlatform;
   }
   if (!model_) {
     return kMinibenchmarkModelBuildFailed;

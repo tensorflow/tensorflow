@@ -164,8 +164,9 @@ bool CanInferShape(HloOpcode code) {
     // Technically the following ops do not require an explicit result shape,
     // but we made it so that we always write the shapes explicitly.
     case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
@@ -179,6 +180,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSlice:
@@ -1105,6 +1107,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
@@ -1219,7 +1222,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           HloInstruction::CreateBitcastConvert(shape, operands[0]));
       break;
     }
-    case HloOpcode::kAllGather: {
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<std::vector<int64>> replica_group_ids;
       optional<int64> channel_id;
@@ -1242,15 +1246,23 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateAllGather(
-          shape, operands, dimensions->at(0), replica_groups,
-          constrain_layout ? *constrain_layout : false, channel_id,
-          use_global_device_ids ? *use_global_device_ids : false));
+      if (opcode == HloOpcode::kAllGather) {
+        instruction = builder->AddInstruction(HloInstruction::CreateAllGather(
+            shape, operands, dimensions->at(0), replica_groups,
+            constrain_layout ? *constrain_layout : false, channel_id,
+            use_global_device_ids ? *use_global_device_ids : false));
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAllGatherStart(
+                shape, operands, dimensions->at(0), replica_groups,
+                constrain_layout ? *constrain_layout : false, channel_id,
+                use_global_device_ids ? *use_global_device_ids : false));
+      }
       break;
     }
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
-    case HloOpcode::kAllReduceStart: {
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kReduceScatter: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
@@ -1267,7 +1279,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
-      if (opcode == HloOpcode::kAllReduceScatter) {
+      if (opcode == HloOpcode::kReduceScatter) {
         attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                                &dimensions};
       }
@@ -1283,9 +1295,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
             shape, operands, *to_apply, replica_groups,
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
-      } else if (opcode == HloOpcode::kAllReduceScatter) {
+      } else if (opcode == HloOpcode::kReduceScatter) {
         instruction =
-            builder->AddInstruction(HloInstruction::CreateAllReduceScatter(
+            builder->AddInstruction(HloInstruction::CreateReduceScatter(
                 shape, operands, *to_apply, replica_groups,
                 constrain_layout ? *constrain_layout : false, channel_id,
                 use_global_device_ids ? *use_global_device_ids : false,
@@ -1504,8 +1516,22 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateTuple(operands));
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<const Shape*, 2> arg_shapes;
+                arg_shapes.reserve(operands.size());
+                for (auto* operand : operands) {
+                  arg_shapes.push_back(&operand->shape());
+                }
+                return ShapeInference::InferVariadicOpShape(opcode, arg_shapes);
+              },
+              &shape)) {
+        return false;
+      }
+      // HloInstruction::CreateTuple() infers the shape of the tuple from
+      // operands and should not be used here.
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateVariadic(shape, HloOpcode::kTuple, operands));
       break;
     }
     case HloOpcode::kWhile: {
@@ -3205,35 +3231,32 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   }
   using ParsedElemComponentT = typename ComponentType<ParsedElemT>::Type;
   using LiteralNativeComponentT = typename ComponentType<LiteralNativeT>::Type;
-  const auto handle_nan =
-      [this, literal, index, loc](
-          ParsedElemComponentT parsed_value_component,
-          LiteralNativeComponentT* literal_value_component) {
-        if (!std::isnan(static_cast<double>(parsed_value_component))) {
-          return true;
-        }
-        auto nan_payload = GetNanPayload(parsed_value_component);
-        if (nan_payload == QuietNanWithoutPayload<double>()) {
-          nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
-        }
-        const auto kLargestPayload =
-            NanPayloadBitMask<LiteralNativeComponentT>();
-        if (nan_payload > kLargestPayload) {
-          return Error(
-              loc, StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
-                          " to a literal in shape ",
-                          ShapeUtil::HumanString(literal->shape()),
-                          " at linear index ", index,
-                          ", but the NaN payload is out of range (0x",
-                          absl::Hex(kLargestPayload), ")"));
-        }
-        *literal_value_component =
-            NanWithSignAndPayload<LiteralNativeComponentT>(
-                /*sign=*/std::signbit(
-                    static_cast<double>(parsed_value_component)),
-                /*nan_payload=*/nan_payload);
-        return true;
-      };
+  const auto handle_nan = [this, literal, index, loc](
+                              ParsedElemComponentT parsed_value_component,
+                              LiteralNativeComponentT*
+                                  literal_value_component) {
+    if (!std::isnan(static_cast<double>(parsed_value_component))) {
+      return true;
+    }
+    auto nan_payload = GetNanPayload(parsed_value_component);
+    if (nan_payload == QuietNanWithoutPayload<double>()) {
+      nan_payload = QuietNanWithoutPayload<LiteralNativeComponentT>();
+    }
+    const auto kLargestPayload = NanPayloadBitMask<LiteralNativeComponentT>();
+    if (nan_payload > kLargestPayload) {
+      return Error(
+          loc,
+          StrCat("tries to set NaN payload 0x", absl::Hex(nan_payload),
+                 " to a literal in shape ",
+                 ShapeUtil::HumanString(literal->shape()), " at linear index ",
+                 index, ", but the NaN payload is out of range (0x",
+                 absl::Hex(kLargestPayload), ")"));
+    }
+    *literal_value_component = NanWithSignAndPayload<LiteralNativeComponentT>(
+        /*sign=*/std::signbit(static_cast<double>(parsed_value_component)),
+        /*nan_payload=*/nan_payload);
+    return true;
+  };
   const ParsedElemComponentT parsed_real_value = GetReal(value);
   auto literal_real_value =
       static_cast<LiteralNativeComponentT>(parsed_real_value);

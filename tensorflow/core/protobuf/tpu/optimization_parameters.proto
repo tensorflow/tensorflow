@@ -339,11 +339,7 @@ message FrequencyEstimatorParameters {
 // called on each row that needs an update and will applied elementwise.
 message UserDefinedProgramParameters {
   xla.HloModuleProto program = 1;
-  // Padding values for the parameter and the slots, see
-  // StateVariableSpecification.padding_initial_value below for more details on
-  // how this should be set. One value is needed for the weights and one for
-  // each slot.
-  repeated float padding_values = 2;
+  reserved 2;  // Was padding_values
 }
 
 // Optimizer that just sets the variable to the value of the gradient. To be
@@ -447,20 +443,7 @@ message StateVariableSpecification {
   // A normal state variable that should be saved and restored in checkpoints
   // and used as an input or output to non-debug TensorFlow ops.
   message UserDefined {
-    // For padding embedding rows, this field specifies the initial value to be
-    // used. Separate initial values need to be specified for the embeddings and
-    // any extra accumulators. The initial values should be specified so as to
-    // maintain two invariants during model training:
-    // (1) The embedding vector multiplied by zero returns a vector containing
-    //     all zeros. To maintain this invariant, the embedding values should
-    //     never be NaNs or +-infinity.
-    // (2) Repeatedly applying the optimizer using a gradient vector of all
-    //     zeros does not cause the embeddings or slot variables to become NaNs
-    //     or +-infinity.
-    // The padding row is looked up when no embedding IDs are present for a
-    // feature. The semantics of embedding lookup dictate that the output must
-    // be zero under this scenario.
-    double padding_initial_value = 1;
+    reserved 1;  // Was padding_initial_value.
   }
 
   // A state variable that should be filled with a constant and normally hidden

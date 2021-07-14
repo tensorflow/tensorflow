@@ -101,10 +101,16 @@ class DfsHloVisitorWithDefaultBase
   Status HandleAllGather(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
+  Status HandleAllGatherStart(HloInstructionPtr crs) override {
+    return DefaultAction(crs);
+  }
+  Status HandleAllGatherDone(HloInstructionPtr crs) override {
+    return DefaultAction(crs);
+  }
   Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
-  Status HandleAllReduceScatter(HloInstructionPtr hlo) override {
+  Status HandleReduceScatter(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
   Status HandleAllReduceStart(HloInstructionPtr hlo) override {

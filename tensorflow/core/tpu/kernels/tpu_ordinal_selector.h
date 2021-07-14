@@ -37,7 +37,7 @@ class TPUOrdinalSelector : TPUOrdinalSelectorInterface {
     OpsApiFn()->TfTpuOrdinalSelector_DestroyFn(ordinal_selector_);
   }
   int64 GetOrdinal(absl::optional<uint64> key, int64_t* req_id) override {
-    int64 ordinal;
+    int64_t ordinal;
     OpsApiFn()->TfTpuOrdinalSelector_GetOrdinalFn(ordinal_selector_, key,
                                                   req_id, &ordinal);
     return ordinal;

@@ -309,7 +309,7 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
 int64 RemoveDescendantNodeOfArg(Graph* graph,
                                 const std::string& node_type_to_remove,
                                 const std::set<std::string>& must_be_child_of) {
-  int64 nodes_removed = 0;
+  int64_t nodes_removed = 0;
   std::vector<std::pair<const Edge*, std::vector<const Edge*>>> edges_to_remove;
 
   for (Node* node : graph->nodes()) {
@@ -440,7 +440,7 @@ Status ConvertEdgeShapesToTensorShapes(
     VLOG(2) << iter.first << ", rank: " << iter.second.size();
     const int64 rank = iter.second.size();
     std::vector<int64> dims(rank);
-    for (int64 d = 0; d < rank; ++d) {
+    for (int64_t d = 0; d < rank; ++d) {
       VLOG(2) << " dim[" << d << "]: " << iter.second.at(d);
       dims[d] = iter.second.at(d);
     }
@@ -2326,7 +2326,7 @@ Status TPUPartitionedCallOp::PartitionHelper(
     // per-worker shards at the remote worker(s).
     return node->assigned_device_name();
   };
-  int64 edge_name_counter = 0;
+  int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
     return strings::StrCat(prefix, "/_", ++edge_name_counter);
   };
@@ -2438,9 +2438,9 @@ Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
         node->AddAttr(kSendDevice, device);
         node->ClearAttr(kSendDeviceIncarnation);
         const Device* d = device_set.FindDeviceByName(device);
-        int64 send_incarnation = (d == nullptr)
-                                     ? PartitionOptions::kIllegalIncarnation
-                                     : d->attributes().incarnation();
+        int64_t send_incarnation = (d == nullptr)
+                                       ? PartitionOptions::kIllegalIncarnation
+                                       : d->attributes().incarnation();
         node->AddAttr(kSendDeviceIncarnation, send_incarnation);
       }
       attr = node->attrs().Find(kRecvDevice);

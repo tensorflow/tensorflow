@@ -331,7 +331,7 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
     *fingerprint = FingerprintCat128(*fingerprint, c);
   } else {
     for (int i = 0; i < shape.dims(); i++) {
-      int64 dim = shape.dim_size(i);
+      int64_t dim = shape.dim_size(i);
       *fingerprint = FingerprintCat128(*fingerprint, dim);
     }
   }
@@ -1008,7 +1008,7 @@ Status CreateUnshapedOutput(
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
-  int64 op_id;
+  int64_t op_id;
   if (remote_func_params.has_value()) {
     op_id = remote_func_params.value().op_id;
   } else {

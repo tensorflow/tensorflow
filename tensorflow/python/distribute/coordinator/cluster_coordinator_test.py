@@ -697,6 +697,21 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
         'error message is Failed copying input tensor from'):
       self.coordinator.join()
 
+  def testPassDatasetToCreatePerWorkerDataset(self):
+    dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(dataset)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(per_worker_dataset),))
+    result = result.fetch()
+    expected_result = math_ops.range(1., 5.)
+
+    self.assertAllEqual(result, (expected_result))
+
 
 class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):
   """Test basic functionality works with explicit maximum closure queue size.
@@ -1130,7 +1145,38 @@ class StrategyIntegrationTest(test.TestCase):
         with distribute_utils.cache_variable_reads():
           v.read_value()
 
-  def testDistributeDataset(self):
+  def testVariableCachingIsDoneForMultipleGPUs(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(
+          initial_value=1., aggregation=variable_scope.VariableAggregation.MEAN)
+
+      # Verify caching for multiple GPUs inside replica_fn
+      @def_function.function
+      def worker_fn():
+
+        def replica_fn():
+          t = v.read_value()  # Reads value 1.0 or cached value 1.0 for
+          # second replica
+          v.assign(constant_op.constant(5.0))  # v changes to 5.0
+          t = v.read_value()  # should return 1.0 for replicas > 1
+          return t  # Should be 1.0 instead of 5.0 for replicas > 1
+          # otherwise 5.0
+
+        run_result = self.strategy.run(replica_fn)
+        reduced_result = self.strategy.reduce('SUM', run_result, axis=None)
+        return reduced_result
+
+      result = self.coordinator.schedule(worker_fn)
+      result = result.fetch()
+      if self.strategy.num_replicas_in_sync > 1:
+        expected_result = 1.0 * self.strategy.num_replicas_in_sync
+      else:
+        expected_result = 5.0  # Caching scope not applied implicitly.
+      self.assertEqual(result, expected_result)
+
+  def testDistributedDatasetInsidePerWorkerDatasetFn(self):
 
     def per_worker_dataset_fn():
       dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
@@ -1140,10 +1186,30 @@ class StrategyIntegrationTest(test.TestCase):
     def worker_fn(iterator):
       return self.strategy.experimental_local_results(next(iterator))
 
-    distributed_dataset = self.coordinator.create_per_worker_dataset(
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(
         per_worker_dataset_fn)
     result = self.coordinator.schedule(
-        worker_fn, args=(iter(distributed_dataset),))
+        worker_fn, args=(iter(per_worker_dataset),))
+    result = result.fetch()
+    expected_result = array_ops.split(
+        math_ops.range(1., 5.),
+        num_or_size_splits=self.strategy.num_replicas_in_sync,
+        axis=0)
+
+    self.assertAllEqual(result, (expected_result))
+
+  def testPassDistributedDatasetToCreatePerWorkerDataset(self):
+    dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
+    distributed_dataset = self.strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return self.strategy.experimental_local_results(next(iterator))
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(
+        distributed_dataset)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(per_worker_dataset),))
     result = result.fetch()
     expected_result = array_ops.split(
         math_ops.range(1., 5.),
@@ -1259,10 +1325,6 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertEqual(self._map_fn_tracing_count, 1)
 
   def testCallingDistributeDatasetOutside(self):
-    with self.assertRaises(ValueError):
-      dataset = dataset_ops.DatasetV2.range(1, 2).batch(10)
-      self.strategy.experimental_distribute_dataset(dataset)
-
     with self.assertRaises(ValueError):
       self.strategy.distribute_datasets_from_function(
           lambda _: dataset_ops.DatasetV2.range(1, 2).batch(2))

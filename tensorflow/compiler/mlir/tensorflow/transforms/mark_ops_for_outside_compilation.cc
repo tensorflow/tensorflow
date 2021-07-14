@@ -129,6 +129,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
   supported_ops->insert(
       OperationName(TF::XlaVariadicReduceOp::getOperationName(), context));
   supported_ops->insert(
+      OperationName(TF::XlaVariadicReduceV2Op::getOperationName(), context));
+  supported_ops->insert(
       OperationName(TF::XlaVariadicSortOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaReplicaIdOp::getOperationName(), context));

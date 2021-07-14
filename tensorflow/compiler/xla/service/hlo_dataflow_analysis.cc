@@ -902,6 +902,53 @@ bool HloDataflowAnalysis::UpdateWhileValueSet(HloInstruction* xla_while) {
   }
 }
 
+bool HloDataflowAnalysis::UpdateAllGatherStartValueSet(
+    HloInstruction* all_gather_start) {
+  CHECK_EQ(all_gather_start->opcode(), HloOpcode::kAllGatherStart);
+  bool changed = false;
+  // AllGatherStart forwards the operand values to element {0} of its output.
+  for (int64_t i = 0; i < all_gather_start->operand_count(); ++i) {
+    const HloValueSet& operand_value_set =
+        GetValueSet(all_gather_start->operand(i));
+
+    ShapeIndex output_index = {0};
+    if (all_gather_start->operand_count() > 1) {
+      output_index.push_back(i);
+    }
+
+    HloValueSet& value_set = GetValueSet(all_gather_start, output_index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateAllGatherDoneValueSet(
+    HloInstruction* all_gather_done) {
+  CHECK_EQ(all_gather_done->opcode(), HloOpcode::kAllGatherDone);
+  bool changed = false;
+  // AllGatherDone forwards the operand value at {1} to its output.
+  for (auto& pair : GetInstructionValueSet(all_gather_done)) {
+    const ShapeIndex& output_index = pair.first;
+    HloValueSet& value_set = pair.second;
+
+    ShapeIndex operand_index = {1};
+    for (int64_t i : output_index) {
+      operand_index.push_back(i);
+    }
+
+    const HloValueSet& operand_value_set =
+        GetValueSet(all_gather_done->operand(0), operand_index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateAllReduceStartValueSet(
     HloInstruction* all_reduce_start) {
   CHECK_EQ(all_reduce_start->opcode(), HloOpcode::kAllReduceStart);
@@ -988,6 +1035,10 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
   switch (instruction->opcode()) {
     case HloOpcode::kAddDependency:
       return UpdateAddDependencyValueSet(instruction);
+    case HloOpcode::kAllGatherStart:
+      return UpdateAllGatherStartValueSet(instruction);
+    case HloOpcode::kAllGatherDone:
+      return UpdateAllGatherDoneValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
     case HloOpcode::kCustomCall:

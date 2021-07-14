@@ -158,6 +158,27 @@ std::vector<char> QuantizedDepthwiseConv2DTester::CreateTfLiteModel() const {
       {1, KernelHeight(), KernelWidth(), OutputChannels()}};
   const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
 
+  flatbuffers::Offset<flatbuffers::Vector<float>> filter_scale_offset = 0;
+  flatbuffers::Offset<flatbuffers::Vector<float>> bias_scale_offset = 0;
+  flatbuffers::Offset<flatbuffers::Vector<int64_t>> zero_point_offset = 0;
+  if (ChannelWise()) {
+    filter_scale_offset = builder.CreateVector<float>(KernelScales());
+
+    std::vector<float> bias_scales = std::vector<float>(KernelScales());
+    for (float& bias_scale : bias_scales) {
+      bias_scale *= InputScale();
+    }
+    bias_scale_offset = builder.CreateVector<float>(bias_scales);
+
+    const auto zero_points = std::vector<int64_t>(OutputChannels());
+    zero_point_offset = builder.CreateVector<int64_t>(zero_points);
+  } else {
+    filter_scale_offset = builder.CreateVector<float>({KernelScale()});
+    bias_scale_offset =
+        builder.CreateVector<float>({InputScale() * KernelScale()});
+    zero_point_offset = builder.CreateVector<int64_t>({0});
+  }
+
   const std::array<flatbuffers::Offset<tflite::Tensor>, 4> tensors{{
       CreateTensor(
           builder,
@@ -172,17 +193,17 @@ std::vector<char> QuantizedDepthwiseConv2DTester::CreateTfLiteModel() const {
                                                  filter_shape.size()),
                    TensorType_INT8, /*buffer=*/1, /*name=*/0,
                    CreateQuantizationParameters(
-                       builder, /*min=*/0, /*max=*/0,
-                       builder.CreateVector<float>({KernelScale()}),
-                       builder.CreateVector<int64_t>({0}))),
+                       builder, /*min=*/0, /*max=*/0, filter_scale_offset,
+                       zero_point_offset,
+                       /*details_type=*/tflite::QuantizationDetails_NONE,
+                       /*details=*/0,
+                       /*quantized_dimension=*/ChannelWise() ? 3 : 0)),
       CreateTensor(
           builder,
           builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
           TensorType_INT32, /*buffer=*/2, /*name=*/0,
-          CreateQuantizationParameters(
-              builder, /*min=*/0, /*max=*/0,
-              builder.CreateVector<float>({InputScale() * KernelScale()}),
-              builder.CreateVector<int64_t>({0}))),
+          CreateQuantizationParameters(builder, /*min=*/0, /*max=*/0,
+                                       bias_scale_offset, zero_point_offset)),
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(output_shape.data(),
                                                  output_shape.size()),

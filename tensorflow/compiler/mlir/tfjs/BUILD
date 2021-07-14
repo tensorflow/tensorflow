@@ -37,6 +37,10 @@ gentbl_cc_library(
             "ir/tfjs_dialect.h.inc",
         ),
         (
+            ["-gen-dialect-defs"],
+            "ir/tfjs_dialect.cc.inc",
+        ),
+        (
             ["-gen-dialect-doc"],
             "g3doc/tfjs_dialect.md",
         ),
@@ -48,6 +52,25 @@ gentbl_cc_library(
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "@llvm-project//mlir:SideEffectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tfjs_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TFJS",
+            ],
+            "transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/passes.td",
+    td_srcs = [
+        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
@@ -98,6 +121,8 @@ cc_library(
     srcs = [
         "transforms/generated_optimize.inc",
         "transforms/optimize.cc",
+        "transforms/passes.h.inc",
+        "transforms/passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -237,6 +262,7 @@ tf_cc_binary(
     deps = [
         ":tensorflow_js",
         ":tensorflow_js_passes",
+        ":tfjs_optimize",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
         "//tensorflow/compiler/mlir/tensorflow",

@@ -43,6 +43,7 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_dialect.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.td"
+include "mlir-hlo/Dialect/mhlo/IR/lhlo_structured_interface.td"
 
 //===----------------------------------------------------------------------===//
 // LMHLO nullary op definitions.
@@ -50,7 +51,8 @@ include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.td"
 
 class LHLO_Op<string mnemonic, list<OpTrait> traits> :
   Op<LHLO_Dialect, mnemonic,
-    !listconcat([MemoryEffects<[MemRead, MemWrite]>], traits)>;
+    !listconcat([MemoryEffects<[MemRead, MemWrite]>,
+    LmhloStructuredInterface], traits)>;
 
 def LHLO_ConstOp : LHLO_Op<"constant", []> {
   let summary = "Constant operator";
@@ -81,7 +83,7 @@ def LHLO_IotaOp : LHLO_Op<"iota", []> {
 
 class LHLO_UnaryElementwiseOp<string mnemonic,
                               Type BufferType = LHLO_Buffer,
-                              list<OpTrait> traits = [SameTypeOperands]>
+                              list<OpTrait> traits = [SameTypeOperands, Elementwise]>
     : LHLO_Op<mnemonic, traits> {
   let arguments = (ins Arg<BufferType, "", [MemRead]>:$input,
                        Arg<BufferType, "", [MemWrite]>:$output);
@@ -342,7 +344,7 @@ def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh", LHLO_FpOrComplexBuffer> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class LHLO_BinaryElementwiseOp<string mnemonic, Type BufferType = LHLO_Buffer,
-                               list<OpTrait> traits = [SameTypeOperands]> :
+                               list<OpTrait> traits = [SameTypeOperands, Elementwise]> :
         LHLO_Op<mnemonic, traits> {
   let arguments = (ins
       Arg<BufferType, "", [MemRead]>:$lhs,
@@ -954,7 +956,7 @@ def LHLO_ScatterOp: LHLO_Op<"scatter", []> {
   let regions = (region SizedRegion<1>:$update_computation);
 }
 
-def LHLO_SelectOp: LHLO_Op<"select", []> {
+def LHLO_SelectOp: LHLO_Op<"select", [Elementwise]> {
   let summary = "Select operator";
   let description = [{
     Constructs an output tensor from the elements of `on_true` and `on_false`
@@ -1105,12 +1107,12 @@ def LHLO_AllReduceOp : LHLO_CollectiveCommunicationOp<"all_reduce", [SameOperand
   let regions = (region SizedRegion<1>:$computation);
 }
 
-def LHLO_AllReduceScatterOp : LHLO_CollectiveCommunicationOp<"all_reduce_scatter", [SameOperandsElementType]> {
-  let summary = "AllReduceScatter operator";
+def LHLO_ReduceScatterOp : LHLO_CollectiveCommunicationOp<"reduce_scatter", [SameOperandsElementType]> {
+  let summary = "ReduceScatter operator";
   let description = [{
      Performs all_reduce followed by a scatter.
 
-     See https://www.tensorflow.org/xla/operation_semantics#allreducescatter
+     See https://www.tensorflow.org/xla/operation_semantics#reducescatter
   }];
   let arguments = !con(
     arguments_base,

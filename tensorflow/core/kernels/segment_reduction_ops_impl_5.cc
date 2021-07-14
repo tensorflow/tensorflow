@@ -217,6 +217,7 @@ TF_CALL_FLOAT_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
 
+#if 0  // TODO(b/192086735): Enable once bug is fixed.
 #define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("SparseSegmentMeanGrad")                                     \
@@ -228,6 +229,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
       SparseSegmentMeanGradOp<GPUDevice, type, index_type, segment_ids_type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
 #undef REGISTER_GPU_SPARSE_KERNELS
+#endif
 
 #define REGISTER_GPU_SPARSE_KERNELS(type, index_type, segment_ids_type) \
   REGISTER_KERNEL_BUILDER(                                              \

@@ -318,10 +318,10 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
-    } else if (instruction->opcode() == HloOpcode::kAllReduceScatter) {
-      // XLA:GPU can only support all-reduce-scatter where the scatter dimension
+    } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
+      // XLA:GPU can only support reduce-scatter where the scatter dimension
       // is the most major dimension in the layout.
-      auto ars = Cast<HloAllReduceScatterInstruction>(instruction);
+      auto ars = Cast<HloReduceScatterInstruction>(instruction);
       TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
           ars));

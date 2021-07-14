@@ -19,6 +19,7 @@ limitations under the License.
 #define TF_FRAMEWORK_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.td"
 
@@ -45,6 +46,15 @@ def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
   let description = [{
     OpKernelContextType corresponds to C++ class OpKernelContext defined in
     tensorflow/core/framework/op_kernel.h
+  }];
+}
+
+def TFFramework_JITCallableType : DialectType<TFFramework_Dialect, CPred<
+    "$_self.isa<::mlir::kernel_gen::tf_framework::JITCallableType>()">>,
+    BuildableType<"$_builder.getType<::mlir::kernel_gen::tf_framework::JITCallableType>()"> {
+  let description = [{
+    A `callable` represents the result of JIT compilation. Conceptually, it
+    corresponds to a function pointer.
   }];
 }
 
@@ -162,7 +172,6 @@ def TFFramework_IsValidMemRefOp : TFFramework_Op<"is_valid_memref", []> {
   }];
 }
 
-
 //===----------------------------------------------------------------------===//
 // NullContextOp
 //===----------------------------------------------------------------------===//
@@ -208,6 +217,110 @@ def TFFramework_ReportErrorOp : TFFramework_Op<"report_error", []> {
   );
 
   let assemblyFormat = "$ctx `,` $error_code `,` $msg attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
+// JITCompileOp
+//===----------------------------------------------------------------------===//
+
+def TFFramework_JITCompileOp : TFFramework_Op<"jit_compile", [SingleBlock]> {
+  let summary = "Invokes JIT compilation through the TF framework";
+  let description = [{
+    The op takes an optional TF context, so that it can be added at a later
+    stage in the compilation pipeline. The op's body corresponds to a function
+    body and the corresponding `tf_framework.jit_compile_yield` represents the
+    result value(s).
+  }];
+
+  let arguments = (ins
+    Optional<TFFramework_OpKernelContextType>:$ctx
+  );
+  let results = (outs TFFramework_JITCallableType:$result);
+  let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = "$ctx $body attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
+// JITCompileYieldOp
+//===----------------------------------------------------------------------===//
+
+def TFFramework_JITCompileYieldOp : TFFramework_Op<"jit_compile_yield", [
+    NoSideEffect, ReturnLike, Terminator, HasParent<"JITCompileOp">]> {
+  let summary = "Yields the results in a `tf_framework.jit_compile` op's body";
+  let description = [{
+    See `tf_framework.jit_compile`.
+  }];
+
+  let arguments = (ins
+    AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>:$result
+  );
+
+  let assemblyFormat = "$result attr-dict `:` type($result)";
+}
+
+//===----------------------------------------------------------------------===//
+// JITCompileFromStrOp
+//===----------------------------------------------------------------------===//
+
+def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
+    []> {
+  let summary = "Invokes JIT compilation through the TF framework";
+  let description = [{
+    This operation is similar to `tf_framework.jit_compile`. Instead of a body,
+    the to-be-compiled function is represented as a string attribute. The string
+    shall be the serialized form of a module with a single function named
+    `main`.
+  }];
+
+  let arguments = (ins
+    Optional<TFFramework_OpKernelContextType>:$ctx,
+    StrAttr:$code
+  );
+  let results = (outs TFFramework_JITCallableType:$result);
+
+  let extraClassDeclaration = [{
+    static constexpr StringRef kJITEntryFunctionName = "main";
+  }];
+
+  let assemblyFormat = "($ctx^ `,`)? $code attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
+// JITExecuteOp
+//===----------------------------------------------------------------------===//
+
+def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
+    AttrSizedOperandSegments]> {
+  let summary = "Executes a JIT-compiled function through the TF framework";
+  let description = [{
+    The op takes an optional TF context, so that it can be added at a later
+    stage in the compilation pipeline. The callable must be a JIT-compiled
+    function that is the result of either `tf_framework.jit_compile` or
+    `tf_framework.jit_compile_from_str`. The remaining operands must be tensor
+    or memref arguments and will be forwarded to the callable function. The
+    result types must match those of the callable function. Otherwise, the
+    execution behavior is undefined.
+  }];
+
+  let arguments = (ins
+    Optional<TFFramework_OpKernelContextType>:$ctx,
+    TFFramework_JITCallableType:$callable,
+    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$operands
+  );
+  let results = (outs
+    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$results
+  );
+
+  let builders = [
+    OpBuilder<(ins "Optional<Value>":$ctx, "Value":$callable,
+        "ValueRange":$operands)>
+  ];
+
+  let assemblyFormat = [{
+    (`ctx` `=` $ctx^ `,`)? $callable `(` $operands `)` attr-dict
+        `:` type($operands) `->` type($results)
+  }];
 }
 
 #endif // TF_FRAMEWORK_OPS

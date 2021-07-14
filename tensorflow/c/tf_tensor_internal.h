@@ -109,6 +109,7 @@ class TensorInterface : public AbstractTensorInterface {
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,
                      const int64_t* new_dims, int num_new_dims);
+  Status FromProto(const tensorflow::TensorProto& from);
 
   tensorflow::Tensor& Tensor() { return tensor_; }
 

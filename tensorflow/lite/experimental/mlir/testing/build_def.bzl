@@ -23,6 +23,7 @@ def mlir_only_generated_test_models():
     return [
         "avg_pool3d",
         "batchmatmul",
+        "broadcast_args",
         "broadcast_to",
         "broadcast_gradient_args",
         "cond",

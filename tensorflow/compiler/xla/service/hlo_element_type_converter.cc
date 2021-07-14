@@ -143,7 +143,7 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
       // the embedded computations instead of converting the ops themselves.
       if (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
           opcode == HloOpcode::kAllReduce ||
-          opcode == HloOpcode::kAllReduceScatter ||
+          opcode == HloOpcode::kReduceScatter ||
           opcode == HloOpcode::kAllReduceStart ||
           opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
           opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||

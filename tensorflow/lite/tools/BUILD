@@ -24,6 +24,16 @@ py_binary(
     ],
 )
 
+py_library(
+    name = "visualize_lib",
+    srcs = ["visualize.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "visualize_test",
     srcs = ["visualize_test.py"],

@@ -338,14 +338,14 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
         se, numa_node, gpu_host_alloc_visitors_[numa_node],
         gpu_host_free_visitors_[numa_node]);
     // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
-    int64 gpu_host_mem_limit_in_mb = -1;
+    int64_t gpu_host_mem_limit_in_mb = -1;
     Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                         1LL << 16 /*64GB max by default*/,
                                         &gpu_host_mem_limit_in_mb);
     if (!status.ok()) {
       LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
     }
-    int64 gpu_host_mem_limit = gpu_host_mem_limit_in_mb * (1LL << 20);
+    int64_t gpu_host_mem_limit = gpu_host_mem_limit_in_mb * (1LL << 20);
 
     Allocator* allocator =
         new BFCAllocator(sub_allocator, gpu_host_mem_limit,

@@ -45,7 +45,7 @@ StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
-    int64 num_partitions, SpmdBuilder* b) {
+    int64_t num_partitions, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
   if (original_hlo->batch_group_count() == 1 ||
       original_hlo->batch_group_count() < num_partitions) {
@@ -54,9 +54,9 @@ StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
 
   const auto& dnums = original_hlo->convolution_dimension_numbers();
   // Only supports batch_group_size equals input_batch_size case.
-  const int64 input_batch_size =
+  const int64_t input_batch_size =
       lhs.base_shape().dimensions(dnums.input_batch_dimension());
-  const int64 kernel_output_feature_size =
+  const int64_t kernel_output_feature_size =
       rhs.base_shape().dimensions(dnums.kernel_output_feature_dimension());
   if (input_batch_size != kernel_output_feature_size ||
       original_hlo->batch_group_count() != input_batch_size) {
@@ -69,14 +69,14 @@ StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
       dnums.input_batch_dimension();
   rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
       dnums.input_feature_dimension();
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     rhs_to_lhs_indices[dnums.kernel_spatial_dimensions(i)] =
         dnums.input_spatial_dimensions(i);
   }
 
   // Map LHS indices to RHS indices.
   std::vector<int64> lhs_to_rhs_indices(output_base_shape.rank());
-  for (int64 i = 0; i < rhs_to_lhs_indices.size(); ++i) {
+  for (int64_t i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
 
@@ -86,7 +86,7 @@ StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
       dnums.output_feature_dimension();
   lhs_to_output_indices[dnums.input_feature_dimension()] =
       dnums.output_batch_dimension();
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     lhs_to_output_indices[dnums.input_spatial_dimensions(i)] =
         dnums.output_spatial_dimensions(i);
   }
@@ -137,7 +137,7 @@ StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
-    int64 num_partitions, SpmdBuilder* b) {
+    int64_t num_partitions, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
   if (original_hlo->feature_group_count() == 1 ||
       original_hlo->feature_group_count() < num_partitions) {
@@ -145,9 +145,9 @@ StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
   }
 
   const auto& dnums = original_hlo->convolution_dimension_numbers();
-  const int64 input_feature_size =
+  const int64_t input_feature_size =
       lhs.base_shape().dimensions(dnums.input_feature_dimension());
-  const int64 kernel_output_feature_size =
+  const int64_t kernel_output_feature_size =
       rhs.base_shape().dimensions(dnums.kernel_output_feature_dimension());
   if (input_feature_size != kernel_output_feature_size ||
       input_feature_size % original_hlo->feature_group_count() != 0) {
@@ -160,14 +160,14 @@ StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
       dnums.input_feature_dimension();
   rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
       dnums.input_batch_dimension();
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     rhs_to_lhs_indices[dnums.kernel_spatial_dimensions(i)] =
         dnums.input_spatial_dimensions(i);
   }
 
   // Align LHS indices to RHS.
   std::vector<int64> lhs_to_rhs_indices(output_base_shape.rank());
-  for (int64 i = 0; i < rhs_to_lhs_indices.size(); ++i) {
+  for (int64_t i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
 
@@ -177,7 +177,7 @@ StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
       dnums.output_feature_dimension();
   lhs_to_output_indices[dnums.input_batch_dimension()] =
       dnums.output_batch_dimension();
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     lhs_to_output_indices[dnums.input_spatial_dimensions(i)] =
         dnums.output_spatial_dimensions(i);
   }
@@ -242,12 +242,12 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
       dnums.input_batch_dimension();
   rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
       dnums.input_feature_dimension();
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     rhs_to_lhs_indices[dnums.kernel_spatial_dimensions(i)] =
         dnums.input_spatial_dimensions(i);
   }
   std::vector<int64> lhs_to_rhs_indices(output_base_shape.rank());
-  for (int64 i = 0; i < rhs_to_lhs_indices.size(); ++i) {
+  for (int64_t i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
   auto aligned_rhs_sharding =
@@ -319,18 +319,18 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
   std::vector<int64> lhs_shard_sizes(dnums.input_spatial_dimensions_size());
   std::vector<int64> rhs_shard_sizes(dnums.input_spatial_dimensions_size());
 
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-    int64 lhs_dimension = dnums.input_spatial_dimensions(i);
-    int64 rhs_dimension = dnums.kernel_spatial_dimensions(i);
-    int64 shard_count = rhs.sharding().tile_assignment().dim(rhs_dimension);
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+    int64_t lhs_dimension = dnums.input_spatial_dimensions(i);
+    int64_t rhs_dimension = dnums.kernel_spatial_dimensions(i);
+    int64_t shard_count = rhs.sharding().tile_assignment().dim(rhs_dimension);
     const auto& wd = conv_window.dimensions(i);
     if (wd.base_dilation() != 1 || wd.window_reversal()) {
       return nullptr;
     }
 
-    int64 lhs_shard_size =
+    int64_t lhs_shard_size =
         CeilOfRatio(lhs.base_shape().dimensions(lhs_dimension), shard_count);
-    int64 rhs_shard_size =
+    int64_t rhs_shard_size =
         CeilOfRatio(rhs.base_shape().dimensions(rhs_dimension), shard_count);
     shard_counts[i] = shard_count;
     lhs_shard_sizes[i] = lhs_shard_size;
@@ -356,11 +356,11 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
   Shape dynamic_slice_shape = lhs.hlo()->shape();
   Shape pad_shape = lhs.hlo()->shape();
 
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-    int64 lhs_dimension = dnums.input_spatial_dimensions(i);
-    int64 rhs_dimension = dnums.kernel_spatial_dimensions(i);
-    int64 lhs_shard_size = lhs_shard_sizes[i];
-    int64 rhs_shard_size = rhs_shard_sizes[i];
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+    int64_t lhs_dimension = dnums.input_spatial_dimensions(i);
+    int64_t rhs_dimension = dnums.kernel_spatial_dimensions(i);
+    int64_t lhs_shard_size = lhs_shard_sizes[i];
+    int64_t rhs_shard_size = rhs_shard_sizes[i];
 
     if (shard_counts[i] == 1) {
       continue;
@@ -370,12 +370,12 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
     // above. It calculcates the halo sizes with dilation, so we apply
     // CeilOfRatio({left,right}_halo_size, window_dilation).
     const auto& wd = conv_window.dimensions(i);
-    int64 padding_low = wd.padding_low();
-    int64 padding_high = wd.padding_high();
-    int64 base = lhs.base_shape().dimensions(lhs_dimension);
-    int64 window_count = 1 + (padding_low + padding_high + base -
-                              (1 + (wd.size() - 1) * wd.window_dilation())) /
-                                 wd.stride();
+    int64_t padding_low = wd.padding_low();
+    int64_t padding_high = wd.padding_high();
+    int64_t base = lhs.base_shape().dimensions(lhs_dimension);
+    int64_t window_count = 1 + (padding_low + padding_high + base -
+                                (1 + (wd.size() - 1) * wd.window_dilation())) /
+                                   wd.stride();
     left_halo_size_functions[rhs_dimension] =
         OffsetCalculation(MultiplyAddDivideOffsetCalculation(
             rhs_shard_size * wd.window_dilation() - lhs_shard_size,
@@ -391,11 +391,11 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
 
     // New RHS window size includes the maximum of both left and right
     // halos.
-    int64 halo_size =
+    int64_t halo_size =
         left_halo_size_functions[rhs_dimension].MaxInRange(1, shard_counts[i]) +
         right_halo_size_functions[rhs_dimension].MaxInRange(
             0, shard_counts[i] - 1);
-    int64 new_window_size =
+    int64_t new_window_size =
         rhs.hlo()->shape().dimensions(rhs_dimension) + halo_size;
 
     // The amount of new low padding could be dynamic (e.g., window_dilation
@@ -416,12 +416,12 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
             rhs_shard_size * wd.window_dilation() - lhs_shard_size,
             -padding_low, 1));
 
-    int64 new_padding_low_max =
+    int64_t new_padding_low_max =
         new_padding_low_function.MaxInRange(0, shard_counts[i]);
-    int64 new_padding_low = new_padding_low_max;
-    int64 new_padding_high = window_count * wd.stride() +
-                             (new_window_size - 1) * wd.window_dilation() -
-                             new_padding_low - lhs_shard_size;
+    int64_t new_padding_low = new_padding_low_max;
+    int64_t new_padding_high = window_count * wd.stride() +
+                               (new_window_size - 1) * wd.window_dilation() -
+                               new_padding_low - lhs_shard_size;
 
     // We do pad/dynamic-slice only when the padding is dynamic.
     if (!new_padding_low_function.IsConstant()) {
@@ -462,10 +462,10 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
   // Exchange halo and concatenate.
   HloInstruction* rhs_with_halo = rhs.hlo();
   for (int i = 0; i < dnums.kernel_spatial_dimensions_size(); ++i) {
-    int64 dim = dnums.kernel_spatial_dimensions(i);
-    int64 explicit_left_padding_on_full_shape =
+    int64_t dim = dnums.kernel_spatial_dimensions(i);
+    int64_t explicit_left_padding_on_full_shape =
         left_halo_size_functions[dim].Calculate(0);
-    int64 shard_size_with_halo = new_window.dimensions(i).size();
+    int64_t shard_size_with_halo = new_window.dimensions(i).size();
 
     // offset_on_padded_shape and padded_full_shape_size are needed only if
     // we want to mask out-of-range values in ExchangeHaloAndGetValidData().
@@ -479,7 +479,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
         OffsetCalculation(MultiplyAddDivideOffsetCalculation(
             rhs_shard_sizes[i], explicit_left_padding_on_full_shape, 1)) -
         left_halo_size_functions[dim];
-    int64 padded_full_shape_size =
+    int64_t padded_full_shape_size =
         offset_on_padded_shape.Calculate(shard_counts[i] - 1) +
         new_window.dimensions(i).size();
     auto concat = ExchangeHaloAndGetValidData(
@@ -532,18 +532,18 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
       dnums.input_batch_dimension();
   rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
       dnums.input_feature_dimension();
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     rhs_to_lhs_indices[dnums.kernel_spatial_dimensions(i)] =
         dnums.input_spatial_dimensions(i);
   }
   std::vector<int64> lhs_to_rhs_indices(output_base_shape.rank());
-  for (int64 i = 0; i < rhs_to_lhs_indices.size(); ++i) {
+  for (int64_t i = 0; i < rhs_to_lhs_indices.size(); ++i) {
     lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
   }
 
   const Window& window = conv_window;
   std::vector<int64> reversed_rhs_dims;
-  for (int64 i = 0; i < window.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < window.dimensions_size(); ++i) {
     if (window.dimensions(i).window_reversal()) {
       reversed_rhs_dims.push_back(dnums.kernel_spatial_dimensions(i));
     }
@@ -627,19 +627,19 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
   std::vector<int64> shard_counts(dnums.input_spatial_dimensions_size());
   std::vector<int64> lhs_shard_sizes(dnums.input_spatial_dimensions_size());
   std::vector<int64> rhs_shard_sizes(dnums.input_spatial_dimensions_size());
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-    int64 lhs_dimension = dnums.input_spatial_dimensions(i);
-    int64 rhs_dimension = dnums.kernel_spatial_dimensions(i);
-    int64 shard_count = lhs.sharding().tile_assignment().dim(lhs_dimension);
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+    int64_t lhs_dimension = dnums.input_spatial_dimensions(i);
+    int64_t rhs_dimension = dnums.kernel_spatial_dimensions(i);
+    int64_t shard_count = lhs.sharding().tile_assignment().dim(lhs_dimension);
     const auto& wd = window.dimensions(i);
     if (wd.base_dilation() != 1) {
       // TODO(wangtao): support parallel dim if it is replicate here.
       return nullptr;
     }
 
-    int64 lhs_shard_size =
+    int64_t lhs_shard_size =
         CeilOfRatio(lhs.base_shape().dimensions(lhs_dimension), shard_count);
-    int64 rhs_shard_size =
+    int64_t rhs_shard_size =
         CeilOfRatio(rhs.base_shape().dimensions(rhs_dimension), shard_count);
     shard_counts[i] = shard_count;
     lhs_shard_sizes[i] = lhs_shard_size;
@@ -655,10 +655,10 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
   auto partition_ordinals =
       MakeTiledPartitionOrdinals(lhs.sharding(), partition_id, b);
   HloInstruction* lhs_with_halo = lhs.hlo();
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-    int64 lhs_dimension = dnums.input_spatial_dimensions(i);
-    int64 lhs_shard_size = lhs_shard_sizes[i];
-    int64 rhs_shard_size = rhs_shard_sizes[i];
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+    int64_t lhs_dimension = dnums.input_spatial_dimensions(i);
+    int64_t lhs_shard_size = lhs_shard_sizes[i];
+    int64_t rhs_shard_size = rhs_shard_sizes[i];
 
     if (shard_counts[i] == 1) {
       continue;
@@ -667,13 +667,13 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     // Calculate the left and right halo sizes as described in the comments
     // above.
     const auto& wd = window.dimensions(i);
-    int64 padding_low = wd.padding_low();
-    int64 padding_high = wd.padding_high();
-    int64 base = lhs.base_shape().dimensions(lhs_dimension);
-    int64 window_count = 1 + (padding_low + padding_high + base -
-                              (1 + (wd.size() - 1) * wd.window_dilation())) /
-                                 wd.stride();
-    int64 rhs_shard_size_dilated =
+    int64_t padding_low = wd.padding_low();
+    int64_t padding_high = wd.padding_high();
+    int64_t base = lhs.base_shape().dimensions(lhs_dimension);
+    int64_t window_count = 1 + (padding_low + padding_high + base -
+                                (1 + (wd.size() - 1) * wd.window_dilation())) /
+                                   wd.stride();
+    int64_t rhs_shard_size_dilated =
         (rhs_shard_size - 1) * wd.window_dilation() + 1;
 
     left_halo_size_functions[lhs_dimension] =
@@ -689,9 +689,9 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
             1));
 
     // Exchange halo and concatenate.
-    int64 dim = dnums.input_spatial_dimensions(i);
-    int64 explicit_left_padding_on_full_shape = padding_low;
-    int64 shard_size_with_halo =
+    int64_t dim = dnums.input_spatial_dimensions(i);
+    int64_t explicit_left_padding_on_full_shape = padding_low;
+    int64_t shard_size_with_halo =
         wd.stride() * (window_count - 1) + rhs_shard_size_dilated;
 
     new_window.mutable_dimensions(i)->set_padding_low(0);
@@ -708,7 +708,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     // if it's always safe.
     auto offset_on_padded_shape =
         OffsetCalculation(MultiplyAddDivideOffsetCalculation());
-    int64 padded_full_shape_size = 0;
+    int64_t padded_full_shape_size = 0;
     auto concat = ExchangeHaloAndGetValidData(
         lhs_with_halo, lhs.base_shape(), left_halo_size_functions[dim],
         right_halo_size_functions[dim], explicit_left_padding_on_full_shape,
@@ -759,7 +759,7 @@ StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
       dnums.output_batch_dimension();
   input_to_output_indices[dnums.input_feature_dimension()] =
       dnums.output_feature_dimension();
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     input_to_output_indices[dnums.input_spatial_dimensions(i)] =
         dnums.output_spatial_dimensions(i);
   }
@@ -776,7 +776,7 @@ StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
   // dimensions.
   std::vector<int64> ones(output_base_shape.rank(), 1);
   auto operand_window = window_util::MakeWindow(ones);
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     *operand_window.mutable_dimensions(dnums.input_spatial_dimensions(i)) =
         conv_window.dimensions(i);
   }
@@ -789,7 +789,7 @@ StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
     return nullptr;
   }
   Window new_window;
-  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+  for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     *new_window.add_dimensions() =
         resharded_operand_and_window->shard_window.dimensions(
             dnums.input_spatial_dimensions(i));
@@ -820,7 +820,7 @@ StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
-    int64 num_partitions, const SpmdPartitionerOptions& options,
+    int64_t num_partitions, const SpmdPartitionerOptions& options,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
 
@@ -932,7 +932,7 @@ StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvConvolution(
     wd->set_padding_low(new_window_dimension.padding_low());
   }
 
-  int64 feature_group_count = conv.feature_group_count();
+  int64_t feature_group_count = conv.feature_group_count();
   if (feature_group_count > 1) {
     feature_group_count = sharded_lhs_hlo->shape().dimensions(
                               conv_dnums.input_feature_dimension()) /
@@ -940,7 +940,7 @@ StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvConvolution(
                               conv_dnums.kernel_input_feature_dimension());
   }
 
-  int64 batch_group_count = conv.batch_group_count();
+  int64_t batch_group_count = conv.batch_group_count();
   if (batch_group_count > 1) {
     batch_group_count =
         sharded_lhs_hlo->shape().dimensions(conv_dnums.input_batch_dimension());
@@ -968,7 +968,7 @@ StatusOr<HloInstruction*> PartitionConvolution(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
-    int64 num_partitions, const SpmdPartitionerOptions& options,
+    int64_t num_partitions, const SpmdPartitionerOptions& options,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
 

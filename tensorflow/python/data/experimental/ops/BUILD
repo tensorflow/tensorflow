@@ -173,8 +173,10 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 

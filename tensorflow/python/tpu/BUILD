@@ -74,6 +74,7 @@ tpu_py_test(
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_v2 = True,  # TODO(b/193351923): Re-enable v2 after fix the hanging issue.
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",
@@ -592,6 +593,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
@@ -624,6 +626,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",

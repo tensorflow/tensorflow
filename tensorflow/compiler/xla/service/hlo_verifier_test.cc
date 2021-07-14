@@ -1587,7 +1587,7 @@ TEST_F(HloVerifierTest, InvalidChannelIDandUseGlobalDeviceIDs) {
           "Invalid combination of has_channel_id and use_global_device_ids"));
 }
 
-TEST_F(HloVerifierTest, AllReduceScatterInvalidOutputSize0) {
+TEST_F(HloVerifierTest, ReduceScatterInvalidOutputSize0) {
   const char* const hlo_string = R"(
   HloModule Module
   add {
@@ -1598,7 +1598,7 @@ TEST_F(HloVerifierTest, AllReduceScatterInvalidOutputSize0) {
 
   ENTRY CRS {
     input = f32[8]{0} parameter(0)
-    ROOT crs = f32[8]{0} all-reduce-scatter(input), replica_groups={{0,1}},
+    ROOT crs = f32[8]{0} reduce-scatter(input), replica_groups={{0,1}},
                          to_apply=add, dimensions={0}
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1610,7 +1610,7 @@ TEST_F(HloVerifierTest, AllReduceScatterInvalidOutputSize0) {
               HasSubstr("shard_count = 1, subgroup_size = 2"));
 }
 
-TEST_F(HloVerifierTest, AllReduceScatterInvalidScatterDim) {
+TEST_F(HloVerifierTest, ReduceScatterInvalidScatterDim) {
   const char* const hlo_string = R"(
   HloModule Module
   add {
@@ -1621,7 +1621,7 @@ TEST_F(HloVerifierTest, AllReduceScatterInvalidScatterDim) {
 
   ENTRY CRS {
     input = f32[8]{0} parameter(0)
-    ROOT crs = f32[4]{0} all-reduce-scatter(input), replica_groups={{0,1}},
+    ROOT crs = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}},
                          to_apply=add, dimensions={1}
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1634,7 +1634,7 @@ TEST_F(HloVerifierTest, AllReduceScatterInvalidScatterDim) {
       HasSubstr("ars->scatter_dimension() < ars->operand(i)->shape().rank()"));
 }
 
-TEST_F(HloVerifierTest, AllReduceScatterNonUniformGroups) {
+TEST_F(HloVerifierTest, ReduceScatterNonUniformGroups) {
   const char* const hlo_string = R"(
   HloModule Module
   add {
@@ -1645,8 +1645,7 @@ TEST_F(HloVerifierTest, AllReduceScatterNonUniformGroups) {
 
   ENTRY CRS {
     input = f32[8]{0} parameter(0)
-    ROOT crs = f32[4]{0} all-reduce-scatter(input),
-                         replica_groups={{0,1}, {2,3,4}},
+    ROOT crs = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}, {2,3,4}},
                          to_apply=add, dimensions={0}
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,

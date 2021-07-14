@@ -25,6 +25,10 @@ exports_files([
     "tflite_version_script.lds",
 ])
 
+#-----------------------------------------------------------------------------
+# Filegroup targets.
+
+# All Java source files.
 filegroup(
     name = "java_srcs",
     srcs = glob([
@@ -32,6 +36,45 @@ filegroup(
         "src/main/java/org/tensorflow/lite/annotations/*.java",
     ]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"],
 )
+
+# Java source files for just the stable (non-experimental) APIs,
+# excluding stable API sources which depend on experimental API sources.
+filegroup(
+    name = "java_stable_srcs",  # See also "java_stable_factory_srcs" below.
+    srcs = [
+        "src/main/java/org/tensorflow/lite/DataType.java",
+        "src/main/java/org/tensorflow/lite/InterpreterApi.java",
+        "src/main/java/org/tensorflow/lite/Tensor.java",
+        "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
+        "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
+        "src/main/java/org/tensorflow/lite/package-info.java",
+    ],
+)
+
+# Java source files for just the stable (non-experimental) APIs
+# that depend on experimental API sources.
+filegroup(
+    name = "java_stable_factory_srcs",
+    srcs = [
+        "src/main/java/org/tensorflow/lite/InterpreterFactory.java",
+        "src/main/java/org/tensorflow/lite/package-info.java",
+    ],
+)
+
+# Java source files for just the experimental APIs.
+filegroup(
+    name = "java_experimental_srcs",
+    srcs = [
+        "src/main/java/org/tensorflow/lite/Delegate.java",
+        "src/main/java/org/tensorflow/lite/Interpreter.java",
+        "src/main/java/org/tensorflow/lite/NativeInterpreterWrapper.java",
+        "src/main/java/org/tensorflow/lite/package-info.java",
+        "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src",
+    ],
+)
+
+#-----------------------------------------------------------------------------
+# AAR targets.
 
 # Building tensorflow-lite.aar including 4 variants of .so
 # To build an aar for release, run below command:
@@ -50,10 +93,10 @@ aar_with_jni(
     ],
 )
 
-# Same as "tensorflow-lite" (above), but excluding experimental native APIs.
+# Same as "tensorflow-lite" (above), but excluding experimental APIs.
 aar_with_jni(
     name = "tensorflow-lite-stable",
-    android_library = ":tensorflowlite_stable",
+    android_library = ":tensorflowlite_stable_for_aar",
     headers = [
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
@@ -84,8 +127,18 @@ aar_with_jni(
     ],
 )
 
+#-----------------------------------------------------------------------------
+# android_library targets.
+
+# 'tensorflowlite' is the public android_library target for the TF Lite Java APIs,
+# including experimental APIs.  (See also 'tensorflowlite_stable' below,
+# which includes only the non-experimental APIs; if your code does not require
+# the use of experimental APIs, it may be preferable to use that one.)
 android_library_with_tflite(
     name = "tensorflowlite",
+    # Note that we need to explicitly list all the srcs here, rather than
+    # including a dependency on ":tensorflowlite_javalib", in order
+    # for the class files to get included in the generated AAR file.
     srcs = [":java_srcs"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
@@ -97,14 +150,96 @@ android_library_with_tflite(
     ],
 )
 
+# 'tensorflowlite_stable' is the public android_library target for the
+# TF Lite Java APIs, excluding experimental APIs.
+#
+# See also 'tensorflowlite_stable_for_aar' below.
+#
+# Note that the stable Java APIs are defined in three android_library targets,
+# 'tensorflowlite_stable' 'tensorflowlite_stable_interface', and
+# 'tensorflowlite_experimental_java_with_stable_native'.  This split into three
+# separate targets is done for two reasons:
+#
+# 1. 'tensorflowlite_experimental_java_with_stable_native' needs to be a
+#    separate target than 'tensorflowlite_stable' so that the experimental API
+#    features (such as those in Interpreter.java and Delegate.java) are not
+#    exported to clients that depend on 'tensorflow_lite_stable', even though
+#    those classes are needed by the InterpreterFactory implementation, which
+#    is part of the stable API.
+#
+# 2. 'tensorflowlite_stable_interface' needs to be a separate
+#    target than 'tensorflowlite_stable' to avoid a circular dependency,
+#    since 'tensorflowlite_stable' depends on
+#    'tensorflowlite_experimental_java_with_stable_native', and
+#    'tensorflowlite_experimental_java_with_stable_native' depends on
+#    'tensorflowlite_stable_interface'.
 android_library_with_tflite(
     name = "tensorflowlite_stable",
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
+    tflite_deps = [
+        ":tensorflowlite_stable_interface",
+        ":tensorflowlite_experimental_java_with_stable_native",
+    ],
+    tflite_exports = [
+        ":tensorflowlite_stable_interface",
+    ],
+    exports = [
+        ":tensorflowlite_javalib_stable",
+    ],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+# The is similar to 'tensorflowlite_stable', but includes all the
+# required Java source files directly in "srcs" rather than
+# depending on them via "deps"/"exports"; this is needed when
+# building the AAR file since the current AAR building process
+# doesn't include the transitive Java dependencies.
+# TODO(b/180305743): don't include experimental API classes here.
+android_library_with_tflite(
+    name = "tensorflowlite_stable_for_aar",
     srcs = [":java_srcs"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     tflite_deps = [
         ":tensorflowlite_native_stable",
     ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+# Private target that contains the stable API Java sources other than InterpreterFactory.
+android_library_with_tflite(
+    name = "tensorflowlite_stable_interface",
+    manifest = "AndroidManifest.xml",
+    tflite_deps = [
+        ":tensorflowlite_native_stable",
+    ],
+    visibility = ["//visibility:private"],
+    exports = [
+        ":tensorflowlite_javalib_stable_interface",
+    ],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+# Private target that contains the experimental Java sources that are used
+# as part of the implementation of the stable Java API.  This does NOT depend
+# on the experimental native code, though.
+android_library_with_tflite(
+    name = "tensorflowlite_experimental_java_with_stable_native",
+    manifest = "AndroidManifest.xml",
+    tflite_deps = [
+        ":tensorflowlite_stable_interface",
+        ":tensorflowlite_native_stable",
+    ],
+    visibility = ["//visibility:private"],
+    exports = ["tensorflowlite_javalib_experimental"],
     deps = [
         "@org_checkerframework_qual",
     ],
@@ -155,14 +290,66 @@ android_library(
     ],
 )
 
+#-----------------------------------------------------------------------------
+# java_library targets that include only Java source dependencies,
+# not native code.
+
+# Java source dependencies for all TF Lite Java APIs, including experimental APIs.
 java_library(
     name = "tensorflowlite_javalib",
-    srcs = [":java_srcs"],
     javacopts = JAVACOPTS,
+    exports = [
+        ":tensorflowlite_javalib_experimental",
+        ":tensorflowlite_javalib_stable",
+        ":tensorflowlite_javalib_stable_interface",
+    ],
+)
+
+# Java source dependencies for TF Lite Java APIs, excluding experimental APIs.
+java_library(
+    name = "tensorflowlite_javalib_stable",
+    srcs = [":java_stable_factory_srcs"],
+    javacopts = JAVACOPTS,
+    visibility = ["//visibility:private"],
+    exports = [":tensorflowlite_javalib_stable_interface"],
+    deps = [
+        # Note that the implementation of the *stable* API's InterpreterFactory class
+        # depends on the Interpreter class, which is part of the *experimental*
+        # API target.  But this is only an implementation dependency, and this dependency
+        # is NOT exported: code which depends only on the stable API targets must not
+        # have any references to the experimental API, except indirectly via the stable API.
+        ":tensorflowlite_javalib_experimental",
+        ":tensorflowlite_javalib_stable_interface",
+        "@org_checkerframework_qual",
+    ],
+)
+
+# Java source dependencies for TF Lite Java APIs, excluding experimental APIs
+# and also excluding stable APIs whose implementation depends on experimental Java APIs.
+java_library(
+    name = "tensorflowlite_javalib_stable_interface",
+    srcs = [":java_stable_srcs"],
+    javacopts = JAVACOPTS,
+    visibility = ["//visibility:private"],
     deps = [
         "@org_checkerframework_qual",
     ],
 )
+
+# Java source dependencies for TF Lite Java experimental APIs.
+java_library(
+    name = "tensorflowlite_javalib_experimental",
+    srcs = [":java_experimental_srcs"],
+    javacopts = JAVACOPTS,
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlite_javalib_stable_interface",
+        "@org_checkerframework_qual",
+    ],
+)
+
+#-----------------------------------------------------------------------------
+# java_library targets that also include native code dependencies.
 
 java_library_with_tflite(
     name = "tensorflowlitelib",
@@ -197,6 +384,9 @@ java_library(
         "@org_checkerframework_qual",
     ],
 )
+
+#-----------------------------------------------------------------------------
+# Tests.
 
 java_test_with_tflite(
     name = "TensorFlowLiteTest",
@@ -339,6 +529,40 @@ java_test_with_tflite(
 )
 
 java_test_with_tflite(
+    name = "InterpreterApiTest",
+    size = "small",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterApiTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+    data = [
+        "src/testdata/add.bin",
+        "src/testdata/add_unknown_dimensions.bin",
+        "src/testdata/mul_add_signature_def.bin",
+        "src/testdata/tile_with_bool_input.bin",
+        "//tensorflow/lite:testdata/dynamic_shapes.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
+    ],
+    javacopts = JAVACOPTS,
+    tags = [
+        "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
+    test_class = "org.tensorflow.lite.InterpreterApiTest",
+    tflite_jni_binaries = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_stable_test_jni.so",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlite_javalib_stable",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test_with_tflite(
     name = "NnApiDelegateTest",
     size = "small",
     srcs = [
@@ -448,6 +672,9 @@ java_test(
     ],
 )
 
+#-----------------------------------------------------------------------------
+# Test filegroup targets.
+
 # portable_tests includes files for running TFLite interpreter tests.
 filegroup(
     name = "portable_tests",
@@ -500,6 +727,9 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+#-----------------------------------------------------------------------------
+# cc_library targets for linking against the .so files for the JNI code.
+
 alias(
     name = "libtensorflowlite_jni",
     actual = select({
@@ -531,6 +761,9 @@ cc_library(
     srcs = ["libtensorflowlite_gpu_jni.so"],
     visibility = ["//visibility:private"],
 )
+
+#-----------------------------------------------------------------------------
+# JNI binary targets for generating the .so files for the JNI code.
 
 # JNI shared libary containing Java API native code, including experimental APIs.
 # This library will get automatically loaded by TensorFlowLite.init().

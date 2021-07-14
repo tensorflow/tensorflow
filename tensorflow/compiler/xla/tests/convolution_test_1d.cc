@@ -74,11 +74,11 @@ class Convolve1D1WindowTestBase
   template <typename T>
   void TestImpl() {
     XlaBuilder builder(TestName());
-    int64 input_feature = GetParam().input_feature;
-    int64 output_feature = GetParam().output_feature;
-    int64 batch = GetParam().batch;
-    int64 num_windows = GetParam().num_windows;
-    int64 window_size = GetParam().window_size;
+    int64_t input_feature = GetParam().input_feature;
+    int64_t output_feature = GetParam().output_feature;
+    int64_t batch = GetParam().batch;
+    int64_t num_windows = GetParam().num_windows;
+    int64_t window_size = GetParam().window_size;
     std::vector<int64> input_dims = {batch, window_size + num_windows - 1,
                                      input_feature};
     std::vector<int64> filter_dims = {window_size, input_feature,

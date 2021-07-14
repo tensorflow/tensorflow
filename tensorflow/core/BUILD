@@ -16,6 +16,7 @@
 #     util/: General low-level TensorFlow-specific libraries
 #     framework/: Support for adding new ops & kernels
 #     example/: Wrappers to simplify access to Example proto
+#     //third_party/tensorflow/lite/kernels/shim: Template for writing ops supporting TF & TF Lite.
 # ":ops" - defines TensorFlow ops, but no implementations / kernels
 #     ops/: Standard ops
 #     user_ops/: User-supplied ops
@@ -483,6 +484,7 @@ tf_cuda_library(
         "//tensorflow/core/util:framework_srcs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/public:version.h",
+        "//tensorflow/lite/kernels/shim:tf_headers",
     ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
@@ -1236,7 +1238,6 @@ filegroup(
         "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/llvm_rtti:legacy_lib_core_all_headers",
-        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
         "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
         "//tensorflow/core/lib/wav:wav_io.h",

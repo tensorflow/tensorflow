@@ -45,6 +45,10 @@ def make_broadcast_to_tests(options):
       "input_dtype": [tf.float32, tf.int32],
       "input_shape": [[2, 1, 1, 2, 1, 4, 1, 1]],
       "output_shape": [[2, 3, 2, 2, 2, 4, 1, 1]],
+  }, {
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[3, 4, 1]],
+      "output_shape": [[3, 4, 0]],
   }]
 
   def build_graph(parameters):

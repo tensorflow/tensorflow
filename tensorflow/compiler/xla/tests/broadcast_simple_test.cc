@@ -358,9 +358,9 @@ XLA_TEST_P(BroadcastR3ImplicitTest, Doit) {
   int n1 = expected_array.n1();
   int n2 = expected_array.n2();
   int n3 = expected_array.n3();
-  for (int64 i = 0; i < n1; i++) {
-    for (int64 j = 0; j < n2; j++) {
-      for (int64 k = 0; k < n3; k++) {
+  for (int64_t i = 0; i < n1; i++) {
+    for (int64_t j = 0; j < n2; j++) {
+      for (int64_t k = 0; k < n3; k++) {
         Each({i, j, k}, &expected_array(i, j, k));
       }
     }
@@ -602,7 +602,7 @@ XLA_TEST_P(BroadcastR2ImplicitTest, Doit) {
 
   Array2D<float> expected_array(spec.output_bounds[0], spec.output_bounds[1]);
 
-  expected_array.Each([&](int64 i, int64 j, float* v) {
+  expected_array.Each([&](int64_t i, int64_t j, float* v) {
     float v1 = r2_implicit_array1(i % spec.input_bounds1[0],
                                   j % spec.input_bounds1[1]);
     float v2 = r2_array(i, j);

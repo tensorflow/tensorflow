@@ -22,7 +22,7 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
-DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y,
+DenseIntElementsAttr getBroadcastDimensionsAttr(Builder* b, Value x, Value y,
                                                 bool allow_empty) {
   TensorType xType = x.getType().dyn_cast<RankedTensorType>();
   TensorType yType = y.getType().dyn_cast<RankedTensorType>();
@@ -78,7 +78,7 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
 
 static APFloat GetScalarLimitOfFloatType(FloatType float_ty,
                                          ScalarLimit limit) {
-  auto &semantics = float_ty.getFloatSemantics();
+  auto& semantics = float_ty.getFloatSemantics();
   switch (limit) {
     case kLowest:
       return APFloat::getLargest(semantics, /*negative=*/true);
@@ -134,7 +134,7 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
 }
 
 std::string LmhloToMhloOpName(llvm::StringRef op_name,
-                              mlir::MLIRContext *context) {
+                              mlir::MLIRContext* context) {
   assert(op_name.startswith("lmhlo.") && "Expected an LMHLO op");
 
   if (op_name == "lmhlo.dot") {
@@ -154,6 +154,12 @@ bool IsSequenceStartingWith0(DenseIntElementsAttr attr) {
   for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
     if (attr.getValue<IntegerAttr>(i).getInt() != i) return false;
   return true;
+}
+
+int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
+  BlockArgument arg = value.dyn_cast<BlockArgument>();
+  if (!arg || arg.getOwner() != &op.front()) return -1;
+  return arg.getArgNumber();
 }
 
 }  // namespace hlo

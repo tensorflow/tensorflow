@@ -161,6 +161,47 @@ func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex_log
+func @complex_log(%input: memref<2x2xcomplex<f32>>,
+                  %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.log"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                  memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.log %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @log1p
+func @log1p(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "lmhlo.log_plus_one"(%input, %result) : (memref<2x2xf32>,
+                                           memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = math.log1p %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @complex_log1p
+func @complex_log1p(%input: memref<2x2xcomplex<f32>>,
+                    %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.log_plus_one"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                           memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.log1p %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
 // CHECK-LABEL: func @copy
 func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
   "lmhlo.copy"(%in, %out) : (memref<2x4x8xf32>, memref<2x4x8xf32>) -> ()
@@ -915,6 +956,20 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
   return
 }
 // CHECK: %[[RESULT:.*]] = memref.subview %[[IN]][0, 1] [2, 2] [1, 1] : memref<?x?xf32> to memref<2x2xf32, #{{.*}}>
+// CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
+
+// -----
+
+// CHECK: func @slice_with_strides(%[[IN:.*]]: memref<?xf32>, %[[OUT:.*]]: memref<?xf32>)
+func @slice_with_strides(%operand: memref<?xf32>, %result: memref<?xf32>) {
+  "lmhlo.slice"(%operand, %result) {
+    limit_indices = dense<12> : tensor<1xi64>,
+    start_indices = dense<0> : tensor<1xi64>,
+    strides = dense<2> : tensor<1xi64>
+  } : (memref<?xf32>, memref<?xf32>) -> ()
+  return
+}
+// CHECK: %[[RESULT:.*]] = memref.subview %[[IN]][0] [6] [2] : memref<?xf32> to memref<6xf32, #{{.*}}>
 // CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
 
 // -----

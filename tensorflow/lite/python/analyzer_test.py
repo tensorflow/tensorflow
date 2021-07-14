@@ -22,7 +22,7 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
 
-class ConvertTest(test_util.TensorFlowTestCase):
+class AnalyzerTest(test_util.TensorFlowTestCase):
 
   def testTxt(self):
     model_path = resource_loader.get_path_to_datafile('../testdata/add.bin')
@@ -115,6 +115,17 @@ class ConvertTest(test_util.TensorFlowTestCase):
     self.assertIn('<html>\n<head>', html)
     self.assertIn('COS (0)', html)
     self.assertIn('ADD (1)', html)
+
+  def testTxtGpuCompatiblity(self):
+    model_path = resource_loader.get_path_to_datafile(
+        '../testdata/multi_add_flex.bin')
+    txt = analyzer.ModelAnalyzer.analyze(
+        model_path=model_path, result_format='txt', gpu_compatibility=True)
+    self.assertIn(
+        'GPU COMPATIBILITY WARNING: Not supported custom op FlexAddV2', txt)
+    self.assertIn(
+        'GPU COMPATIBILITY WARNING: Subgraph#0 has GPU delegate compatibility '
+        'issues with nodes 0, 1, 2', txt)
 
 
 if __name__ == '__main__':

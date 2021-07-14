@@ -42,6 +42,7 @@ cc_library(
         "ENABLE_NHWC_KERNELS",
     ],
     includes = [
+        "arm_compute/runtime",
         "src/core/NEON/kernels/assembly",
         "src/core/NEON/kernels/convolution/common",
         "src/core/NEON/kernels/convolution/winograd",
@@ -58,7 +59,10 @@ cc_library(
         "src/runtime/cpu/**/*.cpp",
         "**/*.h",
     ]),
-    hdrs = glob(["arm_compute/runtime/**/*.h"]) + [
+    hdrs = glob([
+        "arm_compute/runtime/**/*.h",
+        "arm_compute/runtime/*.h",
+    ]) + [
         "arm_compute_version.embed",
     ],
     defines = ["ARM_COMPUTE_CPP_SCHEDULER"],

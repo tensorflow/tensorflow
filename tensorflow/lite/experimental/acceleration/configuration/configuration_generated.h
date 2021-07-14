@@ -360,6 +360,36 @@ inline const char *EnumNameGPUInferencePriority(GPUInferencePriority e) {
   return EnumNamesGPUInferencePriority()[index];
 }
 
+enum GPUInferenceUsage {
+  GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0,
+  GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1,
+  GPUInferenceUsage_MIN = GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
+  GPUInferenceUsage_MAX = GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED
+};
+
+inline const GPUInferenceUsage (&EnumValuesGPUInferenceUsage())[2] {
+  static const GPUInferenceUsage values[] = {
+    GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
+    GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesGPUInferenceUsage() {
+  static const char * const names[3] = {
+    "GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER",
+    "GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameGPUInferenceUsage(GPUInferenceUsage e) {
+  if (flatbuffers::IsOutRange(e, GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER, GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesGPUInferenceUsage()[index];
+}
+
 namespace EdgeTpuDeviceSpec_ {
 
 enum PlatformType {
@@ -939,13 +969,17 @@ struct GPUSettingsT : public flatbuffers::NativeTable {
   tflite::GPUInferencePriority inference_priority1;
   tflite::GPUInferencePriority inference_priority2;
   tflite::GPUInferencePriority inference_priority3;
+  tflite::GPUInferenceUsage inference_preference;
+  std::string cache_directory;
+  std::string model_token;
   GPUSettingsT()
       : is_precision_loss_allowed(false),
         enable_quantized_inference(true),
         force_backend(tflite::GPUBackend_UNSET),
         inference_priority1(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO),
         inference_priority2(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO),
-        inference_priority3(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO) {
+        inference_priority3(tflite::GPUInferencePriority_GPU_PRIORITY_AUTO),
+        inference_preference(tflite::GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER) {
   }
 };
 
@@ -957,7 +991,10 @@ struct GPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_FORCE_BACKEND = 8,
     VT_INFERENCE_PRIORITY1 = 10,
     VT_INFERENCE_PRIORITY2 = 12,
-    VT_INFERENCE_PRIORITY3 = 14
+    VT_INFERENCE_PRIORITY3 = 14,
+    VT_INFERENCE_PREFERENCE = 16,
+    VT_CACHE_DIRECTORY = 18,
+    VT_MODEL_TOKEN = 20
   };
   bool is_precision_loss_allowed() const {
     return GetField<uint8_t>(VT_IS_PRECISION_LOSS_ALLOWED, 0) != 0;
@@ -977,6 +1014,15 @@ struct GPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   tflite::GPUInferencePriority inference_priority3() const {
     return static_cast<tflite::GPUInferencePriority>(GetField<int32_t>(VT_INFERENCE_PRIORITY3, 0));
   }
+  tflite::GPUInferenceUsage inference_preference() const {
+    return static_cast<tflite::GPUInferenceUsage>(GetField<int32_t>(VT_INFERENCE_PREFERENCE, 0));
+  }
+  const flatbuffers::String *cache_directory() const {
+    return GetPointer<const flatbuffers::String *>(VT_CACHE_DIRECTORY);
+  }
+  const flatbuffers::String *model_token() const {
+    return GetPointer<const flatbuffers::String *>(VT_MODEL_TOKEN);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_IS_PRECISION_LOSS_ALLOWED) &&
@@ -985,6 +1031,11 @@ struct GPUSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_INFERENCE_PRIORITY1) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_PRIORITY2) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_PRIORITY3) &&
+           VerifyField<int32_t>(verifier, VT_INFERENCE_PREFERENCE) &&
+           VerifyOffset(verifier, VT_CACHE_DIRECTORY) &&
+           verifier.VerifyString(cache_directory()) &&
+           VerifyOffset(verifier, VT_MODEL_TOKEN) &&
+           verifier.VerifyString(model_token()) &&
            verifier.EndTable();
   }
   GPUSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1013,6 +1064,15 @@ struct GPUSettingsBuilder {
   void add_inference_priority3(tflite::GPUInferencePriority inference_priority3) {
     fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PRIORITY3, static_cast<int32_t>(inference_priority3), 0);
   }
+  void add_inference_preference(tflite::GPUInferenceUsage inference_preference) {
+    fbb_.AddElement<int32_t>(GPUSettings::VT_INFERENCE_PREFERENCE, static_cast<int32_t>(inference_preference), 0);
+  }
+  void add_cache_directory(flatbuffers::Offset<flatbuffers::String> cache_directory) {
+    fbb_.AddOffset(GPUSettings::VT_CACHE_DIRECTORY, cache_directory);
+  }
+  void add_model_token(flatbuffers::Offset<flatbuffers::String> model_token) {
+    fbb_.AddOffset(GPUSettings::VT_MODEL_TOKEN, model_token);
+  }
   explicit GPUSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1032,8 +1092,14 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(
     tflite::GPUBackend force_backend = tflite::GPUBackend_UNSET,
     tflite::GPUInferencePriority inference_priority1 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
     tflite::GPUInferencePriority inference_priority2 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
-    tflite::GPUInferencePriority inference_priority3 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO) {
+    tflite::GPUInferencePriority inference_priority3 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferenceUsage inference_preference = tflite::GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
+    flatbuffers::Offset<flatbuffers::String> cache_directory = 0,
+    flatbuffers::Offset<flatbuffers::String> model_token = 0) {
   GPUSettingsBuilder builder_(_fbb);
+  builder_.add_model_token(model_token);
+  builder_.add_cache_directory(cache_directory);
+  builder_.add_inference_preference(inference_preference);
   builder_.add_inference_priority3(inference_priority3);
   builder_.add_inference_priority2(inference_priority2);
   builder_.add_inference_priority1(inference_priority1);
@@ -1041,6 +1107,32 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(
   builder_.add_enable_quantized_inference(enable_quantized_inference);
   builder_.add_is_precision_loss_allowed(is_precision_loss_allowed);
   return builder_.Finish();
+}
+
+inline flatbuffers::Offset<GPUSettings> CreateGPUSettingsDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    bool is_precision_loss_allowed = false,
+    bool enable_quantized_inference = true,
+    tflite::GPUBackend force_backend = tflite::GPUBackend_UNSET,
+    tflite::GPUInferencePriority inference_priority1 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferencePriority inference_priority2 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferencePriority inference_priority3 = tflite::GPUInferencePriority_GPU_PRIORITY_AUTO,
+    tflite::GPUInferenceUsage inference_preference = tflite::GPUInferenceUsage_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER,
+    const char *cache_directory = nullptr,
+    const char *model_token = nullptr) {
+  auto cache_directory__ = cache_directory ? _fbb.CreateString(cache_directory) : 0;
+  auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
+  return tflite::CreateGPUSettings(
+      _fbb,
+      is_precision_loss_allowed,
+      enable_quantized_inference,
+      force_backend,
+      inference_priority1,
+      inference_priority2,
+      inference_priority3,
+      inference_preference,
+      cache_directory__,
+      model_token__);
 }
 
 flatbuffers::Offset<GPUSettings> CreateGPUSettings(flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -2532,6 +2624,7 @@ struct MiniBenchmarkEventT : public flatbuffers::NativeTable {
   bool is_log_flushing_event;
   std::unique_ptr<tflite::BestAccelerationDecisionT> best_acceleration_decision;
   std::unique_ptr<tflite::BenchmarkInitializationFailureT> initialization_failure;
+  std::unique_ptr<tflite::BenchmarkEventT> benchmark_event;
   MiniBenchmarkEventT()
       : is_log_flushing_event(false) {
   }
@@ -2542,7 +2635,8 @@ struct MiniBenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_IS_LOG_FLUSHING_EVENT = 4,
     VT_BEST_ACCELERATION_DECISION = 6,
-    VT_INITIALIZATION_FAILURE = 8
+    VT_INITIALIZATION_FAILURE = 8,
+    VT_BENCHMARK_EVENT = 10
   };
   bool is_log_flushing_event() const {
     return GetField<uint8_t>(VT_IS_LOG_FLUSHING_EVENT, 0) != 0;
@@ -2553,6 +2647,9 @@ struct MiniBenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::BenchmarkInitializationFailure *initialization_failure() const {
     return GetPointer<const tflite::BenchmarkInitializationFailure *>(VT_INITIALIZATION_FAILURE);
   }
+  const tflite::BenchmarkEvent *benchmark_event() const {
+    return GetPointer<const tflite::BenchmarkEvent *>(VT_BENCHMARK_EVENT);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_IS_LOG_FLUSHING_EVENT) &&
@@ -2560,6 +2657,8 @@ struct MiniBenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(best_acceleration_decision()) &&
            VerifyOffset(verifier, VT_INITIALIZATION_FAILURE) &&
            verifier.VerifyTable(initialization_failure()) &&
+           VerifyOffset(verifier, VT_BENCHMARK_EVENT) &&
+           verifier.VerifyTable(benchmark_event()) &&
            verifier.EndTable();
   }
   MiniBenchmarkEventT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2579,6 +2678,9 @@ struct MiniBenchmarkEventBuilder {
   void add_initialization_failure(flatbuffers::Offset<tflite::BenchmarkInitializationFailure> initialization_failure) {
     fbb_.AddOffset(MiniBenchmarkEvent::VT_INITIALIZATION_FAILURE, initialization_failure);
   }
+  void add_benchmark_event(flatbuffers::Offset<tflite::BenchmarkEvent> benchmark_event) {
+    fbb_.AddOffset(MiniBenchmarkEvent::VT_BENCHMARK_EVENT, benchmark_event);
+  }
   explicit MiniBenchmarkEventBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2595,8 +2697,10 @@ inline flatbuffers::Offset<MiniBenchmarkEvent> CreateMiniBenchmarkEvent(
     flatbuffers::FlatBufferBuilder &_fbb,
     bool is_log_flushing_event = false,
     flatbuffers::Offset<tflite::BestAccelerationDecision> best_acceleration_decision = 0,
-    flatbuffers::Offset<tflite::BenchmarkInitializationFailure> initialization_failure = 0) {
+    flatbuffers::Offset<tflite::BenchmarkInitializationFailure> initialization_failure = 0,
+    flatbuffers::Offset<tflite::BenchmarkEvent> benchmark_event = 0) {
   MiniBenchmarkEventBuilder builder_(_fbb);
+  builder_.add_benchmark_event(benchmark_event);
   builder_.add_initialization_failure(initialization_failure);
   builder_.add_best_acceleration_decision(best_acceleration_decision);
   builder_.add_is_log_flushing_event(is_log_flushing_event);
@@ -3018,7 +3122,10 @@ inline bool operator==(const GPUSettingsT &lhs, const GPUSettingsT &rhs) {
       (lhs.force_backend == rhs.force_backend) &&
       (lhs.inference_priority1 == rhs.inference_priority1) &&
       (lhs.inference_priority2 == rhs.inference_priority2) &&
-      (lhs.inference_priority3 == rhs.inference_priority3);
+      (lhs.inference_priority3 == rhs.inference_priority3) &&
+      (lhs.inference_preference == rhs.inference_preference) &&
+      (lhs.cache_directory == rhs.cache_directory) &&
+      (lhs.model_token == rhs.model_token);
 }
 
 inline bool operator!=(const GPUSettingsT &lhs, const GPUSettingsT &rhs) {
@@ -3041,6 +3148,9 @@ inline void GPUSettings::UnPackTo(GPUSettingsT *_o, const flatbuffers::resolver_
   { auto _e = inference_priority1(); _o->inference_priority1 = _e; }
   { auto _e = inference_priority2(); _o->inference_priority2 = _e; }
   { auto _e = inference_priority3(); _o->inference_priority3 = _e; }
+  { auto _e = inference_preference(); _o->inference_preference = _e; }
+  { auto _e = cache_directory(); if (_e) _o->cache_directory = _e->str(); }
+  { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
 }
 
 inline flatbuffers::Offset<GPUSettings> GPUSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GPUSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -3057,6 +3167,9 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(flatbuffers::FlatBuffe
   auto _inference_priority1 = _o->inference_priority1;
   auto _inference_priority2 = _o->inference_priority2;
   auto _inference_priority3 = _o->inference_priority3;
+  auto _inference_preference = _o->inference_preference;
+  auto _cache_directory = _o->cache_directory.empty() ? 0 : _fbb.CreateString(_o->cache_directory);
+  auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
   return tflite::CreateGPUSettings(
       _fbb,
       _is_precision_loss_allowed,
@@ -3064,7 +3177,10 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(flatbuffers::FlatBuffe
       _force_backend,
       _inference_priority1,
       _inference_priority2,
-      _inference_priority3);
+      _inference_priority3,
+      _inference_preference,
+      _cache_directory,
+      _model_token);
 }
 
 
@@ -3836,7 +3952,8 @@ inline bool operator==(const MiniBenchmarkEventT &lhs, const MiniBenchmarkEventT
   return
       (lhs.is_log_flushing_event == rhs.is_log_flushing_event) &&
       ((lhs.best_acceleration_decision == rhs.best_acceleration_decision) || (lhs.best_acceleration_decision && rhs.best_acceleration_decision && *lhs.best_acceleration_decision == *rhs.best_acceleration_decision)) &&
-      ((lhs.initialization_failure == rhs.initialization_failure) || (lhs.initialization_failure && rhs.initialization_failure && *lhs.initialization_failure == *rhs.initialization_failure));
+      ((lhs.initialization_failure == rhs.initialization_failure) || (lhs.initialization_failure && rhs.initialization_failure && *lhs.initialization_failure == *rhs.initialization_failure)) &&
+      ((lhs.benchmark_event == rhs.benchmark_event) || (lhs.benchmark_event && rhs.benchmark_event && *lhs.benchmark_event == *rhs.benchmark_event));
 }
 
 inline bool operator!=(const MiniBenchmarkEventT &lhs, const MiniBenchmarkEventT &rhs) {
@@ -3856,6 +3973,7 @@ inline void MiniBenchmarkEvent::UnPackTo(MiniBenchmarkEventT *_o, const flatbuff
   { auto _e = is_log_flushing_event(); _o->is_log_flushing_event = _e; }
   { auto _e = best_acceleration_decision(); if (_e) _o->best_acceleration_decision = std::unique_ptr<tflite::BestAccelerationDecisionT>(_e->UnPack(_resolver)); }
   { auto _e = initialization_failure(); if (_e) _o->initialization_failure = std::unique_ptr<tflite::BenchmarkInitializationFailureT>(_e->UnPack(_resolver)); }
+  { auto _e = benchmark_event(); if (_e) _o->benchmark_event = std::unique_ptr<tflite::BenchmarkEventT>(_e->UnPack(_resolver)); }
 }
 
 inline flatbuffers::Offset<MiniBenchmarkEvent> MiniBenchmarkEvent::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MiniBenchmarkEventT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -3869,11 +3987,13 @@ inline flatbuffers::Offset<MiniBenchmarkEvent> CreateMiniBenchmarkEvent(flatbuff
   auto _is_log_flushing_event = _o->is_log_flushing_event;
   auto _best_acceleration_decision = _o->best_acceleration_decision ? CreateBestAccelerationDecision(_fbb, _o->best_acceleration_decision.get(), _rehasher) : 0;
   auto _initialization_failure = _o->initialization_failure ? CreateBenchmarkInitializationFailure(_fbb, _o->initialization_failure.get(), _rehasher) : 0;
+  auto _benchmark_event = _o->benchmark_event ? CreateBenchmarkEvent(_fbb, _o->benchmark_event.get(), _rehasher) : 0;
   return tflite::CreateMiniBenchmarkEvent(
       _fbb,
       _is_log_flushing_event,
       _best_acceleration_decision,
-      _initialization_failure);
+      _initialization_failure,
+      _benchmark_event);
 }
 
 

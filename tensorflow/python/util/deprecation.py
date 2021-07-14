@@ -393,8 +393,8 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
       Must be ISO 8601 (YYYY-MM-DD), or None.
     instructions: String. Instructions on how to update code using the
       deprecated function.
-    *deprecated_arg_names_or_tuples: String or 2-Tuple(String,
-      [ok_vals]).  The string is the deprecated argument name.
+    *deprecated_arg_names_or_tuples: String or 2-Tuple (String,
+      ok_val).  The string is the deprecated argument name.
       Optionally, an ok-value may be provided.  If the user provided
       argument equals this value, the warning is suppressed.
     **kwargs: If `warn_once=False` is passed, every call with a deprecated

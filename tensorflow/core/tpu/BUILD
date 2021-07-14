@@ -3,6 +3,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
     "if_windows",
 )
 
@@ -364,4 +365,25 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_global_init",
+    srcs = ["tpu_global_init.cc"],
+    hdrs = ["tpu_global_init.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_defs",
+        "@com_google_absl//absl/memory",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:tpu_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_configuration_rewrite_pass",
+        "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_rewrite_helpers",
+    ] + if_libtpu(["//tensorflow/compiler/jit"]),
 )

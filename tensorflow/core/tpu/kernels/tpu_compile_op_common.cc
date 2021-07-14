@@ -241,7 +241,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
           }));
   core::ScopedUnref ref_holder_unref(ref_holder);
 
-  int64 uid;
+  int64_t uid;
   std::vector<std::string> proto_key;
   std::vector<std::string> sharding_key;
   std::vector<bool> may_modify_variables;
@@ -313,7 +313,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     unloader->AddCacheEntryUid(uid);
   }
 
-  int64 num_cores_with_compiled_programs = proto_key.size();
+  int64_t num_cores_with_compiled_programs = proto_key.size();
   if (proto_key.size() == 1) {
     // SPMD produces 1 program for all cores.
     num_cores_with_compiled_programs = metadata_.num_cores_per_replica();

@@ -28,7 +28,7 @@ func @main(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
-  %0 = "mhlo.all_reduce_scatter"(%arg0) ({
+  %0 = "mhlo.reduce_scatter"(%arg0) ({
   // Perform max reduction inside the region
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %max = mhlo.maximum %lhs, %rhs : tensor<f32>
@@ -48,7 +48,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
 // CHECK:  %[[COMPUTATION:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
 // CHECK:  ENTRY
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = f32[5] all-reduce-scatter(f32[10] %[[ARG0]])
+// CHECK:  ROOT %[[RESULT:.*]] = f32[5] reduce-scatter(f32[10] %[[ARG0]])
 // CHECK-SAME:  channel_id=5
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2},{1,3}}
 // CHECK-SAME: dimensions={0}
@@ -135,7 +135,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
-  %0 = "mhlo.all_reduce_scatter"(%arg0) ({
+  %0 = "mhlo.reduce_scatter"(%arg0) ({
   // Perform max reduction inside the region
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %max = mhlo.maximum %lhs, %rhs : tensor<f32>
@@ -155,7 +155,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
 // CHECK:  %[[COMPUTATION:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
 // CHECK:  ENTRY
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = f32[5] all-reduce-scatter(f32[10] %[[ARG0]])
+// CHECK:  ROOT %[[RESULT:.*]] = f32[5] reduce-scatter(f32[10] %[[ARG0]])
 // CHECK-SAME:  channel_id=5
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2},{1,3}}
 // CHECK-SAME: dimensions={0}
