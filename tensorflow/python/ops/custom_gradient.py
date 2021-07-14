@@ -23,8 +23,10 @@ from tensorflow.python.eager import tape as tape_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import handle_data_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -612,17 +614,32 @@ def recompute_grad(f):
         variables = grad_kwargs.get("variables")
         with backprop.GradientTape() as t:
           id_args = nest.map_structure(gen_array_ops.identity, args)
+          if not context.executing_eagerly():
+            # Since XLA doesn't respect `tf.control_dependencies`, manually add
+            # a data dependency to `dresult`. This ensures the recomputation of
+            # `f(*args, **kwargs)` happens after `dresult`.
+            check_ops.assert_positive_v2(
+                array_ops.size_v2(dresult),
+                "The upstream gradient `dresult` in recompute_grad is empty.")
+            elem = array_ops.reshape(dresult, [-1])[0]
+            # Cast elem to bool in case elem is NaN.
+            elem_bool = math_ops.cast(elem, dtypes.bool)
+            dresult_dep = array_ops.where_v2(
+                elem_bool == elem_bool, 0., float("nan"))  # pylint: disable=comparison-with-itself
+            id_args = nest.map_structure(
+                lambda x: x + math_ops.cast(dresult_dep, x.dtype), id_args)
+
           t.watch(id_args)
           if variables is not None:
             t.watch(variables)
-          with ops.control_dependencies(dresult):
-            with variable_scope.variable_scope(current_var_scope):
-              result = f(*id_args, **kwargs)
+          with variable_scope.variable_scope(current_var_scope):
+            recomputed_result = f(*id_args, **kwargs)
+
         kw_vars = []
         if variables is not None:
           kw_vars = list(variables)
         grads = t.gradient(
-            result,
+            recomputed_result,
             list(id_args) + kw_vars,
             output_gradients=dresult,
             unconnected_gradients=UnconnectedGradients.ZERO)

@@ -1445,9 +1445,11 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":check_ops",
         ":gradients_impl",
         ":gradients_util",
         ":handle_data_util",
+        ":math_ops",
         ":unconnected_gradients",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:forwardprop",
