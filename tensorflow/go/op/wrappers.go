@@ -23109,12 +23109,26 @@ func ExperimentalSqlDataset(scope *Scope, driver_name tf.Output, data_source_nam
 	return op.Output(0)
 }
 
+// RegisterDatasetAttr is an optional argument to RegisterDataset.
+type RegisterDatasetAttr func(optionalAttr)
+
+// RegisterDatasetElementSpec sets the optional element_spec attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetElementSpec(value string) RegisterDatasetAttr {
+	return func(m optionalAttr) {
+		m["element_spec"] = value
+	}
+}
+
 // Registers a dataset with the tf.data service.
-func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
+func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64, optional ...RegisterDatasetAttr) (dataset_id tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "RegisterDataset",
 		Input: []tf.Input{
