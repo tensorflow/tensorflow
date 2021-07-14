@@ -518,13 +518,10 @@ def : Pat<(TF_ReluGradOp AnyTensor:$gradients, AnyTensor:$features),
 
 /// Converts a TF::SoftsignOp to HLO.
 /// Softsign(features) = features / (1 + abs(features))
-def : Pat<(TF_SoftsignOp AnyRankedTensor:$input),
+def : Pat<(TF_SoftsignOp AnyTensor:$input),
           (HLO_DivOp
             $input,
-            (HLOClient_BroadcastAddOp:$add
-              (HLO_ConstOp:$one (GetScalarOfType<1> $input)), (HLO_AbsOp $input),
-              (BinBroadcastDimensions $one, $input)
-            )
+            (HLO_AddOp (HLO_ConstantLike<"1"> $input), (HLO_AbsOp $input))
           )
          >;
 

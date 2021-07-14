@@ -939,6 +939,23 @@ GENERATE_DEFAULT_TEST(Softplus, DT_FLOAT, DT_FLOAT, baseline_softplus,
 GENERATE_DEFAULT_TEST(Softplus, DT_DOUBLE, DT_DOUBLE, baseline_softplus,
                       test::OpsTestConfig())
 
+/// Test `tf.Softsign`.
+
+// Reference implementation
+template <typename T>
+T baseline_softsign(T x) {
+  return x / (std::abs(x) + 1);
+}
+
+GENERATE_DEFAULT_TEST_2(Softsign, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_softsign, test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Softsign, DT_FLOAT, DT_FLOAT, baseline_softsign,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Softsign, DT_DOUBLE, DT_DOUBLE, baseline_softsign,
+                      test::OpsTestConfig())
+
 /// Test `tf.Sqrt`.
 
 GENERATE_DEFAULT_TEST(Sqrt, DT_FLOAT, DT_FLOAT, std::sqrt,
