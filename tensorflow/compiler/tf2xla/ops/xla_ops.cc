@@ -363,10 +363,12 @@ REGISTER_OP("XlaRemoveDynamicDimensionSize")
     .Attr("T: type")
     // Use unknown shape to prevent constant folding.
     .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(
-        R"doc(Inverse of XlaSetDynamicDimensionSize. Make an xla bounded
-        dynamic dimension into a static dimension. The bound of the size of
-        dimension `dim_index` becomes the static dimension size.)doc");
+    .Doc(R"doc(
+Inverse of XlaSetDynamicDimensionSize.
+
+Make an xla bounded dynamic dimension into a static dimension. The bound of the
+size of dimension `dim_index` becomes the static dimension size.
+)doc");
 
 REGISTER_OP("XlaDynamicSlice")
     .Input("input: T")
