@@ -2259,37 +2259,59 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
                                           ? &arg_shapes[i].shape
                                           : &arg_shapes[i].handle_shape;
     if (!shape->IsFullyDefined()) {
+      NodeDef def;
       Node* src;
       int src_output;
-      if (params_info.IsPerReplicaArg(i)) {
-        TF_RET_CHECK(i < replicate_input_edges.size());
-        // All replicas must have the same input shapes. Uses the shape of the
-        // inputs from the first replica.
-        src = replicate_input_edges[i]->src();
-        src_output = replicate_input_edges[i]->src_output();
-      } else if (params_info.IsDistributedArg(i) ||
-                 params_info.IsBroadcastArg(i)) {
-        int64_t input_num =
-            params_info.NumPerReplicaArgs() * params_info.NumReplicas() + i -
-            params_info.NumPerReplicaArgs();
-        TF_RET_CHECK(0 <= input_num &&
-                     input_num < replicate_input_edges.size());
-        src = replicate_input_edges[input_num]->src();
-        src_output = replicate_input_edges[input_num]->src_output();
-      } else {
+      std::vector<Node*> control_inputs;
+
+      if (params_info.IsVariableArg(i)) {
         int64_t var_num = i - params_info.NumPerReplicaArgs() -
                           params_info.NumDistributedArgs() -
                           params_info.NumBroadcastArgs();
         TF_RET_CHECK(0 <= var_num && var_num < variable_reads.size());
-        src = variable_reads[var_num];
-        src_output = 0;
+        Node* read = variable_reads[var_num];
+
+        DCHECK_EQ(read->type_string(), "ReadVariableOp");
+
+        for (const Edge* edge : read->in_edges()) {
+          if (edge->IsControlEdge()) {
+            control_inputs.push_back(edge->src());
+          }
+        }
+
+        const Edge* variable_input = nullptr;
+        TF_RETURN_IF_ERROR(read->input_edge(/*idx=*/0, &variable_input));
+        src = variable_input->src();
+        src_output = variable_input->src_output();
+
+        def.set_name(
+            graph->NewName(strings::StrCat(src->name(), "/variable_shape")));
+        def.set_op("VariableShape");
+      } else {
+        if (params_info.IsPerReplicaArg(i)) {
+          TF_RET_CHECK(i < replicate_input_edges.size());
+          // All replicas must have the same input shapes. Uses the shape of the
+          // inputs from the first replica.
+          src = replicate_input_edges[i]->src();
+          src_output = replicate_input_edges[i]->src_output();
+        } else {
+          DCHECK(params_info.IsDistributedArg(i) ||
+                 params_info.IsBroadcastArg(i));
+          int64_t input_num =
+              params_info.NumPerReplicaArgs() * params_info.NumReplicas() + i -
+              params_info.NumPerReplicaArgs();
+          TF_RET_CHECK(0 <= input_num &&
+                       input_num < replicate_input_edges.size());
+          src = replicate_input_edges[input_num]->src();
+          src_output = replicate_input_edges[input_num]->src_output();
+        }
+
+        def.set_name(graph->NewName(strings::StrCat(src->name(), "/shape")));
+        def.set_op("Shape");
+        AddNodeAttr("T", src->output_type(src_output), &def);
       }
 
-      NodeDef def;
-      def.set_name(graph->NewName(strings::StrCat(src->name(), "/shape")));
-      def.set_op("Shape");
       def.set_device(src->assigned_device_name());
-      AddNodeAttr("T", src->output_type(src_output), &def);
       AddNodeAttr("out_type", DT_INT64, &def);
       MergeDebugInfo(NodeDebugInfo(replicate_node.def()), &def);
 
@@ -2300,6 +2322,9 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
 
       shape_node->set_assigned_device_name(src->assigned_device_name());
       graph->AddEdge(src, src_output, shape_node, 0);
+      for (Node* control_input : control_inputs) {
+        graph->AddControlEdge(control_input, shape_node);
+      }
     }
   }
   return Status::OK();
