@@ -317,7 +317,9 @@ TfLiteStatus PrepareProd(TfLiteContext* context, TfLiteNode* node) {
 
   const int input_size = GetTensorShape(op_context.input).FlatSize();
   const int output_size = GetTensorShape(op_context.output).FlatSize();
-  if ((op_context.input->type == kTfLiteInt8 ||
+  // We support both quantized and non-quantized int8/int16 inputs
+  if (op_context.input->quantization.type != kTfLiteNoQuantization &&
+      (op_context.input->type == kTfLiteInt8 ||
        op_context.input->type == kTfLiteInt16) &&
       input_size != 0 && output_size != 0) {
     const int reduced_axis_size = input_size / output_size;
@@ -845,10 +847,16 @@ TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus EvalProd(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
-  if (op_context.input->type == kTfLiteInt8) {
-    return EvalQuantizedProd<int8_t>(context, node, &op_context);
-  } else if (op_context.input->type == kTfLiteInt16) {
-    return EvalQuantizedProd<int16_t>(context, node, &op_context);
+  if (op_context.input->quantization.type != kTfLiteNoQuantization) {
+    if (op_context.input->type == kTfLiteInt8) {
+      return EvalQuantizedProd<int8_t>(context, node, &op_context);
+    } else if (op_context.input->type == kTfLiteInt16) {
+      return EvalQuantizedProd<int16_t>(context, node, &op_context);
+    } else {
+      context->ReportError(context, "Unsupported quantized data type: %d",
+                           op_context.input->type);
+      return kTfLiteError;
+    }
   } else {
     return EvalGeneric<reduce::kReference, reduce::kProd>(context, node);
   }
