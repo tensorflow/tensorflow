@@ -172,10 +172,17 @@ class TransposePlan {
   // A 1 entry means that dimension is not tiled.
   absl::InlinedVector<int64_t, 4> a_tiling_;
   absl::InlinedVector<int64_t, 4> b_tiling_;
+  bool a_is_tiled_;
+  bool b_is_tiled_;
 
   // Order to traverse dimensions, from slowest-varying to fastest-varying.
-  // The integers are dimension numbers in A.
-  std::vector<int> loop_order_;
+  struct Loop {
+    // The integers are dimension numbers in A.
+    int dim_in_a;
+    // If true, the loop iterates over the interior of a tile.
+    bool tile_interior;
+  };
+  std::vector<Loop> loop_order_;
 
   // Nodes of the plan, in no particular order. Holds ownership of the plan
   // nodes.

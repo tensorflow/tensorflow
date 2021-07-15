@@ -119,8 +119,10 @@ TEST(TransposeTest, InvalidTilings) {
                             /*input_layout=*/TransposePlan::Tiling{{8, 128}},
                             /*output_tiling=*/TransposePlan::Tiling{{4}});
   EXPECT_EQ(plan.status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_THAT(plan.status().error_message(),
-              testing::HasSubstr("mismatched tilings for input dimension 2"));
+  EXPECT_THAT(
+      plan.status().error_message(),
+      testing::HasSubstr(
+          "Only one of the input and output may have a non-trivial tiling"));
 }
 
 // Computes the size in elements of a tiled array.
@@ -321,15 +323,16 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
                         /*input_tiling=*/{},
                         /*output_tiling=*/{3}),
       TransposeTestCase(/*dims=*/{8}, /*permutation=*/{0},
-                        /*input_tiling=*/{3},
+                        /*input_tiling=*/{},
                         /*output_tiling=*/{3}),
+      TransposeTestCase(/*dims=*/{8}, /*permutation=*/{0},
+                        /*input_tiling=*/{3},
+                        /*output_tiling=*/{}),
       TransposeTestCase(/*dims=*/{29}, /*permutation=*/{0},
                         /*input_tiling=*/{},
                         /*output_tiling=*/{3}),
       TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
                         /*input_tiling=*/{4}),
-      TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
-                        /*input_tiling=*/{4}, /*output_tiling=*/{4}),
       TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
                         /*input_tiling=*/{}, /*output_tiling=*/{5}),
       TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
