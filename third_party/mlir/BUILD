@@ -38,6 +38,8 @@ filegroup(
     ],
 )
 
+exports_files(glob(["include/**/*.td"]))
+
 [
     gentbl_cc_library(
         name = name + "IncGen",
@@ -4982,12 +4984,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "AllPassesAndDialectsNoRegistration",
-    actual = ":AllPassesAndDialects",
-    deprecation = "Use AllPassesAndDialects instead",
-)
-
 cc_binary(
     name = "mlir-lsp-server",
     srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
@@ -6490,42 +6486,12 @@ cc_library(
     ],
 )
 
-exports_files(
-    [
-        "include/mlir/Bindings/Python/Attributes.td",
-        "include/mlir/Dialect/DLTI/DLTIBase.td",
-        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
-        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
-        "include/mlir/Dialect/StandardOps/IR/Ops.td",
-        "include/mlir/Dialect/Tensor/IR/TensorOps.td",
-        "include/mlir/Dialect/Vector/VectorOps.td",
-        "include/mlir/Dialect/X86Vector/X86Vector.td",
-        "include/mlir/IR/OpAsmInterface.td",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/IR/RegionKindInterface.td",
-        "include/mlir/IR/SymbolInterfaces.td",
-        "include/mlir/IR/TensorEncoding.td",
-        "include/mlir/Interfaces/CallInterfaces.h",
-        "include/mlir/Interfaces/CallInterfaces.td",
-        "include/mlir/Interfaces/CastInterfaces.h",
-        "include/mlir/Interfaces/CastInterfaces.td",
-        "include/mlir/Interfaces/ControlFlowInterfaces.h",
-        "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/CopyOpInterface.td",
-        "include/mlir/Interfaces/DataLayoutInterfaces.td",
-        "include/mlir/Interfaces/InferTypeOpInterface.td",
-        "include/mlir/Interfaces/LoopLikeInterface.td",
-        "include/mlir/Interfaces/SideEffectInterfaceBase.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
-        "include/mlir/Interfaces/VectorInterfaces.td",
-        "include/mlir/Interfaces/ViewLikeInterface.td",
-        "include/mlir/Transforms/InliningUtils.h",
-    ],
-    visibility = [":friends"],
-)
+exports_files([
+    "include/mlir/Interfaces/CallInterfaces.h",
+    "include/mlir/Interfaces/CastInterfaces.h",
+    "include/mlir/Interfaces/ControlFlowInterfaces.h",
+    "include/mlir/Transforms/InliningUtils.h",
+])
 
 td_library(
     name = "MathOpsTdFiles",
