@@ -159,6 +159,21 @@ bool VerifyModel(const void* buf, size_t len) {
 }
 
 #if !TFLITE_DISABLE_SELECT_JAVA_APIS
+// Return true when the given subgraph index is valid or throw an exception.
+bool ValidateSubgraphIndex(JNIEnv* env, Interpreter* interpreter,
+                           const int subgraph_idx) {
+  if (subgraph_idx < 0 || subgraph_idx >= interpreter->subgraphs_size()) {
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
+                   "Input error: Can not access %d-th subgraph for a model "
+                   "having %d subgraphs",
+                   subgraph_idx, interpreter->subgraphs_size());
+    return false;
+  }
+  return true;
+}
+#endif
+
+#if !TFLITE_DISABLE_SELECT_JAVA_APIS
 // Helper method that fetches the tensor index based on SignatureDef details
 // from either inputs or outputs.
 // Returns -1 if invalid names are passed.
@@ -232,7 +247,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
 
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
-    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle) {
+    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle,
+    jint subgraph_idx) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return;
 
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
@@ -241,13 +257,32 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return;
 
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
+  if (subgraph_idx == 0) {
+    if (interpreter->AllocateTensors() != kTfLiteOk) {
+      ThrowException(env, tflite::jni::kIllegalStateException,
+                     "Internal error: Unexpected failure when preparing tensor "
+                     "allocations: %s",
+                     error_reporter->CachedErrorMessage());
+    }
+    return;
+  }
+
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+  TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+             "Not supported: allocateTensors (non-primary subgraph)");
+#else
+  if (!ValidateSubgraphIndex(env, interpreter, subgraph_idx)) return;
+  tflite::Subgraph* subgraph = interpreter->subgraph(subgraph_idx);
+  // TODO(b/184696042): Update the following subgraph API-based implementation
+  //                    with C++ signature runner API.
+  if (subgraph->AllocateTensors() != kTfLiteOk) {
     ThrowException(
         env, tflite::jni::kIllegalStateException,
         "Internal error: Unexpected failure when preparing tensor allocations:"
         " %s",
         error_reporter->CachedErrorMessage());
   }
+#endif
 }
 
 JNIEXPORT jboolean JNICALL
@@ -355,11 +390,11 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSubgraphIndexFromSignature(
   if (interpreter == nullptr) return -1;
   const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
 
-  int32_t subgraph_index =
+  int32_t subgraph_idx =
       interpreter->GetSubgraphIndexFromSignatureDefName(method_name_ptr);
   // Release the memory before returning.
   env->ReleaseStringUTFChars(method_name, method_name_ptr);
-  return subgraph_index;
+  return subgraph_idx;
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
@@ -713,6 +748,37 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   }
 }
 
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_runSignature(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
+    jint subgraph_idx) {
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+  TFLITE_LOG(tflite::TFLITE_LOG_WARNING, "Not supported: runSignature");
+#else
+  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return;
+
+  Interpreter* interpreter = convertLongToInterpreter(env, interpreter_handle);
+  if (interpreter == nullptr) return;
+  BufferErrorReporter* error_reporter =
+      convertLongToErrorReporter(env, error_handle);
+  if (error_reporter == nullptr) return;
+
+  if (!ValidateSubgraphIndex(env, interpreter, subgraph_idx)) return;
+  tflite::Subgraph* subgraph = interpreter->subgraph(subgraph_idx);
+  if (subgraph->Invoke() != kTfLiteOk) {
+    // TODO(b/168266570): Return InterruptedException.
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
+                   "Internal error: Failed to run on the given Interpreter: %s",
+                   error_reporter->CachedErrorMessage());
+    return;
+  }
+  // Make sure that the output tensors are readable.
+  for (int tensor_index : subgraph->outputs()) {
+    subgraph->EnsureTensorDataIsReadable(tensor_index);
+  }
+#endif
+}
+
 JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
     JNIEnv* env, jclass clazz, jlong handle, jint output_idx) {
@@ -735,7 +801,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
 JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
-    jint input_idx, jintArray dims, jboolean strict) {
+    jint input_idx, jintArray dims, jboolean strict, jint subgraph_idx) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return JNI_FALSE;
 
   BufferErrorReporter* error_reporter =
@@ -743,25 +809,63 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
   if (error_reporter == nullptr) return JNI_FALSE;
   Interpreter* interpreter = convertLongToInterpreter(env, interpreter_handle);
   if (interpreter == nullptr) return JNI_FALSE;
-  if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
+  if (subgraph_idx == 0) {
+    if (input_idx < 0 || input_idx >= interpreter->inputs().size()) {
+      ThrowException(
+          env, tflite::jni::kIllegalArgumentException,
+          "Input error: Can not resize %d-th input for a model having "
+          "%d inputs.",
+          input_idx, interpreter->inputs().size());
+      return JNI_FALSE;
+    }
+    const int tensor_idx = interpreter->inputs()[input_idx];
+    // check whether it is resizing with the same dimensions.
+    TfLiteTensor* target = interpreter->tensor(tensor_idx);
+    bool is_changed = AreDimsDifferent(env, target, dims);
+    if (is_changed) {
+      TfLiteStatus status;
+      if (strict) {
+        status = interpreter->ResizeInputTensorStrict(
+            tensor_idx, convertJIntArrayToVector(env, dims));
+      } else {
+        status = interpreter->ResizeInputTensor(
+            tensor_idx, convertJIntArrayToVector(env, dims));
+      }
+      if (status != kTfLiteOk) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: Failed to resize %d-th input: %s",
+                       input_idx, error_reporter->CachedErrorMessage());
+        return JNI_FALSE;
+      }
+    }
+    return is_changed ? JNI_TRUE : JNI_FALSE;
+  }
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+  TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+             "Not supported: resizeInput (non-primary subgraph)");
+  return JNI_FALSE;
+#else
+  if (!ValidateSubgraphIndex(env, interpreter, subgraph_idx)) return JNI_FALSE;
+  tflite::Subgraph* subgraph = interpreter->subgraph(subgraph_idx);
+  if (input_idx < 0 || input_idx >= subgraph->inputs().size()) {
     ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Input error: Can not resize %d-th input for a model having "
                    "%d inputs.",
-                   input_idx, interpreter->inputs().size());
+                   input_idx, subgraph->inputs().size());
     return JNI_FALSE;
   }
-  const int tensor_idx = interpreter->inputs()[input_idx];
+  const int tensor_idx = subgraph->inputs()[input_idx];
   // check whether it is resizing with the same dimensions.
-  TfLiteTensor* target = interpreter->tensor(tensor_idx);
+  TfLiteTensor* target = subgraph->tensor(tensor_idx);
   bool is_changed = AreDimsDifferent(env, target, dims);
   if (is_changed) {
     TfLiteStatus status;
     if (strict) {
-      status = interpreter->ResizeInputTensorStrict(
+      status = subgraph->ResizeInputTensorStrict(
           tensor_idx, convertJIntArrayToVector(env, dims));
     } else {
-      status = interpreter->ResizeInputTensor(
-          tensor_idx, convertJIntArrayToVector(env, dims));
+      status = subgraph->ResizeInputTensor(tensor_idx,
+                                           convertJIntArrayToVector(env, dims));
     }
     if (status != kTfLiteOk) {
       ThrowException(env, tflite::jni::kIllegalArgumentException,
@@ -771,6 +875,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     }
   }
   return is_changed ? JNI_TRUE : JNI_FALSE;
+#endif
 }
 
 JNIEXPORT void JNICALL
