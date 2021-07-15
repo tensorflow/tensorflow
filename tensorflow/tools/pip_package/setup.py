@@ -292,6 +292,7 @@ headers = (
     list(find_files('*.h', 'tensorflow/compiler')) +
     list(find_files('*.h.inc', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
+    list(find_files('*.h', 'tensorflow/lite/kernels/shim')) +
     list(find_files('*.h', 'tensorflow/python')) +
     list(find_files('*.h', 'tensorflow/python/client')) +
     list(find_files('*.h', 'tensorflow/python/framework')) +
