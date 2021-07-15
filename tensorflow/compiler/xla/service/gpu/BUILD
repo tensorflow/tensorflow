@@ -2283,7 +2283,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/xla_thunks_ops.td",
-    td_srcs = [
+    deps = [
         "@llvm-project//mlir:LLVMOpsTdFiles",
     ],
 )

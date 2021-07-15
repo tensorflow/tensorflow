@@ -52,7 +52,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/passes.td",
-    td_srcs = [
+    deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
@@ -102,10 +102,10 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/tf_legalize_patterns.td",
-    td_srcs = [
+    deps = [
         ":tosa_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
 
@@ -151,10 +151,10 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/tfl_legalize_patterns.td",
-    td_srcs = [
+    deps = [
         ":tosa_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
 

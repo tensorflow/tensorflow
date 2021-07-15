@@ -57,7 +57,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "quantization.td",
-    td_srcs = [
+    deps = [
         ":quantization_td_files",
     ],
 )

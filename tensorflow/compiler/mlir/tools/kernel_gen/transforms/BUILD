@@ -78,7 +78,7 @@ gentbl_cc_library(
     )],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
-    td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
