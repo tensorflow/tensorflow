@@ -46,7 +46,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     TensorShape shape_in = logits_in.shape();
 
     BCast bcast(BCast::FromShape(logits_in.shape()),
-                BCast::FromShape(labels_in.shape()));
+                BCast::FromShape(labels_in.shape()),
+                /*fewer_dims_optimization=*/false);
     if (!logits_in.IsSameSize(labels_in)) {
       OP_REQUIRES(context, bcast.IsValid(),
                   errors::InvalidArgument(
@@ -88,20 +89,12 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                 {0}, 1, shape_in, &back_out));
     if (shape_in.dim_size(0) > 0) {
       functor::XentFunctor<Device, T> functor;
-      if (logits_in.IsSameSize(labels_in)) {
-        functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
-                Eigen::array<Eigen::DenseIndex, 2>{1, 1},
-                Eigen::array<Eigen::DenseIndex, 2>{1, 1}, logits_in.matrix<T>(),
-                labels_in.matrix<T>(), scratch.matrix<T>(), loss_out->vec<T>(),
-                back_out->matrix<T>());
-      } else {
-        functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
-                BCast::ToIndexArray<2>(bcast.x_bcast()),
-                BCast::ToIndexArray<2>(bcast.y_bcast()),
-                logits_in.template shaped<T, 2>(bcast.x_reshape()),
-                labels_in.template shaped<T, 2>(bcast.y_reshape()),
-                scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
-      }
+      functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
+              BCast::ToIndexArray<2>(bcast.x_bcast()),
+              BCast::ToIndexArray<2>(bcast.y_bcast()),
+              logits_in.template shaped<T, 2>(bcast.x_reshape()),
+              labels_in.template shaped<T, 2>(bcast.y_reshape()),
+              scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
     }
   }
 };
