@@ -10,6 +10,9 @@ py_test(
     tags = [
         "no_oss_py2",
         "no_pip",
+        # TODO(b/193769948): Re-enable after this test is fixed.
+        "notap",
+        "manual",
     ],
     deps = [
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
