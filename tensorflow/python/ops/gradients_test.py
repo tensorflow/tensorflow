@@ -1024,6 +1024,17 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
           [input_t], [result_t])
       self.assertEqual(dependent_vars, [])
 
+  def testGetVariableByName(self):
+    with context.graph_mode():
+      init = constant_op.constant(100.0)
+      var = variable_scope.variable(init, name="a/replica_1")
+      if isinstance(var, variables.RefVariable):
+        var._variable = array_ops.identity(var, name="a")
+      else:
+        var._handle = array_ops.identity(var, name="a")
+      var2 = custom_gradient.get_variable_by_name("a")
+      self.assertEqual(var2.name, var.name)
+
   def testVariablesOutsideAndNonTrainable(self):
     with ops.Graph().as_default():
       init = constant_op.constant(100.0, shape=(5,))

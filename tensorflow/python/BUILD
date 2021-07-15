@@ -2697,7 +2697,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/gradients_test.py"],
     python_version = "PY3",
-    tags = ["no_oss"],  # b/118709825
     deps = [
         ":array_grad",
         ":array_ops",
