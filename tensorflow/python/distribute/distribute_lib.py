@@ -960,7 +960,7 @@ class StrategyBase(object):
           input_fn, replication_mode=replication_mode)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
-  @deprecated(None,'use run() instead')  
+  @deprecated(None,'use run() instead')
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
     with self.scope():
@@ -1846,6 +1846,7 @@ class StrategyV1(StrategyBase):
   TensorFlow's partitioned variables (where a single variable is split across
   multiple devices) at this time.
   """
+  
   def make_dataset_iterator(self, dataset):
     """Makes an iterator for input provided via `dataset`.
 
@@ -1872,7 +1873,6 @@ class StrategyV1(StrategyBase):
     """
     return self._extended._make_dataset_iterator(dataset)  # pylint: disable=protected-access
 
-  
   def make_input_fn_iterator(self,  # pylint: disable=useless-super-delegation
                              input_fn,
                              replication_mode=InputReplicationMode.PER_WORKER):
@@ -1987,7 +1987,6 @@ class StrategyV1(StrategyBase):
 
   reduce.__doc__ = StrategyBase.reduce.__doc__
 
-  
   def update_config_proto(self, config_proto):
     """Returns a copy of `config_proto` modified for use with this strategy.
 
@@ -2902,7 +2901,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
-    
+  
   def non_slot_devices(self, var_list):
     """Device(s) for non-slot variables.
 
