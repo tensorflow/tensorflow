@@ -2040,6 +2040,7 @@ py_library(
     deps = [
         ":math_ops",
         ":stateful_random_ops_gen",
+        ":stateless_random_ops",
         ":stateless_random_ops_v2_gen",
         ":variables",
         "//tensorflow/python/framework:dtypes",
