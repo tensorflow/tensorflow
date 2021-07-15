@@ -283,7 +283,7 @@ class alignas(alignof(T) * N) AlignedVector {
 
 // Returns the maximum power-of-two alignment (in units of elements, not bytes)
 // of a stride or pointer value.
-inline int64 alignment_of(int64 element_stride) {
+inline int64 alignment_of(int64_t element_stride) {
   return element_stride & -element_stride;
 }
 
@@ -305,13 +305,13 @@ int64 MinAlignmentOf(Args... args) {
 // vector instruction size for type T that is <= max_vec_size. The max_vec_size
 // argument should be set to the minimum alignment of all relevant parameters.
 template <typename T, template <int vec_size> class Functor, typename... Args>
-Status DispatchToVectorized(int64 max_vec_size, Args&&... args) {
+Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
   constexpr const int kOptimalVecSizeBytes = 16;
   // The optimal number of (aligned) elements of T to load/store in a
   // single instruction inside a kernel.
   constexpr const int optimal_vec_size =
       (kOptimalVecSizeBytes - 1) / sizeof(T) + 1;
-  int64 vec_size = std::min((int64)optimal_vec_size, max_vec_size);
+  int64_t vec_size = std::min((int64)optimal_vec_size, max_vec_size);
   if (vec_size >= 16) {
     return Functor<16>()(std::forward<Args>(args)...);
   } else if (vec_size >= 8) {

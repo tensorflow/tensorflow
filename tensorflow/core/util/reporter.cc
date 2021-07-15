@@ -69,7 +69,7 @@ Status TestReporter::Close() {
   return report_file_.Close();
 }
 
-Status TestReporter::Benchmark(int64 iters, double cpu_time, double wall_time,
+Status TestReporter::Benchmark(int64_t iters, double cpu_time, double wall_time,
                                double throughput) {
   if (report_file_.IsClosed()) return Status::OK();
   benchmark_entry_.set_iters(iters);
