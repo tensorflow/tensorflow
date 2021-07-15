@@ -163,3 +163,41 @@ module @main attributes {gpu.container_module}  {
     return
   }
 }
+
+// -----
+
+module @main attributes {gpu.container_module}  {
+  gpu.module @kernel_module attributes {gpu.binary_blob = "BLOB!"} {
+    llvm.func @the_kernel() attributes {gpu.kernel}
+  }  
+  func @test_ral_alloc_free(%arg0: !disc_ral.context) {
+    // CHECK: llvm.getelementptr {{.*}} : (!llvm.ptr<array<32 x i8>>, i64, i64) -> !llvm.ptr<i8>
+    // CHECK: llvm.call @disc_ral_call({{.*}}) : (!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<ptr<i8>>) -> ()
+    // CHECK: llvm.getelementptr {{.*}} : (!llvm.ptr<array<32 x i8>>, i64, i64) -> !llvm.ptr<i8>
+    // CHECK: llvm.call @disc_ral_call({{.*}}) : (!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<ptr<i8>>) -> ()
+    %c1 = constant 1024 : index
+    %c2 = constant 1024 : index
+    %c3 = constant 1024 : index
+    %arg1 = memref.alloc(%c2, %c3) : memref<?x?xf32, "gpu">
+    gpu.launch_func  @kernel_module::@the_kernel blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1) args(%arg1 : memref<?x?xf32, "gpu">)
+    memref.dealloc %arg1 : memref<?x?xf32, "gpu">
+    return
+  }
+}
+
+// -----
+
+module @main attributes {gpu.container_module}  {
+  func @test_llvm_alloc_free(%arg0: !disc_ral.context) {
+    // CHECK: llvm.ptrtoint {{.*}} : !llvm.ptr<f32> to i64
+    // CHECK: llvm.call @malloc({{.*}}) : (i64) -> !llvm.ptr<i8>
+    // CHECK: llvm.extractvalue {{.*}} : !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>
+    // CHECK: llvm.bitcast {{.*}} : !llvm.ptr<f32> to !llvm.ptr<i8>
+    // CHECK: llvm.call @free({{.*}}) : (!llvm.ptr<i8>) -> ()
+    %c2 = constant 1024 : index
+    %c3 = constant 1024 : index
+    %arg1 = memref.alloc(%c2, %c3) : memref<?x?xf32>
+    memref.dealloc %arg1 : memref<?x?xf32>
+    return
+  }
+}
