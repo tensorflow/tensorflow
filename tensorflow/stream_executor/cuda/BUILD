@@ -695,3 +695,9 @@ tf_cuda_cc_test(
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ],
 )
+
+filegroup(
+    name = "cudnn_wrappers",
+    srcs = glob(["*.inc"]),
+    visibility = ["//visibility:public"],
+)

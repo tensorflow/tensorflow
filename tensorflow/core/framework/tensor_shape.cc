@@ -566,7 +566,9 @@ template <class Shape>
 void TensorShapeBase<Shape>::set_dim(int d, int64 size) {
   CHECK_GE(d, 0);
   CHECK_LT(d, dims());
-  CHECK_GE(size, 0);
+  if (!kIsPartial) {
+    CHECK_GE(size, 0);
+  }
   if (tag() == REP16 && size < kMaxRep16) {
     as16()->dims_[d] =
         kIsPartial && size < 0 ? kUnknownRep16 : static_cast<uint16>(size);
@@ -596,7 +598,7 @@ Status TensorShapeBase<Shape>::SetDimWithStatus(int d, int64 size) {
   if (TF_PREDICT_FALSE(d >= dims())) {
     return errors::Internal("Index must be less than ", dims(), ", got ", d);
   }
-  if (TF_PREDICT_FALSE(size < 0)) {
+  if (TF_PREDICT_FALSE(!kIsPartial && size < 0)) {
     return errors::Internal("Expected a non-negative size, got ", size);
   }
 

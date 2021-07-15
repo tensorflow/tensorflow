@@ -91,6 +91,9 @@ enum MinibenchmarkStatus {
   kMinibenchmarkChildProcessAlreadyRunning = 1501,
   kMinibenchmarkValidationEntrypointSymbolNotFound = 1502,
   kMinibenchmarkNoValidationRequestFound = 1503,
+
+  // Validator runner recoverable errors
+  kMinibenchmarkUnableToSetCpuAffinity = 1601,
 };
 }  // namespace acceleration
 }  // namespace tflite

@@ -45,6 +45,7 @@ enum CollectiveType {
   BROADCAST_COLLECTIVE,
   GATHER_COLLECTIVE,
   PERMUTE_COLLECTIVE,
+  ALL_TO_ALL_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
 };
 
@@ -392,6 +393,8 @@ class NcclCommunicatorInterface {
  public:
   virtual ~NcclCommunicatorInterface() = default;
 
+  virtual string GenerateCommunicatorKey() = 0;
+
   virtual void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                        StatusCallback done) = 0;
 
@@ -422,13 +425,6 @@ class CollectiveImplementationInterface : public core::RefCounted {
   // object.
   virtual Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) = 0;
-
-  // Performs collective implementation specific group initialization.  The
-  // intention is to do group-specific initialization of runtime details for the
-  // collective implementation.  Currently used only to set `communicator_key`
-  // in techniques which use a communicator for distributed collectives (NCCL).
-  virtual Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails* col_group_runtime_details) = 0;
 
   // Processes and moves data according to the logic of this Collective
   // implementation.  Relies on appropriate initialization of op-specific

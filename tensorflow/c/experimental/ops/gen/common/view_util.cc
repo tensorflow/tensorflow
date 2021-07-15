@@ -20,8 +20,8 @@ namespace tensorflow {
 namespace generator {
 
 string Call(const string& object, const string& method,
-            std::vector<string> arguments) {
-  return absl::Substitute("$0->$1($2)", object, method,
+            std::vector<string> arguments, const char* oper) {
+  return absl::Substitute("$0$1$2($3)", object, oper, method,
                           absl::StrJoin(arguments, ", "));
 }
 

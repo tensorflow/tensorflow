@@ -55,7 +55,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace {
-static Logger logger;
+Logger& logger = *Logger::GetLogger();
 using absl::StrAppend;
 using absl::StrCat;
 using ::nvinfer1::IRuntime;
@@ -845,8 +845,11 @@ Status TRTEngineOp::ExecuteTrtEngine(
 #endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
             << " bytes";
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+    // getWorkspaceSize() is deprecated as of TRT 8
     VLOG(2) << "  Workspace size: " << cuda_engine->getWorkspaceSize()
             << " bytes";
+#endif  // #if !IS_TRT_VERSION_GE(8, 0, 0, 0)
     VLOG(2) << "  Datatype of " << cuda_engine->getNbBindings()
             << " inputs/outputs";
     string binding_types = "";

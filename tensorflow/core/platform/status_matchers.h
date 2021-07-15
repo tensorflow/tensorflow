@@ -26,33 +26,33 @@ limitations under the License.
 
 // Defines the following utilities:
 //
-// =================
-// TfIsOkAndHolds(m)
-// =================
+// ===============
+// IsOkAndHolds(m)
+// ===============
 //
 // This matcher matches a StatusOr<T> value whose status is OK and whose inner
 // value matches matcher m. Example:
 //
-//   using ::tensorflow::testing::TfIsOkAndHolds;
+//   using ::tensorflow::testing::IsOkAndHolds;
 //   using ::testing::HasSubstr;
 //   ...
-//   StatusOr<std::string> status_or_message = std::string("Hello, world");
-//   EXPECT_THAT(status_or_message, TfIsOkAndHolds("Hello, world")));
-//   EXPECT_THAT(status_or_message, TfIsOkAndHolds(HasSubstr("Hello,")));
+//   StatusOr<std::string> status_or_message("Hello, world");
+//   EXPECT_THAT(status_or_message, IsOkAndHolds("Hello, world")));
+//   EXPECT_THAT(status_or_message, IsOkAndHolds(HasSubstr("Hello,")));
 //
-// =================================
-// TfStatusIs(status_code_matcher,
-//            error_message_matcher)
-// =================================
+// ===============================
+// StatusIs(status_code_matcher,
+//          error_message_matcher)
+// ===============================
 //
 // This matcher matches a Status or StatusOr<T> if the following are true:
 //
-//   - the status's error_code() matches status_code_matcher, and
+//   - the status's code() matches status_code_matcher, and
 //   - the status's error_message() matches error_message_matcher.
 //
 // Example:
 //
-//   using ::tensorflow::testing::TfStatusIs;
+//   using ::tensorflow::testing::StatusIs;
 //   using ::testing::HasSubstr;
 //   using ::testing::MatchesRegex;
 //   using ::testing::Ne;
@@ -62,47 +62,47 @@ limitations under the License.
 //
 //   // The status code must be CANCELLED; the error message can be anything.
 //   EXPECT_THAT(GetName(42),
-//               TfStatusIs(tensorflow::error::CANCELLED, _));
+//               StatusIs(tensorflow::error::CANCELLED, _));
 //
 //   // The status code can be anything; the error message must match the regex.
 //   EXPECT_THAT(GetName(43),
-//               TfStatusIs(_, MatchesRegex("server.*time-out")));
+//               StatusIs(_, MatchesRegex("server.*time-out")));
 //
 //   // The status code should not be CANCELLED; the error message can be
 //   // anything with "Cancelled" in it.
 //   EXPECT_THAT(GetName(44),
-//               TfStatusIs(Ne(tensorflow::error::CANCELLED),
-//                          HasSubstr("Cancelled"))));
+//               StatusIs(Ne(tensorflow::error::CANCELLED),
+//                        HasSubstr("Cancelled"))));
 //
-// ===============================
-// TfStatusIs(status_code_matcher)
-// ===============================
+// =============================
+// StatusIs(status_code_matcher)
+// =============================
 //
 // This is a shorthand for
-//   TfStatusIs(status_code_matcher, ::testing::_)
+//   StatusIs(status_code_matcher, ::testing::_)
 //
-// In other words, it's like the two-argument TfStatusIs(), except that it
-// ignores error message.
+// In other words, it's like the two-argument StatusIs(), except that it ignores
+// error messages.
 //
-// ========
-// TfIsOk()
-// ========
+// ======
+// IsOk()
+// ======
 //
 // Matches a Status or StatusOr<T> whose status value is OK.
-// Equivalent to 'TfStatusIs(error::OK)'.
+// Equivalent to 'StatusIs(error::OK)'.
 //
 // Example:
 //   ...
-//   StatusOr<std::string> message = std::string("Hello, world");
-//   EXPECT_THAT(message, TfIsOk());
+//   StatusOr<std::string> message("Hello, world");
+//   EXPECT_THAT(message, IsOk());
 //   Status status = Status::OK();
-//   EXPECT_THAT(status, TfIsOk());
+//   EXPECT_THAT(status, IsOk());
 
 namespace tensorflow {
 
 template <typename T>
 void PrintTo(const StatusOr<T>& status_or, std::ostream* os) {
-  *os << status_or.status();
+  *os << ::testing::PrintToString(status_or.status());
   if (status_or.ok()) {
     *os << ": " << ::testing::PrintToString(status_or.ValueOrDie());
   }
@@ -125,19 +125,19 @@ inline const Status& GetStatus(const StatusOr<T>& status) {
 }
 
 ////////////////////////////////////////////////////////////
-// Implementation of TfIsOkAndHolds().
+// Implementation of IsOkAndHolds().
 //
-// Monomorphic implementation of matcher TfIsOkAndHolds(m). StatusOrType is a
+// Monomorphic implementation of matcher IsOkAndHolds(m). StatusOrType is a
 // reference to StatusOr<T>.
 template <typename StatusOrType>
-class TfIsOkAndHoldsMatcherImpl
+class IsOkAndHoldsMatcherImpl
     : public ::testing::MatcherInterface<StatusOrType> {
  public:
   typedef
       typename std::remove_reference<StatusOrType>::type::value_type value_type;
 
   template <typename InnerMatcher>
-  explicit TfIsOkAndHoldsMatcherImpl(InnerMatcher&& inner_matcher)
+  explicit IsOkAndHoldsMatcherImpl(InnerMatcher&& inner_matcher)
       : inner_matcher_(::testing::SafeMatcherCast<const value_type&>(
             std::forward<InnerMatcher>(inner_matcher))) {}
 
@@ -175,11 +175,11 @@ class TfIsOkAndHoldsMatcherImpl
   const ::testing::Matcher<const value_type&> inner_matcher_;
 };
 
-// Implements TfIsOkAndHolds(m) as a polymorphic matcher.
+// Implements IsOkAndHolds(m) as a polymorphic matcher.
 template <typename InnerMatcher>
-class TfIsOkAndHoldsMatcher {
+class IsOkAndHoldsMatcher {
  public:
-  explicit TfIsOkAndHoldsMatcher(InnerMatcher inner_matcher)
+  explicit IsOkAndHoldsMatcher(InnerMatcher inner_matcher)
       : inner_matcher_(std::move(inner_matcher)) {}
 
   // Converts this polymorphic matcher to a monomorphic matcher of the given
@@ -187,7 +187,7 @@ class TfIsOkAndHoldsMatcher {
   template <typename StatusOrType>
   operator ::testing::Matcher<StatusOrType>() const {  // NOLINT
     return ::testing::Matcher<StatusOrType>(
-        new TfIsOkAndHoldsMatcherImpl<const StatusOrType&>(inner_matcher_));
+        new IsOkAndHoldsMatcherImpl<const StatusOrType&>(inner_matcher_));
   }
 
  private:
@@ -195,15 +195,15 @@ class TfIsOkAndHoldsMatcher {
 };
 
 ////////////////////////////////////////////////////////////
-// Implementation of TfStatusIs().
+// Implementation of StatusIs().
 //
-// TfStatusIs() is a polymorphic matcher. This class is the common
-// implementation of it shared by all types T where TfStatusIs() can be used as
+// StatusIs() is a polymorphic matcher. This class is the common
+// implementation of it shared by all types T where StatusIs() can be used as
 // a Matcher<T>.
 
-class TfStatusIsMatcherCommonImpl {
+class StatusIsMatcherCommonImpl {
  public:
-  TfStatusIsMatcherCommonImpl(
+  StatusIsMatcherCommonImpl(
       ::testing::Matcher<const tensorflow::error::Code> code_matcher,
       ::testing::Matcher<const std::string&> message_matcher)
       : code_matcher_(std::move(code_matcher)),
@@ -221,12 +221,12 @@ class TfStatusIsMatcherCommonImpl {
   const ::testing::Matcher<const std::string&> message_matcher_;
 };
 
-// Monomorphic implementation of matcher TfStatusIs() for a given type T. T can
+// Monomorphic implementation of matcher StatusIs() for a given type T. T can
 // be Status, StatusOr<>, or a reference to either of them.
 template <typename T>
-class TfMonoStatusIsMatcherImpl : public ::testing::MatcherInterface<T> {
+class MonoStatusIsMatcherImpl : public ::testing::MatcherInterface<T> {
  public:
-  explicit TfMonoStatusIsMatcherImpl(TfStatusIsMatcherCommonImpl common_impl)
+  explicit MonoStatusIsMatcherImpl(StatusIsMatcherCommonImpl common_impl)
       : common_impl_(std::move(common_impl)) {}
 
   void DescribeTo(std::ostream* os) const override {
@@ -245,13 +245,13 @@ class TfMonoStatusIsMatcherImpl : public ::testing::MatcherInterface<T> {
   }
 
  private:
-  TfStatusIsMatcherCommonImpl common_impl_;
+  StatusIsMatcherCommonImpl common_impl_;
 };
 
-// Implements TfStatusIs() as a polymorphic matcher.
-class TfStatusIsMatcher {
+// Implements StatusIs() as a polymorphic matcher.
+class StatusIsMatcher {
  public:
-  TfStatusIsMatcher(
+  StatusIsMatcher(
       ::testing::Matcher<const tensorflow::error::Code> code_matcher,
       ::testing::Matcher<const std::string&> message_matcher)
       : common_impl_(
@@ -262,18 +262,17 @@ class TfStatusIsMatcher {
   // type. T can be StatusOr<>, Status, or a reference to either of them.
   template <typename T>
   operator ::testing::Matcher<T>() const {  // NOLINT
-    return ::testing::MakeMatcher(
-        new TfMonoStatusIsMatcherImpl<T>(common_impl_));
+    return ::testing::MakeMatcher(new MonoStatusIsMatcherImpl<T>(common_impl_));
   }
 
  private:
-  const TfStatusIsMatcherCommonImpl common_impl_;
+  const StatusIsMatcherCommonImpl common_impl_;
 };
 
-// Monomorphic implementation of matcher TfIsOk() for a given type T.
+// Monomorphic implementation of matcher IsOk() for a given type T.
 // T can be Status, StatusOr<>, or a reference to either of them.
 template <typename T>
-class TfMonoIsOkMatcherImpl : public ::testing::MatcherInterface<T> {
+class MonoIsOkMatcherImpl : public ::testing::MatcherInterface<T> {
  public:
   void DescribeTo(std::ostream* os) const override { *os << "is OK"; }
   void DescribeNegationTo(std::ostream* os) const override {
@@ -285,12 +284,12 @@ class TfMonoIsOkMatcherImpl : public ::testing::MatcherInterface<T> {
   }
 };
 
-// Implements TfIsOk() as a polymorphic matcher.
-class TfIsOkMatcher {
+// Implements IsOk() as a polymorphic matcher.
+class IsOkMatcher {
  public:
   template <typename T>
   operator ::testing::Matcher<T>() const {  // NOLINT
-    return ::testing::Matcher<T>(new TfMonoIsOkMatcherImpl<const T&>());
+    return ::testing::Matcher<T>(new MonoIsOkMatcherImpl<const T&>());
   }
 };
 }  // namespace internal_status
@@ -298,9 +297,9 @@ class TfIsOkMatcher {
 // Returns a matcher that matches a StatusOr<> whose status is OK and whose
 // value matches the inner matcher.
 template <typename InnerMatcher>
-internal_status::TfIsOkAndHoldsMatcher<typename std::decay<InnerMatcher>::type>
-TfIsOkAndHolds(InnerMatcher&& inner_matcher) {
-  return internal_status::TfIsOkAndHoldsMatcher<
+internal_status::IsOkAndHoldsMatcher<typename std::decay<InnerMatcher>::type>
+IsOkAndHolds(InnerMatcher&& inner_matcher) {
+  return internal_status::IsOkAndHoldsMatcher<
       typename std::decay<InnerMatcher>::type>(
       std::forward<InnerMatcher>(inner_matcher));
 }
@@ -308,22 +307,22 @@ TfIsOkAndHolds(InnerMatcher&& inner_matcher) {
 // Returns a matcher that matches a Status or StatusOr<> whose status code
 // matches code_matcher, and whose error message matches message_matcher.
 template <typename CodeMatcher, typename MessageMatcher>
-internal_status::TfStatusIsMatcher TfStatusIs(CodeMatcher code_matcher,
-                                              MessageMatcher message_matcher) {
-  return internal_status::TfStatusIsMatcher(std::move(code_matcher),
-                                            std::move(message_matcher));
+internal_status::StatusIsMatcher StatusIs(CodeMatcher code_matcher,
+                                          MessageMatcher message_matcher) {
+  return internal_status::StatusIsMatcher(std::move(code_matcher),
+                                          std::move(message_matcher));
 }
 
 // Returns a matcher that matches a Status or StatusOr<> whose status code
 // matches code_matcher.
 template <typename CodeMatcher>
-internal_status::TfStatusIsMatcher TfStatusIs(CodeMatcher code_matcher) {
-  return TfStatusIs(std::move(code_matcher), ::testing::_);
+internal_status::StatusIsMatcher StatusIs(CodeMatcher code_matcher) {
+  return StatusIs(std::move(code_matcher), ::testing::_);
 }
 
 // Returns a matcher that matches a Status or StatusOr<> which is OK.
-inline internal_status::TfIsOkMatcher TfIsOk() {
-  return internal_status::TfIsOkMatcher();
+inline internal_status::IsOkMatcher IsOk() {
+  return internal_status::IsOkMatcher();
 }
 
 }  // namespace testing

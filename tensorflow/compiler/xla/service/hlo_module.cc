@@ -136,7 +136,7 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  if (has_schedule() && !to_remove->IsFusionComputation()) {
+  if (has_schedule() && !to_remove->IsCalledComputation()) {
     schedule_->remove_computation(to_remove);
   }
 
@@ -158,7 +158,7 @@ HloComputation* HloModule::AddEmbeddedComputation(
 }
 
 void HloModule::ReplaceComputations(
-    const std::unordered_map<HloComputation*, HloComputation*>& replacements) {
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
   // representatives.
   std::vector<std::unique_ptr<HloComputation>> new_computations;
@@ -168,10 +168,10 @@ void HloModule::ReplaceComputations(
     for (auto* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kAllReduce:
-        case HloOpcode::kAllReduceScatter:
         case HloOpcode::kCall:
         case HloOpcode::kMap:
         case HloOpcode::kReduce:
+        case HloOpcode::kReduceScatter:
         case HloOpcode::kReduceWindow:
         case HloOpcode::kScatter:
         case HloOpcode::kSort: {
@@ -667,29 +667,17 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
 }
 
 namespace {
-bool CompareComputationsByContent(const std::pair<HloComputation*, uint64>& a,
-                                  const std::pair<HloComputation*, uint64>& b) {
-  if (a.first->instruction_count() != b.first->instruction_count()) {
-    return a.first->instruction_count() < b.first->instruction_count();
+bool CompareComputationsByContent(const HloComputation* a,
+                                  const HloComputation* b) {
+  if (a->instruction_count() != b->instruction_count()) {
+    return a->instruction_count() < b->instruction_count();
   }
-  return a.second < b.second;
+  return a->ToString(HloPrintOptions::Fingerprint()) <
+         b->ToString(HloPrintOptions::Fingerprint());
 }
 
 void SortComputationsByContent(std::vector<HloComputation*>* computations) {
-  std::vector<std::pair<HloComputation*, uint64>> pairs;
-  pairs.reserve(computations->size());
-  // Iterate and call ToString() once per computation because it is expensive
-  // for a large computation.
-  for (auto* computation : *computations) {
-    pairs.emplace_back(computation,
-                       tensorflow::Fingerprint64(computation->ToString(
-                           HloPrintOptions::Fingerprint())));
-  }
-  absl::c_sort(pairs, CompareComputationsByContent);
-  computations->clear();
-  for (const auto& pair : pairs) {
-    computations->push_back(pair.first);
-  }
+  absl::c_sort(*computations, CompareComputationsByContent);
 }
 
 }  // anonymous namespace

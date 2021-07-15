@@ -585,7 +585,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/lite/tools:visualize",
+        "//tensorflow/lite/tools:visualize_lib",
     ],
 )
 
@@ -599,6 +599,7 @@ py_test(
     python_version = "PY3",
     deps = [
         ":analyzer",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],

@@ -160,4 +160,48 @@ absl::string_view TpuExecutable::fingerprint() const {
   return absl::string_view(data, size);
 }
 
+StatusOr<std::string> TpuExecutable::Serialize() const {
+  SE_ExecutableSerializationHandle* handle = nullptr;
+  auto cleanup = xla::MakeCleanup([&handle]() {
+    ExecutorApiFn()->TpuExecutableSerialize_FreeHandleFn(handle);
+  });
+  StatusHelper status;
+  ExecutorApiFn()->TpuExecutable_SerializeFn(se_executable_, &handle,
+                                             status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+  size_t size = ExecutorApiFn()->TpuExecutableSerialize_GetByteSizeFn(handle);
+  CHECK_GT(size, 0);
+  std::string serialized;
+  // NOTE(skyewm): this initializes serialized. If this ever becomes a
+  // bottleneck, we could change the return type to std::vector<uint8_t> or
+  // similar.
+  serialized.resize(size);
+  ExecutorApiFn()->TpuExecutableSerialize_WriteToArrayFn(
+      handle, size,
+      const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(serialized.data())),
+      status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+  return serialized;
+}
+
+StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
+    absl::string_view serialized, std::unique_ptr<HloModule> hlo_module) {
+  SE_Executable* se_executable;
+  XLA_HloModule c_module = ApiConverter::ToC(*hlo_module);
+  auto cleanup =
+      xla::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
+  StatusHelper status;
+  ExecutorApiFn()->TpuExecutable_DeserializeFn(
+      serialized.size(), reinterpret_cast<const uint8_t*>(serialized.data()),
+      &c_module, &se_executable, status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+  return absl::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));
+}
+
 }  // namespace xla

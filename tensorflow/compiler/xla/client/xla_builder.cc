@@ -335,7 +335,7 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle, int depth,
     // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kReduceScatter:
       // TODO(b/33009255): Implement constant folding for cross replica sum.
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
@@ -2879,7 +2879,7 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
   });
 }
 
-XlaOp XlaBuilder::AllReduceScatter(
+XlaOp XlaBuilder::ReduceScatter(
     XlaOp operand, const XlaComputation& computation, int64 scatter_dimension,
     int64 shard_count, absl::Span<const ReplicaGroup> replica_groups,
     const absl::optional<ChannelHandle>& channel_id,
@@ -2892,14 +2892,13 @@ XlaOp XlaBuilder::AllReduceScatter(
     std::vector<XlaOp> operands;
     if (operand_shape->IsTuple()) {
       if (operand_shape->tuple_shapes_size() == 0) {
-        return Unimplemented(
-            "0 element tuple AllReduceScatter is not supported");
+        return Unimplemented("0 element tuple ReduceScatter is not supported");
       }
       for (int64 i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
         if (operand_shape->tuple_shapes(i).element_type() !=
             operand_shape->tuple_shapes(0).element_type()) {
           return Unimplemented(
-              "All the shapes of a tuple input of AllReduceScatter must have "
+              "All the shapes of a tuple input of ReduceScatter must have "
               "the same "
               "element type");
         }
@@ -2912,7 +2911,7 @@ XlaOp XlaBuilder::AllReduceScatter(
     }
 
     TF_ASSIGN_OR_RETURN(Shape inferred_shape,
-                        ShapeInference::InferAllReduceScatterShape(
+                        ShapeInference::InferReduceScatterShape(
                             operand_shapes, scatter_dimension, shard_count));
     if (layout) {
       *inferred_shape.mutable_layout() = *layout;
@@ -2934,10 +2933,9 @@ XlaOp XlaBuilder::AllReduceScatter(
     }
 
     TF_ASSIGN_OR_RETURN(
-        auto all_reduce_scatter,
-        AddInstruction(std::move(instr), HloOpcode::kAllReduceScatter,
-                       {operand}));
-    return all_reduce_scatter;
+        auto reduce_scatter,
+        AddInstruction(std::move(instr), HloOpcode::kReduceScatter, {operand}));
+    return reduce_scatter;
   });
 }
 
@@ -3458,15 +3456,14 @@ XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
 StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
                                                      XlaOp operand, XlaOp val,
                                                      int64 dimension) {
-  // Setting an op's dynamic dimension to the static size is a noop.
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
                       LookUpInstruction(val));
   if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
           HloOpcode::kConstant &&
-      shape.is_dynamic()) {
-    TF_ASSIGN_OR_RETURN(auto literal,
+      shape.is_dynamic_dimension(dimension)) {
+    TF_ASSIGN_OR_RETURN(auto constant_size,
                         Literal::CreateFromProto(val_proto->literal(), true));
-    if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
+    if (constant_size.Get<int32>({}) == shape.dimensions(dimension)) {
       return operand;
     }
   }
@@ -4520,13 +4517,13 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
                                       channel_id, shape_with_layout);
 }
 
-XlaOp AllReduceScatter(const XlaOp operand, const XlaComputation& computation,
-                       int64 scatter_dimension, int64 shard_count,
-                       absl::Span<const ReplicaGroup> replica_groups,
-                       const absl::optional<ChannelHandle>& channel_id,
-                       const absl::optional<Layout>& layout,
-                       const absl::optional<bool> use_global_device_ids) {
-  return operand.builder()->AllReduceScatter(
+XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,
+                    int64 scatter_dimension, int64 shard_count,
+                    absl::Span<const ReplicaGroup> replica_groups,
+                    const absl::optional<ChannelHandle>& channel_id,
+                    const absl::optional<Layout>& layout,
+                    const absl::optional<bool> use_global_device_ids) {
+  return operand.builder()->ReduceScatter(
       operand, computation, scatter_dimension, shard_count, replica_groups,
       channel_id, layout, use_global_device_ids);
 }

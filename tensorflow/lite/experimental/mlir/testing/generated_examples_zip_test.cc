@@ -74,9 +74,7 @@ const std::map<string, string>& GetKnownBrokenTests() {
           {R"(^\/where.*1,2,3,1)", "134692786"},
 
           {R"(^\/div.*dtype=tf\.int64)", "119126484"},
-          {R"(^\/mul.*dtype=tf\.int64)", "119126484"},
           {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
-          {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
       });
   return *kBrokenTests;
 }

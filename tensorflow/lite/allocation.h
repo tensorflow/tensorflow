@@ -68,6 +68,13 @@ class MMAPAllocation : public Allocation {
   // retains ownership of the provided descriptor and should close accordingly.
   MMAPAllocation(int fd, ErrorReporter* error_reporter);
 
+  // Maps the provided file descriptor, with the given offset and length (both
+  // in bytes), to a memory region.
+  // Note: The provided file descriptor will be dup'ed for usage; the caller
+  // retains ownership of the provided descriptor and should close accordingly.
+  MMAPAllocation(int fd, size_t offset, size_t length,
+                 ErrorReporter* error_reporter);
+
   virtual ~MMAPAllocation();
   const void* base() const override;
   size_t bytes() const override;
@@ -86,6 +93,11 @@ class MMAPAllocation : public Allocation {
  private:
   // Assumes ownership of the provided `owned_fd` instance.
   MMAPAllocation(ErrorReporter* error_reporter, int owned_fd);
+
+  // Assumes ownership of the provided `owned_fd` instance, and uses the given
+  // offset and length (both in bytes) for memory mapping.
+  MMAPAllocation(ErrorReporter* error_reporter, int owned_fd, size_t offset,
+                 size_t length);
 };
 
 class FileCopyAllocation : public Allocation {

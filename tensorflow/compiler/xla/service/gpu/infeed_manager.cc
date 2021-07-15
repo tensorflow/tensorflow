@@ -26,8 +26,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-InfeedManager::InfeedManager(se::StreamExecutor *executor)
-    : stream_(absl::make_unique<se::Stream>(executor)) {
+constexpr int kMaxInfeedsInFlight = 8;
+
+InfeedManager::InfeedManager(se::StreamExecutor* executor)
+    : BlockingXfeedQueue(/*max_pending_xfeeds=*/kMaxInfeedsInFlight),
+      stream_(absl::make_unique<se::Stream>(executor)) {
   stream_->Init();
 }
 
@@ -55,6 +58,8 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   const Shape& literal_shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(literal_shape);
+
+  BlockUntilEnqueueSlotAvailable();
 
   // For a tuple, we transfer each of its elements to the device and enqueue the
   // resulting destination device addresses with the infeed manager.

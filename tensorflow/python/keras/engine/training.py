@@ -228,7 +228,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   @trackable.no_automatic_dependency_tracking
   def __init__(self, *args, **kwargs):
     self._is_model_for_instrumentation = True
-    base_layer.keras_api_gauge.get_cell('model').set(True)
 
     # Special case for Subclassed Functional Model, which we couldn't detect
     # when __new__ is called. We only realize it is a functional model when it
@@ -265,7 +264,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                 other_kwargs))
       return
 
-    base_layer.keras_api_gauge.get_cell('Model subclass').set(True)
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
@@ -558,7 +556,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss` or `metrics`.
     """
-    base_layer.keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
       if 'experimental_steps_per_execution' in kwargs:
         logging.warning('The argument `steps_per_execution` is no longer '
@@ -1114,7 +1111,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: In case of mismatch between the provided input data
             and what the model expects or when the input data is empty.
     """
-    base_layer.keras_api_gauge.get_cell('fit').set(True)
     # Legacy graph support is contained in `training_v1.Model`.
     version_utils.disallow_legacy_graph('Model', 'fit')
     self._assert_compile_was_called()
@@ -1451,7 +1447,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         RuntimeError: If `model.evaluate` is wrapped in `tf.function`.
         ValueError: in case of invalid arguments.
     """
-    base_layer.keras_api_gauge.get_cell('evaluate').set(True)
     version_utils.disallow_legacy_graph('Model', 'evaluate')
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
@@ -1684,7 +1679,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
-    base_layer.keras_api_gauge.get_cell('predict').set(True)
     version_utils.disallow_legacy_graph('Model', 'predict')
     self._check_call_args('predict')
     _disallow_inside_tf_function('predict')

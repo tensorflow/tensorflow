@@ -171,16 +171,17 @@ std::string ImportGraphDef(const std::string &proto,
   std::vector<int> dims;
   for (const string &shape_str : node_shapes_str) {
     dims.clear();
-    if (shape_str.empty()) continue;
-    for (const auto &dim_str : absl::StrSplit(shape_str, ',')) {
-      int size;
-      if (absl::SimpleAtoi(dim_str, &size)) {
-        dims.push_back(size);
-      } else {
-        auto s = tensorflow::errors::InvalidArgument("Invalid Shape Specified.",
-                                                     dim_str);
-        Set_TF_Status_from_Status(status, s);
-        return "// error";
+    if (!shape_str.empty()) {
+      for (const auto &dim_str : absl::StrSplit(shape_str, ',')) {
+        int size;
+        if (absl::SimpleAtoi(dim_str, &size)) {
+          dims.push_back(size);
+        } else {
+          auto s = tensorflow::errors::InvalidArgument(
+              "Invalid Shape Specified.", dim_str);
+          Set_TF_Status_from_Status(status, s);
+          return "// error";
+        }
       }
     }
     node_shapes.push_back(dims);

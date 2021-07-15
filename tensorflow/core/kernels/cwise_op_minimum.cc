@@ -24,9 +24,6 @@ REGISTER8(BinaryOp, CPU, "Minimum", functor::minimum, int8, uint8, int16,
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Minimum", functor::minimum, float, Eigen::half,
           double, uint8, int16, int64);
-#else
-// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
-REGISTER(BinaryOp, GPU, "Minimum", functor::minimum, uint8);
 #endif
 
 // A special GPU kernel for int32.
@@ -41,5 +38,12 @@ REGISTER_KERNEL_BUILDER(Name("Minimum")
                         BinaryOp<CPUDevice, functor::minimum<int32>>);
 #endif
 
+REGISTER_KERNEL_BUILDER(Name("Minimum")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::minimum<int32>>);
 
 }  // namespace tensorflow

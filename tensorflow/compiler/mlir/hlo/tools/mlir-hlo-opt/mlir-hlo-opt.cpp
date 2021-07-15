@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "mlir-hlo/Transforms/register_passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Support/MlirOptMain.h"
@@ -28,6 +29,7 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   mlir::disc_ral::registerAllDiscRalPasses();
+  mlir::registerAllTransformPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

@@ -15,7 +15,7 @@ def alias_with_tflite(name, actual, **kwargs):
       actual: the target that the alias target is aliased to.
       **kwargs: additional alias parameters.
     """
-    native.alias(name, actual, **kwargs)
+    native.alias(name = name, actual = actual, **kwargs)
 
 def android_library_with_tflite(
         name,

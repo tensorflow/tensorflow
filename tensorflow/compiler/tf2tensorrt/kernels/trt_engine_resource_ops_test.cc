@@ -79,11 +79,11 @@ class TRTEngineResourceOpsTest
     inputs_.clear();
   }
 
-  nvinfer1::ITensor* NetworkWith1Input(nvinfer1::INetworkDefinition* network,
-                                       nvinfer1::ITensor* input) {
+  ITensorProxyPtr NetworkWith1Input(nvinfer1::INetworkDefinition* network,
+                                    ITensorProxyPtr input) {
     // Add a unary layer.
     nvinfer1::IUnaryLayer* layer =
-        network->addUnary(*input, nvinfer1::UnaryOperation::kEXP);
+        network->addUnary(*input->trt_tensor(), nvinfer1::UnaryOperation::kEXP);
     EXPECT_NE(nullptr, layer);
     return layer->getOutput(0);
   }
@@ -92,23 +92,25 @@ class TRTEngineResourceOpsTest
   // tensor. We take a slice of the first input with the size of the slice
   // specified by the second input, assuming the first input is a 2D tensor.
   // We then add the slice to itself to produce the output of the network.
-  nvinfer1::ITensor* NetworkWith2Inputs(nvinfer1::INetworkDefinition* network,
-                                        nvinfer1::ITensor* input) {
+  ITensorProxyPtr NetworkWith2Inputs(nvinfer1::INetworkDefinition* network,
+                                     ITensorProxyPtr input) {
     nvinfer1::Dims dims2{1, {2}};
-    nvinfer1::ITensor* input2 =
+    ITensorProxyPtr input2 =
         network->addInput("input2", nvinfer1::DataType::kINT32, dims2);
-    EXPECT_NE(nullptr, input2);
+    EXPECT_NE(nullptr, input2->trt_tensor());
 
     nvinfer1::Dims start{2, {0, 0}};
     nvinfer1::Dims stride{2, {1, 1}};
-    auto slice_layer = network->addSlice(*input, start, stride, stride);
+    auto slice_layer =
+        network->addSlice(*input->trt_tensor(), start, stride, stride);
     EXPECT_NE(nullptr, slice_layer);
 
-    slice_layer->setInput(2, *input2);
-    nvinfer1::ITensor* sliced_input = slice_layer->getOutput(0);
-    EXPECT_NE(nullptr, sliced_input);
+    slice_layer->setInput(2, *input2->trt_tensor());
+    ITensorProxyPtr sliced_input = slice_layer->getOutput(0);
+    EXPECT_NE(nullptr, sliced_input->trt_tensor());
 
-    auto layer = network->addElementWise(*sliced_input, *sliced_input,
+    auto layer = network->addElementWise(*sliced_input->trt_tensor(),
+                                         *sliced_input->trt_tensor(),
                                          nvinfer1::ElementWiseOperation::kSUM);
     EXPECT_NE(nullptr, layer);
     return layer->getOutput(0);
@@ -118,17 +120,20 @@ class TRTEngineResourceOpsTest
     TrtUniquePtrType<nvinfer1::IBuilder> builder(
         nvinfer1::createInferBuilder(logger_));
     TrtUniquePtrType<nvinfer1::INetworkDefinition> network;
-    if (!this->param_.dynamic_shape || !IS_TRT_VERSION_GE(6, 0, 0, 0)) {
-      network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
-          builder->createNetwork());
-    } else {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-      network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
-          builder->createNetworkV2(
-              1U << static_cast<int>(
-                  nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+    network =
+        TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetworkV2(
+            1U << static_cast<int>(
+                nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+#elif IS_TRT_VERSION_GE(6, 0, 0, 0)
+    network =
+        TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetworkV2(
+            1U << static_cast<int>(
+                nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+#else
+    network = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
+        builder->createNetwork());
 #endif
-    }
 
     // Add the input.
     nvinfer1::Dims dims = this->param_.dims;
@@ -136,16 +141,16 @@ class TRTEngineResourceOpsTest
       std::fill(dims.d, dims.d + dims.nbDims, -1);
     }
     const char* in_name = "input";
-    nvinfer1::ITensor* input =
+    ITensorProxyPtr input =
         network->addInput(in_name, nvinfer1::DataType::kFLOAT, dims);
-    EXPECT_NE(nullptr, input);
+    EXPECT_NE(nullptr, input->trt_tensor());
     // Mark the output.
-    nvinfer1::ITensor* output =
+    ITensorProxyPtr output =
         this->param_.n_inputs == 1
             ? this->NetworkWith1Input(network.get(), input)
             : this->NetworkWith2Inputs(network.get(), input);
     output->setName("output");
-    network->markOutput(*output);
+    network->markOutput(*output->trt_tensor());
 
     // Build the engine
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
@@ -170,7 +175,7 @@ class TRTEngineResourceOpsTest
         TF_CHECK_OK(
             TensorShapeUtils::MakeShape(dimvec.data(), dimvec.size(), &shape));
 
-        const nvinfer1::ITensor* input = network->getInput(0);
+        const ITensorProxyPtr input = network->getInput(0);
         const char* name = input->getName();
         VLOG(2) << "Defining profile for input " << name;
         shape_vec[0] = shape;
@@ -215,7 +220,7 @@ class TRTEngineResourceOpsTest
     EXPECT_NE(nullptr, engine);
     return engine;
   }
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
   TestParam param_;
 };
 

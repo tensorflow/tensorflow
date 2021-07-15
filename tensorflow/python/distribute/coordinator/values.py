@@ -25,6 +25,8 @@ from __future__ import print_function
 import enum
 import threading
 
+from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -33,6 +35,9 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import type_spec as type_spec_lib
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -113,15 +118,33 @@ class RemoteValue(object):
   """
 
   def fetch(self):
-    """Wait for the result of `RemoteValue` to be ready and return the result.
+    """Wait for the result of `RemoteValue` and return the numpy result.
 
     This makes the value concrete by copying the remote value to local.
 
     Returns:
-      The actual output of the `tf.function` associated with this `RemoteValue`,
-      previously by a
+      The numpy array structure of the actual output of the `tf.function`
+      associated with this `RemoteValue`, previously returned by a
       `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` call.
       This can be a single value, or a structure of values, depending on the
+      output of the `tf.function`.
+
+    Raises:
+      tf.errors.CancelledError: If the function that produces this `RemoteValue`
+        is aborted or cancelled due to failure.
+    """
+    raise NotImplementedError("Must be implemented in subclasses.")
+
+  def get(self):
+    """Wait for the result of `RemoteValue` and return the tensor result.
+
+    This makes the value concrete by copying the remote tensor to local.
+
+    Returns:
+      The actual output (in the form of `tf.Tensor`s) of the `tf.function`
+      associated with this `RemoteValue`, previously returned by a
+      `tf.distribute.experimental.coordinator.ClusterCoordinator.schedule` call.
+      This can be a single Tensor, or a structure of Tensors, depending on the
       output of the `tf.function`.
 
     Raises:
@@ -145,7 +168,9 @@ class RemoteValueImpl(RemoteValue):
     self._closure = closure
     self._type_spec = type_spec
     self._values = None
-    self._fetched_numpys = None
+    self._has_fetched_to_local = False
+    self._has_fetched_to_local_lock = threading.Lock()
+    self._fetched_tensors = None
     self._error = None
     self._status_available_event = threading.Event()
     self._status = RemoteValueStatus.NOT_READY
@@ -183,7 +208,7 @@ class RemoteValueImpl(RemoteValue):
     self._status_available_event.wait()
     return self._error
 
-  def fetch(self):
+  def _wait_and_maybe_error(self):
     self._status_available_event.wait()
     if self._status is RemoteValueStatus.ABORTED:
       raise errors.CancelledError(
@@ -192,10 +217,37 @@ class RemoteValueImpl(RemoteValue):
           "function.")
     if self._error is not None:
       raise self._error
-    if self._fetched_numpys is None:
-      self._fetched_numpys = nest.map_structure(
-          lambda x: x.numpy() if hasattr(x, "numpy") else x, self._values)
-    return self._fetched_numpys
+
+  def fetch(self):
+    # TODO(rchao): Discuss the possibility of letting users perform `numpy`
+    # themselves at API graduation.
+    return nest.map_structure(
+        lambda x: x.numpy() if hasattr(x, "numpy") else x, self.get())
+
+  def get(self):
+    self._wait_and_maybe_error()
+
+    with self._has_fetched_to_local_lock:
+      if not self._has_fetched_to_local:
+
+        def copy_tensor(composite_tensor_obj):
+          """Copy a remote tensor to local (coordinator)."""
+          if isinstance(composite_tensor_obj, input_lib.DistributedIterator):
+            # A DistributedIterator cannot be copied to local; users should not
+            # access that anyway.
+            return composite_tensor_obj
+
+          with ops.device("/job:%s" % context.get_server_def().job_name):
+            # Copying to local (the coordinator) with `tf.device`.
+            return array_ops.identity(composite_tensor_obj)
+
+        if self._values is not None:
+          # When `self._values` is `None`, it indicates the associated function
+          # does not have a return value.
+          self._fetched_tensors = nest.map_structure(copy_tensor, self._values)
+        self._has_fetched_to_local = True
+
+    return self._fetched_tensors
 
 
 @tf_export("distribute.experimental.coordinator.PerWorkerValues", v1=[])
@@ -263,15 +315,14 @@ class PerWorkerValuesTypeSpec(type_spec_lib.TypeSpec):
     return value
 
 
-class PerWorkerDistributedDataset(object):
+class PerWorkerDatasetFromDatasetFunction(object):
   """Represents worker-distributed datasets created from dataset function."""
 
-  def __init__(self, dataset_fn, input_workers, coordinator):
+  def __init__(self, dataset_fn, coordinator):
     """Makes an iterable from datasets created by the given function.
 
     Args:
       dataset_fn: A function that returns a `Dataset`.
-      input_workers: an `InputWorkers` object.
       coordinator: a `ClusterCoordinator` object, used to create dataset
         resources.
     """
@@ -286,7 +337,6 @@ class PerWorkerDistributedDataset(object):
       with variable_scope.variable_creator_scope(disallow_variable_creation):
         dataset_fn = def_function.function(dataset_fn).get_concrete_function()
     self._dataset_fn = dataset_fn
-    self._input_workers = input_workers
     self._coordinator = coordinator
     self._element_spec = None
 
@@ -302,7 +352,7 @@ class PerWorkerDistributedDataset(object):
       dataset = self._dataset_fn()
       return iter(dataset)
 
-    # If PerWorkerDistributedDataset.__iter__ is called multiple
+    # If PerWorkerDatasetFromDatasetFunction.__iter__ is called multiple
     # times, for the same object it should only create and register resource
     # once. Using object id to distinguish different iterator resources.
     per_worker_iterator = self._coordinator._create_per_worker_resources(
@@ -328,6 +378,75 @@ class PerWorkerDistributedDataset(object):
           "`element_spec` is not supported when the `dataset_fn` is not "
           "a `ConcreteFunction`.")
     return self._dataset_fn.structured_outputs.element_spec
+
+
+def serialize_dataset_to_graph(dataset):
+  dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
+  graph_def = gen_dataset_ops.dataset_to_graph_v2(
+      dataset._variant_tensor,  # pylint: disable=protected-access
+      external_state_policy=ExternalStatePolicy.WARN.value,
+      strip_device_assignment=True)
+  return graph_def
+
+
+class _RemoteDataset(dataset_ops.DatasetSource):
+  """Creates a dataset given a graph def."""
+
+  def __init__(self, graph_def, element_spec):
+    self._elem_spec = element_spec
+    variant_tensor = ged_ops.dataset_from_graph(graph_def)
+    super(_RemoteDataset, self).__init__(variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._elem_spec
+
+
+def deserialize_dataset_from_graph(graph_def, element_spec):
+  return _RemoteDataset(graph_def, element_spec)
+
+
+class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
+  """Represents worker-distributed datasets created from a dataset."""
+
+  def __init__(self, dataset, coordinator):
+    """Makes an iterable from datasets created by the given dataset.
+
+    It creates a dataset_fn which deserializes a dataset from a graph under the
+    hood.
+
+    Args:
+      dataset: A tf.data.Dataset or a DistributedDataset.
+      coordinator: a `ClusterCoordinator` object, used to create dataset
+        resources.
+    """
+    if isinstance(dataset, input_lib.DistributedDataset):
+      original_dataset = dataset._original_dataset
+      serialized = serialize_dataset_to_graph(original_dataset)
+
+      def dataset_fn():
+        deserialized = deserialize_dataset_from_graph(
+            serialized, original_dataset.element_spec)
+        dataset.build(dataset_to_replace=deserialized)
+        return dataset
+    elif isinstance(dataset, dataset_ops.Dataset):
+      serialized = serialize_dataset_to_graph(dataset)
+
+      def dataset_fn():
+        return deserialize_dataset_from_graph(serialized, dataset.element_spec)
+    else:
+      raise NotImplementedError(
+          "DistributedDatasetsFromFunction is not supported yet.")
+
+    super(PerWorkerDatasetFromDataset, self).__init__(dataset_fn, coordinator)
+
+
+def get_per_worker_dataset(dataset_or_dataset_fn, coordinator):
+  if callable(dataset_or_dataset_fn):
+    return PerWorkerDatasetFromDatasetFunction(dataset_or_dataset_fn,
+                                               coordinator)
+  else:
+    return PerWorkerDatasetFromDataset(dataset_or_dataset_fn, coordinator)
 
 
 class PerWorkerDistributedIterator(PerWorkerValues):

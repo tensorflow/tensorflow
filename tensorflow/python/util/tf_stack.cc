@@ -28,7 +28,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
@@ -53,10 +52,6 @@ namespace tensorflow {
 namespace {
 
 namespace py = pybind11;
-
-using SourceLoc = std::tuple<std::string, int>;
-
-using SourceMap = absl::flat_hash_map<SourceLoc, StackFrame>;
 
 using StringSet = absl::flat_hash_set<std::string>;
 
@@ -149,8 +144,7 @@ class StackTraceWrapper : public AbstractStackTrace {
     PyGILState_STATE state = PyGILState_Ensure();
 
     stack_frames_cache_ = captured_.ToStackFrames(
-        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
-        [&](const char* f) { return StackTraceFiltering(f); });
+        *source_map_, [&](const char* f) { return StackTraceFiltering(f); });
     stack_frames_cache_->pop_back();  // Drop last stack frame.
     PyGILState_Release(state);
     return *stack_frames_cache_;
@@ -163,7 +157,7 @@ class StackTraceWrapper : public AbstractStackTrace {
 
     PyGILState_STATE state = PyGILState_Ensure();
     std::vector<StackFrame> last_frame = captured_.ToStackFrames(
-        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
+        *source_map_,
         [&](const char* file_name) {
           return StackTraceFiltering(file_name) ||
                  IsInternalFrameForFilename(file_name);
@@ -226,14 +220,6 @@ class StackTraceWrapper : public AbstractStackTrace {
         });
   }
 
-  absl::optional<StackFrame> StackTraceMapping(SourceLoc loc) const {
-    if (source_map_->contains(loc)) {
-      return source_map_->at(loc);
-    }
-
-    return absl::nullopt;
-  }
-
   bool StackTraceFiltering(const char* file_name) const {
     return filter_->contains(file_name);
   }
@@ -272,7 +258,7 @@ PYBIND11_MODULE(_tf_stack, m) {
                        : py::cast<std::string>(function_name_val);
 
                self.source_map_->emplace(
-                   SourceLoc(k_filename, k_lineno),
+                   SourceLoc{k_filename, k_lineno},
                    StackFrame({v_filename, v_lineno, v_function_name}));
              }
            });

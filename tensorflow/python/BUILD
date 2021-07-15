@@ -2918,6 +2918,26 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "nn_fused_batchnorm_deterministic_test",
+    size = "medium",
+    srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
+    python_version = "PY3",
+    tags = ["no_rocm"],
+    deps = [
+        ":client_testlib",
+        ":config",
+        ":constant_op",
+        ":dtypes",
+        ":errors",
+        ":nn",
+        ":nn_grad",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "nn_fused_batchnorm_test",
     size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
@@ -3152,7 +3172,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
-        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -3214,7 +3233,7 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
-        "//tensorflow/cc/experimental/libexport:metrics",  # SavedModel metrics
+        "//tensorflow/cc/experimental/libexport:metrics_impl",  # SavedModel metrics
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/compiler/jit:flags",  # tfe

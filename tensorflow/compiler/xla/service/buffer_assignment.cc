@@ -193,8 +193,9 @@ Status GatherComputationsByAllocationType(
             worklist.push_back(std::make_pair(subcomputation,
                                               false));  // Not thread local.
             break;
+          case HloOpcode::kCustomCall:
           case HloOpcode::kAllReduce:
-          case HloOpcode::kAllReduceScatter:
+          case HloOpcode::kReduceScatter:
           case HloOpcode::kAllReduceStart:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:

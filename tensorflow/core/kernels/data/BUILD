@@ -136,6 +136,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:split_utils",
     ],
 )
 
@@ -909,6 +910,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1180,6 +1182,7 @@ tf_kernel_library(
         "//tensorflow/core:graph",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:split_utils",
     ],
 )
 
@@ -1302,6 +1305,7 @@ cc_library(
     hdrs = ["window_dataset.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
@@ -1352,7 +1356,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:split_utils",
     ],
 )
 

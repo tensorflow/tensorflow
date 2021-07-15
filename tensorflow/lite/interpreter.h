@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -55,6 +56,10 @@ namespace test_utils {
 class TestDelegation;  // Class for friend declarations.
 }  // namespace test_utils
 }  // namespace delegates
+
+namespace interpreter_wrapper {
+class InterpreterWrapper;  // Class for friend declarations.
+}  // namespace interpreter_wrapper
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -291,6 +296,20 @@ class Interpreter {
       method_names.emplace_back(&sig_def.method_name);
     }
     return method_names;
+  }
+
+  /// WARNING: Experimental interface, subject to change
+  // Return the subgraph index that corresponds to a SignatureDef, defined by
+  // 'signature_method_name'.
+  // If invalid name passed, -1 will be returned.
+  int GetSubgraphIndexFromSignatureDefName(
+      const char* signature_method_name) const {
+    for (const auto& signature : signature_defs_) {
+      if (signature.method_name == signature_method_name) {
+        return signature.subgraph_index;
+      }
+    }
+    return -1;
   }
 
   /// WARNING: Experimental interface, subject to change
@@ -563,13 +582,13 @@ class Interpreter {
   static constexpr int kTensorsCapacityHeadroom = 16;
 
   /// Set if buffer handle output is allowed.
-  //
+  ///
   /// When using hardware delegation, Interpreter will make the data of output
   /// tensors available in `tensor->data` by default. If the application can
   /// consume the buffer handle directly (e.g. reading output from OpenGL
   /// texture), it can set this flag to false, so Interpreter won't copy the
-  /// data from buffer handle to CPU memory. WARNING: This is an experimental
-  /// API and subject to change.
+  /// data from buffer handle to CPU memory.
+  /// WARNING: This is an experimental API and subject to change.
   void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
@@ -675,11 +694,14 @@ class Interpreter {
     std::string method_name;
     // The key of this SignatureDef in the SavedModel signature def map.
     std::string signature_def_key;
+    // The subgraph index of the signature in the model.
+    uint32_t subgraph_index;
   };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
+  friend class tflite::interpreter_wrapper::InterpreterWrapper;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -777,6 +799,11 @@ class Interpreter {
   // A map of resource Ids. Owned by interpreter and shared by multiple
   // subgraphs.
   resource::ResourceIDMap resource_ids_;
+
+  // A map of intialization statuses, that indicate whether the intialization
+  // subgraph invocation is done or not. Owned by interpreter and shared by
+  // multiple subgraphs.
+  resource::InitializationStatusMap initialization_status_map_;
 
   // Indicating delegates that the TFLite interpreter will apply by default.
   // An empty one means there's no delegate to be applied by default or

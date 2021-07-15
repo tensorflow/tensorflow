@@ -21,6 +21,9 @@ limitations under the License.
 #ifdef __SSE4_1__
 #include <smmintrin.h>  // SSE4.1
 #endif
+#ifdef __AVX2__
+#include <immintrin.h>
+#endif
 
 #include <cstdint>
 
@@ -61,6 +64,24 @@ static inline int32_t ReduceInt32x4(__m128i acc) {
   return _mm_cvtsi128_si32(acc);
 }
 
+#ifdef __AVX2__
+// Horizontally add 4 float values stored in a single XMM register to float.
+static inline float ReduceFloat32x4(__m128 acc) {
+  __m128 shuffle = _mm_movehdup_ps(acc);
+  acc = _mm_add_ps(acc, shuffle);
+  shuffle = _mm_movehl_ps(shuffle, acc);
+  acc = _mm_add_ss(acc, shuffle);
+  return _mm_cvtss_f32(acc);
+}
+
+// Horizontally add 8 float values stored in a single XMM register to float.
+static inline float ReduceFloat32x8(__m256 acc) {
+  __m128 low = _mm256_extractf128_ps(acc, 0);
+  __m128 high = _mm256_extractf128_ps(acc, 1);
+  return ReduceFloat32x4(_mm_add_ps(low, high));
+}
+#endif  // __AVX2__
+
 // Horizontally add each of 4 XMM registers with 4 int32 values, pack result
 // into a single XMM register. Similar to ReduceInt32x4, but with 4x inputs.
 static inline __m128i ReduceInt32x4x4(__m128i a, __m128i b, __m128i c,
@@ -92,6 +113,55 @@ float GetFloatVectorElement(__m128 v) {
 }
 
 }  // namespace
+
+#ifdef __AVX2__
+constexpr int kFloatValuesPerAvx2Vector = 8;
+constexpr int kFloatValuesPerSseVector = 4;
+template <int PerVectorSize>
+inline int RoundDownVectors(int size) {
+  return size & ~(PerVectorSize - 1);
+}
+
+void Avx2MatrixBatchVectorMultiplyAccumulateImpl(
+    const float* __restrict__ matrix, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  // If v_size is not divisible by the vector size, then we need to process the
+  // final few elements sequentially. postamble_start shows the start index
+  // where this should happen.
+  const int postamble_start =
+      RoundDownVectors<kFloatValuesPerAvx2Vector>(m_cols);
+
+  for (int b = 0; b < n_batch; ++b) {
+    float* result_in_batch = result + b * m_rows;
+    const float* vector_in_batch = vector + b * m_cols;
+    const float* matrix_row = matrix;
+
+    // Main matrix by vector multiplication loop
+    for (int r = 0; r < m_rows; ++r) {
+      __m256 acc_32x8 = _mm256_setzero_ps();
+      int c = 0;
+      for (; c < postamble_start; c += kFloatValuesPerAvx2Vector) {
+        // Load 8 float values from vector and matrix row.
+        __m256 vector_f32x8 = _mm256_loadu_ps(vector_in_batch + c);
+        __m256 matrix_f32x8 = _mm256_loadu_ps(matrix_row + c);
+
+        // Multiply the vector and matrix row and add to accumulator.
+        __m256 res = _mm256_mul_ps(vector_f32x8, matrix_f32x8);
+        acc_32x8 = _mm256_add_ps(acc_32x8, res);
+      }
+      // Add the 8 intermediate sum values to get the final dot-prod value for
+      // this column.
+      float sum = ReduceFloat32x8(acc_32x8);
+      for (; (c < m_cols); c++) {
+        sum += matrix_row[c] * vector_in_batch[c];
+      }
+      *result_in_batch += sum;
+      ++result_in_batch;
+      matrix_row += m_cols;
+    }
+  }
+}
+#endif  // __AVX2__
 
 void SseMatrixBatchVectorMultiplyAccumulateImpl(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,

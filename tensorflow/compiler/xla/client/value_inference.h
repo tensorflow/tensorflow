@@ -89,8 +89,18 @@ class ValueInference {
   StatusOr<OptionalLiteral> AnalyzeConstant(XlaOp op, ValueInferenceMode mode);
 
  private:
+  // Given an op handle, returns a simplified version of the handle inside a
+  // int64 Literal. If the a -1 value for the handle means invalid
+  // simplification and the result shouldn't be used.
+  StatusOr<Literal> SimplifyOp(int64 handle);
+
+  // Perform CSE on a given handle, and return an equivalent handle if seen
+  // before. Otherwise, returns nullopt.
+  absl::optional<int64> CseOpHandle(int64 handle);
   XlaBuilder* builder_;
   HloEvaluator evaluator_;
+  // A map from instruction_hash to handle that helps perform CSE.
+  absl::flat_hash_map<int64, int64> cse_map_;
 };
 }  // namespace xla
 

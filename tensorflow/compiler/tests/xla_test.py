@@ -78,6 +78,28 @@ def parse_disabled_manifest(manifest_content):
   return disabled_regex, method_types_filter
 
 
+class TPURewriteSession(session.Session):
+  """Tensorflow session that runs tpu.rewrite() on ops on run()."""
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.topology = None
+
+  def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
+    from tensorflow.python.tpu import tpu  # pylint: disable=g-import-not-at-top
+    if self.topology is None:
+      self.topology = super().run(tpu.initialize_system())
+      assert self.topology is not None
+    fetch_mapper = session._FetchMapper.for_fetch(fetches)
+    new_fetches = []
+    for fetch in fetch_mapper.unique_fetches():
+      if isinstance(fetch, ops.Operation):
+        fetch = tpu.rewrite(lambda fetch=fetch: fetch)
+      new_fetches.append(fetch)
+    rewritten_fetches = fetch_mapper.build_results(new_fetches)
+    return super().run(rewritten_fetches, feed_dict, options, run_metadata)
+
+
 class XLATestCase(test.TestCase):
   """XLA test cases are parameterized test cases."""
 
@@ -96,6 +118,12 @@ class XLATestCase(test.TestCase):
 
     self.device = FLAGS.test_device
     self.has_custom_call = (self.device == 'XLA_CPU')
+
+    # Some tests (e.g. ftrl_ops) only work if the program goes through the
+    # _TPUCompileMLIR op. They will set this flag to True.
+    # TODO(kramm): Flip to true (and enable MLIR bridge) for more tests.
+    self.rewrite_ops_for_tpu = False
+
     self._all_tf_types = set([
         dtypes.as_dtype(types_pb2.DataType.Value(name))
         for name in FLAGS.types.split(',')
@@ -231,8 +259,13 @@ class XLATestCase(test.TestCase):
     # these tests.
     config.graph_options.rewrite_options.constant_folding = (
         rewriter_config_pb2.RewriterConfig.OFF)
-    with session.Session(
-        graph=graph, config=config) as sess, graph.as_default():
+
+    if self.rewrite_ops_for_tpu:
+      session_type = TPURewriteSession
+    else:
+      session_type = session.Session
+
+    with session_type(graph=graph, config=config) as sess, graph.as_default():
       yield sess
 
   def cached_session(self):

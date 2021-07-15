@@ -325,4 +325,22 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
   }
 }
 
+bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
+                             absl::Span<const ReplicaGroup> second) {
+  if (first.size() != second[0].replica_ids_size()) {
+    return false;
+  }
+  if (first[0].replica_ids_size() != second.size()) {
+    return false;
+  }
+  for (int64 i = 0; i < first.size(); ++i) {
+    for (int64 j = 0; j < first[i].replica_ids_size(); ++j) {
+      if (first[i].replica_ids(j) != second[j].replica_ids(i)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // end namespace xla

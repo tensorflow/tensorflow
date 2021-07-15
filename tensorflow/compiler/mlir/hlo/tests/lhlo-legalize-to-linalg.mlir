@@ -161,6 +161,47 @@ func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex_log
+func @complex_log(%input: memref<2x2xcomplex<f32>>,
+                  %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.log"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                  memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.log %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @log1p
+func @log1p(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "lmhlo.log_plus_one"(%input, %result) : (memref<2x2xf32>,
+                                           memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = math.log1p %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @complex_log1p
+func @complex_log1p(%input: memref<2x2xcomplex<f32>>,
+                    %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.log_plus_one"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                           memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.log1p %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
 // CHECK-LABEL: func @copy
 func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
   "lmhlo.copy"(%in, %out) : (memref<2x4x8xf32>, memref<2x4x8xf32>) -> ()
@@ -919,6 +960,20 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
 
 // -----
 
+// CHECK: func @slice_with_strides(%[[IN:.*]]: memref<?xf32>, %[[OUT:.*]]: memref<?xf32>)
+func @slice_with_strides(%operand: memref<?xf32>, %result: memref<?xf32>) {
+  "lmhlo.slice"(%operand, %result) {
+    limit_indices = dense<12> : tensor<1xi64>,
+    start_indices = dense<0> : tensor<1xi64>,
+    strides = dense<2> : tensor<1xi64>
+  } : (memref<?xf32>, memref<?xf32>) -> ()
+  return
+}
+// CHECK: %[[RESULT:.*]] = memref.subview %[[IN]][0] [6] [2] : memref<?xf32> to memref<6xf32, #{{.*}}>
+// CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
+
+// -----
+
 // CHECK-LABEL: func @reshape_3D_2D
 func @reshape_3D_2D(%arg0: memref<12x1x42xi32>, %arg1 : memref<12x42xi32>) {
   "lmhlo.reshape"(%arg0, %arg1)
@@ -1066,7 +1121,7 @@ func @reduce_add(%arg: memref<100x10xf32>,
   return
 }
 // CHECK: %[[INIT_VAL:.*]] = memref.load %arg1[] : memref<f32>
-// CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
+// CHECK: linalg.fill(%[[INIT_VAL]], %arg2)
 // CHECK: linalg.generic {
 // CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
 // CHECK-SAME: iterator_types = ["parallel", "reduction"]}
@@ -1102,7 +1157,7 @@ func @reduce_maximum(%arg: memref<100x10xf32>,
   return
 }
 // CHECK: %[[INIT_VAL:.*]] = memref.load %arg1[] : memref<f32>
-// CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
+// CHECK: linalg.fill(%[[INIT_VAL]], %arg2)
 // CHECK: linalg.generic {
 // CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
 // CHECK-SAME: iterator_types = ["parallel", "reduction"]}

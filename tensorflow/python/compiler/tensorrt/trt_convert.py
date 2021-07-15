@@ -200,6 +200,10 @@ def _check_conversion_params(conversion_params, is_v2=False):
         ("precision mode '{}' is not supported."
          "It should be one of {}").format(conversion_params.precision_mode,
                                           supported_precision_modes))
+  if (conversion_params.minimum_segment_size <= 0 and
+      conversion_params.minimum_segment_size != -1):
+    raise ValueError("minimum segment size should be positive or -1 "
+                     "(to disable main graph conversion).")
 
 
 def _check_trt_version_compatibility():

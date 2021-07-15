@@ -157,6 +157,12 @@ void EvalMul(TfLiteContext* context, TfLiteNode* node, TfLiteMulParams* params,
         TF_LITE_MUL(optimized_ops, Mul, float);
       }
     }
+  } else if (output->type == kTfLiteInt64) {
+    if (need_broadcast) {
+      TF_LITE_MUL(reference_ops, BroadcastMul4DSlow, int64_t);
+    } else {
+      TF_LITE_MUL(reference_ops, Mul, int64_t);
+    }
   }
 #undef TF_LITE_MUL
 }
@@ -275,7 +281,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
+  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
+      output->type == kTfLiteInt64) {
     EvalMul<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
              output->type == kTfLiteInt16) {

@@ -6,7 +6,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "FullTypeProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/types_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/full_type_go_proto";
 
 // Experimental. Represents the complete type information of a TensorFlow value.
 enum FullTypeId {

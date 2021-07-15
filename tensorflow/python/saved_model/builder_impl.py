@@ -414,7 +414,7 @@ class _SavedModelBuilder(object):
     Returns:
       The path to which the SavedModel protocol buffer was written.
     """
-    metrics.IncrementWriteApi(_SAVE_BUILDER_LABEL)
+    metrics.IncrementWriteApi(_SAVE_BUILDER_LABEL, write_version="1")
     if not file_io.file_exists(self._export_dir):
       file_io.recursive_create_dir(self._export_dir)
 

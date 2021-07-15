@@ -281,6 +281,15 @@ class BatchDescriptor {
   // layout.
   std::vector<int64> full_strides(const DataLayout& layout) const;
 
+  // Vectorized dimensions where users can specify the dimension that the number
+  // of dimensions is reported rather than the full number of elements.
+  std::vector<int64> vectorized_dims(const DataLayout& layout, int vector_size,
+                                     int vector_dim) const;
+
+  // Vectorized strides correspond to the vectorized_dims.
+  std::vector<int64> vectorized_strides(const DataLayout& layout,
+                                        int vector_size, int vector_dim) const;
+
   // Named-argument helpers for avoiding user error during construction.
   BatchDescriptor& set_count(int64 value) {
     tensor_.set_dimensions(0, value);
@@ -467,6 +476,15 @@ class FilterDescriptor {
   // Full strides of the underlying filter,
   // ordered according to a specific layout.
   std::vector<int64> full_strides(const FilterLayout& layout) const;
+
+  // Vectorized dimensions where users can specify the dimension that the number
+  // of dimensions is reported rather than the full number of elements.
+  std::vector<int64> vectorized_dims(const FilterLayout& layout,
+                                     int vector_size, int vector_dim) const;
+
+  // Vectorized strides correspond to the vectorized_dims.
+  std::vector<int64> vectorized_strides(const FilterLayout& layout,
+                                        int vector_size, int vector_dim) const;
 
  private:
   absl::Span<int64> input_filter_dims() {
@@ -1273,26 +1291,6 @@ class DnnSupport {
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
-  template <typename ElementType, typename OutputType>
-  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-                  const DeviceMemory<ElementType>& input_data,
-                  const dnn::FilterDescriptor& filter_descriptor,
-                  const DeviceMemory<ElementType>& filter_data,
-                  const dnn::ConvolutionDescriptor& convolution_descriptor,
-                  const dnn::BatchDescriptor& output_descriptor,
-                  DeviceMemory<OutputType>* output_data,
-                  const dnn::AlgorithmDesc& algorithm_desc,
-                  DeviceMemory<uint8>* scratch_memory,
-                  ProfileResult* output_profile_result) {
-    return IsStatusOk(
-        DoConvolve(ConvolutionKind::FORWARD, ToDataType<ElementType>::value,
-                   ToDataType<OutputType>::value, stream, input_descriptor,
-                   input_data, filter_descriptor, filter_data,
-                   output_descriptor, *output_data, convolution_descriptor,
-                   algorithm_desc, *scratch_memory, output_profile_result),
-        !output_profile_result);
-  }
-
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
@@ -1366,46 +1364,6 @@ class DnnSupport {
       const BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data) = 0;
 
-  // Enqueues a single-precision backward convolution (for data) operation onto
-  // the stream.
-  //
-  // Arguments:
-  //  stream: borrowed pointer to the stream that the 'convolve' operation
-  //    should be enqueued onto.
-  //  filter_descriptor: dimensions of the convolution filter.
-  //  filter_data: coefficients for the convolution filter.
-  //  output_descriptor: dimensions of the output gradients, which is the same
-  //    as the dimensions of the output.
-  //  backward_output_data: un-owned device memory region which contains the
-  //    backprop of the output.
-  //  convolution_descriptor: stride of the convolution filter.
-  //  input_descriptor: dimensions of the input layer.
-  //  backward_input_data: un-owned device memory region in which to place the
-  //    backprop of the input.
-  //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
-  //    space in order to speed up the convolution operation.
-  template <typename ElementType>
-  bool DoConvolveBackwardData(
-      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<ElementType>& filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      const DeviceMemory<ElementType>& backward_output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& input_descriptor,
-      DeviceMemory<ElementType>* backward_input_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) {
-    return IsStatusOk(
-        DoConvolve(
-            ConvolutionKind::BACKWARD_DATA, ToDataType<ElementType>::value,
-            ToDataType<ElementType>::value, stream, input_descriptor,
-            *backward_input_data, filter_descriptor, filter_data,
-            output_descriptor, backward_output_data, convolution_descriptor,
-            algorithm_desc, *scratch_memory, output_profile_result),
-        !output_profile_result);
-  }
-
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
@@ -1413,90 +1371,12 @@ class DnnSupport {
       CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
-  // Enqueues a single-precision backward convolution (for filter) operation
-  // onto the stream.
-  //
-  // Arguments:
-  //  stream: borrowed pointer to the stream that the 'convolve' operation
-  //    should be enqueued onto.
-  //  input_descriptor: dimensions of the input layer.
-  //  input_data: un-owned device memory region which contains the
-  //    convolution input.
-  //  output_descriptor: dimensions of the output gradients, which is the same
-  //    as the dimensions of the output.
-  //  backward_output_data: un-owned device memory region which contains the
-  //    backprop of the output.
-  //  convolution_descriptor: stride of the convolution filter.
-  //  filter_descriptor: dimensions of the convolution filter.
-  //  backward_filter_data: un-owned device memory region in which to place the
-  //    backprop of the filter.
-  //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
-  //    space in order to speed up the convolution operation.
-  template <typename ElementType>
-  bool DoConvolveBackwardFilter(
-      Stream* stream, const BatchDescriptor& input_descriptor,
-      const DeviceMemory<ElementType>& input_data,
-      const BatchDescriptor& output_descriptor,
-      const DeviceMemory<ElementType>& backward_output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const FilterDescriptor& filter_descriptor,
-      DeviceMemory<ElementType>* backward_filter_data,
-      const dnn::AlgorithmDesc& algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory,
-      ProfileResult* output_profile_result) {
-    return IsStatusOk(
-        DoConvolve(
-            ConvolutionKind::BACKWARD_FILTER, ToDataType<ElementType>::value,
-            ToDataType<ElementType>::value, stream, input_descriptor,
-            input_data, filter_descriptor, *backward_filter_data,
-            output_descriptor, backward_output_data, convolution_descriptor,
-            algorithm_desc, *scratch_memory, output_profile_result),
-        !output_profile_result);
-  }
-
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
       bool with_winograd_nonfused,
       CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
-
-  // Enqueues a single-precision backward convolution (for bias) operation onto
-  // the stream.
-  //
-  // Arguments:
-  //  stream: borrowed pointer to the stream that the 'convolve' operation
-  //    should be enqueued onto.
-  //  input_descriptor: dimensions of the input layer.
-  //  input_data: un-owned device memory region which contains the
-  //    convolution input.
-  //  bias_descriptor: dimensions of the bias tensor. Should be the same as the
-  //    input dimensions, but with the spatial dimensions set to 1.
-  //  backward_filter_data: un-owned device memory region in which to place the
-  //    backprop of the bias.
-  virtual bool DoConvolveBackwardBias(Stream* stream,
-                                      const BatchDescriptor& input_descriptor,
-                                      const DeviceMemory<float>& input_data,
-                                      const BatchDescriptor& bias_descriptor,
-                                      DeviceMemory<float>* backward_bias_data) {
-    return false;
-  }
-
-  virtual bool DoConvolveBackwardBias(
-      Stream* stream, const BatchDescriptor& input_descriptor,
-      const DeviceMemory<double>& input_data,
-      const BatchDescriptor& bias_descriptor,
-      DeviceMemory<double>* backward_bias_data) {
-    return false;
-  }
-
-  virtual bool DoConvolveBackwardBias(
-      Stream* stream, const BatchDescriptor& input_descriptor,
-      const DeviceMemory<Eigen::half>& input_data,
-      const BatchDescriptor& bias_descriptor,
-      DeviceMemory<Eigen::half>* backward_bias_data) {
-    return false;
-  }
 
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions

@@ -551,6 +551,9 @@ Status RunGpuConv(const gpu::GpuConvConfig& config,
     case F16:
       return RunGpuConvImpl<Eigen::half, Eigen::half, Eigen::half>(
           params, scratch_allocator, stream, options);
+    case BF16:
+      return RunGpuConvImpl<Eigen::bfloat16, Eigen::bfloat16, Eigen::bfloat16>(
+          params, scratch_allocator, stream, options);
     case F32:
       return RunGpuConvImpl<float, float, float>(params, scratch_allocator,
                                                  stream, options);

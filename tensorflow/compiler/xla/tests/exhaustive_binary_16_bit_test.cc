@@ -35,7 +35,7 @@ class Exhaustive16BitBinaryTest
       public ::testing::WithParamInterface<std::pair<int64, int64>> {
  public:
   int64 GetInputSize() override {
-    int64 begin, end;
+    int64_t begin, end;
     std::tie(begin, end) = GetParam();
     return end - begin;
   }
@@ -45,17 +45,17 @@ class Exhaustive16BitBinaryTest
   // and generates the cartesian product of the two sets as the two inputs for
   // the test.
   void FillInput(std::array<Literal, 2>* input_literals) override {
-    int64 input_size = GetInputSize();
+    int64_t input_size = GetInputSize();
     CHECK_EQ(input_size, (*input_literals)[0].element_count());
     CHECK_EQ(input_size, (*input_literals)[1].element_count());
 
-    int64 begin, end;
+    int64_t begin, end;
     std::tie(begin, end) = GetParam();
     VLOG(2) << "Checking range [" << begin << ", " << end << "]";
 
     absl::Span<NativeT> input_arr_0 = (*input_literals)[0].data<NativeT>();
     absl::Span<NativeT> input_arr_1 = (*input_literals)[1].data<NativeT>();
-    for (int64 i = 0; i < input_size; i++) {
+    for (int64_t i = 0; i < input_size; i++) {
       uint32 input_val = i + begin;
       // Convert the lower 16 bits to the NativeT and replaced known incorrect
       // input values with 0.
@@ -125,7 +125,7 @@ BINARY_TEST_16BIT(Min, {
 // TODO(bixia): Pow fails with bfloat16 on CPU.
 BINARY_TEST_16BIT(DISABLED_ON_GPU(DISABLED_ON_CPU(Pow)), {
   // See b/162664705.
-  known_incorrect_fn_ = [](int64 val) {
+  known_incorrect_fn_ = [](int64_t val) {
     Eigen::bfloat16 f;
     uint16_t val_16 = val;
     memcpy(&f, &val_16, 2);

@@ -331,6 +331,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     opts.remote_execution = true;
   }
   opts.create_rendezvous = true;
+  opts.collective_executor = ctx->collective_executor();
   std::vector<Tensor> args(arguments.begin(), arguments.end());
   opts.args_alloc_attrs.reserve(input_dtypes_.size());
   for (const auto& dtype : input_dtypes_) {
@@ -356,7 +357,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   lib->Run(
       opts, handle, args, rets,
       [rets, done = std::move(done), func_name, ctx,
-       function_step_id = opts.step_id,
        target_device = std::move(function_target.first)](const Status& status) {
         profiler::TraceMe activity(
             [&] {

@@ -106,12 +106,34 @@ void AddSupportedOpsUsingDynamicPadder(
 
 // TODO(b/159128666): Check the control flow legalization passes instead once
 // added.
-void AddSupportedControlFlowOps(MLIRContext* context,
-                                llvm::DenseSet<OperationName>* supported_ops) {
+void AddSupportedFunctionalOps(MLIRContext* context,
+                               llvm::DenseSet<OperationName>* supported_ops) {
+  supported_ops->insert(
+      OperationName(TF::CaseRegionOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::IfRegionOp::getOperationName(), context));
   supported_ops->insert(
+      OperationName(TF::InplaceAddOp::getOperationName(), context));
+  supported_ops->insert(
       OperationName(TF::WhileRegionOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaReduceOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaReduceWindowOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaScatterOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaSelectAndScatterOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::SymbolicGradientOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaVariadicReduceOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaVariadicReduceV2Op::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaVariadicSortOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaReplicaIdOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::YieldOp::getOperationName(), context));
 }
@@ -371,7 +393,8 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   }
   OwningRewritePatternList patterns(&getContext());
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
-  TF::PopulateLoweringTFPatterns(module.getContext(), &patterns);
+  TF::PopulateTFLoweringBeforeHLOPatterns(module.getContext(), &patterns);
+  TF::PopulateLoweringQuantizedPatterns(module.getContext(), &patterns);
   AddCanonicalizationPatterns(module.getContext(), &patterns);
 
   // `supported_ops` contains the name of all of the ops that can potentially be
@@ -384,7 +407,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
         Optional<OperationName> root_kind = pattern.getRootKind();
         if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
       });
-  AddSupportedControlFlowOps(module.getContext(), &supported_ops);
+  AddSupportedFunctionalOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);
   AddSupportedOpsUsingDynamicPadder(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);

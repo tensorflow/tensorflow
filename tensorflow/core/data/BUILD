@@ -107,6 +107,7 @@ cc_library(
     hdrs = ["dataset_test_base.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
         ":serialization_utils",
         ":split_utils",
@@ -119,7 +120,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:function_ops",
         "//third_party/eigen3",
