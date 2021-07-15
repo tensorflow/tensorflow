@@ -33,9 +33,6 @@ exports_files([
 filegroup(
     name = "c_headers",
     srcs = glob(["include/mlir-c/**/*"]),  # <== i.e. match the entire tree
-    visibility = [
-        ":friends",
-    ],
 )
 
 exports_files(glob(["include/**/*.td"]))
