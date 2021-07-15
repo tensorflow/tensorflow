@@ -112,6 +112,12 @@ class MatrixSolveOpTest(test.TestCase):
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
 
+    # The matrix and right-hand side should have the same batch dimensions
+    matrix = np.random.normal(size=(2, 6, 2, 2))
+    rhs = np.random.normal(size=(2, 3, 2, 2))
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
+
   def testNotInvertible(self):
     # The input should be invertible.
     with self.assertRaisesOpError("Input matrix is not invertible."):
