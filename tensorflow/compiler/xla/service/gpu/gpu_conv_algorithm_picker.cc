@@ -36,8 +36,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/dnn.pb.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #endif
@@ -420,6 +422,16 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     if (absl::c_linear_search(disabled_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
                 << " for conv " << instr->ToString();
+      continue;
+    }
+
+    // For fused convolutions with the identity function as the activation, only
+    // ALGO_IMPLICIT_PRECOMP_GEMM does the right thing. Other algorithms
+    // silently do Relu. See
+    // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
+    if (kind == CudnnConvKind::kForwardActivation &&
+        backend_config.activation_mode() == se::dnn::ActivationMode::kNone &&
+        alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
       continue;
     }
 

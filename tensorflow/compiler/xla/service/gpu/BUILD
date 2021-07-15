@@ -867,8 +867,10 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:dnn_proto_cc",
     ] + if_cuda_is_configured([
         ":buffer_comparator",
+        "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ]),
 )
