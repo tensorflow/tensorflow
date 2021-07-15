@@ -1263,7 +1263,12 @@ class SliceConverter : public OpConversionPattern<OpTy> {
       auto limit = slice_op.limit_indices().template getValue<int64_t>(i);
       auto stride = slice_op.strides().template getValue<int64_t>(i);
       offsets.push_back(rewriter.getI64IntegerAttr(start));
-      sizes.push_back(rewriter.getI64IntegerAttr((limit - start) / stride));
+      // Say that there are k elements in total, we have condition:
+      //   start + (k - 1) * strides <= limit - 1
+      // ->
+      //   k <= (limit - 1 - start) / strides + 1
+      sizes.push_back(
+          rewriter.getI64IntegerAttr((limit - 1 - start) / stride + 1));
       strides.push_back(rewriter.getI64IntegerAttr(stride));
     }
     if (isLHLO) {
