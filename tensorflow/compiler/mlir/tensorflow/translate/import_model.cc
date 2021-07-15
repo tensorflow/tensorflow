@@ -893,8 +893,8 @@ Status ImporterBase::AddNodesToShapeRefiner(
     }
     for (int i = 0; i < c->Rank(s0); ++i) {
       if (!c->Dim(s0, i).SameHandle(c->Dim(s1, i))) {
-        int64 val0 = c->Value(c->Dim(s0, i));
-        int64 val1 = c->Value(c->Dim(s1, i));
+        int64_t val0 = c->Value(c->Dim(s0, i));
+        int64_t val1 = c->Value(c->Dim(s1, i));
         // Negative value is treated as unknown so all negative values indicate
         // the same dimension.
         if (val0 >= 0 && val1 >= 0 && val0 != val1) return false;

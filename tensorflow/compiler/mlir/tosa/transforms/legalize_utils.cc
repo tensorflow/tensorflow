@@ -358,7 +358,7 @@ bool getPaddingValuesFromPadType(
     int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
     int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
 
-    tensorflow::int64 op_size, pad_before_tf,
+    int64_t op_size, pad_before_tf,
         pad_after_tf;  // Complains if using int64_T
     tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
         input_type.getDimSize(ifm_dim), filter_type.getDimSize(filter_dim),
