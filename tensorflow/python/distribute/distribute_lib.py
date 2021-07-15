@@ -1846,7 +1846,7 @@ class StrategyV1(StrategyBase):
   TensorFlow's partitioned variables (where a single variable is split across
   multiple devices) at this time.
   """
-  
+
   def make_dataset_iterator(self, dataset):
     """Makes an iterator for input provided via `dataset`.
 
@@ -2901,7 +2901,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
-  
+
   def non_slot_devices(self, var_list):
     """Device(s) for non-slot variables.
 
