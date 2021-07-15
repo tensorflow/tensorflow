@@ -5,9 +5,9 @@
 # Description:
 #   The MLIR "Multi-Level Intermediate Representation" Compiler Infrastructure
 
-load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
-load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only", "if_cuda_available")
+load(":tblgen.bzl", "gentbl_cc_library", "td_library")
+load(":linalggen.bzl", "genlinalg")
+load(":build_defs.bzl", "cc_headers_only", "if_cuda_available")
 
 package(
     default_visibility = [":friends"],

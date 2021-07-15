@@ -7,7 +7,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
-    "//third_party/mlir:tblgen.bzl",
+    "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
@@ -22,7 +22,7 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["//third_party/mlir:subpackages"],
+    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//learning/brain/experimental/mlir/quantization/...",
         "//tensorflow/c/...",
