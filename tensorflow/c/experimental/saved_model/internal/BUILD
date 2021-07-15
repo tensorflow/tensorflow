@@ -21,12 +21,10 @@ load(
 )
 
 package(
-    # copybara:uncomment_begin(google-only)
-    # default_visibility = [
-    # "//tensorflow/cc/experimental/libtf:__pkg__",
-    # "//tensorflow/cc/experimental/libtf:__subpackages__",
-    # ],
-    # copybara:uncomment_end
+    default_visibility = [
+        "//tensorflow/cc/experimental/libtf:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -143,10 +141,8 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
-        # copybara:uncomment_begin(google-only)
-        # "//tensorflow/cc/experimental/libtf:__pkg__",
-        # "//tensorflow/cc/experimental/libtf:__subpackages__",
-        # copybara:uncomment_end
+        "//tensorflow/cc/experimental/libtf:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
     ],
     deps = [
         ":concrete_function",
@@ -173,12 +169,10 @@ cc_library(
     hdrs = [
         "saved_model_api_type.h",
     ],
-    # copybara:uncomment_begin(google-only)
-    # visibility = [
-    # "//tensorflow/cc/experimental/libtf:__pkg__",
-    # "//tensorflow/cc/experimental/libtf:__subpackages__",
-    # ],
-    # copybara:uncomment_end
+    visibility = [
+        "//tensorflow/cc/experimental/libtf:__pkg__",
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
+    ],
     deps = [
         "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
