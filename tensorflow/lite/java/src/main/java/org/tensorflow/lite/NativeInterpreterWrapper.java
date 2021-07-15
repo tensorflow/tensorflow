@@ -86,18 +86,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
     applyDelegates(options);
-
-    // Simply use "-1" to represent the default mode.
-    int applyXNNPACKMode = -1;
-    if (options.useXNNPACK != null) {
-      applyXNNPACKMode = options.useXNNPACK.booleanValue() ? 1 : 0;
-    }
-
-    // TODO(b/171856982): uncomment the following when applying XNNPACK delegate by default is
-    // enabled for C++ TfLite library on Android platform.
-    if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
-      useXNNPACK(interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
-    }
     allocateTensors(interpreterHandle, errorHandle, /*subgraphIndex=*/ 0);
     this.memoryAllocated.put(/*subgraphIndex=*/ 0, true);
   }
@@ -555,6 +543,23 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       NnApiDelegate optionalNnApiDelegate = new NnApiDelegate();
       ownedDelegates.add(optionalNnApiDelegate);
       applyDelegate(interpreterHandle, errorHandle, optionalNnApiDelegate.getNativeHandle());
+    }
+    // Finally apply the XNNPACK delegate if enabled.
+    maybeUseXNNPACK(options);
+  }
+
+  // Optionally apply the XNNPACK delegate.
+  private void maybeUseXNNPACK(InterpreterImpl.Options options) {
+    // Simply use "-1" to represent the default mode.
+    int applyXNNPACKMode = -1;
+    if (options.useXNNPACK != null) {
+      applyXNNPACKMode = options.useXNNPACK.booleanValue() ? 1 : 0;
+    }
+
+    // TODO(b/171856982): uncomment the following when applying XNNPACK delegate by default is
+    // enabled for C++ TfLite library on Android platform.
+    if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
+      useXNNPACK(interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
     }
   }
 
