@@ -206,6 +206,26 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
   llvm::SmallVector<int64_t, 4> tile_sizes_;
 };
 
+Status LowerTFToJITInvocation(mlir::ModuleOp module,
+                              llvm::ArrayRef<int64_t> tile_sizes,
+                              llvm::ArrayRef<int64_t> unroll_factors,
+                              int64_t max_supported_rank, bool cpu_codegen) {
+  mlir::PassManager pm(module.getContext());
+  applyTensorflowAndCLOptions(pm);
+
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateTFToJITInvocationPass());
+  pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
+  pm.addPass(
+      mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
+
+  if (failed(pm.run(module))) {
+    return InternalError("Lowering TF to JIT invocation failed.");
+  }
+  return Status::OK();
+}
+
 Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
                       llvm::ArrayRef<int64_t> unroll_factors,
                       int64_t max_supported_rank, bool cpu_codegen) {
@@ -476,21 +496,26 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   context.appendDialectRegistry(registry);
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
-  if (jit_compile)
-    return InternalError("JIT compilation is not yet implemented.");
-
-  TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
-                                    max_supported_rank, cpu_codegen));
-  TF_RETURN_IF_ERROR(
-      LowerLoopsToGPUorCPU(module.get(), embed_memref_prints, cpu_codegen));
-  if (!cpu_codegen) {
-    TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(module.get()));
-    TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
-    TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
-                                          architectures, print_ptx,
-                                          enable_ftz));
+  if (jit_compile) {
+    TF_RETURN_IF_ERROR(LowerTFToJITInvocation(module.get(), tile_sizes,
+                                              unroll_factors,
+                                              max_supported_rank, cpu_codegen));
+  } else {
+    TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
+                                      max_supported_rank, cpu_codegen));
+    TF_RETURN_IF_ERROR(
+        LowerLoopsToGPUorCPU(module.get(), embed_memref_prints, cpu_codegen));
+    if (!cpu_codegen) {
+      TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(module.get()));
+      TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
+      TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
+                                            architectures, print_ptx,
+                                            enable_ftz));
+    }
   }
+
   TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
+
   return module;
 }
 
