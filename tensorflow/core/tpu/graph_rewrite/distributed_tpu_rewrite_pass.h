@@ -111,6 +111,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
@@ -133,7 +134,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       bool replicate_inputs_outputs_by_default_for_xla_spmd,
       bool enable_cross_replica_sharding_mirrored_variables,
       bool enable_automatic_model_parallelism, bool enable_xla_param_broadcast,
-      bool enable_multicore_locking);
+      bool enable_multicore_locking, bool use_nd_sharding_ops);
 
   Status Run(const GraphOptimizationPassOptions& options) override;
 
@@ -598,6 +599,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static bool enable_automatic_model_parallelism_;
   static bool enable_xla_param_broadcast_;
   static bool enable_multicore_locking_;
+  static bool use_nd_sharding_ops_;
 };
 
 }  // namespace tensorflow
