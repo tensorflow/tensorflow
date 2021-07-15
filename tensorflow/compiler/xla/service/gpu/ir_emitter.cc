@@ -666,9 +666,9 @@ std::vector<llvm_ir::IrArray> IrEmitter::ConstructIrArrayForOutputs(
     const HloInstruction& hlo) {
   std::vector<llvm_ir::IrArray> output_arrays;
   if (hlo.shape().IsTuple()) {
-    int64 num_outputs = ShapeUtil::TupleElementCount(hlo.shape());
+    int64_t num_outputs = ShapeUtil::TupleElementCount(hlo.shape());
     output_arrays.reserve(num_outputs);
-    for (int64 i = 0; i < num_outputs; ++i) {
+    for (int64_t i = 0; i < num_outputs; ++i) {
       output_arrays.push_back(GetIrArray(hlo, hlo, {i}));
     }
   } else {

@@ -190,7 +190,7 @@ NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
 }
 
 template <typename OpT>
-bool IsDegenerate(OpT op, int64 replica_count, int64 partition_count) {
+bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
   return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
       .IsDegenerate(replica_count, partition_count);
 }
@@ -223,8 +223,8 @@ bool NcclAllReduceThunk::CanImplement(mlir::lmhlo::AllReduceOp op) {
 }
 
 bool NcclAllReduceThunk::IsDegenerate(mlir::lmhlo::AllReduceOp op,
-                                      int64 replica_count,
-                                      int64 partition_count) {
+                                      int64_t replica_count,
+                                      int64_t partition_count) {
   return impl::IsDegenerate(op, replica_count, partition_count);
 }
 
@@ -256,8 +256,8 @@ bool NcclAllReduceStartThunk::CanImplement(
 }
 
 bool NcclAllReduceStartThunk::IsDegenerate(mlir::lmhlo_gpu::AllReduceStartOp op,
-                                           int64 replica_count,
-                                           int64 partition_count) {
+                                           int64_t replica_count,
+                                           int64_t partition_count) {
   return impl::IsDegenerate(op, replica_count, partition_count);
 }
 
@@ -327,8 +327,8 @@ NcclReduceScatterThunk::NcclReduceScatterThunk(
 }
 
 /*static*/ bool NcclReduceScatterThunk::IsDegenerate(
-    mlir::lmhlo::ReduceScatterOp op, int64 replica_count,
-    int64 partition_count) {
+    mlir::lmhlo::ReduceScatterOp op, int64_t replica_count,
+    int64_t partition_count) {
   return impl::IsDegenerate(op, replica_count, partition_count);
 }
 
@@ -371,7 +371,7 @@ Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
         << "Source buffer was not an exact multiple of the number of "
            "participants.";
 
-    int64 recv_count = buffer.element_count / num_participants;
+    int64_t recv_count = buffer.element_count / num_participants;
     VLOG(3) << absl::StreamFormat(
         "Calling ncclReduceScatter(send_buffer=%p, recv_buffer=%p, "
         "recvcount=%d, "

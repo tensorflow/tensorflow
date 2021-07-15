@@ -62,10 +62,10 @@ class ScratchAllocator : public se::ScratchAllocator {
   }
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
+  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
 
   template <typename T>
-  StatusOr<se::DeviceMemory<T>> Allocate(int64 num_elements) {
+  StatusOr<se::DeviceMemory<T>> Allocate(int64_t num_elements) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8> bytes,
                         AllocateBytes(num_elements * sizeof(T)));
     return se::DeviceMemory<T>(bytes);
@@ -79,7 +79,7 @@ class ScratchAllocator : public se::ScratchAllocator {
 };
 
 StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
-    int64 byte_size) {
+    int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
     return se::port::Status(
@@ -149,7 +149,7 @@ StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
   return algorithms;
 }
 
-string NumBytesToString(int64 bytes) {
+string NumBytesToString(int64_t bytes) {
   return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
                       bytes, "B)");
 }
@@ -347,7 +347,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr->ToString()));
 
   const Shape& result_shape = instr->shape().tuple_shapes(0);
-  int64 rng_state = 0;
+  int64_t rng_state = 0;
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   const int32 conv_autotune_level =
@@ -450,7 +450,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     result.mutable_conv()->set_algorithm(alg.algo_id());
     result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
 
-    int64 scratch_bytes_used =
+    int64_t scratch_bytes_used =
         scratch_allocator.TotalAllocatedBytesExcludingRedzones();
     result.set_scratch_bytes(scratch_bytes_used);
     *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
@@ -670,7 +670,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       result.mutable_conv()->set_algorithm(alg.algo_id());
       result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
 
-      int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
+      int64_t scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       result.set_scratch_bytes(scratch_bytes_used);
       *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));

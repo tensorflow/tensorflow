@@ -318,11 +318,11 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
     se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
-    int64 arg_idx) {
+    int64_t arg_idx) {
   if (allocation.is_thread_local()) {
     return se::DeviceMemoryBase{};
   } else if (allocation.is_entry_computation_parameter()) {
-    int64 param_no = allocation.parameter_number();
+    int64_t param_no = allocation.parameter_number();
     se::DeviceMemoryBase registered_buffer = [&] {
       if (auto unowned_shapedbuffers =
               absl::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
@@ -352,7 +352,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
   } else {
     // Allocate each allocation that might escape, or is the temp buffer.
     CHECK(allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer());
-    const int64 buffer_size = allocation.size();
+    const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
       TF_ASSIGN_OR_RETURN(
@@ -366,7 +366,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
 
 static Status CheckAlignment(const BufferAllocation& allocation,
                              se::DeviceMemoryBase buffer, int arg_idx) {
-  const int64 expected_alignment = [&] {
+  const int64_t expected_alignment = [&] {
     if (allocation.is_entry_computation_parameter()) {
       return kEntryParameterAlignBytes;
     } else if (allocation.is_constant()) {
@@ -394,10 +394,10 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
       [&] { return std::string("Build buffer allocations"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  const int64 num_buffers = allocations_.size();
+  const int64_t num_buffers = allocations_.size();
   std::vector<se::DeviceMemoryBase> buffers;
   buffers.reserve(num_buffers);
-  for (int64 i = 0; i < num_buffers; ++i) {
+  for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = allocations_[i];
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase buffer,
@@ -533,7 +533,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         // buffer.
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";
-        int64 allocation_size =
+        int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
         TF_ASSIGN_OR_RETURN(
             se::OwningDeviceMemory allocated_buffer,
@@ -588,7 +588,7 @@ int64 GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   if (binary().empty() && !text_.empty()) {
     return -1;
   }
-  int64 size = binary().size();
+  int64_t size = binary().size();
   for (BufferAllocation::Index i = 0; i < allocations_.size(); ++i) {
     const BufferAllocation& allocation = allocations_[i];
     if (allocation.is_constant()) {

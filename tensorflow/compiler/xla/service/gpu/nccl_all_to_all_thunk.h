@@ -43,8 +43,8 @@ class NcclAllToAllThunk : public NcclCollectiveThunk {
   static bool CanImplement(mlir::lmhlo::AllToAllOp op);
 
   static const char* GetName() { return "AllToAll"; }
-  static bool IsDegenerate(mlir::lmhlo::AllToAllOp op, int64 replica_count,
-                           int64 partition_count) {
+  static bool IsDegenerate(mlir::lmhlo::AllToAllOp op, int64_t replica_count,
+                           int64_t partition_count) {
     return GetNcclAllToAllConfig(op).config.IsDegenerate(replica_count,
                                                          partition_count);
   }

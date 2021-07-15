@@ -40,14 +40,14 @@ namespace gpu {
 
 // TODO(cheshire): duplication w/ GetReductionTiling, but we need to get a
 // minimum possible tiling, regardless of the input.
-static constexpr int64 kRowAtomicFreeBound = kWarpSize * kWarpSize * 8;
-static constexpr int64 kColumnAtomicFreeBound = kWarpSize * 128;
+static constexpr int64_t kRowAtomicFreeBound = kWarpSize * kWarpSize * 8;
+static constexpr int64_t kColumnAtomicFreeBound = kWarpSize * 128;
 // TODO(cheshire): This is very small, we could increase it at the cost of
 // decreased column/row tiling.
-static constexpr int64 kBatchedAtomicFreeBound = 8;
+static constexpr int64_t kBatchedAtomicFreeBound = 8;
 
 // Returns the square root of the input rounded up to the nearest square.
-static int64 SqrtOfRoundUpToNearestSquare(int64 input) {
+static int64 SqrtOfRoundUpToNearestSquare(int64_t input) {
   return static_cast<int64>(std::ceil(std::sqrt(input)));
 }
 
@@ -84,7 +84,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     std::vector<int64> reduced_dimensions = hlo->dimensions();
     absl::c_sort(reduced_dimensions);
     CHECK_LE(reduced_dimensions.size(), 2);
-    int64 reduced_input_dimension =
+    int64_t reduced_input_dimension =
         reduced_dimensions[reduced_dimensions.size() - 1];
     VLOG(3) << "reduced_input_dimension: " << reduced_input_dimension;
 
@@ -98,7 +98,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
 
-    int64 atomic_free_bound =
+    int64_t atomic_free_bound =
         is_row_reduction ? kRowAtomicFreeBound : kColumnAtomicFreeBound;
     VLOG(3) << "atomic_free_bound: " << atomic_free_bound;
 
@@ -108,7 +108,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       return Status::OK();
     }
 
-    int64 reduced_dim_size = input_shape.dimensions(reduced_input_dimension);
+    int64_t reduced_dim_size = input_shape.dimensions(reduced_input_dimension);
     VLOG(3) << "reduced_dim_size = " << reduced_dim_size;
 
     // We pad to a nearest square (ceil(sqrt(x)))^2.  Given that:
@@ -117,11 +117,11 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     //
     // it can be seen that the distance to the nearest square is at most twice
     // the square root of the input number.
-    int64 num_fit = SqrtOfRoundUpToNearestSquare(reduced_dim_size);
+    int64_t num_fit = SqrtOfRoundUpToNearestSquare(reduced_dim_size);
 
     // Pad reduced dimension to the required number of elements.
     HloInstruction *padded = [&] {
-      int64 padded_num_elements = num_fit * num_fit;
+      int64_t padded_num_elements = num_fit * num_fit;
       PaddingConfig padding_config = MakeNoPaddingConfig(input_shape.rank());
       padding_config.mutable_dimensions(reduced_input_dimension)
           ->set_edge_padding_high(padded_num_elements - reduced_dim_size);
@@ -137,7 +137,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     VLOG(1) << "Generated padding: " << padded->ToString();
     std::vector<int64> reshaped_dimensions;
-    for (int64 dim_idx = 0; dim_idx < padded->shape().dimensions_size();
+    for (int64_t dim_idx = 0; dim_idx < padded->shape().dimensions_size();
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
         reshaped_dimensions.push_back(num_fit);
@@ -154,9 +154,9 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     VLOG(1) << "Generated reshape: " << reshaped_padded_input->ToString();
 
     std::vector<int64> inner_reduce_dimensions = reshaped_dimensions;
-    int64 inner_reduced_dimension = is_row_reduction
-                                        ? inner_reduce_dimensions.size() - 1
-                                        : reduced_input_dimension;
+    int64_t inner_reduced_dimension = is_row_reduction
+                                          ? inner_reduce_dimensions.size() - 1
+                                          : reduced_input_dimension;
     VLOG(2) << "inner_reduced_dimension = " << inner_reduced_dimension;
     inner_reduce_dimensions.erase(inner_reduce_dimensions.begin() +
                                   inner_reduced_dimension);
@@ -179,9 +179,9 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     std::vector<int64> outer_reduce_dimensions = inner_reduce_dimensions;
     VLOG(3) << "outer_reduce_dimensions = "
             << absl::StrJoin(outer_reduce_dimensions, ", ");
-    int64 outer_reduced_dimension = is_row_reduction
-                                        ? outer_reduce_dimensions.size() - 1
-                                        : reduced_input_dimension;
+    int64_t outer_reduced_dimension = is_row_reduction
+                                          ? outer_reduce_dimensions.size() - 1
+                                          : reduced_input_dimension;
 
     // Remove reduced dimension.
     outer_reduce_dimensions.erase(outer_reduce_dimensions.begin() +
@@ -199,7 +199,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   // Rewrites batch dimension reduction into a separate reduce operation.
   Status RewriteBatchDimensionLargerThanTile(
       HloInstruction *hlo, const ReductionDimensions &reduction_dimensions,
-      int64 reduced_input_dimension, const Shape &input_shape,
+      int64_t reduced_input_dimension, const Shape &input_shape,
       HloInstruction *input) {
     // TODO(cheshire): this codepath is essentially the exact reverse of what
     // algebraic_simplifier is doing, we need to make sure they don't keep

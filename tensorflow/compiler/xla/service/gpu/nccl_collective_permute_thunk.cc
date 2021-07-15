@@ -32,8 +32,8 @@ namespace gpu {
 
 /*static*/ NcclCollectivePermuteConfig
 NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
-    mlir::lmhlo::CollectivePermuteOp op, int64 replica_count,
-    int64 partition_count) {
+    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+    int64_t partition_count) {
   NcclCollectivePermuteConfig config;
 
   config.operand_count = 1;
@@ -44,7 +44,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 
   // With a collective permute, all execution instances together form one
   // replica group.
-  const int64 num_participants =
+  const int64_t num_participants =
       config.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? replica_count
           : partition_count;
@@ -58,8 +58,8 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
       ConvertNx2Attribute(op.source_target_pairs()).ValueOrDie();
 
   for (const std::pair<int64, int64>& source_target : source_target_pairs) {
-    int64 source = source_target.first;
-    int64 target = source_target.second;
+    int64_t source = source_target.first;
+    int64_t target = source_target.second;
 
     config.id_to_source_target.insert({target, {}}).first->second.source =
         source;
@@ -73,14 +73,15 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 // The collective permute is degenerate if all source-target pairs are identity,
 // and all the IDs appear in the list.
 /*static*/ bool NcclCollectivePermuteThunk::IsDegenerate(
-    mlir::lmhlo::CollectivePermuteOp op, int64 replica_count,
-    int64 partition_count) {
+    mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+    int64_t partition_count) {
   const std::vector<std::pair<int64, int64>> source_target_pairs =
       ConvertNx2Attribute(op.source_target_pairs()).ValueOrDie();
   // Each ID can appear only once as a source and as a target. So if all pairs
   // are identity, all IDs must appear in the list is the size == number of
   // replicas/partitions.
-  const int64 expected_size = op.channel_id() ? partition_count : replica_count;
+  const int64_t expected_size =
+      op.channel_id() ? partition_count : replica_count;
   return source_target_pairs.size() == expected_size &&
          absl::c_all_of(source_target_pairs,
                         [](const std::pair<int64, int64>& source_target) {
@@ -96,7 +97,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 
 NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
     ThunkInfo thunk_info, mlir::lmhlo::CollectivePermuteOp op,
-    int64 replica_count, int64 partition_count, const Buffer& buffer)
+    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kCollectivePermute, thunk_info),
       config_(
           GetNcclCollectivePermuteConfig(op, replica_count, partition_count)),

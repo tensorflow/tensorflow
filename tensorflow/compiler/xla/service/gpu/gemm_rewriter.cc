@@ -54,9 +54,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       CHECK(!lhs->IsRank2Transpose());
       CHECK(!rhs->IsRank2Transpose());
       const Shape &output_shape = instr->shape();
-      int64 batch_size = std::accumulate(output_shape.dimensions().begin(),
-                                         output_shape.dimensions().end() - 2, 1,
-                                         std::multiplies<int64>());
+      int64_t batch_size = std::accumulate(output_shape.dimensions().begin(),
+                                           output_shape.dimensions().end() - 2,
+                                           1, std::multiplies<int64>());
       std::unique_ptr<HloInstruction> gemm_call =
           HloInstruction::CreateCustomCall(output_shape, {lhs, rhs},
                                            kGemmCallTarget);

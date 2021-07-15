@@ -23,7 +23,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-ForThunk::ForThunk(ThunkInfo thunk_info, const int64 loop_limit,
+ForThunk::ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
                    std::unique_ptr<ThunkSequence> body_thunk_sequence)
     : Thunk(Kind::kWhile, thunk_info),
       loop_limit_(loop_limit),
@@ -41,7 +41,7 @@ Status ForThunk::Initialize(const GpuExecutable& executable,
 
 Status ForThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(2) << "Executing ForThunk with " << loop_limit_ << " iters";
-  for (int64 i = 0; i < loop_limit_; ++i) {
+  for (int64_t i = 0; i < loop_limit_; ++i) {
     // Invoke loop body thunk sequence.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
   }

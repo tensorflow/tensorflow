@@ -89,7 +89,7 @@ bool IsNcclLaunchModeParallel() {
   return is_launch_mode_parallel;
 }
 
-Status ToStatus(ncclResult_t s, const char* file, int64 line,
+Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {
     return Status::OK();
@@ -99,7 +99,8 @@ Status ToStatus(ncclResult_t s, const char* file, int64 line,
                       ncclGetErrorString(s)));
 }
 
-Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr) {
+Status ToStatus(cudaError_t s, const char* file, int64_t line,
+                const char* expr) {
   if (s == cudaSuccess) {
     return Status::OK();
   }
@@ -222,7 +223,7 @@ struct NcclCliqueParticipantData : public ParticipantData {
   // For running in StreamExecutor. To be deprecated after transitioning to
   // TFRT.
   NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
-                            int64 device_ordinal, se::Stream* stream)
+                            int64_t device_ordinal, se::Stream* stream)
       : ParticipantData(rendezvous_key),
         device_ordinal(device_ordinal),
         stream(stream) {}
