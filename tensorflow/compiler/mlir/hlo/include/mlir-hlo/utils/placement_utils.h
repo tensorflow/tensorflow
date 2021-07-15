@@ -25,6 +25,14 @@ namespace placement_utils {
 constexpr llvm::StringRef c_cpu = "cpu";
 constexpr llvm::StringRef c_gpu = "gpu";
 
+// Return true if the memref is on GPU
+inline bool isGpuMemRef(Value memref) {
+  assert(memref.getType().isa<MemRefType>());
+  auto memory_space = memref.getType().cast<MemRefType>().getMemorySpace();
+  return memory_space && memory_space.isa<StringAttr>() &&
+         memory_space.cast<StringAttr>().getValue() == c_gpu;
+}
+
 }  // namespace placement_utils
 }  // namespace mhlo
 }  // namespace mlir

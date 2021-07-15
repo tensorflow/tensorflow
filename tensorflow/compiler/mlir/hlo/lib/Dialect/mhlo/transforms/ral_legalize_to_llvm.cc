@@ -18,8 +18,10 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/disc_ral_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/utils/placement_utils.h"
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -41,12 +43,14 @@ namespace disc_ral {
 using LLVM::GlobalOp;
 using LLVM::LLVMFuncOp;
 using StrT = SmallString<128>;
-
 namespace {
 
 constexpr const char* kRalDispatchFunctionName = "disc_ral_call";
 constexpr const char* kGpuBinaryAttrName = "gpu.binary_blob";
 constexpr const char* kRalGpuLaunch = "ral_kernel_launch";
+
+constexpr const char* kMalloc = "alloc";
+constexpr const char* kFree = "free";
 
 // Encodes a mlir type and appends the encoding to the string buffer `out`.
 LogicalResult getTypeEncoding(MLIRContext* ctx, Type t, StrT& out) {
@@ -520,6 +524,157 @@ LogicalResult ConvertLaunchFuncOpToRalCallPattern::matchAndRewrite(
   return success();
 }
 
+// A rewrite pattern to convert memref.alloc operations into corresponding
+// runtime wrapper calls (modeled by ral.dispatch ops)
+// Converting:
+//   %output = memref.alloc(%0, %1) : memref<?x?xf32, "gpu">
+//     to
+//   "disc_ral.dispatch"(%ctx, %3) {backend_config = "gpu", call_target_name =
+//   "alloc", has_side_effect = false} : (!llvm.ptr<i8>, !llvm.ptr<i8>) -> ()
+// then convert to llvm
+class ConvertMemRefAllocOpToDispatchOpPattern
+    : public ConvertOpToLLVMPattern<memref::AllocOp> {
+ public:
+  ConvertMemRefAllocOpToDispatchOpPattern(LLVMTypeConverter& type_converter,
+                                          SymbolTable& symbol_table)
+      : ConvertOpToLLVMPattern<memref::AllocOp>(type_converter),
+        symbol_table_(symbol_table) {}
+
+ private:
+  // TODO(disc): Remove strides computation.
+  MemRefDescriptor CreateMemRefDescriptor(Location loc,
+                                          ConversionPatternRewriter& rewriter,
+                                          MemRefType memref_type,
+                                          Value allocated_byte_ptr,
+                                          ArrayRef<Value> sizes) const {
+    auto memref_desc = MemRefDescriptor::undef(
+        rewriter, loc, typeConverter->convertType(memref_type));
+
+    Value allocated_type_ptr = rewriter.create<LLVM::BitcastOp>(
+        loc, getElementPtrType(memref_type), allocated_byte_ptr);
+    memref_desc.setAllocatedPtr(rewriter, loc, allocated_type_ptr);
+    memref_desc.setAlignedPtr(rewriter, loc, allocated_type_ptr);
+    memref_desc.setConstantOffset(rewriter, loc, 0);
+
+    if (memref_type.getRank() == 0) {
+      return memref_desc;
+    }
+
+    // Compute strides and populate descriptor `size` and `stride` fields.
+    Value stride_carried = createIndexConstant(rewriter, loc, 1);
+    for (int pos = sizes.size() - 1; pos >= 0; --pos) {
+      Value size = sizes[pos];
+      memref_desc.setSize(rewriter, loc, pos, size);
+      memref_desc.setStride(rewriter, loc, pos, stride_carried);
+      // Update stride
+      if (pos > 0) {
+        stride_carried =
+            rewriter.create<LLVM::MulOp>(loc, stride_carried, size);
+      }
+    }
+    return memref_desc;
+  }
+  LogicalResult matchAndRewrite(
+      memref::AllocOp alloc_op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override;
+  SymbolTable& symbol_table_;
+};
+
+// Emits LLVM IR to malloc a device memory.
+LogicalResult ConvertMemRefAllocOpToDispatchOpPattern::matchAndRewrite(
+    memref::AllocOp alloc_op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const {
+  mlir::Operation* op = alloc_op.getOperation();
+  Location loc = op->getLoc();
+  // check address space
+  auto memref = alloc_op.getResult();
+
+  if (!mhlo::placement_utils::isGpuMemRef(memref)) {
+    return failure();
+  }
+  MemRefType memref_type = memref.getType().cast<MemRefType>();
+
+  // get ral context
+  LLVMFuncOp parent_func = alloc_op->getParentOfType<LLVMFuncOp>();
+  if (!parent_func) return failure();
+  Value context_arg = parent_func.getArgument(0);
+
+  // Set all dynamic sizes to 1 and compute fake strides.
+  SmallVector<Value, 4> dyn_sizes(memref_type.getNumDynamicDims(),
+                                  createIndexConstant(rewriter, loc, 1));
+  // Get memref descriptor sizes.
+  SmallVector<Value, 4> sizes;
+  SmallVector<Value, 4> strides;
+  Value sizeBytes;
+  getMemRefDescriptorSizes(loc, memref_type, dyn_sizes, rewriter, sizes,
+                           strides, sizeBytes);
+
+  // create dispatch op
+  auto dispatch_op = rewriter.create<disc_ral::DispatchOp>(
+      loc, getVoidPtrType(), context_arg, sizeBytes, kMalloc, false, "gpu");
+  Value allocated_byte_ptr = dispatch_op.getResult(0);
+
+  // Create the MemRef descriptor.
+  MemRefDescriptor memRefDescriptor = CreateMemRefDescriptor(
+      loc, rewriter, memref_type, allocated_byte_ptr, sizes);
+
+  ModuleOp module = op->getParentOfType<ModuleOp>();
+  rewriter.replaceOp(alloc_op, {memRefDescriptor});
+  return success();
+}
+
+// A rewrite pattern to convert memref.dealloc operations into corresponding
+// runtime wrapper calls (modeled by ral.dispatch ops)
+// Converting:
+//   memref.dealloc %0 : memref<?x?xf32, "gpu">
+//     to
+//   "disc_ral.dispatch"(%ctx, %1) {backend_config = "gpu", call_target_name
+//   = "free", has_side_effect = false} : (!llvm.ptr<i8>, !llvm.ptr<i8>) -> ()
+// then convert to llvm
+class ConvertMemRefDeallocOpToDispatchOpPattern
+    : public ConvertOpToLLVMPattern<memref::DeallocOp> {
+ public:
+  ConvertMemRefDeallocOpToDispatchOpPattern(LLVMTypeConverter& type_converter,
+                                            SymbolTable& symbol_table)
+      : ConvertOpToLLVMPattern<memref::DeallocOp>(type_converter),
+        symbol_table_(symbol_table) {}
+
+ private:
+  LogicalResult matchAndRewrite(
+      memref::DeallocOp dealloc_op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override;
+  SymbolTable& symbol_table_;
+};
+
+// Emits LLVM IR to dealloc a device memory.
+LogicalResult ConvertMemRefDeallocOpToDispatchOpPattern::matchAndRewrite(
+    memref::DeallocOp dealloc_op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const {
+  mlir::Operation* op = dealloc_op.getOperation();
+  Location loc = op->getLoc();
+
+  // check address space
+  if (!mhlo::placement_utils::isGpuMemRef(dealloc_op.memref())) {
+    return failure();
+  }
+
+  // get ral context
+  LLVMFuncOp parent_func = dealloc_op->getParentOfType<LLVMFuncOp>();
+  if (!parent_func) return failure();
+  Value context_arg = parent_func.getArgument(0);
+
+  // create dispatch op
+  memref::DeallocOp::Adaptor transformed(operands);
+  MemRefDescriptor memref(transformed.memref());
+  Value allocated_bytes_ptr = rewriter.create<LLVM::BitcastOp>(
+      loc, getVoidPtrType(), memref.allocatedPtr(rewriter, loc));
+
+  ModuleOp module = op->getParentOfType<ModuleOp>();
+  rewriter.replaceOpWithNewOp<disc_ral::DispatchOp>(
+      op, llvm::None, context_arg, allocated_bytes_ptr, kFree, false, "gpu");
+  return success();
+}
+
 class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<LLVM::LLVMDialect>();
@@ -539,6 +694,7 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
+    populateMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateStdExpandOpsPatterns(patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateDiscRalToLLVMConversionPatterns(&type_converter, &symbol_table,
@@ -548,7 +704,8 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addIllegalDialect<StandardOpsDialect, gpu::GPUDialect,
-                             disc_ral::RalDialect, math::MathDialect>();
+                             disc_ral::RalDialect, math::MathDialect,
+                             memref::MemRefDialect>();
     target.addIllegalOp<LLVM::DialectCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
@@ -574,6 +731,8 @@ void populateDiscRalToLLVMConversionPatterns(LLVMTypeConverter* converter,
   // clang-format off
   patterns->insert<
       ConvertLaunchFuncOpToRalCallPattern,
+      ConvertMemRefAllocOpToDispatchOpPattern,
+      ConvertMemRefDeallocOpToDispatchOpPattern,
       DispatchOpToLLVMPattern
     >(*converter, *symbol_table);
   // clang-format on
