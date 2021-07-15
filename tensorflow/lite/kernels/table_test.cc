@@ -106,7 +106,7 @@ void TableWithExpLUTTest() {
 
   std::vector<TableT> table(lut_size<InputT>());
   TableOpModel m({GetTensorType<InputT>(), {1, 2, 3, 1}, input_min, input_max},
-                 {GetTensorType<TableT>(), {table.size()}},
+                 {GetTensorType<TableT>(), {lut_size<InputT>()}},
                  {GetTensorType<OutputT>(), {}, output_min, output_max});
 
   const float exp_lut_offset =
