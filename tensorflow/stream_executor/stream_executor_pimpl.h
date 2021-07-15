@@ -124,7 +124,7 @@ class StreamExecutor {
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
-  DeviceMemory<T> AllocateArray(uint64 element_count, int64 memory_space = 0);
+  DeviceMemory<T> AllocateArray(uint64 element_count, int64_t memory_space = 0);
 
   // As AllocateArray(), but returns a ScopedDeviceMemory<T>.
   template <typename T>
@@ -260,7 +260,7 @@ class StreamExecutor {
                          uint64 size) SE_MUST_USE_RESULT;
 
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
-  port::Status SynchronousMemcpyH2D(const void *host_src, int64 size,
+  port::Status SynchronousMemcpyH2D(const void *host_src, int64_t size,
                                     DeviceMemoryBase *device_dst);
 
   // Alternative interface for memcpying from host to device that takes an
@@ -276,7 +276,7 @@ class StreamExecutor {
 
   // Same as SynchronousMemcpy(void*, ...) above.
   port::Status SynchronousMemcpyD2H(const DeviceMemoryBase &device_src,
-                                    int64 size, void *host_dst);
+                                    int64_t size, void *host_dst);
 
   // Alternative interface for memcpying from device to host that takes an
   // array slice. Checks that the destination size can accommodate the host
@@ -583,7 +583,7 @@ class StreamExecutor {
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,
   // nullptr is returned.
-  DeviceMemoryBase Allocate(uint64 size, int64 memory_space);
+  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space);
 
   // Gets-or-creates (creates with memoization) an RngSupport datatype that can
   // be used for random-number-generation routines on the current platform.
@@ -848,7 +848,7 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
 
 template <typename T>
 inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count,
-                                                     int64 memory_space) {
+                                                     int64_t memory_space) {
   uint64 bytes = sizeof(T) * element_count;
   return DeviceMemory<T>(Allocate(bytes, memory_space));
 }

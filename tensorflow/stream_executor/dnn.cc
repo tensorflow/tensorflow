@@ -464,7 +464,7 @@ std::string BatchDescriptor::ToShortString() const {
 }
 
 int64 BatchDescriptor::NodesPerFeatureMap() const {
-  int64 ret = 1;
+  int64_t ret = 1;
   for (int i = 0; i < ndims(); i++) {
     ret *= spatial_size()[i];
   }
@@ -571,7 +571,7 @@ std::string FilterDescriptor::ToShortString() const {
 }
 
 int64 FilterDescriptor::ComputeWeightCount() const {
-  int64 ret = output_feature_map_count() * input_feature_map_count();
+  int64_t ret = output_feature_map_count() * input_feature_map_count();
   for (int i = 0; i < ndims(); i++) {
     ret *= input_filter_dims()[i];
   }
