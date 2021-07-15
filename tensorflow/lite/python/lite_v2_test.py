@@ -359,7 +359,6 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     add_func = root.add.get_concrete_function(input_data)
 
     converter = lite.TFLiteConverterV2([add_func], trackable_obj=root)
-    converter.experimental_lower_to_saved_model = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -392,8 +391,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     input_data = tf.constant(1., shape=[1])
     concrete_func = root.f.get_concrete_function(input_data)
 
-    converter = lite.TFLiteConverterV2([concrete_func])
-    converter.experimental_lower_to_saved_model = True
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -409,9 +407,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     input_data = tf.constant(1., shape=[1])
     concrete_func = root.f.get_concrete_function(input_data)
 
-    converter = lite.TFLiteConverterV2([concrete_func],
-                                       trackable_obj=tracking.AutoTrackable())
-    converter.experimental_lower_to_saved_model = True
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], trackable_obj=tracking.AutoTrackable())
     tflite_model = converter.convert()
 
     # Check values from converted model.
