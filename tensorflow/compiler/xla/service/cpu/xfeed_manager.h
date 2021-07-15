@@ -118,7 +118,7 @@ class XfeedManager {
   XfeedQueueManager outfeed_ = {"outfeed"};
 };
 
-int64 GetByteSizeRequirement(const Shape& shape, int64 pointer_size);
+int64 GetByteSizeRequirement(const Shape& shape, int64_t pointer_size);
 
 }  // namespace runtime
 }  // namespace cpu

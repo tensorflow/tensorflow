@@ -35,7 +35,7 @@ llvm::TargetTransformInfo* LLVMTargetMachineFeatures::GetTargetTransformInfoFor(
 }
 
 int64 LLVMTargetMachineFeatures::minimum_alignment_for_allocation(
-    int64 size_bytes) const {
+    int64_t size_bytes) const {
   // Assume that all pointers are aligned to at least
   // xla::cpu_function_runtime::kMinAlign.
   if (size_bytes == 0) {

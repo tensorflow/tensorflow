@@ -24,8 +24,8 @@ extern void __xla_cpu_runtime_EigenFft(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, void* out,
     void* operand, tensorflow::int32 fft_type,
     tensorflow::int32 double_precision, tensorflow::int32 fft_rank,
-    tensorflow::int64 input_batch, tensorflow::int64 fft_length0,
-    tensorflow::int64 fft_length1, tensorflow::int64 fft_length2);
+    int64_t input_batch, int64_t fft_length0, int64_t fft_length1,
+    int64_t fft_length2);
 
 }  // extern "C"
 
