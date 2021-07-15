@@ -28,7 +28,7 @@ RecentRequestIds::RecentRequestIds(int num_tracked_request_ids)
   set_.reserve(num_tracked_request_ids);
 }
 
-bool RecentRequestIds::Insert(int64 request_id) {
+bool RecentRequestIds::Insert(int64_t request_id) {
   if (request_id == 0) {
     // For backwards compatibility, allow all requests with request_id 0.
     return true;
@@ -53,7 +53,7 @@ bool RecentRequestIds::Insert(int64 request_id) {
   return true;
 }
 
-Status RecentRequestIds::TrackUnique(int64 request_id,
+Status RecentRequestIds::TrackUnique(int64_t request_id,
                                      const string& method_name,
                                      const protobuf::Message& request) {
   if (Insert(request_id)) {
