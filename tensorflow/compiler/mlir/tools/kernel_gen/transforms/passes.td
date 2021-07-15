@@ -91,6 +91,8 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
            "fatbin.">,
     Option<"print_ptx_", "print-ptx", "bool", /*default=*/"false",
            "Print generated PTX code per target architecture.">,
+    Option<"print_llvmir_", "print-llvmir", "bool", /*default=*/"false",
+           "Print llvm ir when lowering code per target architecture.">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }

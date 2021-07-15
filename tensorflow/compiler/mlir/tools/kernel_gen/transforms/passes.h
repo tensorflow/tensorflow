@@ -76,7 +76,7 @@ std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation = {},
     ArrayRef<std::string> architectures = {}, bool print_ptx = false,
-    bool enable_ftz = false);
+    bool print_llvmir = false, bool enable_ftz = false);
 
 // Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
 std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();

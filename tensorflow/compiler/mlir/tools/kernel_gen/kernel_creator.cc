@@ -449,7 +449,7 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module) {
 Status GenerateDeviceCode(mlir::ModuleOp module,
                           llvm::StringRef gpu_binary_attr_name,
                           llvm::ArrayRef<std::string> architectures,
-                          bool print_ptx, bool enable_ftz) {
+                          bool print_ptx, bool print_llvmir, bool enable_ftz) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
   mlir::registerLLVMDialectTranslation(*module->getContext());
@@ -458,7 +458,8 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
   // Remove debug information to ensure we do not create debug PTX.
   kernel_pm.addPass(mlir::createStripDebugInfoPass());
   kernel_pm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToBlobPass(
-      gpu_binary_attr_name, architectures, print_ptx, enable_ftz));
+      gpu_binary_attr_name, architectures, print_ptx, print_llvmir,
+      enable_ftz));
 
   return failed(pm.run(module))
              ? InternalError("Generating device code failed.")
@@ -486,7 +487,7 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
-    bool enable_ftz, bool cpu_codegen, bool jit_compile) {
+    bool print_llvmir, bool enable_ftz, bool cpu_codegen, bool jit_compile) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
@@ -510,7 +511,7 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
       TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
       TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
                                             architectures, print_ptx,
-                                            enable_ftz));
+                                            print_llvmir, enable_ftz));
     }
   }
 

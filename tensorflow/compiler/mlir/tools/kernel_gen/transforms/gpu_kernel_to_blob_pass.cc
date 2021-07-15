@@ -52,12 +52,13 @@ class GpuKernelToBlobPass
  public:
   GpuKernelToBlobPass(mlir::StringRef blob_annotation,
                       llvm::ArrayRef<std::string> architectures, bool print_ptx,
-                      bool enable_ftz) {
+                      bool print_llvmir, bool enable_ftz) {
     if (!blob_annotation.empty()) {
       blob_annotation_ = blob_annotation.str();
     }
     architectures_ = architectures;
     print_ptx_ = print_ptx;
+    print_llvmir_ = print_llvmir;
     enable_ftz_ = enable_ftz;
   }
 
@@ -85,16 +86,17 @@ class GpuKernelToBlobPass
     llvm::LLVMContext llvmContext;
     auto llvmModule = mlir::translateModuleToLLVMIR(gpu_module, llvmContext);
 
-#if TENSORFLOW_USE_ROCM
     if (!llvmModule) {
-      return InternalError("Could not translate MLIR module to ROCDL IR");
+      return InternalError("Could not translate MLIR module to LLVM IR");
     }
 
-    llvmModule->setModuleIdentifier("acme");
+    llvmModule->setModuleIdentifier(gpu_module.getName());
 
+#if TENSORFLOW_USE_ROCM
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
+    options.set_xla_gpu_dump_llvmir(print_llvmir_);
     config.set_debug_options(options);
 
     using AmdGpuHsaco = std::vector<tensorflow::uint8>;
@@ -123,17 +125,13 @@ class GpuKernelToBlobPass
     return tensorflow::se::BundleGpuAsm(images, tensorflow::RocmRoot());
 
 #elif GOOGLE_CUDA
-    if (!llvmModule) {
-      return InternalError("Could not translate MLIR module to NVVM");
-    }
-
-    llvmModule->setModuleIdentifier("acme");
     llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
 
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
     // Make sure we use full precision division operations.
+    options.set_xla_gpu_dump_llvmir(print_llvmir_);
     (*options.mutable_xla_backend_extra_options())["-nvptx-prec-divf32"] = "2";
     config.set_debug_options(options);
 
@@ -228,9 +226,9 @@ class GpuKernelToBlobPass
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation, ArrayRef<std::string> architectures,
-    bool print_ptx, bool enable_ftz) {
-  return std::make_unique<GpuKernelToBlobPass>(blob_annotation, architectures,
-                                               print_ptx, enable_ftz);
+    bool print_ptx, bool print_llvmir, bool enable_ftz) {
+  return std::make_unique<GpuKernelToBlobPass>(
+      blob_annotation, architectures, print_ptx, print_llvmir, enable_ftz);
 }
 
 }  // namespace transforms
