@@ -2986,17 +2986,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(array_ops.zeros([12, 1]))
     self.assertLen(total_function_cache(defined), 1)
+
     defined(array_ops.zeros([1, 21]))
     self.assertLen(total_function_cache(defined), 2)
-
-    @function.defun
-    def defined_again(t):
-      return defined(t)
-
-    defined_again(array_ops.zeros([12, 1]))
-    self.assertLen(total_function_cache(defined_again), 1)
-    defined_again(array_ops.zeros([1, 21]))
-    self.assertLen(total_function_cache(defined_again), 2)
 
   def testCacheKeyNestedLists(self):
     @function.defun
