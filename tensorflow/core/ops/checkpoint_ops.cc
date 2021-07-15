@@ -30,9 +30,9 @@ REGISTER_OP("GenerateVocabRemapping")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
-      int64 new_vocab_offset;
+      int64_t new_vocab_offset;
       TF_RETURN_IF_ERROR(c->GetAttr("new_vocab_offset", &new_vocab_offset));
-      int64 num_new_vocab;
+      int64_t num_new_vocab;
       TF_RETURN_IF_ERROR(c->GetAttr("num_new_vocab", &num_new_vocab));
 
       c->set_output(0, c->Vector(num_new_vocab));
@@ -60,9 +60,9 @@ REGISTER_OP("LoadAndRemapMatrix")
       shape_inference::ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
-      int64 num_rows;
+      int64_t num_rows;
       TF_RETURN_IF_ERROR(c->GetAttr("num_rows", &num_rows));
-      int64 num_cols;
+      int64_t num_cols;
       TF_RETURN_IF_ERROR(c->GetAttr("num_cols", &num_cols));
 
       c->set_output(0, c->Matrix(num_rows, num_cols));

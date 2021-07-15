@@ -152,7 +152,7 @@ REGISTER_OP("StringFormat")
 
       std::vector<std::string> split_template;
       split_template = absl::StrSplit(template_, placeholder);
-      int64 num_placeholders = split_template.size() - 1;
+      int64_t num_placeholders = split_template.size() - 1;
       if (c->num_inputs() != num_placeholders) {
         return errors::InvalidArgument(strings::StrCat(
             "num placeholders in template and num inputs must match: ",

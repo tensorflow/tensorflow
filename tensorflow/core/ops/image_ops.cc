@@ -234,7 +234,7 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   DimensionHandle size_per_class;
   TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &size_per_class));
 
-  int64 output_size;
+  int64_t output_size;
   bool pad_per_class;
   TF_RETURN_IF_ERROR(c->GetAttr("pad_per_class", &pad_per_class));
   if (!pad_per_class) {
@@ -658,7 +658,7 @@ REGISTER_OP("DrawBoundingBoxes")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &images));
       // Channel depth should be either 1 (GRY), 3 (RGB), or 4 (RGBA).
       if (c->ValueKnown(c->Dim(images, 3))) {
-        int64 depth = c->Value(c->Dim(images, 3));
+        int64_t depth = c->Value(c->Dim(images, 3));
         if (!(depth == 1 || depth == 3 || depth == 4)) {
           return errors::InvalidArgument(
               "Channel depth should be either 1 (GRY), "
