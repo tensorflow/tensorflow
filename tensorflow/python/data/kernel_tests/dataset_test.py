@@ -588,6 +588,18 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "DatasetSpec(Foo(a=TensorSpec(shape=(), dtype=tf.int32, name=None), "
         "b=TensorSpec(shape=(), dtype=tf.string, name=None)), TensorShape([]))")
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testIterationError(self):
+
+    @def_function.function(autograph=False)
+    def fn(ds):
+      for _ in ds:
+        pass
+
+    dataset = dataset_ops.Dataset.range(10)
+    with self.assertRaises(ValueError):
+      self.evaluate(fn(dataset))
+
 
 class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
