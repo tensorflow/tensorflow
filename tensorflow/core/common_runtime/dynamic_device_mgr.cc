@@ -111,7 +111,7 @@ Status DynamicDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
   return Status::OK();
 }
 
-bool DynamicDeviceMgr::ContainsDevice(int64 device_incarnation) const {
+bool DynamicDeviceMgr::ContainsDevice(int64_t device_incarnation) const {
   tf_shared_lock l(devices_mu_);
   return device_incarnation_set_.contains(device_incarnation);
 }

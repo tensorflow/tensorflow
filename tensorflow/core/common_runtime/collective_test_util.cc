@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 FailTestRMA::FailTestRMA(const DeviceMgr* dev_mgr,
-                         DeviceResolverInterface* dev_resolver, int64 step_id)
+                         DeviceResolverInterface* dev_resolver, int64_t step_id)
     : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
       fail_after_(0) {}
 
