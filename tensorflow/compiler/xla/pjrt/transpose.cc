@@ -155,34 +155,32 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
     }
     // Handle trailing elements that didn't fit in a complete macrokernel.
     // Only the innermost dimensions have non-trivial outer_bs blocking.
-    if (node->is_inner_dim_in_a) {
-      // Repeatedly halve the outer block size, until size 1
-      while (outer_bs_a > 1) {
-        outer_bs_a /= 2;
-        if (i + outer_bs_a * inner_bs <= end) {
+    if (i < end) {
+      DCHECK(node->is_inner_dim_in_a || node->is_inner_dim_in_b);
+      if (node->is_inner_dim_in_a) {
+        outer_bs_a = (end - i) / inner_bs;
+        if (outer_bs_a > 0) {
           MacroKernel<T, inner_bs>(a + i * lda, lda_block, outer_bs_a,
                                    b + i * ldb, ldb_block, outer_bs_b);
           i += outer_bs_a * inner_bs;
         }
-      }
-      // If there are still trailing elements left over that don't fit in the
-      // inner block size, handle them via an unvectorized transpose.
-      if (i < end) {
-        MacroKernel<T, 1>(a + i * lda, lda_block, end - i, b + i * ldb,
-                          ldb_block, outer_bs_b * inner_bs);
-      }
-    } else if (node->is_inner_dim_in_b) {
-      while (outer_bs_b > 1) {
-        outer_bs_b /= 2;
-        if (i + outer_bs_b * inner_bs <= end) {
+        // If there are still trailing elements left over that don't fit in the
+        // inner block size, handle them via an unvectorized transpose.
+        if (i < end) {
+          MacroKernel<T, 1>(a + i * lda, lda_block, end - i, b + i * ldb,
+                            ldb_block, outer_bs_b * inner_bs);
+        }
+      } else if (node->is_inner_dim_in_b) {
+        outer_bs_b = (end - i) / inner_bs;
+        if (outer_bs_b > 0) {
           MacroKernel<T, inner_bs>(a + i * lda, lda_block, outer_bs_a,
                                    b + i * ldb, ldb_block, outer_bs_b);
           i += outer_bs_b * inner_bs;
         }
-      }
-      if (i < end) {
-        MacroKernel<T, 1>(a + i * lda, lda_block, outer_bs_a * inner_bs,
-                          b + i * ldb, ldb_block, end - i);
+        if (i < end) {
+          MacroKernel<T, 1>(a + i * lda, lda_block, outer_bs_a * inner_bs,
+                            b + i * ldb, ldb_block, end - i);
+        }
       }
     }
   } else {
@@ -194,31 +192,30 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
       Transpose<T, inner_bs>(a + i * lda, outer_bs_a, b + i * ldb, outer_bs_b,
                              node->next);
     }
-    if (node->is_inner_dim_in_a) {
-      while (outer_bs_a > 1) {
-        outer_bs_a /= 2;
-        if (i + outer_bs_a * inner_bs <= end) {
+    if (i < end) {
+      DCHECK(node->is_inner_dim_in_a || node->is_inner_dim_in_b);
+      if (node->is_inner_dim_in_a) {
+        outer_bs_a = (end - i) / inner_bs;
+        if (outer_bs_a > 0) {
           Transpose<T, inner_bs>(a + i * lda, outer_bs_a, b + i * ldb,
                                  outer_bs_b, node->next);
           i += outer_bs_a * inner_bs;
         }
-      }
-      if (i < end) {
-        Transpose<T, 1>(a + i * lda, end - i, b + i * ldb,
-                        outer_bs_b * inner_bs, node->next);
-      }
-    } else if (node->is_inner_dim_in_b) {
-      while (outer_bs_b > 1) {
-        outer_bs_b /= 2;
-        if (i + outer_bs_b * inner_bs <= end) {
+        if (i < end) {
+          Transpose<T, 1>(a + i * lda, end - i, b + i * ldb,
+                          outer_bs_b * inner_bs, node->next);
+        }
+      } else if (node->is_inner_dim_in_b) {
+        outer_bs_b = (end - i) / inner_bs;
+        if (outer_bs_b > 0) {
           Transpose<T, inner_bs>(a + i * lda, outer_bs_a, b + i * ldb,
                                  outer_bs_b, node->next);
           i += outer_bs_b * inner_bs;
         }
-      }
-      if (i < end) {
-        Transpose<T, 1>(a + i * lda, outer_bs_a * inner_bs, b + i * ldb,
-                        end - i, node->next);
+        if (i < end) {
+          Transpose<T, 1>(a + i * lda, outer_bs_a * inner_bs, b + i * ldb,
+                          end - i, node->next);
+        }
       }
     }
   }
