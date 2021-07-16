@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import handle_data_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -291,8 +292,6 @@ def custom_gradient(f=None):
   @Bind.decorator
   def decorated(wrapped, args, kwargs):
     """Decorated function with custom gradient."""
-    # raise ValueError("PW: trap")
-
     if context.executing_eagerly():
       return _eager_mode_decorator(wrapped, args, kwargs)
     else:
@@ -620,17 +619,35 @@ def recompute_grad(f):
         variables = grad_kwargs.get("variables")
         with backprop.GradientTape() as t:
           id_args = nest.map_structure(gen_array_ops.identity, args)
+          # Tuple `dresult` should contain at least one tensor.
+          assert len(dresult) >= 1
+
+          if not context.executing_eagerly():
+            # XLA doesn't respect `tf.control_dependencies`. The code block
+            # below manually adds a data dependency to `dresult` to ensure
+            # recomputation of `f(*args, **kwargs)` happens after `dresult`.
+
+            # This works even if `dresult[0]` is a size 0 tensor as reduce_max
+            # of a size 0 tensor returns -inf. Use reshape here to avoid reading
+            # the entire `dresult[0]`.
+            elem = math_ops.reduce_max(array_ops.reshape(dresult[0], [-1])[:1])
+            # Cast elem to bool in case elem is NaN.
+            elem_bool = math_ops.cast(elem, dtypes.bool)
+            dresult_dep = array_ops.where_v2(
+                elem_bool == elem_bool, 0., float("nan"))  # pylint: disable=comparison-with-itself
+            id_args = nest.map_structure(
+                lambda x: x + math_ops.cast(dresult_dep, x.dtype), id_args)
+
           t.watch(id_args)
           if variables is not None:
             t.watch(variables)
-          with ops.control_dependencies(dresult):
-            with variable_scope.variable_scope(current_var_scope):
-              result = f(*id_args, **kwargs)
+          with variable_scope.variable_scope(current_var_scope):
+            recomputed_result = f(*id_args, **kwargs)
         kw_vars = []
         if variables is not None:
           kw_vars = list(variables)
         grads = t.gradient(
-            result,
+            recomputed_result,
             list(id_args) + kw_vars,
             output_gradients=dresult,
             unconnected_gradients=UnconnectedGradients.ZERO)
