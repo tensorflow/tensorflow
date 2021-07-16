@@ -4557,7 +4557,7 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
 }
 
 bool CudnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   // Preload sub libs for cudnn 8.0.4+
 #if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
@@ -4573,20 +4573,16 @@ bool CudnnSupport::GetConvolveAlgorithms(
     // Force a fallback algorithm.
     algo_types = {CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM};
   } else {
-    algo_types = {
-        // clang-format off
-    CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
-    CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
-    CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
-    CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
-    CUDNN_CONVOLUTION_FWD_ALGO_FFT,
-    CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
-        // clang-format on
-    };
+    algo_types = {CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+                  CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
+                  CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
+                  CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
+                  CUDNN_CONVOLUTION_FWD_ALGO_FFT,
+                  CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD};
     if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
       algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
     }
-    if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
+    if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
       algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
     }
   }
@@ -4628,7 +4624,7 @@ bool CudnnSupport::GetRnnAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   // Preload sub libs for cudnn 8.0.4+
 #if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
@@ -4649,7 +4645,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
       // clang-format on
   };
-  if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
+  if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
   if (!RequireCudnnDeterminism()) {
@@ -4668,7 +4664,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   // Preload sub libs for cudnn 8.0.4+
 #if CUDNN_MAJOR >= 8 && (CUDNN_MINOR > 0 || CUDNN_PATCHLEVEL >= 4)
@@ -4693,7 +4689,7 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING,
       // clang-format on
   };
-  if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
+  if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
   if (!RequireCudnnDeterminism()) {

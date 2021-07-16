@@ -402,9 +402,7 @@ Status FindBestConvolveAlgorithm(
           plan->getWorkspaceSize()));
     }
   } else {
-    if (!stream->parent()->GetConvolveAlgorithms(
-            params.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
-            &algorithms)) {
+    if (!stream->parent()->GetConvolveAlgorithms(&algorithms)) {
       return errors::Unknown(
           "Failed to get convolution algorithm. This is probably because cuDNN "
           "failed to initialize, so try looking to see if a warning log "

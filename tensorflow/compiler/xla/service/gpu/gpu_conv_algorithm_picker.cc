@@ -107,15 +107,14 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
   bool succ = false;
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
-      succ =
-          stream_exec->GetConvolveBackwardFilterAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms);
       break;
     case CudnnConvKind::kBackwardInput:
-      succ = stream_exec->GetConvolveBackwardDataAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms);
       break;
     case CudnnConvKind::kForward:
     case CudnnConvKind::kForwardActivation:
-      succ = stream_exec->GetConvolveAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveAlgorithms(&algorithms);
       break;
   }
   DCHECK(succ);
