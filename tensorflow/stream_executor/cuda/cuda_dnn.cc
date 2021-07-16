@@ -4224,8 +4224,8 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
   auto status = cudnnConvolutionBiasActivationForward(
       cudnn.handle(),
       /*alpha1=*/&conv_input_scale,
-      /*srcDesc=*/conv_input_nd.handle(), /*srcData=*/conv_input_data.opaque(),
-      /*filterDesc=*/filter.handle(), /*filterData=*/filter_data.opaque(),
+      /*xDesc=*/conv_input_nd.handle(), /*x=*/conv_input_data.opaque(),
+      /*wDesc=*/filter.handle(), /*w=*/filter_data.opaque(),
       /*convDesc=*/conv.handle(), ToConvForwardAlgo(algo_desc),
       /*workSpace=*/scratch.opaque(),
       /*workSpaceSizeInBytes=*/scratch.size(), /*alpha2=*/&side_input_scale,
