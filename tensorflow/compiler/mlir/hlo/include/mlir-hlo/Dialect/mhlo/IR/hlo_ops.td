@@ -208,6 +208,8 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<"convert",
 
   let hasFolder = 1;
 
+  let hasCanonicalizer = 1;
+
   let hasCustomHLOConverter = 1;
 }
 

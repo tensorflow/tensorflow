@@ -758,6 +758,11 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+void ConvertOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                            MLIRContext* context) {
+  results.insert<EliminateIdentityConvert>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // DequantizeOp
 //===----------------------------------------------------------------------===//
@@ -2866,8 +2871,8 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                             MLIRContext* context) {
-  results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape>(
-      context);
+  results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape,
+                 EliminateRedundantReshape, EliminateIdentityReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
