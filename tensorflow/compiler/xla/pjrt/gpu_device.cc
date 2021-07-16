@@ -392,6 +392,7 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         local_device->executor()->GetDeviceDescription();
     auto device = absl::make_unique<GpuDevice>(
         device_ordinal, std::move(local_device), description.name(),
+        description.device_vendor(),
         /*node_id=*/0);
     devices.push_back(std::move(device));
   }
@@ -441,7 +442,7 @@ Status BuildDistributedDevices(
       }
       auto device = absl::make_unique<GpuDevice>(
           device_proto.global_device_id(), std::move(local_device),
-          device_proto.name(), node.node_id());
+          device_proto.name(), device_proto.vendor(), node.node_id());
       devices->push_back(std::move(device));
     }
   }
@@ -463,9 +464,13 @@ Status BuildDistributedDevices(
 
 GpuDevice::GpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state,
-                     std::string device_kind, int node_id)
-    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                     std::string device_kind, std::string device_vendor,
+                     int node_id)
+    : device_vendor_(std::move(device_vendor)),
+      PjRtStreamExecutorDevice(id, std::move(local_device_state),
                                std::move(device_kind), node_id) {}
+
+absl::string_view GpuDevice::device_vendor() { return device_vendor_; }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
