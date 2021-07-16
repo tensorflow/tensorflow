@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include <map>
 #include <memory>
 #include <string>
 
@@ -170,10 +169,6 @@ class FlatBufferModel {
   // in which case the actual required runtime might be greater than the
   // reported minimum.
   std::string GetMinimumRuntime() const;
-
-  // Return model metadata as a mapping of name & buffer strings.
-  // See Metadata table in TFLite schema.
-  std::map<std::string, std::string> ReadAllMetadata() const;
 
   /// Returns true if the model identifier is correct (otherwise false and
   /// reports an error).

@@ -207,7 +207,6 @@ InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
     : model_(model.GetModel()),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(model.error_reporter())),
-      metadata_(model.ReadAllMetadata()),
       allocation_(model.allocation()) {}
 
 InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
@@ -800,10 +799,6 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   if (ParseSignatureDefs(model_->signature_defs(), interpreter->get()) !=
       kTfLiteOk) {
-    return cleanup_and_error();
-  }
-
-  if ((*interpreter)->SetMetadata(metadata_) != kTfLiteOk) {
     return cleanup_and_error();
   }
 
