@@ -16,7 +16,7 @@ WIN_COPTS = [
 libjpegturbo_copts = select({
     ":android": [
         "-O2",
-        "-fPIE",
+        "-fPIC",
         "-w",
     ],
     ":windows": WIN_COPTS,
@@ -122,8 +122,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         ":k8": [":simd_x86_64"],
-        ":armeabi-v7a": [":simd_armv7a"],
-        ":arm64-v8a": [":simd_armv8a"],
+        # TODO(b/188696518): use :simd_armv7a for 32bit ARM, and :simd_armv8a
+        # for 64bit ARM.
+        ":armeabi-v7a": [":simd_none"],
+        ":arm64-v8a": [":simd_none"],
         ":linux_ppc64le": [":simd_altivec"],
         ":windows": [":simd_win_x86_64"],
         "//conditions:default": [":simd_none"],
@@ -573,8 +575,8 @@ template_rule(
 )
 
 JCONFIGINT_COMMON_SUBSTITUTIONS = {
-    "@BUILD@": "20180831",
-    "@VERSION@": "2.0.0",
+    "@BUILD@": "20210424",
+    "@VERSION@": "2.1.0",
     "@CMAKE_PROJECT_NAME@": "libjpeg-turbo",
     "#undef inline": "",
     "#cmakedefine HAVE_INTRIN_H": "",
