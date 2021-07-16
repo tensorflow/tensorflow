@@ -516,22 +516,22 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<float>* output_data) override;
 
   bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
-               const DeviceMemory<float>& input_data, int64 left_pad,
-               int64 right_pad, int64 top_pad, int64 bottom_pad,
+               const DeviceMemory<float>& input_data, int64_t left_pad,
+               int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
                DeviceMemory<float>* output_data) override;
 
   bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
-                 const DeviceMemory<float>& input_data, int64 left_trim,
-                 int64 right_trim, int64 top_trim, int64 bottom_trim,
+                 const DeviceMemory<float>& input_data, int64_t left_trim,
+                 int64_t right_trim, int64_t top_trim, int64_t bottom_trim,
                  DeviceMemory<float>* output_data) override;
 
   bool DoMemcpyD2HQuantized(Stream* stream,
                             const DeviceMemory<float>& device_unquantized_src,
                             dnn::QuantizedActivationMode mode, void* host_dst,
-                            int64 size) override;
+                            int64_t size) override;
 
   bool DoMemcpyH2DQuantized(
-      Stream* stream, const void* host_src, int64 size,
+      Stream* stream, const void* host_src, int64_t size,
       dnn::QuantizedActivationMode mode,
       DeviceMemory<float>* device_unquantized_dst) override;
 

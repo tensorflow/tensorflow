@@ -1083,8 +1083,9 @@ class CudnnDropoutDescriptor {
 class CudnnRnnParamsDescriptor {
   typedef dnn::RnnDescriptor::ParamsRegions ParamsRegions;
 
-  CudnnRnnParamsDescriptor(FilterDescriptor handle, int64 params_size_in_bytes,
-                           ParamsRegions weights, ParamsRegions biases)
+  CudnnRnnParamsDescriptor(FilterDescriptor handle,
+                           int64_t params_size_in_bytes, ParamsRegions weights,
+                           ParamsRegions biases)
       : handle_(std::move(handle)),
         params_size_in_bytes_(params_size_in_bytes),
         weights_(std::move(weights)),
@@ -1405,7 +1406,7 @@ port::Status CheckAndFetchProjectionWeights(
         /*nbDimsRequested=*/sizeof(dims) / sizeof(dims[0]),
         /*dataType=*/&data_type, /*format=*/&tensor_format,
         /*nbDims=*/&n_dims, /*filterDimA=*/dims));
-    int64 size =
+    int64_t size =
         dims[0] * dims[1] * dims[2] * CudnnDataTypeToByteSize(data_type);
     dnn::RnnDescriptor::ParamsRegion region = {reinterpret_cast<int64>(offset),
                                                size};
@@ -1433,10 +1434,11 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
       /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
       /*xDesc=*/input_desc.get(), /*sizeInBytes=*/&params_size,
       /*dataType=*/data_type));
-  int64 params_size_in_bytes = static_cast<int64>(params_size);
+  int64_t params_size_in_bytes = static_cast<int64>(params_size);
 
   FilterDescriptor filter_desc = CreateFilterDescriptor();
-  int64 filter_dim0 = params_size_in_bytes / CudnnDataTypeToByteSize(data_type);
+  int64_t filter_dim0 =
+      params_size_in_bytes / CudnnDataTypeToByteSize(data_type);
   int filter_dims[] = {static_cast<int>(filter_dim0), 1, 1};
   RETURN_IF_CUDNN_ERROR(cudnnSetFilterNdDescriptor(
       /*filterDesc=*/filter_desc.get(), /*dataType=*/data_type,
@@ -1495,7 +1497,7 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
             /*nbDimsRequested=*/sizeof(dims) / sizeof(dims[0]),
             /*dataType=*/&data_type, /*format=*/&tensor_format,
             /*nbDims=*/&n_dims, /*filterDimA=*/dims));
-        int64 size =
+        int64_t size =
             dims[0] * dims[1] * dims[2] * CudnnDataTypeToByteSize(data_type);
         dnn::RnnDescriptor::ParamsRegion region = {
             reinterpret_cast<int64>(offset), size};
@@ -2801,7 +2803,7 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
       /*yDesc=*/output_nd.handle(), /*algo=*/ToConvForwardAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
 
-  int64 size_in_bytes_int64 = size_in_bytes;
+  int64_t size_in_bytes_int64 = size_in_bytes;
 
   if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
     return port::Status(
@@ -2847,7 +2849,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
       /*algo=*/ToConvBackwardDataAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
 
-  int64 size_in_bytes_int64 = size_in_bytes;
+  int64_t size_in_bytes_int64 = size_in_bytes;
 
   if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
     return port::Status(
@@ -2893,7 +2895,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
       /*algo=*/ToConvBackwardFilterAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
 
-  int64 size_in_bytes_int64 = size_in_bytes;
+  int64_t size_in_bytes_int64 = size_in_bytes;
 
   if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
     return port::Status(
@@ -5254,9 +5256,9 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     // output=weights*input. So we only need to swap the order of
     // weights and input in the matrix product to correct for the
     // row-major versus column-major difference.
-    const int64 m = output_dimensions.NodesAcrossFeatureMaps();
-    const int64 n = input_dimensions.count();
-    const int64 k = input_dimensions.NodesAcrossFeatureMaps();
+    const int64_t m = output_dimensions.NodesAcrossFeatureMaps();
+    const int64_t n = input_dimensions.count();
+    const int64_t k = input_dimensions.NodesAcrossFeatureMaps();
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
@@ -5698,15 +5700,15 @@ bool CudnnSupport::DoDepthConcatenate(
   dnn::BatchDescriptor output_dimensions =
       dnn::BatchDescriptor::DepthConcatenateOutputDescriptor(input_dimensions);
 
-  const int64 area = output_dimensions.width() * output_dimensions.height();
-  const auto index = [area](int64 batch, int64 depth, int64 yx,
-                            int64 max_depth) {
+  const int64_t area = output_dimensions.width() * output_dimensions.height();
+  const auto index = [area](int64_t batch, int64_t depth, int64_t yx,
+                            int64_t max_depth) {
     return (batch * max_depth + depth) * area + yx;
   };
 
   std::vector<float> output_host(output_dimensions.ElementCount());
   std::vector<float> tmp;
-  int64 depth_sum = 0;
+  int64_t depth_sum = 0;
   for (size_t i = 0; i < input_data.size(); ++i) {
     const auto& dimensions = input_dimensions[i];
     tmp.resize(dimensions.ElementCount());
@@ -5717,9 +5719,10 @@ bool CudnnSupport::DoDepthConcatenate(
       return false;
     }
 
-    for (int64 batch = 0; batch < output_dimensions.count(); ++batch) {
-      for (int64 yx = 0; yx < area; ++yx) {
-        for (int64 depth = 0; depth < dimensions.feature_map_count(); ++depth) {
+    for (int64_t batch = 0; batch < output_dimensions.count(); ++batch) {
+      for (int64_t yx = 0; yx < area; ++yx) {
+        for (int64_t depth = 0; depth < dimensions.feature_map_count();
+             ++depth) {
           LOG(INFO) << output_dimensions.ElementCount() << ' ' << batch << ' '
                     << yx << ' ' << depth;
           output_host[index(batch, depth + depth_sum, yx,
@@ -5747,8 +5750,9 @@ bool CudnnSupport::DoElementwiseOperate(
 bool CudnnSupport::DoXYPad(Stream* stream,
                            const dnn::BatchDescriptor& dimensions,
                            const DeviceMemory<float>& input_data,
-                           int64 left_pad, int64 right_pad, int64 top_pad,
-                           int64 bottom_pad, DeviceMemory<float>* output_data) {
+                           int64_t left_pad, int64_t right_pad, int64_t top_pad,
+                           int64_t bottom_pad,
+                           DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
   return false;
 }
@@ -5756,8 +5760,8 @@ bool CudnnSupport::DoXYPad(Stream* stream,
 bool CudnnSupport::DoXYSlice(Stream* stream,
                              const dnn::BatchDescriptor& dimensions,
                              const DeviceMemory<float>& input_data,
-                             int64 left_trim, int64 right_trim, int64 top_trim,
-                             int64 bottom_trim,
+                             int64_t left_trim, int64_t right_trim,
+                             int64_t top_trim, int64_t bottom_trim,
                              DeviceMemory<float>* output_data) {
   LOG(FATAL) << "not yet implemented";  // TODO(leary)
   return false;
@@ -5765,13 +5769,13 @@ bool CudnnSupport::DoXYSlice(Stream* stream,
 
 bool CudnnSupport::DoMemcpyD2HQuantized(
     Stream* stream, const DeviceMemory<float>& gpu_unquantized_src,
-    dnn::QuantizedActivationMode mode, void* host_dst, int64 size) {
+    dnn::QuantizedActivationMode mode, void* host_dst, int64_t size) {
   LOG(ERROR) << "quantized memcpy not supported by cuDNN";
   return false;
 }
 
 bool CudnnSupport::DoMemcpyH2DQuantized(
-    Stream* stream, const void* host_src, int64 size,
+    Stream* stream, const void* host_src, int64_t size,
     dnn::QuantizedActivationMode mode,
     DeviceMemory<float>* gpu_unquantized_dst) {
   LOG(ERROR) << "quantized memcpy not supported by cuDNN";
