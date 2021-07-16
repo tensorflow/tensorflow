@@ -35,8 +35,7 @@ GPUResources BufferDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   desc.element_size = element_size;
   desc.memory_type = memory_type;
   desc.attributes = attributes;
-  if (gpu_info.IsApiOpenGl() &&
-      memory_type == tflite::gpu::MemoryType::CONSTANT) {
+  if (gpu_info.IsGlsl() && memory_type == tflite::gpu::MemoryType::CONSTANT) {
     desc.attributes.push_back(
         std::to_string(size / (element_size * SizeOf(element_type))));
   }
@@ -66,7 +65,7 @@ absl::Status BufferDescriptor::PerformReadSelector(
         absl::StrCat("BufferDescriptor Read require one argument, but ",
                      args.size(), " was passed"));
   }
-  if (gpu_info.IsApiOpenGl()) {
+  if (gpu_info.IsGlsl()) {
     if (element_type == DataType::FLOAT16) {
       if (memory_type == MemoryType::CONSTANT) {
         const std::string arg0 = "(" + args[0] + ")";

@@ -340,7 +340,7 @@ std::string TensorDescriptor::Read(
       read_as_type == DataType::FLOAT32 ? "float4" : "half4";
   switch (storage_type) {
     case TensorStorageType::BUFFER:
-      if (gpu_info.IsApiOpenGl()) {
+      if (gpu_info.IsGlsl()) {
         if (data_type == DataType::FLOAT16) {
           return absl::StrCat("vec4(unpackHalf2x16(buffer[", coords[0],
                               "].x), unpackHalf2x16(buffer[", coords[0],
@@ -377,7 +377,7 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
-      } else if (gpu_info.IsApiOpenGl()) {
+      } else if (gpu_info.IsGlsl()) {
         return "texelFetch(image2d, ivec2(" + coords[0] + ", " + coords[1] +
                "), 0)";
       } else {
@@ -397,7 +397,7 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
-      } else if (gpu_info.IsApiOpenGl()) {
+      } else if (gpu_info.IsGlsl()) {
         return "texelFetch(image3d, ivec3(" + coords[0] + ", " + coords[1] +
                ", " + coords[2] + "), 0)";
       } else {
@@ -417,7 +417,7 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
-      } else if (gpu_info.IsApiOpenGl()) {
+      } else if (gpu_info.IsGlsl()) {
         return "texelFetch(image2d_array, ivec3(" + coords[0] + ", " +
                coords[1] + ", " + coords[2] + "), 0)";
       } else {
@@ -433,7 +433,7 @@ std::string TensorDescriptor::Read(
           result = metal_type + "(" + result + ")";
         }
         return result;
-      } else if (gpu_info.IsApiOpenGl()) {
+      } else if (gpu_info.IsGlsl()) {
         return "texelFetch(image_buffer, " + coords[0] + ")";
       } else {
         return "";
@@ -449,7 +449,7 @@ std::string TensorDescriptor::Write(
   switch (storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      if (gpu_info.IsApiOpenGl()) {
+      if (gpu_info.IsGlsl()) {
         if (data_type == DataType::FLOAT16) {
           return absl::StrCat("buffer[", coords[0], "] = uvec2(packHalf2x16(",
                               var_name, ".xy), packHalf2x16(", var_name,
@@ -468,7 +468,7 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image2d.write($0, ushort2($1, $2))", var_name,
                                 coords[0], coords[1]);
-      } else if (gpu_info.IsApiOpenGl()) {
+      } else if (gpu_info.IsGlsl()) {
         return absl::Substitute("imageStore(image2d, ivec2($0, $1), $2)",
                                 coords[0], coords[1], var_name);
       } else {
@@ -482,7 +482,7 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image3d.write($0, ushort3($1, $2, $3))",
                                 var_name, coords[0], coords[1], coords[2]);
-      } else if (gpu_info.IsApiOpenGl()) {
+      } else if (gpu_info.IsGlsl()) {
         return absl::Substitute("imageStore(image3d, ivec3($0, $1, $2), $3)",
                                 coords[0], coords[1], coords[2], var_name);
       } else {
@@ -496,7 +496,7 @@ std::string TensorDescriptor::Write(
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image2d_array.write($0, ushort2($1, $2), $3)",
                                 var_name, coords[0], coords[1], coords[2]);
-      } else if (gpu_info.IsApiOpenGl()) {
+      } else if (gpu_info.IsGlsl()) {
         return absl::Substitute(
             "imageStore(image2d_array, ivec3($0, $1, $2), $3)", coords[0],
             coords[1], coords[2], var_name);
