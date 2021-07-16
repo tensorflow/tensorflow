@@ -105,7 +105,7 @@ Status VirtualCluster::Run(const GrapplerItem& item, RunMetadata* metadata) {
       // Available device memory unknown
       continue;
     }
-    int64 peak_mem = mem_usage.second;
+    int64_t peak_mem = mem_usage.second;
     if (peak_mem >= dev.memory_size()) {
       return errors::ResourceExhausted(
           "Graph requires ", peak_mem, " bytes of memory on device ",
