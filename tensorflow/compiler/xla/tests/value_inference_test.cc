@@ -577,7 +577,7 @@ TEST_F(UpperBoundInferenceTest, SumSubtract) {
 
 TEST_F(UpperBoundInferenceTest, SumSubtractWithDataShuffling) {
   // Similar to the test above, but with some data shuffling ops in it
-  // (broadcast, slice, reshape, etc).
+  // (broadcast, slice, reshape, identity convert, etc).
   XlaBuilder b(TestName());
   auto p =
       Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, true}), "p0");
@@ -586,7 +586,8 @@ TEST_F(UpperBoundInferenceTest, SumSubtractWithDataShuffling) {
   // The range of the second dimension is [0, 3]
   auto gds1 = GetDimensionSize(p, 1);
   auto broadcast = Broadcast(gds0, {1, 10});
-  auto slice = SliceInDim(broadcast, /*start_index=*/0, /*limit_index=*/1,
+  auto convert = ConvertElementType(broadcast, S32);  // Identity convert.
+  auto slice = SliceInDim(convert, /*start_index=*/0, /*limit_index=*/1,
                           /*stride=*/1, /*dimno=*/1);
   gds0 = Reshape(slice, {});
   auto sub = Sub(gds1, gds0);
@@ -653,6 +654,38 @@ TEST_F(UpperBoundInferenceTest, KeyValueSort) {
     // The bound of the sort result is the max value in the input.
     EXPECT_EQ(result_first_elem.value(), elem_count - 1);
   }
+}
+
+class ConstValueInferenceTest : public ValueInferenceTest {
+ public:
+  explicit ConstValueInferenceTest(se::Platform* platform = nullptr)
+      : platform_(platform) {}
+
+  StatusOr<OptionalLiteral> ComputeConstantValueLiteral(
+      XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
+    ValueInference value_inference(builder);
+    TF_ASSIGN_OR_RETURN(auto literal, value_inference.AnalyzeConstant(
+                                          operand, ValueInferenceMode::kValue));
+    return literal;
+  }
+
+  se::Platform* platform_;
+};
+
+TEST_F(ConstValueInferenceTest, ConstValuePassThroughSetBound) {
+  XlaBuilder b(TestName());
+  auto p0 = ConstantR0<int32>(&b, 32);
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+  xla::Literal dynamism = xla::LiteralUtil::CreateR0<bool>(false);
+  xla::Literal bound = xla::LiteralUtil::CreateR0<int32>(32);
+  xla::Literal tuple =
+      xla::LiteralUtil::MakeTupleOwned(std::move(bound), std::move(dynamism));
+  auto set_bound =
+      CustomCall(&b, "SetBound", {p0}, shape, "", false, {}, &tuple);
+  auto result =
+      ComputeConstantValueLiteral(set_bound, &b).ValueOrDie().Get<int32>({});
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), 32);
 }
 
 }  // namespace

@@ -783,6 +783,25 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
             return HloProtoEvaluator(*root).WithOperands(operands).Evaluate();
           });
     }
+    case HloOpcode::kCustomCall: {
+      if (root->custom_call_target() == "SetBound") {
+        // `SetBound` doesn't change the static value of a tensor, so forward
+        // the operand when analyzing static value.
+        return PostorderDFSNode()
+            .AddDependency(root->operand_ids(0),
+                           PostorderDFSNodeType::kConstantValue, context)
+            .AddVisit(
+                [](Literal operand) -> StatusOr<Literal> { return operand; });
+      } else {
+        return PostorderDFSNode().AddVisit(
+            [root, context](absl::Span<Literal>) {
+              // The value is dynamic. We return a garbage literal here, which
+              // will be masked out later.
+              return CreateGarbageLiteral(ShapeUtil::GetSubshape(
+                  Shape(root->shape()), context.shape_index));
+            });
+      }
+    }
     case HloOpcode::kSort: {
       PostorderDFSNode result;
       for (auto operand_id : root->operand_ids()) {
@@ -1420,9 +1439,9 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64 handle) {
                          .ValueOrDie();
       if (Shape::Equal()(output_shape, Shape(operand->shape()))) {
         // Forward operand handle as result.
-        return LiteralUtil::CreateR0<int64>(inst->operand_ids(0));
+        return SimplifyOp(inst->operand_ids(0));
       } else {
-        return LiteralUtil::CreateR0<int64>(handle);
+        return CreateS64Literal(-1, output_shape);
       }
     }
     case HloOpcode::kAdd: {
