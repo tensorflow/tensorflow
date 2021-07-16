@@ -299,6 +299,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetTemporarySafe(context, node, /*index=*/0, &scratch));
 
   TfLiteTensor* state = GetVariableInput(context, node, kStateTensor);
+  TF_LITE_ENSURE(context, state != nullptr);
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
