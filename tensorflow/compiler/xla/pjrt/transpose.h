@@ -27,6 +27,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_TRANSPOSE_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -66,6 +67,9 @@ class TransposePlan {
   // this code we expect at most 2 tiled dimensions on input and output.
   //
   // The input may have either a striding or a tiling but not both.
+  //
+  // num_threads: is the number of threads requested. The actual number of
+  //   threads used may be smaller if there isn't enough work per thread.
   struct Tiling {
     absl::Span<int64_t const> tiling;
   };
@@ -76,7 +80,7 @@ class TransposePlan {
       size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
       absl::Span<int64_t const> permutation,
       absl::variant<Tiling, Striding> input_layout = Tiling{},
-      Tiling output_tiling = Tiling{});
+      Tiling output_tiling = Tiling{}, int num_threads = 1);
 
   TransposePlan();
   ~TransposePlan();
@@ -86,7 +90,9 @@ class TransposePlan {
   // arrays must not overlap.
   // Currently there are no alignment requirements on either `a` or `b`. However
   // performance may be better if either or both are aligned.
-  void Execute(const void* a, void* b) const;
+  void Execute(const void* a, void* b,
+               const std::function<void(std::function<void(void)>)>&
+                   schedule_work = {}) const;
 
   // Returns a human-readable description of the plan.
   std::string ToString() const;
@@ -102,6 +108,9 @@ class TransposePlan {
   absl::Span<int64_t const> OutputDims() const { return original_b_dims_; }
 
   absl::Span<int64_t const> InputStrides() const { return original_a_strides_; }
+
+  // Returns the number of items of parallel work in the plan.
+  int Parallelism() const { return root_nodes_.size(); }
 
   struct Node;
 
@@ -130,14 +139,22 @@ class TransposePlan {
   // Performs plan initialization that cannot fail.
   void Initialize();
 
-  void BuildPlanNodes(absl::Span<int64_t const> inverse_permutation, int i,
+  void BuildPlanNodes(absl::Span<int64_t const> inverse_permutation,
+                      int thread_id,
                       absl::InlinedVector<Node*, 1>& output_nodes);
+
+  std::vector<int> ChooseParallelizationStrategy(
+      absl::Span<int64_t const> inverse_permutation);
 
   // The signature of ExecuteTyped uses char* pointers because we perform
   // address calculations with strides in bytes; the strides need not be
   // multiples of the element size.
   template <typename T>
-  void ExecuteTyped(const char* a, char* b) const;
+  void ExecuteTyped(const char* a, char* b,
+                    absl::Span<const Node* const> root_nodes) const;
+
+  // Number of threads requested.
+  int num_threads_requested_ = 1;
 
   // Size of each element in bytes.
   int64_t elem_size_in_bytes_;
@@ -183,6 +200,7 @@ class TransposePlan {
     bool tile_interior;
   };
   std::vector<Loop> loop_order_;
+  std::vector<int> loop_parallelism_;
 
   // Nodes of the plan, in no particular order. Holds ownership of the plan
   // nodes.
@@ -191,8 +209,9 @@ class TransposePlan {
   std::vector<std::unique_ptr<Node>> nodes_;
 
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
-  // nest. A plan may have multiple root nodes.
-  absl::InlinedVector<Node*, 1> root_nodes_;
+  // nest. The outer vector is indexed on the thread ID, and the inner vector
+  // contains the set of root nodes for a thread.
+  absl::InlinedVector<absl::InlinedVector<Node*, 1>, 1> root_nodes_;
 
   // Are the innermost (stride-1) dimensions the same dimension? This determines
   // whether the inner kernel is a transpose or a memcpy.
@@ -229,7 +248,8 @@ class TransposePlanCache {
       absl::Span<int64_t const> permutation,
       absl::variant<TransposePlan::Tiling, TransposePlan::Striding>
           input_layout = TransposePlan::Tiling{},
-      TransposePlan::Tiling output_tiling = TransposePlan::Tiling{});
+      TransposePlan::Tiling output_tiling = TransposePlan::Tiling{},
+      int num_threads = 1);
 
  private:
   LRUCache<TransposePlanCacheKey,

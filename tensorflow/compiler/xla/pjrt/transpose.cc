@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 
 #include <algorithm>
+#include <functional>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -79,6 +80,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -241,6 +243,136 @@ void TransposeConstStride1(const char* __restrict a, char* __restrict b,
     }
   }
 }
+
+template <typename T>
+void TransposePlan::ExecuteTyped(
+    const char* a, char* b, absl::Span<const Node* const> root_nodes) const {
+  if (inner_kernel_is_memcpy_) {
+    for (Node const* node : root_nodes) {
+      TransposeConstStride1<T>(a, b, node);
+    }
+  } else {
+    switch (inner_block_elems_) {
+      case 1:
+        for (Node const* node : root_nodes) {
+          if (node->next) {
+            Transpose<T, 1>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                            node);
+          } else {
+            MacroKernel<T, 1>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                              outer_block_elems_b_);
+          }
+        }
+        break;
+      case 2:
+        for (Node const* node : root_nodes) {
+          if (node->next) {
+            Transpose<T, 2>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                            node);
+          } else {
+            MacroKernel<T, 2>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                              outer_block_elems_b_);
+          }
+        }
+        break;
+      case 4:
+        for (Node const* node : root_nodes) {
+          if (node->next) {
+            Transpose<T, 4>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                            node);
+          } else {
+            MacroKernel<T, 4>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                              outer_block_elems_b_);
+          }
+        }
+        break;
+      case 8:
+        for (Node const* node : root_nodes) {
+          if (node->next) {
+            Transpose<T, 8>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                            node);
+          } else {
+            MacroKernel<T, 8>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                              outer_block_elems_b_);
+          }
+        }
+        break;
+      case 16:
+        for (Node const* node : root_nodes) {
+          if (node->next) {
+            Transpose<T, 16>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                             node);
+          } else {
+            MacroKernel<T, 16>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                               outer_block_elems_b_);
+          }
+        }
+        break;
+      default:
+        LOG(FATAL) << "Invalid inner_block_size " << inner_block_elems_;
+    }
+  }
+}
+
+struct uint128 {
+  uint64_t lo;
+  uint64_t hi;
+};
+static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
+
+void TransposePlan::Execute(
+    const void* a, void* b,
+    const std::function<void(std::function<void(void)>)>& schedule_work) const {
+  if (num_elems_ == 0) {
+    return;
+  }
+
+  const char* ac = static_cast<const char*>(a);
+  char* bc = static_cast<char*>(b);
+  DCHECK((ac + elem_size_in_bytes_ * num_elems_ <= b ||
+          bc + elem_size_in_bytes_ * num_elems_ <= a));
+
+  auto execute_by_type = [&](absl::Span<const Node* const> nodes) {
+    switch (elem_size_in_bytes_) {
+      case 1:
+        ExecuteTyped<uint8_t>(ac, bc, nodes);
+        break;
+      case 2:
+        ExecuteTyped<uint16_t>(ac, bc, nodes);
+        break;
+      case 4:
+        ExecuteTyped<uint32_t>(ac, bc, nodes);
+        break;
+      case 8:
+        ExecuteTyped<uint64_t>(ac, bc, nodes);
+        break;
+      case 16:
+        ExecuteTyped<uint128>(ac, bc, nodes);
+        break;
+      default:
+        LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes_;
+    }
+  };
+
+  if (!schedule_work || root_nodes_.size() <= 1) {
+    for (const auto& nodes : root_nodes_) {
+      execute_by_type(nodes);
+    }
+  } else {
+    absl::BlockingCounter counter(root_nodes_.size());
+    for (const auto& nodes : root_nodes_) {
+      absl::Span<const Node* const> nodes_span = nodes;
+      schedule_work([&, nodes_span]() {
+        execute_by_type(nodes_span);
+        counter.DecrementCount();
+      });
+    }
+    counter.Wait();
+  }
+}
+
+// Everything above this point pertains to executing plans.
+// Everything below this point pertains to building plans.
 
 TransposePlan::TransposePlan() = default;
 TransposePlan::~TransposePlan() = default;
@@ -420,7 +552,7 @@ static Status ParseTilingSpecification(int ndim,
 
 // Recursive helper function that builds a plan.
 void TransposePlan::BuildPlanNodes(
-    absl::Span<int64_t const> inverse_permutation, int i,
+    absl::Span<int64_t const> inverse_permutation, int thread_id,
     absl::InlinedVector<TransposePlan::Node*, 1>& output_nodes) {
   const int ndim = a_dims_.size();
   DCHECK_GT(ndim, 0);
@@ -448,18 +580,28 @@ void TransposePlan::BuildPlanNodes(
                                                  : ldb_[pos_stride1a_in_b];
   }
   current_agenda = {Agendum{node, absl::InlinedVector<bool, 4>(ndim, false)}};
-
   auto loop_has_trivial_iteration_space = [](const Node* node) {
     return node->start == 0 && node->start + node->inc == node->end;
   };
+
+  // Number of tasks to be assigned to the current loop
+  int num_tasks_at_loop =
+      absl::c_accumulate(loop_parallelism_, int{1}, std::multiplies<int>());
+  // ID of the current task within the tasks at the current loop.
+  int task_id_at_loop = thread_id;
+
   std::vector<Agendum> new_agenda;
-  for (auto it = loop_order_.rbegin(); it != loop_order_.rend(); ++it) {
-    const Loop& loop = *it;
+  for (int loop_id = static_cast<int>(loop_order_.size()) - 1; loop_id >= 0;
+       --loop_id) {
+    const Loop& loop = loop_order_[loop_id];
     int a_dim = loop.dim_in_a;
     int b_dim = inverse_permutation[a_dim];
     DCHECK(a_tiling_[a_dim] == 1 || b_tiling_[b_dim] == 1 ||
            a_tiling_[a_dim] == b_tiling_[b_dim]);
     int64_t tile_size = std::max(a_tiling_[a_dim], b_tiling_[b_dim]);
+
+    // Compute the number of tasks for the next loop iteration.
+    num_tasks_at_loop /= loop_parallelism_[loop_id];
 
     new_agenda.clear();
 
@@ -467,15 +609,13 @@ void TransposePlan::BuildPlanNodes(
     absl::InlinedVector<TransposePlan::Node*, 1> partial_tile_nodes;
     // If the dimension is tiled, generate two nested loops, one for inside the
     // tile, one for outside.
-    if (tile_size > 1 && loop.tile_interior) {
+    if (loop.tile_interior) {
       bool has_partial_tile = (a_dims_[a_dim] % tile_size != 0);
 
       auto make_tile_node = [&](const Agendum& agendum,
-                                bool partial) -> Agendum {
+                                bool partial) -> absl::optional<Agendum> {
         nodes_.push_back(std::make_unique<Node>());
         Node* node = nodes_.back().get();
-        node->start = 0;
-        node->end = partial ? a_dims_[a_dim] % tile_size : tile_size;
         node->lda = a_tiling_[a_dim] > 1 ? lda_tile_[a_dim] : lda_[a_dim];
         node->ldb = b_tiling_[b_dim] > 1 ? ldb_tile_[b_dim] : ldb_[b_dim];
         node->inc = 1;
@@ -487,9 +627,30 @@ void TransposePlan::BuildPlanNodes(
           node->is_inner_dim_in_b = true;
         }
         node->next = agendum.node;
+        int task_id = task_id_at_loop / num_tasks_at_loop;
+        if (partial) {
+          // Only the last task handles the trailing tile.
+          if (task_id != loop_parallelism_[loop_id] - 1) {
+            return absl::nullopt;
+          }
+          node->start = 0;
+          node->end = a_dims_[a_dim] % tile_size;
+        } else {
+          int64_t num_iterations = CeilOfRatio(tile_size, node->inc);
+          int64_t num_iterations_per_task =
+              CeilOfRatio<int64_t>(num_iterations, loop_parallelism_[loop_id]);
+          node->start = std::min(tile_size,
+                                 task_id * num_iterations_per_task * node->inc);
+          node->end = std::min(
+              tile_size, (task_id + 1) * num_iterations_per_task * node->inc);
+        }
+
         DCHECK(partial || node->start + node->inc <= node->end)
             << node->start << " " << node->inc << " " << node->end;
         // If this loop has a trivial iteration space, drop it.
+        if (node->start >= node->end) {
+          return absl::nullopt;
+        }
         if (loop_has_trivial_iteration_space(node) && node->next) {
           nodes_.pop_back();
           node = agendum.node;
@@ -505,32 +666,27 @@ void TransposePlan::BuildPlanNodes(
         // If the dimension contains a complete tile, add a loop over the entire
         // tile.
         if (a_dims_[a_dim] >= tile_size) {
-          new_agenda.push_back(make_tile_node(agendum, /*partial=*/false));
+          auto new_agendum = make_tile_node(agendum, /*partial=*/false);
+          if (new_agendum) {
+            new_agenda.push_back(std::move(*new_agendum));
+          }
         }
 
         // If the dimension size is not exactly divisible by the tile size,
         // then add an additional loop that handles just the trailing partial
         // tile.
         if (has_partial_tile) {
-          new_agenda.push_back(make_tile_node(agendum, /*partial=*/true));
+          auto new_agendum = make_tile_node(agendum, /*partial=*/true);
+          if (new_agendum) {
+            new_agenda.push_back(std::move(*new_agendum));
+          }
         }
       }
     } else {
-      auto make_node = [&](const Agendum& agendum, bool partial) -> Agendum {
+      auto make_node = [&](const Agendum& agendum,
+                           bool partial) -> absl::optional<Agendum> {
         nodes_.push_back(std::make_unique<Node>());
         Node* node = nodes_.back().get();
-        if (partial) {
-          // For trailing partial tiles, we only need visit the single entry at
-          // the end.
-          DCHECK_NE(a_dims_[a_dim] % tile_size, 0);
-          node->start = a_dims_[a_dim] / tile_size;
-          node->end = (a_dims_[a_dim] / tile_size) + 1;
-        } else {
-          node->start = 0;
-          // Note: this calculation is the floor. The case if tile_size does not
-          // exactly divide the dimension size is handled above.
-          node->end = a_dims_[a_dim] / tile_size;
-        }
         node->lda = lda_[a_dim] * tile_size / a_tiling_[a_dim];
         node->ldb = ldb_[b_dim] * tile_size / b_tiling_[b_dim];
         node->inc = 1;
@@ -542,9 +698,33 @@ void TransposePlan::BuildPlanNodes(
           node->is_inner_dim_in_b = true;
         }
         node->next = agendum.node;
-        DCHECK(partial || node->start + node->inc <= node->end)
-            << node->start << " " << node->inc << " " << node->end;
+        int task_id = task_id_at_loop / num_tasks_at_loop;
+        int64_t num_complete_tiles = a_dims_[a_dim] / tile_size;
+        if (partial) {
+          // For trailing partial tiles, we only need visit the single entry at
+          // the end.
+          DCHECK_NE(a_dims_[a_dim] % tile_size, 0);
+          // Only the last task handles the trailing tile.
+          if (task_id != loop_parallelism_[loop_id] - 1) {
+            return absl::nullopt;
+          }
+          node->start = num_complete_tiles;
+          node->end = num_complete_tiles + 1;
+        } else {
+          // Evenly divide the loop iterations amongst the threads.
+          int64_t num_iterations = CeilOfRatio(num_complete_tiles, node->inc);
+          int64_t num_iterations_per_task =
+              CeilOfRatio<int64_t>(num_iterations, loop_parallelism_[loop_id]);
+          node->start = std::min(num_complete_tiles,
+                                 task_id * num_iterations_per_task * node->inc);
+          node->end =
+              std::min(num_complete_tiles,
+                       (task_id + 1) * num_iterations_per_task * node->inc);
+        }
         // If this loop has a trivial iteration space, drop it.
+        if (node->start >= node->end) {
+          return absl::nullopt;
+        }
         if (loop_has_trivial_iteration_space(node) && node->next) {
           nodes_.pop_back();
           node = agendum.node;
@@ -557,21 +737,32 @@ void TransposePlan::BuildPlanNodes(
       for (const Agendum& agendum : current_agenda) {
         if (tile_size > 1 && agendum.partial_tiles[a_dim]) {
           if (a_dims_[a_dim] / tile_size == 0) {
+            DCHECK_EQ(loop_parallelism_[loop_id], 1);
             new_agenda.push_back(agendum);
           } else {
-            new_agenda.push_back(make_node(agendum, /*partial=*/true));
+            auto new_agendum = make_node(agendum, /*partial=*/true);
+            if (new_agendum) {
+              new_agenda.push_back(std::move(*new_agendum));
+            }
           }
         } else {
           if (tile_size > 1 && a_dims_[a_dim] == tile_size) {
+            DCHECK_EQ(loop_parallelism_[loop_id], 1);
             new_agenda.push_back(agendum);
           } else {
-            new_agenda.push_back(make_node(agendum, /*partial=*/false));
+            auto new_agendum = make_node(agendum, /*partial=*/false);
+            if (new_agendum) {
+              new_agenda.push_back(std::move(*new_agendum));
+            }
           }
         }
       }
     }
     std::swap(current_agenda, new_agenda);
+
+    task_id_at_loop = task_id_at_loop % num_tasks_at_loop;
   }
+  DCHECK_EQ(num_tasks_at_loop, 1);
   output_nodes.reserve(current_agenda.size());
   for (const Agendum& agendum : current_agenda) {
     output_nodes.push_back(agendum.node);
@@ -581,7 +772,8 @@ void TransposePlan::BuildPlanNodes(
 StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
     absl::Span<int64_t const> permutation,
-    absl::variant<Tiling, Striding> input_layout, Tiling output_tiling) {
+    absl::variant<Tiling, Striding> input_layout, Tiling output_tiling,
+    int num_threads) {
   auto is_negative = [](int d) { return d < 0; };
   if (absl::c_find_if(dims, is_negative) != dims.end()) {
     return InvalidArgument("dims must be non-negative, got %s",
@@ -596,10 +788,15 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     return InvalidArgument("permutation argument is not valid, got: %s",
                            absl::StrJoin(permutation, ","));
   }
+  if (num_threads < 1) {
+    return InvalidArgument("num_threads argument must be >= 1, got: %d",
+                           num_threads);
+  }
 
   int ndim = dims.size();
 
   auto plan = std::make_unique<TransposePlan>();
+  plan->num_threads_requested_ = num_threads;
   plan->elem_size_in_bytes_ = elem_size_in_bytes;
   switch (elem_size_in_bytes) {
     case 1:
@@ -821,111 +1018,81 @@ void TransposePlan::Initialize() {
     }
   }
 
-  BuildPlanNodes(inverse_permutation, 0, root_nodes_);
-}
-
-template <typename T>
-void TransposePlan::ExecuteTyped(const char* a, char* b) const {
-  if (inner_kernel_is_memcpy_) {
-    for (Node const* node : root_nodes_) {
-      TransposeConstStride1<T>(a, b, node);
-    }
-  } else {
-    switch (inner_block_elems_) {
-      case 1:
-        for (Node const* node : root_nodes_) {
-          if (node->next) {
-            Transpose<T, 1>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                            node);
-          } else {
-            MacroKernel<T, 1>(a, node->lda, outer_block_elems_a_, b, node->ldb,
-                              outer_block_elems_b_);
-          }
-        }
-        break;
-      case 2:
-        for (Node const* node : root_nodes_) {
-          if (node->next) {
-            Transpose<T, 2>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                            node);
-          } else {
-            MacroKernel<T, 2>(a, node->lda, outer_block_elems_a_, b, node->ldb,
-                              outer_block_elems_b_);
-          }
-        }
-        break;
-      case 4:
-        for (Node const* node : root_nodes_) {
-          if (node->next) {
-            Transpose<T, 4>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                            node);
-          } else {
-            MacroKernel<T, 4>(a, node->lda, outer_block_elems_a_, b, node->ldb,
-                              outer_block_elems_b_);
-          }
-        }
-        break;
-      case 8:
-        for (Node const* node : root_nodes_) {
-          if (node->next) {
-            Transpose<T, 8>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                            node);
-          } else {
-            MacroKernel<T, 8>(a, node->lda, outer_block_elems_a_, b, node->ldb,
-                              outer_block_elems_b_);
-          }
-        }
-        break;
-      case 16:
-        for (Node const* node : root_nodes_) {
-          if (node->next) {
-            Transpose<T, 16>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                             node);
-          } else {
-            MacroKernel<T, 16>(a, node->lda, outer_block_elems_a_, b, node->ldb,
-                               outer_block_elems_b_);
-          }
-        }
-        break;
-      default:
-        LOG(FATAL) << "Invalid inner_block_size " << inner_block_elems_;
-    }
+  loop_parallelism_ = ChooseParallelizationStrategy(inverse_permutation);
+  int num_threads =
+      absl::c_accumulate(loop_parallelism_, int{1}, std::multiplies<int>());
+  root_nodes_.resize(num_threads);
+  for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
+    BuildPlanNodes(inverse_permutation, thread_id, root_nodes_[thread_id]);
   }
 }
 
-struct uint128 {
-  uint64_t lo;
-  uint64_t hi;
-};
-static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
+std::vector<int> TransposePlan::ChooseParallelizationStrategy(
+    absl::Span<int64_t const> inverse_permutation) {
+  std::vector<int> parallelism;
+  int available_parallelism = num_threads_requested_;
+  parallelism.reserve(loop_order_.size());
 
-void TransposePlan::Execute(const void* a, void* b) const {
-  if (num_elems_ == 0) {
-    return;
+  int ndim = permutation_.size();
+  const int pos_stride1a = ndim - 1;
+  const int pos_stride1b_in_a = permutation_.back();
+  // Compute the number of iterations in `loop`.
+  auto loop_iterations = [&](const Loop& loop) {
+    int a_dim = loop.dim_in_a;
+    int b_dim = inverse_permutation[a_dim];
+    int64_t tile_size = std::max(a_tiling_[a_dim], b_tiling_[b_dim]);
+    int64_t size = loop.tile_interior
+                       ? tile_size
+                       : (CeilOfRatio(a_dims_[loop.dim_in_a], tile_size));
+    if (!inner_kernel_is_memcpy_ && (loop.tile_interior || tile_size == 1)) {
+      if (loop.dim_in_a == pos_stride1a) {
+        size = CeilOfRatio<int64_t>(size,
+                                    inner_block_elems_ * outer_block_elems_a_);
+      } else if (loop.dim_in_a == pos_stride1b_in_a) {
+        size = CeilOfRatio<int64_t>(size,
+                                    inner_block_elems_ * outer_block_elems_b_);
+      }
+    }
+    return size;
+  };
+
+  // Estimate the number of bytes each iteration of each loop processes.
+  absl::InlinedVector<int64_t, 4> work_in_bytes(loop_order_.size());
+  int64_t acc = elem_size_in_bytes_;
+  if (!inner_kernel_is_memcpy_) {
+    acc *= inner_block_elems_ * inner_block_elems_ * outer_block_elems_a_ *
+           outer_block_elems_b_;
   }
-  const char* ac = static_cast<const char*>(a);
-  char* bc = static_cast<char*>(b);
-  DCHECK((ac + elem_size_in_bytes_ * num_elems_ <= b ||
-          bc + elem_size_in_bytes_ * num_elems_ <= a));
-  switch (elem_size_in_bytes_) {
-    case 1:
-      ExecuteTyped<uint8_t>(ac, bc);
-      break;
-    case 2:
-      ExecuteTyped<uint16_t>(ac, bc);
-      break;
-    case 4:
-      ExecuteTyped<uint32_t>(ac, bc);
-      break;
-    case 8:
-      ExecuteTyped<uint64_t>(ac, bc);
-      break;
-    case 16:
-      ExecuteTyped<uint128>(ac, bc);
-      break;
-    default:
-      LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes_;
+  auto work_it = work_in_bytes.rbegin();
+  for (auto it = loop_order_.rbegin(); it != loop_order_.rend(); ++it) {
+    *work_it++ = acc;
+    acc *= loop_iterations(*it);
   }
+  VLOG(7) << "Per-loop iteration work in bytes: "
+          << absl::StrJoin(work_in_bytes, ",");
+
+  // Heuristic that attempts to parallelize the outermost loops, down to a
+  // minimum per-thread number of bytes processed.
+  for (size_t i = 0; i < loop_order_.size(); ++i) {
+    const Loop& loop = loop_order_[i];
+    CHECK_GE(available_parallelism, 1);
+    int64_t iterations = loop_iterations(loop);
+    int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 17);
+    int64_t min_iterations_per_thread =
+        CeilOfRatio<int64_t>(kMinBytesPerThread, work_in_bytes[i]);
+    int64_t parallel_work = CeilOfRatio(iterations, min_iterations_per_thread);
+
+    VLOG(8) << "iterations=" << iterations << " parallel_work=" << parallel_work
+            << " available_parallelism=" << available_parallelism;
+    if (parallel_work >= available_parallelism) {
+      parallelism.push_back(available_parallelism);
+      available_parallelism = 1;
+    } else {
+      parallelism.push_back(parallel_work);
+      available_parallelism /= parallel_work;
+    }
+  }
+  return parallelism;
 }
 
 static void PrintPlan(TransposePlan::Node const* node, int indent,
@@ -940,10 +1107,15 @@ static void PrintPlan(TransposePlan::Node const* node, int indent,
 }
 
 std::string TransposePlan::ToString() const {
-  std::string nodes =
-      absl::StrJoin(root_nodes_, "\n", [](std::string* out, Node const* node) {
-        absl::StrAppend(out, "root:\n");
-        PrintPlan(node, /*indent=*/2, out);
+  std::string nodes = absl::StrJoin(
+      root_nodes_, "\n",
+      [](std::string* out, const absl::InlinedVector<Node*, 1>& nodes) {
+        absl::StrAppend(
+            out, "thread:\n",
+            absl::StrJoin(nodes, "\n", [](std::string* out, Node const* node) {
+              absl::StrAppend(out, "  root:\n");
+              PrintPlan(node, /*indent=*/4, out);
+            }));
       });
   auto format_loop_order = [](std::string* out, const Loop& loop) {
     return absl::StrAppend(out, loop.dim_in_a,
@@ -951,7 +1123,7 @@ std::string TransposePlan::ToString() const {
   };
   return absl::StrFormat(
       "a_dims=%s b_dims=%s permutation=%s a_tiling=%s b_tiling=%s "
-      "lda=%s lda_tile=%s ldb=%s ldb_tile=%s loop_order=%s "
+      "lda=%s lda_tile=%s ldb=%s ldb_tile=%s loop_order=%s loop_parallelism=%s "
       "outer_bs=[%d,%d] inner_bs=%d\n"
       "nodes:\n%s",
       absl::StrJoin(a_dims_, ","),
@@ -960,7 +1132,8 @@ std::string TransposePlan::ToString() const {
       absl::StrJoin(b_tiling_, ","), absl::StrJoin(lda_, ","),
       absl::StrJoin(lda_tile_, ","), absl::StrJoin(ldb_, ","),
       absl::StrJoin(ldb_tile_, ","),
-      absl::StrJoin(loop_order_, ",", format_loop_order), outer_block_elems_a_,
+      absl::StrJoin(loop_order_, ",", format_loop_order),
+      absl::StrJoin(loop_parallelism_, ","), outer_block_elems_a_,
       outer_block_elems_b_, inner_block_elems_, nodes);
 }
 
@@ -971,6 +1144,7 @@ struct TransposePlanCacheKey {
   bool input_layout_is_tiling;
   absl::InlinedVector<int64_t, 4> input_layout;
   absl::InlinedVector<int64_t, 4> output_tiling;
+  int num_threads;
 
   bool operator==(const TransposePlanCacheKey& other) const;
 };
@@ -981,13 +1155,14 @@ bool TransposePlanCacheKey::operator==(
          permutation == other.permutation &&
          input_layout_is_tiling == other.input_layout_is_tiling &&
          input_layout == other.input_layout &&
-         output_tiling == other.output_tiling;
+         output_tiling == other.output_tiling &&
+         num_threads == other.num_threads;
 }
 
 template <typename H>
 H AbslHashValue(H h, const TransposePlanCacheKey& key) {
   h = H::combine(std::move(h), key.elem_size_in_bytes,
-                 key.input_layout_is_tiling);
+                 key.input_layout_is_tiling, key.num_threads);
   h = H::combine_contiguous(std::move(h), key.dims.data(), key.dims.size());
   h = H::combine_contiguous(std::move(h), key.permutation.data(),
                             key.permutation.size());
@@ -1007,7 +1182,7 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
     size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
     absl::Span<int64_t const> permutation,
     absl::variant<TransposePlan::Tiling, TransposePlan::Striding> input_layout,
-    TransposePlan::Tiling output_tiling) {
+    TransposePlan::Tiling output_tiling, int num_threads) {
   TransposePlanCacheKey key;
   key.elem_size_in_bytes = elem_size_in_bytes;
   key.dims.resize(dims.size());
@@ -1027,6 +1202,7 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
                                                        input_tiling.end());
     key.input_layout_is_tiling = true;
   }
+  key.num_threads = num_threads;
   return cache_.GetOrCreateIfAbsent(
       key,
       [&](const TransposePlanCacheKey& key)
@@ -1034,7 +1210,7 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<TransposePlan> plan,
             TransposePlan::Create(elem_size_in_bytes, dims, permutation,
-                                  input_layout, output_tiling));
+                                  input_layout, output_tiling, num_threads));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });
 }
