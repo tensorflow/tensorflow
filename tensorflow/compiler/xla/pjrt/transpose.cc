@@ -139,7 +139,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
   DCHECK_GT(outer_bs_b, 0);
   const int64_t start = node->start;
   const int64_t end = node->end;
-  int64_t stop = node->end - (node->inc - 1);
+  const int64_t stop = node->end - (node->inc - 1);
   const int64_t lda = node->lda;
   const int64_t ldb = node->ldb;
   const int64_t inc = node->inc;
@@ -228,7 +228,7 @@ void TransposeConstStride1(const char* __restrict a, char* __restrict b,
   const int64_t end = node->end;
   const int64_t lda = node->lda;
   const int64_t ldb = node->ldb;
-  if (node->next->next == nullptr) {
+  if (node->next == nullptr) {
     DCHECK_EQ(lda, sizeof(T));
     DCHECK_EQ(ldb, sizeof(T));
     std::memcpy(b + start * sizeof(T), a + start * sizeof(T),
@@ -436,16 +436,22 @@ void TransposePlan::BuildPlanNodes(
   };
   std::vector<Agendum> current_agenda;
   // Builds a sentinel node that says that we should invoke the kernel.
-  nodes_.push_back(std::make_unique<Node>());
-  Node* node = nodes_.back().get();
-  node->next = nullptr;
-  node->start = node->end = node->inc = -1;
-  node->lda = a_tiling_[pos_stride1b_in_a] > 1 ? lda_tile_[pos_stride1b_in_a]
-                                               : lda_[pos_stride1b_in_a];
-  node->ldb = b_tiling_[pos_stride1a_in_b] > 1 ? ldb_tile_[pos_stride1a_in_b]
-                                               : ldb_[pos_stride1a_in_b];
+  Node* node = nullptr;
+  if (!inner_kernel_is_memcpy_) {
+    nodes_.push_back(std::make_unique<Node>());
+    node = nodes_.back().get();
+    node->next = nullptr;
+    node->start = node->end = node->inc = -1;
+    node->lda = a_tiling_[pos_stride1b_in_a] > 1 ? lda_tile_[pos_stride1b_in_a]
+                                                 : lda_[pos_stride1b_in_a];
+    node->ldb = b_tiling_[pos_stride1a_in_b] > 1 ? ldb_tile_[pos_stride1a_in_b]
+                                                 : ldb_[pos_stride1a_in_b];
+  }
   current_agenda = {Agendum{node, absl::InlinedVector<bool, 4>(ndim, false)}};
 
+  auto loop_has_trivial_iteration_space = [](const Node* node) {
+    return node->start == 0 && node->start + node->inc == node->end;
+  };
   std::vector<Agendum> new_agenda;
   for (auto it = loop_order_.rbegin(); it != loop_order_.rend(); ++it) {
     const Loop& loop = *it;
@@ -481,6 +487,13 @@ void TransposePlan::BuildPlanNodes(
           node->is_inner_dim_in_b = true;
         }
         node->next = agendum.node;
+        DCHECK(partial || node->start + node->inc <= node->end)
+            << node->start << " " << node->inc << " " << node->end;
+        // If this loop has a trivial iteration space, drop it.
+        if (loop_has_trivial_iteration_space(node) && node->next) {
+          nodes_.pop_back();
+          node = agendum.node;
+        }
         Agendum new_agendum;
         new_agendum.node = node;
         new_agendum.partial_tiles = agendum.partial_tiles;
@@ -489,7 +502,11 @@ void TransposePlan::BuildPlanNodes(
       };
 
       for (const Agendum& agendum : current_agenda) {
-        new_agenda.push_back(make_tile_node(agendum, /*partial=*/false));
+        // If the dimension contains a complete tile, add a loop over the entire
+        // tile.
+        if (a_dims_[a_dim] >= tile_size) {
+          new_agenda.push_back(make_tile_node(agendum, /*partial=*/false));
+        }
 
         // If the dimension size is not exactly divisible by the tile size,
         // then add an additional loop that handles just the trailing partial
@@ -525,6 +542,13 @@ void TransposePlan::BuildPlanNodes(
           node->is_inner_dim_in_b = true;
         }
         node->next = agendum.node;
+        DCHECK(partial || node->start + node->inc <= node->end)
+            << node->start << " " << node->inc << " " << node->end;
+        // If this loop has a trivial iteration space, drop it.
+        if (loop_has_trivial_iteration_space(node) && node->next) {
+          nodes_.pop_back();
+          node = agendum.node;
+        }
         Agendum new_agendum;
         new_agendum.node = node;
         new_agendum.partial_tiles = agendum.partial_tiles;
@@ -672,6 +696,9 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
 }
 
 void TransposePlan::Initialize() {
+  if (num_elems_ == 0) {
+    return;
+  }
   RemoveTrivialDimensions(a_dims_, permutation_, lda_, lda_tile_, a_tiling_,
                           b_tiling_);
   CoalesceDimensions(a_dims_, permutation_, lda_, lda_tile_, a_tiling_,
@@ -763,27 +790,37 @@ void TransposePlan::Initialize() {
   }
 
   // Bound the block sizes so they are smaller than the stride-1 dimension size.
-  int64_t a_stride1_size = a_tiling_[pos_stride1a] > 1 ? a_tiling_[pos_stride1a]
-                                                       : a_dims_[pos_stride1a];
+  int64_t a_stride1_size = std::max(
+      a_tiling_[pos_stride1a], b_tiling_[inverse_permutation[pos_stride1a]]);
+  if (a_stride1_size == 1) {
+    a_stride1_size = a_dims_[pos_stride1a];
+  }
   int64_t b_stride1_size =
-      b_tiling_.back() > 1 ? b_tiling_.back() : b_dims_.back();
+      std::max(a_tiling_[permutation_.back()], b_tiling_.back());
+  if (b_stride1_size == 1) {
+    b_stride1_size = b_dims_.back();
+  }
 
   if (inner_kernel_is_memcpy_) {
-    a_stride1_size = b_stride1_size = std::min(a_stride1_size, b_stride1_size);
+    inner_block_elems_ = -1;
+    outer_block_elems_a_ = -1;
+    outer_block_elems_b_ = -1;
+  } else {
+    while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
+      inner_block_elems_ /= 2;
+      outer_block_elems_a_ *= 2;
+      outer_block_elems_b_ *= 2;
+    }
+    while (outer_block_elems_a_ > 1 &&
+           inner_block_elems_ * outer_block_elems_a_ > a_stride1_size) {
+      outer_block_elems_a_ /= 2;
+    }
+    while (outer_block_elems_b_ > 1 &&
+           inner_block_elems_ * outer_block_elems_b_ > b_stride1_size) {
+      outer_block_elems_b_ /= 2;
+    }
   }
-  while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
-    inner_block_elems_ /= 2;
-    outer_block_elems_a_ *= 2;
-    outer_block_elems_b_ *= 2;
-  }
-  while (outer_block_elems_a_ > 1 &&
-         inner_block_elems_ * outer_block_elems_a_ > a_stride1_size) {
-    outer_block_elems_a_ /= 2;
-  }
-  while (outer_block_elems_b_ > 1 &&
-         inner_block_elems_ * outer_block_elems_b_ > b_stride1_size) {
-    outer_block_elems_b_ /= 2;
-  }
+
   BuildPlanNodes(inverse_permutation, 0, root_nodes_);
 }
 
@@ -797,32 +834,57 @@ void TransposePlan::ExecuteTyped(const char* a, char* b) const {
     switch (inner_block_elems_) {
       case 1:
         for (Node const* node : root_nodes_) {
-          Transpose<T, 1>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                          node);
+          if (node->next) {
+            Transpose<T, 1>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                            node);
+          } else {
+            MacroKernel<T, 1>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                              outer_block_elems_b_);
+          }
         }
         break;
       case 2:
         for (Node const* node : root_nodes_) {
-          Transpose<T, 2>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                          node);
+          if (node->next) {
+            Transpose<T, 2>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                            node);
+          } else {
+            MacroKernel<T, 2>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                              outer_block_elems_b_);
+          }
         }
         break;
       case 4:
         for (Node const* node : root_nodes_) {
-          Transpose<T, 4>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                          node);
+          if (node->next) {
+            Transpose<T, 4>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                            node);
+          } else {
+            MacroKernel<T, 4>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                              outer_block_elems_b_);
+          }
         }
         break;
       case 8:
         for (Node const* node : root_nodes_) {
-          Transpose<T, 8>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                          node);
+          if (node->next) {
+            Transpose<T, 8>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                            node);
+          } else {
+            MacroKernel<T, 8>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                              outer_block_elems_b_);
+          }
         }
         break;
       case 16:
         for (Node const* node : root_nodes_) {
-          Transpose<T, 16>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                           node);
+          if (node->next) {
+            Transpose<T, 16>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                             node);
+          } else {
+            MacroKernel<T, 16>(a, node->lda, outer_block_elems_a_, b, node->ldb,
+                               outer_block_elems_b_);
+          }
         }
         break;
       default:
@@ -880,7 +942,7 @@ static void PrintPlan(TransposePlan::Node const* node, int indent,
 std::string TransposePlan::ToString() const {
   std::string nodes =
       absl::StrJoin(root_nodes_, "\n", [](std::string* out, Node const* node) {
-        *out = "root:\n";
+        absl::StrAppend(out, "root:\n");
         PrintPlan(node, /*indent=*/2, out);
       });
   auto format_loop_order = [](std::string* out, const Loop& loop) {
