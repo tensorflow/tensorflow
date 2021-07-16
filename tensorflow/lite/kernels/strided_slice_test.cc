@@ -845,5 +845,13 @@ TYPED_TEST(StridedSliceOpTest, NewAxisMask1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 7, 8}));
 }
 
+TYPED_TEST(StridedSliceOpTest, NoInfiniteLoop) {
+  StridedSliceOpModel<TypeParam> m({1, 1}, {6}, {6}, {1}, 1, 2, 1, 6, 0);
+  m.SetBegin({1});
+  m.SetEnd({3});
+  m.SetStrides({1});
+  m.Invoke();
+}
+
 }  // namespace
 }  // namespace tflite
