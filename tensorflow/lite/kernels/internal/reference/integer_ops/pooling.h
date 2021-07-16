@@ -21,7 +21,7 @@ limitations under the License.
 namespace tflite {
 namespace reference_integer_ops {
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape, const int8* input_data,
                         const RuntimeShape& output_shape, int8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
@@ -65,6 +65,7 @@ inline void AveragePool(const PoolParams& params,
               filter_count++;
             }
           }
+          if (filter_count == 0) return false;
           // Round to the closest integer value.
           acc = acc > 0 ? (acc + filter_count / 2) / filter_count
                         : (acc - filter_count / 2) / filter_count;
@@ -76,6 +77,7 @@ inline void AveragePool(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
@@ -135,7 +137,7 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   }
 }
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const int16* input_data,
                         const RuntimeShape& output_shape, int16* output_data) {
@@ -180,6 +182,7 @@ inline void AveragePool(const PoolParams& params,
               filter_count++;
             }
           }
+          if (filter_count == 0) return false;
           // Round to the closest integer value.
           acc = acc > 0 ? (acc + filter_count / 2) / filter_count
                         : (acc - filter_count / 2) / filter_count;
@@ -191,6 +194,7 @@ inline void AveragePool(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
