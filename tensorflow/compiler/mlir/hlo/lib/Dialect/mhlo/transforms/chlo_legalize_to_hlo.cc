@@ -1021,6 +1021,104 @@ struct ConvertDigammaOp : public OpConversionPattern<DigammaOp> {
   }
 };
 
+Value MaterializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
+                           ValueRange operands) {
+  NextAfterOp::Adaptor transformed(operands);
+  Value x = transformed.x();
+  Value y = transformed.y();
+  auto result_ty = x.getType().cast<ShapedType>();
+  auto bitwidth = result_ty.getElementType().getIntOrFloatBitWidth();
+  ImplicitLocOpBuilder b(loc, rewriter);
+  auto int_ty = result_ty.clone(b.getIntegerType(bitwidth));
+  auto x_as_int = b.create<mhlo::BitcastConvertOp>(int_ty, x);
+  auto y_as_int = b.create<mhlo::BitcastConvertOp>(int_ty, y);
+
+  // The result is NaN if either "x" or "y" are NaN.
+  const StringAttr kNE = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
+  auto x_is_nan = b.create<mhlo::CompareOp>(x, x, kNE);
+  auto y_is_nan = b.create<mhlo::CompareOp>(y, y, kNE);
+  auto nan_input = b.create<mhlo::OrOp>(x_is_nan, y_is_nan);
+  auto result_for_nan = getConstantLike(
+      rewriter, loc, std::numeric_limits<double>::quiet_NaN(), x);
+  auto result_for_nan_as_int =
+      b.create<mhlo::BitcastConvertOp>(int_ty, result_for_nan);
+
+  // The sign bit is the MSB.
+  const int64_t sign_bit = int64_t{1} << (bitwidth - 1);
+  // Discard the sign bit to make the result non-negative.
+  auto sign_mask = getConstantLike(rewriter, loc, sign_bit, x_as_int);
+  auto negated_sign_mask = getConstantLike(rewriter, loc, ~sign_bit, x_as_int);
+  auto x_abs = b.create<mhlo::AndOp>(x_as_int, negated_sign_mask);
+  auto y_abs = b.create<mhlo::AndOp>(y_as_int, negated_sign_mask);
+
+  // When both "x" and "y" are equal, the result is "y".
+  const StringAttr kEQ = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
+  auto x_and_y_are_equal = b.create<mhlo::CompareOp>(x, y, kEQ);
+  auto result_for_equal = y_as_int;
+
+  // When both "x" and "y" are 0, the result is "y". This is a separate case
+  // from above because "x" and "y" might have a different sign.
+  auto zero = getConstantLike(rewriter, loc, 0, x_as_int);
+  auto x_is_zero = b.create<mhlo::CompareOp>(x_abs, zero, kEQ);
+  auto y_is_zero = b.create<mhlo::CompareOp>(y_abs, zero, kEQ);
+  auto result_for_both_zero = y_as_int;
+
+  auto x_sign = b.create<mhlo::AndOp>(x_as_int, sign_mask);
+  auto y_sign = b.create<mhlo::AndOp>(y_as_int, sign_mask);
+
+  // If from == 0 && to != 0, we need to return the smallest subnormal number
+  // signed like "to".
+  auto one = getConstantLike(rewriter, loc, 1, x_as_int);
+  auto result_for_x_zero_y_non_zero = b.create<mhlo::OrOp>(y_sign, one);
+
+  // If the sign of "x" and "y" disagree:
+  // - we need to make the magnitude of "from" smaller so that it is closer to
+  //   zero.
+  //
+  // Otherwise the signs agree:
+  // - "x" with a magnitude larger than "y" means we need to make the magnitude
+  //   smaller.
+  // - "x" with a magnitude smaller than "y" means we need to make the magnitude
+  //   larger.
+  auto signs_disagree = b.create<mhlo::CompareOp>(x_sign, y_sign, kNE);
+  const StringAttr kGT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::GT));
+  auto x_magnitude_larger_than_y = b.create<mhlo::CompareOp>(x_abs, y_abs, kGT);
+  auto result_has_smaller_magnitude =
+      b.create<mhlo::OrOp>(x_magnitude_larger_than_y, signs_disagree);
+  auto minus_one = getConstantLike(rewriter, loc, -1, x_as_int);
+  auto magnitude_adjustment =
+      b.create<mhlo::SelectOp>(result_has_smaller_magnitude, minus_one, one);
+  Value result = b.create<mhlo::AddOp>(x_as_int, magnitude_adjustment);
+  // Handle from == +-0.
+  result = b.create<mhlo::SelectOp>(
+      x_is_zero,
+      b.create<mhlo::SelectOp>(y_is_zero, result_for_both_zero,
+                               result_for_x_zero_y_non_zero),
+      result);
+  // Handle from == to.
+  result =
+      b.create<mhlo::SelectOp>(x_and_y_are_equal, result_for_equal, result);
+  // Handle isnan(x) || isnan(y).
+  result = b.create<mhlo::SelectOp>(nan_input, result_for_nan_as_int, result);
+
+  // Cast back to the original type.
+  return b.create<mhlo::BitcastConvertOp>(result_ty, result);
+}
+
+struct ConvertNextAfterOp : public OpConversionPattern<NextAfterOp> {
+  using OpConversionPattern<NextAfterOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      NextAfterOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op,
+                       MaterializeNextAfter(rewriter, op.getLoc(), operands));
+    return success();
+  }
+};
+
 struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
   using OpConversionPattern<PolygammaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1400,6 +1498,7 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
                    ConvertErfOp,
                    ConvertErfcOp,
                    ConvertLgammaOp,
+                   ConvertNextAfterOp,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
                    ConvertZetaOp>(context);
