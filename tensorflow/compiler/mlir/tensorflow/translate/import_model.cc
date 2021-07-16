@@ -1328,13 +1328,15 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
     }
   }
 
-  ImporterBase child_importer(graph_flib_, debug_info_, specs, module_,
-                              tf_name_to_mlir_name_, function_name_uniquifier_,
-                              func_name);
-  TF_RETURN_IF_ERROR(child_importer.PrepareConvert(*fbody->graph));
+  // std::make_unique is not possible here, using `new` to access
+  // a non-public constructor.
+  std::unique_ptr<ImporterBase> child_importer(new ImporterBase(
+      graph_flib_, debug_info_, specs, module_, tf_name_to_mlir_name_,
+      function_name_uniquifier_, func_name));
+  TF_RETURN_IF_ERROR(child_importer->PrepareConvert(*fbody->graph));
 
   TF_ASSIGN_OR_RETURN(auto func_type,
-                      child_importer.InferLibFunctionType(*fbody));
+                      child_importer->InferLibFunctionType(*fbody));
 
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
@@ -1342,7 +1344,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   GetArgsAndRetsFromFunctionBody(*fbody, &arg_nodes, &ret_nodes,
                                  &control_ret_nodes);
 
-  TF_RETURN_IF_ERROR(child_importer.Convert(
+  TF_RETURN_IF_ERROR(child_importer->Convert(
       mlir_func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes,
       llvm::makeArrayRef(attributes.begin(), attributes.end())));
   return Status::OK();
