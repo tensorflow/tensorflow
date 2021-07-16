@@ -27,11 +27,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-string FormatNumber(int64 n);
+string FormatNumber(int64_t n);
 
-string FormatTime(int64 micros);
+string FormatTime(int64_t micros);
 
-string FormatMemory(int64 bytes);
+string FormatMemory(int64_t bytes);
 
 string FormatShapes(const std::vector<int64>& shapes);
 
