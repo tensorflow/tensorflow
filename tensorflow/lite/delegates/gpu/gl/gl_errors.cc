@@ -64,6 +64,10 @@ absl::Status GetOpenGlErrors() {
   // GPU process.
   return absl::OkStatus();
 #else
+  EGLContext context = eglGetCurrentContext();
+  if (context == EGL_NO_CONTEXT) {
+    return absl::InternalError("EGL Context is not available");
+  }
   auto error = glGetError();
   if (error == GL_NO_ERROR) {
     return absl::OkStatus();
