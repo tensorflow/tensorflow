@@ -413,7 +413,8 @@ TfLiteStatus BuildLoggingInterpreter(
         builtin_op_and_versions.insert(
             {op_info.builtin_op_code, operator_code->version()});
       }
-      node_to_opinfo[{subgraph_index, i}] = op_info;
+      std::tuple<int, int> key{subgraph_index, i};
+      node_to_opinfo[key] = op_info;
     }
   }
 

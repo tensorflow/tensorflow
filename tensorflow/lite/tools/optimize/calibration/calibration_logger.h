@@ -52,8 +52,9 @@ class Logger {
   TfLiteStatus LogTensorValue(int subgraph_index, int tensor_index,
                               const float* tensor_values, size_t tensor_size,
                               ErrorReporter* error_reporter) {
-    return tensor_id_to_stats_map_[{subgraph_index, tensor_index}].Update(
-        tensor_values, tensor_size, error_reporter);
+    std::tuple<int, int> key{subgraph_index, tensor_index};
+    return tensor_id_to_stats_map_[key].Update(tensor_values, tensor_size,
+                                               error_reporter);
   }
 
   // Returns a map from tensor_index -> observed min max values.
