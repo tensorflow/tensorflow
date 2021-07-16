@@ -390,6 +390,8 @@ cc_library(
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
+            "-Wl,SystemConfiguration",
+            "-Wl,-framework",
             "-Wl,Security",
         ],
         "@org_tensorflow//tensorflow:ios": [],
