@@ -139,7 +139,7 @@ template <typename F>
       continue;
     }
     for (auto hlo : computation->instructions()) {
-      if (hlo->shape().IsTuple() ||
+      if (!hlo->shape().IsArray() ||
           ShapeUtil::IsEffectiveScalar(hlo->shape())) {
         continue;
       }
