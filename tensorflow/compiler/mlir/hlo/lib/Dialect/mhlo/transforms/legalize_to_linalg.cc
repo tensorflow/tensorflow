@@ -714,7 +714,7 @@ class LhloBroadcastInDimConverter
           new_shape, operand_type.getElementType(),
           makeStridedLinearLayoutMap(new_strides, operand_offset,
                                      rewriter.getContext()));
-      operand = rewriter.create<linalg::CollapseShapeOp>(
+      operand = rewriter.create<memref::CollapseShapeOp>(
           op.getLoc(), new_memref_type, operand_adaptor.operand(),
           collapsed_dims_list);
     }
@@ -873,9 +873,9 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
 
       if (isLHLO) {
         auto collapsed_type = MemRefType::get({total_elems}, elem_type);
-        Value collapsed_op = rewriter.create<linalg::CollapseShapeOp>(
+        Value collapsed_op = rewriter.create<memref::CollapseShapeOp>(
             loc, collapsed_type, args[0], collapsing_map);
-        Value reshape_buffer = rewriter.create<linalg::ExpandShapeOp>(
+        Value reshape_buffer = rewriter.create<memref::ExpandShapeOp>(
             loc, result_type, collapsed_op, expanding_map);
         rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
                                                     args[1]);
@@ -894,12 +894,12 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     if (isLHLO) {
       Value reshape_buffer = isCollapsing
                                  ? rewriter
-                                       .create<linalg::CollapseShapeOp>(
+                                       .create<memref::CollapseShapeOp>(
                                            reshape_op.getLoc(), result_type,
                                            args[0], reassociation_map)
                                        .getResult()
                                  : rewriter
-                                       .create<linalg::ExpandShapeOp>(
+                                       .create<memref::ExpandShapeOp>(
                                            reshape_op.getLoc(), result_type,
                                            args[0], reassociation_map)
                                        .getResult();

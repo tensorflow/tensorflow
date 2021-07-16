@@ -549,7 +549,7 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addIllegalDialect<StandardOpsDialect, gpu::GPUDialect,
                              disc_ral::RalDialect, math::MathDialect>();
-    target.addIllegalOp<LLVM::DialectCastOp>();
+    target.addIllegalOp<UnrealizedConversionCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.
