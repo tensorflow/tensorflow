@@ -1748,7 +1748,7 @@ Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
 
 // Checks various invariants of channel instructions (send/recv and
 // collectives).
-Status VerifyChannels(const HloModule& module) {
+Status VerifyChannels(const HloModule& module, absl::string_view pass_name) {
   absl::flat_hash_map<int64, std::vector<const HloInstruction*>>
       channel_instructions;
 
@@ -1810,11 +1810,13 @@ Status VerifyChannels(const HloModule& module) {
       if (sendrecv->is_host_transfer()) {
         TF_RET_CHECK(instructions.size() == 2)
             << "channel " << pair.first
-            << " is used for multiple host send/recv instructions";
+            << " is used for multiple host send/recv instructions "
+            << " for pass " << pass_name;
       } else {
         TF_RET_CHECK(instructions.size() == opcodes.size())
             << "channel " << pair.first
-            << " is used for multiple send/recv instructions";
+            << " is used for multiple send/recv instructions "
+            << " for pass " << pass_name;
       }
     } else {
       for (const HloInstruction* instr : instructions) {
@@ -2153,7 +2155,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
 
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
-  TF_RETURN_IF_ERROR(VerifyChannels(*module));
+  TF_RETURN_IF_ERROR(VerifyChannels(*module, pass_name_));
 
   std::unique_ptr<ShapeVerifier> shape_verifier =
       target_metadata_->GetVerifier();

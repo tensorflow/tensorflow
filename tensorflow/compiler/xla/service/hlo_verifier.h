@@ -276,13 +276,15 @@ class HloVerifier : public HloModulePass {
       : target_metadata_(absl::make_unique<DefaultVerifierMetadata>(
             layout_sensitive, allow_mixed_precision, shape_size_func)),
         instruction_can_change_layout_func_(
-            std::move(instruction_can_change_layout_func)) {
+            std::move(instruction_can_change_layout_func)),
+        pass_name_("Unknown") {
     CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);
   }
 
   // Uses custom target metadata
-  explicit HloVerifier(std::unique_ptr<TargetVerifierMetadata> target_metadata)
-      : target_metadata_(std::move(target_metadata)) {}
+  explicit HloVerifier(std::unique_ptr<TargetVerifierMetadata> target_metadata,
+                       absl::string_view pass_name = "Unknown")
+      : target_metadata_(std::move(target_metadata)), pass_name_(pass_name) {}
 
   ~HloVerifier() override = default;
   absl::string_view name() const override { return "verifier"; }
@@ -296,6 +298,9 @@ class HloVerifier : public HloModulePass {
   // Determines whether an instruction can change layouts.
   std::function<bool(const HloInstruction*)>
       instruction_can_change_layout_func_;
+
+  // The hlo pass when the verifier is invoked.
+  std::string pass_name_;
 };
 
 }  // namespace xla
