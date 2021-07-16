@@ -130,9 +130,14 @@ class GpuKernelToBlobPass
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
-    // Make sure we use full precision division operations.
     options.set_xla_gpu_dump_llvmir(print_llvmir_);
+    // Make sure we use full precision division operations.
     (*options.mutable_xla_backend_extra_options())["-nvptx-prec-divf32"] = "2";
+    // Disable tail sinking as it interferes with load/store vectorization. If
+    // we have common tails that is intentional.
+    (*options.mutable_xla_backend_extra_options())["-simplifycfg-sink-common"] =
+        "false";
+
     config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {
