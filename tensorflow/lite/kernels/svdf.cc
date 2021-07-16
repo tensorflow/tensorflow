@@ -274,6 +274,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
 
   TfLiteTensor* state = GetVariableInput(context, node, kStateTensor);
+  TF_LITE_ENSURE(context, state != nullptr);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (weights_feature->type) {
