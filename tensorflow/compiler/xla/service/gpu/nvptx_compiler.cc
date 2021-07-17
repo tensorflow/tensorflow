@@ -349,11 +349,13 @@ PersistentCompilationCache::PersistentCompilationCache()
 }
 
 constexpr const int64 PersistentCompilationCache::kPtxHash;
+constexpr const int64 PersistentCompilationCache::kCubinHash;
 
 int64 PersistentCompilationCache::CreateKey(
     llvm::Module* llvm_module,
     const se::CudaComputeCapability &compute_capability,
-    const se::GpuAsmOpts &options){
+    const se::GpuAsmOpts &options,
+    bool &valid){
   std::string llvm_str = llvm_ir::DumpModuleToString(*llvm_module);
   std::string ptx_options;
   if (options.disable_gpuasm_optimizations) {
@@ -369,6 +371,19 @@ int64 PersistentCompilationCache::CreateKey(
   key = tensorflow::Hash64Combine(key, tensorflow::Hash64(ptx_options));
 
   VLOG(3) << "Created key " << key << ".";
+
+  // Check for a conflict on the hash key.
+  // In case of a conflict, just ignore the entry. This shouldn't happen often.
+  valid = true;
+  std:string llvm_ir;
+  if (LookupCache(key, llvm_ir, "LLVM IR")) {
+    if (llvm_ir != llvm_str) {
+      VLOG(1) << "Hash key conflict for key  " << key << ". Ignoring it.";
+      valid = false;
+    }
+  } else {
+    AddToCache(key, llvm_ir, "LLVM IR");
+  }
  
   return key;
 }
@@ -386,7 +401,7 @@ void PersistentCompilationCache::AddToCache(int64 key, absl::string_view text,
     if (!tensorflow::WriteStringToFile(env, text_tmp, text).ok()) {
       LOG(ERROR) << "Don't add to cache: can't write " << kind << ". Please "
                  << "check that there's space on the device, and that the "
-		 << "cache \"" << cache_dir_ << "\" has the right permissions.";
+                 << "cache \"" << cache_dir_ << "\" has the right permissions.";
       (void)env->DeleteFile(text_tmp);
     } else {
       // Rename file.
@@ -395,14 +410,14 @@ void PersistentCompilationCache::AddToCache(int64 key, absl::string_view text,
       // add cache entry "key -> text".
       // rename is atomic, making this multi thread/process safe.
       if (!env->RenameFile(text_tmp, text_file).ok()) {
-	LOG(ERROR) << "Don't add to cache: can't rename \"" << text_tmp\
-	           << "\" to \"" << text_file << "\". Please check that "
-		   << "there's space on the device, and that the cache \""
+        LOG(ERROR) << "Don't add to cache: can't rename \"" << text_tmp\
+                   << "\" to \"" << text_file << "\". Please check that "
+                   << "there's space on the device, and that the cache \""
                    << cache_dir_ << "\" has the right permissions.";
         (void)env->DeleteFile(text_tmp);
       } else {
-	VLOG(2) << "Added " << kind << ": " << key << " to cache directory "
-        	<< cache_dir_ << ".";
+        VLOG(2) << "Added " << kind << ": " << key << " to cache directory "
+                << cache_dir_ << ".";
       }
     }
   }
@@ -418,8 +433,9 @@ void PersistentCompilationCache::AddToCache(int64 key,
   size_t size = cubin.size();
   if (size > 0) { // 0 sized cubin is a result of ptxas failure.
     absl::string_view cubin_str(reinterpret_cast<const char*>(cubin.data()),
-                        	size);
-    AddToCache(key, cubin_str, "cubin");
+                                size);
+    int64 cubin_key = tensorflow::Hash64Combine(key, kCubinHash);
+    AddToCache(cubin_key, cubin_str, "cubin");
   }
 }
 
@@ -445,7 +461,9 @@ bool PersistentCompilationCache::LookupCache(int64 key, std::string &ptx) {
 
 bool PersistentCompilationCache::LookupCache(int64 key,
                                              std::vector<uint8> &cubin) {
-  return LookupCache(key, cubin, "cubin");
+  int64 cubin_key = tensorflow::Hash64Combine(key, kCubinHash);
+
+  return LookupCache(cubin_key, cubin, "cubin");
 }
 
 
@@ -472,13 +490,21 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     absl::get<se::CudaComputeCapability>(gpu_version);
 
   bool use_cache = persistent_compilation_cache_.InUse();
-  bool have_ptx = false;
   int64 key;
+  bool have_ptx = false;
+  bool have_cubin = false;
+  std::vector<uint8> cubin;
   std::string ptx;
   if (use_cache) {
     key = persistent_compilation_cache_.CreateKey(
-      llvm_module, compute_capability, PtxOptsFromConfig(module_config));
-    have_ptx = persistent_compilation_cache_.LookupCache(key, ptx);
+      llvm_module, compute_capability,
+      PtxOptsFromConfig(module_config), use_cache);
+    if (use_cache) {
+      have_ptx = persistent_compilation_cache_.LookupCache(key, ptx);
+    }
+    if (have_ptx) { // Don't look up the cubin if ptx will be recompiled.
+      have_cubin = persistent_compilation_cache_.LookupCache(key, cubin);
+    }
   }
 
   if (!have_ptx) {
@@ -490,13 +516,13 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
       // time, we have a one-element cache, keyed on the module's config's
       // cuda_data_dir.
       if (cached_libdevice_dir_.empty()) {
-	cached_libdevice_dir_ = GetLibdeviceDir(module_config);
+        cached_libdevice_dir_ = GetLibdeviceDir(module_config);
       }
       libdevice_dir = cached_libdevice_dir_;
     }
     VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
     std::unique_ptr<llvm::Module> loaded_module =
-	MaybeLoadLLVMFromFile(debug_module, llvm_module);
+        MaybeLoadLLVMFromFile(debug_module, llvm_module);
     llvm::Module* selected_module = nullptr;
     if (loaded_module) {
       selected_module = loaded_module.get();
@@ -510,21 +536,18 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
           "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
       TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                    module_config, libdevice_dir));
-      if (use_cache) {
-	persistent_compilation_cache_.AddToCache(key, ptx);
-      }
     }
   }
 
-  bool have_cubin = false;
-  std::vector<uint8> cubin;
-  if (have_ptx) {
-    have_cubin = persistent_compilation_cache_.LookupCache(key, cubin);
-  }
   if (!have_cubin) {
     cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability, module_config, relocatable);
-    if (use_cache) {
+  }
+  if (use_cache) {
+    if (!have_ptx) {
+      persistent_compilation_cache_.AddToCache(key, ptx);
+    }
+    if (!have_cubin) {
       persistent_compilation_cache_.AddToCache(key, cubin);
     }
   }

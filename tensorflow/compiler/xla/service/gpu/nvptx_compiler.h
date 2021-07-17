@@ -53,7 +53,7 @@ class PersistentCompilationCache
     PersistentCompilationCache();
     int64 CreateKey(llvm::Module* llvm_module,
                     const se::CudaComputeCapability &compute_capability,
-		    const se::GpuAsmOpts &options);
+		    const se::GpuAsmOpts &options, bool &valid);
     void AddToCache(int64 key, const string &ptx);
     bool LookupCache(int64 key, string &ptx);
     void AddToCache(int64 key, const std::vector<uint8> &cubin);
@@ -64,9 +64,11 @@ class PersistentCompilationCache
     template <typename T> bool LookupCache(int64 key, T &text,
                                            const string &kind);
     // The cache uses the LLVM IR as the hash key for both the PTX and the
-    // CUBIN. kPtxHash is added to the hash when adding or retrieving the PTX
-    // in order to distinguish between the two.
+    // CUBIN. kPtxHash is added to the hash when adding or retrieving the PTX,
+    // kCubinHash is added to the hash when adding or retrieving the Cubin.
+    // The LLVM IR uses the original key
     static constexpr const int64 kPtxHash = 0xBA55ED50;
+    static constexpr const int64 kCubinHash = 0xBA5ADDED;
     bool in_use_;
     string cache_dir_;
     absl::flat_hash_map<int64, string > in_memory_cache_;
