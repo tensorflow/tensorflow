@@ -1565,7 +1565,7 @@ void TF_OperationGetAttrName(TF_Operation* oper, int i, char * output, TF_Status
   AttrValueMap::const_iterator it;
   for(it = attrs.begin() ; it != attrs.end() ; it++) {
     if(count == i) {
-      strcpy(output, it->first.c_str());
+      strncpy(output, it->first.c_str(), it->first.length());
       status->status = Status::OK();
       return;
     }
