@@ -75,6 +75,7 @@ limitations under the License.
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
 using tensorflow::AllocationDescription;
+using tensorflow::AttrValueMap;
 using tensorflow::DataType;
 using tensorflow::ExtendSessionGraphHelper;
 using tensorflow::Graph;
@@ -1549,7 +1550,7 @@ int TF_OperationGetAttrNameLength(TF_Operation* oper, int i) {
   auto attrs = oper->node.attrs();
   int count = 0;
   AttrValueMap::const_iterator it;
-  for(it = attrs.begin() ; it < attrs.end() ; it++) {
+  for(it = attrs.begin() ; it != attrs.end() ; it++) {
     if(count == i) {
       return it->first.length();
     }
@@ -1562,7 +1563,7 @@ void TF_OperationGetAttrName(TF_Operation* oper, int i, char * output, TF_Status
   auto attrs = oper->node.attrs();
   int count = 0;
   AttrValueMap::const_iterator it;
-  for(it = attrs.begin() ; it < attrs.end() ; it++) {
+  for(it = attrs.begin() ; it != attrs.end() ; it++) {
     if(count == i) {
       strcpy(output, it->first.c_str());
       status->status = Status::OK();
@@ -1571,7 +1572,7 @@ void TF_OperationGetAttrName(TF_Operation* oper, int i, char * output, TF_Status
     count++;
   }
   status->status =
-      OutOfRange("Operation only has " + count + " attributes, can't get the " + i + "th");
+      OutOfRange("Operation only has ", count, " attributes, can't get the ", i, "th");
 }
 
 void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,
