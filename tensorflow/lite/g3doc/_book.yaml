@@ -241,6 +241,8 @@ upper_tabs:
       - heading: "Others"
       - title: "Recommendation"
         path: /lite/examples/recommendation/overview
+      - title: "Reinforcement learning"
+        path: /lite/examples/reinforcement_learning/overview
 
     - name: "API"
       skip_translation: true
