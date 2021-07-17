@@ -252,6 +252,12 @@ Status BuildComputationArgumentDescriptions(
     std::vector<XlaCompiler::Argument>* args,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
+  arg_core_mapping->clear();
+  arg_core_mapping->resize(metadata.args_size());
+
+  per_core_arg_shapes->clear();
+  per_core_arg_shapes->resize(metadata.num_cores_per_replica());
+
   // Builds a description of the computation's arguments.
   int constant_count = 0;
   size_t guaranteed_constants_size = 0;
