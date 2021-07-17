@@ -365,6 +365,12 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunctionList(TFE_Op* op,
                                                      const TFE_Op** value,
                                                      int num_values);
 
+TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
+                                                   const char* attr_name,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
+
 // Returns the length (number of tensors) of the input argument `input_name`
 // found in the provided `op`.
 TF_CAPI_EXPORT extern int TFE_OpGetInputLength(TFE_Op* op,
