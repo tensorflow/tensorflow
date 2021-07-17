@@ -26,7 +26,7 @@ namespace eager {
 
 void RemoteMgr::AddOperationOutputs(
     const gtl::ArraySlice<tensorflow::TensorHandle*> handles,
-    int64 operation_id) {
+    int64_t operation_id) {
   mutex_lock l(remote_tensor_handle_mu_);
   for (int i = 0, end = handles.size(); i < end; i++) {
     // TODO(nareshmodi): Correctly handle operation_id not being unique.
@@ -36,7 +36,7 @@ void RemoteMgr::AddOperationOutputs(
 }
 
 void RemoteMgr::AddOperationOutput(tensorflow::TensorHandle* handle,
-                                   int64 operation_id, int32 output_num) {
+                                   int64_t operation_id, int32 output_num) {
   mutex_lock l(remote_tensor_handle_mu_);
   remote_tensor_handle_map_.emplace(
       RemoteTensorHandleInternal(operation_id, output_num), handle);
@@ -124,7 +124,7 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
     TensorHandle* in, const bool wait_until_ready, RemoteTensorHandle* out,
     Device* device, const string& device_name,
     const bool serialize_resource_dtype_and_shape) {
-  int64 op_id;
+  int64_t op_id;
   int32 output_num;
   if (!in->RemoteAddress(device, wait_until_ready, &op_id, &output_num).ok()) {
     tf_shared_lock l(remote_tensor_handle_mu_);
