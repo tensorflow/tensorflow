@@ -847,6 +847,10 @@ TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus EvalProd(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
+  // As we need to support both quantized and non-quantized int8/int16 inputs,
+  // we separate the evaluation between EvalQuantizedProd for quantized
+  // int8/int16 inputs and EvalGeneric for non-quantized int8/int16 (and
+  // other non-quantized types).
   if (op_context.input->quantization.type != kTfLiteNoQuantization) {
     if (op_context.input->type == kTfLiteInt8) {
       return EvalQuantizedProd<int8_t>(context, node, &op_context);

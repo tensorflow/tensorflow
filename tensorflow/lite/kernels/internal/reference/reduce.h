@@ -25,6 +25,8 @@ limitations under the License.
 
 namespace {
 
+// Check if the reduction at index is the first one along the dimensions given
+// in axis.
 bool IsFirstReduction(const int* index, const int num_axis, const int* axis) {
   if (num_axis == 0) {
     return true;
