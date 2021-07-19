@@ -873,6 +873,9 @@ struct ApplyAdam<GPUDevice, T> {
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
     int32 data_dim = grad.dimension(0);
+    if (data_dim == 0) {
+      return;
+    }  // No work load.
     GpuLaunchConfig config = GetGpuLaunchConfig(data_dim, d);
     eigen_assert(static_cast<int64>(grad.dimension(0)) +
                      static_cast<int64>(config.block_count) *
