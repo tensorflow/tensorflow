@@ -160,8 +160,8 @@ def get_local_backend(name=None):
     try:
       return backends[name]
     except KeyError:
-      raise RuntimeError(
-          'Unknown backend %s. Available: %s' % (name, list(backends.keys())))
+      raise RuntimeError('Unknown backend %s. Available: %s' %
+                         (name, list(backends.keys())))
 
   return list(backends.values())[-1]
 
@@ -285,7 +285,6 @@ class ProgramShape(object):
   def __repr__(self):
 """
 
-
 ShapeIndex = _xla.ShapeIndex
 ShapeIndex.__doc__ = """
 A Shape is an object defined in C++ that duck types like the following class:
@@ -395,6 +394,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
     A list of python values, one per replica.
   """
   devices = executable.local_devices()
+
   # pylint: disable=g-complex-comprehension
   def copy_to_devices(pyvals):
     return [backend.buffer_from_pyval(v, d) for v, d in zip(pyvals, devices)]
