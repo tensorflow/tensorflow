@@ -38,6 +38,9 @@ class RefCounted {
   // the object afterward.
   bool Unref() const;
 
+  // Gets the current reference count.
+  int_fast32_t RefCount() const;
+
   // Return whether the reference count is one.
   // If the reference count is used in the conventional way, a
   // reference count of 1 implies that the current thread owns the
@@ -106,6 +109,10 @@ inline bool RefCounted::Unref() const {
   } else {
     return false;
   }
+}
+
+inline int_fast32_t RefCounted::RefCount() const {
+  return ref_.load(std::memory_order_acquire);
 }
 
 inline bool RefCounted::RefCountIsOne() const {
