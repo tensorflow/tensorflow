@@ -2336,6 +2336,10 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64_t core :
            node_and_sharding->sharding.tile_assignment_devices()) {
+        TF_RET_CHECK(core >= 0 && core < num_cores_per_replica)
+            << "core " << core << " should be between [0, "
+            << num_cores_per_replica << "). sharding is "
+            << node_and_sharding->sharding.DebugString();
         args_device_selector.ReportDeviceAssigned(core, i);
       }
       VLOG(3) << "Assigning argument " << i << " (" << n->DebugString()
@@ -2442,6 +2446,10 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64_t core :
            node_and_sharding->sharding.tile_assignment_devices()) {
+        TF_RET_CHECK(core >= 0 && core < num_cores_per_replica)
+            << "core " << core << " should be within [0, "
+            << num_cores_per_replica << "). sharding is "
+            << node_and_sharding->sharding.DebugString();
         retvals_device_selector.ReportDeviceAssigned(core, i);
       }
       VLOG(3) << "Assigning return value " << i << " ("
