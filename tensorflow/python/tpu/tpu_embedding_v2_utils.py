@@ -884,6 +884,12 @@ class FeatureConfig(object):
     self.table = table
     self.max_sequence_length = max_sequence_length
     self.name = name
+
+    if not isinstance(
+        validate_weights_and_indices, bool):
+      raise ValueError("validate_weights_and_indices must be a bool, received "
+                       "{} instead.".format(validate_weights_and_indices))
+
     self.validate_weights_and_indices = validate_weights_and_indices
 
   def __repr__(self):

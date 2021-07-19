@@ -230,7 +230,18 @@ cc_library(
 
 cc_library(
     name = "gpu_plugin",
+    deps = [
+        ":gpu_plugin_impl",
+    ],
+)
+
+cc_library(
+    name = "gpu_plugin_impl",
     srcs = ["gpu_plugin.cc"],
+    hdrs = ["gpu_plugin.h"],
+    visibility = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
+    ],
     deps = [
         ":configuration_fbs",
         ":delegate_registry",

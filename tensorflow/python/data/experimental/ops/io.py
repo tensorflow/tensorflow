@@ -29,6 +29,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import tracking
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -45,7 +47,8 @@ nested_structure_coder = lazy_loader.LazyLoader(
 def save(dataset,
          path,
          compression=None,
-         shard_func=None):
+         shard_func=None,
+         checkpoint_args=None):
   """Saves the content of the given dataset.
 
   Example usage:
@@ -74,6 +77,22 @@ def save(dataset,
       path="/path/to/data", ..., shard_func=custom_shard_func)
   ```
 
+  To enable checkpointing, pass in `checkpoint_args` to the `save` method
+  as follows:
+  ```python
+       dataset = tf.data.Dataset.range(100)
+       save_dir = "..."
+       checkpoint_prefix = "..."
+       step_counter = tf.Variable(0, trainable=False)
+       checkpoint_args = {
+         "checkpoint_interval": 50,
+         "step_counter": step_counter,
+         "directory": checkpoint_prefix,
+         "max_to_keep": 20,
+        }
+        dataset.save(dataset, save_dir, checkpoint_args=checkpoint_args)
+   ```
+
   NOTE: The directory layout and file format used for saving the dataset is
   considered an implementation detail and may change. For this reason, datasets
   saved through `tf.data.experimental.save` should only be consumed through
@@ -88,11 +107,31 @@ def save(dataset,
       to file shards. The function is expected to map elements of the input
       dataset to int64 shard IDs. If present, the function will be traced and
       executed as graph computation.
+    checkpoint_args: Optional args for checkpointing which will be passed into
+      the `tf.train.CheckpointManager`. If `checkpoint_args` are not specified,
+      then checkpointing will not be performed. The `save()` implementation
+      creates a `tf.train.Checkpoint` object internally, so users should not
+      set the `checkpoint` argument in `checkpoint_args`.
+  Raises:
+    ValueError if `checkpoint` is passed into `checkpoint_args`.
   """
-  if (context.executing_eagerly() and compat.forward_compatible(2021, 6, 29)):
+  if (context.executing_eagerly() and checkpoint_args
+      and compat.forward_compatible(2021, 6, 29)):
     save_dataset = _SaveDataset(dataset, path, shard_func, compression)
-    for _ in save_dataset:
-      pass
+    save_iterator = iter(save_dataset)
+
+    if "checkpoint" in checkpoint_args:
+      raise ValueError(
+          "'checkpoint_args' are not allowed to include 'checkpoint'")
+    checkpoint = tracking.util.Checkpoint(iterator=save_iterator)
+    checkpoint_args["checkpoint"] = checkpoint
+    manager = checkpoint_management.CheckpointManager(**checkpoint_args)
+    checkpoint.restore(manager.latest_checkpoint)
+
+    for _ in enumerate(save_iterator):
+      if "step_counter" in checkpoint_args:
+        checkpoint_args["step_counter"].assign_add(delta=1)
+      manager.save(check_interval=True)
   else:
     dataset, shard_func, use_shard_func, path = _set_save_dataset_attributes(
         dataset, shard_func, path)

@@ -2260,7 +2260,7 @@ versions {
   // Returns cost based on op.
   Costs SimplePredictCosts(const OpContext& op_context) const {
     Costs c;
-    int64 exec_cost = 0;
+    int64_t exec_cost = 0;
     if (op_context.op_info.op() == "MatMul") {
       exec_cost = 2000000000;
     } else if (op_context.op_info.op() == "RandomUniform") {
@@ -2370,9 +2370,9 @@ versions {
   void ValidateDependencyChain(
       const std::unordered_map<string, int64>& start_times,
       const std::vector<string>& nodes_in_dependency_order) {
-    int64 prev_node_time = -1;
+    int64_t prev_node_time = -1;
     for (const auto& node : nodes_in_dependency_order) {
-      int64 curr_node_time = start_times.at(node);
+      int64_t curr_node_time = start_times.at(node);
       EXPECT_GE(curr_node_time, prev_node_time);
       prev_node_time = curr_node_time;
     }
@@ -2439,8 +2439,8 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   std::map<string, std::pair<int64, int64>> start_end_times;
   for (const auto& device_step_stats : stepstats.dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
-      int64 start = stats.all_start_micros();
-      int64 end = start + stats.all_end_rel_micros();
+      int64_t start = stats.all_start_micros();
+      int64_t end = start + stats.all_end_rel_micros();
       start_end_times[stats.node_name()] = std::pair<int64, int64>(start, end);
 
       // Make sure that the output properties are correct for
@@ -2462,16 +2462,16 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   }
 
   // The base start_time is the time to compute RandomUniforms
-  int64 cur_time = static_cast<int64>(5000005);
+  int64_t cur_time = static_cast<int64>(5000005);
   // The increment is the execution time of one matmul. See
   // CreateGrapplerItemWithMatmulChain for details.
-  int64 increment = static_cast<int64>(2000000);
+  int64_t increment = static_cast<int64>(2000000);
   auto op_names = {"ab", "abc", "abcd", "abcde"};
   for (const auto& op_name : op_names) {
-    int64 actual_start = start_end_times[op_name].first;
-    int64 actual_end = start_end_times[op_name].second;
-    int64 expected_start = cur_time;
-    int64 expected_end = cur_time + increment;
+    int64_t actual_start = start_end_times[op_name].first;
+    int64_t actual_end = start_end_times[op_name].second;
+    int64_t expected_start = cur_time;
+    int64_t expected_end = cur_time + increment;
     EXPECT_EQ(expected_start, actual_start);
     EXPECT_EQ(expected_end, actual_end);
     cur_time += increment;
@@ -2522,7 +2522,7 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
 
   // out node adds 4 tensors, each with 10x10x10x10, so the peak memory usage
   // is 4 x the input tensor size while executing the out node.
-  int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
   const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
             cpu_state.max_memory_usage);
@@ -2574,7 +2574,7 @@ TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
   const auto& cpu_state_0 = device_states->at(kCPU0);
   const auto& cpu_state_1 = device_states->at(kCPU1);
   // All tensors are of the same size, 10 x 10 x 10 x 10.
-  int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  int64_t one_input_node_size = 4 * 10 * 10 * 10 * 10;
   const std::vector<string> cpu_0_expected_tensors = {"x", "y"};
   const std::vector<string> cpu_1_expected_tensors = {"x", "y", "add"};
   EXPECT_EQ(cpu_0_expected_tensors.size() * one_input_node_size,
@@ -2610,7 +2610,7 @@ TEST_F(VirtualSchedulerTest, ControlDependency) {
 
   // The graph has a NoOp that takes control dependency from 7 NoOps. The peak
   // memory usage is when executing the final NoOp.
-  int64 one_input_node_size = 4;  // control dependency
+  int64_t one_input_node_size = 4;  // control dependency
   const std::vector<string> expected_names = {"x", "y", "z", "w",
                                               "u", "v", "t"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
@@ -2644,7 +2644,7 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
   //  z4 = control dependency from bn.
   //  Note that bn.mean doesn't have any consumer.
   const int x_size = batch_size_ * width_ * height_ * depth_in_;
-  int64 expected_size =
+  int64_t expected_size =
       4 * (2 * x_size /* x and bn.y */ + depth_in_ /* bn.var */ +
            1 /* control dependency */);
   EXPECT_EQ(expected_size, cpu_state.memory_usage);
@@ -2743,10 +2743,10 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   int num_next_iteration_1 = 0;
   int num_exit = 0;
   int num_exit_1 = 0;
-  int64 next_iter_start_micro;
-  int64 next_iter_1_start_micro;
-  int64 exit_start_micro;
-  int64 exit_1_start_micro;
+  int64_t next_iter_start_micro;
+  int64_t next_iter_1_start_micro;
+  int64_t exit_start_micro;
+  int64_t exit_1_start_micro;
 
   std::unordered_map<string, int64> start_times;
   for (const auto& device_step_stats : metadata.step_stats().dev_stats()) {

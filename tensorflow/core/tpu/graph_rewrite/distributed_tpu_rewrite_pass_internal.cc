@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static int64 overridden_node_id = -1;
+static int64_t overridden_node_id = -1;
 
 }  // namespace
 

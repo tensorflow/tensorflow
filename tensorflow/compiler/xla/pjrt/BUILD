@@ -477,6 +477,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//third_party/eigen3",
         "@com_google_absl//absl/numeric:int128",

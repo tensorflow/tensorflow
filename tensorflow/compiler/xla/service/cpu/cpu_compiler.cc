@@ -111,6 +111,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
+#include "tensorflow/compiler/xla/service/reduce_scatter_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
@@ -171,7 +172,7 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
 
 CpuAotCompilationResult::CpuAotCompilationResult(
     ObjectFileData object_file_data, std::vector<BufferInfo> buffer_infos,
-    int64 result_buffer_index,
+    int64_t result_buffer_index,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
     : object_file_data_(std::move(object_file_data)),
       buffer_infos_(std::move(buffer_infos)),
@@ -328,6 +329,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<AllGatherDecomposer>();
   pipeline.AddPass<AllToAllDecomposer>();
+  pipeline.AddPass<ReduceScatterDecomposer>();
 
   // Inline computations with a single call site.
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
@@ -395,7 +397,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<ConditionalSimplifier>();
   }();
 
-  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64) {
+  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
     return sort->operand(0)->shape().element_type() == F32;
   });
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
@@ -860,7 +862,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     const auto& field_name = fn_and_name.second;
     bool first_module_val =
         (modules[0]->config().debug_options().*field_method_ptr)();
-    for (int64 i = 0; i < modules.size(); ++i) {
+    for (int64_t i = 0; i < modules.size(); ++i) {
       bool cur_module_val =
           (modules[i]->config().debug_options().*field_method_ptr)();
       if (first_module_val != cur_module_val) {

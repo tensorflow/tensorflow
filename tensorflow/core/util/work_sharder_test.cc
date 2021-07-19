@@ -27,15 +27,16 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void RunSharding(int64 num_workers, int64 total, int64 cost_per_unit,
-                 int64 per_thread_max_parallelism,
+void RunSharding(int64_t num_workers, int64_t total, int64_t cost_per_unit,
+                 int64_t per_thread_max_parallelism,
                  thread::ThreadPool* threads) {
   mutex mu;
-  int64 num_shards = 0;
-  int64 num_done_work = 0;
+  int64_t num_shards = 0;
+  int64_t num_done_work = 0;
   std::vector<bool> work(total, false);
   Shard(num_workers, threads, total, cost_per_unit,
-        [=, &mu, &num_shards, &num_done_work, &work](int64 start, int64 limit) {
+        [=, &mu, &num_shards, &num_done_work, &work](int64_t start,
+                                                     int64_t limit) {
           VLOG(1) << "Shard [" << start << "," << limit << ")";
           EXPECT_GE(start, 0);
           EXPECT_LE(limit, total);
@@ -78,11 +79,11 @@ TEST(Shard, Basic) {
 TEST(Shard, OverflowTest) {
   thread::ThreadPool threads(Env::Default(), "test", 3);
   for (auto workers : {1, 2, 3}) {
-    const int64 total_elements = 1LL << 32;
-    const int64 cost_per_unit = 10;
+    const int64_t total_elements = 1LL << 32;
+    const int64_t cost_per_unit = 10;
     std::atomic<int64> num_elements(0);
     Shard(workers, &threads, total_elements, cost_per_unit,
-          [&num_elements](int64 start, int64 limit) {
+          [&num_elements](int64_t start, int64_t limit) {
             num_elements += limit - start;
           });
     EXPECT_EQ(num_elements.load(), total_elements);
@@ -93,8 +94,8 @@ void BM_Sharding(::testing::benchmark::State& state) {
   const int arg = state.range(0);
 
   thread::ThreadPool threads(Env::Default(), "test", 16);
-  const int64 total = 1LL << 30;
-  auto lambda = [](int64 start, int64 limit) {};
+  const int64_t total = 1LL << 30;
+  auto lambda = [](int64_t start, int64_t limit) {};
   auto work = std::cref(lambda);
   for (auto s : state) {
     Shard(arg - 1, &threads, total, 1, work);

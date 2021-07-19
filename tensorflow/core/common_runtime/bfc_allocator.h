@@ -135,7 +135,7 @@ class BFCAllocator : public Allocator {
 
   // Overloaded AddTraceMe function with chunk information.
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
-                  int64 req_bytes, int64 alloc_bytes)
+                  int64_t req_bytes, int64_t alloc_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator

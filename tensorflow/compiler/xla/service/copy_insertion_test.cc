@@ -3225,7 +3225,7 @@ ENTRY entry {
   CopyInsertion copy_insertion(nullptr,
                                /*use_region_based_live_range_analysis=*/true);
   SequentialHloOrdering ordering(module->schedule());
-  ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(ordering, module.get()));
+  ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(&ordering, module.get()));
   auto while_1 = FindInstruction(module.get(), "while.1");
   EXPECT_THAT(while_1, op::While(op::Tuple(op::Copy())));
 }

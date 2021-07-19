@@ -154,9 +154,9 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
                                        .begin();
     for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
       int dim = i + 1;
-      tensorflow::int64 output_size;
-      tensorflow::int64 pad_low_int64;
-      tensorflow::int64 pad_high_int64;
+      int64_t output_size;
+      int64_t pad_low_int64;
+      int64_t pad_high_int64;
       tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
           conv_op.lhs().getType().cast<ShapedType>().getDimSize(
               *(input_spatial_dim_iter + i)),
@@ -1525,6 +1525,12 @@ class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
   LegalizeHloToTf() = default;
   LegalizeHloToTf(const LegalizeHloToTf &) {}
 
+  StringRef getArgument() const final { return "tf-legalize-hlo"; }
+
+  StringRef getDescription() const final {
+    return "Legalize from HLO to the TF dialect";
+  }
+
   /// Performs the legalization to the TF dialect.
   void runOnFunction() override;
 };
@@ -1864,8 +1870,7 @@ void LegalizeHloToTf::runOnFunction() {
   }
 }
 
-static PassRegistration<LegalizeHloToTf> pass(
-    "tf-legalize-hlo", "Legalize from HLO to the TF dialect");
+static PassRegistration<LegalizeHloToTf> pass;
 
 }  // end namespace
 

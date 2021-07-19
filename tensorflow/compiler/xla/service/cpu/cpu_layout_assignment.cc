@@ -126,7 +126,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
           ColMajorShape(op->shape()), instruction, *op_idx));
     } else {
-      for (int64 operand_no = 0; operand_no < instruction->operand_count();
+      for (int64_t operand_no = 0; operand_no < instruction->operand_count();
            ++operand_no) {
         // Skip operands which already have a constraint.
         if (constraints->OperandLayout(instruction, operand_no) != nullptr) {

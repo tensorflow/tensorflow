@@ -937,6 +937,7 @@ class StrategyBase(object):
   # pylint: enable=line-too-long
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED, moving to `extended`
+  @deprecated(None, "use extended.colocate_vars_with() instead.")
   def colocate_vars_with(self, colocate_with_variable):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
@@ -959,6 +960,7 @@ class StrategyBase(object):
           input_fn, replication_mode=replication_mode)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED: TF 1.x only
+  @deprecated(None, "use run() instead")
   def experimental_run(self, fn, input_iterator=None):
     """DEPRECATED TF 1.x ONLY."""
     with self.scope():
@@ -1490,6 +1492,7 @@ class StrategyBase(object):
     return math_ops.truediv(numer, denom)
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED
+  @deprecated(None, "use `experimental_local_results` instead.")
   def unwrap(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
@@ -1542,6 +1545,7 @@ class StrategyBase(object):
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
 
   @doc_controls.do_not_doc_inheritable  # DEPRECATED: see doc string
+  @deprecated(None, "use `update_config_proto` instead.")
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
@@ -1942,6 +1946,10 @@ class StrategyV1(StrategyBase):
     return self.extended.experimental_make_numpy_dataset(
         numpy_input, session=session)
 
+  @deprecated(
+      None,
+      "This method is not available in TF 2.x. Please switch to using `run` instead."
+  )
   def experimental_run(self, fn, input_iterator=None):  # pylint: disable=useless-super-delegation
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
 
@@ -2747,6 +2755,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
+  @deprecated(None, "please use `run` instead.")
   def experimental_run_steps_on_iterator(self,
                                          fn,
                                          iterator,
@@ -3424,7 +3433,7 @@ class ReplicaContext(ReplicaContextBase):
 
     Example usage:
 
-    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'CPU:0']) # 2 replicas
+    >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'GPU:1']) # 2 replicas
     >>> with strategy.scope():
     ...   distributed_variable = tf.Variable(5.0)
     >>> distributed_variable

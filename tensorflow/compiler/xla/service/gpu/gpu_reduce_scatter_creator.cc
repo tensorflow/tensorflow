@@ -28,7 +28,7 @@ namespace gpu {
 
 StatusOr<bool> ReduceScatterCreator::Run(HloModule *module) {
   const HloModuleConfig &config = module->config();
-  int64 next_channel_id = hlo_query::NextChannelId(*module);
+  int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
   for (HloComputation *computation : module->MakeNonfusionComputations()) {
@@ -52,7 +52,7 @@ StatusOr<bool> ReduceScatterCreator::Run(HloModule *module) {
       // Convert to all-reduce scatter. The output shape of the all-reduce
       // scatter will the same as the input shape, except the split dim size is
       // that of the result of the dynamic slice.
-      const int64 split_dim = ar_spec->split_dim;
+      const int64_t split_dim = ar_spec->split_dim;
       Shape scatter_shape = ar->shape();
       TF_RET_CHECK(scatter_shape.dimensions(split_dim) % ar_spec->group_size ==
                    0);

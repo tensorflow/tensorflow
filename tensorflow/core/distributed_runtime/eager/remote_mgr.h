@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 
-const int64 kInvalidRemoteOpId = -1;
+const int64_t kInvalidRemoteOpId = -1;
 
 // This class manages the states required to setup an eager cluster.
 // TODO(fishx): Move remote state from context to this class.
@@ -45,10 +45,10 @@ class RemoteMgr {
 
   void AddOperationOutputs(
       const gtl::ArraySlice<tensorflow::TensorHandle*> handles,
-      int64 operation_id);
+      int64_t operation_id);
 
-  void AddOperationOutput(tensorflow::TensorHandle* handles, int64 operation_id,
-                          int32 output_num);
+  void AddOperationOutput(tensorflow::TensorHandle* handles,
+                          int64_t operation_id, int32 output_num);
 
   Status GetTensorHandle(const RemoteTensorHandleInternal& remote_handle,
                          tensorflow::TensorHandle** handle);

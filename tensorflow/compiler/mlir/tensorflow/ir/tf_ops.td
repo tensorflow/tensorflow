@@ -721,7 +721,7 @@ element_dtype: the desired type of elements in the list.
   );
 }
 
-def TF_VarHandleOp : TF_Op<"VarHandleOp", [TF_ResourceHandleAllocatorInterface]> {
+def TF_VarHandleOp : TF_Op<"VarHandleOp", [DeclareOpInterfaceMethods<TF_ResourceHandleAllocatorInterface>]> {
   let summary = "Creates a handle to a Variable resource from its name.";
 
   let description = [{
@@ -765,11 +765,6 @@ Example:
       [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
   let extraClassDeclaration = [{
-    // TF_ResourceHandleAllocatorInterface:
-    ResourceHandleValueAndId GetResourceHandleValueAndId(
-      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
-      int64_t &next_id);
-
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
 
     ResourceType resource_type() {
@@ -1157,7 +1152,7 @@ event: A string containing a binary-encoded tf.Event proto.
   let results = (outs);
 }
 
-def TF_SummaryWriterOp : TF_Op<"SummaryWriter", [TF_ResourceHandleAllocatorInterface]> {
+def TF_SummaryWriterOp : TF_Op<"SummaryWriter", [DeclareOpInterfaceMethods<TF_ResourceHandleAllocatorInterface>]> {
   let summary = "Returns a handle to be used to access a summary writer.";
 
   let description = [{
@@ -1175,13 +1170,6 @@ writer: the summary writer resource. Scalar handle.
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_SummaryAlloc]>:$writer
   );
-
-  let extraClassDeclaration = [{
-    // TF_ResourceHandleAllocatorInterface:
-    ResourceHandleValueAndId GetResourceHandleValueAndId(
-      llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
-      int64_t &next_id);
-  }];
 }
 
 def TF_WriteAudioSummaryOp : TF_Op<"WriteAudioSummary", []> {

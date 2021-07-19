@@ -108,8 +108,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
   StatusOr<GetOrRegisterDatasetResponse> RegisterDataset() {
     GetOrRegisterDatasetRequest request;
     GetOrRegisterDatasetResponse response;
-    TF_ASSIGN_OR_RETURN(*request.mutable_dataset(),
-                        RangeSquareDataset(/*range=*/10));
+    *request.mutable_dataset() = RangeSquareDataset(/*range=*/10);
     ClientContext context;
     TF_RETURN_IF_ERROR(
         FromGrpcStatus(dispatcher_client_stub_->GetOrRegisterDataset(

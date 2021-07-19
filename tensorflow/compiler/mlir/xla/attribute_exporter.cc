@@ -99,7 +99,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
   auto replica_group_values_it = input.getValues<uint64_t>().begin();
   std::vector<ReplicaGroup> replica_groups(type.getDimSize(0));
   for (ReplicaGroup& group : replica_groups) {
-    for (int64 element_idx = 0; element_idx < type.getDimSize(1);
+    for (int64_t element_idx = 0; element_idx < type.getDimSize(1);
          ++element_idx, ++replica_group_values_it) {
       // For replica group attribute, -1 indicates padding added by
       // HloFunctionImporter::ConvertReplicaGroups. This should always be at the
@@ -124,9 +124,9 @@ StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
   auto it = attr.getValues<int64>().begin();
   std::vector<std::pair<int64, int64>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
-    int64 first = *it;
+    int64_t first = *it;
     ++it;
-    int64 second = *it;
+    int64_t second = *it;
     ++it;
     item = {first, second};
   }

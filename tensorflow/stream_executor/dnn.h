@@ -68,11 +68,11 @@ inline int64 GetDim(absl::Span<const int64> data, DimIndex dim) {
   return data.rbegin()[static_cast<int64>(dim)];
 }
 
-inline void SetDim(absl::Span<int64> data, DimIndex dim, int64 value) {
+inline void SetDim(absl::Span<int64> data, DimIndex dim, int64_t value) {
   data.rbegin()[static_cast<int64>(dim)] = value;
 }
 
-inline void SetDim(std::vector<int64>* data, DimIndex dim, int64 value) {
+inline void SetDim(std::vector<int64>* data, DimIndex dim, int64_t value) {
   return SetDim(absl::MakeSpan(*data), dim, value);
 }
 
@@ -281,24 +281,33 @@ class BatchDescriptor {
   // layout.
   std::vector<int64> full_strides(const DataLayout& layout) const;
 
+  // Vectorized dimensions where users can specify the dimension that the number
+  // of dimensions is reported rather than the full number of elements.
+  std::vector<int64> vectorized_dims(const DataLayout& layout, int vector_size,
+                                     int vector_dim) const;
+
+  // Vectorized strides correspond to the vectorized_dims.
+  std::vector<int64> vectorized_strides(const DataLayout& layout,
+                                        int vector_size, int vector_dim) const;
+
   // Named-argument helpers for avoiding user error during construction.
-  BatchDescriptor& set_count(int64 value) {
+  BatchDescriptor& set_count(int64_t value) {
     tensor_.set_dimensions(0, value);
     return *this;
   }
-  BatchDescriptor& set_feature_map_count(int64 value) {
+  BatchDescriptor& set_feature_map_count(int64_t value) {
     tensor_.set_dimensions(1, value);
     return *this;
   }
-  BatchDescriptor& set_height(int64 value) {
+  BatchDescriptor& set_height(int64_t value) {
     SetDim(spatial_size(), DimIndex::Y, value);
     return *this;
   }
-  BatchDescriptor& set_width(int64 value) {
+  BatchDescriptor& set_width(int64_t value) {
     SetDim(spatial_size(), DimIndex::X, value);
     return *this;
   }
-  BatchDescriptor& set_spatial_dim(DimIndex dim, int64 value) {
+  BatchDescriptor& set_spatial_dim(DimIndex dim, int64_t value) {
     SetDim(spatial_size(), dim, value);
     return *this;
   }
@@ -402,19 +411,19 @@ class FilterDescriptor {
   ~FilterDescriptor();
 
   // Named-argument helpers for avoiding user error during construction.
-  FilterDescriptor& set_output_feature_map_count(int64 value) {
+  FilterDescriptor& set_output_feature_map_count(int64_t value) {
     tensor_.set_dimensions(0, value);
     return *this;
   }
-  FilterDescriptor& set_input_feature_map_count(int64 value) {
+  FilterDescriptor& set_input_feature_map_count(int64_t value) {
     tensor_.set_dimensions(1, value);
     return *this;
   }
-  FilterDescriptor& set_input_filter_height(int64 value) {
+  FilterDescriptor& set_input_filter_height(int64_t value) {
     SetDim(input_filter_dims(), DimIndex::Y, value);
     return *this;
   }
-  FilterDescriptor& set_input_filter_width(int64 value) {
+  FilterDescriptor& set_input_filter_width(int64_t value) {
     SetDim(input_filter_dims(), DimIndex::X, value);
     return *this;
   }
@@ -422,7 +431,7 @@ class FilterDescriptor {
     tensor_.set_filter_layout(layout);
     return *this;
   }
-  FilterDescriptor& set_spatial_dim(DimIndex dim, int64 value) {
+  FilterDescriptor& set_spatial_dim(DimIndex dim, int64_t value) {
     SetDim(input_filter_dims(), dim, value);
     return *this;
   }
@@ -467,6 +476,15 @@ class FilterDescriptor {
   // Full strides of the underlying filter,
   // ordered according to a specific layout.
   std::vector<int64> full_strides(const FilterLayout& layout) const;
+
+  // Vectorized dimensions where users can specify the dimension that the number
+  // of dimensions is reported rather than the full number of elements.
+  std::vector<int64> vectorized_dims(const FilterLayout& layout,
+                                     int vector_size, int vector_dim) const;
+
+  // Vectorized strides correspond to the vectorized_dims.
+  std::vector<int64> vectorized_strides(const FilterLayout& layout,
+                                        int vector_size, int vector_dim) const;
 
  private:
   absl::Span<int64> input_filter_dims() {
@@ -532,39 +550,39 @@ class ConvolutionDescriptor {
   std::string ToShortString() const;
   ConvolutionDescriptorProto ToProto() const { return proto_; }
 
-  ConvolutionDescriptor& set_zero_padding_height(int64 value) {
+  ConvolutionDescriptor& set_zero_padding_height(int64_t value) {
     SetDim(padding(), DimIndex::Y, value);
     return *this;
   }
-  ConvolutionDescriptor& set_zero_padding_width(int64 value) {
+  ConvolutionDescriptor& set_zero_padding_width(int64_t value) {
     SetDim(padding(), DimIndex::X, value);
     return *this;
   }
-  ConvolutionDescriptor& set_zero_padding(DimIndex dim, int64 value) {
+  ConvolutionDescriptor& set_zero_padding(DimIndex dim, int64_t value) {
     SetDim(padding(), dim, value);
     return *this;
   }
-  ConvolutionDescriptor& set_vertical_filter_stride(int64 value) {
+  ConvolutionDescriptor& set_vertical_filter_stride(int64_t value) {
     SetDim(strides(), DimIndex::Y, value);
     return *this;
   }
-  ConvolutionDescriptor& set_horizontal_filter_stride(int64 value) {
+  ConvolutionDescriptor& set_horizontal_filter_stride(int64_t value) {
     SetDim(strides(), DimIndex::X, value);
     return *this;
   }
-  ConvolutionDescriptor& set_filter_stride(DimIndex dim, int64 value) {
+  ConvolutionDescriptor& set_filter_stride(DimIndex dim, int64_t value) {
     SetDim(strides(), dim, value);
     return *this;
   }
-  ConvolutionDescriptor& set_vertical_dilation_rate(int64 value) {
+  ConvolutionDescriptor& set_vertical_dilation_rate(int64_t value) {
     SetDim(dilations(), DimIndex::Y, value);
     return *this;
   }
-  ConvolutionDescriptor& set_horizontal_dilation_rate(int64 value) {
+  ConvolutionDescriptor& set_horizontal_dilation_rate(int64_t value) {
     SetDim(dilations(), DimIndex::X, value);
     return *this;
   }
-  ConvolutionDescriptor& set_dilation_rate(DimIndex dim, int64 value) {
+  ConvolutionDescriptor& set_dilation_rate(DimIndex dim, int64_t value) {
     SetDim(dilations(), dim, value);
     return *this;
   }
@@ -681,39 +699,39 @@ class PoolingDescriptor {
     mode_ = value;
     return *this;
   }
-  PoolingDescriptor& set_window_height(int64 value) {
+  PoolingDescriptor& set_window_height(int64_t value) {
     SetDim(&window_, DimIndex::Y, value);
     return *this;
   }
-  PoolingDescriptor& set_window_width(int64 value) {
+  PoolingDescriptor& set_window_width(int64_t value) {
     SetDim(&window_, DimIndex::X, value);
     return *this;
   }
-  PoolingDescriptor& set_window(DimIndex dim, int64 value) {
+  PoolingDescriptor& set_window(DimIndex dim, int64_t value) {
     SetDim(&window_, dim, value);
     return *this;
   }
-  PoolingDescriptor& set_vertical_padding(int64 value) {
+  PoolingDescriptor& set_vertical_padding(int64_t value) {
     SetDim(&padding_, DimIndex::Y, value);
     return *this;
   }
-  PoolingDescriptor& set_horizontal_padding(int64 value) {
+  PoolingDescriptor& set_horizontal_padding(int64_t value) {
     SetDim(&padding_, DimIndex::X, value);
     return *this;
   }
-  PoolingDescriptor& set_padding(DimIndex dim, int64 value) {
+  PoolingDescriptor& set_padding(DimIndex dim, int64_t value) {
     SetDim(&padding_, dim, value);
     return *this;
   }
-  PoolingDescriptor& set_vertical_stride(int64 value) {
+  PoolingDescriptor& set_vertical_stride(int64_t value) {
     SetDim(&strides_, DimIndex::Y, value);
     return *this;
   }
-  PoolingDescriptor& set_horizontal_stride(int64 value) {
+  PoolingDescriptor& set_horizontal_stride(int64_t value) {
     SetDim(&strides_, DimIndex::X, value);
     return *this;
   }
-  PoolingDescriptor& set_stride(DimIndex dim, int64 value) {
+  PoolingDescriptor& set_stride(DimIndex dim, int64_t value) {
     SetDim(&strides_, dim, value);
     return *this;
   }
@@ -1276,7 +1294,6 @@ class DnnSupport {
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused,
       CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
@@ -1349,14 +1366,12 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused,
       CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused,
       CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
@@ -1824,10 +1839,10 @@ class DnnSupport {
   //  bottom_pad: Amount to pad the input at the bottom (high Y).
   //  output_data: un-owned device memory region in which to place the
   //    padded result.
-  virtual bool DoXYPad(Stream* stream, const dnn::BatchDescriptor &dimensions,
-                       const DeviceMemory<float> &input_data,
-                       int64 left_pad, int64 right_pad, int64 top_pad,
-                       int64 bottom_pad, DeviceMemory<float> *output_data) = 0;
+  virtual bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
+                       const DeviceMemory<float>& input_data, int64_t left_pad,
+                       int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
+                       DeviceMemory<float>* output_data) = 0;
 
   // Extracts a slice of the input in the X and Y dimensions. The feature_map
   // dimension is unchanged.
@@ -1844,10 +1859,11 @@ class DnnSupport {
   //  bottom_trim: Amount to cut off the input at the bottom (high Y).
   //  output_data: un-owned device memory region in which to place the
   //    padded result.
-  virtual bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor &dimensions,
-                    const DeviceMemory<float> &input_data,
-                    int64 left_trim, int64 right_trim, int64 top_trim,
-                    int64 bottom_trim, DeviceMemory<float> *output_data) = 0;
+  virtual bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
+                         const DeviceMemory<float>& input_data,
+                         int64_t left_trim, int64_t right_trim,
+                         int64_t top_trim, int64_t bottom_trim,
+                         DeviceMemory<float>* output_data) = 0;
 
   // Grows the input tensor by replicating the X and Y dimensions. The batch and
   // depth/feature_map dimensions are unchanged. Currently, the input tensor is
@@ -1881,7 +1897,7 @@ class DnnSupport {
   virtual bool DoXYBroadcast(Stream* stream,
                              const dnn::BatchDescriptor& dimensions,
                              const DeviceMemory<float>& input_data,
-                             int64 replicate_x, int64 replicate_y,
+                             int64_t replicate_x, int64_t replicate_y,
                              DeviceMemory<float>* output_data) {
     return false;
   }
@@ -1905,7 +1921,7 @@ class DnnSupport {
   //  size: size in bytes of the host_dst host memory region.
   virtual bool DoMemcpyD2HQuantized(
       Stream* stream, const DeviceMemory<float>& gpu_unquantized_src,
-      QuantizedActivationMode mode, void* host_dst, int64 size) = 0;
+      QuantizedActivationMode mode, void* host_dst, int64_t size) = 0;
 
   // Enqueues an asynchronous memcpy of 'host_dst' into the *quantized* input
   // of a layer (that is, bytes instead of scaled floats) if they are supported
@@ -1925,7 +1941,7 @@ class DnnSupport {
   //    representation on the device for this operation to
   //    succeed.
   virtual bool DoMemcpyH2DQuantized(
-      Stream* stream, const void* host_src, int64 size,
+      Stream* stream, const void* host_src, int64_t size,
       QuantizedActivationMode mode,
       DeviceMemory<float>* gpu_unquantized_dst) = 0;
 

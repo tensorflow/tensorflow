@@ -148,6 +148,8 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:

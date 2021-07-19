@@ -20,7 +20,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.B"() : () -> ()
       "tf.C"() : () -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -41,7 +41,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
       "tf.C"(%b) : (tensor<i32>) -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -64,7 +64,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %c = "tf.C"(%b) : (tensor<i32>) -> tensor<i32>
       "tf.D"(%c) : (tensor<i32>) -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -83,7 +83,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT: {
     // CHECK-DAG:  num_cores_per_replica = 1
     // CHECK-DAG:  step_marker_location = ""
-    // CHECK-DAG:  padding_map = []
     // CHECK-DAG:  topology = ""
     // CHECK-DAG:  device_assignment = []
     %cluster:3 = "tf_device.cluster"() ( {
@@ -91,7 +90,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
       %c = "tf.C"(%b) : (tensor<i32>) -> tensor<i32>
       tf_device.return %a, %c, %b : tensor<i32>, tensor<i32>, tensor<i32>
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> (tensor<i32>, tensor<i32>, tensor<i32>)
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> (tensor<i32>, tensor<i32>, tensor<i32>)
     // CHECK:      return %[[LAUNCH_OUT]], %[[CLUSTER_OUT]]#0, %[[CLUSTER_OUT]]#1
     return %cluster#0, %cluster#1, %cluster#2 : tensor<i32>, tensor<i32>, tensor<i32>
   }
@@ -115,7 +114,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %b = "tf.B"(%a) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
       %c = "tf.C"(%b, %arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
       tf_device.return %c : tensor<i32>
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<i32>
     // CHECK:      return %[[LAUNCH_OUT]]
     return %cluster : tensor<i32>
   }
@@ -141,7 +140,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"(%b, %arg0) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>) -> ()
       "tf.D"(%b) : (tensor<i32>) -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -163,7 +162,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
         %a = "tf.A"(%ri) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
         "tf.B"(%a) : (tensor<i32>) -> ()
         tf_device.return
-      }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+      }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
       tf_device.return
     }
     return
@@ -212,7 +211,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT: {
     // CHECK-DAG:  num_cores_per_replica = 1
     // CHECK-DAG:  step_marker_location = ""
-    // CHECK-DAG:  padding_map = []
     // CHECK-DAG:  topology = ""
     // CHECK-DAG:  device_assignment = []
     //
@@ -226,7 +224,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.B"(%a) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> ()
       "tf.NoOp"() : () -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -239,7 +237,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT: {
     // CHECK-DAG:  num_cores_per_replica = 1
     // CHECK-DAG:  step_marker_location = ""
-    // CHECK-DAG:  padding_map = []
     // CHECK-DAG:  topology = ""
     // CHECK-DAG:  device_assignment = []
     //
@@ -253,7 +250,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %b = "tf.B"(%a) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
       "tf.NoOp"() : () -> ()
       tf_device.return %b : tensor<i32>
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<i32>
     // CHECK:      return %[[LAUNCH_OUT]]
     return %cluster : tensor<i32>
   }
@@ -267,7 +264,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT: {
     // CHECK-DAG:  num_cores_per_replica = 1
     // CHECK-DAG:  step_marker_location = ""
-    // CHECK-DAG:  padding_map = []
     // CHECK-DAG:  topology = ""
     // CHECK-DAG:  device_assignment = []
     //
@@ -284,7 +280,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %c = "tf.C"(%arg0, %a) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.D"(%c, %arg0, %b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -339,7 +335,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT: {
     // CHECK-DAG:  num_cores_per_replica = 1
     // CHECK-DAG:  step_marker_location = ""
-    // CHECK-DAG:  padding_map = []
     // CHECK-DAG:  topology = ""
     // CHECK-DAG:  device_assignment = []
     //
@@ -353,7 +348,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %d = "tf.D"(%c, %a) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
       %e = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
       tf_device.return %a, %b, %c, %d, %e : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>)
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>)
     // CHECK:      return %[[A_OUT]], %[[B_OUT]], %[[CLUSTER_OUT]]#0, %[[LAUNCH_OUT]], %[[CLUSTER_OUT]]#1
     return %cluster#0, %cluster#1, %cluster#2, %cluster#3, %cluster#4 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
   }
@@ -368,7 +363,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:   {
     // CHECK-DAG:    num_cores_per_replica = 1
     // CHECK-DAG:    step_marker_location = ""
-    // CHECK-DAG:    padding_map = []
     // CHECK-DAG:    topology = ""
     // CHECK-DAG:    device_assignment = []
     //
@@ -382,7 +376,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
         %a = "tf.A"(%ri) : (tensor<i32>) -> tensor<i32>
         %b = "tf.B"(%a, %ri) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
         tf_device.return
-      }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+      }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
       tf_device.return
     }
     return
@@ -401,7 +395,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %b = "tf.B"(%a) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
       %c = "tf.Identity"(%b) : (tensor<i32>) -> tensor<i32>
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -419,7 +413,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT: {
     // CHECK-DAG:  num_cores_per_replica = 1
     // CHECK-DAG:  step_marker_location = ""
-    // CHECK-DAG:  padding_map = []
     // CHECK-DAG:  topology = ""
     // CHECK-DAG:  device_assignment = []
     //
@@ -433,7 +426,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %b = "tf.B"(%a) : (tensor<i32>) -> tensor<i32>
       %c = "tf.C"(%b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>
       tf_device.return %c : tensor<i32>
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> tensor<i32>
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<i32>
     // CHECK:      return %[[TAIL_LAUNCH_OUT]]
     return %cluster : tensor<i32>
   }
@@ -456,7 +449,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:   {
     // CHECK-DAG:    num_cores_per_replica = 1
     // CHECK-DAG:    step_marker_location = ""
-    // CHECK-DAG:    padding_map = []
     // CHECK-DAG:    topology = ""
     // CHECK-DAG:    device_assignment = []
     //
@@ -473,7 +465,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
         %d = "tf.D"(%a, %c, %ri) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<i32>
         %e:2 = "tf.IdentityN"(%c, %a) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
         tf_device.return
-      }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+      }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
       tf_device.return
     }
     return
@@ -491,7 +483,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
       "tf.C"() : () -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -514,7 +506,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %c = "tf.C"() {_xla_outside_compilation = "cluster1"} : () -> tensor<i32>
       "tf.D"(%c) : (tensor<i32>) -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -536,7 +528,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() {_xla_outside_compilation = "cluster1"} : () -> ()
       %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -557,7 +549,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.UnknownOp"() : () -> ()
       "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg0) {_xla_outside_compilation = "cluster1", table_ids = [1, 2]} : (tensor<!tf.string>) -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -579,7 +571,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
       "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 
@@ -603,7 +595,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %0 = "tf.RecvTPUEmbeddingActivations"() {config = "test_config_recv_embedding"} : () -> tensor<512x256xf32>
       "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
       tf_device.return
-    }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
+    }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
     return
   }
 }

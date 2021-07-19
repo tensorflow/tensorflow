@@ -45,8 +45,8 @@ class RedzoneAllocator : public ScratchAllocator {
   static constexpr uint8 kDefaultRedzonePattern = -1;
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
                    GpuAsmOpts gpu_compilation_opts_,
-                   int64 memory_limit = kDefaultMemoryLimit,
-                   int64 redzone_size = kDefaultRedzoneSize,
+                   int64_t memory_limit = kDefaultMemoryLimit,
+                   int64_t redzone_size = kDefaultRedzoneSize,
                    uint8 redzone_pattern = kDefaultRedzonePattern);
 
   // Redzones don't count towards the memory limit.
@@ -56,7 +56,7 @@ class RedzoneAllocator : public ScratchAllocator {
     return allocated_bytes_excluding_redzones_;
   }
 
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
+  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
 
   // Non-empty redzone check status implies that there was a write into a
   // redzone, with a string communicating the location of the write.
@@ -64,7 +64,8 @@ class RedzoneAllocator : public ScratchAllocator {
     RedzoneCheckStatus() = default;
 
     RedzoneCheckStatus(absl::string_view buffer_name, void* user_buffer_address,
-                       int64 offset, uint64 expected_value, uint64 actual_value)
+                       int64_t offset, uint64 expected_value,
+                       uint64 actual_value)
         : buffer_name(buffer_name),
           user_buffer_address(user_buffer_address),
           offset(offset),

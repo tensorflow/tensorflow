@@ -526,11 +526,7 @@ struct LaunchConvOp<GPUDevice, T> {
               plan->getWorkspaceSize()));
         }
       } else {
-        OP_REQUIRES(ctx,
-                    stream->parent()->GetConvolveAlgorithms(
-                        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                            stream->parent()),
-                        &algorithms),
+        OP_REQUIRES(ctx, stream->parent()->GetConvolveAlgorithms(&algorithms),
                     errors::Unknown(
                         "Failed to get convolution algorithm. This is probably "
                         "because cuDNN failed to initialize, so try looking to "

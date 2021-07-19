@@ -37,7 +37,7 @@ namespace op = xla::testing::opcode_matchers;
 class SpmdPartitioningTest : public HloTestBase {
  public:
   StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
-      absl::string_view hlo_module, int64 num_devices,
+      absl::string_view hlo_module, int64_t num_devices,
       bool conv_halo_exchange_always_on_lhs = true,
       bool choose_faster_windowed_einsum = false) {
     // Some tests (BackpropFilter convs) set this flag false to test two

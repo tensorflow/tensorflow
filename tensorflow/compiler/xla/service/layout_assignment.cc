@@ -2362,6 +2362,8 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:

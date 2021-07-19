@@ -100,7 +100,7 @@ void Master::GC() {
     std::vector<string> handles;
     const int64 num_micros = static_cast<int64>(session_gc_seconds_ * 1000000);
     for (const auto& entry : sessions_) {
-      int64 lat = entry.second->last_access_time_usec();
+      int64_t lat = entry.second->last_access_time_usec();
       if (static_cast<int64>(env->NowMicros()) - lat > num_micros) {
         handles.push_back(entry.first);
         auto* sess = entry.second;

@@ -145,7 +145,7 @@ cc_library(
     hdrs = [
         "delegate.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + tf_opts_nortti_if_android(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",

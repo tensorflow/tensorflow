@@ -246,7 +246,7 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
 // CHECK-LABEL: @tensor_reshape
 // CHECK-SAME: (%[[T:.*]]: memref<1x2x2xf32>)
 func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
-  // CHECK: linalg.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
+  // CHECK: memref.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
   %result = linalg.tensor_collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
   return %result : tensor<4xf32>
 }
@@ -257,4 +257,14 @@ func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
   // CHECK: memref.subview %[[T]][0] [1] [1] : memref<3xi32> to memref<1xi32>
   %result = tensor.extract_slice %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
   return %result : tensor<1xi32>
+}
+
+// CHECK-LABEL: @jit_execute
+// CHECK-SAME: (%[[F:.*]]: !tf_framework.jit_callable, %[[ARG:.*]]: memref<*xf32>) -> memref<*xf32>
+func @jit_execute(%f : !tf_framework.jit_callable, %arg : tensor<*xf32>)
+    -> tensor<*xf32> {
+  // CHECK: %[[RES:.*]] = tf_framework.jit_execute %[[F]](%[[ARG]]) : memref<*xf32> -> memref<*xf32>
+  // CHECK: return %[[RES]] : memref<*xf32>
+  %0 = tf_framework.jit_execute %f(%arg) : tensor<*xf32> -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }

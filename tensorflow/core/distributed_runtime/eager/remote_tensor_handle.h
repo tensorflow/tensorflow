@@ -25,7 +25,7 @@ namespace eager {
 struct RemoteTensorHandleInternal {
   explicit RemoteTensorHandleInternal(const RemoteTensorHandle& tensor_handle)
       : op_id(tensor_handle.op_id()), output_num(tensor_handle.output_num()) {}
-  RemoteTensorHandleInternal(int64 op_id, int32 output_num)
+  RemoteTensorHandleInternal(int64_t op_id, int32 output_num)
       : op_id(op_id), output_num(output_num) {}
   int64 op_id;
   int32 output_num;

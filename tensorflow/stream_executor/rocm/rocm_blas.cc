@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
-
 #include "tensorflow/stream_executor/rocm/rocm_blas.h"
+
+#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
 
 #define EIGEN_USE_GPU
 #include <assert.h>

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
@@ -83,7 +82,7 @@ static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
     return;
   }
 
-  int64 vmaj, vmin, vdot;
+  int64_t vmaj, vmin, vdot;
   std::string vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(ptxas_version.ValueOrDie(),
                          R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str, &vmin_str,

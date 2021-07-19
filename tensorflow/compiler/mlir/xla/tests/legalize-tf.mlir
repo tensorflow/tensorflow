@@ -1746,13 +1746,24 @@ func @leaky_relu_grad(%arg0: tensor<1x4x4xf32>, %arg1: tensor<1x4x4xf32>) -> ten
 
 // CHECK-LABEL: func @softsign
 func @softsign(%arg0: tensor<4x10xf32>) -> tensor<4x10xf32> {
-    // CHECK-NEXT: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
     // CHECK-NEXT: %[[ABS:.*]] = "mhlo.abs"(%{{.*}}) : (tensor<4x10xf32>) -> tensor<4x10xf32>
-    // CHECK-NEXT: %[[BROADCAST_ADD:.*]] = chlo.broadcast_add %[[ONE]], %[[ABS]] {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<4x10xf32>) -> tensor<4x10xf32>
-    // CHECK-NEXT: %[[DIV:.*]] = mhlo.divide %{{.*}}, %[[BROADCAST_ADD]] : tensor<4x10xf32>
+    // CHECK-NEXT: %[[ONE:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32} : (tensor<4x10xf32>) -> tensor<4x10xf32>
+    // CHECK-NEXT: %[[ADD:.*]] = mhlo.add %[[ONE]], %[[ABS]] : tensor<4x10xf32>
+    // CHECK-NEXT: %[[DIV:.*]] = mhlo.divide %{{.*}}, %[[ADD]] : tensor<4x10xf32>
     // CHECK-NEXT: return %[[DIV]] : tensor<4x10xf32>
     %0 = "tf.Softsign"(%arg0) : (tensor<4x10xf32>) -> tensor<4x10xf32>
     return %0 : tensor<4x10xf32>
+}
+
+// CHECK-LABEL: func @softsign_unranked
+func @softsign_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK-NEXT: %[[ABS:.*]] = "mhlo.abs"(%{{.*}}) : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: %[[ONE:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
+    // CHECK-NEXT: %[[ADD:.*]] = mhlo.add %[[ONE]], %[[ABS]] : tensor<*xf32>
+    // CHECK-NEXT: %[[DIV:.*]] = mhlo.divide %{{.*}}, %[[ADD]] : tensor<*xf32>
+    // CHECK-NEXT: return %[[DIV]] : tensor<*xf32>
+    %0 = "tf.Softsign"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @softsign_grad

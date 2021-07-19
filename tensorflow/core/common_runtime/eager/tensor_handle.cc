@@ -366,14 +366,14 @@ TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
 
 #if !defined(IS_MOBILE_PLATFORM)
 TensorHandle* TensorHandle::CreateUnshapedRemoteHandle(
-    int64 op_id, int32 output_num, const string& remote_task,
+    int64_t op_id, int32 output_num, const string& remote_task,
     tensorflow::DataType dtype, Device* d, EagerContext* ctx,
     const bool unknown_device) {
   return new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx,
                           unknown_device);
 }
 
-TensorHandle::TensorHandle(int64 op_id, int32 output_num,
+TensorHandle::TensorHandle(int64_t op_id, int32 output_num,
                            const string& remote_task,
                            tensorflow::DataType dtype, Device* d,
                            EagerContext* ctx, const bool unknown_device)
@@ -393,12 +393,12 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
 }
 
 TensorHandle* TensorHandle::CreateLazyRemoteHandle(
-    int64 op_id, int32 output_num, tensorflow::DataType dtype, Device* d,
+    int64_t op_id, int32 output_num, tensorflow::DataType dtype, Device* d,
     const bool is_ready, EagerContext* ctx) {
   return new TensorHandle(op_id, output_num, dtype, d, is_ready, ctx);
 }
 
-TensorHandle::TensorHandle(int64 op_id, int32 output_num,
+TensorHandle::TensorHandle(int64_t op_id, int32 output_num,
                            tensorflow::DataType dtype, Device* d,
                            const bool is_ready, EagerContext* ctx)
     : ImmediateExecutionTensorHandle(kEager),
@@ -550,7 +550,7 @@ Status TensorHandle::InferenceShape(
     int num_dims;
     TF_RETURN_IF_ERROR(NumDims(&num_dims));
     for (int i = 0; i < num_dims; i++) {
-      int64 dims;
+      int64_t dims;
       TF_RETURN_IF_ERROR(Dim(i, &dims));
       dims_handle.push_back(inference_context->MakeDim(dims));
     }
@@ -766,7 +766,7 @@ bool TensorHandle::HasResourceShapeMirror(const Device* d,
   return false;
 }
 
-Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64 op_id,
+Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64_t op_id,
                                              int output_num,
                                              const string& remote_task,
                                              EagerContext* ctx) {
@@ -791,7 +791,7 @@ Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64 op_id,
   return Status::OK();
 }
 
-Status TensorHandle::AddResourceShapeMirror(const Device* d, int64 op_id,
+Status TensorHandle::AddResourceShapeMirror(const Device* d, int64_t op_id,
                                             int output_num, EagerContext* ctx) {
   DVLOG(3) << "AddResourceShapeMirror on TensorHandle: " << this;
 

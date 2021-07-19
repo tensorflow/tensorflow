@@ -193,6 +193,8 @@ class DispatcherState {
 
   // Returns the next available dataset id.
   int64 NextAvailableDatasetId() const;
+  // Gets the element_spec by searching for the dataset_id key.
+  Status GetElementSpec(int64 dataset_id, std::string& element_spec) const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
   Status DatasetFromId(int64 id, std::shared_ptr<const Dataset>& dataset) const;
   // Gets a dataset by fingerprint. Returns NOT_FOUND if there is no such
@@ -248,6 +250,7 @@ class DispatcherState {
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
+  void SetElementSpec(const SetElementSpecUpdate& set_element_spec);
 
   int64 next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
@@ -255,6 +258,8 @@ class DispatcherState {
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
       datasets_by_fingerprint_;
+  // Saved element_spec, keyed by dataset ids.
+  absl::flat_hash_map<int64, std::string> id_element_spec_info_;
 
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;

@@ -187,6 +187,7 @@ cc_library(
     hdrs = if_rocm_is_configured(["rocm_blas.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
+        ":rocblas_if_static",
         ":rocblas_wrapper",
         ":rocm_gpu_executor",
         ":rocm_platform_id",

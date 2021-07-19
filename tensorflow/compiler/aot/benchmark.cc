@@ -117,7 +117,7 @@ void Benchmark(const Options& options, const BenchmarkFn& fn, Stats* stats) {
   // NOLINTNEXTLINE
   printf("Running benchmark for %lld us\n", static_cast<long long>(max_us));
   const int64 start_us = NowMicros();
-  int64 iters = 0;
+  int64_t iters = 0;
   while (true) {
     const int64 iter_start_us = NowMicros();
     fn();

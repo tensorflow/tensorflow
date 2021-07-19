@@ -45,7 +45,7 @@ namespace tpu {
 
 class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
  public:
-  explicit TpuCompilationCacheExternal(int64 max_cache_size)
+  explicit TpuCompilationCacheExternal(int64_t max_cache_size)
       : TpuCompilationCacheInterface(max_cache_size) {}
 
   string DebugString() const override { return "TpuCompilationCacheExternal"; }

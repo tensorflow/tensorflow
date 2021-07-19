@@ -97,7 +97,7 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   std::vector<HloInstruction*> var_outs;
   auto input_shape = ShapeUtil::MakeShape(F32, {1024, 1024});
   auto output_shape = ShapeUtil::MakeShape(F32, {1024});
-  for (int64 i = 0; i < 130; ++i) {
+  for (int64_t i = 0; i < 130; ++i) {
     // %fused_computation.3 (param_0: f32[1024,1024], param_1: f32[]) ->
     // f32[1024] {
     //  %param_0 = f32[1024,1024]{1,0} parameter(0)

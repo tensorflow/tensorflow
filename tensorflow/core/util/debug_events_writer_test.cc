@@ -76,8 +76,8 @@ class DebugEventsWriterTest : public ::testing::Test {
 
   void TearDown() override {
     if (env()->IsDirectory(dump_root_).ok()) {
-      int64 undeleted_files = 0;
-      int64 undeleted_dirs = 0;
+      int64_t undeleted_files = 0;
+      int64_t undeleted_dirs = 0;
       TF_ASSERT_OK(env()->DeleteRecursively(dump_root_, &undeleted_files,
                                             &undeleted_dirs));
       ASSERT_EQ(0, undeleted_files);

@@ -56,6 +56,13 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
 
 class BroadcastFoldPass : public PassWrapper<BroadcastFoldPass, FunctionPass> {
  public:
+  StringRef getArgument() const final { return "tf-broadcast-fold"; }
+
+  StringRef getDescription() const final {
+    return "Fold explicit broadcasts into the following operations if they "
+           "support implicit broadcasting on their operand.";
+  }
+
   void runOnFunction() override;
 };
 
@@ -201,9 +208,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass() {
 }
 }  // namespace TF
 
-static PassRegistration<BroadcastFoldPass> pass(
-    "tf-broadcast-fold",
-    "Fold explicit broadcasts into the following operations if they support "
-    "implicit broadcasting on their operand.");
+static PassRegistration<BroadcastFoldPass> pass;
 
 }  // namespace mlir

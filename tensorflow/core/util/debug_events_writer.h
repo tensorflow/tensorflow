@@ -107,7 +107,7 @@ class DebugEventsWriter {
   //   A pointer to a DebugEventsWriter object: a per-dump_root singleton.
   static DebugEventsWriter* GetDebugEventsWriter(const string& dump_root,
                                                  const string& tfdbg_run_id,
-                                                 int64 circular_buffer_size);
+                                                 int64_t circular_buffer_size);
   // Look up existing events writer by dump_root.
   // If no DebugEventsWriter has been created at the dump_root, a non-OK
   // Status will be returned. Else an OK status will be returned, with
@@ -218,7 +218,7 @@ class DebugEventsWriter {
   static mutex factory_mu_;
 
   DebugEventsWriter(const string& dump_root, const string& tfdbg_run_id,
-                    int64 circular_buffer_size);
+                    int64_t circular_buffer_size);
 
   // Get the path prefix. The same for all files, which differ only in the
   // suffix.

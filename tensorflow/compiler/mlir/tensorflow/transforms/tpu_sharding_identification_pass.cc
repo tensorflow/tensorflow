@@ -49,6 +49,15 @@ constexpr char kUseSpmdAttr[] = "use_spmd_for_xla_partitioning";
 struct TPUShardingIdentificationPass
     : public PassWrapper<TPUShardingIdentificationPass,
                          OperationPass<ModuleOp>> {
+  StringRef getArgument() const final {
+    return "tf-tpu-sharding-identification";
+  }
+
+  StringRef getDescription() const final {
+    return "Identifies and handles inputs/outputs of TPU computation that is "
+           "sharded across logical cores.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -370,10 +379,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass() {
   return std::make_unique<TPUShardingIdentificationPass>();
 }
 
-static PassRegistration<TPUShardingIdentificationPass> pass(
-    "tf-tpu-sharding-identification",
-    "Identifies and handles inputs/outputs of TPU computation that is "
-    "sharded across logical cores.");
+static PassRegistration<TPUShardingIdentificationPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

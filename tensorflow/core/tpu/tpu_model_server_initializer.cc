@@ -56,7 +56,7 @@ bool FindAndLoadTpuModelServer() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
-  VLOG(1) << "Libtpu path is: " << libtpu_path;
+  LOG(INFO) << "Libtpu path is: " << libtpu_path;
   void* library = dlopen(libtpu_path, RTLD_NOW);
   if (library) {
     if (TryAcquireTpuLock()) {

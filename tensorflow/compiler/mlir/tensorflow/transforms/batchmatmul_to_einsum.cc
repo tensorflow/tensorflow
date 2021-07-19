@@ -84,6 +84,12 @@ class ConvertTFBatchMatMulToEinsumOp
 
 struct BatchMatMulToEinsumPass
     : public PassWrapper<BatchMatMulToEinsumPass, FunctionPass> {
+  StringRef getArgument() const final { return "tf-batch-matmul-to-tf-einsum"; }
+
+  StringRef getDescription() const final {
+    return "Replace TF BatchMatMul op by TF Einsum op.";
+  }
+
   void runOnFunction() override;
 };
 
@@ -97,9 +103,7 @@ void BatchMatMulToEinsumPass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
-PassRegistration<BatchMatMulToEinsumPass> pass(
-    "tf-batch-matmul-to-tf-einsum",
-    "Replace TF BatchMatMul op by TF Einsum op.");
+PassRegistration<BatchMatMulToEinsumPass> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass() {

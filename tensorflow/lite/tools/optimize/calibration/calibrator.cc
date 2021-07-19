@@ -83,6 +83,14 @@ class Calibrator {
     return node_ptr_opinfo_map_.at(node);
   }
 
+  std::vector<const TfLiteNode*> GetNodesUnderCalibration() {
+    std::vector<const TfLiteNode*> nodes;
+    for (const auto& entry : node_ptr_opinfo_map_) {
+      nodes.push_back(entry.first);
+    }
+    return nodes;
+  }
+
  private:
   std::unordered_map<const TfLiteNode*, OperatorInfo> node_ptr_opinfo_map_;
   std::unique_ptr<LoggingOpResolver> logging_op_resolver_;
@@ -130,16 +138,21 @@ class GlobalCalibratorRegistry {
  public:
   // Get the |Calibrator| associated with given context, returns null if no
   // calibrator is associated with the given context.
-  Calibrator* GetCalibrator(const TfLiteContext* context) const {
-    if (calibrator_registry_.find(context) == calibrator_registry_.cend()) {
+  Calibrator* GetCalibrator(const TfLiteNode* node) const {
+    if (node_to_calibrator_.find(node) == node_to_calibrator_.cend()) {
       return nullptr;
     }
-    return calibrator_registry_.at(context).get();
+    return node_to_calibrator_.at(node);
   }
 
   // Removes the association between calibrator and context.
   // Note: This deletes the calibrator as well.
   void RemoveCalibrator(const TfLiteContext* context) {
+    Calibrator* calibrator = calibrator_registry_.at(context).get();
+    auto nodes = calibrator->GetNodesUnderCalibration();
+    for (auto node : nodes) {
+      node_to_calibrator_.erase(node);
+    }
     calibrator_registry_.erase(context);
   }
 
@@ -160,12 +173,16 @@ class GlobalCalibratorRegistry {
         node_to_opinfo, std::move(logging_op_resolver), reporter);
     calibrator_registry_[context] = std::move(calibrator);
     *calibrator_ptr = calibrator_registry_.at(context).get();
+    for (const auto& entry : node_to_opinfo) {
+      node_to_calibrator_[entry.first] = *calibrator_ptr;
+    }
     return kTfLiteOk;
   }
 
  private:
   absl::flat_hash_map<const TfLiteContext*, std::unique_ptr<Calibrator>>
       calibrator_registry_;
+  absl::flat_hash_map<const TfLiteNode*, Calibrator*> node_to_calibrator_;
 };
 
 GlobalCalibratorRegistry* GetCalibratorRegistry() {
@@ -197,7 +214,7 @@ logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
 // A wrapper implementation for |TfLiteRegistration.invoke| that logs inputs,
 // invokes the wrapped implementation and then logs the outputs.
 TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
-  Calibrator* calibrator = GetCalibratorRegistry()->GetCalibrator(context);
+  Calibrator* calibrator = GetCalibratorRegistry()->GetCalibrator(node);
 
   if (!calibrator) {
     context->ReportError(context, "No calibrator found for context.");
@@ -211,8 +228,9 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
 
   for (int i : op_info.loggable_inputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
-        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
+                               tensor.bytes / sizeof(float), error_reporter));
   }
   auto builtin_op_code = calibrator->GetOpInfo(node).builtin_op_code;
   auto kernel_invoke_intermediate =
@@ -220,8 +238,9 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   if (kernel_invoke_intermediate == nullptr) {
     TF_LITE_ENSURE_STATUS(kernel_invoke(context, node));
   } else {
-    TF_LITE_ENSURE_STATUS(kernel_invoke_intermediate(
-        context, node, calibrator->GetLogger(), error_reporter));
+    TF_LITE_ENSURE_STATUS(
+        kernel_invoke_intermediate(context, op_info.subgraph_index, node,
+                                   calibrator->GetLogger(), error_reporter));
   }
 
   // TODO(shashishekhar): An intermediate tensor in graph will get logged twice
@@ -233,14 +252,16 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   // cell.
   for (int i : op_info.loggable_inputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
-        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
+                               tensor.bytes / sizeof(float), error_reporter));
   }
 
   for (int i : op_info.loggable_outputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
-        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
+                               tensor.bytes / sizeof(float), error_reporter));
   }
 
   return kTfLiteOk;
@@ -276,7 +297,8 @@ std::vector<int> GetLoggableTensorIndices(
 // This is done by querying the TfLiteContext for node and registrations using
 // the |NodeInfoDelegateObserver|.
 TfLiteStatus GetNodeOpInfoMapAndContext(
-    const std::unordered_map<int, OperatorInfo>& node_to_opinfo,
+    const absl::flat_hash_map<std::tuple<int, int>, OperatorInfo>&
+        node_to_opinfo,
     tflite::Interpreter* const interpreter,
     std::unordered_map<const TfLiteNode*, OperatorInfo>* node_ptr_opinfo_map,
     TfLiteContext** context) {
@@ -291,7 +313,10 @@ TfLiteStatus GetNodeOpInfoMapAndContext(
                  interpreter->execution_plan().size() <= node_to_opinfo.size());
   for (const auto& entry : node_to_opinfo) {
     auto op_info = entry.second;
-    const auto* node_and_reg = interpreter->node_and_registration(entry.first);
+    int subgraph_index, op_index;
+    std::tie(subgraph_index, op_index) = entry.first;
+    const auto* node_and_reg =
+        interpreter->node_and_registration(subgraph_index, op_index);
     op_info.registration = &node_and_reg->second;
     node_ptr_opinfo_map->insert({&node_and_reg->first, op_info});
   }
@@ -338,57 +363,59 @@ TfLiteStatus BuildLoggingInterpreter(
   auto subgraphs = tflite_model->subgraphs();
   auto tensor_buffers = tflite_model->buffers();
 
-  if (subgraphs->size() != 1) {
-    error_reporter->Report(
-        "Only models with a single subgraph are supported, model had %d "
-        "subgraphs",
-        subgraphs->size());
-    return kTfLiteError;
-  }
-
   // Populate the node index to operator info map.
   // We want to collect this information so we can use it during runtime to
   // log details of which inputs and outputs.
   // At runtime TFLite kernel invoke functions can only look into their
   // own node in the graph (TFLiteNode*) and some limited context information.
-  auto primary_subgraph = subgraphs->Get(0);
-  auto operator_codes = tflite_model->operator_codes();
-  auto operators = primary_subgraph->operators();
-  auto tensors = primary_subgraph->tensors();
-  std::unordered_map<int, OperatorInfo> node_to_opinfo;
+  absl::flat_hash_map<std::tuple<int, int>, OperatorInfo> node_to_opinfo;
   BuiltinOpsSet builtin_op_and_versions;
   CustomOpsSet custom_op_and_versions;
 
-  for (size_t i = 0; i < operators->size(); i++) {
-    OperatorInfo op_info;
-    op_info.node_index = i;
-    auto op = operators->Get(i);
-    auto operator_code = operator_codes->Get(op->opcode_index());
-    op_info.builtin_op_code = GetBuiltinCode(operator_code);
-    op_info.name = GetOpName(*operator_code);
-    op_info.is_custom_op = operator_code->custom_code() != nullptr;
-    op_info.version = operator_code->version();
-
-    auto op_inputs = op->inputs();
-    auto op_outputs = op->outputs();
-    op_info.inputs = std::vector<int>(op_inputs->begin(), op_inputs->end());
-    op_info.outputs = std::vector<int>(op_outputs->begin(), op_outputs->end());
-    op_info.loggable_inputs =
-        GetLoggableTensorIndices(op_info.inputs, tensors, tensor_buffers);
-    op_info.loggable_outputs =
-        GetLoggableTensorIndices(op_info.outputs, tensors, tensor_buffers);
-    if (op_info.is_custom_op) {
-      op_info.registration =
-          op_resolver.FindOp(op_info.name.c_str(), operator_code->version());
-      custom_op_and_versions.insert(
-          {op_info.name.c_str(), operator_code->version()});
-    } else {
-      op_info.registration = op_resolver.FindOp(GetBuiltinCode(operator_code),
-                                                operator_code->version());
-      builtin_op_and_versions.insert(
-          {op_info.builtin_op_code, operator_code->version()});
+  for (size_t subgraph_index = 0; subgraph_index < subgraphs->size();
+       subgraph_index++) {
+    auto subgraph = subgraphs->Get(subgraph_index);
+    auto operator_codes = tflite_model->operator_codes();
+    auto operators = subgraph->operators();
+    auto tensors = subgraph->tensors();
+    if (!operators) {
+      continue;
     }
-    node_to_opinfo[i] = op_info;
+
+    for (size_t i = 0; i < operators->size(); i++) {
+      OperatorInfo op_info;
+      op_info.subgraph_index = subgraph_index;
+      op_info.node_index = i;
+      auto op = operators->Get(i);
+      auto operator_code = operator_codes->Get(op->opcode_index());
+      op_info.builtin_op_code = GetBuiltinCode(operator_code);
+      op_info.name = GetOpName(*operator_code);
+      op_info.is_custom_op = operator_code->custom_code() != nullptr;
+      op_info.version = operator_code->version();
+
+      auto op_inputs = op->inputs();
+      auto op_outputs = op->outputs();
+      op_info.inputs = std::vector<int>(op_inputs->begin(), op_inputs->end());
+      op_info.outputs =
+          std::vector<int>(op_outputs->begin(), op_outputs->end());
+      op_info.loggable_inputs =
+          GetLoggableTensorIndices(op_info.inputs, tensors, tensor_buffers);
+      op_info.loggable_outputs =
+          GetLoggableTensorIndices(op_info.outputs, tensors, tensor_buffers);
+      if (op_info.is_custom_op) {
+        op_info.registration =
+            op_resolver.FindOp(op_info.name.c_str(), operator_code->version());
+        custom_op_and_versions.insert(
+            {op_info.name.c_str(), operator_code->version()});
+      } else {
+        op_info.registration = op_resolver.FindOp(GetBuiltinCode(operator_code),
+                                                  operator_code->version());
+        builtin_op_and_versions.insert(
+            {op_info.builtin_op_code, operator_code->version()});
+      }
+      std::tuple<int, int> key{subgraph_index, i};
+      node_to_opinfo[key] = op_info;
+    }
   }
 
   // Prepare the logging op resolver to use |LoggingEval| for kernel

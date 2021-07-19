@@ -145,7 +145,7 @@ REGISTER_XLA_OP(Name("KthOrderStatistic"), KthOrderStatistic);
 // TopK with reasonable semantics.
 std::pair<xla::XlaOp, xla::XlaOp> CreateTopKUnique(
     xla::XlaBuilder* builder, const xla::XlaOp input,
-    const TensorShape& input_shape, int64 k, bool masked_with_iota) {
+    const TensorShape& input_shape, int64_t k, bool masked_with_iota) {
   const int64 height = input_shape.dim_size(0);
   const int64 width = input_shape.dim_size(1);
 

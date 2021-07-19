@@ -143,15 +143,22 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                       done);
     OP_REQUIRES_ASYNC(
         context, input.dim_size(ndims - 2) == n,
-        errors::InvalidArgument("Input matrices must be squares, got",
+        errors::InvalidArgument("Input matrices must be squares, got ",
                                 input.dim_size(ndims - 2), " != ", n),
         done);
     OP_REQUIRES_ASYNC(context, rhs.dim_size(ndims - 2) == n,
                       errors::InvalidArgument(
                           "Input matrix and right-hand side must have the "
-                          "same number of rows, got",
+                          "same number of rows, got ",
                           n, " != ", rhs.dim_size(ndims - 2)),
                       done);
+    for (int dim = 0; dim < ndims - 2; dim++) {
+      OP_REQUIRES_ASYNC(
+          context, input.dim_size(dim) == rhs.dim_size(dim),
+          errors::InvalidArgument(
+              "All input tensors must have the same outer dimensions."),
+          done);
+    }
 
     // Allocate output.
     Tensor* output;

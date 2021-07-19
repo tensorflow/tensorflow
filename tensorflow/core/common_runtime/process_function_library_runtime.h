@@ -89,7 +89,7 @@ class ProcessFunctionLibraryRuntime {
   // takes references on each of the `tensors_to_send`. Method doesn't block.
   static Status SendTensors(const string& source_device,
                             const string& target_device,
-                            const string& key_prefix, int64 src_incarnation,
+                            const string& key_prefix, int64_t src_incarnation,
                             gtl::ArraySlice<Tensor> tensors_to_send,
                             DeviceContext* device_context,
                             const std::vector<AllocatorAttributes>& alloc_attrs,
@@ -103,7 +103,7 @@ class ProcessFunctionLibraryRuntime {
   // block and calls `done` when `num_tensors` are fetched.
   static void ReceiveTensorsAsync(
       const string& source_device, const string& target_device,
-      const string& key_prefix, int64 src_incarnation, int64 num_tensors,
+      const string& key_prefix, int64_t src_incarnation, int64_t num_tensors,
       DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
       RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,

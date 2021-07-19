@@ -40,12 +40,12 @@ namespace gpu {
 // Thread-compatible.
 class CholeskyThunk : public Thunk {
  public:
-  static StatusOr<int64> ScratchBufferSize(int64 n);
+  static StatusOr<int64> ScratchBufferSize(int64_t n);
   CholeskyThunk(ThunkInfo thunk_info, const CholeskyOptions& options,
                 BufferAllocation::Slice a_buffer,
                 BufferAllocation::Slice workspace_buffer,
                 BufferAllocation::Slice info_buffer, PrimitiveType type,
-                int64 batch_size, int64 n);
+                int64_t batch_size, int64_t n);
 
   CholeskyThunk(const CholeskyThunk&) = delete;
   CholeskyThunk& operator=(const CholeskyThunk&) = delete;

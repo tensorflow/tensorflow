@@ -268,9 +268,11 @@ cuda_py_test(
     size = "small",
     srcs = ["context_test.py"],
     python_version = "PY3",
+    xla_enabled = True,
     deps = [
         ":context",
         ":test",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
     ],
 )
 
@@ -736,8 +738,10 @@ cuda_py_test(
         ":context",
         ":test",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/data",
     ],
 )
 

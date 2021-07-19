@@ -35,8 +35,8 @@ TriangularSolveThunk::TriangularSolveThunk(
     ThunkInfo thunk_info, const TriangularSolveOptions& options,
     const BufferAllocation::Slice& a_buffer,
     const BufferAllocation::Slice& b_buffer, PrimitiveType type,
-    int64 batch_size, int64 m, int64 n, int64 a_batch_stride,
-    int64 b_batch_stride)
+    int64_t batch_size, int64_t m, int64_t n, int64_t a_batch_stride,
+    int64_t b_batch_stride)
     : Thunk(Kind::kTriangularSolve, thunk_info),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
@@ -86,7 +86,7 @@ Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
       buffer_allocations.GetDeviceAddress(a_buffer_).opaque());
   char* b_base = static_cast<char*>(
       buffer_allocations.GetDeviceAddress(b_buffer_).opaque());
-  for (int64 i = 0; i < batch_size_; ++i) {
+  for (int64_t i = 0; i < batch_size_; ++i) {
     bool launch_ok;
     se::DeviceMemoryBase a_data =
         se::DeviceMemoryBase(a_base + i * a_batch_stride_, a_batch_stride_);

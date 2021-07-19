@@ -33,7 +33,7 @@ void TFFrameworkDialect::initialize() {
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"
       >();
-  addTypes<OpKernelContextType>();
+  addTypes<JITCallableType, OpKernelContextType>();
 }
 
 /// Parse a type registered to this dialect.
@@ -43,6 +43,9 @@ Type TFFrameworkDialect::parseType(DialectAsmParser &parser) const {
 
   if (keyword == "op_kernel_context") {
     return OpKernelContextType::get(getContext());
+  }
+  if (keyword == "jit_callable") {
+    return JITCallableType::get(getContext());
   }
 
   parser.emitError(parser.getNameLoc(), "unknown TF Framework type: ")
@@ -54,6 +57,10 @@ Type TFFrameworkDialect::parseType(DialectAsmParser &parser) const {
 void TFFrameworkDialect::printType(Type type, DialectAsmPrinter &os) const {
   if (type.isa<OpKernelContextType>()) {
     os << "op_kernel_context";
+    return;
+  }
+  if (type.isa<JITCallableType>()) {
+    os << "jit_callable";
     return;
   }
   llvm_unreachable("unexpected TF Framework type kind");

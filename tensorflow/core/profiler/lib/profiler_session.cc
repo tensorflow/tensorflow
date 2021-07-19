@@ -131,7 +131,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
   LOG(INFO) << "Profiler session initializing.";
   // Sleep until it is time to start profiling.
   if (options_.start_timestamp_ns() > 0) {
-    int64 sleep_duration_ns =
+    int64_t sleep_duration_ns =
         options_.start_timestamp_ns() - profiler::GetCurrentTimeNanos();
     if (sleep_duration_ns < 0) {
       LOG(WARNING) << "Profiling is late by " << -sleep_duration_ns

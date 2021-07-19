@@ -109,16 +109,24 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_GPU_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("Softsign").Device(DEVICE_GPU).TypeConstraint<type>("T"),     \
-      SoftsignOp<GPUDevice, type>);                                      \
+#define REGISTER_SOFTSIGN_GPU_KERNELS(type)                          \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Softsign").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SoftsignOp<GPUDevice, type>);
+
+#define REGISTER_SOFTSIGN_GRAD_GPU_KERNELS(type)                         \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("SoftsignGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       SoftsignGradOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-#undef REGISTER_GPU_KERNELS
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SOFTSIGN_GPU_KERNELS);
+#endif
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SOFTSIGN_GRAD_GPU_KERNELS);
+
+#undef REGISTER_SOFTSIGN_GPU_KERNELS
+#undef REGISTER_SOFTSIGN_GRAD_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

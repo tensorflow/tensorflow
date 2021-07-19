@@ -35,8 +35,8 @@ namespace tensorflow {
 // The average computed backoff increases with the number of RPCs attempted.
 // See implementation for details on the calculations.
 int64 ComputeBackoffMicroseconds(int current_retry_attempt,
-                                 int64 min_delay = 1000,
-                                 int64 max_delay = 10000000);
+                                 int64_t min_delay = 1000,
+                                 int64_t max_delay = 10000000);
 
 // Thin wrapper around ::grpc::ProtoBufferReader to give TensorResponse an
 // efficient byte reader from which to decode a RecvTensorResponse.

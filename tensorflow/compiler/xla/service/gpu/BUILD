@@ -41,7 +41,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
-load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -868,8 +868,10 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:dnn_proto_cc",
     ] + if_cuda_is_configured([
         ":buffer_comparator",
+        "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ]),
 )
@@ -977,7 +979,6 @@ cc_library(
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
-        "@local_config_rocm//rocm:rocblas",
     ]),
 )
 
@@ -1457,7 +1458,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
         "//tensorflow/compiler/xla/service:all_reduce_reassociate",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
-        "//tensorflow/compiler/xla/service:async_all_reduce_creator",
+        "//tensorflow/compiler/xla/service:async_collective_creator",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:buffer_assignment",
@@ -2078,7 +2079,7 @@ cc_library(
 tf_cc_test(
     name = "horizontal_loop_fusion_test",
     srcs = ["horizontal_loop_fusion_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_rocm"] + tf_cuda_tests_tags(),
     deps = [
         ":fusion_merger",
         ":horizontal_loop_fusion",
@@ -2286,7 +2287,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/xla_thunks_ops.td",
-    td_srcs = [
+    deps = [
         "@llvm-project//mlir:LLVMOpsTdFiles",
     ],
 )

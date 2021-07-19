@@ -126,7 +126,7 @@ ScopedAllocatorMgr::~ScopedAllocatorMgr() {
   }
 }
 
-void ScopedAllocatorMgr::Cleanup(int64 step_id) {
+void ScopedAllocatorMgr::Cleanup(int64_t step_id) {
   mutex_lock l(mu_);
   auto it = per_step_map_.find(step_id);
   if (it != per_step_map_.end()) {
@@ -135,7 +135,7 @@ void ScopedAllocatorMgr::Cleanup(int64 step_id) {
   }
 }
 
-ScopedAllocatorContainer* ScopedAllocatorMgr::GetContainer(int64 step_id) {
+ScopedAllocatorContainer* ScopedAllocatorMgr::GetContainer(int64_t step_id) {
   VLOG(2) << "GetContainer " << step_id << " on " << device_name();
   ScopedAllocatorContainer* sac = nullptr;
   mutex_lock l(mu_);
@@ -150,7 +150,7 @@ ScopedAllocatorContainer* ScopedAllocatorMgr::GetContainer(int64 step_id) {
 }
 
 Status ScopedAllocatorMgr::AddScopedAllocator(
-    const Tensor& backing_tensor, int64 step_id, int32 scope_id,
+    const Tensor& backing_tensor, int64_t step_id, int32 scope_id,
     const string& scope_name,
     const gtl::ArraySlice<ScopedAllocator::Field>& fields,
     int32 expected_call_count) {

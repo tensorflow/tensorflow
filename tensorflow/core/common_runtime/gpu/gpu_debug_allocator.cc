@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-int64* NewMask(int64 word) {
+int64* NewMask(int64_t word) {
   int64* m = new int64[MASK_WORDS];
   for (int i = 0; i < MASK_WORDS; ++i) {
     m[i] = word;

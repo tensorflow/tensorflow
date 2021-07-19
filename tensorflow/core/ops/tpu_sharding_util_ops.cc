@@ -28,6 +28,16 @@ REGISTER_OP("XlaSplitND")
     // TODO(lyandy): Define shape inference function.
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("XlaConcatND")
+    .Input("inputs: N * T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("N: int >= 1")
+    .Attr("num_concats: list(int)")
+    .Attr("paddings: list(int) = []")
+    // TODO(lyandy): Define shape inference function.
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("ReadVariableXlaSplitND")
     .Input("resource: resource")
     .Output("outputs: N * T")
@@ -37,5 +47,14 @@ REGISTER_OP("ReadVariableXlaSplitND")
     .Attr("paddings: list(int) = []")
     // TODO(lyandy): Define shape inference function.
     .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("AssignVariableXlaConcatND")
+    .Input("resource: resource")
+    .Input("inputs: N * T")
+    .Attr("T: type")
+    .Attr("N: int >= 1")
+    .Attr("num_concats: list(int)")
+    .Attr("paddings: list(int) = []")
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow

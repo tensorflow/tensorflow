@@ -366,9 +366,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
-  @parameterized.parameters(False, True)
   @test_util.disable_mlir_bridge('Not supported yet')
-  def testVariadicReduceKahanSum(self, use_v2):
+  def testVariadicReduceKahanSum(self):
     for dtype in set(self.numeric_types).intersection(
         set([np.float32, np.complex64])):
 
@@ -388,17 +387,10 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           reducer = kahan_sum_reducer.get_concrete_function(
               (arg, arg), (arg, arg))
 
-          if use_v2:
-            return xla.variadic_reduce_v2((x, array_ops.zeros_like(x)),
-                                          init_values=(arg, arg),
-                                          dimensions_to_reduce=dims,
-                                          reducer=reducer)[output_idx]
-          else:
-            return xla.variadic_reduce((x, array_ops.zeros_like(x)),
-                                       init_value=(arg, arg),
-                                       dimensions_to_reduce=dims,
-                                       reducer=reducer)[output_idx]
-
+          return xla.variadic_reduce((x, array_ops.zeros_like(x)),
+                                     init_values=(arg, arg),
+                                     dimensions_to_reduce=dims,
+                                     reducer=reducer)[output_idx]
         return fn
 
       xs = np.array([1e5, np.pi, -1e5, np.exp(1.)])
@@ -458,9 +450,9 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       reducer_func = reducer_add.get_concrete_function(arg_spec, arg_spec)
 
       def reduce(values, *, dimensions_to_reduce):
-        return xla.variadic_reduce_v2((values,), (init_val,),  # pylint: disable=cell-var-from-loop
-                                      dimensions_to_reduce=dimensions_to_reduce,
-                                      reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
+        return xla.variadic_reduce((values,), (init_val,),  # pylint: disable=cell-var-from-loop
+                                   dimensions_to_reduce=dimensions_to_reduce,
+                                   reducer=reducer_func)[0]  # pylint: disable=cell-var-from-loop
       # Reduce dimension 0
       self._assertOpOutputMatchesExpected(
           functools.partial(reduce, dimensions_to_reduce=(0,)),
@@ -499,9 +491,9 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                                                        arg_spec_1, arg_spec_2)  # pylint: disable=cell-var-from-loop
 
       def reduce(*values, dimensions_to_reduce):
-        return xla.variadic_reduce_v2(values, (init_val_1, init_val_2,),  # pylint: disable=cell-var-from-loop
-                                      dimensions_to_reduce=dimensions_to_reduce,
-                                      reducer=reducer_func)  # pylint: disable=cell-var-from-loop
+        return xla.variadic_reduce(values, (init_val_1, init_val_2,),  # pylint: disable=cell-var-from-loop
+                                   dimensions_to_reduce=dimensions_to_reduce,
+                                   reducer=reducer_func)  # pylint: disable=cell-var-from-loop
 
       # Reduce dimension 0
       self._assertOpOutputMatchesExpected(
@@ -741,6 +733,58 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     c = xla.dot_general(a, b, dim_nums)
     self.assertEqual(c.shape.as_list(), [2, 3])
 
+  def testDynamicSlice(self):
+    start = array_ops.placeholder(np.int32, shape=(2, 3, 4))
+
+    # If slice_sizes are known, the operand shape does not matter.
+    # The shape of the output is equal to slice_sizes.
+    slice_sizes = np.array([1, 2, 4], dtype=np.int32)
+    for a_shape in [(2, 3, 4), (None, 3, 4), None]:
+      a = array_ops.placeholder(np.float32, shape=a_shape)
+      res = xla.dynamic_slice(a, start, slice_sizes)
+      self.assertEqual(res.shape.as_list(), [1, 2, 4])
+
+    # The first two dimension slice sizes are known
+    slice_sizes = array_ops.stack([1, 2, array_ops.placeholder(np.int32, [])])
+    for a_shape in [(2, 3, 4), (None, 3, 4), None]:
+      a = array_ops.placeholder(np.float32, shape=a_shape)
+      res = xla.dynamic_slice(a, start, slice_sizes)
+      self.assertEqual(res.shape.as_list(), [1, 2, None])
+
+    # If slice_sizes has known rank and dimension, but is not a constant
+    # then output has the same rank, but with unknown dimensions.
+    slice_sizes = array_ops.placeholder(np.int32, [3])
+    for a_shape in [(2, 3, 4), (None, 3, 4), None]:
+      a = array_ops.placeholder(np.float32, shape=a_shape)
+      res = xla.dynamic_slice(a, start, slice_sizes)
+      self.assertEqual(res.shape.as_list(), [None, None, None])
+
+    # slice sizes has known rank, but unknown dimensions.
+    # then the output has the same rank as the operand, but with unknown
+    # dimensions.
+    slice_sizes = array_ops.placeholder(np.int32, [None])
+    for a_shape in [(2, 3, 4), (None, 3, 4)]:
+      a = array_ops.placeholder(np.float32, shape=a_shape)
+      res = xla.dynamic_slice(a, start, slice_sizes)
+      self.assertEqual(res.shape.as_list(), [None, None, None])
+
+    a = array_ops.placeholder(np.float32, shape=None)
+    slice_sizes = array_ops.placeholder(np.int32, [None])
+    res = xla.dynamic_slice(a, start, slice_sizes)
+    self.assertIsNone(res.shape.rank)
+
+  def testDynamicUpdateSlice(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 3, 4))
+    upd = array_ops.placeholder(np.float32, shape=(1, 2, 3))
+    start_indices = array_ops.placeholder(np.int32, shape=(3,))
+
+    res = xla.dynamic_update_slice(a, upd, start_indices)
+    self.assertEqual(res.shape.as_list(), [2, 3, 4])
+
+    a = array_ops.placeholder(np.float32, shape=(None, 3, None))
+    res = xla.dynamic_update_slice(a, upd, start_indices)
+    self.assertEqual(res.shape.as_list(), [None, 3, None])
+
   def testPadShapeInference(self):
     a = array_ops.placeholder(np.float32, shape=(2, 3))
 
@@ -845,7 +889,7 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     arg_spec = array_ops.zeros([], dtype)  # pylint: disable=cell-var-from-loop
     reducer_func = reducer_add.get_concrete_function(arg_spec, arg_spec)
 
-    res = xla.variadic_reduce_v2(
+    res = xla.variadic_reduce(
         (array_ops.placeholder(np.float32, shape=(3, 4, 5)),),
         (array_ops.placeholder(np.float32, shape=()),),
         dimensions_to_reduce=(1,),
@@ -877,7 +921,7 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
                      array_ops.placeholder(np.int32, shape=()),
                      array_ops.placeholder(np.int32, shape=()))
 
-      return xla.variadic_reduce_v2(
+      return xla.variadic_reduce(
           inputs,
           init_values,
           dimensions_to_reduce=dimensions_to_reduce,

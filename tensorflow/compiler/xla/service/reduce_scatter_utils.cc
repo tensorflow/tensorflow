@@ -387,25 +387,46 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
   spec.group_size = group_size;
   spec.split_dim = -1;
   std::vector<int64_t> split_dims;
-  const Shape& shape = user->operand(0)->shape();
-  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
-    auto offset = user->operand(dim + 1);
-    // Skip trivial (1) dimensions or if the index is a constant 0.
-    if (shape.dimensions(dim) == 1 ||
-        (offset->opcode() == HloOpcode::kConstant &&
-         offset->literal().IsZero({}))) {
+  // First find a single dimension where the input and output of dynamic slice
+  // differ.
+  int num_dims = 0;
+  for (int64 dim = 0; dim < ar->shape().rank(); ++dim) {
+    if (ar->shape().dimensions(dim) == user->shape().dimensions(dim)) {
       continue;
     }
-    split_dims.push_back(dim);
-    if (spec.split_dim != -1) {
-      if (!allow_multiple_split_dims || spec.split_dim != (dim - 1)) {
-        VLOG(2) << "Only support split on consecutive dims "
-                << user->ToString();
-        return absl::nullopt;
-      }
-      continue;
-    }
+    num_dims++;
+    VLOG(2) << "select dim: " << dim;
     spec.split_dim = dim;
+  }
+  if (spec.split_dim != -1) {
+    if (num_dims == 1) {
+      split_dims.push_back(spec.split_dim);
+    } else {
+      // Recompute split dim.
+      spec.split_dim = -1;
+    }
+  }
+  const Shape& shape = user->operand(0)->shape();
+  if (spec.split_dim == -1) {
+    for (int64_t dim = 0; dim < shape.rank(); ++dim) {
+      auto offset = user->operand(dim + 1);
+      // Skip trivial (1) dimensions or if the index is a constant 0.
+      if (shape.dimensions(dim) == 1 ||
+          (offset->opcode() == HloOpcode::kConstant &&
+           offset->literal().IsZero({}))) {
+        continue;
+      }
+      split_dims.push_back(dim);
+      if (spec.split_dim != -1) {
+        if (!allow_multiple_split_dims || spec.split_dim != (dim - 1)) {
+          VLOG(2) << "Only support split on consecutive dims "
+                  << user->ToString();
+          return absl::nullopt;
+        }
+        continue;
+      }
+      spec.split_dim = dim;
+    }
   }
 
   std::vector<int64_t> group_sizes;

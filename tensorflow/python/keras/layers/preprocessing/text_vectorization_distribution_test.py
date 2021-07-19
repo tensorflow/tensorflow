@@ -31,6 +31,7 @@ from tensorflow.python.keras.layers.preprocessing import preprocessing_test_util
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.platform import test
 
+
 @ds_combinations.generate(
     combinations.combine(
         strategy=strategy_combinations.all_strategies +
@@ -73,10 +74,8 @@ class TextVectorizationDistributionTest(
     # TODO(b/180614455): remove this check when MLIR bridge is always enabled.
     if backend.is_tpu_strategy(strategy):
       self.skipTest("This test needs MLIR bridge on TPU.")
-    # TODO: root cause ROCm failure 
     if test.is_built_with_rocm():
-      self.skipTest("Mirror GPU 2X1, fails with ROCm")
-
+      self.skipTest("MultiworkerMirroredGPU2x fails with ROCm")
     vocab_data = [[
         "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
         "and", "fire"

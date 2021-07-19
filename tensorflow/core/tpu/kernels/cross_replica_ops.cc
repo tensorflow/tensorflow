@@ -36,11 +36,11 @@ std::vector<xla::ReplicaGroup> Convert(
   const int64 num_replica_per_group = group_assignment_shape.dim_size(1);
 
   replica_groups.reserve(num_groups);
-  for (int64 g = 0; g < num_groups; ++g) {
+  for (int64_t g = 0; g < num_groups; ++g) {
     xla::ReplicaGroup replica_group;
 
-    for (int64 i = 0; i < num_replica_per_group; ++i) {
-      int64 replica = group_assignment[num_replica_per_group * g + i];
+    for (int64_t i = 0; i < num_replica_per_group; ++i) {
+      int64_t replica = group_assignment[num_replica_per_group * g + i];
       replica_group.add_replica_ids(replica);
     }
     replica_groups.push_back(replica_group);

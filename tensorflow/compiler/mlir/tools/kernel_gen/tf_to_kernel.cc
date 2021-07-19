@@ -109,7 +109,8 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                 llvm::ArrayRef<int64_t> tile_sizes,
                 llvm::ArrayRef<int64_t> unroll_factors,
                 int64_t max_supported_rank, bool embed_memref_prints,
-                bool print_ptx, bool enable_ftz, bool cpu_codegen) {
+                bool print_ptx, bool print_llvmir, bool enable_ftz,
+                bool cpu_codegen, bool jit_compile) {
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -118,10 +119,10 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
-      GenerateKernelForTfCode(
-          context, tf_code, architectures, tile_sizes, unroll_factors,
-          max_supported_rank, embed_memref_prints,
-          /*generate_fatbin=*/true, print_ptx, enable_ftz, cpu_codegen));
+      GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
+                              unroll_factors, max_supported_rank,
+                              embed_memref_prints, print_ptx, print_llvmir,
+                              enable_ftz, cpu_codegen, jit_compile));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
@@ -153,10 +154,16 @@ int main(int argc, char** argv) {
       "print-ptx",
       llvm::cl::desc("print generated PTX code per target architecture."),
       llvm::cl::init(false));
+  llvm::cl::opt<bool> print_llvmir(
+      "print-llvmir", llvm::cl::desc("print llvm ir during lowering to ptx."),
+      llvm::cl::init(false));
   llvm::cl::opt<bool> enable_ftz(
       "enable_ftz",
       llvm::cl::desc(
           "enable the denormal flush to zero mode when generating code."),
+      llvm::cl::init(false));
+  llvm::cl::opt<bool> jit_compile(
+      "jit-compile", llvm::cl::desc("Generate only a JIT compiler invocation."),
       llvm::cl::init(false));
   llvm::cl::list<std::string> architectures(
       "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),
@@ -183,8 +190,8 @@ int main(int argc, char** argv) {
 
   auto status = tensorflow::kernel_gen::Run(
       input_file, output_file, architectures, tile_sizes, unroll_factors,
-      max_supported_rank, embed_memref_prints, print_ptx, enable_ftz,
-      cpu_codegen);
+      max_supported_rank, embed_memref_prints, print_ptx, print_llvmir,
+      enable_ftz, cpu_codegen, jit_compile);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

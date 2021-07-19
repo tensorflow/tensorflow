@@ -5,6 +5,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_protos_all")
 package(
     default_visibility = [
         "//tensorflow/core/data:__pkg__",
+        "//tensorflow/core/data/service:__pkg__",
         "//tensorflow/core/grappler/optimizers/data:__subpackages__",
         "//tensorflow/core/kernels/data:__pkg__",
         "//tensorflow/core/kernels/data/experimental:__pkg__",

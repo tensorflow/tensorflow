@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 FailTestRMA::FailTestRMA(const DeviceMgr* dev_mgr,
-                         DeviceResolverInterface* dev_resolver, int64 step_id)
+                         DeviceResolverInterface* dev_resolver, int64_t step_id)
     : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
       fail_after_(0) {}
 
@@ -43,8 +43,9 @@ bool FailTestRMA::MaybeFail(const StatusCallback& done) {
   if (fail_now) {
     auto error = errors::Internal("Deliberate failure");
     LOG(INFO) << "triggering failure " << error;
-    SchedNonBlockingClosureAfter(
-        1000, [this, error] { buf_rendezvous()->StartAbort(error); });
+    buf_rendezvous()->StartAbort(error);
+    // The current call hasn't reached BufRendezvous yet, so we need to call
+    // its done separately.
     done(error);
     return true;
   }
@@ -331,16 +332,16 @@ Status RunCollective(CollectiveTestEnv* test_env, CollectiveParams* col_params,
   TF_CHECK_OK(CollectiveRegistry::Lookup(
       col_params->instance.impl_details.collective_name, &collective_impl));
   core::ScopedUnref unref_collective_impl(collective_impl);
-  TF_CHECK_OK(collective_impl->InitializeCollectiveParams(col_params));
+  TF_RETURN_IF_ERROR(collective_impl->InitializeCollectiveParams(col_params));
 
   string exec_key = strings::StrCat(col_params->instance.instance_key, ":0:0");
   auto col_ctx = std::make_shared<CollectiveContext>(
       test_env->col_exec.get(), /*nccl_communicator*/ nullptr,
       test_env->device_mgr.get(), &ctx, &op_params, col_params, exec_key,
       kStepId, &input_buffer, &output_buffer);
-  TF_CHECK_OK(collective_impl->InitializeCollectiveContext(col_ctx));
+  TF_RETURN_IF_ERROR(collective_impl->InitializeCollectiveContext(col_ctx));
 
-  // Run the all-reduce.
+  // Run the collective.
   Status status;
   Notification n;
   collective_impl->Run([&status, &n](Status s) {

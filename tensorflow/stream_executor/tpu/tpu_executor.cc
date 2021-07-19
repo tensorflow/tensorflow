@@ -192,7 +192,7 @@ TpuExecutor::CreateEventImplementation() {
   return ptr;
 }
 
-DeviceMemoryBase TpuExecutor::Allocate(uint64 size, int64 memory_space) {
+DeviceMemoryBase TpuExecutor::Allocate(uint64 size, int64_t memory_space) {
   SE_DeviceMemoryBase se_base = tpu::ExecutorApiFn()->TpuExecutor_AllocateFn(
       executor_, size, memory_space);
   return ApiConverter::FromC(se_base);

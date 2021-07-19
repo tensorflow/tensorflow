@@ -24,15 +24,76 @@ limitations under the License.
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
-#define TENSORFLOW_INCLUDED_FROM_GAUGE_H  // prevent accidental use of
-                                          // mobile_gauge.h
-#include "tensorflow/core/lib/monitoring/mobile_gauge.h"
-#undef TENSORFLOW_INCLUDED_FROM_GAUGE_H
-#else
+
+#include <functional>
+#include <string>
+
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
+
+namespace tensorflow {
+namespace monitoring {
+
+// GaugeCell which has a null implementation.
+template <typename T>
+class GaugeCell {
+ public:
+ public:
+  GaugeCell() {}
+  ~GaugeCell() {}
+
+  void Set(const T& value) {}
+  T value() const { return T(); }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
+};
+
+// Gauge which has a null implementation.
+template <typename ValueType, int NumLabels>
+class Gauge {
+ public:
+  ~Gauge() {}
+
+  template <typename... MetricDefArgs>
+  static Gauge* New(MetricDefArgs&&... metric_def_args) {
+    static_assert(
+        std::is_same<ValueType, int64>::value ||
+            std::is_same<ValueType, std::string>::value ||
+            std::is_same<ValueType, bool>::value ||
+            std::is_same<ValueType, std::function<int64()> >::value ||
+            std::is_same<ValueType, std::function<std::string()> >::value ||
+            std::is_same<ValueType, std::function<bool()> >::value,
+        "Gauge only allows bool, int64, and string types.");
+    return new Gauge();
+  }
+
+  template <typename... Labels>
+  GaugeCell<ValueType>* GetCell(const Labels&... labels) {
+    return &default_gauge_cell_;
+  }
+
+  Status GetStatus() { return Status::OK(); }
+
+ private:
+  Gauge() {}
+
+  GaugeCell<ValueType> default_gauge_cell_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(Gauge);
+};
+
+}  // namespace monitoring
+}  // namespace tensorflow
+
+#else  // IS_MOBILE_PLATFORM
 
 #include <array>
 #include <atomic>
+#include <functional>
 #include <map>
+#include <string>
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
@@ -223,10 +284,14 @@ template <typename ValueType, int NumLabels>
 template <typename... MetricDefArgs>
 Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
-  static_assert(std::is_same<ValueType, int64>::value ||
-                    std::is_same<ValueType, string>::value ||
-                    std::is_same<ValueType, bool>::value,
-                "Gauge only allows bool, int64, and string types.");
+  static_assert(
+      std::is_same<ValueType, int64>::value ||
+          std::is_same<ValueType, std::string>::value ||
+          std::is_same<ValueType, bool>::value ||
+          std::is_same<ValueType, std::function<int64()> >::value ||
+          std::is_same<ValueType, std::function<std::string()> >::value ||
+          std::is_same<ValueType, std::function<bool()> >::value,
+      "Gauge only allows bool, int64, and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));

@@ -54,22 +54,22 @@ The following development boards are supported:
 ## Explore the examples
 
 Each example application is on
-[Github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples)
+[Github](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples)
 and has a `README.md` file that explains how it can be deployed to its supported
 platforms. Some examples also have end-to-end tutorials using a specific
 platform, as given below:
 
-*   [Hello World](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/hello_world) -
+*   [Hello World](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world) -
     Demonstrates the absolute basics of using TensorFlow Lite for
     Microcontrollers
     *   [Tutorial using any supported device](get_started_low_level.md)
-*   [Micro speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech) -
+*   [Micro speech](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/micro_speech) -
     Captures audio with a microphone to detect the words "yes" and "no"
     *   [Tutorial using SparkFun Edge](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0)
-*   [Magic wand](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/magic_wand) -
+*   [Magic wand](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/magic_wand) -
     Captures accelerometer data to classify three different physical gestures
     *   [Tutorial using Arduino Nano 33 BLE Sense](https://codelabs.developers.google.com/codelabs/ai-magicwand/#0)
-*   [Person detection](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection) -
+*   [Person detection](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/person_detection) -
     Captures camera data with an image sensor to detect the presence or absence
     of a person
 

@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-saved-model-initialize-variables-in-session-init-test -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: tf-opt -tf-saved-model-initialize-variables-in-session-init -split-input-file -verify-diagnostics %s | FileCheck %s
 
 
 // Test with no session init function.

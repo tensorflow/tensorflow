@@ -274,7 +274,7 @@ Status ValidateStridedSliceOp(
     int64& begin_i = (*begin)[i];
     int64& end_i = (*end)[i];
     int64& stride_i = (*strides)[i];
-    int64 dim_i = input_shape.dim_size(i);
+    int64_t dim_i = input_shape.dim_size(i);
     if (stride_i == 0) {
       return errors::InvalidArgument("strides[", i, "] must be non-zero");
     }
@@ -289,11 +289,12 @@ Status ValidateStridedSliceOp(
     const std::array<int64, 2> valid_range = {
         {stride_i > 0 ? 0 : -1, stride_i > 0 ? dim_i : dim_i - 1}};
 
-    auto canonical = [stride_i, dim_i, masks, valid_range](int64 x, int c) {
+    auto canonical = [stride_i, dim_i, masks, valid_range](int64_t x, int c) {
       if (masks[c]) {
         return stride_i > 0 ? valid_range[c] : valid_range[(c + 1) & 1];
       } else {
-        int64 x_fwd = x < 0 ? dim_i + x : x;  // make negative indices positive
+        int64_t x_fwd =
+            x < 0 ? dim_i + x : x;  // make negative indices positive
         return x_fwd < valid_range[0]
                    ? valid_range[0]
                    : x_fwd > valid_range[1] ? valid_range[1] : x_fwd;
@@ -313,7 +314,7 @@ Status ValidateStridedSliceOp(
         // particular foo[-1] produces sparse_begin = -1, sparse_end = 0.
         // and canonical puts these to n-1 and 0, which implies a degenerate
         // interval. Fortunately, it is now safe to re-create end as begin+1.
-        int64 x_fwd = begin_i < 0 ? dim_i + begin_i : begin_i;
+        int64_t x_fwd = begin_i < 0 ? dim_i + begin_i : begin_i;
         begin_i = x_fwd;
         end_i = begin_i + 1;
         if (x_fwd < 0 || x_fwd >= dim_i) {
@@ -334,7 +335,7 @@ Status ValidateStridedSliceOp(
       (*slice_dim0) &= (i == 0 && stride_i == 1) || begin_and_end_masked;
     }
     // Compute the processing shape (the intermediate Eigen will produce)
-    int64 interval_length;
+    int64_t interval_length;
     bool known_interval = false;
     if (dense_spec.begin_valid && dense_spec.end_valid) {
       interval_length = end_i - begin_i;
@@ -358,7 +359,7 @@ Status ValidateStridedSliceOp(
       }
     }
     if (known_interval) {
-      int64 size_i;
+      int64_t size_i;
       // Hold zero if the interval is degenerate, otherwise account for
       // remainder
       if (interval_length == 0 || ((interval_length < 0) != (stride_i < 0))) {
@@ -391,10 +392,10 @@ Status ValidateStridedSliceOp(
     shape_spec->shrink_axis_dense_mask = dense_spec.shrink_axis_mask;
   }
 
-  for (int64 dense_dim = 0;
+  for (int64_t dense_dim = 0;
        dense_dim < dense_spec.final_shape_gather_indices.size(); ++dense_dim) {
-    int64 gather_index = dense_spec.final_shape_gather_indices[dense_dim];
-    int64 sparse_index =
+    int64_t gather_index = dense_spec.final_shape_gather_indices[dense_dim];
+    int64_t sparse_index =
         dense_spec.final_shape_gather_indices_sparse[dense_dim];
     if (gather_index >= 0) {
       final_shape->AddDim(processing_shape->dim_size(gather_index));

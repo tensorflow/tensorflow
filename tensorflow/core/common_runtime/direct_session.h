@@ -204,7 +204,7 @@ class DirectSession : public Session {
     TensorStore tensor_store;
     ScopedStepContainer step_container;
 
-    RunState(int64 step_id, const std::vector<Device*>* devices);
+    RunState(int64_t step_id, const std::vector<Device*>* devices);
   };
 
   // For each live partial execution, the session maintains a PartialRunState.
@@ -219,7 +219,7 @@ class DirectSession : public Session {
 
     PartialRunState(const std::vector<string>& pending_input_names,
                     const std::vector<string>& pending_output_names,
-                    int64 step_id, const std::vector<Device*>* devices);
+                    int64_t step_id, const std::vector<Device*>* devices);
 
     // Returns true if all pending inputs and outputs have been completed.
     bool PendingDone() const;
@@ -264,7 +264,7 @@ class DirectSession : public Session {
       DataTypeVector* output_types, int64* collective_graph_key);
 
   ::tensorflow::Status RunInternal(
-      int64 step_id, const RunOptions& run_options,
+      int64_t step_id, const RunOptions& run_options,
       CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
       RunMetadata* run_metadata,
       const thread::ThreadPoolOptions& threadpool_options);
@@ -306,9 +306,9 @@ class DirectSession : public Session {
   //
   // If the timeout expires, the `cm->StartCancel()` will be called.
   ::tensorflow::Status WaitForNotification(Notification* n,
-                                           int64 timeout_in_ms);
+                                           int64_t timeout_in_ms);
   void WaitForNotification(Notification* n, RunState* run_state,
-                           CancellationManager* cm, int64 timeout_in_ms);
+                           CancellationManager* cm, int64_t timeout_in_ms);
 
   ::tensorflow::Status CheckNotClosed() {
     mutex_lock l(closed_lock_);
@@ -326,8 +326,8 @@ class DirectSession : public Session {
   }
 
   ::tensorflow::Status CreateDebuggerState(
-      const CallableOptions& options, int64 global_step,
-      int64 session_run_index, int64 executor_step_index,
+      const CallableOptions& options, int64_t global_step,
+      int64_t session_run_index, int64_t executor_step_index,
       std::unique_ptr<DebuggerStateInterface>* debugger_state);
 
   ::tensorflow::Status DecorateAndPublishGraphForDebug(

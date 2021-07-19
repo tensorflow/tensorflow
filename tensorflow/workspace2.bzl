@@ -129,11 +129,11 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "96d81ea94cfcd7a6d8a0424af60198b731f660b7f720ffdc99e0a98b86eabd55",
-        strip_prefix = "XNNPACK-75d1b7977fd4e732d17d9948bab2f071632b0414",
+        sha256 = "dec35e45065ba476614b365b5a1d5722c89f75d7bf011421a7d81808cc85bfb0",
+        strip_prefix = "XNNPACK-89cd59bcfbfb43c086aab0541e863bc91da74693",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/75d1b7977fd4e732d17d9948bab2f071632b0414.zip",
-            "https://github.com/google/XNNPACK/archive/75d1b7977fd4e732d17d9948bab2f071632b0414.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/89cd59bcfbfb43c086aab0541e863bc91da74693.zip",
+            "https://github.com/google/XNNPACK/archive/89cd59bcfbfb43c086aab0541e863bc91da74693.zip",
         ],
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
@@ -162,11 +162,11 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = "//third_party:cudnn_frontend_header_fix.patch",
-        sha256 = "60b085e1412144e0b24f8b01809857d3a4491c9b2b1c58f0766f673b791d05ca",
-        strip_prefix = "cudnn-frontend-51e60d891b689d618e7a623509a779c422a420f7",
+        sha256 = "fdf4234e9c9c481b3b3a80ad404bc278e6ecb761c5574beb4d3a2cde4a9002ad",
+        strip_prefix = "cudnn-frontend-73210a930333eaf66b42b01693bce7b70719c354",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVIDIA/cudnn-frontend/archive/51e60d891b689d618e7a623509a779c422a420f7.zip",
-            "https://github.com/NVIDIA/cudnn-frontend/archive/51e60d891b689d618e7a623509a779c422a420f7.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVIDIA/cudnn-frontend/archive/73210a930333eaf66b42b01693bce7b70719c354.zip",
+            "https://github.com/NVIDIA/cudnn-frontend/archive/73210a930333eaf66b42b01693bce7b70719c354.zip",
         ],
     )
 
@@ -184,6 +184,17 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
+        sha256 = "82795714f11649b2a3f797d99bd07d117cde97215f55654b028ca00f3b33e0cb",
+        strip_prefix = "oneDNN-2.3-rc2",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.3-rc2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "mkl_dnn_acl_compatible",
+        build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         sha256 = "ccb2dbd9da36cd873cf573b4201d61bdba7438f12b144e6c7d061eb12a641751",
         strip_prefix = "oneDNN-2.3",
         urls = [
@@ -193,25 +204,14 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "mkl_dnn_acl_compatible",
-        build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        sha256 = "4d655c0751ee6439584ef5e3d465953fe0c2f4ee2700bc02699bdc1d1572af0d",
-        strip_prefix = "oneDNN-2.2",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
         name = "compute_library",
-        sha256 = "cdb3d8a7ab7ea13f0df207a20657f2827ac631c24aa0e8487bacf97697237bdf",
-        strip_prefix = "ComputeLibrary-21.02",
+        sha256 = "18011eb6dc999f030df609ff2b528e0067ab9f76921fa0b53e35859e06a0aa10",
+        strip_prefix = "ComputeLibrary-21.05",
         build_file = "//third_party/compute_library:BUILD",
         patch_file = "//third_party/compute_library:compute_library.patch",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.02.tar.gz",
-            "https://github.com/ARM-software/ComputeLibrary/archive/v21.02.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.05.tar.gz",
+            "https://github.com/ARM-software/ComputeLibrary/archive/v21.05.tar.gz",
         ],
     )
 
@@ -604,12 +604,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "3b4378156ba09e224008e81dcce854b7ce4d182b1f9cfb97fe5ed9e9c18c6bd3",
-        strip_prefix = "curl-7.76.0",
+        sha256 = "b0a3428acb60fa59044c4d0baae4e4fc09ae9af1d8a3aa84b2e3fbcd99841f77",
+        strip_prefix = "curl-7.77.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.76.0.tar.gz",
-            "https://curl.haxx.se/download/curl-7.76.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.77.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.77.0.tar.gz",
         ],
     )
 

@@ -96,8 +96,9 @@ class CSRSparseMatrixToSparseTensorCPUOp : public OpKernel {
     auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
 
     // Process the individual batches in parallel using a threadpool.
-    auto shard = [&](int64 batch_begin, int64 batch_end) {
-      for (int64 batch_idx = batch_begin; batch_idx < batch_end; ++batch_idx) {
+    auto shard = [&](int64_t batch_begin, int64_t batch_end) {
+      for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
+           ++batch_idx) {
         const int64 csr_batch_offset = batch_ptrs(batch_idx);
 
         for (int row_idx = 0; row_idx < num_rows; ++row_idx) {
@@ -107,7 +108,7 @@ class CSRSparseMatrixToSparseTensorCPUOp : public OpKernel {
           //  [csr_row_ptr[row_offset], csr_row_ptr[row_offset + 1])
           const int64 col_begin = csr_row_ptr(row_offset);
           const int64 col_end = csr_row_ptr(row_offset + 1);
-          for (int64 i = col_begin; i < col_end; ++i) {
+          for (int64_t i = col_begin; i < col_end; ++i) {
             const int64 col_idx = csr_col_ind(csr_batch_offset + i);
             const int64 indices_offset = rank * (csr_batch_offset + i);
 

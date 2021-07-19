@@ -484,7 +484,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
     }
     // Introduce a random delay up to 50ms, so that we're more likely to abort
     // on different code points each time.
-    int64 delay_ms = random::New64() % 50000;
+    int64_t delay_ms = random::New64() % 50000;
     Env::Default()->SleepForMicroseconds(delay_ms);
     prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
     done.Wait();

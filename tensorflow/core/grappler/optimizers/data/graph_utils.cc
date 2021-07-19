@@ -146,7 +146,7 @@ NodeDef* AddScalarConstNode(int v, MutableGraphView* graph) {
 }
 
 template <>
-NodeDef* AddScalarConstNode(int64 v, MutableGraphView* graph) {
+NodeDef* AddScalarConstNode(int64_t v, MutableGraphView* graph) {
   return AddScalarConstNodeHelper(
       DT_INT64, [v](TensorProto* proto) { proto->add_int64_val(v); }, graph);
 }
@@ -275,7 +275,7 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph) {
 }
 
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
-                      int64 i) {
+                      int64_t i) {
   if (node.input_size() <= i) return nullptr;
   MutableGraphView::InputPort input_port = graph.GetInputPort(node.name(), i);
   return graph.GetRegularFanin(input_port).node;

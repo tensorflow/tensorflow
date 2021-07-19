@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -892,8 +893,8 @@ Status ImporterBase::AddNodesToShapeRefiner(
     }
     for (int i = 0; i < c->Rank(s0); ++i) {
       if (!c->Dim(s0, i).SameHandle(c->Dim(s1, i))) {
-        int64 val0 = c->Value(c->Dim(s0, i));
-        int64 val1 = c->Value(c->Dim(s1, i));
+        int64_t val0 = c->Value(c->Dim(s0, i));
+        int64_t val1 = c->Value(c->Dim(s1, i));
         // Negative value is treated as unknown so all negative values indicate
         // the same dimension.
         if (val0 >= 0 && val1 >= 0 && val0 != val1) return false;
@@ -1327,13 +1328,15 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
     }
   }
 
-  ImporterBase child_importer(graph_flib_, debug_info_, specs, module_,
-                              tf_name_to_mlir_name_, function_name_uniquifier_,
-                              func_name);
-  TF_RETURN_IF_ERROR(child_importer.PrepareConvert(*fbody->graph));
+  // std::make_unique is not possible here, using `new` to access
+  // a non-public constructor.
+  std::unique_ptr<ImporterBase> child_importer(new ImporterBase(
+      graph_flib_, debug_info_, specs, module_, tf_name_to_mlir_name_,
+      function_name_uniquifier_, func_name));
+  TF_RETURN_IF_ERROR(child_importer->PrepareConvert(*fbody->graph));
 
   TF_ASSIGN_OR_RETURN(auto func_type,
-                      child_importer.InferLibFunctionType(*fbody));
+                      child_importer->InferLibFunctionType(*fbody));
 
   absl::InlinedVector<OutputTensor, 4> arg_nodes;
   absl::InlinedVector<OutputTensor, 4> ret_nodes;
@@ -1341,7 +1344,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   GetArgsAndRetsFromFunctionBody(*fbody, &arg_nodes, &ret_nodes,
                                  &control_ret_nodes);
 
-  TF_RETURN_IF_ERROR(child_importer.Convert(
+  TF_RETURN_IF_ERROR(child_importer->Convert(
       mlir_func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes,
       llvm::makeArrayRef(attributes.begin(), attributes.end())));
   return Status::OK();
@@ -1859,11 +1862,37 @@ mlir::Operation* ImporterBase::CreateOperation(
   mlir::OperationName name = inner_op->getName();
   if (!name.getAbstractOperation() &&
       // Skip unmodelled ops that are handled differently.
-      (node_type_name != "_Arg" && node_type_name != "_Retval")) {
-    if (node.op_def().is_stateful() &&
-        GetUnmodelledOpTypes().insert(name.getStringRef()).second) {
-      LOG(INFO) << "Op type `" << node.type_string()
+      (node_type_name != "_Arg" && node_type_name != "_Retval") &&
+      // Skip if warning already reported.
+      (GetUnmodelledOpTypes().insert(name.getStringRef()).second)) {
+    if (node.op_def().is_stateful()) {
+      LOG(INFO) << "[potentially conservative] Op type `" << node.type_string()
                 << "` is stateful but effects not modelled";
+    } else {
+      // See if any resource type is used.
+      bool resource = false;
+      std::function<bool(mlir::Type)> record_resource;
+      record_resource = [&](mlir::Type type) {
+        if (resource) return true;
+        if (type.isa<mlir::TF::ResourceType>()) {
+          resource = true;
+          return true;
+        }
+        if (auto with_subtype =
+                type.dyn_cast<mlir::SubElementTypeInterface>()) {
+          with_subtype.walkSubTypes([&](mlir::Type t) { record_resource(t); });
+        }
+        return resource;
+      };
+
+      for (mlir::Type t : inner_op->getResultTypes())
+        if (record_resource(t)) break;
+      for (mlir::Type t : inner_op->getOperandTypes())
+        if (record_resource(t)) break;
+      if (resource)
+        LOG(INFO) << "[potentially conservative] Op type `"
+                  << node.type_string()
+                  << "` has resource operands/results but effects not modelled";
     }
   }
 

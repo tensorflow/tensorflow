@@ -2,7 +2,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
     default_visibility = [":test_friends"],
@@ -233,6 +233,7 @@ cc_library(
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Reducer",
         "@llvm-project//mlir:SideEffects",
@@ -322,10 +323,11 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
+        "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardToLLVM",
     ],
 )
 

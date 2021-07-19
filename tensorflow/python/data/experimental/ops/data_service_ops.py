@@ -26,17 +26,25 @@ from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
+from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_AUTO = "AUTO"
 COMPRESSION_NONE = None
+# TODO(b/176933539): Use the regular import.
+nested_structure_coder = lazy_loader.LazyLoader(
+    "nested_structure_coder", globals(),
+    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 class ProcessingMode(object):
@@ -618,6 +626,12 @@ def _register_dataset(service, dataset, compression):
   if external_state_policy is None:
     external_state_policy = ExternalStatePolicy.WARN
 
+  encoded_spec = ""
+  if context.executing_eagerly():
+    coder = nested_structure_coder.StructureCoder()
+    encoded_spec = coder.encode_structure(
+        dataset.element_spec).SerializeToString()
+
   if compression == COMPRESSION_AUTO:
     dataset = dataset.map(
         lambda *x: compression_ops.compress(x),
@@ -629,7 +643,8 @@ def _register_dataset(service, dataset, compression):
       dataset._variant_tensor,  # pylint: disable=protected-access
       address=address,
       protocol=protocol,
-      external_state_policy=external_state_policy.value)
+      external_state_policy=external_state_policy.value,
+      element_spec=encoded_spec)
 
   return dataset_id
 
@@ -710,8 +725,9 @@ def _from_dataset_id(processing_mode,
       `register_dataset` when the dataset is registered with the tf.data
       service.
     element_spec: A nested structure of `tf.TypeSpec`s representing the type of
-      elements produced by the dataset. Use `tf.data.Dataset.element_spec` to
-      see the element spec for a given dataset.
+      elements produced by the dataset. This argument is only required inside a
+      tf.function. Use `tf.data.Dataset.element_spec` to get the element spec
+      for a given dataset.
     job_name: (Optional.) The name of the job. If provided, it must be a
       non-empty string or tensor. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that
@@ -750,6 +766,11 @@ def _from_dataset_id(processing_mode,
   """
   ProcessingMode.validate(processing_mode)
   valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
+  if isinstance(service, tuple):
+    protocol, address = service
+  else:
+    protocol, address = _parse_service(service)
+
   if compression not in valid_compressions:
     raise ValueError(
         "Invalid compression argument: {}. Must be one of {}".format(
@@ -760,13 +781,34 @@ def _from_dataset_id(processing_mode,
       raise ValueError(
           "job_name must be a string or Tensor, but job_name was of type "
           "{0}. job_name={1}".format(type(job_name), job_name))
-  if element_spec is None:
-    raise ValueError("element_spec must not be None")
 
-  if isinstance(service, tuple):
-    protocol, address = service
-  else:
-    protocol, address = _parse_service(service)
+  if element_spec is None:
+    if not context.executing_eagerly():
+      raise ValueError("In graph mode element_spec must be provided manually.")
+
+    dataset_id_val = tensor_util.constant_value(dataset_id)
+    try:
+      encoded_spec = _pywrap_server_lib.TF_DATA_GetElementSpec(
+          dataset_id_val, address, protocol)
+
+    except NotImplementedError as err:
+      raise ValueError("The tf.data service is running an earlier version of "
+                       "TensorFlow that requires specifying `element_spec` as "
+                       "an argument to `from_dataset_id`. Please either supply "
+                       "an element spec or update the tf.data service to the "
+                       "latest version.") from err
+
+    except RuntimeError as err:
+      raise ValueError("Failed to fetch element spec for dataset id " +
+                       str(dataset_id_val) + " from tf.data service. If the "
+                       "dataset was registered in graph mode or inside a "
+                       "tf.function, the `element_spec` must be specified as "
+                       "an argument to `from_dataset_id`.") from err
+
+    struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
+    struct_pb.ParseFromString(encoded_spec)
+    coder = nested_structure_coder.StructureCoder()
+    element_spec = coder.decode_proto(struct_pb)
 
   # If we compress, the data service side dataset will produce scalar variants.
   data_service_element_spec = (
@@ -864,8 +906,9 @@ def from_dataset_id(processing_mode,
       `register_dataset` when the dataset is registered with the tf.data
       service.
     element_spec: A nested structure of `tf.TypeSpec`s representing the type of
-      elements produced by the dataset. Use `tf.data.Dataset.element_spec` to
-      see the element spec for a given dataset.
+      elements produced by the dataset. This argument is only required inside a
+      tf.function. Use `tf.data.Dataset.element_spec` to get the element spec
+      for a given dataset.
     job_name: (Optional.) The name of the job. If provided, it must be a
       non-empty string. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that

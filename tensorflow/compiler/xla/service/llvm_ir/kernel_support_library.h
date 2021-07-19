@@ -69,7 +69,7 @@ class KernelSupportLibrary {
   }
 
   Status ForWithStatus(
-      absl::string_view name, int64 start, int64 end, int64 step,
+      absl::string_view name, int64_t start, int64_t end, int64_t step,
       const std::function<Status(
           llvm::Value* ind_var, bool is_first_iteration)>& for_body_generator) {
     return ForWithStatus(name, /*start=*/b_->getInt64(start),
@@ -78,7 +78,7 @@ class KernelSupportLibrary {
   }
 
   void For(
-      absl::string_view name, int64 start, int64 end, int64 step,
+      absl::string_view name, int64_t start, int64_t end, int64_t step,
       const std::function<void(llvm::Value* ind_var, bool is_first_iteration)>&
           for_body_generator) {
     For(name, /*start=*/b_->getInt64(start),
@@ -121,8 +121,8 @@ class KernelSupportLibrary {
   }
 
   Status ForWithStatus(
-      absl::string_view name, llvm::Value* start, llvm::Value* end, int64 step,
-      bool peel_first_iteration,
+      absl::string_view name, llvm::Value* start, llvm::Value* end,
+      int64_t step, bool peel_first_iteration,
       const std::function<Status(llvm::Value* ind_var,
                                  llvm::Value* is_first_iteration)>&
           for_body_generator) {
@@ -133,7 +133,7 @@ class KernelSupportLibrary {
   }
 
   void For(absl::string_view name, llvm::Value* start, llvm::Value* end,
-           int64 step, bool peel_first_iteration,
+           int64_t step, bool peel_first_iteration,
            const std::function<void(llvm::Value* ind_var,
                                     llvm::Value* is_first_iteration)>&
                for_body_generator) {
@@ -164,7 +164,8 @@ class KernelSupportLibrary {
   }
 
   Status ForWithStatus(
-      absl::string_view name, llvm::Value* start, llvm::Value* end, int64 step,
+      absl::string_view name, llvm::Value* start, llvm::Value* end,
+      int64_t step,
       const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
     return ForWithStatus(name, start, end,
                          llvm::ConstantInt::get(start->getType(), step),
@@ -175,14 +176,15 @@ class KernelSupportLibrary {
   }
 
   void For(
-      absl::string_view name, llvm::Value* start, llvm::Value* end, int64 step,
+      absl::string_view name, llvm::Value* start, llvm::Value* end,
+      int64_t step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
     For(name, start, end, llvm::ConstantInt::get(start->getType(), step),
         for_body_generator);
   }
 
   Status ForWithStatus(
-      absl::string_view name, int64 start, int64 end, int64 step,
+      absl::string_view name, int64_t start, int64_t end, int64_t step,
       const std::function<Status(llvm::Value* ind_var)>& for_body_generator) {
     return ForWithStatus(name, /*start=*/b_->getInt64(start),
                          /*end=*/b_->getInt64(end),
@@ -190,7 +192,7 @@ class KernelSupportLibrary {
   }
 
   void For(
-      absl::string_view name, int64 start, int64 end, int64 step,
+      absl::string_view name, int64_t start, int64_t end, int64_t step,
       const std::function<void(llvm::Value* ind_var)>& for_body_generator) {
     For(name, /*start=*/b_->getInt64(start),
         /*end=*/b_->getInt64(end),

@@ -491,7 +491,10 @@ class _EagerTemplateVariableStore(object):
     if default._store_eager_variables:  # pylint: disable=protected-access
       self._eager_variable_store = variable_scope.EagerVariableStore(default)
     else:
+      # If no outer eager variable store has been made,
+      # the template needs to create one
       self._eager_variable_store = variable_scope.EagerVariableStore()
+    self._used_once = False
 
   def set_variable_scope_name(self, variable_scope_name):
     self._variable_scope_name = variable_scope_name
@@ -499,7 +502,15 @@ class _EagerTemplateVariableStore(object):
   @tf_contextlib.contextmanager
   def as_default(self):
     try:
-      with self._eager_variable_store.as_default():
+      if not self._used_once:
+        # If an outer eager VariableStore was explicitly created and set by
+        # the first time this template store was used (even if not at
+        # constructor time) then pick up the outer variable store.
+        default = variable_scope._get_default_variable_store()  # pylint: disable=protected-access
+        if default._store_eager_variables:  # pylint: disable=protected-access
+          self._eager_variable_store._store = default  # pylint: disable=protected-access
+        self._used_once = True
+      with self._eager_variable_store.as_default():  # pylint: disable=protected-access
         yield
     finally:
       # Each _EagerTemplateVariableStore object lives underneath a variable

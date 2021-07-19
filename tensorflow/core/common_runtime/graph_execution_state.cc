@@ -904,7 +904,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
 
-  int64 collective_graph_key = options.collective_graph_key;
+  int64_t collective_graph_key = options.collective_graph_key;
   if (collective_graph_key == BuildGraphOptions::kNoCollectiveGraphKey) {
     // BuildGraphOptions does not specify a collective_graph_key.  Check all
     // nodes in the Graph and FunctionLibraryDefinition for collective ops and

@@ -96,7 +96,7 @@ class ResourceHandle {
   static constexpr const char* ANONYMOUS_NAME =
       "cd2c89b7-88b7-44c8-ad83-06c2a9158347";
 
- public:
+ private:
   std::string device_;
   std::string container_;
   std::string name_;

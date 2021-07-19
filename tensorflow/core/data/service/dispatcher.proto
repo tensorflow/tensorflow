@@ -66,16 +66,30 @@ message GetVersionResponse {
   int64 version = 1;
 }
 
-// Next tag: 2
+// Next tag: 3
 message GetOrRegisterDatasetRequest {
   // The dataset to register.
   DatasetDef dataset = 1;
+  // The element spec of the dataset (encoded as a string).
+  bytes element_spec = 2;
 }
 
 // Next tag: 2
 message GetOrRegisterDatasetResponse {
   // The id for the registered dataset.
   int64 dataset_id = 1;
+}
+
+// Next tag: 2
+message GetElementSpecRequest {
+  // The id of the dataset to get the element spec for.
+  int64 dataset_id = 1;
+}
+
+// Next tag: 2
+message GetElementSpecResponse {
+  // The retrieved element spec.
+  bytes element_spec = 1;
 }
 
 // Next tag: 3
@@ -217,4 +231,7 @@ service DispatcherService {
 
   // Reports a list of all workers registered with the dispatcher.
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
+
+  // Returns the element spec for the registered dataset.
+  rpc GetElementSpec(GetElementSpecRequest) returns (GetElementSpecResponse);
 }

@@ -60,7 +60,7 @@ class GrpcWorker : public Worker {
 
   void EnableResponseCache();
 
-  void RemoveCacheEntryForId(int64 request_id);
+  void RemoveCacheEntryForId(int64_t request_id);
 
  private:
   std::unique_ptr<GrpcResponseCache> response_cache_;
