@@ -13,11 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD
-#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
-
-=======
->>>>>>> google_upstream/master
 #include "tensorflow/stream_executor/rocm/rocm_blas.h"
 
 #include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
@@ -53,12 +48,9 @@ namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
-<<<<<<< HEAD
 extern void broadcast_fp32(void* stream, float* dst, int dst_stride,
                            int batches, int src_batches, float* src, int size);
 
-=======
->>>>>>> google_upstream/master
 namespace wrap = tensorflow::wrap;
 
 template <class T>

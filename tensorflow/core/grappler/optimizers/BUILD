@@ -891,11 +891,7 @@ tf_kernel_library(
 tf_cuda_cc_test(
     name = "remapper_test",
     srcs = ["remapper_test.cc"],
-<<<<<<< HEAD
-    tags = ["no_rocm",],
-=======
     tags = ["no_rocm"],
->>>>>>> google_upstream/master
     deps = [
         ":remapper",
         "//tensorflow/cc:cc_ops",

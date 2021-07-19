@@ -17,11 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
-<<<<<<< HEAD
-#ifdef TENSORFLOW_USE_ROCM
-=======
 #if TENSORFLOW_USE_ROCM
->>>>>>> google_upstream/master
 
 namespace rocblas_wrap {
 
@@ -71,15 +67,9 @@ using tensorflow::Env;
 #endif
 
 // clang-format off
-<<<<<<< HEAD
-#define FOREACH_ROCBLAS_API(__macro)	        \
-  __macro(rocblas_create_handle)		\
-  __macro(rocblas_destroy_handle)		\
-=======
 #define FOREACH_ROCBLAS_API(__macro)            \
   __macro(rocblas_create_handle)                \
   __macro(rocblas_destroy_handle)               \
->>>>>>> google_upstream/master
   __macro(rocblas_set_stream)
 // clang-format on
 

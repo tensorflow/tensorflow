@@ -439,11 +439,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-	"no_rocm", # TODO Steven I Reeves fails MultiGPU
-=======
         "no_rocm",
->>>>>>> google_upstream/master
     ],
     tpu_tags = [
         "no_oss",
@@ -563,11 +559,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-	"no_rocm", # TODO Steven I Reeves fails MultiGPU 
-=======
         "no_rocm",
->>>>>>> google_upstream/master
     ],
     tpu_tags = ["no_oss"],
     deps = [
@@ -699,11 +691,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-	"no_rocm", #TODO Steven I Reeves fails multiGPU
-=======
         "no_rocm",
->>>>>>> google_upstream/master
     ],
     tpu_tags = [
         "no_oss",  # b/155502591

@@ -303,11 +303,7 @@ distribute_py_test(
     main = "custom_training_loop_optimizer_test.py",
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-	"no_rocm", #TODO Steven I Reeves fails 2gpu
-=======
         "no_rocm",
->>>>>>> google_upstream/master
     ],
     deps = [
         ":strategy_combinations",
@@ -514,11 +510,7 @@ distribute_py_test(
     main = "keras_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-	"no_rocm", #TODO Steven I Reeves fails 2gpu
-=======
         "no_rocm",
->>>>>>> google_upstream/master
     ],
     deps = [
         "//tensorflow/python:framework_ops",

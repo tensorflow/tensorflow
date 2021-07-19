@@ -51,16 +51,12 @@ void GuardedPhiloxRandom::Init(random::PhiloxRandom::ResultType counter,
   initialized_ = true;
 }
 
-<<<<<<< HEAD
 void GuardedPhiloxRandom::ResetSeeds(int64 seed, int64 seed2) {
   mutex_lock lock(mu_);
   generator_ = random::PhiloxRandom(seed, seed2);
 }
 
-random::PhiloxRandom GuardedPhiloxRandom::ReserveSamples128(int64 samples) {
-=======
 random::PhiloxRandom GuardedPhiloxRandom::ReserveSamples128(int64_t samples) {
->>>>>>> google_upstream/master
   CHECK(initialized_);
   mutex_lock lock(mu_);
   auto local = generator_;
