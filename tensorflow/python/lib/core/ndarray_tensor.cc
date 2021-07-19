@@ -571,7 +571,7 @@ Status TensorToNdarray(const Tensor& t, PyObject** ret) {
   if (!status.ok()) {
     return status;
   }
-  return TF_TensorToPyArray(std::move(tf_tensor), ret);
+  return TF_TensorToMaybeAliasedPyArray(std::move(tf_tensor), ret);
 }
 
 }  // namespace tensorflow
