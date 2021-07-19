@@ -23,9 +23,6 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 which bazel
 
-# Install realpath
-sudo apt-get install realpath
-
 # Update the version string to nightly
 if [ -n "${IS_NIGHTLY}" ]; then
   ./tensorflow/tools/ci_build/update_version.py --nightly
