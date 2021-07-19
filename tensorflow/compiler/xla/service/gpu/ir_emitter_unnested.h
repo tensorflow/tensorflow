@@ -132,8 +132,6 @@ class IrEmitterUnnested : public IrEmitter {
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     IrEmitterContext* ir_emitter_context);
 
-  Status EmitUsingElementalIrEmitter(mlir::Operation* op);
-
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
@@ -152,8 +150,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
-  Status EmitLoopFusion(mlir::Operation* op,
-                        absl::optional<int> unroll_factor_override = {});
+  Status EmitLoopFusion(mlir::Operation* op);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);
   Status EmitWhile(mlir::Operation* op);
@@ -483,16 +480,6 @@ class IrEmitterUnnested : public IrEmitter {
       KernelSupportLibrary* ksl, const ThreadIdInfo& thread_id_info,
       llvm::Value* tile_height, llvm::Value* tile_width,
       const IrEmitterUnnested::EmitElementFunction& emit_elem_function);
-
-  // Emits code to process a tensor element in a tile for the given kCopy HLO
-  // that performs a 0-2-1 transpose.
-  // y_loc: The y coordinate within a tile.
-  // x_loc: The x coordinate within a tile.
-  void EmitTileElementForCopy(
-      const Shape& output_shape, const llvm_ir::IrArray& ir_array,
-      const llvm_ir::IrArray::Index& index,
-      const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
-      llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
   // Emits code to process a tensor element in a tile for the given kLoop
   // fusion HLO containing parameters that are 0-2-1 transpose of its outputs.

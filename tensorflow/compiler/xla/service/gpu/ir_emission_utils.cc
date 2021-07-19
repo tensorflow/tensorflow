@@ -388,7 +388,7 @@ Shape FusionLayoutAnalysis::GetShape(mlir::Value value) const {
 
 bool IsReductionFromOrToContiguousDimensions(
     mlir::Operation* reduce, const FusionLayoutAnalysis& layout_analysis) {
-  if (!mlir::isa<mlir::lmhlo::ReduceOp, mlir::mhlo::ReduceOp>(reduce)) {
+  if (!mlir::isa<mlir::mhlo::ReduceOp>(reduce)) {
     return false;
   }
   std::vector<mlir::Value> results = GetHloOutputs(reduce);
