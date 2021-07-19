@@ -286,8 +286,8 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   return ResizeTempAccum(context, &op_context, temp_sum);
 }
 
-float GetQuantProdScaling(float input_scale, float output_scale,
-                          int reduced_axis_size) {
+double GetQuantProdScaling(double input_scale, double output_scale,
+                           int reduced_axis_size) {
   // The scaling after taking the product of all the quantized values should
   // be (input_scale**reduced_axis_size)/output_scale but to avoid overflowing
   // the accumulator we instead scale each multiplication by
@@ -323,9 +323,10 @@ TfLiteStatus PrepareProd(TfLiteContext* context, TfLiteNode* node) {
        op_context.input->type == kTfLiteInt16) &&
       input_size != 0 && output_size != 0) {
     const int reduced_axis_size = input_size / output_size;
-    const float scaling =
-        GetQuantProdScaling(op_context.input->params.scale,
-                            op_context.output->params.scale, reduced_axis_size);
+    const double scaling = GetQuantProdScaling(
+        static_cast<double>(op_context.input->params.scale),
+        static_cast<double>(op_context.output->params.scale),
+        reduced_axis_size);
     QuantizeMultiplier(scaling, &data->multiplier, &data->shift);
   }
 
