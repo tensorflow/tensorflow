@@ -3098,6 +3098,12 @@ class Cropping1D(Layer):
     return tensor_shape.TensorShape([input_shape[0], length, input_shape[2]])
 
   def call(self, inputs):
+    if sum(self.cropping) >= inputs.shape[1]:
+      raise ValueError(
+        'cropping parameter of Cropping layer is too high,' +
+        'the result of crop' + str(inputs.shape) + ' with cropping ' +
+        str(self.cropping) + ' is an empty tensor'
+      )
     if self.cropping[1] == 0:
       return inputs[:, self.cropping[0]:, :]
     else:
