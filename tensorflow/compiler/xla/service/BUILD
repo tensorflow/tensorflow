@@ -2427,6 +2427,22 @@ cc_library(
 )
 
 cc_library(
+    name = "collective_decomposer_utils",
+    srcs = ["collective_decomposer_utils.cc"],
+    hdrs = ["collective_decomposer_utils.h"],
+    deps = [
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_module_config",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "all_gather_broadcast_reorder",
     srcs = ["all_gather_broadcast_reorder.cc"],
     hdrs = ["all_gather_broadcast_reorder.h"],
@@ -2644,6 +2660,7 @@ cc_library(
     srcs = ["reduce_scatter_decomposer.cc"],
     hdrs = ["reduce_scatter_decomposer.h"],
     deps = [
+        ":collective_decomposer_utils",
         ":collective_ops_utils",
         ":hlo",
         ":hlo_casting_utils",
@@ -2662,6 +2679,7 @@ tf_cc_test(
     name = "reduce_scatter_decomposer_test",
     srcs = ["reduce_scatter_decomposer_test.cc"],
     deps = [
+        ":collective_ops_utils",
         ":hlo",
         ":hlo_matchers",
         ":hlo_parser",
@@ -3085,6 +3103,8 @@ cc_library(
     srcs = ["all_gather_decomposer.cc"],
     hdrs = ["all_gather_decomposer.h"],
     deps = [
+        ":collective_decomposer_utils",
+        ":collective_ops_utils",
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_pass",
