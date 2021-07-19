@@ -143,7 +143,8 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
   constexpr size_t kBytesPerSample = kBitsPerSample / 8;
   constexpr size_t kHeaderSize = sizeof(WavHeader);
 
-  if (audio == nullptr) {
+  // If num_frames is zero, audio can be nullptr.
+  if (audio == nullptr && num_frames > 0) {
     return errors::InvalidArgument("audio is null");
   }
   if (wav_string == nullptr) {
@@ -156,9 +157,6 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
   if (num_channels == 0 || num_channels > kuint16max) {
     return errors::InvalidArgument("num_channels must be in (0, 2^16), got: ",
                                    num_channels);
-  }
-  if (num_frames == 0) {
-    return errors::InvalidArgument("num_frames must be positive.");
   }
 
   const size_t bytes_per_second = sample_rate * kBytesPerSample * num_channels;
