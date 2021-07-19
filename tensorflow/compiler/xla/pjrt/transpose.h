@@ -110,7 +110,7 @@ class TransposePlan {
   absl::Span<int64_t const> InputStrides() const { return original_a_strides_; }
 
   // Returns the number of items of parallel work in the plan.
-  int Parallelism() const { return root_nodes_.size(); }
+  int Parallelism() const { return nodes_.size(); }
 
   struct Node;
 
@@ -141,7 +141,7 @@ class TransposePlan {
 
   void BuildPlanNodes(absl::Span<int64_t const> inverse_permutation,
                       int thread_id,
-                      absl::InlinedVector<Node*, 1>& output_nodes);
+                      absl::InlinedVector<std::vector<Node>, 1>& output_nodes);
 
   std::vector<int> ChooseParallelizationStrategy(
       absl::Span<int64_t const> inverse_permutation);
@@ -151,7 +151,7 @@ class TransposePlan {
   // multiples of the element size.
   template <typename T>
   void ExecuteTyped(const char* a, char* b,
-                    absl::Span<const Node* const> root_nodes) const;
+                    absl::Span<std::vector<Node> const> root_nodes) const;
 
   // Number of threads requested.
   int num_threads_requested_ = 1;
@@ -202,16 +202,10 @@ class TransposePlan {
   std::vector<Loop> loop_order_;
   std::vector<int> loop_parallelism_;
 
-  // Nodes of the plan, in no particular order. Holds ownership of the plan
-  // nodes.
-  // TODO(phawkins): pack nodes into a dense array to minimize the effects of
-  // pointer jumping.
-  std::vector<std::unique_ptr<Node>> nodes_;
-
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
   // nest. The outer vector is indexed on the thread ID, and the inner vector
   // contains the set of root nodes for a thread.
-  absl::InlinedVector<absl::InlinedVector<Node*, 1>, 1> root_nodes_;
+  absl::InlinedVector<absl::InlinedVector<std::vector<Node>, 1>, 1> nodes_;
 
   // Are the innermost (stride-1) dimensions the same dimension? This determines
   // whether the inner kernel is a transpose or a memcpy.
