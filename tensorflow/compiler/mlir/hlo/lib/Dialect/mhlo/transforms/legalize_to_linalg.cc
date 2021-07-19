@@ -2411,17 +2411,6 @@ struct ReduceWindowOpOnTensorsConversion
       Value filled_init_tensor =
           rewriter.create<linalg::FillOp>(loc, init_value, init_tensor)
               .getResult(0);
-      // TODO(hanchung): Remove create_op_tc after migrating Linalg tc ops to
-      // Linalg yaml ops. The order of attributes is different.
-      auto create_op_tc = [&](auto* type_ptr) -> linalg::LinalgOp {
-        return cast<linalg::LinalgOp>(
-            rewriter
-                .create<std::remove_pointer_t<decltype(type_ptr)>>(
-                    loc, ArrayRef<Type>{result_type},
-                    ValueRange{input, fake_window_dims.getResult()},
-                    filled_init_tensor, dilations, strides)
-                .getOperation());
-      };
       auto create_op = [&](auto* type_ptr) -> linalg::LinalgOp {
         return cast<linalg::LinalgOp>(
             rewriter
@@ -2436,7 +2425,7 @@ struct ReduceWindowOpOnTensorsConversion
       switch (pooling_type) {
         case PoolingType::k2DMin: {
           pooling_op =
-              create_op_tc(static_cast<linalg::PoolingNHWCMinFOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNhwcMinOp*>(nullptr));
           break;
         }
         case PoolingType::k3DMin: {
@@ -2446,7 +2435,7 @@ struct ReduceWindowOpOnTensorsConversion
         }
         case PoolingType::k2DMax: {
           pooling_op =
-              create_op_tc(static_cast<linalg::PoolingNHWCMaxFOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNhwcMaxOp*>(nullptr));
           break;
         }
         case PoolingType::k3DMax: {
@@ -2456,7 +2445,7 @@ struct ReduceWindowOpOnTensorsConversion
         }
         case PoolingType::k2DAdd: {
           pooling_op =
-              create_op_tc(static_cast<linalg::PoolingNHWCSumFOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNhwcSumOp*>(nullptr));
           break;
         }
         case PoolingType::k3DAdd: {
