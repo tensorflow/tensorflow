@@ -46,7 +46,7 @@ docker-build: docker-image
 		--volume $(TENSORFLOW_DIR):/tensorflow \
 		--volume $(OUT_DIR):/out \
 		$(TAG_IMAGE) \
-		/bin/bash -c "/tensorflow/tensorflow/lite/tools/pip_package/build_pip_package.sh && \
+		/bin/bash -c "/tensorflow/tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh && \
 		              (cp /tensorflow/tensorflow/lite/tools/pip_package/gen/tflite_pip/*.deb \
 		                  /tensorflow/tensorflow/lite/tools/pip_package/gen/tflite_pip/${PYTHON}/dist/{*.whl,*.tar.gz} \
 		                  /out 2>/dev/null || true)"
