@@ -72,7 +72,6 @@ cc_library(
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
     ],
 )
@@ -87,6 +86,7 @@ tf_cc_test(
         "//tensorflow/lite:testdata/custom_lstm.bin",
         "//tensorflow/lite:testdata/lstm.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/multi_subgraphs_while.bin",
         "//tensorflow/lite:testdata/unidirectional_sequence_lstm.bin",
     ],
     tags = [
@@ -157,6 +157,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

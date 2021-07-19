@@ -30,11 +30,11 @@ class ShapePartitionAssignerTest : public HloTestBase {
  protected:
   typedef std::vector<int64> Vec;
 
-  void RunR2Test(const Shape& shape, int64 max_target_partition_count,
+  void RunR2Test(const Shape& shape, int64_t max_target_partition_count,
                  const std::vector<int64>* expected_partitions) {
     ShapePartitionAssigner assigner(shape);
     // Iterate through 1..max_target_partition_count.
-    for (int64 i = 1; i <= max_target_partition_count; ++i) {
+    for (int64_t i = 1; i <= max_target_partition_count; ++i) {
       std::vector<int64> actual_partitions =
           assigner.Run(/*target_partition_count=*/i);
       EXPECT_THAT(actual_partitions, expected_partitions[i - 1]);
@@ -168,7 +168,7 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   // Choose random outer dimension partition counts.
   std::vector<int64> dim_sizes(num_outer_dims_to_partition);
   std::vector<int64> dim_partition_counts(num_outer_dims_to_partition);
-  int64 total_dim_size = 1;
+  int64_t total_dim_size = 1;
   for (int i = 0; i < num_outer_dims_to_partition; ++i) {
     const int64 dimension = shape.layout().minor_to_major(
         shape.layout().minor_to_major_size() - 1 - i);
@@ -183,7 +183,7 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   std::vector<std::map<int64, int64>> ranges(num_outer_dims_to_partition);
   ShapePartitionIterator partition_iterator(shape, dim_partition_counts);
   const int64 partition_count = partition_iterator.GetTotalPartitionCount();
-  for (int64 i = 0; i < partition_count; ++i) {
+  for (int64_t i = 0; i < partition_count; ++i) {
     const auto& dim_partition = partition_iterator.GetPartition(i);
     for (int dim = 0; dim < dim_partition.size(); ++dim) {
       ranges[dim].insert(
@@ -194,7 +194,7 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   // Check that partitions cover entire dimension size range (for each
   // partitioned dimension).
   for (int i = 0; i < ranges.size(); ++i) {
-    int64 expected_index = 0;
+    int64_t expected_index = 0;
     for (auto& r : ranges[i]) {
       EXPECT_EQ(expected_index, r.first);
       expected_index = r.second;

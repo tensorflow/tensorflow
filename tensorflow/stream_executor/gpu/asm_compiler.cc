@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
@@ -25,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
@@ -33,7 +35,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-static port::StatusOr<absl::string_view> GetVersionString(
+static port::StatusOr<absl::string_view> GetPtxasVersionString(
     const std::string& binary_path) {
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
   static auto* seen_binary_paths TF_GUARDED_BY(mu) =
@@ -72,16 +74,17 @@ static port::StatusOr<absl::string_view> GetVersionString(
 //
 // Locks on entry.
 static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
-  auto version_string_or = GetVersionString(ptxas_path);
-  if (!version_string_or.ok()) {
+  port::StatusOr<absl::string_view> ptxas_version =
+      GetPtxasVersionString(ptxas_path);
+  if (!ptxas_version.ok()) {
     LOG(WARNING) << "Couldn't get ptxas version string: "
-                 << version_string_or.status();
+                 << ptxas_version.status();
     return;
   }
 
-  int64 vmaj, vmin, vdot;
+  int64_t vmaj, vmin, vdot;
   std::string vmaj_str, vmin_str, vdot_str;
-  if (!RE2::PartialMatch(version_string_or.ValueOrDie(),
+  if (!RE2::PartialMatch(ptxas_version.ValueOrDie(),
                          R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str, &vmin_str,
                          &vdot_str) ||
       !absl::SimpleAtoi(vmaj_str, &vmaj) ||
@@ -89,7 +92,7 @@ static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
       !absl::SimpleAtoi(vdot_str, &vdot)) {
     LOG(WARNING) << "Couldn't parse ptxas version in output of " << ptxas_path
                  << " --version:\n"
-                 << version_string_or.ValueOrDie();
+                 << ptxas_version.ValueOrDie();
     return;
   }
 
@@ -185,8 +188,9 @@ static std::string FindCudaExecutable(const std::string binary_name,
     return it->second;
   }
 
-  // Try searching in the default PATH first.
-  if (GetVersionString(binary_filename).ok()) {
+  // Try searching in the default PATH first if applicable.
+  if (tensorflow::PreferPtxasFromPath() &&
+      GetPtxasVersionString(binary_filename).ok()) {
     VLOG(2) << "Using " << binary_filename;
     seen_binary_paths->emplace(std::move(cache_key), binary_filename);
     return binary_filename;
@@ -200,7 +204,7 @@ static std::string FindCudaExecutable(const std::string binary_name,
     binary_path = tensorflow::io::JoinPath(cuda_root, "bin", binary_filename);
     VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
     if (env->FileExists(binary_path).ok() &&
-        GetVersionString(binary_path).ok()) {
+        GetPtxasVersionString(binary_path).ok()) {
       break;
     }
   }
@@ -277,8 +281,12 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   });
   tensorflow::SubProcess ptxas_info_dumper;
   std::vector<std::string> ptxas_args = {
-      ptxas_path, ptx_path, "-o", cubin_path,
-      absl::StrCat("-arch=sm_", cc_major, cc_minor)};
+      ptxas_path,
+      ptx_path,
+      "-o",
+      cubin_path,
+      absl::StrCat("-arch=sm_", cc_major, cc_minor),
+      "--warn-on-spills"};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
@@ -315,7 +323,11 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   }
   // Print the verbose output of ptxas.
   if (!stderr_output.empty()) {
-    VLOG(2) << stderr_output;
+    if (absl::StrContains(stderr_output, "warning")) {
+      LOG(INFO) << stderr_output;
+    } else {
+      VLOG(2) << stderr_output;
+    }
   }
 
   // Read in the result of compilation and return it as a byte vector.

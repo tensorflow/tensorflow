@@ -96,8 +96,7 @@ static absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
     PrimitiveType type) {
   switch (type) {
     case F16:
-      // Use F32 as computation type for F16 as we currently only implement
-      // the cuDNN pseudo half configuration for half precision.
+    case BF16:
       return se::blas::ComputationType::kF32;
     case F32:
       return se::blas::ComputationType::kF32;
@@ -116,7 +115,7 @@ static absl::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
 
 template <typename Input, typename Output>
 static Status DoGemmWithAlgorithm(
-    int64 batch_size, MatrixDescriptor lhs, MatrixDescriptor rhs,
+    int64_t batch_size, MatrixDescriptor lhs, MatrixDescriptor rhs,
     MatrixDescriptor output_matrix, Output alpha, Output beta,
     se::Stream *stream, se::blas::AlgorithmType algorithm,
     se::blas::ProfileResult *output_profile_result) {
@@ -153,7 +152,7 @@ static Status DoGemmWithAlgorithm(
 }
 
 template <typename Input>
-static Status DoGemm(int64 batch_size, const MatrixDescriptor &lhs,
+static Status DoGemm(int64_t batch_size, const MatrixDescriptor &lhs,
                      const MatrixDescriptor &rhs,
                      const MatrixDescriptor &output_matrix, Input alpha,
                      Input beta, se::Stream *stream,
@@ -209,13 +208,13 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
            dim_nums.rhs_batch_dimensions_size());
   CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2, output_shape.rank());
 
-  int64 row_dim = dim_nums.lhs_batch_dimensions_size();
-  int64 col_dim = dim_nums.lhs_batch_dimensions_size() + 1;
+  int64_t row_dim = dim_nums.lhs_batch_dimensions_size();
+  int64_t col_dim = dim_nums.lhs_batch_dimensions_size() + 1;
 
-  int64 batch_size = backend_config.batch_size();
+  int64_t batch_size = backend_config.batch_size();
 
   // Check that the batch dims don't cover the last two dims.
-  for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
+  for (int64_t batch_dim : dim_nums.lhs_batch_dimensions()) {
     CHECK_NE(row_dim, batch_dim);
     CHECK_NE(col_dim, batch_dim);
   }
@@ -227,8 +226,8 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
     CHECK_LT(shape->layout().minor_to_major(col_dim), 2);
   }
 
-  int64 output_num_rows = output_shape.dimensions(row_dim);
-  int64 output_num_cols = output_shape.dimensions(col_dim);
+  int64_t output_num_rows = output_shape.dimensions(row_dim);
+  int64_t output_num_cols = output_shape.dimensions(col_dim);
 
   // BLAS gemm expects the inputs and the output are in column-major order.
   // Therefore, we need to convert dot between row-major matrices to that
@@ -318,6 +317,13 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
           batch_size, lhs_matrix, rhs_matrix, output_matrix,
           static_cast<Eigen::half>(alpha.real()),
           static_cast<Eigen::half>(beta), stream, best_algorithm,
+          /*output_profile_result=*/profile_result);
+    case BF16:
+      CHECK_EQ(alpha.imag(), 0);
+      return DoGemm<Eigen::bfloat16>(
+          batch_size, lhs_matrix, rhs_matrix, output_matrix,
+          static_cast<Eigen::bfloat16>(alpha.real()),
+          static_cast<Eigen::bfloat16>(beta), stream, best_algorithm,
           /*output_profile_result=*/profile_result);
     case F32:
       CHECK_EQ(alpha.imag(), 0);

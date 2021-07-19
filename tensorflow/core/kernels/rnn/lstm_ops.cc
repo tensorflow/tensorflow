@@ -971,7 +971,7 @@ class BlockLSTMOp : public OpKernel {
 
     const int64 seq_len_max = seq_len_max_tensor->scalar<int64>()();
     SliceHelper<Device, T> slicer(ctx);
-    for (int64 t = 0; t < seq_len_max; ++t) {
+    for (int64_t t = 0; t < seq_len_max; ++t) {
       const Tensor x_tensor = slicer.InputSlice(*x, t, "x");
       const Tensor& cs_prev_tensor2 =
           t == 0 ? *cs_prev_tensor
@@ -1236,7 +1236,7 @@ class BlockLSTMGradOp : public OpKernel {
 
     const int64 seq_len_max = seq_len_max_tensor->scalar<int64>()();
     SliceHelper<Device, T> slicer(ctx);
-    for (int64 t = seq_len_max - 1; t >= 0; --t) {
+    for (int64_t t = seq_len_max - 1; t >= 0; --t) {
       const Tensor& x_tensor = slicer.InputSlice(*x, t, "x");
       const Tensor& cs_prev_tensor2 =
           t == 0 ? *cs_prev_tensor

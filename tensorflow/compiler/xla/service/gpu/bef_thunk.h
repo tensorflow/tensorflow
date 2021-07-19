@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/core/platform/statusor.h"
 
+namespace tfrt {
+class ExecutionContext;
+}
+
 namespace xla {
 namespace gpu {
 

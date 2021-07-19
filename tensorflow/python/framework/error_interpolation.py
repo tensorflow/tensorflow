@@ -26,6 +26,7 @@ import collections
 import itertools
 import os
 import re
+import site
 
 import six
 
@@ -47,9 +48,13 @@ _FRAMEWORK_COMMON_PREFIX = os.path.dirname(
 
 # Sub-directories under the common prefix that are considered part of the
 # framework.
+# Note that keras code lives outside of tensorflow directory, we need to walk
+# up the directory tree and find it.
 _FRAMEWORK_PATH_PREFIXES = [
     os.path.join(_FRAMEWORK_COMMON_PREFIX, "python") + os.sep,
     os.path.join(_FRAMEWORK_COMMON_PREFIX, "contrib") + os.sep,
+    os.path.join(os.path.dirname(_FRAMEWORK_COMMON_PREFIX),
+                 "py", "keras") + os.sep,
 ]
 
 # Patterns of filename patterns that should be considered internal to
@@ -57,6 +62,19 @@ _FRAMEWORK_PATH_PREFIXES = [
 _FRAMEWORK_FILENAME_PATTERNS = [
     re.compile(r"<embedded"),
 ]
+
+# This is for OSS keras, since the package is load from local python env,
+# but we don't know exactly where it is installed. Matching to keyword
+# "keras".
+try:
+  _FRAMEWORK_PATH_PREFIXES.extend([
+      os.path.join(package_path, "keras") + os.sep
+      for package_path in site.getsitepackages() + [site.getusersitepackages()]
+  ])
+except AttributeError:
+  # if site.getsitepackages is not available somehow, we just use the "keras" as
+  # the keyword to do the match.
+  _FRAMEWORK_FILENAME_PATTERNS.append(re.compile(r"keras"))
 
 # Patterns of filename patterns that should be considered external to
 # TensorFlow regardless of framework prefix match.

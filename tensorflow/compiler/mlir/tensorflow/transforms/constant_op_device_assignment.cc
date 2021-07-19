@@ -34,6 +34,14 @@ constexpr const char *kDeviceAttr = "device";
 struct ConstantOpDeviceAssignmentPass
     : public PassWrapper<ConstantOpDeviceAssignmentPass,
                          OperationPass<ModuleOp>> {
+  StringRef getArgument() const final {
+    return "constant-op-device-assignment";
+  }
+
+  StringRef getDescription() const final {
+    return "Assign device for tf.Const ops.";
+  }
+
   void runOnOperation() override;
 };
 
@@ -84,8 +92,7 @@ CreateConstantOpDeviceAssignmentPass() {
   return std::make_unique<ConstantOpDeviceAssignmentPass>();
 }
 
-static PassRegistration<ConstantOpDeviceAssignmentPass> pass(
-    "constant-op-device-assignment", "Assign device for tf.Const ops.");
+static PassRegistration<ConstantOpDeviceAssignmentPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

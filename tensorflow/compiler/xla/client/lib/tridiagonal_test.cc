@@ -69,9 +69,9 @@ XLA_TEST_P(TridiagonalTest, Solves) {
       upper_diagonal, 2, "upper_diagonal", &builder, &upper_diagonal_xla);
   auto rhs_data = CreateR3Parameter<float>(rhs, 3, "rhs", &builder, &rhs_xla);
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaOp x,
-                          ThomasSolver(lower_diagonal_xla, main_diagonal_xla,
-                                       upper_diagonal_xla, rhs_xla));
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaOp x, TridiagonalSolver(kThomas, lower_diagonal_xla, main_diagonal_xla,
+                                 upper_diagonal_xla, rhs_xla));
 
   auto Coefficient = [](auto operand, auto i) {
     return SliceInMinorDims(operand, /*start=*/{i}, /*end=*/{i + 1});

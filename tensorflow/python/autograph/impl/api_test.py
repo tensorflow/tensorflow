@@ -489,7 +489,7 @@ class ApiTest(test.TestCase):
 
     class TestMetaclass(type):
 
-      def __call__(cls):
+      def __call__(cls):  # pylint: disable=method-hidden
         self.assertTrue(converter_testing.is_inside_generated_code())
         inst = object.__new__(cls)
         inst.__init__()

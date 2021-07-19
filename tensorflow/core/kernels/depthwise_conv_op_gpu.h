@@ -672,15 +672,11 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
 
 // Returns whether the context's GPU supports efficient fp16 math.
 inline bool HasFastHalfMath(OpKernelContext* ctx) {
-  int major, minor;
-  ctx->op_device_context()
-      ->stream()
-      ->parent()
-      ->GetDeviceDescription()
-      .cuda_compute_capability(&major, &minor);
-  auto cuda_arch = major * 100 + minor * 10;
+  se::CudaComputeCapability compute_capability =
+      ctx->op_device_context()->stream()->GetCudaComputeCapability();
   // GPUs before sm_53 don't support fp16 math, and sm_61's fp16 math is slow.
-  return cuda_arch >= 530 && cuda_arch != 610;
+  return compute_capability.IsAtLeast(5, 3) &&
+         compute_capability != se::CudaComputeCapability{6, 1};
 }
 
 template <typename T, DepthwiseConv2dDirection kDirection,
@@ -972,8 +968,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
   auto device = ctx->eigen_gpu_device();
-  GpuLaunchConfig config =
-      GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
+  int launch_bounds_value = 640;
+  GpuLaunchConfig config = GetGpuLaunchConfig(num_in_backprop, device, kernel,
+                                              0, launch_bounds_value);
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
@@ -1722,8 +1719,9 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   const int num_out_backprop =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   auto device = ctx->eigen_gpu_device();
-  GpuLaunchConfig config =
-      GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
+  int launch_bounds_value = 640;
+  GpuLaunchConfig config = GetGpuLaunchConfig(num_out_backprop, device, kernel,
+                                              0, launch_bounds_value);
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, input, filter_backprop, num_out_backprop));

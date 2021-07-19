@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
+#include <string>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -154,12 +156,19 @@ HloSharding HloSharding::Single(const Shape& shape,
 string HloSharding::ToString(bool include_metadata) const {
   if (IsTuple()) {
     CHECK(metadata_.empty());
-    std::vector<string> parts;
-    parts.reserve(tuple_elements_.size());
-    for (const HloSharding& element : tuple_elements_) {
-      parts.push_back(element.ToString(include_metadata));
+    std::string result = "{";
+    for (int i = 0; i < tuple_elements_.size(); ++i) {
+      const HloSharding& element = tuple_elements_[i];
+      if (i != 0) {
+        absl::StrAppend(&result, ", ");
+        if (i % 5 == 0) {
+          absl::StrAppend(&result, "/*index=", i, "*/");
+        }
+      }
+      absl::StrAppend(&result, element.ToString(include_metadata));
     }
-    return StrCat("{", absl::StrJoin(parts, ", "), "}");
+    absl::StrAppend(&result, "}");
+    return result;
   }
 
   std::string metadata;

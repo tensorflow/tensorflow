@@ -46,7 +46,7 @@ struct NcclCollectivePermuteConfig : public NcclCollectiveConfig {
   // partition permute). The source ID is the id which will send data to this
   // ID and the target ID is the id to which this ID will send its data. Either
   // can be optional.
-  SourceTargetMapEntry GetSourceTarget(int64 id) const {
+  SourceTargetMapEntry GetSourceTarget(int64_t id) const {
     auto it = id_to_source_target.find(id);
     if (it != id_to_source_target.end()) return it->second;
     return SourceTargetMapEntry{};
@@ -58,7 +58,7 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
  public:
   NcclCollectivePermuteThunk(ThunkInfo thunk_info,
                              mlir::lmhlo::CollectivePermuteOp op,
-                             int64 replica_count, int64 partition_count,
+                             int64_t replica_count, int64_t partition_count,
                              const Buffer& buffer);
 
   // Returns whether the given instruction can be lowered to a nccl collective
@@ -67,7 +67,7 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
 
   static const char* GetName() { return "CollectivePermute"; }
   static bool IsDegenerate(mlir::lmhlo::CollectivePermuteOp op,
-                           int64 replica_count, int64 partition_count);
+                           int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op) {
     return GetCollectiveOpGroupMode(op.channel_id().hasValue(), absl::nullopt)
@@ -82,8 +82,8 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
 
  private:
   static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
-      mlir::lmhlo::CollectivePermuteOp op, int64 replica_count,
-      int64 partition_count);
+      mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
+      int64_t partition_count);
 
   const NcclCollectivePermuteConfig config_;
   const Buffer buffer_;

@@ -65,7 +65,7 @@ enum ContextDevicePlacementPolicy {
 class ImmediateExecutionContext : public AbstractContext {
  public:
   // Optimized scalar creation functions
-  virtual AbstractTensorInterface* CreateInt64Scalar(int64 value) = 0;
+  virtual AbstractTensorInterface* CreateInt64Scalar(int64_t value) = 0;
   virtual AbstractTensorInterface* CreateUint64Scalar(uint64 value) = 0;
   virtual AbstractTensorInterface* CreateInt32Scalar(int32 value) = 0;
   virtual AbstractTensorInterface* CreateFloatScalar(float value) = 0;
@@ -178,6 +178,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // instead of creating new instance per function calls.
   virtual void SetReuseRendezvousForFunctions(
       bool reuse_rendezvous_for_functions) = 0;
+
+  // Resets the global rendezvous used for functions.
+  virtual void ResetGlobalRendezvousForFunction() = 0;
 
   //===--------------------------------------------------------------------===//
   // Following are features in current TF Eager Runtime.

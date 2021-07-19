@@ -828,8 +828,9 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   // The Tensor Core in NVIDIA Volta+ GPUs supports efficient convolution with
   // fp16 in NHWC data layout. In all other configurations it's more efficient
   // to run computation in NCHW data format.
-  const bool compute_in_nhwc =
-      DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
+                               stream->GetCudaComputeCapability().IsAtLeast(
+                                   se::CudaComputeCapability::VOLTA);
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects the preferred layout and
@@ -1014,10 +1015,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     } else {
       OP_REQUIRES(
           ctx,
-          stream->parent()->GetConvolveBackwardFilterAlgorithms(
-              conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                  stream->parent()),
-              &algorithms),
+          stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms),
           errors::Unknown("Failed to get convolution execution plan. This is "
                           "probably because cuDNN failed to initialize, so try "
                           "looking to see if a warning log message was printed "

@@ -54,6 +54,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   constexpr auto kAllNCHW =
       std::make_tuple(DataLayout::kBatchDepthYX, FilterLayout::kOutputInputYX,
                       DataLayout::kBatchDepthYX);
+  // kBatchDepthYX4 has the same layout as kBatchDepthYX32; they're both VECT_C
+  // layouts as far as cudnn is concerned.
   constexpr auto kAllNCHW_VECT_C =
       std::make_tuple(DataLayout::kBatchDepthYX4, FilterLayout::kOutputInputYX4,
                       DataLayout::kBatchDepthYX4);
@@ -94,7 +96,10 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
-  if (input_ty != F16 || !IsVoltaOrLater(*stream_executor) ||
+  if (input_ty != F16 ||
+      !stream_executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
       instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
@@ -234,7 +239,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
                dim_nums.rhs_batch_dimensions_size());
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
                instruction->shape().rank());
-      for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
+      for (int64_t batch_dim : dim_nums.lhs_batch_dimensions()) {
         CHECK_LT(batch_dim, instruction->shape().rank() - 2);
       }
 
@@ -267,7 +272,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       Shape keys_shape = instruction->operand(0)->shape();
       Layout keys_layout =
           LayoutUtil::GetDefaultLayoutForRank(keys_shape.rank());
-      for (int64 i = 0; i < instruction->operand_count(); ++i) {
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
         Shape shape = instruction->operand(i)->shape();
         *shape.mutable_layout() = keys_layout;
         TF_RETURN_IF_ERROR(
@@ -313,6 +318,13 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
+      // XLA:GPU can only support reduce-scatter where the scatter dimension
+      // is the most major dimension in the layout.
+      auto ars = Cast<HloReduceScatterInstruction>(instruction);
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+          ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
+          ars));
     } else if (instruction->opcode() == HloOpcode::kAllGather) {
       // XLA:GPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.
@@ -378,7 +390,7 @@ Status GpuLayoutAssignment::PropagateOperandConstraint(
     TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
         layout_constraint.shape_layout().layout(), *out_buf));
 
-    int64 operand_to_set = layout_constraint.operand_no() == 0 ? 4 : 0;
+    int64_t operand_to_set = layout_constraint.operand_no() == 0 ? 4 : 0;
     TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
         layout_constraint.shape_layout().shape(), instruction, operand_to_set));
   }

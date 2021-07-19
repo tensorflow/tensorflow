@@ -38,9 +38,6 @@ class AutoShard : public TFDataOptimizerBase {
                                  GraphDef* output,
                                  OptimizationStats* stats) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override {}
-
  private:
   int64 num_workers_;
   int64 num_replicas_;

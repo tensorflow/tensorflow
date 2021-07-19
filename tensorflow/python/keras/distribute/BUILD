@@ -300,6 +300,7 @@ distribute_py_test(
     main = "custom_training_loop_optimizer_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":strategy_combinations",
@@ -371,6 +372,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # TODO(b/182391774)
+        "no_oss",  # TODO(b/191770103)
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "noguitar",  # TODO(b/172354344)
@@ -505,6 +507,7 @@ distribute_py_test(
     main = "keras_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         "//tensorflow/python:framework_ops",
@@ -774,6 +777,9 @@ tf_py_test(
     srcs = ["multi_worker_callback_tf2_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
+    ],
     deps = [
         ":distributed_file_utils",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
@@ -868,6 +874,7 @@ distribute_py_test(
     deps = [
         ":multi_worker_testing_utils",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
@@ -928,6 +935,7 @@ distribute_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/framework:test_combinations_lib",
@@ -1064,6 +1072,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":multi_worker_testing_utils",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/data/ops:dataset_ops",

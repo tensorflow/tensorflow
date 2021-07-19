@@ -49,7 +49,7 @@ std::string AlgorithmDesc::ToString() const {
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -83,13 +83,13 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -245,6 +245,7 @@ ConvDimIndices GetDimIndices(const DataLayout& layout, const int data_dims) {
 
     case DataLayout::kBatchDepthYX:
     case DataLayout::kBatchDepthYX4:
+    case DataLayout::kBatchDepthYX32:
       dim_indices.data.depth_idx = 1;
       dim_indices.data.batch_idx = 0;
       dim_indices.data.spatial_idx = 2;
@@ -262,6 +263,7 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
   switch (layout) {
     case FilterLayout::kOutputInputYX:
     case FilterLayout::kOutputInputYX4:
+    case FilterLayout::kOutputInputYX32:
       dim_indices.filter.input_idx = 1;
       dim_indices.filter.output_idx = 0;
       dim_indices.filter.spatial_idx = 2;
@@ -373,18 +375,33 @@ std::vector<int64> BatchDescriptor::full_dims(const DataLayout& layout) const {
 
 std::vector<int64> BatchDescriptor::full_strides(
     const DataLayout& layout) const {
-  if (this->layout() == DataLayout::kBatchDepthYX4) {
-    LOG(FATAL)
-        << "Cannot compute full strides for batch descriptor " << ToString()
-        << ", because its layout is kBatchDepthYX4. In fact, "
-           "cudnnSetTensorNdDescriptor doesn't work for kBatchDepthYX4 at all. "
-           "Use cudnnSetTensor4dDescriptor to set cudnnTensorDescriptor_t "
-           "instead.";
-  }
   std::vector<int64> phys_dims = full_dims(this->layout());
   std::vector<int64> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;
   for (int i = ndims(); i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return ReorderDims(phys_strides, this->layout(), layout);
+}
+
+std::vector<int64> BatchDescriptor::vectorized_dims(const DataLayout& layout,
+                                                    int vector_size,
+                                                    int vector_dim) const {
+  std::vector<int64> bdyx_dims = full_dims(dnn::DataLayout::kBatchDepthYX);
+  if (vector_dim != -1) {
+    bdyx_dims[vector_dim] /= vector_size;
+  }
+  return dnn::ReorderDims(bdyx_dims, dnn::DataLayout::kBatchDepthYX, layout);
+}
+
+std::vector<int64> BatchDescriptor::vectorized_strides(const DataLayout& layout,
+                                                       int vector_size,
+                                                       int vector_dim) const {
+  std::vector<int64> phys_dims =
+      vectorized_dims(this->layout(), vector_size, vector_dim);
+  std::vector<int64> phys_strides(phys_dims.size());
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);
@@ -447,7 +464,7 @@ std::string BatchDescriptor::ToShortString() const {
 }
 
 int64 BatchDescriptor::NodesPerFeatureMap() const {
-  int64 ret = 1;
+  int64_t ret = 1;
   for (int i = 0; i < ndims(); i++) {
     ret *= spatial_size()[i];
   }
@@ -554,7 +571,7 @@ std::string FilterDescriptor::ToShortString() const {
 }
 
 int64 FilterDescriptor::ComputeWeightCount() const {
-  int64 ret = output_feature_map_count() * input_feature_map_count();
+  int64_t ret = output_feature_map_count() * input_feature_map_count();
   for (int i = 0; i < ndims(); i++) {
     ret *= input_filter_dims()[i];
   }
@@ -573,14 +590,32 @@ std::vector<int64> FilterDescriptor::full_dims(
 
 std::vector<int64> FilterDescriptor::full_strides(
     const FilterLayout& layout) const {
-  if (this->layout() == FilterLayout::kOutputInputYX4) {
-    LOG(FATAL) << "Cannot compute full strides for filter descriptor "
-               << ToString();
-  }
   std::vector<int64> phys_dims = full_dims(this->layout());
   std::vector<int64> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;
   for (int i = ndims(); i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return ReorderDims(phys_strides, this->layout(), layout);
+}
+
+std::vector<int64> FilterDescriptor::vectorized_dims(const FilterLayout& layout,
+                                                     int vector_size,
+                                                     int vector_dim) const {
+  std::vector<int64> oiyx_dims = full_dims(dnn::FilterLayout::kOutputInputYX);
+  if (vector_dim != -1) {
+    oiyx_dims[vector_dim] /= vector_size;
+  }
+  return ReorderDims(oiyx_dims, FilterLayout::kOutputInputYX, layout);
+}
+
+std::vector<int64> FilterDescriptor::vectorized_strides(
+    const FilterLayout& layout, int vector_size, int vector_dim) const {
+  std::vector<int64> phys_dims =
+      vectorized_dims(this->layout(), vector_size, vector_dim);
+  std::vector<int64> phys_strides(phys_dims.size());
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);

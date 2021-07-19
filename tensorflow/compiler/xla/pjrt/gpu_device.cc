@@ -251,8 +251,11 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
     }
     // To allow full GPU memory to be visible to the BFC allocator if using
     // unified memory.
-    size_t allocator_memory =
-        enable_unified_memory ? total_memory : free_memory * memory_fraction;
+    // When unified memory is enabled, allow GPU memory oversubscription by
+    // setting memory_fraction > 1.
+    size_t allocator_memory = enable_unified_memory
+                                  ? total_memory * fmax(1.0, memory_fraction)
+                                  : free_memory * memory_fraction;
     if (preallocate) {
       LOG(INFO) << "XLA backend allocating " << allocator_memory
                 << " bytes on device " << device_ordinal

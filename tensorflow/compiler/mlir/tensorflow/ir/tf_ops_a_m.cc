@@ -1672,9 +1672,9 @@ static LogicalResult inferConvReturnTypes(
     for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
       const int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
       int64_t stride = get_int(strides[dim]);
-      tensorflow::int64 expected_output_size;
-      tensorflow::int64 pad_low;
-      tensorflow::int64 pad_high;
+      int64_t expected_output_size;
+      int64_t pad_low;
+      int64_t pad_high;
       // Retrieve padding, if defined explicitly.
       if (padding == tensorflow::Padding::EXPLICIT) {
         pad_low = get_int(explicit_padding[2 * dim]);
@@ -2136,7 +2136,7 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
 }
 
 //===----------------------------------------------------------------------===//
-// EqualOp
+// EqualOp/NotEqualOp
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(EqualOp op) {
@@ -2159,7 +2159,8 @@ namespace {
 
 // Flips the incompatible_shape_error attribute to true if the shapes are
 // identical and static.
-static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
+template <typename Ty>
+static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter &rewriter) {
   if (op.incompatible_shape_error()) {
     return rewriter.notifyMatchFailure(op, "the attribute is already true");
   }
@@ -2169,19 +2170,24 @@ static LogicalResult convertEqualOp(EqualOp op, PatternRewriter &rewriter) {
                                        "require the shapes to be identical");
   }
 
-  auto src_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  auto src_ty = op.x().getType().template dyn_cast<RankedTensorType>();
   if (!src_ty || !src_ty.hasStaticShape()) {
     return rewriter.notifyMatchFailure(op, "require the shapes to be static");
   }
-  rewriter.replaceOpWithNewOp<EqualOp>(op, op.x(), op.y(),
-                                       rewriter.getBoolAttr(true));
+  rewriter.template replaceOpWithNewOp<Ty>(op, op.x(), op.y(),
+                                           rewriter.getBoolAttr(true));
   return success();
 }
 }  // namespace
 
 void EqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.insert(convertEqualOp);
+  results.insert(flipComatibleShapeError<EqualOp>);
+}
+
+void NotEqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert(flipComatibleShapeError<NotEqualOp>);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2213,6 +2219,24 @@ Type InferExpandDimsOpType(Value input, Value dim) {
 void ExpandDimsOp::build(OpBuilder &builder, OperationState &result,
                          Value input, Value dim) {
   return build(builder, result, InferExpandDimsOpType(input, dim), input, dim);
+}
+
+//===----------------------------------------------------------------------===//
+// Expm1Op
+//===----------------------------------------------------------------------===//
+LogicalResult Expm1Op::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  if (operands.empty()) {
+    return emitOptionalError(location, "requires at least one operand.");
+  }
+  auto input_ty = operands[0].getType().dyn_cast<TensorType>();
+  if (!input_ty) {
+    return emitOptionalError(location, "requires input to be of Tensor type");
+  }
+  inferredReturnTypes.assign({input_ty});
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2313,16 +2337,22 @@ static ShapedType InferFillOpType(Value dims, Value value) {
   Type etype = value.getType().cast<ShapedType>().getElementType();
 
   DenseIntElementsAttr dims_attr;
-  if (!matchPattern(dims, m_Constant(&dims_attr))) {
-    return UnrankedTensorType::get(etype);
+  if (matchPattern(dims, m_Constant(&dims_attr))) {
+    llvm::SmallVector<int64_t, 4> shape;
+    shape.reserve(dims_attr.getNumElements());
+    for (const APInt dim : dims_attr.getValues<APInt>()) {
+      shape.push_back(dim.getSExtValue());
+    }
+    return RankedTensorType::get(shape, etype);
   }
 
-  llvm::SmallVector<int64_t, 4> shape;
-  shape.reserve(dims_attr.getNumElements());
-  for (const APInt dim : dims_attr.getValues<APInt>()) {
-    shape.push_back(dim.getSExtValue());
+  if (auto shape_op = dims.getDefiningOp<ShapeOp>()) {
+    if (auto t = shape_op.input().getType().dyn_cast<ShapedType>()) {
+      return t;
+    }
   }
-  return RankedTensorType::get(shape, etype);
+
+  return UnrankedTensorType::get(etype);
 }
 
 void FillOp::build(OpBuilder &builder, OperationState &result, Value dims,
@@ -2862,6 +2892,16 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
 OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<MulOp>(*this, operands);
+}
+
+//===----------------------------------------------------------------------===//
+// HashTableOp
+//===----------------------------------------------------------------------===//
+void HashTableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<HashTableAndInitializeTableToV2>(context);
+  results.insert<HashTableAndLookupTableSizeToV2>(context);
+  results.insert<HashTableAndLookupTableFindToV2>(context);
 }
 
 }  // namespace TF

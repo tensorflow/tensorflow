@@ -33,7 +33,7 @@ namespace gpu {
 
 static tensorflow::mutex contexts_mu(tensorflow::LINKER_INITIALIZED);
 static auto contexts =
-    new absl::flat_hash_map<se::Stream*, CusolverContext> TF_GUARDED_BY(
+    new absl::flat_hash_map<se::Stream*, GpuSolverContext> TF_GUARDED_BY(
         contexts_mu);
 
 CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
@@ -41,7 +41,7 @@ CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
                              BufferAllocation::Slice a_buffer,
                              BufferAllocation::Slice workspace_buffer,
                              BufferAllocation::Slice info_buffer,
-                             PrimitiveType type, int64 batch_size, int64 n)
+                             PrimitiveType type, int64_t batch_size, int64_t n)
     : Thunk(Kind::kCholesky, thunk_info),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
@@ -61,13 +61,13 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
        << " workspace=" << workspace_buffer_.ToString()
        << " info=" << info_buffer_.ToString();
 
-  CusolverContext* context;
+  GpuSolverContext* context;
   {
     tensorflow::mutex_lock lock(contexts_mu);
-    auto result = contexts->emplace(params.stream, CusolverContext());
+    auto result = contexts->emplace(params.stream, GpuSolverContext());
     if (result.second) {
       TF_ASSIGN_OR_RETURN(result.first->second,
-                          CusolverContext::Create(params.stream));
+                          GpuSolverContext::Create(params.stream));
     }
     context = &result.first->second;
   }
@@ -78,7 +78,7 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.buffer_allocations->GetDeviceAddress(info_buffer_).opaque());
   se::DeviceMemoryBase workspace_data =
       params.buffer_allocations->GetDeviceAddress(workspace_buffer_);
-  for (int64 i = 0; i < batch_size_; ++i) {
+  for (int64_t i = 0; i < batch_size_; ++i) {
     se::DeviceMemoryBase a_data =
         se::DeviceMemoryBase(a_base + i * a_batch_stride_, a_batch_stride_);
     se::DeviceMemory<int> info_data(

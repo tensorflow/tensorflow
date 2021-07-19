@@ -37,6 +37,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -44,6 +45,8 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 TMP_WORK_DIR = data_service_test_base.TMP_WORK_DIR
@@ -144,13 +147,15 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, [v1, v2, default_value], requires_initialization=True)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testDifferentShuffleOrders(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(shuffle_seed=[None, 10])))
+  def testShuffleOrder(self, shuffle_seed):
     random_seed.set_random_seed(None)
     num_elements = 100
     cluster = data_service_test_base.TestCluster(num_workers=2)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.shuffle(num_elements)
+    ds = ds.shuffle(num_elements, seed=shuffle_seed)
     ds = self.make_distributed_dataset(ds, cluster)
     output = self.getDatasetOutput(ds)
 
@@ -164,7 +169,10 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         second_order[element] = len(second_order)
       else:
         first_order[element] = len(first_order)
-    self.assertNotEqual(first_order, second_order)
+    if shuffle_seed is None:
+      self.assertNotEqual(first_order, second_order)
+    else:
+      self.assertEqual(first_order, second_order)
 
   @combinations.generate(test_base.default_test_combinations())
   def testMultipleEpochs(self):
@@ -241,6 +249,50 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     result = list(f().numpy())
     self.assertCountEqual(num_workers * list(range(num_elements)), result)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyJobNameDistribute(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    with self.assertRaisesRegex(ValueError, "job_name must not be empty"):
+      dataset_ops.Dataset.range(10).apply(
+          data_service_ops.distribute(
+              processing_mode="parallel_epochs",
+              service=cluster.dispatcher.target,
+              job_name=""))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyJobNameFromDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset_id = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset_ops.Dataset.range(10))
+    with self.assertRaisesRegex(ValueError, "job_name must not be empty"):
+      data_service_ops.from_dataset_id(
+          dataset_id=dataset_id,
+          processing_mode="parallel_epochs",
+          service=cluster.dispatcher.target,
+          job_name="")
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNonStringJobNameDistribute(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    with self.assertRaisesRegex(ValueError, "job_name must be a string"):
+      dataset_ops.Dataset.range(10).apply(
+          data_service_ops.distribute(
+              processing_mode="parallel_epochs",
+              service=cluster.dispatcher.target,
+              job_name=constant_op.constant("foo")))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNonStringJobNameFromDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset_id = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset_ops.Dataset.range(10))
+    with self.assertRaisesRegex(ValueError, "job_name must be a string"):
+      data_service_ops.from_dataset_id(
+          dataset_id=dataset_id,
+          processing_mode="parallel_epochs",
+          service=cluster.dispatcher.target,
+          job_name=constant_op.constant("foo"))
 
   @combinations.generate(test_base.default_test_combinations())
   def testSharedJobName(self):
@@ -350,25 +402,21 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testGcErrorMessage(self):
+  def testGcAndRecreate(self):
     cluster = data_service_test_base.TestCluster(
-        num_workers=1, job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
-    num_elements = 100
-    ds = self.make_distributed_range_dataset(
-        num_elements, cluster, job_name="test")
-    it = iter(ds)
-    self.assertEqual(next(it).numpy(), 0)
-    self.assertEqual(cluster.workers[0].num_tasks(), 1)
-    del it
-    while cluster.workers[0].num_tasks() > 0:
-      time.sleep(0.1)
-
-    ds = self.make_distributed_range_dataset(
-        num_elements, cluster, job_name="test")
-    with self.assertRaisesRegex(
-        errors.FailedPreconditionError,
-        "The requested job has been garbage collected due to inactivity"):
-      list(ds)
+        num_workers=3, job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
+    num_elements = 1000
+    # Repeatedly create and garbage-collect the same job.
+    for _ in range(3):
+      ds = self.make_distributed_range_dataset(
+          num_elements, cluster, job_name="test")
+      it = iter(ds)
+      for _ in range(50):
+        next(it)
+      del it
+      # Wait for the task to be garbage-collected on all workers.
+      while cluster.num_tasks_on_workers() > 0:
+        time.sleep(0.1)
 
   @combinations.generate(test_base.default_test_combinations())
   def testApplyDeterminismOption(self):
@@ -431,13 +479,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=1)
     ds = dataset_ops.Dataset.range(2)
 
-    def interleave_fn(_):
-      dataset = dataset_ops.Dataset.range(2)
-      self.make_distributed_dataset(dataset, cluster)
+    def interleave_fn(x):
+      dataset = dataset_ops.Dataset.range(10 * x, 10 * x + 2)
+      dataset = self.make_distributed_dataset(dataset, cluster)
       return dataset
 
     ds = ds.interleave(interleave_fn, cycle_length=2)
-    self.assertDatasetProduces(ds, [0, 0, 1, 1])
+    self.assertDatasetProduces(ds, [0, 10, 1, 11])
 
   @combinations.generate(test_base.default_test_combinations())
   def testDistributeNonStringAddresses(self):
@@ -531,6 +579,35 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         "parallel_epochs", cluster.dispatcher_address(), dataset_id,
         ds.element_spec)
     self.assertDatasetProduces(from_dataset_id_ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromDatasetIdSharedJobs(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+
+    datasets = [
+        dataset_ops.Dataset.range(20, output_type=dtypes.int32),
+        dataset_ops.Dataset.from_tensor_slices(list(range(20, 40)))
+    ]
+    dataset_ids = [
+        data_service_ops.register_dataset(cluster.dispatcher_address(), ds)
+        for ds in datasets
+    ]
+
+    # Read from both jobs in parallel, with 2 consumers for each job.
+    data_service_datasets = []
+    for _ in range(2):
+      for dataset, dataset_id in zip(datasets, dataset_ids):
+        ds = data_service_ops.from_dataset_id(
+            "distributed_epoch",
+            cluster.dispatcher_address(),
+            dataset_id,
+            dataset.element_spec,
+            job_name="shared_job")
+        data_service_datasets.append(ds)
+    ds = dataset_ops.Dataset.from_tensor_slices(data_service_datasets)
+    ds = ds.interleave(lambda x: x, cycle_length=len(data_service_datasets))
+
+    self.assertDatasetProduces(ds, list(range(40)), assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testRegisteringDatasetAsTfFunction(self):
@@ -671,6 +748,78 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = dataset_ops.Dataset.from_tensors(tensor)
     ds = self.make_distributed_dataset(ds, cluster)
     self.assertDatasetProduces(ds, [tensor])
+
+  @combinations.generate(
+      combinations.times(test_base.graph_only_combinations(),
+                         combinations.combine(use_resource=False)) +
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(use_resource=True)))
+  def testVariables(self, use_resource):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    if not use_resource:
+      with variable_scope.variable_scope("foo", use_resource=False):
+        v = variables.VariableV1(10, dtype=dtypes.int64)
+    else:
+      v = variables.Variable(10, dtype=dtypes.int64)
+
+    ds = dataset_ops.Dataset.range(3)
+    ds = ds.map(lambda x: x + v)
+    ds = self.make_distributed_dataset(ds, cluster)
+    self.evaluate(v.initializer)
+    self.assertDatasetProduces(
+        ds, list(range(10, 13)), requires_initialization=True)
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testElementSpecGraphMode(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   ds)
+    with self.assertRaisesRegex(
+        ValueError, "In graph mode element_spec must be provided manually."):
+      ds = data_service_ops.from_dataset_id("parallel_epochs",
+                                            cluster.dispatcher_address(),
+                                            dataset_id)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testElementSpecEagerMode(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   ds)
+    ds = data_service_ops.from_dataset_id("parallel_epochs",
+                                          cluster.dispatcher_address(),
+                                          dataset_id)
+    self.assertDatasetProduces(ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testElementSpecMixedMode(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+
+    @def_function.function
+    def get_dataset_id():
+      return data_service_ops.register_dataset(cluster.dispatcher_address(), ds)
+
+    dataset_id = get_dataset_id()
+    dataset_id_val = tensor_util.constant_value(dataset_id)
+
+    with self.assertRaisesRegex(
+        ValueError, "Failed to fetch element spec for dataset id " +
+        str(dataset_id_val) + " from tf.data service. If the "
+        "dataset was registered in graph mode or inside a "
+        "tf.function, the `element_spec` must be specified as "
+        "an argument to `from_dataset_id`."):
+      ds = data_service_ops.from_dataset_id("parallel_epochs",
+                                            cluster.dispatcher_address(),
+                                            dataset_id)
 
 
 if __name__ == "__main__":

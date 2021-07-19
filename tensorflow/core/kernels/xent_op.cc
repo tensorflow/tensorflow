@@ -25,39 +25,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-namespace {
-
-// TODO(duncanriach): Factor this into a shared utility library
-bool RequireDeterminism() {
-  static bool require_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return require_determinism;
-}
-
-bool DisableSoftmaxXentWithLogitsOpDeterminismExceptions() {
-  static bool cached_disable = [] {
-    bool disable = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_DISABLE_SOFTMAX_XENT_WITH_LOGITS_OP_DETERMINISM_EXCEPTIONS",
-        /*default_val=*/false, &disable));
-    return disable;
-  }();
-  return cached_disable;
-}
-
-}  // namespace
 
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {
@@ -72,7 +46,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     TensorShape shape_in = logits_in.shape();
 
     BCast bcast(BCast::FromShape(logits_in.shape()),
-                BCast::FromShape(labels_in.shape()));
+                BCast::FromShape(labels_in.shape()),
+                /*fewer_dims_optimization=*/false);
     if (!logits_in.IsSameSize(labels_in)) {
       OP_REQUIRES(context, bcast.IsValid(),
                   errors::InvalidArgument(
@@ -87,12 +62,13 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                         "2-dimensional"));
 
     if (std::is_same<Device, GPUDevice>::value) {
-      OP_REQUIRES(context,
-                  !RequireDeterminism() ||
-                      DisableSoftmaxXentWithLogitsOpDeterminismExceptions(),
+      OP_REQUIRES(context, !OpDeterminismRequired(),
                   errors::Unimplemented(
-                      "Deterministic GPU implementation of"
-                      " SoftmaxCrossEntropyWithLogits not available."));
+                      "The GPU implementation of SoftmaxCrossEntropyWithLogits"
+                      " that would have been executed is not deterministic."
+                      " Note that the Python API uses an alternative,"
+                      " deterministic, GPU-accelerated path when determinism is"
+                      " enabled."));
     }
 
     // loss is 1-D (one per example), and size is batch_size.
@@ -113,20 +89,12 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                 {0}, 1, shape_in, &back_out));
     if (shape_in.dim_size(0) > 0) {
       functor::XentFunctor<Device, T> functor;
-      if (logits_in.IsSameSize(labels_in)) {
-        functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
-                Eigen::array<Eigen::DenseIndex, 2>{1, 1},
-                Eigen::array<Eigen::DenseIndex, 2>{1, 1}, logits_in.matrix<T>(),
-                labels_in.matrix<T>(), scratch.matrix<T>(), loss_out->vec<T>(),
-                back_out->matrix<T>());
-      } else {
-        functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
-                BCast::ToIndexArray<2>(bcast.x_bcast()),
-                BCast::ToIndexArray<2>(bcast.y_bcast()),
-                logits_in.template shaped<T, 2>(bcast.x_reshape()),
-                labels_in.template shaped<T, 2>(bcast.y_reshape()),
-                scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
-      }
+      functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
+              BCast::ToIndexArray<2>(bcast.x_bcast()),
+              BCast::ToIndexArray<2>(bcast.y_bcast()),
+              logits_in.template shaped<T, 2>(bcast.x_reshape()),
+              labels_in.template shaped<T, 2>(bcast.y_reshape()),
+              scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
     }
   }
 };

@@ -45,11 +45,11 @@ class VectorSupportLibrary {
   // `vector_size`, and these are implicitly used by the methods on this
   // instance (i.e. LoadVector will load a vector of type <`vector_size` x
   // `primitive_type`>).
-  VectorSupportLibrary(PrimitiveType primitive_type, int64 vector_size,
+  VectorSupportLibrary(PrimitiveType primitive_type, int64_t vector_size,
                        llvm::IRBuilder<>* b, std::string name);
 
   llvm::Value* Mul(llvm::Value* lhs, llvm::Value* rhs);
-  llvm::Value* Mul(int64 lhs, llvm::Value* rhs) {
+  llvm::Value* Mul(int64_t lhs, llvm::Value* rhs) {
     return Mul(b()->getInt64(lhs), rhs);
   }
   llvm::Value* Mul(const llvm::APFloat& lhs, llvm::Value* rhs) {
@@ -62,7 +62,7 @@ class VectorSupportLibrary {
   llvm::Value* Mul(float lhs, llvm::Value* rhs) = delete;
 
   llvm::Value* Add(llvm::Value* lhs, llvm::Value* rhs);
-  llvm::Value* Add(int64 lhs, llvm::Value* rhs) {
+  llvm::Value* Add(int64_t lhs, llvm::Value* rhs) {
     return Add(b()->getInt64(lhs), rhs);
   }
   llvm::Value* Add(const llvm::APFloat& lhs, llvm::Value* rhs) {
@@ -152,12 +152,13 @@ class VectorSupportLibrary {
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
                                     llvm::Value* offset_elements);
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
-                                    llvm::Value* offset_elements, int64 scale) {
+                                    llvm::Value* offset_elements,
+                                    int64_t scale) {
     return ComputeOffsetPointer(
         base_pointer, b_->CreateMul(b_->getInt64(scale), offset_elements));
   }
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
-                                    int64 offset_elements) {
+                                    int64_t offset_elements) {
     return ComputeOffsetPointer(base_pointer, b()->getInt64(offset_elements));
   }
 
@@ -168,7 +169,7 @@ class VectorSupportLibrary {
     return LoadVector(ComputeOffsetPointer(base_pointer, offset_elements));
   }
 
-  llvm::Value* LoadVector(llvm::Value* base_pointer, int64 offset_elements) {
+  llvm::Value* LoadVector(llvm::Value* base_pointer, int64_t offset_elements) {
     return LoadVector(base_pointer, b()->getInt64(offset_elements));
   }
 
@@ -179,7 +180,7 @@ class VectorSupportLibrary {
     return LoadScalar(ComputeOffsetPointer(base_pointer, offset_elements));
   }
 
-  llvm::Value* LoadScalar(llvm::Value* base_pointer, int64 offset_elements) {
+  llvm::Value* LoadScalar(llvm::Value* base_pointer, int64_t offset_elements) {
     return LoadScalar(base_pointer, b()->getInt64(offset_elements));
   }
 
@@ -191,7 +192,7 @@ class VectorSupportLibrary {
   }
 
   void StoreVector(llvm::Value* value, llvm::Value* base_pointer,
-                   int64 offset_elements) {
+                   int64_t offset_elements) {
     StoreVector(value, base_pointer, b()->getInt64(offset_elements));
   }
 
@@ -202,7 +203,7 @@ class VectorSupportLibrary {
   }
 
   void StoreScalar(llvm::Value* value, llvm::Value* base_pointer,
-                   int64 offset_elements) {
+                   int64_t offset_elements) {
     StoreScalar(base_pointer, b()->getInt64(offset_elements));
   }
 
@@ -211,7 +212,8 @@ class VectorSupportLibrary {
                              llvm::Value* offset_elements) {
     return LoadBroadcast(ComputeOffsetPointer(base_pointer, offset_elements));
   }
-  llvm::Value* LoadBroadcast(llvm::Value* base_pointer, int64 offset_elements) {
+  llvm::Value* LoadBroadcast(llvm::Value* base_pointer,
+                             int64_t offset_elements) {
     return LoadBroadcast(base_pointer, b()->getInt64(offset_elements));
   }
 

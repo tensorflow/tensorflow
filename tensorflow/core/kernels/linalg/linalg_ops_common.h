@@ -170,7 +170,7 @@ class LinearAlgebraOp : public OpKernel {
   //   matrix_index * output_matrix_shapes[i].num_elements().
   // for i in 0...outputs.size()-1.
   //
-  void ComputeTensorSlice(OpKernelContext* context, int64 matrix_index,
+  void ComputeTensorSlice(OpKernelContext* context, int64_t matrix_index,
                           const TensorInputs& inputs,
                           const TensorShapes& input_matrix_shapes,
                           const TensorOutputs& outputs,

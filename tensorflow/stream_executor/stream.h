@@ -278,14 +278,14 @@ class Stream {
       const DeviceMemory<float> &offset,
       const DeviceMemory<float> &estimated_mean,
       const DeviceMemory<float> &estimated_variance,
-      const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<Eigen::half> &side_input,
+      const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
-      bool is_training,
-      ScratchAllocator *reserve_space_allocator,
+      bool is_training, ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
@@ -382,76 +382,63 @@ class Stream {
     return port::UnimplementedError("DNN library is not found.");
   }
 
+  template <typename InputT, typename ScaleT, typename SideInputT,
+            typename BiasT, typename OutputT>
   port::Status FusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<double> &conv_input_data, double conv_input_scale,
+      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<double> &filter_data,
+      const DeviceMemory<InputT> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<double> &side_input_data, double side_input_scale,
+      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
       const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<double> &biases, dnn::ActivationMode activation_mode,
+      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<double> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoFusedConvolve(
+          this, dnn::ToDataType<InputT>::value,
+          dnn::ToDataType<SideInputT>::value, dnn::ToDataType<BiasT>::value,
+          dnn::ToDataType<OutputT>::value, conv_input_descriptor,
+          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
+          convolution_descriptor, side_input_data, side_input_scale,
+          bias_descriptor, biases, activation_mode, output_descriptor, *output,
+          scratch_allocator, algorithm_config, output_profile_result);
+    }
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
-  port::Status FusedConvolveWithAlgorithm(
+  template <typename InputT, typename ScaleT, typename SideInputT,
+            typename BiasT, typename OutputT>
+  port::Status FusedConvolveWithExecutionPlan(
       const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<float> &conv_input_data, float conv_input_scale,
+      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
       const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<float> &filter_data,
+      const DeviceMemory<InputT> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<float> &side_input_data, float side_input_scale,
+      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
       const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<Eigen::half> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<Eigen::half> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<Eigen::half> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<Eigen::half> &biases,
-      dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<int8> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
-
-  port::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<float> &side_input_data, float side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport *>(dnn);
+      return cudnn_dnn->DoFusedConvolveWithExecutionPlan(
+          this, dnn::ToDataType<InputT>::value, conv_input_descriptor,
+          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
+          convolution_descriptor, side_input_data, side_input_scale,
+          bias_descriptor, biases, activation_mode, output_descriptor, *output,
+          scratch_allocator, algorithm_config, output_profile_result);
+    }
+#endif  // GOOGLE_CUDA
+    return port::UnimplementedError("DNN library is not found.");
+  }
 
   Stream &ThenSeparableConvolve(
       const dnn::BatchDescriptor &input_descriptor,
@@ -582,22 +569,6 @@ class Stream {
 #endif  // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
   }
-
-  Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
-                                   const DeviceMemory<double> &input_data,
-                                   const dnn::BatchDescriptor &bias_descriptor,
-                                   DeviceMemory<double> *backward_bias_data);
-
-  Stream &ThenConvolveBackwardBias(const dnn::BatchDescriptor &input_descriptor,
-                                   const DeviceMemory<float> &input_data,
-                                   const dnn::BatchDescriptor &bias_descriptor,
-                                   DeviceMemory<float> *backward_bias_data);
-
-  Stream &ThenConvolveBackwardBias(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<Eigen::half> &input_data,
-      const dnn::BatchDescriptor &bias_descriptor,
-      DeviceMemory<Eigen::half> *backward_bias_data);
 
   Stream &ThenMatMul(const DeviceMemory<float> &input_data,
                      const DeviceMemory<float> &weights,
@@ -765,13 +736,13 @@ class Stream {
       DeviceMemory<float> *output_data);
 
   Stream &ThenXYPad(const dnn::BatchDescriptor &dimensions,
-                    const DeviceMemory<float> &input_data, int64 left_pad,
-                    int64 right_pad, int64 top_pad, int64 bottom_pad,
+                    const DeviceMemory<float> &input_data, int64_t left_pad,
+                    int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
                     DeviceMemory<float> *output_data);
 
   Stream &ThenXYSlice(const dnn::BatchDescriptor &dimensions,
-                      const DeviceMemory<float> &input_data, int64 left_trim,
-                      int64 right_trim, int64 top_trim, int64 bottom_trim,
+                      const DeviceMemory<float> &input_data, int64_t left_trim,
+                      int64_t right_trim, int64_t top_trim, int64_t bottom_trim,
                       DeviceMemory<float> *output_data);
 
   // Grows the input tensor by replicating the X and Y dimensions. The batch and
@@ -779,7 +750,7 @@ class Stream {
   // limited to X=1 and Y=1.
   Stream &ThenXYBroadcast(const dnn::BatchDescriptor &dimensions,
                           const DeviceMemory<float> &input_data,
-                          int64 replicate_x, int64 replicate_y,
+                          int64_t replicate_x, int64_t replicate_y,
                           DeviceMemory<float> *output_data);
 
   // See DnnSupport::DoMemcpyD2HQuantized.
@@ -1384,13 +1355,15 @@ class Stream {
         std::is_same<InputType, Eigen::half>::value ||
             std::is_same<InputType, ConstantType>::value,
         "If input is not Eigen::half, constant and input types have to match");
-    static_assert(std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<InputType, float>::value ||
-                      std::is_same<InputType, double>::value ||
-                      std::is_same<InputType, std::complex<float>>::value ||
-                      std::is_same<InputType, std::complex<double>>::value,
-                  "Input can be half, float, double, std::complex<float> or "
-                  "std::complex<double>");
+    static_assert(
+        std::is_same<InputType, Eigen::half>::value ||
+            std::is_same<InputType, Eigen::bfloat16>::value ||
+            std::is_same<InputType, float>::value ||
+            std::is_same<InputType, double>::value ||
+            std::is_same<InputType, std::complex<float>>::value ||
+            std::is_same<InputType, std::complex<double>>::value,
+        "Input can be half, bf16, float, double, std::complex<float> or "
+        "std::complex<double>");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -1504,9 +1477,9 @@ class Stream {
   port::Status ThenBlasGemmStridedBatchedWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
       uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
-      ConstantType beta, DeviceMemory<OutputType> *c, int ldc, int64 stride_c,
-      int batch_count, blas::ComputationType computation_type,
+      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
+      int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
+      int64_t stride_c, int batch_count, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result) {
     TF_RETURN_IF_ERROR(
@@ -1617,13 +1590,15 @@ class Stream {
   port::Status ThenBlasGemmStridedBatched(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
       uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
-      ConstantType beta, DeviceMemory<InputType> *c, int ldc, int64 stride_c,
-      int batch_count) {
-    static_assert((std::is_same<InputType, Eigen::half>::value &&
+      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
+      int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
+      int64_t stride_c, int batch_count) {
+    static_assert(((std::is_same<InputType, Eigen::half>::value ||
+                    std::is_same<InputType, Eigen::bfloat16>::value) &&
                    std::is_same<ConstantType, float>::value) ||
                       ((std::is_same<InputType, float>::value ||
                         std::is_same<InputType, Eigen::half>::value ||
+                        std::is_same<InputType, Eigen::bfloat16>::value ||
                         std::is_same<InputType, double>::value ||
                         std::is_same<InputType, std::complex<float>>::value ||
                         std::is_same<InputType, std::complex<double>>::value) &&
@@ -2159,6 +2134,11 @@ class Stream {
     return parent_;
   }
 
+  //
+  CudaComputeCapability GetCudaComputeCapability() const {
+    return parent()->GetDeviceDescription().cuda_compute_capability();
+  }
+
   // Returns the (internal usage) temporary-memory-allocation manager associated
   // with this stream.
   internal::TemporaryMemoryManager *temporary_memory_manager();
@@ -2179,6 +2159,7 @@ class Stream {
   port::Status CheckTypesForExtendedBlas(
       blas::ComputationType computation_type) {
     static_assert(std::is_same<InputType, Eigen::half>::value ||
+                      std::is_same<InputType, Eigen::bfloat16>::value ||
                       std::is_same<InputType, float>::value ||
                       std::is_same<InputType, double>::value ||
                       std::is_same<InputType, int8>::value ||
@@ -2194,13 +2175,15 @@ class Stream {
         "int8 and output is int32");
     static_assert(std::is_same<ConstantType, OutputType>::value ||
                       (std::is_same<ConstantType, float>::value &&
-                       std::is_same<OutputType, Eigen::half>::value),
+                       (std::is_same<OutputType, Eigen::half>::value ||
+                        std::is_same<OutputType, Eigen::bfloat16>::value)),
                   "Constant and output types should match");
     blas::ComputationType expected_computation_type =
         blas::ToComputationType<ConstantType>::value;
     if (expected_computation_type != computation_type &&
         !(computation_type == blas::ComputationType::kF32 &&
-          expected_computation_type == blas::ComputationType::kF16)) {
+          (expected_computation_type == blas::ComputationType::kF16 ||
+           expected_computation_type == blas::ComputationType::kBF16AsF32))) {
       return port::InternalError(absl::StrCat(
           "Alpha/beta type and computation type have to match, got ",
           blas::ComputationTypeString(computation_type),
@@ -2275,14 +2258,6 @@ class Stream {
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_
       TF_GUARDED_BY(mu_);
 
-  // Implementation of ThenConvolveBackwardBias that is shared by all types.
-  template <typename T>
-  Stream &ThenConvolveBackwardBiasImpl(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<T> &input_data,
-      const dnn::BatchDescriptor &bias_descriptor,
-      DeviceMemory<T> *backward_bias_data);
-
   // Implementation of ThenBlasLtMatmul that is shared by all types.
   template <typename ABType, typename CType>
   Stream &ThenBlasLtMatmulImpl(const blas::IBlasLtMatmulPlan *plan,
@@ -2307,6 +2282,13 @@ class Stream {
           static_cast<float>(*reinterpret_cast<Eigen::half *>(*alpha_ptr));
       *beta_storage =
           static_cast<float>(*reinterpret_cast<Eigen::half *>(*beta_ptr));
+      *alpha_ptr = alpha_storage;
+      *beta_ptr = beta_storage;
+    } else if (std::is_same<T, Eigen::bfloat16>::value) {
+      *alpha_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*alpha_ptr));
+      *beta_storage =
+          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*beta_ptr));
       *alpha_ptr = alpha_storage;
       *beta_ptr = beta_storage;
     }

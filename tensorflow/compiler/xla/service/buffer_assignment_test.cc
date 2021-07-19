@@ -49,6 +49,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using memory_space_assignment::PresetAssignments;
 using ::testing::UnorderedElementsAre;
 
 // DFS visitor that collects the instructions referenced by a computation
@@ -1435,6 +1436,43 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
   EXPECT_FALSE(map_alloc.is_thread_local());
 }
 
+TEST_F(BufferAssignmentTest, CustomCallEmbeddedComputationBuffers) {
+  // Verify that buffers for embedded computations in a custom call are properly
+  // marked as thread-local.
+  auto module = CreateNewVerifiedModule();
+  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+
+  // Create a scalar computation to use in a map.
+  auto map_builder = HloComputation::Builder(TestName() + "_map");
+  auto map_param = map_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "map_param"));
+  auto map_root = map_builder.AddInstruction(
+      HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, map_param));
+  auto map_computation = module->AddEmbeddedComputation(map_builder.Build());
+
+  // Create entry computation with a custom call on map_computation.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      scalar_shape, {param}, map_computation, "call_name"));
+  module->AddEntryComputation(builder.Build());
+
+  auto assignment = RunBufferAssignment(module.get());
+
+  // Allocations for the map computation should be thread-local and not
+  // live-out.
+  auto& map_param_alloc = GetTopLevelAllocation(*assignment, map_param);
+  EXPECT_FALSE(map_param_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(map_param_alloc.maybe_live_out());
+  EXPECT_TRUE(map_param_alloc.is_thread_local());
+
+  auto& map_root_alloc = GetTopLevelAllocation(*assignment, map_root);
+  EXPECT_FALSE(map_root_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(map_root_alloc.maybe_live_out());
+  EXPECT_TRUE(map_root_alloc.is_thread_local());
+}
+
 TEST_F(BufferAssignmentTest, TupleParameterAsOutput) {
   // Test a computation that returns a tuple parameter.
   auto builder = HloComputation::Builder(TestName());
@@ -1919,7 +1957,7 @@ ENTRY main {
   constant.3 = s32[] constant(0)
   dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3, constant.3, constant.3)
   dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3, constant.3, constant.3)
-  ROOT tuple.85 = (s32[], s32[], s32[2]{0}, f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
+  ROOT tuple.85 = (s32[], f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
 }
 )";
 
@@ -2706,7 +2744,7 @@ while_body {
   constant.3 = s32[] constant(0)
   dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3, constant.3, constant.3)
   dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3, constant.3, constant.3)
-  ROOT tuple.85 = (s32[], s32[], s32[2]{0}, f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
+  ROOT tuple.85 = (s32[], f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
 }
 
 while_condition {

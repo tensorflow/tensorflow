@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
@@ -48,7 +49,9 @@ class Subgraph {
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
            std::vector<std::unique_ptr<Subgraph>>* subgraphs,
-           resource::ResourceMap* resources);
+           resource::ResourceMap* resources,
+           resource::ResourceIDMap* resource_ids,
+           resource::InitializationStatusMap* initialization_status_map);
 
   Subgraph(const Subgraph&) = delete;
 
@@ -171,6 +174,16 @@ class Subgraph {
   // WARNING: Experimental interface, subject to change.
   // TODO(ycling): Move this function to an external context interface.
   resource::ResourceMap& resources() { return *resources_; }
+
+  // WARNING: Experimental interface, subject to change.
+  // TODO(b/149099381): Move this function to an external context interface.
+  resource::ResourceIDMap& resource_ids() { return *resource_ids_; }
+
+  // WARNING: Experimental interface, subject to change.
+  // TODO(b/149099381): Move this function to an external context interface.
+  resource::InitializationStatusMap& initialization_status_map() {
+    return *initialization_status_map_;
+  }
 
   size_t tensors_size() const { return tensors_.size(); }
 
@@ -737,7 +750,7 @@ class Subgraph {
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;
 
-  // True if all tensors in the graph has static size after calling
+  // True if not all tensors in the graph has static size after calling
   // `PrepareOpsStartingAt` function (which is called by the `AllocateTensors`
   // public function).
   // The value is invalid before `PrepareOpStartingAt` is called.
@@ -754,6 +767,14 @@ class Subgraph {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
+
+  // A map of resources IDs. Owned by interpreter and shared by multiple
+  // subgraphs.
+  resource::ResourceIDMap* resource_ids_ = nullptr;
+
+  // A map of initialization statuses, that indicate whether the intialization
+  // subgraph invocation is done or not.
+  resource::InitializationStatusMap* initialization_status_map_;
 
   // Name of the subgraph (analogous to function name).
   std::string name_;

@@ -152,7 +152,10 @@ PYBIND11_MODULE(xla_extension, m) {
                TF_RETURN_IF_ERROR(device.TransferFromOutfeed(literal.get()));
              }
              return LiteralToPython(std::move(literal));
-           });
+           })
+      .def("live_buffers", [](const ClientAndPtr<PjRtDevice>& device) {
+        return device.client->LiveBuffersOnDevice(device.get());
+      });
 
   py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
       .def("__repr__", [](const CpuDevice& device) {
@@ -212,6 +215,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
       .def("live_buffers", &PyClient::LiveBuffers)
+      .def("live_executables", &PyClient::LiveExecutables)
       .def("process_index", &PyClient::process_index)
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)
@@ -231,9 +235,15 @@ PYBIND11_MODULE(xla_extension, m) {
                PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
+      .def("serialize_executable", &PyClient::SerializeExecutable)
+      .def("deserialize_executable", &PyClient::DeserializeExecutable)
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
-      .def("defragment", &PyClient::Defragment);
+      .def("defragment", &PyClient::Defragment)
+      .def("emit_python_callback", &PyClient::EmitPythonCallback,
+           py::arg("callable"), py::arg("builder"), py::arg("operands"),
+           py::arg("result_shapes"), py::arg("operand_layouts") = absl::nullopt,
+           py::arg("has_side_effects") = false);
 
   m.def(
       "get_cpu_client",
@@ -303,6 +313,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("execute_sharded_on_local_devices",
            &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)
+      .def("keep_alive", &PyExecutable::KeepAlive)
       .def_property_readonly("traceback", &PyExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyExecutable* exec) -> py::object {
@@ -315,7 +326,9 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
         py::arg("buffer"), py::arg("take_ownership") = true);
-  m.def("dlpack_managed_tensor_to_buffer", DLPackManagedTensorToBuffer);
+  m.def("dlpack_managed_tensor_to_buffer", DLPackManagedTensorToBuffer,
+        py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
+        py::arg("gpu_backend") = nullptr);
 
   BuildProfilerSubmodule(&m);
   BuildOpsSubmodule(&m);

@@ -5,6 +5,8 @@ load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
@@ -59,7 +61,14 @@ tpu_py_test(
     disable_experimental = True,
     disable_mlir_bridge = False,
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        # Disable this test from running automatically since it fails without
+        # the MLIR bridge enabled (see b/178826597#comment107).
+        # TODO(b/191201209): remove along with entire legacy Keras codebase.
+        "manual",
+        "notap",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -75,7 +84,6 @@ tpu_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:training_util",
@@ -84,6 +92,7 @@ tpu_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -425,6 +434,7 @@ tf_py_test(
     name = "tracking_util_with_v1_optimizers_test",
     srcs = ["tracking_util_with_v1_optimizers_test.py"],
     tags = [
+        "no_windows",  # TODO(b/184424727): Re-enable this.
         "notsan",  # b/74395663
     ],
     deps = [

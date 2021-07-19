@@ -45,7 +45,7 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
   // {y0, y1,...,ym-1}, we flatten it to {1, y}, where y = Prod_i(yi).
   std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>> inputs_flat;
   inputs_flat.reserve(inputs.size());
-  int64 output_dim0 = 0;
+  int64_t output_dim0 = 0;
   for (size_t i = 0; i < inputs.size(); ++i) {
     const Tensor& input = inputs[i];
     if (input.dims() != input_dims) {
@@ -122,7 +122,7 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
                       std::vector<Tensor>* outputs, bool* done) {
   *done = false;
 
-  int64 total_size = 0;
+  int64_t total_size = 0;
   for (const int64 size : sizes) {
     total_size += size;
   }
@@ -140,7 +140,7 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
 
   // Special case 1: input is aligned.
   if (IsInnerDimsSizeAligned<T>(input.shape())) {
-    int64 position = 0;
+    int64_t position = 0;
     for (const int64 size : sizes) {
       outputs->emplace_back(input.Slice(position, position + size));
       position += size;
@@ -157,14 +157,14 @@ template <typename T>
 Status SplitCPU(OpKernelContext* context, const Tensor& input,
                 const gtl::ArraySlice<int64> sizes,
                 std::vector<Tensor>* outputs) {
-  int64 suffix_dim_size = 1;
+  int64_t suffix_dim_size = 1;
   for (int i = 1; i < input.shape().dims(); ++i) {
     suffix_dim_size *= input.shape().dim_size(i);
   }
   auto input_reshaped =
       input.shaped<T, 2>({input.shape().dim_size(0), suffix_dim_size});
 
-  int64 position = 0;
+  int64_t position = 0;
   for (const int64 size : sizes) {
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, size);

@@ -22,7 +22,6 @@ limitations under the License.
 namespace tensorflow {
 class ConfigProto;
 class DeviceMgr;
-class NcclManager;
 
 class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  public:
@@ -34,9 +33,9 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
 
   virtual ~CollectiveExecutorMgr();
 
-  CollectiveExecutor* FindOrCreate(int64 step_id) override;
+  CollectiveExecutor* FindOrCreate(int64_t step_id) override;
 
-  void Cleanup(int64 step_id) override;
+  void Cleanup(int64_t step_id) override;
 
   ParamResolverInterface* GetParamResolver() const override {
     return param_resolver_.get();
@@ -54,18 +53,18 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
                             GetStepSequenceResponse* response,
                             const StatusCallback& done) override;
 
-  void RefreshStepIdSequenceAsync(int64 graph_key,
+  void RefreshStepIdSequenceAsync(int64_t graph_key,
                                   const StatusCallback& done) override;
 
-  int64 NextStepId(int64 graph_key) override {
+  int64 NextStepId(int64_t graph_key) override {
     return CollectiveExecutor::kInvalidId;
   }
 
-  void RetireStepId(int64 graph_key, int64 step_id) override {}
+  void RetireStepId(int64_t graph_key, int64_t step_id) override {}
 
  protected:
   // Called by FindOrCreate when table entry does not yet exist.
-  virtual CollectiveExecutor* Create(int64 step_id);
+  virtual CollectiveExecutor* Create(int64_t step_id);
 
   const DeviceMgr* dev_mgr_;
   std::unique_ptr<DeviceResolverInterface> dev_resolver_;
@@ -83,6 +82,15 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   gtl::FlatMap<int64, CollectiveExecutor*> executor_table_
       TF_GUARDED_BY(exec_mu_);
 };
+
+// Creates a local CollectiveExecutorMgr with production implementations of each
+// components. Cases that need to inject other implementations of these
+// components should call CollectiveExecutorMgr constructor directly. This only
+// supports a single host. For distributed use case, use
+// CreateProdRpcCollectiveExecutorMgr() instead.
+std::unique_ptr<CollectiveExecutorMgr> CreateProdLocalCollectiveExecutorMgr(
+    const ConfigProto& config, const DeviceMgr* device_mgr,
+    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_EXECUTOR_MGR_H_

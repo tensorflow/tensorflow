@@ -386,7 +386,7 @@ void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
 
 DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType, "type", type)
 DEFINE_TF_GETATTR(Int32, int32_t, tensorflow::int32, "int", i)
-DEFINE_TF_GETATTR(Int64, int64_t, tensorflow::int64, "int", i)
+DEFINE_TF_GETATTR(Int64, int64_t, int64_t, "int", i)
 DEFINE_TF_GETATTR(Float, float, float, "float", f)
 DEFINE_TF_GETATTR(Bool, TF_Bool, bool, "bool", b)
 

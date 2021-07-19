@@ -107,10 +107,17 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
                                              &deterministic_ops));
   if (deterministic_ops) {
     int disable = 0;
-    cuMemPoolSetAttribute(pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_OPPORTUNISTIC,
-                          &disable);
-    cuMemPoolSetAttribute(
-        pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_INTERNAL_DEPENDENCIES, &disable);
+    if (auto status = cuMemPoolSetAttribute(
+            pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_OPPORTUNISTIC, &disable)) {
+      LOG(FATAL) <<  // Crash OK.
+          "Failed to set CUDA pool attribute: " << GetCudaErrorMessage(status);
+    }
+    if (auto status = cuMemPoolSetAttribute(
+            pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_INTERNAL_DEPENDENCIES,
+            &disable)) {
+      LOG(FATAL) <<  // Crash OK.
+          "Failed to set CUDA pool attribute: " << GetCudaErrorMessage(status);
+    }
   }
 
   // Set read/write access to all GPUs.
@@ -192,8 +199,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 #endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
 }
 
-GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
-}
+GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {}
 
 void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                                size_t num_bytes) {
@@ -212,7 +218,6 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                   num_bytes, pool_, cuda_stream_)) {
     size_t free, total;
     cuMemGetInfo(&free, &total);
-    mutex_lock lock(lock_);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes
                << ": " << GetCudaErrorMessage(result)
                << "\n Free memory/Total memory: " << free << "/" << total;

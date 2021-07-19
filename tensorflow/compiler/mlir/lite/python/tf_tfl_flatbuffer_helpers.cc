@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -301,6 +302,7 @@ Status ConvertMLIRToTFLiteFlatBuffer(
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
   bool emit_custom_ops = toco_flags.allow_custom_ops();
+  bool allow_all_select_tf_ops = toco_flags.allow_all_select_tf_ops();
 
   const std::unordered_set<std::string> select_user_tf_ops(
       toco_flags.select_user_tf_ops().begin(),
@@ -316,6 +318,9 @@ Status ConvertMLIRToTFLiteFlatBuffer(
   mlir::PassManager pm(module->getContext(),
                        mlir::OpPassManager::Nesting::Implicit);
   ::tensorflow::SetCrashReproducer(pm);
+  pm.addInstrumentation(
+      std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
+          module->getContext()));
 
   tensorflow::AddTFToTFLConversionPasses(model_flags, toco_flags, pass_config,
                                          &pm, session);
@@ -327,8 +332,9 @@ Status ConvertMLIRToTFLiteFlatBuffer(
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
-      pass_config.quant_specs, saved_model_tags, result, &pm);
+      emit_select_tf_ops, emit_custom_ops, allow_all_select_tf_ops,
+      select_user_tf_ops, pass_config.quant_specs, saved_model_tags, result,
+      &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

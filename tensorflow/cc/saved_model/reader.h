@@ -24,8 +24,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace tensorflow {
+// Reads the SavedModel proto from saved_model.pb in `export_dir`.
+// Returns a failure status when the SavedModel file does not exist.
+Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto);
 
 // Reads the SavedModel proto from saved_model.pb(txt) in the given directory,
 // finds the MetaGraphDef that matches the given set of tags and writes it to

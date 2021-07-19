@@ -159,6 +159,8 @@ int main(int argc, char **argv) {
     return kTrFailure;
   }
 
+  std::unique_ptr<tensorflow::SavedModelBundle> bundle;
+
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
@@ -183,9 +185,10 @@ int main(int argc, char **argv) {
     }
     std::vector<std::string> extra_opdefs(custom_opdefs.begin(),
                                           custom_opdefs.end());
-    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, extra_opdefs, exported_names,
-                                          specs, &context);
+    module = tensorflow::ImportSavedModel(
+        input_file_name, saved_model_version, tags, extra_opdefs,
+        exported_names, specs, /*enable_variable_lifting=*/true, &context,
+        &bundle);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
@@ -262,8 +265,8 @@ int main(int argc, char **argv) {
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, select_user_ops_set, quant_specs,
-      tags, &result, &pm);
+      emit_select_tf_ops, emit_custom_ops, allow_all_select_tf_ops,
+      select_user_ops_set, quant_specs, tags, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

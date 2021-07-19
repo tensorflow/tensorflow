@@ -30,7 +30,7 @@ typedef FlatSet<int64> NumSet;
 
 // Returns true iff set has an entry for k.
 // Also verifies that find and count give consistent results.
-bool Has(const NumSet& set, int64 k) {
+bool Has(const NumSet& set, int64_t k) {
   auto iter = set.find(k);
   if (iter == set.end()) {
     EXPECT_EQ(set.count(k), 0);
@@ -51,8 +51,8 @@ NumSetContents Contents(const NumSet& set) {
 }
 
 // Fill entries with keys [start,limit).
-void Fill(NumSet* set, int64 start, int64 limit) {
-  for (int64 i = start; i < limit; i++) {
+void Fill(NumSet* set, int64_t start, int64_t limit) {
+  for (int64_t i = start; i < limit; i++) {
     set->insert(i);
   }
 }
@@ -384,7 +384,7 @@ TEST(FlatSet, Prefetch) {
 struct NA {
   int64 value;
   NA() : value(-1) {}
-  explicit NA(int64 v) : value(v) {}
+  explicit NA(int64_t v) : value(v) {}
   NA(const NA& x) : value(x.value) {}
   bool operator==(const NA& x) const { return value == x.value; }
 };
@@ -513,7 +513,7 @@ TEST(FlatSet, ConstructDestruct) {
 struct CustomCmpKey {
   int64 a;
   int64 b;
-  CustomCmpKey(int64 v1, int64 v2) : a(v1), b(v2) {}
+  CustomCmpKey(int64_t v1, int64_t v2) : a(v1), b(v2) {}
   bool operator==(const CustomCmpKey& x) const { return a == x.a && b == x.b; }
 };
 struct HashA {

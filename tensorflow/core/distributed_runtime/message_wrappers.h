@@ -309,7 +309,7 @@ class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
   virtual void set_session_handle(const string& handle) = 0;
   virtual void set_create_worker_session_called(bool called) = 0;
   virtual void set_graph_handle(const string& handle) = 0;
-  virtual void set_step_id(int64 step_id) = 0;
+  virtual void set_step_id(int64_t step_id) = 0;
   virtual ExecutorOpts* mutable_exec_opts() = 0;
 
   // Stores the i^{th} feed value in `run_step_request` in this
@@ -325,7 +325,7 @@ class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
   virtual void set_is_partial(bool is_partial) = 0;
   virtual void set_is_last_partial_run(bool is_last_partial_run) = 0;
   virtual void set_store_errors_in_response_body(bool store_errors) = 0;
-  virtual void set_request_id(int64 request_id) = 0;
+  virtual void set_request_id(int64_t request_id) = 0;
 };
 
 class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
@@ -351,7 +351,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   void set_session_handle(const string& handle) override;
   void set_create_worker_session_called(bool called) override;
   void set_graph_handle(const string& handle) override;
-  void set_step_id(int64 step_id) override;
+  void set_step_id(int64_t step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
   Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
@@ -363,7 +363,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   void set_is_partial(bool is_partial) override;
   void set_is_last_partial_run(bool is_last_partial_run) override;
   void set_store_errors_in_response_body(bool store_errors) override;
-  void set_request_id(int64 request_id) override;
+  void set_request_id(int64_t request_id) override;
 
  private:
   string session_handle_;
@@ -411,7 +411,7 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
   void set_session_handle(const string& handle) override;
   void set_create_worker_session_called(bool called) override;
   void set_graph_handle(const string& handle) override;
-  void set_step_id(int64 step_id) override;
+  void set_step_id(int64_t step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
   Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
@@ -423,7 +423,7 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
   void set_is_partial(bool is_partial) override;
   void set_is_last_partial_run(bool is_last_partial_run) override;
   void set_store_errors_in_response_body(bool store_errors) override;
-  void set_request_id(int64 request_id) override;
+  void set_request_id(int64_t request_id) override;
 
  private:
   RunGraphRequest request_;

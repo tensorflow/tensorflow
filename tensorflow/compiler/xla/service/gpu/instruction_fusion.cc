@@ -55,7 +55,7 @@ bool ElementIsF32OrF16(const Shape& shape) {
 }
 
 bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
-                                                       int64 operand_index) {
+                                                       int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Output fusions are not currently supported on GPUs.
@@ -82,7 +82,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 }
 
 bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                      int64 operand_index) {
+                                      int64_t operand_index) {
   if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
     VLOG(5) << "Not fusing inexpensive checks of operand " << operand_index
             << " of " << consumer->ToString();
@@ -121,7 +121,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                                     int64 operand_index) {
+                                                     int64_t operand_index) {
   return false;
 }
 

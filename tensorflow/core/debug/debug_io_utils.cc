@@ -246,7 +246,7 @@ string AppendTimestampToFilePath(const string& in, const uint64 timestamp) {
 // conforming to the gRPC message size limit.
 Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
                                       const string& device_name,
-                                      const int64 wall_time,
+                                      const int64_t wall_time,
                                       const string& debug_url) {
   const uint64 hash = ::tensorflow::Hash64(encoded_graph_def);
   const size_t total_length = encoded_graph_def.size();
@@ -325,8 +325,8 @@ const char* const DebugIO::kMemoryURLScheme = "memcbk://";
 
 // Publishes debug metadata to a set of debug URLs.
 Status DebugIO::PublishDebugMetadata(
-    const int64 global_step, const int64 session_run_index,
-    const int64 executor_step_index, const std::vector<string>& input_names,
+    const int64_t global_step, const int64_t session_run_index,
+    const int64_t executor_step_index, const std::vector<string>& input_names,
     const std::vector<string>& output_names,
     const std::vector<string>& target_nodes,
     const std::unordered_set<string>& debug_urls) {
@@ -422,7 +422,7 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
     if (absl::StartsWith(absl::AsciiStrToLower(url), kFileURLScheme)) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
 
-      const int64 tensorBytes =
+      const int64_t tensorBytes =
           tensor.IsInitialized() ? tensor.TotalBytes() : 0;
       if (!DebugFileIO::requestDiskByteUsage(tensorBytes)) {
         return errors::ResourceExhausted(
@@ -496,7 +496,7 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
   string buf;
   graph_def.SerializeToString(&buf);
 
-  const int64 now_micros = Env::Default()->NowMicros();
+  const int64_t now_micros = Env::Default()->NowMicros();
   Event event;
   event.set_wall_time(static_cast<double>(now_micros));
   event.set_graph_def(buf);
@@ -728,7 +728,7 @@ DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)
     : server_stream_addr_(server_stream_addr),
       url_(strings::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)) {}
 
-Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
+Status DebugGrpcChannel::Connect(const int64_t timeout_micros) {
   ::grpc::ChannelArguments args;
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
   // Avoid problems where default reconnect backoff is too long (e.g., 20 s).
@@ -789,7 +789,7 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
 
 mutex DebugGrpcIO::streams_mu_(LINKER_INITIALIZED);
 
-int64 DebugGrpcIO::channel_connection_timeout_micros_ = 900 * 1000 * 1000;
+int64_t DebugGrpcIO::channel_connection_timeout_micros_ = 900 * 1000 * 1000;
 // TODO(cais): Make this configurable?
 
 const size_t DebugGrpcIO::kGrpcMessageSizeLimitBytes = 4000 * 1024;

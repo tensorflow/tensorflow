@@ -15,14 +15,21 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 
+#include <memory>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -99,10 +106,13 @@ class DispatcherState {
   };
 
   struct DistributedEpochState {
-    // The current repetition.
-    int64 repetition = 0;
-    // Number of splits produced so far by the current split provider.
-    int64 split_provider_index = 0;
+    explicit DistributedEpochState(int64 num_split_providers)
+        : repetitions(num_split_providers), indices(num_split_providers) {}
+
+    // The current repetition for each split provider.
+    std::vector<int64> repetitions;
+    // Number of splits produced so far by each split provider.
+    std::vector<int64> indices;
   };
 
   struct Task;
@@ -124,6 +134,7 @@ class DispatcherState {
   // A job for processing a dataset.
   struct Job {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
+                 int64 num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
                  absl::optional<int64> num_consumers)
         : job_id(job_id),
@@ -132,7 +143,7 @@ class DispatcherState {
           named_job_key(named_job_key),
           num_consumers(num_consumers) {
       if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
-        distributed_epoch_state = DistributedEpochState();
+        distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
     }
 
@@ -182,6 +193,8 @@ class DispatcherState {
 
   // Returns the next available dataset id.
   int64 NextAvailableDatasetId() const;
+  // Gets the element_spec by searching for the dataset_id key.
+  Status GetElementSpec(int64 dataset_id, std::string& element_spec) const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
   Status DatasetFromId(int64 id, std::shared_ptr<const Dataset>& dataset) const;
   // Gets a dataset by fingerprint. Returns NOT_FOUND if there is no such
@@ -237,6 +250,7 @@ class DispatcherState {
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
+  void SetElementSpec(const SetElementSpecUpdate& set_element_spec);
 
   int64 next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
@@ -244,6 +258,8 @@ class DispatcherState {
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
       datasets_by_fingerprint_;
+  // Saved element_spec, keyed by dataset ids.
+  absl::flat_hash_map<int64, std::string> id_element_spec_info_;
 
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;

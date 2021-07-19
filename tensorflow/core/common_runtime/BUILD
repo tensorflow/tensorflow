@@ -7,6 +7,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
     "tf_openmp_copts",
+    "tf_openmp_lopts",
 )
 
 # buildifier: disable=same-origin-load
@@ -124,6 +125,28 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "collective_test_util",
+    testonly = 1,
+    srcs = ["collective_test_util.cc"],
+    hdrs = ["collective_test_util.h"],
+    copts = tf_copts(),
+    deps = [
+        ":device_resolver_local",
+        ":process_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Public Android targets
 
@@ -168,6 +191,7 @@ filegroup(
         "graph_optimizer.h",
         "graph_runner.h",
         "inline_function_utils.h",
+        "lower_function_call_inline_policy.h",
         "metrics.h",
         "process_function_library_runtime.h",
         "scoped_allocator.h",
@@ -228,6 +252,7 @@ filegroup(
         "costmodel_manager.h",
         "placer_inspection_required_ops_utils.h",
         "debugger_state_interface.h",
+        "all_to_all.h",
         "device_resolver_local.h",
         "dma_helper.h",
         "executor.h",
@@ -281,6 +306,27 @@ cc_library(
     deps = [
         ":optimization_registry",
         "//tensorflow/core:graph",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "all_to_all",
+    srcs = ["all_to_all.cc"],
+    hdrs = ["all_to_all.h"],
+    copts = tf_copts(),
+    deps = [
+        ":base_collective_executor",
+        ":collective_rma_local",
+        ":collective_util",
+        ":copy_tensor",
+        ":device",
+        ":device_mgr",
+        ":dma_helper",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -340,12 +386,15 @@ cc_library(
     deps = [
         ":base_collective_executor",
         ":build_graph_options",
+        ":collective_param_resolver_local",
         ":collective_rma_local",
         ":device_mgr",
+        ":device_resolver_local",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -800,6 +849,7 @@ cc_library(
         "graph_constructor.h",
         "graph_runner.h",
         "shape_refiner.h",
+        ":core_cpu_lib_headers",
     ],
     copts = tf_copts(),
     visibility = default_package_visibility + [
@@ -809,22 +859,23 @@ cc_library(
     deps = [
         ":device",
         ":device_factory",
-        ":executor",
         ":function_utils",
         ":memory_types",
-        ":rendezvous_mgr",
         ":session_options",
         ":single_threaded_cpu_device",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + if_static([
+        ":executor",
+        ":rendezvous_mgr",
+    ]),
 )
 
 cc_library(
@@ -912,6 +963,7 @@ cc_library(
         ":function_body",
         ":function_utils",
         ":graph_constructor",
+        ":lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -989,6 +1041,16 @@ cc_library(
 )
 
 cc_library(
+    name = "lower_function_call_inline_policy",
+    srcs = ["lower_function_call_inline_policy.cc"],
+    hdrs = ["lower_function_call_inline_policy.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+    ],
+)
+
+cc_library(
     name = "lower_function_call_op",
     srcs = ["lower_function_call_op.cc"],
     hdrs = ["lower_function_call_op.h"],
@@ -996,6 +1058,7 @@ cc_library(
     deps = [
         ":function_def_utils",
         ":inline_function_utils",
+        ":lower_function_call_inline_policy",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1277,6 +1340,7 @@ cc_library(
     srcs = ["process_util.cc"],
     hdrs = ["process_util.h"],
     copts = tf_copts() + tf_openmp_copts(),
+    linkopts = tf_openmp_lopts(),
     deps = [
         ":session_options",
         "//tensorflow/core:framework",
@@ -1601,6 +1665,7 @@ cc_library(
     srcs = ["threadpool_device.cc"],
     hdrs = ["threadpool_device.h"],
     copts = tf_copts() + tf_openmp_copts(),
+    linkopts = tf_openmp_lopts(),
     deps = [
         ":device_factory",
         ":local_device",
@@ -1639,6 +1704,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":accumulate_n_optimizer",
+        ":all_to_all",
         ":base_collective_executor",
         ":bfc_allocator",
         ":buf_rendezvous",
@@ -1806,8 +1872,8 @@ tf_cuda_library(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:device_profiler_session",
         "//tensorflow/core/profiler/lib:profiler_backends",
-        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -1864,6 +1930,25 @@ tf_cc_test(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "all_to_all_test",
+    srcs = ["all_to_all_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
+    deps = [
+        ":collective_test_util",
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
@@ -1977,6 +2062,7 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1989,6 +2075,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2015,6 +2102,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2041,6 +2129,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2067,6 +2156,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = ["no_cuda_on_cpu_tap"],
     deps = [
+        ":collective_test_util",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
@@ -2081,6 +2171,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -2799,17 +2890,5 @@ tf_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "bfc_allocator_test",
-    srcs = ["bfc_allocator_test.cc"],
-    deps = [
-        ":bfc_allocator",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:test_benchmark",
     ],
 )

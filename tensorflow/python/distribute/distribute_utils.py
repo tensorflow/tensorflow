@@ -20,6 +20,8 @@ from __future__ import print_function
 
 from collections import abc
 
+import contextlib
+import threading
 from tensorflow.python.distribute import tpu_values as tpu_values_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.eager import context
@@ -364,6 +366,69 @@ def is_sync_on_read(val):
     if val._policy:  # pylint: disable=protected-access
       return not val._policy._is_mirrored()  # pylint: disable=protected-access
   return not isinstance(val, values_lib.Mirrored)
+
+
+class CachingScopeLocal(threading.local):
+  """Class for maintaining thread local state for caching scope."""
+
+  def __init__(self):
+    super(CachingScopeLocal, self).__init__()
+    self.new_cache_scope_count = 0
+    self.cache_scope_exited_count = 0
+
+  def enter_scope(self):
+    self.new_cache_scope_count += 1
+
+  def exit_scope(self):
+    self.cache_scope_exited_count += 1
+
+  def in_caching_scope(self):
+    return self.new_cache_scope_count > self.cache_scope_exited_count
+
+
+caching_scope_local = CachingScopeLocal()
+
+
+@contextlib.contextmanager
+def cache_variable_reads():
+  """Scope for caching variable reads for AggregatingVariable.
+
+  The variable reads for AggregatingVariable inside this scope are cached. i.e.
+  the first read of variable reads the value from possibly remote handle, but
+  subsequent reads are returned using local cached value.
+
+  For example:
+  strategy = ParameterServerStrategy...
+  with strategy.scope():
+    # Variable v is of AggregatingVariable type with actual variable residing
+    # on PS.
+    v = tf.Variable(1.0)
+
+  with distribute_utils.cache_variable_reads():
+    v.read_value()  # Reads value 1.0
+    v.assign(constant_op.constant(5.0))  # v changes to 5.0
+    t1 = v.read_value()
+    t2 = v.read_value()  # Both t1 & t2 return cached value 1.0 from local CPU.
+
+  Notes about cache_variable_reads scope:
+  1. Nesting of scope cache_variable_reads() is not supported
+  2. And when caching scope is enabled, the thread enabling the cache and
+    mirrored_run._MirroredReplicaThread threads spawned from it will have
+    caching enabled.
+
+  Yields:
+    A context for caching variables.
+  """
+
+  try:
+    if caching_scope_local.in_caching_scope():
+      # There is nested cache scope, which is not supported.
+      raise ValueError("cache_variable_reads scope cannot be nested")
+    caching_scope_local.enter_scope()
+    yield
+  finally:
+    caching_scope_local.exit_scope()
+
 
 # The following mapping indicates the policy that you must use for a given
 # variable `synchronization` and `aggregation` pair.

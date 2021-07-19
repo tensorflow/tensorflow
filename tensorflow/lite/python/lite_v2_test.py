@@ -351,6 +351,88 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
 
+  @test_util.run_v2_only
+  def testSignatureDefs(self):
+    """Test converting SignatureDef is correct and uses SignatureDef API."""
+    root = self._getMultiFunctionModel()
+    input_data = tf.constant(1., shape=[1])
+    add_func = root.add.get_concrete_function(input_data)
+
+    converter = lite.TFLiteConverterV2([add_func], trackable_obj=root)
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = add_func(input_data)
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    results = self._evaluateTFLiteModelUsingSignatureDef(
+        tflite_model, 'serving_default', {'x': input_data})
+    self.assertLen(list(results.keys()), 1)
+    self.assertStartsWith(list(results.keys())[0], 'output')
+    self.assertAllClose(
+        expected_value.numpy(),
+        results[signature_defs['serving_default']['outputs'][0]])
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 1)
+    self.assertEqual(list(signature_defs.keys()), ['serving_default'])
+    self.assertEqual(len(signature_defs.values()), 1)
+    self.assertEqual(
+        list(signature_defs['serving_default'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['serving_default']['inputs'], ['x'])
+    self.assertLen(list(signature_defs['serving_default']['outputs']), 1)
+    self.assertStartsWith(
+        list(signature_defs['serving_default']['outputs'])[0], 'output')
+
+  @test_util.run_v2_only
+  def testNoSignatureDefsWhenTrackingObjIsNone(self):
+    """Test converting SignatureDef is correct and uses SignatureDef API."""
+    root = self._getSimpleVariableModel()
+    input_data = tf.constant(1., shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    # Verify that there is no SignatureDef structure found.
+    self.assertEqual(len(signature_defs), 0)
+
+  @test_util.run_v2_only
+  def testNoSignatureDefsWhenInvalidTrackingObjIsGiven(self):
+    """Test converting SignatureDef is correct and uses SignatureDef API."""
+    root = self._getSimpleVariableModel()
+    input_data = tf.constant(1., shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], trackable_obj=tracking.AutoTrackable())
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    # Verify that there is no SignatureDef structure found.
+    self.assertEqual(len(signature_defs), 0)
+
+  @test_util.run_v2_only
+  def testTrackbleObject(self):
+    """Test converting with trackable objects."""
+    root = self._getMultiFunctionModel()
+    input_data = tf.constant(1., shape=[1])
+    add_func = root.add.get_concrete_function(input_data)
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [add_func], trackable_obj=root)
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = add_func(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value.numpy(), actual_value)
+
   def _getTrainingTimeQuantizedModel(self):
 
     class QLinear(tf.keras.layers.Layer):
@@ -683,8 +765,43 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(output_details[0]['dtype'], expected_ceil_dtype)
     self.assertEqual(output_details[1]['dtype'], expected_dtype)
 
+  @parameterized.named_parameters(
+      ('_BlocklistedNone', None, None),
+      ('_BlocklistedOps', {'CONV_2D'}, None),
+      ('_BlocklistedNodes', None, {'Identity'}))
   @test_util.run_v2_only
-  def testNewQuantizerNumericVerificationDebugMode(self):
+  def testNewQuantizerBlocklistingArgs(self, blocklisted_ops,
+                                       blocklisted_nodes):
+    """Test the model quantized by the new converter and blocklisted options."""
+    func, calibration_gen = self._getIntegerQuantizeModel()
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.experimental_new_quantizer = True
+    quantized_converter._experimental_calibrate_only = True
+    calibrated = quantized_converter.convert()
+    quantized_tflite_model = mlir_quantize(calibrated,
+                                           blocklisted_ops=blocklisted_ops,
+                                           blocklisted_nodes=blocklisted_nodes)
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    details = interpreter.get_tensor_details()
+    num_quantized_tensors = sum(
+        [1 for detail in details
+         if len(detail['quantization_parameters']['scales'])])
+    if blocklisted_nodes or blocklisted_ops:
+      self.assertEqual(num_quantized_tensors, 0)
+      return
+    self.assertEqual(num_quantized_tensors, 4)  # quant, filter, bias, dequant
+
+  @parameterized.named_parameters(
+      ('_SingleLayer', False),
+      ('_WholeModel', True),
+  )
+  @test_util.run_v2_only
+  def testNewQuantizerNumericVerificationDebugMode(self, whole_model_verify):
     """Test the model quantized by the new converter with numeric verify ops."""
     func, calibration_gen = self._getIntegerQuantizeModel()
 
@@ -701,7 +818,10 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Create a TFLite model with new quantizer and numeric verify ops.
     quantized_converter._experimental_calibrate_only = True
     calibrated = quantized_converter.convert()
-    debug_mode_tflite = mlir_quantize(calibrated, enable_numeric_verify=True)
+    debug_mode_tflite = mlir_quantize(
+        calibrated,
+        enable_numeric_verify=True,
+        enable_whole_model_verify=whole_model_verify)
 
     # Check if adding debug mode should output a different flatbuffer.
     self.assertNotEqual(production_tflite, debug_mode_tflite)
@@ -1105,6 +1225,27 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
+  def testNativeVariablesModel(self):
+    """Test a basic model with Variables with saving/loading the SavedModel."""
+    root = self._getSimpleModelWithVariables()
+    input_data = tf.constant(1., shape=[1, 10])
+    to_save = root.assign_add.get_concrete_function(input_data)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, to_save)
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    converter.experimental_enable_resource_variables = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.assign_add(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    for tf_result, tflite_result in zip(expected_value, actual_value[0]):
+      self.assertAllClose(tf_result, tflite_result, atol=1e-05)
+
+  @test_util.run_v2_only
   def testSignatures(self):
     """Test values for `signature_keys` argument."""
     root = self._getSimpleVariableModel()
@@ -1275,6 +1416,46 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
 
   @test_util.run_v2_only
+  def testSignatureDefsQuantizedModel(self):
+    """Test converting SignatureDef on quantized model."""
+    root = self._getMultiFunctionModel()
+    input_data_0 = tf.constant(1., shape=[1])
+    input_data_1 = tf.constant(3., shape=[1])
+    mul_add_func = root.mul_add.get_concrete_function(input_data_1,
+                                                      input_data_0)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, {'mul_add': mul_add_func})
+
+    converter = lite.TFLiteConverterV2.from_saved_model(
+        save_dir, signature_keys=['mul_add'])
+
+    def representative_dataset_gen():
+      for _ in range(2):
+        yield [
+            np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32),
+            np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
+        ]
+
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = representative_dataset_gen
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    tflite_model = converter.convert()
+
+    # Check signatures are valid from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 1)
+    self.assertEqual(list(signature_defs.keys()), ['mul_add'])
+    self.assertEqual(len(signature_defs.values()), 1)
+    self.assertEqual(
+        list(signature_defs['mul_add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
+    self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
+
+  @test_util.run_v2_only
   def testMultipleFunctionModel(self):
     """Convert multiple functions in a multi-functional model."""
     root = self._getMultiFunctionModel()
@@ -1290,15 +1471,28 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 
-    # TODO(b/184696047): Write down the test codes for multiple signature
-    #                    runners once the Python API is ready to use.
     interpreter = tf.lite.Interpreter(model_content=tflite_model)
     signature_defs = interpreter.get_signature_list()
+
+    # Verify the SignatureDef structure returned is as expected.
     self.assertEqual(len(signature_defs), 2)
+    self.assertEqual(list(signature_defs.keys()), ['add', 'sub'])
+    self.assertEqual(len(signature_defs.values()), 2)
+    self.assertEqual(list(signature_defs['add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['add']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['add']['outputs']), ['output_0'])
+    self.assertEqual(list(signature_defs['sub'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['sub']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['sub']['outputs']), ['output_0'])
+
+    # Verify the Signature runner executions.
     add_signature_runner = interpreter.get_signature_runner('add')
+    add_output = add_signature_runner(x=input_data)
+    self.assertEqual(add_output['output_0'], 3)
+
     sub_signature_runner = interpreter.get_signature_runner('sub')
-    self.assertIsNotNone(add_signature_runner)
-    self.assertIsNotNone(sub_signature_runner)
+    sub_output = sub_signature_runner(x=input_data)
+    self.assertEqual(sub_output['output_0'], -2)
 
   @test_util.run_v2_only
   def testNoConcreteFunctionModel(self):
@@ -1627,6 +1821,46 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_keras_model(model)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+  @test_util.run_v2_only
+  def testSignatureDefs(self):
+    """Test converting SignatureDef is correct and uses SignatureDef API."""
+    keras_model = tf.keras.Sequential([
+        tf.keras.layers.Conv2D(
+            32,
+            kernel_size=3,
+            padding='same',
+            activation='relu',
+            input_shape=(32, 32, 3),
+            name='tensor'),
+        tf.keras.layers.Dense(10, name='output_tensor')
+    ])
+
+    converter = lite.TFLiteConverterV2.from_keras_model(keras_model)
+    converter.experimental_lower_to_saved_model = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    input_data = tf.constant(
+        np.random.uniform(-1, 1, size=(1, 32, 32, 3)).astype(np.float32))
+    expected_value = keras_model(input_data)
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    results = self._evaluateTFLiteModelUsingSignatureDef(
+        tflite_model, 'serving_default', {'tensor_input': input_data})
+    self.assertEqual(list(results.keys()), ['output_tensor'])
+    self.assertAllClose(expected_value.numpy(), results['output_tensor'])
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 1)
+    self.assertEqual(list(signature_defs.keys()), ['serving_default'])
+    self.assertEqual(len(signature_defs.values()), 1)
+    self.assertEqual(
+        list(signature_defs['serving_default'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['serving_default']['inputs'],
+                          ['tensor_input'])
+    self.assertEqual(
+        list(signature_defs['serving_default']['outputs']), ['output_tensor'])
 
 
 class ControlFlowTest(lite_v2_test_util.ModelTest):

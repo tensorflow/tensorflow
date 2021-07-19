@@ -460,8 +460,8 @@ Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
     std::vector<DimensionHandle> output_dims;
     for (int i = 0; i < 4; ++i) {
       DimensionHandle dim = c->Dim(resized, i);
-      int64 p0 = static_cast<int64>(paddings_t->matrix<int32>()(i, 0));
-      int64 p1 = static_cast<int64>(paddings_t->matrix<int32>()(i, 1));
+      int64_t p0 = static_cast<int64>(paddings_t->matrix<int32>()(i, 0));
+      int64_t p1 = static_cast<int64>(paddings_t->matrix<int32>()(i, 1));
       if (p0 < 0 || p1 < 0) {
         return errors::InvalidArgument("Paddings must be non-negative");
       }
@@ -1037,8 +1037,8 @@ REGISTER_OP("Dilation2D")
       Padding padding;
       TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
-      int64 output_rows, output_cols;
-      int64 padding_before, padding_after;
+      int64_t output_rows, output_cols;
+      int64_t padding_before, padding_after;
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
           in_rows, filter_rows_eff, stride_rows, padding, &output_rows,
           &padding_before, &padding_after));

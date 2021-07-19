@@ -97,7 +97,7 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   std::vector<HloInstruction*> var_outs;
   auto input_shape = ShapeUtil::MakeShape(F32, {1024, 1024});
   auto output_shape = ShapeUtil::MakeShape(F32, {1024});
-  for (int64 i = 0; i < 130; ++i) {
+  for (int64_t i = 0; i < 130; ++i) {
     // %fused_computation.3 (param_0: f32[1024,1024], param_1: f32[]) ->
     // f32[1024] {
     //  %param_0 = f32[1024,1024]{1,0} parameter(0)
@@ -202,7 +202,7 @@ TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
        kind=kLoop, calls=fused_computation.3
    gte.4 = f16[1024] get-tuple-element(fusion.3), index=0
    gte.5 = f16[1024]{0} get-tuple-element(fusion.3), index=1
-   ROOT tuple.1 = (f16[], f16[1024]{0}, f16[], f16[1024]{0})
+   ROOT tuple.1 = (f16[], f16[1024], f16[1024]{0}, f16[])
        tuple(gte.3, gte.4, gte.5, gte.6)
  }
 )")

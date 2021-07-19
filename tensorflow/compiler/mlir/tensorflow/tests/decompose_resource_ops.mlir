@@ -218,6 +218,27 @@ func @decompose_resource_apply_momentum_nesterov(%arg0: tensor<f32>, %arg1: tens
   return
 }
 
+// -----
+
+// Tests that composite tf.ResourceApplyFtrl{,V2} is decomposed.
+
+// CHECK-LABEL: testResourceApplyFtrl
+func @testResourceApplyFtrl(%var: tensor<*x!tf.resource>, %accum: tensor<*x!tf.resource>, %linear: tensor<*x!tf.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
+  "tf.ResourceApplyFtrl"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrl
+  // CHECK: return
+  return
+}
+
+// CHECK-LABEL: testResourceApplyFtrlV2
+func @testResourceApplyFtrlV2(%var: tensor<*x!tf.resource>, %accum: tensor<*x!tf.resource>, %linear: tensor<*x!tf.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
+  %0 = "tf.ZerosLike"(%lr_power) : (tensor<*xf32>) -> tensor<*xf32>
+  "tf.ResourceApplyFtrlV2"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %0, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrlV2
+  // CHECK: return
+  return
+}
+
 
 // Tests that composite tf.ResourceApplyKerasMomentum (non-Nesterov) operation
 // is decomposed.
@@ -446,6 +467,21 @@ func @decompose_resource_apply_adam_nesterov(%arg0: tensor<f32>, %arg1: tensor<f
   return
 }
 
+// Tests that composite tf.ResourceApplyAdam operation with complex types is
+// decomposed.
+
+// CHECK-LABEL: @decompose_adam_with_complex_inputs
+func @decompose_adam_with_complex_inputs(%arg0: tensor<!tf.resource<tensor<2xcomplex<f32>>>>, %arg1: tensor<!tf.resource<tensor<2xcomplex<f32>>>>, %arg2: tensor<!tf.resource<tensor<2xcomplex<f32>>>>, %arg3: tensor<complex<f32>>, %arg4: tensor<complex<f32>>, %arg5: tensor<complex<f32>>, %arg6: tensor<complex<f32>>, %arg7: tensor<complex<f32>>, %arg8: tensor<complex<f32>>, %arg9: tensor<2xcomplex<f32>>) attributes {tf.entry_function = {control_outputs = "Adam/update_Variable_1/ResourceApplyAdam", inputs = "_arg0,_arg1,_arg2,_arg3,_arg4,_arg5,_arg6,_arg7,_arg8,_arg9", outputs = ""}} {
+  "tf_device.cluster"() ({
+
+    // CHECK: "tf.Const"() {value = dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>} : () -> tensor<complex<f32>>
+    // CHECK-NOT: tf.ResourceApplyAdam
+    "tf.ResourceApplyAdam"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9) {_XlaHasReferenceVars = false, _xla_inferred_shapes = [], device = "/job:localhost/replica:0/task:0/device:TPU:0", use_locking = false, use_nesterov = false} : (tensor<!tf.resource<tensor<2xcomplex<f32>>>>, tensor<!tf.resource<tensor<2xcomplex<f32>>>>, tensor<!tf.resource<tensor<2xcomplex<f32>>>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<complex<f32>>, tensor<2xcomplex<f32>>) -> ()
+
+    tf_device.return
+  }) : () -> ()
+  return
+}
 
 // Tests that composite tf.ResourceGather operation is decomposed.
 
@@ -520,10 +556,10 @@ func @decompose_resource_apply_centered_RMS_prop(%arg0: tensor<f32>, %arg1: tens
     // CHECK: [[MOM_MOM:%.*]] = "tf.Mul"([[MOMENTUM]], [[MOM]])
     // CHECK: [[LR_GRAD:%.*]] = "tf.Mul"([[LR]], [[GRAD]])
 
-    // CHECK: [[MG_MG:%.*]] = "tf.Mul"([[MG_NEW]], [[MG_NEW]])
-    // CHECK: [[MG_NEW:%.*]] = "tf.AddV2"([[MG_MG]], [[EPSILON]])
-    // CHECK: [[MG_SUB:%.*]] = "tf.Sub"([[MS_NEW]], [[MG_NEW]])
-    // CHECK: [[MG_SQRT:%.*]] = "tf.Sqrt"([[MG_SUB]])
+    // CHECK: [[MG_MG:%.*]] = "tf.Square"([[MG_NEW]])
+    // CHECK: [[MG_SUB:%.*]] = "tf.Sub"([[MS_NEW]], [[MG_MG]])
+    // CHECK: [[MG_NEW:%.*]] = "tf.AddV2"([[MG_SUB]], [[EPSILON]])
+    // CHECK: [[MG_SQRT:%.*]] = "tf.Sqrt"([[MG_NEW]])
     // CHECK: [[MOM_DIV:%.*]] = "tf.Div"([[LR_GRAD]], [[MG_SQRT]])
     // CHECK: [[MOM_NEW:%.*]] = "tf.AddV2"([[MOM_MOM]], [[MOM_DIV]])
 
@@ -568,17 +604,62 @@ func @decompose_resource_apply_RMS_prop(%arg0: tensor<*x!tf.resource>, %arg1: te
 }
 
 
+// Tests that composite tf.ResourceScatterAdd operation is decomposed.
+
+// CHECK-LABEL: @decompose_resource_scatter_add_op
+// CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
+func @decompose_resource_scatter_add_op(%indices : tensor<2x?xi32>, %updates: tensor<?x?x?xi32>) {
+  // CHECK: [[CST:%.+]] = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  "tf_device.cluster"() ({
+    // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+    %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
+
+    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<2x?xi32>, tensor<i32>) -> tensor<2x?x1xi32>
+    // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterAdd"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
+    // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
+    "tf.ResourceScatterAdd"(%resource, %indices, %updates) : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()
+
+    tf_device.return
+  }) : () -> ()
+  return
+}
+
+// Tests that composite tf.ResourceScatterAdd with 1d Indices operation is decomposed.
+
+// CHECK-LABEL: @decompose_resource_scatter_add_op_1d_indices
+// CHECK-SAME: ([[INDEX:%.+]]: tensor<?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
+func @decompose_resource_scatter_add_op_1d_indices(%indices : tensor<?xi32>, %updates: tensor<?x?x?xi32>) {
+  // CHECK: [[CST:%.+]] = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  "tf_device.cluster"() ({
+    // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+    %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
+
+    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<?xi32>, tensor<i32>) -> tensor<?x1xi32>
+    // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterAdd"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
+    // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
+    "tf.ResourceScatterAdd"(%resource, %indices, %updates) : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<?xi32>, tensor<?x?x?xi32>) -> ()
+
+    tf_device.return
+  }) : () -> ()
+  return
+}
+
+
 // Tests that composite tf.ResourceScatterUpdate operation is decomposed.
 
 // CHECK-LABEL: @decompose_resource_scatter_update_op
 // CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
 func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates: tensor<?x?x?xi32>) {
+  // CHECK: [[CST:%.+]] = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
   "tf_device.cluster"() ({
     // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
 
+    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<2x?xi32>, tensor<i32>) -> tensor<2x?x1xi32>
     // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
-    // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterUpdate"([[READ]], [[INDEX]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
+    // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterUpdate"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
     // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
     "tf.ResourceScatterUpdate"(%resource, %indices, %updates) : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()
 

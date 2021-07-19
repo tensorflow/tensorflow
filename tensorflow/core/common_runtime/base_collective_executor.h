@@ -75,8 +75,8 @@ class CollectiveAdapter {
   // need to pick a chunk size that preserves it.  Note than in extreme
   // cases (impractical, but possible with very small tensors) one or
   // more tail chunks can end up emptby.
-  static int64 AlignedChunkElts(int64 elt_bytes, int64 total_elts,
-                                int64 num_chunks);
+  static int64 AlignedChunkElts(int64_t elt_bytes, int64_t total_elts,
+                                int64_t num_chunks);
 };
 
 // Create a CollectiveAdaptor wrapping 'output', specialized to its
@@ -96,14 +96,13 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 class BaseCollectiveExecutor : public CollectiveExecutor {
  public:
   BaseCollectiveExecutor(CollectiveExecutorMgrInterface* cem,
-                         CollectiveRemoteAccess* remote_access, int64 step_id,
-                         const DeviceMgr* dev_mgr, const string* gpu_ring_order,
+                         CollectiveRemoteAccess* remote_access, int64_t step_id,
+                         const DeviceMgr* dev_mgr,
                          std::shared_ptr<UnboundedWorkQueue> work_queue)
       : CollectiveExecutor(cem),
         step_id_(step_id),
         dev_mgr_(dev_mgr),
         remote_access_(remote_access),
-        gpu_ring_order_(gpu_ring_order),
         work_queue_(std::move(work_queue)) {}
 
   ~BaseCollectiveExecutor() override;
@@ -139,7 +138,6 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   const int64 step_id_;
   const DeviceMgr* dev_mgr_;  // Not owned.
   std::unique_ptr<CollectiveRemoteAccess> remote_access_;
-  const string* gpu_ring_order_;  // Not owned.
   // Ownership of `work_queue_` is shared between `this` and
   // `CollectiveExecutorMgr`.
   std::shared_ptr<UnboundedWorkQueue> work_queue_;

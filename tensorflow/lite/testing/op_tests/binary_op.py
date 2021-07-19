@@ -85,6 +85,14 @@ def make_binary_op_tests(options,
       },
       {
           "dtype": [tf.float32],
+          "input_shape_1": [[1]],
+          "input_shape_2": [[0]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+      {
+          "dtype": [tf.float32],
           "input_shape_1": [[1, 3, 4, 3]],
           "input_shape_2": [[1, 3, 4, 3]],
           "activation": [False],
@@ -178,16 +186,28 @@ def make_binary_op_tests(options,
         },
     ]
 
-  # High dimension broadcasting support in MLIR converter.
   if options.use_experimental_converter:
     test_parameters = test_parameters + [
+        # High dimension broadcasting support in MLIR converter.
         {
             "dtype": [tf.float32],
-            "input_shape_1": [[8, 7, 6, 5, 4, 3, 2, 1]],
-            "input_shape_2": [[4, 3, 2, 1]],
+            "input_shape_1": [[8, 7, 6, 5, 4, 3, 2, 1],
+                              [8, 7, 6, 5, None, 3, 2, 1], [2, None]],
+            "input_shape_2": [[4, 3, 2, 1], [None, 3, 2, 1]],
             "activation": [False],
             "fully_quantize": [False],
             "dynamic_range_quantize": [False],
+            "dynamic_size_value": [4, 1],
+        },
+        # Zero in input shape.
+        {
+            "dtype": [tf.float32],
+            "input_shape_1": [[1, 0], [1, None]],
+            "input_shape_2": [[4, 3, 2, 1], [4, None, 2, 1]],
+            "activation": [False],
+            "fully_quantize": [False],
+            "dynamic_range_quantize": [False],
+            "dynamic_size_value": [0],
         },
     ]
 
@@ -197,6 +217,12 @@ def make_binary_op_tests(options,
     test_parameters = [
         test_parameter for test_parameter in test_parameters
         if True not in test_parameter["fully_quantize"]
+    ]
+
+  def populate_dynamic_shape(parameters, input_shape):
+    return [
+        parameters["dynamic_size_value"] if x is None else x
+        for x in input_shape
     ]
 
   def build_graph(parameters):
@@ -219,22 +245,18 @@ def make_binary_op_tests(options,
 
   def build_inputs(parameters, sess, inputs, outputs):
     """Builds operand inputs for op."""
+    input_shape_1 = populate_dynamic_shape(parameters,
+                                           parameters["input_shape_1"])
+    input_shape_2 = populate_dynamic_shape(parameters,
+                                           parameters["input_shape_2"])
     if allow_fully_quantize:
       input1 = create_tensor_data(
-          parameters["dtype"],
-          parameters["input_shape_1"],
-          min_value=-1,
-          max_value=1)
+          parameters["dtype"], input_shape_1, min_value=-1, max_value=1)
       input2 = create_tensor_data(
-          parameters["dtype"],
-          parameters["input_shape_2"],
-          min_value=-1,
-          max_value=1)
+          parameters["dtype"], input_shape_2, min_value=-1, max_value=1)
     else:
-      input1 = create_tensor_data(parameters["dtype"],
-                                  parameters["input_shape_1"])
-      input2 = create_tensor_data(parameters["dtype"],
-                                  parameters["input_shape_2"])
+      input1 = create_tensor_data(parameters["dtype"], input_shape_1)
+      input2 = create_tensor_data(parameters["dtype"], input_shape_2)
     return [input1, input2], sess.run(
         outputs, feed_dict={
             inputs[0]: input1,
@@ -318,5 +340,5 @@ def make_floor_mod_tests(options):
 
 @register_make_test_function()
 def make_squared_difference_tests(options):
-  make_binary_op_tests(options, tf.math.squared_difference,
-                       allow_fully_quantize=True)
+  make_binary_op_tests(
+      options, tf.math.squared_difference, allow_fully_quantize=True)

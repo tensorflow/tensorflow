@@ -20,16 +20,18 @@ limitations under the License.
 PYBIND11_MODULE(_pywrap_analyzer_wrapper, m) {
   m.def(
       "ModelAnalyzer",
-      [](const std::string& model_path) {
-        return ::tflite::model_analyzer(model_path);
+      [](const std::string& model_path, bool input_is_filepath,
+         bool gpu_compatibility) {
+        return ::tflite::model_analyzer(model_path, input_is_filepath,
+                                        gpu_compatibility);
       },
       R"pbdoc(
     Returns txt dump of the given TFLite file.
   )pbdoc");
   m.def(
       "FlatBufferToMlir",
-      [](const std::string& model_path) {
-        return ::mlir::TFL::FlatBufferFileToMlir(model_path);
+      [](const std::string& model_path, bool input_is_filepath) {
+        return ::mlir::TFL::FlatBufferFileToMlir(model_path, input_is_filepath);
       },
       R"pbdoc(
       Returns MLIR dump of the given TFLite file.

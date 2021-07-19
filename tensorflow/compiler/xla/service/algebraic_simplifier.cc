@@ -127,6 +127,24 @@ bool IsPositive(const HloInstruction* hlo,
   }
 }
 
+absl::optional<double> GetConstantValue(const HloInstruction* inst) {
+  if (!ShapeUtil::IsEffectiveScalar(inst->shape())) {
+    return absl::nullopt;
+  }
+  switch (inst->shape().element_type()) {
+    case F16:
+      return static_cast<float>(inst->literal().GetFirstElement<half>());
+    case BF16:
+      return static_cast<float>(inst->literal().GetFirstElement<bfloat16>());
+    case F32:
+      return inst->literal().GetFirstElement<float>();
+    case F64:
+      return inst->literal().GetFirstElement<double>();
+    default:
+      return absl::nullopt;
+  }
+}
+
 bool IsNonNegative(const HloInstruction* hlo,
                    const AlgebraicSimplifierOptions& options) {
   // Utility only handles real types.
@@ -139,6 +157,23 @@ bool IsNonNegative(const HloInstruction* hlo,
     }
     case HloOpcode::kAbs: {
       return true;
+    }
+    case HloOpcode::kBroadcast: {
+      return IsNonNegative(hlo->operand(0), options);
+    }
+    case HloOpcode::kConstant: {
+      if (absl::optional<double> value = GetConstantValue(hlo)) {
+        return *value >= 0.0;
+      }
+      return false;
+    }
+    case HloOpcode::kMaximum: {
+      return IsNonNegative(hlo->operand(0), options) ||
+             IsNonNegative(hlo->operand(1), options);
+    }
+    case HloOpcode::kSelect: {
+      return IsNonNegative(hlo->operand(1), options) &&
+             IsNonNegative(hlo->operand(2), options);
     }
     default:
       return IsPositive(hlo, options);
@@ -571,17 +606,6 @@ bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
 
 namespace {
 
-float GetConstantValue(HloInstruction* inst) {
-  switch (inst->shape().element_type()) {
-    case BF16:
-      return static_cast<float>(inst->literal().GetFirstElement<bfloat16>());
-    case F32:
-      return inst->literal().GetFirstElement<float>();
-    default:
-      LOG(FATAL) << "Unsupported data type: " << inst->shape().element_type();
-  }
-}
-
 bool IsOpCodeMultiplyCommutative(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kMultiply:
@@ -685,7 +709,7 @@ Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
       CHECK_EQ(inst, user->operands()[index]);
 
       // When found a scalar multiply, save its scalar value.
-      values.push_back(GetConstantValue(multiplier));
+      values.push_back(*GetConstantValue(multiplier));
       // And remove the scalar multiply op.
       TF_RETURN_IF_ERROR(user->ReplaceOperandWith(index, operand));
       inst = operand;
@@ -712,7 +736,7 @@ Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
     if (Match(inst, m::MultiplyAnyOrder(
                         m::Op(&operand),
                         m::Broadcast(m::ConstantScalar(&multiplier))))) {
-      values.push_back(GetConstantValue(multiplier));
+      values.push_back(*GetConstantValue(multiplier));
 
       TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(operand));
       inst = operand;
@@ -1240,6 +1264,29 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
 
   if (options_.is_layout_sensitive()) {
     return Status::OK();
+  }
+
+  // concat(x, concat(y, z)) -> concat(x, y, z).  We only do this in
+  // layout-insensitive mode because some backends may have (late,
+  // layout-sensitive) passes that break up ops with many operands into smaller
+  // pieces.  This would undo that.
+  absl::InlinedVector<HloInstruction*, 8> unnested_concat_operands;
+  for (HloInstruction* operand : operands) {
+    if (operand->opcode() == HloOpcode::kConcatenate &&
+        operand->concatenate_dimension() ==
+            concatenate->concatenate_dimension()) {
+      for (HloInstruction* instr : operand->operands()) {
+        unnested_concat_operands.push_back(instr);
+      }
+    } else {
+      unnested_concat_operands.push_back(operand);
+    }
+  }
+  if (unnested_concat_operands.size() != concatenate->operand_count()) {
+    return ReplaceWithNewInstruction(
+        concatenate, HloInstruction::CreateConcatenate(
+                         concatenate->shape(), unnested_concat_operands,
+                         concatenate->concatenate_dimension()));
   }
 
   // Check if we can merge "adjacent" slice operands which take slices from the
@@ -4707,7 +4754,11 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   // A Transpose feeding a reduce can simply permute the reduction dimensions
   // field if the output of the reduce is a vector or scalar. Higher ranked
   // result may require a transpose of the output.
-  if (arg->opcode() == HloOpcode::kTranspose) {
+  if (arg->opcode() == HloOpcode::kTranspose &&
+      (reduce->shape().rank() < 2 || arg->user_count() == 1 ||
+       absl::c_all_of(arg->users(), [](HloInstruction* use) {
+         return use->opcode() == HloOpcode::kReduce;
+       }))) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64> new_reduce_dimensions;
     for (auto dim : dimensions) {
@@ -5347,69 +5398,63 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
 
 StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvInputPad(
     HloInstruction* convolution) {
-  auto* lhs = convolution->mutable_operand(0);
-  auto* rhs = convolution->mutable_operand(1);
-  const auto& window = convolution->window();
-  const ConvolutionDimensionNumbers& dnums =
-      convolution->convolution_dimension_numbers();
+  HloInstruction *lhs, *a, *b;
+  if (Match(convolution,
+            m::Convolution(m::Pad(&lhs, m::Op(&a), m::ConstantScalar(0)),
+                           m::Op(&b)))) {
+    const auto& window = convolution->window();
+    const ConvolutionDimensionNumbers& dnums =
+        convolution->convolution_dimension_numbers();
 
-  if (lhs->opcode() != HloOpcode::kPad) {
-    return false;
-  }
+    const auto& padding = lhs->padding_config();
 
-  // Convolution's padding is always zero, so bail if the kPad is adding
-  // something other than zero.
-  if (!IsAll(lhs->operand(1), 0)) {
-    return false;
-  }
-
-  const auto& padding = lhs->padding_config();
-
-  // Can't pad batch or feature dims.
-  for (int64 dim :
-       {dnums.input_batch_dimension(), dnums.input_feature_dimension()}) {
-    const auto& p = padding.dimensions(dim);
-    if (p.edge_padding_low() != 0 || p.edge_padding_high() != 0 ||
-        p.interior_padding() != 0) {
-      return false;
-    }
-  }
-
-  // Compute the window which is the result of merging the kPad and the
-  // convolution's existing window.
-  Window new_window = window;
-  for (int64 dim = 0; dim < dnums.input_spatial_dimensions_size(); ++dim) {
-    auto& w = *new_window.mutable_dimensions(dim);
-    const auto& p = padding.dimensions(dnums.input_spatial_dimensions(dim));
-    // Edge padding composes with itself in the straightforward way, but
-    // composing interior padding is nontrivial, and we cowardly refuse to
-    // think about it. If we see interior padding in either the kPad or conv,
-    // bail if there's any sort of padding in the other.
-    if (p.interior_padding() != 0 &&
-        (w.padding_low() != 0 || w.padding_high() != 0 ||
-         w.base_dilation() != 1)) {
-      return false;
-    }
-    if (w.base_dilation() != 1 &&
-        (p.edge_padding_low() != 0 || p.edge_padding_high() != 0 ||
-         p.interior_padding() != 0)) {
-      return false;
+    // Can't pad batch or feature dims.
+    for (int64 dim :
+         {dnums.input_batch_dimension(), dnums.input_feature_dimension()}) {
+      const auto& p = padding.dimensions(dim);
+      if (p.edge_padding_low() != 0 || p.edge_padding_high() != 0 ||
+          p.interior_padding() != 0) {
+        return false;
+      }
     }
 
-    w.set_padding_low(w.padding_low() + p.edge_padding_low());
-    w.set_padding_high(w.padding_high() + p.edge_padding_high());
-    if (p.interior_padding() != 0) {
-      CHECK_EQ(w.base_dilation(), 1);
-      w.set_base_dilation(1 + p.interior_padding());
-    }
-  }
+    // Compute the window which is the result of merging the kPad and the
+    // convolution's existing window.
+    Window new_window = window;
+    for (int64 dim = 0; dim < dnums.input_spatial_dimensions_size(); ++dim) {
+      auto& w = *new_window.mutable_dimensions(dim);
+      const auto& p = padding.dimensions(dnums.input_spatial_dimensions(dim));
+      // Edge padding composes with itself in the straightforward way, but
+      // composing interior padding is nontrivial, and we cowardly refuse to
+      // think about it. If we see interior padding in either the kPad or conv,
+      // bail if there's any sort of padding in the other.
+      if (p.interior_padding() != 0 &&
+          (w.padding_low() != 0 || w.padding_high() != 0 ||
+           w.base_dilation() != 1)) {
+        return false;
+      }
+      if (w.base_dilation() != 1 &&
+          (p.edge_padding_low() != 0 || p.edge_padding_high() != 0 ||
+           p.interior_padding() != 0)) {
+        return false;
+      }
 
-  auto new_conv = convolution->CloneWithNewOperands(
-      convolution->shape(), {lhs->mutable_operand(0), rhs});
-  new_conv->set_window(new_window);
-  TF_RETURN_IF_ERROR(
-      ReplaceWithNewInstruction(convolution, std::move(new_conv)));
-  return true;
+      w.set_padding_low(w.padding_low() + p.edge_padding_low());
+      w.set_padding_high(w.padding_high() + p.edge_padding_high());
+      if (p.interior_padding() != 0) {
+        CHECK_EQ(w.base_dilation(), 1);
+        w.set_base_dilation(1 + p.interior_padding());
+      }
+    }
+
+    auto new_conv =
+        convolution->CloneWithNewOperands(convolution->shape(), {a, b});
+    new_conv->set_window(new_window);
+    TF_RETURN_IF_ERROR(
+        ReplaceWithNewInstruction(convolution, std::move(new_conv)));
+    return true;
+  }
+  return false;
 }
 
 StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvFilterPad(

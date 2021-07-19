@@ -135,8 +135,8 @@ bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
   return false;
 }
 
-string TFShow::FormatNodeMemory(ShowNode* node, int64 bytes,
-                                int64 total_bytes) const {
+string TFShow::FormatNodeMemory(ShowNode* node, int64_t bytes,
+                                int64_t total_bytes) const {
   string memory = FormatMemory(total_bytes);
   if (node->account) {
     memory = FormatMemory(bytes) + "/" + memory;

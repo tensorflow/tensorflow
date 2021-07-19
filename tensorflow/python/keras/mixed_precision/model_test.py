@@ -18,6 +18,7 @@ import os
 
 from absl import flags
 from absl.testing import parameterized
+
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
@@ -26,6 +27,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -33,6 +35,15 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.applications import densenet
+from tensorflow.python.keras.applications import efficientnet
+from tensorflow.python.keras.applications import inception_resnet_v2
+from tensorflow.python.keras.applications import inception_v3
+from tensorflow.python.keras.applications import mobilenet
+from tensorflow.python.keras.applications import nasnet
+from tensorflow.python.keras.applications import resnet
+from tensorflow.python.keras.applications import vgg16
+from tensorflow.python.keras.applications import xception
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import sequential
@@ -42,12 +53,27 @@ from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 
+# The Tensorflow-internal Optimizer's SavedModel identifier has been changed,
+# while the Keras package Optimizer retains the old name. Since this test cannot
+# import the Keras package, create a new registration for "optimizer".
+revived_types.register_revived_type(
+    'optimizer',
+    lambda obj: isinstance(obj, optimizer_v2.OptimizerV2),
+    versions=[revived_types.VersionedTypeRegistration(
+        object_factory=lambda proto: optimizer_v2.RestoredOptimizer(),
+        version=1,
+        min_producer_version=1,
+        min_consumer_version=1,
+        setter=optimizer_v2.RestoredOptimizer._set_hyper  # pylint: disable=protected-access
+    )])
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.
@@ -833,6 +859,30 @@ class KerasModelTest(keras_parameterized.TestCase):
     self.assertEqual(model.optimizer.dynamic_growth_steps, 2.)
     self.assertEqual(type(model.optimizer),
                      loss_scale_optimizer.LossScaleOptimizer)
+
+
+class ApplicationModelTest(keras_parameterized.TestCase):
+  """Tests that application models can be built with mixed precision.
+
+  This does not test that such models can be trained in mixed precision, as
+  doing so takes too much time for a unit test.
+  """
+
+  @parameterized.named_parameters(
+      ('densenet', densenet.DenseNet121),
+      ('efficientnet', efficientnet.EfficientNetB0),
+      ('inception_resnet_v2', inception_resnet_v2.InceptionResNetV2),
+      ('inception_v3', inception_v3.InceptionV3),
+      ('mobilenet', mobilenet.MobileNet),
+      ('nasnet', nasnet.NASNetMobile),
+      ('vgg16', vgg16.VGG16),
+      ('xception', xception.Xception),
+      ('resnet50', resnet.ResNet50),
+  )
+  def test_application_model(self, app):
+    # Run on CPU since model weights may exhaust GPU memory
+    with policy.policy_scope('mixed_float16'), ops.device('/CPU:0'):
+      app(weights=None)
 
 
 if __name__ == '__main__':

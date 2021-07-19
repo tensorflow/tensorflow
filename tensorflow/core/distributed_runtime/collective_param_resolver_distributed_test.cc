@@ -126,6 +126,19 @@ class FakeCache : public TestWorkerCache {
   }
 };
 
+class FakeNcclCommunicator : public NcclCommunicatorInterface {
+ public:
+  // We only need to define GenerateCommunicatorKey().
+  string GenerateCommunicatorKey() override { return "mock-communicator-key"; }
+
+  void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
+               StatusCallback done) override {
+    done(Status::OK());
+  }
+
+  void StartAbort(const Status& s) override {}
+};
+
 class DeviceResDistTest : public ::testing::Test {
  public:
   ~DeviceResDistTest() override {
@@ -168,7 +181,8 @@ class DeviceResDistTest : public ::testing::Test {
     cp_resolvers_[worker_name] =
         absl::make_unique<CollectiveParamResolverDistributed>(
             config, device_mgrs_[worker_name].get(),
-            dev_resolvers_[worker_name].get(), &wc_, worker_name);
+            dev_resolvers_[worker_name].get(), &nccl_communicator_, &wc_,
+            worker_name);
     workers_[worker_name] = absl::make_unique<FakeWorker>(
         worker_name, device_mgrs_[worker_name].get(),
         cp_resolvers_[worker_name].get());
@@ -313,6 +327,7 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   FakeCache wc_;
+  FakeNcclCommunicator nccl_communicator_;
   CancellationManager cm_;
   // Below are keyed by task names.
   absl::flat_hash_map<string, std::unique_ptr<DeviceMgr>> device_mgrs_;
@@ -383,34 +398,6 @@ TEST_F(DeviceResDistTest, BroadcastSourceRank3) {
   IssueRequests(num_workers, num_devices);
   ValidateCollectiveParams(num_workers, num_devices);
 }
-
-#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
-namespace {
-// A mock NcclReducer for testing group runtime details initialization with CPU
-// builds.  The only meaningful function in this class is
-// `InitializeCollectiveGroupRuntimeDetails`.
-class MockNcclReducer : public CollectiveImplementationInterface {
- public:
-  MockNcclReducer() = default;
-
-  Status InitializeCollectiveParams(CollectiveParams*) override {
-    return Status::OK();
-  }
-  Status InitializeCollectiveContext(
-      std::shared_ptr<CollectiveContext>) override {
-    return Status::OK();
-  }
-  Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails* col_group_runtime_details) override {
-    col_group_runtime_details->communicator_key = "mock-communicator-key";
-    return Status::OK();
-  }
-  void Run(StatusCallback done) override {}
-};
-}  // namespace
-
-REGISTER_COLLECTIVE(NcclReduce, MockNcclReducer);
-#endif
 
 TEST_F(DeviceResDistTest, Workers4Devices3) {
   const int num_workers = 4;

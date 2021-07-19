@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -143,6 +144,23 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(self.evaluate(s.variables[1]), [[0, 0], [1, 1]])
     self.assertAllEqual(self.evaluate(s.variables[2]), [[0, 0]])
     self.assertIs(ret, s)
+
+  def test_control_dep_on_assign(self):
+    v0 = variables_lib.Variable([[0, 0]])
+    v1 = variables_lib.Variable([[1, 1], [2, 2]])
+    v2 = variables_lib.Variable([[3, 3]])
+    s = sharded_variable.ShardedVariable([v0, v1, v2])
+
+    @def_function.function
+    def func():
+      ret = s.assign([[4, 4], [5, 5], [6, 6], [7, 7]])
+      with ops.control_dependencies([ret]):
+        a = array_ops.ones((1, 1))
+      with ops.control_dependencies([control_flow_ops.group(ret)]):
+        b = array_ops.ones((1, 1))
+      return a, b
+
+    func()
 
   def test_convert_to_tensor(self):
     v0 = variables_lib.Variable([[0, 0]])
@@ -313,8 +331,8 @@ class ShardedVariableTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
     save.save(root, save_dir)
 
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, 'Loading `ShardedVariable` is not supported'):
+    with self.assertRaisesRegex(
+        ValueError, 'Loading a saved_model containing ShardedVariable'):
       load.load(save_dir)
 
   def test_validation_errors(self):
@@ -375,7 +393,7 @@ class ShardedVariableTest(test.TestCase):
     s = sharded_variable.ShardedVariable(variables)
 
     got = nest.flatten(s)
-    self.assertEqual(s, got[0])
+    self.assertIs(s, got[0])
 
     got = nest.flatten(s, expand_composites=True)
     self.assertAllEqual(variables, got)
@@ -400,7 +418,7 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(model.variables, model.trainable_variables)
 
     self.assertLen(model._checkpoint_dependencies, 1)
-    self.assertEqual(model._checkpoint_dependencies[0].ref, model.w)
+    self.assertIs(model._checkpoint_dependencies[0].ref, model.w)
 
   def test_embedding_lookup(self):
     v = [
@@ -544,6 +562,23 @@ class ShardedVariableTest(test.TestCase):
       return a
 
     self.assertAllEqual(func(), [1, 3, 5, 7, 9, 11, 13, 15])
+
+  def test_operator_overload(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+
+    v2 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv2 = sharded_variable.ShardedVariable(v2)
+
+    equal = sv1 == sv2
+    self.assertAllEqual(equal, [True, True])
+    self.assertAllEqual(sv1 + sv2, [2.0, 4.0])
 
 
 if __name__ == '__main__':

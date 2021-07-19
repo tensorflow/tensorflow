@@ -33,19 +33,6 @@ message DistributeOptions {
   }
 }
 
-message MapVectorization {
-  // Whether to vectorize map transformations.
-  oneof optional_enabled {
-    bool enabled = 1;
-  }
-  // Whether to use ChooseFastestBranchDataset with this transformation. If
-  // True, the pipeline picks between the vectorized and original segment at
-  // runtime based on their iterations speed.
-  oneof optional_use_choose_fastest {
-    bool use_choose_fastest = 2;
-  }
-}
-
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -77,15 +64,10 @@ message OptimizationOptions {
   oneof optional_filter_fusion {
     bool filter_fusion = 6;
   }
-  // Whether to fuse filter dataset that predicts random_uniform < rate into a
-  // sampling dataset.
-  oneof optional_filter_with_random_uniform_fusion {
-    bool filter_with_random_uniform_fusion = 7;
-  }
-  // Whether to hoist tf.random_uniform() ops out of map transformations.
-  oneof optional_hoist_random_uniform {
-    bool hoist_random_uniform = 8;
-  }
+  // NOTE: field id 7 deleted in June 2021.
+  reserved 7;
+  // NOTE: field id 8 deleted in June 2021.
+  reserved 8;
   // Whether to fuse map and batch transformations.
   oneof optional_map_and_batch_fusion {
     bool map_and_batch_fusion = 9;
@@ -102,8 +84,10 @@ message OptimizationOptions {
   oneof optional_map_parallelization {
     bool map_parallelization = 12;
   }
-  // The map vectorization options associated with the dataset.
-  MapVectorization map_vectorization = 13;
+
+  // NOTE: field id 13 deleted in June 2021.
+  reserved 13;
+
   // Whether to eliminate no-op transformations.
   oneof optional_noop_elimination {
     bool noop_elimination = 14;
@@ -117,15 +101,8 @@ message OptimizationOptions {
   oneof optional_parallel_batch {
     bool parallel_batch = 15;
   }
-  // Whether to reorder ops that will discard data to the front of unary
-  // cardinality preserving transformations, e.g. dataset.map(...).take(3) will
-  // be optimized to dataset.take(3).map(...). For now this optimization will
-  // move `skip`, `shard` and `take` to the front of `map` and `prefetch`. This
-  // optimization is only for performance; it will not affect the output of the
-  // dataset.
-  oneof optional_reorder_data_discarding_ops {
-    bool reorder_data_discarding_ops = 16;
-  }
+  // Field id 16 was removed in 06/2021.
+  reserved 16;
   // Whether to fuse shuffle and repeat transformations.
   oneof optional_shuffle_and_repeat_fusion {
     bool shuffle_and_repeat_fusion = 17;

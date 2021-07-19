@@ -46,16 +46,13 @@ int GetNumAvailableGPUs(
       int num_gpus = gpu_manager->VisibleDeviceCount();
       for (int i = 0; i < num_gpus; i++) {
 #if GOOGLE_CUDA
-        auto desc_status = gpu_manager->DescriptionForDevice(i);
-        if (desc_status.ok()) {
-          auto desc = desc_status.ConsumeValueOrDie();
-          int cc_major = 0;
-          int cc_minor = 0;
-          desc->cuda_compute_capability(&cc_major, &cc_minor);
-          std::pair<int, int> cuda_compute_capability(cc_major, cc_minor);
+        auto desc = gpu_manager->DescriptionForDevice(i);
+        if (desc.ok()) {
           int min_gpu_core_count = 8;
-          if (desc->core_count() >= min_gpu_core_count &&
-              cuda_compute_capability >= min_cuda_compute_capability) {
+          if ((*desc)->core_count() >= min_gpu_core_count &&
+              (*desc)->cuda_compute_capability().IsAtLeast(
+                  min_cuda_compute_capability.first,
+                  min_cuda_compute_capability.second)) {
             num_eligible_gpus++;
           }
         }
@@ -90,7 +87,7 @@ int64 AvailableGPUMemory(int gpu_id) {
   se::Platform* gpu_platform = GPUMachineManager();
   CHECK_LT(gpu_id, gpu_platform->VisibleDeviceCount());
   se::StreamExecutor* se = gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
-  int64 total_memory, available_memory;
+  int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
 
   return available_memory;

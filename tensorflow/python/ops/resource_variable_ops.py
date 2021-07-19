@@ -155,7 +155,7 @@ def _variable_handle_from_shape_and_dtype(shape,
   dtype = dtypes.as_dtype(dtype)
   if not graph_mode:
     if shared_name is not None:
-      raise errors.InternalError(
+      raise errors.InternalError(  # pylint: disable=no-value-for-parameter
           "Using an explicit shared_name is not supported executing eagerly.")
     shared_name = context.shared_name()
 
@@ -799,13 +799,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Returns:
       A `Tensor` of type `bool`.
     """
-    # TODO(b/169792703): The current device placement logic never overrides an
-    # explicit placement with a custom device, causing `v.is_initalized()` to
-    # fail under a non-custom device context if `v` is in a custom device. The
-    # explicit placement below makes this work, but should not be necessary once
-    # the logic is updated to handle cases like this.
-    with ops.device(self.device):
-      return gen_resource_variable_ops.var_is_initialized_op(self.handle, name)
+    return gen_resource_variable_ops.var_is_initialized_op(self.handle, name)
 
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
     """Subtracts a value from this variable.

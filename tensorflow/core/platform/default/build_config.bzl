@@ -667,18 +667,11 @@ def tf_additional_core_deps():
             "//tensorflow/core/platform/cloud:gcs_file_system",
         ],
     }) + select({
-        clean_dep("//tensorflow:android"): [],
-        clean_dep("//tensorflow:ios"): [],
-        clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [],
-        clean_dep("//tensorflow:with_tpu_support"): [],
+        clean_dep("//tensorflow:no_hdfs_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/hadoop:hadoop_file_system"),
         ],
     }) + select({
-        clean_dep("//tensorflow:android"): [],
-        clean_dep("//tensorflow:ios"): [],
-        clean_dep("//tensorflow:linux_s390x"): [],
         clean_dep("//tensorflow:no_aws_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
@@ -794,10 +787,7 @@ def tf_google_mobile_srcs_only_runtime():
     return []
 
 def if_llvm_aarch64_available(then, otherwise = []):
-    return select({
-        "//tensorflow:linux_aarch64": then,
-        "//conditions:default": otherwise,
-    })
+    return then
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({

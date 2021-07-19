@@ -16,6 +16,7 @@
 #     util/: General low-level TensorFlow-specific libraries
 #     framework/: Support for adding new ops & kernels
 #     example/: Wrappers to simplify access to Example proto
+#     //third_party/tensorflow/lite/kernels/shim: Template for writing ops supporting TF & TF Lite.
 # ":ops" - defines TensorFlow ops, but no implementations / kernels
 #     ops/: Standard ops
 #     user_ops/: User-supplied ops
@@ -63,7 +64,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
-    "if_chromiumos",
     "if_cuda_or_rocm",
     "if_google",
     "if_ios",
@@ -440,6 +440,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:logging.h",
         "//tensorflow/core/framework:lookup_interface.h",
         "//tensorflow/core/framework:memory_types.h",
+        "//tensorflow/core/framework:metrics.h",
         "//tensorflow/core/framework:node_def_builder.h",
         "//tensorflow/core/framework:node_def_util.h",
         "//tensorflow/core/framework:node_properties.h",
@@ -484,6 +485,7 @@ tf_cuda_library(
         "//tensorflow/core/util:framework_srcs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/public:version.h",
+        "//tensorflow/lite/kernels/shim:tf_headers",
     ] + if_mkl([
         "//tensorflow/core/util:mkl_util_hdrs",
     ]),
@@ -568,13 +570,12 @@ cc_library(
         "//tensorflow/c/kernels:merge_summary_op_lib",
         "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/core/ops:ops",
-    ] + if_chromiumos(
-        [],
+    ] + select({
         # Non-tpu platforms don't need tpu dependency.
-        [
-            "//tensorflow/core/tpu/ops",
-        ],
-    ) + if_tensorrt([
+        "//tensorflow:chromiumos": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["//tensorflow/core/tpu/ops"],
+    }) + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:trt_engine_resource_ops_op_lib",
         "//tensorflow/compiler/tf2tensorrt:trt_op_libs",
     ]) + if_libtpu(
@@ -621,6 +622,7 @@ cc_library(
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:decode_proto_op",
         "//tensorflow/core/kernels:encode_proto_op",
+        "//tensorflow/core/kernels:composite_tensor_ops",
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
@@ -768,6 +770,7 @@ cc_library(
         "//tensorflow/core/kernels:bcast_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:host_constant_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:reduction_ops",
@@ -978,6 +981,7 @@ filegroup(
         "ragged_conversion_ops_op_lib",
         "ragged_math_ops_op_lib",
         "ragged_ops",
+        "composite_tensor_ops_op_lib",
         "random_grad_op_lib",
         "random_ops_op_lib",
         "resource_variable_ops_op_lib",
@@ -1009,6 +1013,7 @@ filegroup(
         "tpu_outfeed_ops_op_lib",
         "tpu_ordinal_selector_ops_op_lib",
         "tpu_replication_ops_op_lib",
+        "tpu_sharding_util_ops_op_lib",
         "training_ops_op_lib",
         "word2vec_ops",
     ]
@@ -1036,7 +1041,13 @@ cc_library(
     name = "portable_tensorflow_lib_lite",
     srcs = if_mobile([":mobile_srcs"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
-    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
+    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] +
+              select({
+                  "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
+                  "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
+                  "//conditions:default": [],
+              }) +
+              tf_defines_nortti_if_lite_protos(),
     linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
         "manual",
@@ -1055,7 +1066,11 @@ cc_library(
 #     name = "portable_tensorflow_lib_lite_no_runtime",
 #     srcs = if_mobile([":mobile_srcs_no_runtime"]),
 #     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
-#     defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
+#     defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + select({
+#         "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
+#         "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
+#         "//conditions:default": [],
+#     }) + tf_defines_nortti_if_lite_protos(),
 #     tags = [
 #         "manual",
 #         "notap",
@@ -1074,6 +1089,7 @@ cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
         ":platform_base",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -1223,7 +1239,6 @@ filegroup(
         "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/llvm_rtti:legacy_lib_core_all_headers",
-        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
         "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
         "//tensorflow/core/lib/wav:wav_io.h",
@@ -1427,7 +1442,6 @@ cc_library(
         "//tensorflow/core/platform:stringprintf",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:subprocess",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:threadpool_interface",
@@ -1442,7 +1456,10 @@ cc_library(
         "@zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
-    ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
+    ] + select({
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": ["//tensorflow/core/platform:subprocess"],
+    }) + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
@@ -1537,7 +1554,6 @@ filegroup(
 filegroup(
     name = "framework_internal_public_headers",
     srcs = [
-        "//tensorflow/core/framework:metrics.h",
         "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests

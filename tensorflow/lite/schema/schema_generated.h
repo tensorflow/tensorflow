@@ -376,6 +376,15 @@ struct HashtableImportOptionsT;
 struct HashtableSizeOptions;
 struct HashtableSizeOptionsT;
 
+struct VarHandleOptions;
+struct VarHandleOptionsT;
+
+struct ReadVariableOptions;
+struct ReadVariableOptionsT;
+
+struct AssignVariableOptions;
+struct AssignVariableOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -840,11 +849,16 @@ enum BuiltinOperator {
   BuiltinOperator_HASHTABLE_IMPORT = 138,
   BuiltinOperator_HASHTABLE_SIZE = 139,
   BuiltinOperator_REDUCE_ALL = 140,
+  BuiltinOperator_CONV_3D_TRANSPOSE = 141,
+  BuiltinOperator_VAR_HANDLE = 142,
+  BuiltinOperator_READ_VARIABLE = 143,
+  BuiltinOperator_ASSIGN_VARIABLE = 144,
+  BuiltinOperator_BROADCAST_ARGS = 145,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_REDUCE_ALL
+  BuiltinOperator_MAX = BuiltinOperator_BROADCAST_ARGS
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[141] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[146] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -986,13 +1000,18 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[141] {
     BuiltinOperator_HASHTABLE_FIND,
     BuiltinOperator_HASHTABLE_IMPORT,
     BuiltinOperator_HASHTABLE_SIZE,
-    BuiltinOperator_REDUCE_ALL
+    BuiltinOperator_REDUCE_ALL,
+    BuiltinOperator_CONV_3D_TRANSPOSE,
+    BuiltinOperator_VAR_HANDLE,
+    BuiltinOperator_READ_VARIABLE,
+    BuiltinOperator_ASSIGN_VARIABLE,
+    BuiltinOperator_BROADCAST_ARGS
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[142] = {
+  static const char * const names[147] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1134,13 +1153,18 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "HASHTABLE_IMPORT",
     "HASHTABLE_SIZE",
     "REDUCE_ALL",
+    "CONV_3D_TRANSPOSE",
+    "VAR_HANDLE",
+    "READ_VARIABLE",
+    "ASSIGN_VARIABLE",
+    "BROADCAST_ARGS",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_REDUCE_ALL)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_BROADCAST_ARGS)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1257,11 +1281,14 @@ enum BuiltinOptions {
   BuiltinOptions_HashtableFindOptions = 108,
   BuiltinOptions_HashtableImportOptions = 109,
   BuiltinOptions_HashtableSizeOptions = 110,
+  BuiltinOptions_VarHandleOptions = 111,
+  BuiltinOptions_ReadVariableOptions = 112,
+  BuiltinOptions_AssignVariableOptions = 113,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_HashtableSizeOptions
+  BuiltinOptions_MAX = BuiltinOptions_AssignVariableOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[111] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[114] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1373,13 +1400,16 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[111] {
     BuiltinOptions_HashtableOptions,
     BuiltinOptions_HashtableFindOptions,
     BuiltinOptions_HashtableImportOptions,
-    BuiltinOptions_HashtableSizeOptions
+    BuiltinOptions_HashtableSizeOptions,
+    BuiltinOptions_VarHandleOptions,
+    BuiltinOptions_ReadVariableOptions,
+    BuiltinOptions_AssignVariableOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[112] = {
+  static const char * const names[115] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1491,13 +1521,16 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "HashtableFindOptions",
     "HashtableImportOptions",
     "HashtableSizeOptions",
+    "VarHandleOptions",
+    "ReadVariableOptions",
+    "AssignVariableOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_HashtableSizeOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_AssignVariableOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1944,6 +1977,18 @@ template<> struct BuiltinOptionsTraits<tflite::HashtableImportOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::HashtableSizeOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_HashtableSizeOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::VarHandleOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_VarHandleOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::ReadVariableOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ReadVariableOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::AssignVariableOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_AssignVariableOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2857,6 +2902,30 @@ struct BuiltinOptionsUnion {
   const tflite::HashtableSizeOptionsT *AsHashtableSizeOptions() const {
     return type == BuiltinOptions_HashtableSizeOptions ?
       reinterpret_cast<const tflite::HashtableSizeOptionsT *>(value) : nullptr;
+  }
+  tflite::VarHandleOptionsT *AsVarHandleOptions() {
+    return type == BuiltinOptions_VarHandleOptions ?
+      reinterpret_cast<tflite::VarHandleOptionsT *>(value) : nullptr;
+  }
+  const tflite::VarHandleOptionsT *AsVarHandleOptions() const {
+    return type == BuiltinOptions_VarHandleOptions ?
+      reinterpret_cast<const tflite::VarHandleOptionsT *>(value) : nullptr;
+  }
+  tflite::ReadVariableOptionsT *AsReadVariableOptions() {
+    return type == BuiltinOptions_ReadVariableOptions ?
+      reinterpret_cast<tflite::ReadVariableOptionsT *>(value) : nullptr;
+  }
+  const tflite::ReadVariableOptionsT *AsReadVariableOptions() const {
+    return type == BuiltinOptions_ReadVariableOptions ?
+      reinterpret_cast<const tflite::ReadVariableOptionsT *>(value) : nullptr;
+  }
+  tflite::AssignVariableOptionsT *AsAssignVariableOptions() {
+    return type == BuiltinOptions_AssignVariableOptions ?
+      reinterpret_cast<tflite::AssignVariableOptionsT *>(value) : nullptr;
+  }
+  const tflite::AssignVariableOptionsT *AsAssignVariableOptions() const {
+    return type == BuiltinOptions_AssignVariableOptions ?
+      reinterpret_cast<const tflite::AssignVariableOptionsT *>(value) : nullptr;
   }
 };
 
@@ -10116,6 +10185,164 @@ inline flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(
 
 flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct VarHandleOptionsT : public flatbuffers::NativeTable {
+  typedef VarHandleOptions TableType;
+  std::string container;
+  std::string shared_name;
+  VarHandleOptionsT() {
+  }
+};
+
+struct VarHandleOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef VarHandleOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_CONTAINER = 4,
+    VT_SHARED_NAME = 6
+  };
+  const flatbuffers::String *container() const {
+    return GetPointer<const flatbuffers::String *>(VT_CONTAINER);
+  }
+  const flatbuffers::String *shared_name() const {
+    return GetPointer<const flatbuffers::String *>(VT_SHARED_NAME);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_CONTAINER) &&
+           verifier.VerifyString(container()) &&
+           VerifyOffset(verifier, VT_SHARED_NAME) &&
+           verifier.VerifyString(shared_name()) &&
+           verifier.EndTable();
+  }
+  VarHandleOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(VarHandleOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<VarHandleOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const VarHandleOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct VarHandleOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_container(flatbuffers::Offset<flatbuffers::String> container) {
+    fbb_.AddOffset(VarHandleOptions::VT_CONTAINER, container);
+  }
+  void add_shared_name(flatbuffers::Offset<flatbuffers::String> shared_name) {
+    fbb_.AddOffset(VarHandleOptions::VT_SHARED_NAME, shared_name);
+  }
+  explicit VarHandleOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  VarHandleOptionsBuilder &operator=(const VarHandleOptionsBuilder &);
+  flatbuffers::Offset<VarHandleOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<VarHandleOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<VarHandleOptions> CreateVarHandleOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::String> container = 0,
+    flatbuffers::Offset<flatbuffers::String> shared_name = 0) {
+  VarHandleOptionsBuilder builder_(_fbb);
+  builder_.add_shared_name(shared_name);
+  builder_.add_container(container);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<VarHandleOptions> CreateVarHandleOptionsDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *container = nullptr,
+    const char *shared_name = nullptr) {
+  auto container__ = container ? _fbb.CreateString(container) : 0;
+  auto shared_name__ = shared_name ? _fbb.CreateString(shared_name) : 0;
+  return tflite::CreateVarHandleOptions(
+      _fbb,
+      container__,
+      shared_name__);
+}
+
+flatbuffers::Offset<VarHandleOptions> CreateVarHandleOptions(flatbuffers::FlatBufferBuilder &_fbb, const VarHandleOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct ReadVariableOptionsT : public flatbuffers::NativeTable {
+  typedef ReadVariableOptions TableType;
+  ReadVariableOptionsT() {
+  }
+};
+
+struct ReadVariableOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ReadVariableOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  ReadVariableOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ReadVariableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ReadVariableOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ReadVariableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ReadVariableOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit ReadVariableOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ReadVariableOptionsBuilder &operator=(const ReadVariableOptionsBuilder &);
+  flatbuffers::Offset<ReadVariableOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ReadVariableOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ReadVariableOptions> CreateReadVariableOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  ReadVariableOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ReadVariableOptions> CreateReadVariableOptions(flatbuffers::FlatBufferBuilder &_fbb, const ReadVariableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct AssignVariableOptionsT : public flatbuffers::NativeTable {
+  typedef AssignVariableOptions TableType;
+  AssignVariableOptionsT() {
+  }
+};
+
+struct AssignVariableOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef AssignVariableOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  AssignVariableOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(AssignVariableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<AssignVariableOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const AssignVariableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct AssignVariableOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit AssignVariableOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  AssignVariableOptionsBuilder &operator=(const AssignVariableOptionsBuilder &);
+  flatbuffers::Offset<AssignVariableOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<AssignVariableOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  AssignVariableOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(flatbuffers::FlatBufferBuilder &_fbb, const AssignVariableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code;
@@ -10596,6 +10823,15 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::HashtableSizeOptions *builtin_options_as_HashtableSizeOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_HashtableSizeOptions ? static_cast<const tflite::HashtableSizeOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::VarHandleOptions *builtin_options_as_VarHandleOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_VarHandleOptions ? static_cast<const tflite::VarHandleOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::ReadVariableOptions *builtin_options_as_ReadVariableOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_ReadVariableOptions ? static_cast<const tflite::ReadVariableOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::AssignVariableOptions *builtin_options_as_AssignVariableOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_AssignVariableOptions ? static_cast<const tflite::AssignVariableOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -11072,6 +11308,18 @@ template<> inline const tflite::HashtableSizeOptions *Operator::builtin_options_
   return builtin_options_as_HashtableSizeOptions();
 }
 
+template<> inline const tflite::VarHandleOptions *Operator::builtin_options_as<tflite::VarHandleOptions>() const {
+  return builtin_options_as_VarHandleOptions();
+}
+
+template<> inline const tflite::ReadVariableOptions *Operator::builtin_options_as<tflite::ReadVariableOptions>() const {
+  return builtin_options_as_ReadVariableOptions();
+}
+
+template<> inline const tflite::AssignVariableOptions *Operator::builtin_options_as<tflite::AssignVariableOptions>() const {
+  return builtin_options_as_AssignVariableOptions();
+}
+
 struct OperatorBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
@@ -11518,7 +11766,9 @@ struct SignatureDefT : public flatbuffers::NativeTable {
   std::vector<std::unique_ptr<tflite::TensorMapT>> outputs;
   std::string method_name;
   std::string key;
-  SignatureDefT() {
+  uint32_t subgraph_index;
+  SignatureDefT()
+      : subgraph_index(0) {
   }
 };
 
@@ -11528,7 +11778,8 @@ struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_INPUTS = 4,
     VT_OUTPUTS = 6,
     VT_METHOD_NAME = 8,
-    VT_KEY = 10
+    VT_KEY = 10,
+    VT_SUBGRAPH_INDEX = 12
   };
   const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *inputs() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>> *>(VT_INPUTS);
@@ -11542,6 +11793,9 @@ struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *key() const {
     return GetPointer<const flatbuffers::String *>(VT_KEY);
   }
+  uint32_t subgraph_index() const {
+    return GetField<uint32_t>(VT_SUBGRAPH_INDEX, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_INPUTS) &&
@@ -11554,6 +11808,7 @@ struct SignatureDef FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyString(method_name()) &&
            VerifyOffset(verifier, VT_KEY) &&
            verifier.VerifyString(key()) &&
+           VerifyField<uint32_t>(verifier, VT_SUBGRAPH_INDEX) &&
            verifier.EndTable();
   }
   SignatureDefT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -11576,6 +11831,9 @@ struct SignatureDefBuilder {
   void add_key(flatbuffers::Offset<flatbuffers::String> key) {
     fbb_.AddOffset(SignatureDef::VT_KEY, key);
   }
+  void add_subgraph_index(uint32_t subgraph_index) {
+    fbb_.AddElement<uint32_t>(SignatureDef::VT_SUBGRAPH_INDEX, subgraph_index, 0);
+  }
   explicit SignatureDefBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -11593,8 +11851,10 @@ inline flatbuffers::Offset<SignatureDef> CreateSignatureDef(
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> inputs = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TensorMap>>> outputs = 0,
     flatbuffers::Offset<flatbuffers::String> method_name = 0,
-    flatbuffers::Offset<flatbuffers::String> key = 0) {
+    flatbuffers::Offset<flatbuffers::String> key = 0,
+    uint32_t subgraph_index = 0) {
   SignatureDefBuilder builder_(_fbb);
+  builder_.add_subgraph_index(subgraph_index);
   builder_.add_key(key);
   builder_.add_method_name(method_name);
   builder_.add_outputs(outputs);
@@ -11607,7 +11867,8 @@ inline flatbuffers::Offset<SignatureDef> CreateSignatureDefDirect(
     const std::vector<flatbuffers::Offset<tflite::TensorMap>> *inputs = nullptr,
     const std::vector<flatbuffers::Offset<tflite::TensorMap>> *outputs = nullptr,
     const char *method_name = nullptr,
-    const char *key = nullptr) {
+    const char *key = nullptr,
+    uint32_t subgraph_index = 0) {
   auto inputs__ = inputs ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>>(*outputs) : 0;
   auto method_name__ = method_name ? _fbb.CreateString(method_name) : 0;
@@ -11617,7 +11878,8 @@ inline flatbuffers::Offset<SignatureDef> CreateSignatureDefDirect(
       inputs__,
       outputs__,
       method_name__,
-      key__);
+      key__,
+      subgraph_index);
 }
 
 flatbuffers::Offset<SignatureDef> CreateSignatureDef(flatbuffers::FlatBufferBuilder &_fbb, const SignatureDefT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -15003,6 +15265,81 @@ inline flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(flat
       _fbb);
 }
 
+inline VarHandleOptionsT *VarHandleOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new VarHandleOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void VarHandleOptions::UnPackTo(VarHandleOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = container(); if (_e) _o->container = _e->str(); }
+  { auto _e = shared_name(); if (_e) _o->shared_name = _e->str(); }
+}
+
+inline flatbuffers::Offset<VarHandleOptions> VarHandleOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const VarHandleOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateVarHandleOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<VarHandleOptions> CreateVarHandleOptions(flatbuffers::FlatBufferBuilder &_fbb, const VarHandleOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const VarHandleOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _container = _o->container.empty() ? 0 : _fbb.CreateString(_o->container);
+  auto _shared_name = _o->shared_name.empty() ? 0 : _fbb.CreateString(_o->shared_name);
+  return tflite::CreateVarHandleOptions(
+      _fbb,
+      _container,
+      _shared_name);
+}
+
+inline ReadVariableOptionsT *ReadVariableOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ReadVariableOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ReadVariableOptions::UnPackTo(ReadVariableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<ReadVariableOptions> ReadVariableOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ReadVariableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateReadVariableOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ReadVariableOptions> CreateReadVariableOptions(flatbuffers::FlatBufferBuilder &_fbb, const ReadVariableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ReadVariableOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateReadVariableOptions(
+      _fbb);
+}
+
+inline AssignVariableOptionsT *AssignVariableOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new AssignVariableOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void AssignVariableOptions::UnPackTo(AssignVariableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<AssignVariableOptions> AssignVariableOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const AssignVariableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateAssignVariableOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<AssignVariableOptions> CreateAssignVariableOptions(flatbuffers::FlatBufferBuilder &_fbb, const AssignVariableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const AssignVariableOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateAssignVariableOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -15224,6 +15561,7 @@ inline void SignatureDef::UnPackTo(SignatureDefT *_o, const flatbuffers::resolve
   { auto _e = outputs(); if (_e) { _o->outputs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->outputs[_i] = std::unique_ptr<tflite::TensorMapT>(_e->Get(_i)->UnPack(_resolver)); } } }
   { auto _e = method_name(); if (_e) _o->method_name = _e->str(); }
   { auto _e = key(); if (_e) _o->key = _e->str(); }
+  { auto _e = subgraph_index(); _o->subgraph_index = _e; }
 }
 
 inline flatbuffers::Offset<SignatureDef> SignatureDef::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SignatureDefT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -15238,12 +15576,14 @@ inline flatbuffers::Offset<SignatureDef> CreateSignatureDef(flatbuffers::FlatBuf
   auto _outputs = _o->outputs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::TensorMap>> (_o->outputs.size(), [](size_t i, _VectorArgs *__va) { return CreateTensorMap(*__va->__fbb, __va->__o->outputs[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _method_name = _o->method_name.empty() ? 0 : _fbb.CreateString(_o->method_name);
   auto _key = _o->key.empty() ? 0 : _fbb.CreateString(_o->key);
+  auto _subgraph_index = _o->subgraph_index;
   return tflite::CreateSignatureDef(
       _fbb,
       _inputs,
       _outputs,
       _method_name,
-      _key);
+      _key,
+      _subgraph_index);
 }
 
 inline ModelT *Model::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -15918,6 +16258,18 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::HashtableSizeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_VarHandleOptions: {
+      auto ptr = reinterpret_cast<const tflite::VarHandleOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_ReadVariableOptions: {
+      auto ptr = reinterpret_cast<const tflite::ReadVariableOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_AssignVariableOptions: {
+      auto ptr = reinterpret_cast<const tflite::AssignVariableOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -16376,6 +16728,18 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::HashtableSizeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_VarHandleOptions: {
+      auto ptr = reinterpret_cast<const tflite::VarHandleOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_ReadVariableOptions: {
+      auto ptr = reinterpret_cast<const tflite::ReadVariableOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_AssignVariableOptions: {
+      auto ptr = reinterpret_cast<const tflite::AssignVariableOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -16822,6 +17186,18 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::HashtableSizeOptionsT *>(value);
       return CreateHashtableSizeOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_VarHandleOptions: {
+      auto ptr = reinterpret_cast<const tflite::VarHandleOptionsT *>(value);
+      return CreateVarHandleOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_ReadVariableOptions: {
+      auto ptr = reinterpret_cast<const tflite::ReadVariableOptionsT *>(value);
+      return CreateReadVariableOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_AssignVariableOptions: {
+      auto ptr = reinterpret_cast<const tflite::AssignVariableOptionsT *>(value);
+      return CreateAssignVariableOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -17266,6 +17642,18 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_HashtableSizeOptions: {
       value = new tflite::HashtableSizeOptionsT(*reinterpret_cast<tflite::HashtableSizeOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_VarHandleOptions: {
+      value = new tflite::VarHandleOptionsT(*reinterpret_cast<tflite::VarHandleOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ReadVariableOptions: {
+      value = new tflite::ReadVariableOptionsT(*reinterpret_cast<tflite::ReadVariableOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_AssignVariableOptions: {
+      value = new tflite::AssignVariableOptionsT(*reinterpret_cast<tflite::AssignVariableOptionsT *>(u.value));
       break;
     }
     default:
@@ -17822,6 +18210,21 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_HashtableSizeOptions: {
       auto ptr = reinterpret_cast<tflite::HashtableSizeOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_VarHandleOptions: {
+      auto ptr = reinterpret_cast<tflite::VarHandleOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ReadVariableOptions: {
+      auto ptr = reinterpret_cast<tflite::ReadVariableOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_AssignVariableOptions: {
+      auto ptr = reinterpret_cast<tflite::AssignVariableOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -52,6 +52,35 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
   const std::array<int, 3> coords_;
 };
 
+class PjRtTpuClient : public PjRtStreamExecutorClient {
+ public:
+  PjRtTpuClient(LocalClient* client,
+                std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+                int process_index);
+
+  absl::string_view platform_version() const override {
+    return platform_version_;
+  }
+
+  StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
+  bool EnqueueD2DTransfersOnSrcStream() const override { return false; }
+
+  StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+      const PjRtExecutable& executable) const override;
+
+  StatusOr<std::string> SerializeExecutable(
+      const PjRtExecutable& executable) const override;
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
+      CompileOptions options) override;
+
+ private:
+  const std::string platform_version_;
+};
+
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     int max_inflight_computations,
     absl::Duration init_retry_timeout = absl::ZeroDuration());

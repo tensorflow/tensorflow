@@ -40,8 +40,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
@@ -79,6 +79,7 @@ EagerContext::EagerContext(
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
     DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
     DistributedFunctionLibraryRuntime* cluster_flr,
+    CollectiveExecutorMgrInterface* collective_executor_mgr,
     bool run_eager_op_as_function)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
@@ -96,6 +97,7 @@ EagerContext::EagerContext(
       default_executor_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
+      collective_executor_mgr_(collective_executor_mgr, /*owned=*/false),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)),
@@ -119,20 +121,18 @@ EagerContext::EagerContext(
   context_view_id_ = 0;
 #endif  // IS_MOBILE_PLATFORM
 
-  std::unique_ptr<DeviceResolverInterface> drl(
-      new DeviceResolverLocal(local_device_mgr()));
-  std::unique_ptr<ParamResolverInterface> cprl(new CollectiveParamResolverLocal(
-      opts.config, local_device_mgr(), drl.get(),
-      "/job:localhost/replica:0/task:0"));
-  collective_executor_mgr_.Reset(
-      new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
-                                std::move(cprl), MaybeCreateNcclCommunicator()),
-      /*owned=*/true);
+  // TODO(yuefengz): consider creating a new RpcCollectiveExecutorMgr each
+  // time.
+  if (collective_executor_mgr_.Get() == nullptr) {
+    collective_executor_mgr_.Reset(CreateProdLocalCollectiveExecutorMgr(
+        opts.config, local_device_mgr(),
+        MaybeCreateNcclCommunicator(opts.config)));
+  }
   global_rendezvous_for_functions_ =
       core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
 }
 
-AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64 value) {
+AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64_t value) {
   return new TensorInterface(Tensor(value));
 }
 

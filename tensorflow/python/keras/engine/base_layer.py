@@ -34,7 +34,6 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -93,15 +92,6 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 # to tf.cast?
 _AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
                    ragged_tensor.RaggedTensor)
-
-keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
-                                          'keras layers usage', 'method')
-keras_models_gauge = monitoring.BoolGauge(
-    '/tensorflow/api/keras/models', 'keras model usage', 'method')
-keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
-                                       'keras api usage', 'method')
-keras_premade_model_gauge = monitoring.BoolGauge(
-    '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
 @keras_export('keras.layers.Layer')
@@ -311,13 +301,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._instrumented_keras_layer_class = False
     self._instrumented_keras_model_class = False
     if not getattr(self, '_disable_keras_instrumentation', False):
-      keras_api_gauge.get_cell('layer').set(True)
       self._instrumented_keras_api = True
       if getattr(self, '_is_model_for_instrumentation', False):
-        keras_models_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_model_class = True
       else:
-        keras_layers_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_layer_class = True
 
   @trackable.no_automatic_dependency_tracking
@@ -896,7 +883,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       input_masks = nest.map_structure(
           keras_tensor.keras_tensor_to_placeholder, input_masks)
 
-      with backend.name_scope(self._name_scope()):
+      with backend.name_scope(self._name_scope()):  # pylint: disable=not-callable
         with autocast_variable.enable_auto_cast_variables(
             self._compute_dtype_object):
           # Build layer if applicable (if the `build` method has been
@@ -1042,7 +1029,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         call_fn = self.call
         name_scope = self._name
       else:
-        name_scope = self._name_scope()  # Avoid autoincrementing.
+        name_scope = self._name_scope()  # Avoid autoincrementing.  # pylint: disable=not-callable
         call_fn = self._autographed_call()
 
       with ops.name_scope_v2(name_scope):
@@ -2415,7 +2402,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     value = dtypes.as_dtype(value).name
     self._set_dtype_policy(policy.Policy(value))
 
-  def _name_scope(self):
+  def _name_scope(self):  # pylint: disable=method-hidden
     if not tf2.enabled():
       return self.name
     name_scope = self.name
@@ -2747,7 +2734,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # other attributes referencing it.
     reference_counts = self._obj_reference_counts
     if existing_value not in reference_counts:
-      super(tracking.AutoTrackable, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
       return
 
     reference_count = reference_counts[existing_value]
@@ -2755,24 +2742,24 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # There are other remaining references. We can't remove this object from
       # _layers etc.
       reference_counts[existing_value] = reference_count - 1
-      super(tracking.AutoTrackable, self).__delattr__(name)
+      super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
       return
     else:
       # This is the last remaining reference.
       del reference_counts[existing_value]
 
-    super(tracking.AutoTrackable, self).__delattr__(name)
+    super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
 
     if (isinstance(existing_value, Layer)
         or base_layer_utils.has_weights(existing_value)):
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_self_tracked_trackables',
           [l for l in self._self_tracked_trackables if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_trainable_weights',
           [w for w in self._trainable_weights if w is not existing_value])
-      super(tracking.AutoTrackable, self).__setattr__(
+      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
 
@@ -2782,7 +2769,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
       try:
-        super(tracking.AutoTrackable, self).__setattr__(name, value)
+        super(tracking.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
       except AttributeError:
         raise AttributeError(
             ('Can\'t set the attribute "{}", likely because it conflicts with '
@@ -2847,7 +2834,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     # TODO(b/180760306) Skip the auto trackable from tf.Module to keep status
     # quo. See the comment at __delattr__.
-    super(tracking.AutoTrackable, self).__setattr__(name, value)
+    super(tracking.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
 
   def _gather_children_attribute(self, attribute):
     assert attribute in {
@@ -3048,6 +3035,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def _tracking_metadata(self):
+    """Info about this layer to be saved into the SavedModel."""
     return self._trackable_saved_model_saver.tracking_metadata
 
   def _list_extra_dependencies_for_serialization(self, serialization_cache):

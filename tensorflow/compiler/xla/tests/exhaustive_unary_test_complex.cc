@@ -46,7 +46,7 @@ class ExhaustiveComplexUnaryTestBase
     //                    negative infinity, when it should return (-1, 0).
     // We only need to set the former as incorrect values for C128 because when
     // testing with C64, we first cast our input to a C128 value.
-    this->known_incorrect_fn_ = [&](int64 v) {
+    this->known_incorrect_fn_ = [&](int64_t v) {
       double f = this->ConvertValue(v);
       return (T == C128 &&
               std::abs(f) > std::numeric_limits<double>::max() / 2) ||
@@ -98,7 +98,7 @@ using ExhaustiveC128UnaryTest = ExhaustiveComplexUnaryTestBase<C128>;
 // TODO(b/138578594): Enable the test for the CPU backend after fixing the bug.
 UNARY_TEST_COMPLEX_64(DISABLED_ON_CPU(Log), {
   // TODO(timshen): see b/162664705.
-  known_incorrect_fn_ = [this](int64 val) {
+  known_incorrect_fn_ = [this](int64_t val) {
     return std::isnan(this->ConvertValue(val));
   };
   Run(Log, [](complex64 x) { return std::log<float>(x); });
@@ -180,7 +180,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 UNARY_TEST_COMPLEX_128(Log, {
   // TODO(b/138578313): Enable the test for all values after fixing the bug.
-  known_incorrect_fn_ = [&](int64 v) {
+  known_incorrect_fn_ = [&](int64_t v) {
     double f = this->ConvertValue(v);
     return std::fpclassify(f) == FP_NAN || std::abs(f) > 1.0e+300 ||
            std::abs(f) < 1.0e-300;
@@ -190,7 +190,7 @@ UNARY_TEST_COMPLEX_128(Log, {
 
 UNARY_TEST_COMPLEX_128(Sqrt, {
   // Similar to the Tanh bug.
-  known_incorrect_fn_ = [&](int64 v) {
+  known_incorrect_fn_ = [&](int64_t v) {
     double f = this->ConvertValue(v);
     return std::abs(f) > std::numeric_limits<double>::max() / 2;
   };

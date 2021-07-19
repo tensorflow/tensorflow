@@ -70,16 +70,16 @@ _SESSION_PROVIDER = None
 
 _checkpoint_write_durations = monitoring.Sampler(
     "/tensorflow/core/checkpoint/write/write_durations",
-    # Scale of 10, power of 1.8 with bucket count 33 (~25 minutes).
-    monitoring.ExponentialBuckets(10, 1.8, 33),
+    # Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
+    monitoring.ExponentialBuckets(1000, 1.5, 41),
     "Distribution of the wall time duration in microseconds of the "
     "`tf.train.Checkpoint.write` operation",
     "version")
 
 _checkpoint_read_durations = monitoring.Sampler(
     "/tensorflow/core/checkpoint/read/read_durations",
-    # Scale of 10, power of 1.8 with bucket count 33 (~25 minutes).
-    monitoring.ExponentialBuckets(10, 1.8, 33),
+    # Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
+    monitoring.ExponentialBuckets(1000, 1.5, 41),
     "Distribution of the wall time duration in microseconds of the "
     "`tf.train.Checkpoint.restore` operation",
     "version")
@@ -89,13 +89,13 @@ _checkpoint_read_durations = monitoring.Sampler(
 _checkpoint_training_time_saved = monitoring.Counter(
     "/tensorflow/core/checkpoint/write/training_time_saved",
     "Total time in microseconds elapsed between two consecutive write "
-    "operations in a single job or between module import time and a "
-    "Checkpoint's first write.",
+    "operations in a single job or between Checkpoint construction and the "
+    "first write operation.",
     "version")
 
-# Captures the timestamp of module import or end of write operation. Can be
-# accessed by multiple Checkpoint instances.
-_END_TIME_OF_LAST_WRITE = time.time()
+# Captures the timestamp of the first Checkpoint instantiation or end of a write
+# operation. Can be accessed by multiple Checkpoint instances.
+_END_TIME_OF_LAST_WRITE = None
 _END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
 
 
@@ -1580,6 +1580,11 @@ class CheckpointV1(tracking.AutoTrackable):
       ValueError: If objects in `kwargs` are not trackable.
     """
     super(CheckpointV1, self).__init__()
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      if _END_TIME_OF_LAST_WRITE is None:
+        _END_TIME_OF_LAST_WRITE = time.time()
+
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
       setattr(self, k, v)
       if not isinstance(
@@ -1959,6 +1964,10 @@ class Checkpoint(tracking.AutoTrackable):
 
     """
     super(Checkpoint, self).__init__()
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      if _END_TIME_OF_LAST_WRITE is None:
+        _END_TIME_OF_LAST_WRITE = time.time()
 
     saver_root = self
     attached_dependencies = None
@@ -2174,6 +2183,8 @@ class Checkpoint(tracking.AutoTrackable):
         model_checkpoint_path=file_path,
         all_model_checkpoint_paths=[file_path],
         save_relative_paths=True)
+    if not graph_building:
+      context.async_wait()  # Ensure save operations have completed.
     return file_path
 
   def read(self, save_path, options=None):
@@ -2333,6 +2344,8 @@ class Checkpoint(tracking.AutoTrackable):
 
     try:
       status = self.read(save_path, options=options)
+      if context.executing_eagerly():
+        context.async_wait()  # Ensure restore operations have completed.
     except errors_impl.NotFoundError as e:
       raise errors_impl.NotFoundError(
           None, None,

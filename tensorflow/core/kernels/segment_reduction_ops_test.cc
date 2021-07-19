@@ -183,6 +183,20 @@ static void BM_SparseSegmentMeanGrad_High_BF16(
   return SparseSegmentMeanGradHelper<DT_BFLOAT16>(state, 0.01, size);
 }
 
+static void BM_SparseSegmentMeanGrad_Low_FP16(
+    ::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper<DT_HALF>(state, 1.0, size);
+}
+
+static void BM_SparseSegmentMeanGrad_High_FP16(
+    ::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper<DT_HALF>(state, 0.01, size);
+}
+
 BENCHMARK(BM_SparseSegmentMeanGrad_Low_FP32)
     ->UseRealTime()
     ->Arg(1000)
@@ -196,6 +210,14 @@ BENCHMARK(BM_SparseSegmentMeanGrad_Low_BF16)
     ->Arg(1000)
     ->Arg(100000);
 BENCHMARK(BM_SparseSegmentMeanGrad_High_BF16)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_Low_FP16)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_High_FP16)
     ->UseRealTime()
     ->Arg(1000)
     ->Arg(100000);

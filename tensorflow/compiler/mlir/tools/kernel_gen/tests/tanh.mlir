@@ -1,5 +1,6 @@
 // RUN: tf-opt %s --xla-legalize-tf | \
-// RUN: mlir-hlo-opt --mhlo-transform-unranked-hlo --hlo-legalize-to-linalg  | \
+// RUN: mlir-hlo-opt --mhlo-rank-specialization-cluster \
+// RUN: --mhlo-rank-specialization-to-scf --hlo-legalize-to-linalg | \
 // RUN: kernel-gen-opt -allow-unregistered-dialect --computeop-and-func-bufferize \
 // RUN: --canonicalize --shape-to-descriptors --canonicalize --final-bufferize \
 // RUN: | FileCheck %s
@@ -11,12 +12,10 @@
 // TODO: Expand this pattern once things have stabilized.
 // CHECK-LABEL: @tanh
 func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: alloc
-  // CHECK: scf.parallel
-  // CHECK-NOT: tensor_load
   // CHECK: scf.for
-  // CHECK-NOT: tensor.from_elements
+  // CHECK: alloc
   // CHECK: memref.reshape
+  // CHECK: alloc
   // CHECK: linalg.generic
   // CHECK: memref.reshape
   %0 = "tf.Tanh"(%arg0) { } : (tensor<*xf32>) -> tensor<*xf32>

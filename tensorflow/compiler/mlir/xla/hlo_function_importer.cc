@@ -539,6 +539,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               builder_->getI64IntegerAttr(instruction->concatenate_dimension()))
           .getOperation();
     }
+    case HloOpcode::kAllGather: {
+      auto all_gather = Cast<HloAllGatherInstruction>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "all_gather_dim",
+          builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
+      attributes.push_back(
+          ConvertReplicaGroups(all_gather->replica_groups(), builder_));
+      attributes.push_back(ConvertChannelHandle(all_gather->channel_id()));
+      MakeAndReturn(AllGatherOp);
+    }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
       attributes.push_back(
@@ -955,7 +965,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
-    const std::vector<ReplicaGroup>& replica_groups, mlir::Builder* builder) {
+    absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder) {
   const int64_t num_groups = replica_groups.size();
   // Replica groups in HLO can be non-uniform in size, for example:
   // replica_groups={{0},{1,2},{3}}. Since we are representing them as a 2D
@@ -1008,7 +1018,7 @@ StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
   if (shape.IsToken()) return builder_->getUnitAttr();
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
-    for (int64 i = 0; i < shape.tuple_shapes_size(); i++) {
+    for (int64_t i = 0; i < shape.tuple_shapes_size(); i++) {
       TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
                           ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
       tuple_layouts.push_back(layout);
@@ -1019,7 +1029,7 @@ StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
   if (shape.IsArray()) {
     const xla::Layout l = shape.layout();
     std::vector<mlir::Attribute> minor_to_major;
-    for (int64 i : l.minor_to_major()) {
+    for (int64_t i : l.minor_to_major()) {
       minor_to_major.push_back(builder_->getI64IntegerAttr(i));
     }
     llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);

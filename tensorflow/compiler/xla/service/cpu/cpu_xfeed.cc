@@ -82,7 +82,7 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
 // Transfers infeed data to device. InfeedBuffer->Done() must be called to
 // clean up the memory allocated for InfeedBuffer.
 StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
-    int64 size, const void* source) {
+    int64_t size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
     return InvalidArgument("CPU infeed of %d bytes exceeds maximum of %d bytes",
                            size, std::numeric_limits<int32>::max());
@@ -100,7 +100,7 @@ StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
   return queued_buffer;
 }
 
-Status TransferBufferToInfeed(int device_ordinal, int64 size,
+Status TransferBufferToInfeed(int device_ordinal, int64_t size,
                               const void* source) {
   TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
                       TransferBufferToInfeedInternal(size, source));
@@ -117,7 +117,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
     bool is_tuple) {
   std::vector<std::unique_ptr<CpuOutfeedBuffer>> buffers;
   for (auto b : buffer_data) {
-    int64 size = b.second;
+    int64_t size = b.second;
     if (size > std::numeric_limits<int32>::max()) {
       return InvalidArgument("Outfeed shape is too large: needs %d bytes",
                              size);
@@ -159,7 +159,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
 
 StatusOr<Shape> TransferArrayBufferFromOutfeed(int device_ordinal,
                                                void* destination,
-                                               int64 size_bytes) {
+                                               int64_t size_bytes) {
   return TransferBuffersFromOutfeedInternal(
       device_ordinal, {{destination, size_bytes}}, /*is_tuple=*/false);
 }
@@ -178,7 +178,7 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
           << ShapeUtil::HumanString(shape);
 
   if (!shape.IsTuple()) {
-    int64 size = cpu::runtime::GetByteSizeRequirement(shape, sizeof(void*));
+    int64_t size = cpu::runtime::GetByteSizeRequirement(shape, sizeof(void*));
     return TransferBufferToInfeed(device_ordinal, size, literal.untyped_data());
   }
 
@@ -199,9 +199,9 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
     }
   });
 
-  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+  for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     const Shape& tuple_element_shape = ShapeUtil::GetSubshape(shape, {i});
-    int64 tuple_element_size = cpu::runtime::GetByteSizeRequirement(
+    int64_t tuple_element_size = cpu::runtime::GetByteSizeRequirement(
         tuple_element_shape, sizeof(void*));
     TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
                         TransferBufferToInfeedInternal(
@@ -220,7 +220,7 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
 Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
                                        MutableBorrowingLiteral literal) {
   if (!literal.shape().IsTuple()) {
-    int64 size =
+    int64_t size =
         cpu::runtime::GetByteSizeRequirement(literal.shape(), sizeof(void*));
     // Note: OSS build didn't like implicit conversion from
     // literal.shape().dimensions() to the array slice on 2017-07-10.
@@ -247,11 +247,11 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
   }
 
   std::vector<std::pair<void*, int64>> buffer_data;
-  for (int64 i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
+  for (int64_t i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
     const Shape& tuple_element_shape =
         ShapeUtil::GetTupleElementShape(literal.shape(), i);
-    int64 size = cpu::runtime::GetByteSizeRequirement(tuple_element_shape,
-                                                      sizeof(void*));
+    int64_t size = cpu::runtime::GetByteSizeRequirement(tuple_element_shape,
+                                                        sizeof(void*));
     buffer_data.push_back({literal.untyped_data({i}), size});
   }
 
@@ -293,7 +293,7 @@ Status ReadDynamicShapesOnCpu(
         // Read the dynamic shape metadata from the device stream.
         Shape buffer_shape_static = ShapeUtil::MakeStaticShape(buffer_shape);
         const int64 offset = shape_size_fn(buffer_shape_static);
-        int64 metadata_size = shape_size_fn(buffer_shape) - offset;
+        int64_t metadata_size = shape_size_fn(buffer_shape) - offset;
         if (metadata_size == 0) {
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
@@ -301,7 +301,7 @@ Status ReadDynamicShapesOnCpu(
         auto metadata_buffer = reinterpret_cast<int32*>(buffer_8 + offset);
 
         // Update shape size from metadata.
-        for (int64 i = 0; i < device_sub_shape.rank(); ++i) {
+        for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
           device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
         }
         return Status::OK();

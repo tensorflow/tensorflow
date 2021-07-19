@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 // This file implements the Delegate Plugin for the NNAPI Delegate.
-// It provides both
 
 #include "tensorflow/lite/experimental/acceleration/configuration/c/nnapi_plugin.h"
 

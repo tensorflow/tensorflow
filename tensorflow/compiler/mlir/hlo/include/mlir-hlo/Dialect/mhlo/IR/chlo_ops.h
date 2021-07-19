@@ -54,10 +54,6 @@ namespace chlo {
 namespace OpTrait {
 
 template <typename ConcreteType>
-class BroadcastingElementwise
-    : public mlir::OpTrait::TraitBase<ConcreteType, BroadcastingElementwise> {};
-
-template <typename ConcreteType>
 class Broadcasting
     : public mlir::OpTrait::TraitBase<ConcreteType, Broadcasting> {};
 

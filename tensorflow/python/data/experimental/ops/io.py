@@ -21,11 +21,16 @@ from __future__ import print_function
 import multiprocessing
 import os
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import structure
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import tracking
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -39,7 +44,11 @@ nested_structure_coder = lazy_loader.LazyLoader(
 
 
 @tf_export("data.experimental.save", v1=[])
-def save(dataset, path, compression=None, shard_func=None):
+def save(dataset,
+         path,
+         compression=None,
+         shard_func=None,
+         checkpoint_args=None):
   """Saves the content of the given dataset.
 
   Example usage:
@@ -68,6 +77,22 @@ def save(dataset, path, compression=None, shard_func=None):
       path="/path/to/data", ..., shard_func=custom_shard_func)
   ```
 
+  To enable checkpointing, pass in `checkpoint_args` to the `save` method
+  as follows:
+  ```python
+       dataset = tf.data.Dataset.range(100)
+       save_dir = "..."
+       checkpoint_prefix = "..."
+       step_counter = tf.Variable(0, trainable=False)
+       checkpoint_args = {
+         "checkpoint_interval": 50,
+         "step_counter": step_counter,
+         "directory": checkpoint_prefix,
+         "max_to_keep": 20,
+        }
+        dataset.save(dataset, save_dir, checkpoint_args=checkpoint_args)
+   ```
+
   NOTE: The directory layout and file format used for saving the dataset is
   considered an implementation detail and may change. For this reason, datasets
   saved through `tf.data.experimental.save` should only be consumed through
@@ -82,8 +107,68 @@ def save(dataset, path, compression=None, shard_func=None):
       to file shards. The function is expected to map elements of the input
       dataset to int64 shard IDs. If present, the function will be traced and
       executed as graph computation.
+    checkpoint_args: Optional args for checkpointing which will be passed into
+      the `tf.train.CheckpointManager`. If `checkpoint_args` are not specified,
+      then checkpointing will not be performed. The `save()` implementation
+      creates a `tf.train.Checkpoint` object internally, so users should not
+      set the `checkpoint` argument in `checkpoint_args`.
+  Raises:
+    ValueError if `checkpoint` is passed into `checkpoint_args`.
   """
+  if (context.executing_eagerly() and checkpoint_args
+      and compat.forward_compatible(2021, 6, 29)):
+    save_dataset = _SaveDataset(dataset, path, shard_func, compression)
+    save_iterator = iter(save_dataset)
 
+    if "checkpoint" in checkpoint_args:
+      raise ValueError(
+          "'checkpoint_args' are not allowed to include 'checkpoint'")
+    checkpoint = tracking.util.Checkpoint(iterator=save_iterator)
+    checkpoint_args["checkpoint"] = checkpoint
+    manager = checkpoint_management.CheckpointManager(**checkpoint_args)
+    checkpoint.restore(manager.latest_checkpoint)
+
+    for _ in enumerate(save_iterator):
+      if "step_counter" in checkpoint_args:
+        checkpoint_args["step_counter"].assign_add(delta=1)
+      manager.save(check_interval=True)
+  else:
+    dataset, shard_func, use_shard_func, path = _set_save_dataset_attributes(
+        dataset, shard_func, path)
+    gen_experimental_dataset_ops.save_dataset(
+        dataset._variant_tensor,   # pylint: disable=protected-access
+        path=path,
+        shard_func_other_args=shard_func.captured_inputs,
+        compression=compression,
+        shard_func=shard_func,
+        use_shard_func=use_shard_func)
+
+
+class _SaveDataset(dataset_ops.UnaryUnchangedStructureDataset):
+  """"A dataset that loads previously saved dataset."""
+
+  def __init__(self, dataset, path, shard_func, compression):
+    dataset, shard_func, use_shard_func, path = _set_save_dataset_attributes(
+        dataset, shard_func, path)
+    variant_tensor = gen_experimental_dataset_ops.save_dataset_v2(
+        dataset._variant_tensor,   # pylint: disable=protected-access
+        path=path,
+        shard_func_other_args=shard_func.captured_inputs,
+        shard_func=shard_func,
+        use_shard_func=use_shard_func,
+        compression=compression,
+        output_types=structure.get_flat_tensor_types(dataset.element_spec),
+        output_shapes=structure.get_flat_tensor_shapes(dataset.element_spec),
+        )
+    super(_SaveDataset, self).__init__(dataset, variant_tensor)
+
+  @property
+  def _functions(self):
+    return [self._shard_func]
+
+
+def _set_save_dataset_attributes(dataset, shard_func, path):
+  """Sets parameters for SaveDatasetOp and SaveDatasetV2Op."""
   if shard_func is None:
     use_shard_func = False
     shard_func = lambda *x: None  # a dummy function that will not be used
@@ -107,14 +192,8 @@ def save(dataset, path, compression=None, shard_func=None):
   shard_func.add_to_graph(ops.get_default_graph())
 
   # pylint: disable=protected-access
-  dataset = dataset._apply_debug_options()
-  gen_experimental_dataset_ops.save_dataset(
-      dataset._variant_tensor,
-      path=path,
-      shard_func_other_args=shard_func.captured_inputs,
-      compression=compression,
-      shard_func=shard_func,
-      use_shard_func=use_shard_func)
+  dataset._apply_debug_options()
+  return dataset, shard_func, use_shard_func, path,
 
 
 class _LoadDataset(dataset_ops.DatasetSource):

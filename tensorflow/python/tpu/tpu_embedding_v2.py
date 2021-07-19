@@ -575,7 +575,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return per_table_gradients
 
-  def apply_gradients(self, gradients, name: Text = None):
+  def apply_gradients(self, gradients, name: Optional[Text] = None):
     """Applies the gradient update to the embedding tables.
 
     If a gradient of `None` is passed in any position of the nested structure,
@@ -670,7 +670,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     if name is not None:
       _add_key_attr(op, name)
 
-  def dequeue(self, name: Text = None):
+  def dequeue(self, name: Optional[Text] = None):
     """Get the embedding results.
 
     Returns a nested structure of `tf.Tensor` objects, matching the structure of

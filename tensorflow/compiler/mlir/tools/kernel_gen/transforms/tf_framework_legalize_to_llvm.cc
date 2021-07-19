@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -36,6 +38,33 @@ static constexpr StringRef kCInterfaceAlloc = "_mlir_ciface_tf_alloc";
 static constexpr StringRef kCInterfaceDealloc = "_mlir_ciface_tf_dealloc";
 static constexpr StringRef kCInterfaceReportError =
     "_mlir_ciface_tf_report_error";
+static constexpr StringRef kCInterfaceJITCompile =
+    "_mlir_ciface_tf_jit_compile";
+static constexpr StringRef kCInterfaceJITExecute =
+    "_mlir_ciface_tf_jit_execute";
+static constexpr StringRef kJITCodeGlobalBaseName = "jit_module_code";
+static constexpr StringRef kErrorMessageGlobalBaseName = "error_message";
+
+Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
+                                       StringRef base_name, StringRef str) {
+  auto module =
+      builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
+  std::string global_name =
+      llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
+  Operation *global_constant =
+      SymbolTable::lookupNearestSymbolFrom(module, global_name);
+  if (global_constant) {
+    Value global_ptr = builder.create<LLVM::AddressOfOp>(
+        loc, cast<LLVM::GlobalOp>(global_constant));
+    Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
+                                                builder.getIndexAttr(0));
+    return builder.create<LLVM::GEPOp>(
+        loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)), global_ptr,
+        ValueRange{c0, c0});
+  }
+  return LLVM::createGlobalString(loc, builder, global_name, str,
+                                  LLVM::Linkage::Internal);
+}
 
 /// Base class for patterns converting TF Framework ops to function calls.
 template <typename OpTy>
@@ -141,6 +170,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
   }
 
  private:
+  // TODO(pifon): Remove strides computation.
   MemRefDescriptor CreateMemRefDescriptor(Location loc,
                                           ConversionPatternRewriter &rewriter,
                                           MemRefType memref_type,
@@ -242,6 +272,101 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
   }
 };
 
+class JITCompileFromStrOpConverter
+    : public ConvertToLLVMCallOpPattern<JITCompileFromStrOp> {
+  using ConvertToLLVMCallOpPattern<
+      JITCompileFromStrOp>::ConvertToLLVMCallOpPattern;
+
+  LogicalResult matchAndRewrite(
+      JITCompileFromStrOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    JITCompileFromStrOp::Adaptor transformed(operands);
+    if (transformed.ctx() == nullptr) return failure();
+    Value jit_module_code = CreateOrFindGlobalStringConstant(
+        op.getLoc(), rewriter, kJITCodeGlobalBaseName, op.code());
+    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+        op, getVoidPtrType(), tf_func_ref,
+        llvm::makeArrayRef({transformed.ctx(), jit_module_code}));
+    return success();
+  }
+
+ protected:
+  StringRef GetFuncName() const override { return kCInterfaceJITCompile; }
+
+  Type GetFuncType() const override {
+    auto i8_ptr_type =
+        LLVM::LLVMPointerType::get(IntegerType::get(getContext(), 8));
+    return LLVM::LLVMFunctionType::get(getVoidPtrType(),
+                                       {getVoidPtrType(), i8_ptr_type});
+  }
+};
+
+class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
+ public:
+  using ConvertToLLVMCallOpPattern<JITExecuteOp>::ConvertToLLVMCallOpPattern;
+
+  LogicalResult matchAndRewrite(
+      JITExecuteOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // Currently, only unary ops are supported.
+    // The TF context must be known for a succesful lowering.
+    // TODO(frgossen): Generalize this runtime interface to n-ary kernels.
+    JITExecuteOp::Adaptor transformed(operands, op->getAttrDictionary());
+    if (transformed.ctx() == nullptr || op.operands().size() != 1 ||
+        op.getNumResults() != 1) {
+      return failure();
+    }
+
+    // Allocate result on stack.
+    auto loc = op.getLoc();
+    Type result_ty =
+        getTypeConverter()->convertType(op->getResultTypes().front());
+    Type result_ptr_ty = LLVM::LLVMPointerType::get(result_ty);
+    Value c1 = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI64Type(),
+        rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
+    auto result_ptr =
+        rewriter.create<LLVM::AllocaOp>(loc, result_ptr_ty, c1, llvm::None);
+    auto result_void_ptr =
+        rewriter.create<LLVM::BitcastOp>(loc, getVoidPtrType(), result_ptr);
+
+    // Find all the operands and unpack the one argument.
+    SmallVector<Value, 8> forward_operands = {
+        transformed.ctx(), transformed.callable(), result_void_ptr};
+    UnrankedMemRefDescriptor::unpack(
+        rewriter, loc, transformed.operands().front(), forward_operands);
+
+    // Materialize call.
+    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    rewriter.create<LLVM::CallOp>(loc, llvm::None, tf_func_ref,
+                                  forward_operands);
+
+    // Copy result (including the descriptor) to a stack-allocated buffer and
+    // free the old descriptor.
+    llvm::SmallVector<Value, 1> final_result = {
+        rewriter.create<LLVM::LoadOp>(loc, result_ptr)};
+    if (failed(copyUnrankedDescriptors(rewriter, loc, op->getResultTypes(),
+                                       final_result,
+                                       /*toDynamic=*/false))) {
+      return failure();
+    }
+
+    rewriter.replaceOp(op, final_result.front());
+    return success();
+  }
+
+ protected:
+  StringRef GetFuncName() const override { return kCInterfaceJITExecute; }
+
+  Type GetFuncType() const override {
+    auto i64_ty = IntegerType::get(getContext(), 64);
+    return LLVM::LLVMFunctionType::get(
+        getVoidType(), {getVoidPtrType(), getVoidPtrType(), getVoidPtrType(),
+                        i64_ty, getVoidPtrType()});
+  }
+};
+
 class ReportErrorOpConverter
     : public ConvertToLLVMCallOpPattern<ReportErrorOp> {
  public:
@@ -264,7 +389,6 @@ class ReportErrorOpConverter
         loc, typeConverter->convertType(rewriter.getI32Type()),
         transformed.error_code());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-
         op, llvm::None, tf_func_ref,
         llvm::makeArrayRef({transformed.ctx(), error_code, message_constant}));
     return success();
@@ -286,33 +410,16 @@ class ReportErrorOpConverter
   Value GenerateErrorMessageConstant(Location loc, Operation *module,
                                      StringRef message,
                                      OpBuilder &builder) const {
-    std::string loc_str;
-    llvm::raw_string_ostream loc_stream(loc_str);
-    loc_stream << message << " at ";
-    loc.print(loc_stream);
-
-    StringRef generated_error(loc_stream.str().c_str());
-
-    std::string global_name =
-        llvm::formatv("error_message_{0}", llvm::hash_value(generated_error));
-
-    Operation *global_constant =
-        SymbolTable::lookupNearestSymbolFrom(module, global_name);
-
-    if (global_constant) {
-      Value globalPtr = builder.create<LLVM::AddressOfOp>(
-          loc, cast<LLVM::GlobalOp>(global_constant));
-
-      MLIRContext *ctx = &getTypeConverter()->getContext();
-      Value c0 = builder.create<LLVM::ConstantOp>(
-          loc, IntegerType::get(ctx, 64),
-          builder.getIntegerAttr(builder.getIndexType(), 0));
-      return builder.create<LLVM::GEPOp>(
-          loc, LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8)), globalPtr,
-          ValueRange{c0, c0});
+    std::string err_str;
+    llvm::raw_string_ostream err_stream(err_str);
+    err_stream << message;
+    if (!loc.isa<UnknownLoc>()) {
+      err_stream << " at ";
+      loc.print(err_stream);
     }
-    return LLVM::createGlobalString(loc, builder, global_name, generated_error,
-                                    LLVM::Linkage::Internal);
+    StringRef generated_error(err_stream.str());
+    return CreateOrFindGlobalStringConstant(
+        loc, builder, kErrorMessageGlobalBaseName, generated_error);
   }
 };
 
@@ -335,15 +442,45 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
   LogicalResult matchAndRewrite(
       NullMemRefOp null_memref_op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
+    Location loc = null_memref_op->getLoc();
+    LLVMTypeConverter type_converter = *getTypeConverter();
     mlir::Operation *op = null_memref_op.getOperation();
 
-    Location loc = op->getLoc();
+    auto shaped_result_type = null_memref_op.getType().cast<BaseMemRefType>();
+    unsigned address_space = shaped_result_type.getMemorySpaceAsInt();
+
+    Type elem_type = shaped_result_type.getElementType();
+    Type llvm_elem_type = type_converter.convertType(elem_type);
+
+    Value zero = createIndexConstant(rewriter, loc, 0);
+    if (auto result_type = null_memref_op.getType().dyn_cast<MemRefType>()) {
+      // Set all dynamic sizes to 1 and compute fake strides.
+      SmallVector<Value, 4> dyn_sizes(result_type.getNumDynamicDims(),
+                                      createIndexConstant(rewriter, loc, 1));
+      SmallVector<Value, 4> sizes, strides;
+      Value sizeBytes;
+      getMemRefDescriptorSizes(loc, result_type, dyn_sizes, rewriter, sizes,
+                               strides, sizeBytes);
+
+      // Prepare packed args [allocatedPtr, alignedPtr, offset, sizes, strides]
+      // to create a memref descriptor.
+      Value null = rewriter.create<LLVM::NullOp>(
+          loc, LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
+      SmallVector<Value, 12> packed_values{null, null, zero};
+      packed_values.append(sizes);
+      packed_values.append(strides);
+
+      rewriter.replaceOp(
+          op, MemRefDescriptor::pack(rewriter, loc, type_converter, result_type,
+                                     packed_values));
+      return success();
+    }
+
     auto result_type = null_memref_op.getType().cast<UnrankedMemRefType>();
-    Type llvm_result_type = typeConverter->convertType(result_type);
+    Type llvm_result_type = type_converter.convertType(result_type);
 
     auto desc =
         UnrankedMemRefDescriptor::undef(rewriter, loc, llvm_result_type);
-    Value zero = createIndexConstant(rewriter, loc, 0);
     desc.setRank(rewriter, loc, zero);
 
     // Due to the current way of handling unranked memref results escaping, we
@@ -356,19 +493,16 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
         loc, getVoidPtrType(), sizes.front(), llvm::None);
 
     // Populate underlying ranked descriptor.
-    unsigned address_space = result_type.getMemorySpaceAsInt();
-    Type elem_type = result_type.getElementType();
-    Type llvm_elem_type = typeConverter->convertType(elem_type);
     Type elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
         LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
 
-    auto nullPtr = rewriter.create<LLVM::NullOp>(
+    Value null = rewriter.create<LLVM::NullOp>(
         loc, LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
     UnrankedMemRefDescriptor::setAllocatedPtr(
-        rewriter, loc, underlying_desc_ptr, elem_ptr_ptr_type, nullPtr);
+        rewriter, loc, underlying_desc_ptr, elem_ptr_ptr_type, null);
     UnrankedMemRefDescriptor::setAlignedPtr(rewriter, loc, *getTypeConverter(),
                                             underlying_desc_ptr,
-                                            elem_ptr_ptr_type, nullPtr);
+                                            elem_ptr_ptr_type, null);
     UnrankedMemRefDescriptor::setOffset(rewriter, loc, *getTypeConverter(),
                                         underlying_desc_ptr, elem_ptr_ptr_type,
                                         zero);
@@ -379,18 +513,56 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
   }
 };
 
+class IsValidMemRefOpConverter
+    : public ConvertOpToLLVMPattern<IsValidMemRefOp> {
+ public:
+  using ConvertOpToLLVMPattern<IsValidMemRefOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult matchAndRewrite(
+      IsValidMemRefOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    MemRefDescriptor desc(IsValidMemRefOp::Adaptor(operands).arg());
+
+    // Compare every size in the descriptor to 0 to check num_elements == 0.
+    int64_t rank = op.arg().getType().cast<MemRefType>().getRank();
+    Value is_empty_shape = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI1Type(), rewriter.getBoolAttr(false));
+    Value zero = createIndexConstant(rewriter, loc, 0);
+    for (int i = 0; i < rank; ++i) {
+      Value size = desc.size(rewriter, loc, i);
+      Value is_zero_size = rewriter.create<LLVM::ICmpOp>(
+          loc, rewriter.getI1Type(), LLVM::ICmpPredicate::eq, size, zero);
+      is_empty_shape =
+          rewriter.create<LLVM::OrOp>(loc, is_empty_shape, is_zero_size);
+    }
+
+    Value ptr = rewriter.create<LLVM::BitcastOp>(
+        loc, getVoidPtrType(), desc.allocatedPtr(rewriter, loc));
+    Value null = rewriter.create<LLVM::NullOp>(loc, getVoidPtrType());
+    Value is_not_nullptr = rewriter.create<LLVM::ICmpOp>(
+        loc, rewriter.getI1Type(), LLVM::ICmpPredicate::ne, ptr, null);
+
+    // Valid memref = ptr != NULL || num_elements == 0;
+    rewriter.replaceOpWithNewOp<LLVM::OrOp>(op, is_not_nullptr, is_empty_shape);
+    return success();
+  }
+};
+
 }  // namespace
 
-void PopulateTFFrameworkToLLVMConversionPatterns(
-    LLVMTypeConverter *converter, RewritePatternSet *patterns) {
+void PopulateTFFrameworkToLLVMConversionPatterns(LLVMTypeConverter *converter,
+                                                 RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
+      IsValidMemRefOpConverter,
+      JITCompileFromStrOpConverter,
+      JITExecuteOpConverter,
       NullContextOpConverter,
       NullMemRefOpConverter,
       ReportErrorOpConverter,
       TFAllocOpConverter,
-      TFDeallocOpConverter
-    >(*converter);
+      TFDeallocOpConverter>(*converter);
   // clang-format on
 }
 

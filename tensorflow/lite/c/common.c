@@ -231,7 +231,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
   return "Unknown type";
 }
 
-TfLiteDelegate TfLiteDelegateCreate() {
+TfLiteDelegate TfLiteDelegateCreate(void) {
   TfLiteDelegate d = {
       .data_ = NULL,
       .Prepare = NULL,

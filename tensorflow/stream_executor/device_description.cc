@@ -48,8 +48,6 @@ DeviceDescription::DeviceDescription()
       shared_memory_per_core_(kUninitializedUint64),
       shared_memory_per_block_(kUninitializedUint64),
       clock_rate_ghz_(-1.0),
-      cuda_compute_capability_major_(-1),
-      cuda_compute_capability_minor_(-1),
       rocm_amdgpu_isa_version_(-1),
       rocm_amdgpu_gcn_arch_name_(kUndefinedString),
       numa_node_(-1),
@@ -93,8 +91,7 @@ std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
 
   result["Clock Rate GHz"] = absl::StrCat(clock_rate_ghz());
 
-  result["CUDA Compute Capability"] = absl::StrCat(
-      cuda_compute_capability_major_, ".", cuda_compute_capability_minor_);
+  result["CUDA Compute Capability"] = cuda_compute_capability().ToString();
 
   result["AMDGPU GCN Arch Name"] = rocm_amdgpu_gcn_arch_name_;
 
@@ -111,10 +108,8 @@ DeviceDescriptionBuilder::DeviceDescriptionBuilder()
 
 }  // namespace internal
 
-bool DeviceDescription::cuda_compute_capability(int *major, int *minor) const {
-  *major = cuda_compute_capability_major_;
-  *minor = cuda_compute_capability_minor_;
-  return cuda_compute_capability_major_ != 0;
+CudaComputeCapability DeviceDescription::cuda_compute_capability() const {
+  return cuda_compute_capability_;
 }
 
 bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
@@ -152,7 +147,7 @@ uint64 DivideCeil(uint64 x, uint64 y) {
 }
 
 void CalculateDimensionality(const DeviceDescription &device_description,
-                             int64 element_count, int64 *threads_per_block,
+                             int64_t element_count, int64 *threads_per_block,
                              int64 *block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
   *block_count = port::MathUtil::CeilOfRatio(element_count, *threads_per_block);

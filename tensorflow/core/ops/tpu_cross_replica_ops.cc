@@ -37,7 +37,7 @@ REGISTER_OP("AllToAll")
         return Status::OK();
       }
 
-      int64 rank = c->Rank(input);
+      int64_t rank = c->Rank(input);
       int concat_dimension;
       int split_dimension;
       int split_count;
@@ -77,7 +77,7 @@ REGISTER_OP("CrossReplicaSum")
     .Input("input: T")
     .Input("group_assignment: int32")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float, int32, uint32}")
+    .Attr("T: {half, bfloat16, float, float64, int32, uint32}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("CollectivePermute")

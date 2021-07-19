@@ -629,8 +629,10 @@ class ComputeBatchSizeTest(test_base.DatasetTestBase, parameterized.TestCase):
 class LegacyRebatchDatasetCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
 
     def build_dataset(num_elements, batch_size):
       return distribute._LegacyRebatchDataset(
@@ -638,14 +640,16 @@ class LegacyRebatchDatasetCheckpointTest(
               4 * batch_size, drop_remainder=True),
           num_replicas=4)
 
-    self.run_core_tests(lambda: build_dataset(64, 8), 8)
+    verify_fn(self, lambda: build_dataset(64, 8), num_outputs=8)
 
 
 class RebatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                    parameterized.TestCase):
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
 
     def build_dataset(num_elements, batch_size):
       return distribute._RebatchDataset(
@@ -653,7 +657,7 @@ class RebatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
               2 * batch_size, drop_remainder=True),
           batch_sizes=[batch_size, batch_size])
 
-    self.run_core_tests(lambda: build_dataset(64, 8), 8)
+    verify_fn(self, lambda: build_dataset(64, 8), num_outputs=8)
 
 
 if __name__ == "__main__":

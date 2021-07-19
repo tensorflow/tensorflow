@@ -238,6 +238,10 @@ class LiteralUtil {
   // recursively converts its elements.
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
 
+  // Creates a scalar literal whose value is the maximum value of a given
+  // literal slice.
+  static Literal MaxElement(const LiteralSlice& literal);
+
   // If the given literal's data type is double, converts it to a bfloat16
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.

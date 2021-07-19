@@ -55,23 +55,29 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
   }
 };
 
+llvm::Optional<Value> FindOpKernelContext(Operation *op) {
+  auto func = op->getParentOfType<FuncOp>();
+  if (func.getNumArguments() == 0) {
+    return llvm::None;
+  }
+  Value ctx = func.getArgument(0);
+  if (!ctx.getType().isa<OpKernelContextType>()) {
+    return llvm::None;
+  }
+  return ctx;
+}
+
 // Converts std.alloc to tf_framework.alloc_raw using OpKernelContextType arg of
 // the parent function.
-class TFAllocOpConverter : public OpConversionPattern<memref::AllocOp> {
- public:
+struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
   using OpConversionPattern<memref::AllocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       memref::AllocOp alloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    auto func = alloc->getParentOfType<FuncOp>();
-    if (func.getNumArguments() == 0) {
-      return failure();
-    }
-    Value ctx = func.getArgument(0);
-    if (!ctx.getType().isa<OpKernelContextType>()) {
-      return failure();
-    }
+    llvm::Optional<Value> ctx = FindOpKernelContext(alloc);
+    if (!ctx) return failure();
+
     // Symbolic operands that bind to the symbols of the memref's layout map are
     // not supported by TFAllocOp.
     if (!alloc.symbolOperands().empty()) {
@@ -81,37 +87,36 @@ class TFAllocOpConverter : public OpConversionPattern<memref::AllocOp> {
         TFAllocOp::kReuseInputCandidatesAttrName);
     auto reuse_output_index =
         alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
-    rewriter.replaceOpWithNewOp<TFAllocOp>(alloc, alloc.getType(), ctx,
-                                           operands, reuse_input_candidates,
-                                           reuse_output_index);
+    Value buffer = rewriter.replaceOpWithNewOp<TFAllocOp>(
+        alloc, alloc.getType(), *ctx, operands, reuse_input_candidates,
+        reuse_output_index);
+    Location loc = buffer.getLoc();
+    Value cond = rewriter.create<IsValidMemRefOp>(
+        loc, rewriter.getIntegerType(1), buffer);
+    rewriter.create<TFAssertOp>(loc, *ctx, cond, ErrorCode::RESOURCE_EXHAUSTED,
+                                "failed to allocate memory");
     return success();
   }
 };
 
 // Converts std.dealloc to tf_framework.dealloc_raw using OpKernelContextType
 // arg of the parent function.
-class TFDeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
- public:
+struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
   using OpConversionPattern<memref::DeallocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       memref::DeallocOp dealloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    auto func = dealloc->getParentOfType<FuncOp>();
-    if (func.getNumArguments() == 0) {
-      return failure();
-    }
-    Value ctx = func.getArgument(0);
-    if (!ctx.getType().isa<OpKernelContextType>()) {
-      return failure();
-    }
+    llvm::Optional<Value> ctx = FindOpKernelContext(dealloc);
+    if (!ctx) return failure();
+
     // Operand with no layout is expected.
     auto operand_memref_type = dealloc.memref().getType().cast<MemRefType>();
     if (!operand_memref_type.getAffineMaps().empty()) {
       return failure();
     }
     memref::DeallocOp::Adaptor transformed(operands);
-    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, ctx,
+    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx,
                                              transformed.memref());
     return success();
   }
@@ -119,64 +124,71 @@ class TFDeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
 
 // Converts std.assert to tf_framework.assert with using OpKernelContextType
 // arg of the parent function.
-class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
+struct AssertOpConverter : public OpConversionPattern<AssertOp> {
  public:
   using OpConversionPattern<AssertOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
       AssertOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    auto func = op->getParentOfType<FuncOp>();
-    if (func.getNumArguments() == 0) {
-      return failure();
-    }
-    Value ctx = func.getArgument(0);
-    if (!ctx.getType().isa<OpKernelContextType>()) {
-      return failure();
-    }
-    Location loc = op.getLoc();
+    llvm::Optional<Value> ctx = FindOpKernelContext(op);
+    if (!ctx) return failure();
     AssertOp::Adaptor transformed(operands, op->getAttrDictionary());
+    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, transformed.arg(),
+                                            ErrorCode::INVALID_ARGUMENT,
+                                            transformed.msg().getValue());
+    return success();
+  }
+};
 
-    // Split the block to insert CondBr.
-    OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
-    Block *split_block = rewriter.splitBlock(
-        rewriter.getInsertionBlock(), std::next(rewriter.getInsertionPoint()));
+// Amends `tf_framework.jit_execute` with the newly introduced OpKernelContext.
+struct JITExecuteOpConverter : public OpConversionPattern<JITExecuteOp> {
+  using OpConversionPattern<JITExecuteOp>::OpConversionPattern;
 
-    Block *error_reporting_block =
-        rewriter.createBlock(&func.getRegion(), {}, {});
-    rewriter.create<ReportErrorOp>(loc, ctx, ErrorCode::INVALID_ARGUMENT,
-                                   transformed.msg().getValue());
+  LogicalResult matchAndRewrite(
+      JITExecuteOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    llvm::Optional<Value> ctx = FindOpKernelContext(op);
+    if (!ctx) return failure();
+    rewriter.replaceOpWithNewOp<JITExecuteOp>(op, op.getResultTypes(), *ctx,
+                                              op.callable(), op.operands());
+    return success();
+  }
+};
 
-    SmallVector<Value, 2> null_memrefs;
-    for (auto type : func.getType().getResults()) {
-      // This can be extended to support various result types if necessary.
-      if (!type.isa<UnrankedMemRefType>()) {
-        op.emitError("only UnrankedMemRefType results are supported");
-        return failure();
-      }
-      null_memrefs.push_back(rewriter.create<NullMemRefOp>(loc, type));
-    }
-    rewriter.create<ReturnOp>(loc, null_memrefs);
+// Amends `tf_framework.jit_compile_from_str` with the newly introduced
+// OpKernelContext.
+struct JITCompileFromStrOpConverter
+    : public OpConversionPattern<JITCompileFromStrOp> {
+  using OpConversionPattern<JITCompileFromStrOp>::OpConversionPattern;
 
-    rewriter.restoreInsertionPoint(ip);
-    rewriter.replaceOpWithNewOp<CondBranchOp>(
-        op, transformed.arg(), split_block, llvm::None, error_reporting_block,
-        llvm::None);
+  LogicalResult matchAndRewrite(
+      JITCompileFromStrOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    llvm::Optional<Value> ctx = FindOpKernelContext(op);
+    if (!ctx) return failure();
+    rewriter.replaceOpWithNewOp<JITCompileFromStrOp>(
+        op, rewriter.getType<JITCallableType>(), *ctx, op.code());
     return success();
   }
 };
 
 }  // namespace
 
-void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
-    MLIRContext *context, RewritePatternSet *patterns) {
-  patterns->insert<TFAllocOpConverter, TFDeallocOpConverter, FuncOpConverter>(
-      context);
+void PopulateEmbedTFFrameworkAssertPattern(RewritePatternSet *patterns) {
+  patterns->insert<AssertOpConverter>(patterns->getContext());
 }
 
-void PopulateEmbedTFFrameworkAssertConversionPatterns(
-    MLIRContext *context, RewritePatternSet *patterns) {
-  patterns->insert<TFAssertOpConverter, FuncOpConverter>(context);
+void PopulateEmbedTFFrameworkPatterns(RewritePatternSet *patterns) {
+  // clang-format off
+  patterns->insert<
+      AllocOpConverter,
+      AssertOpConverter,
+      DeallocOpConverter,
+      FuncOpConverter,
+      JITCompileFromStrOpConverter,
+      JITExecuteOpConverter>(patterns->getContext());
+  // clang-format on
 }
 
 }  // namespace tf_framework

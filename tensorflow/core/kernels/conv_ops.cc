@@ -848,8 +848,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
   // in NHWC data layout. In all other configurations it's more efficient to
   // run computation in NCHW data format.
-  const bool compute_in_nhwc =
-      DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
+                               stream->GetCudaComputeCapability().IsAtLeast(
+                                   se::CudaComputeCapability::VOLTA);
 #else
   // fast NHWC implementation is a CUDA only feature
   const bool compute_in_nhwc = false;
@@ -1126,11 +1127,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       }
     } else {
       OP_REQUIRES(
-          ctx,
-          stream->parent()->GetConvolveAlgorithms(
-              conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                  stream->parent()),
-              &algorithms),
+          ctx, stream->parent()->GetConvolveAlgorithms(&algorithms),
           errors::Unknown("Failed to get convolution algorithm. This is "
                           "probably because cuDNN failed to initialize, so try "
                           "looking to see if a warning log message was printed "

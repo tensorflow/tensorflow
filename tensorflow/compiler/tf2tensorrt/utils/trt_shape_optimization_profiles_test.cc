@@ -95,21 +95,22 @@ class TrtShapeOptimizationProfileTest
   // Defines a simple network: output = input1 + input2.
   void DefineNetwork(nvinfer1::INetworkDefinition* network,
                      nvinfer1::Dims3& dims) {
-    nvinfer1::ITensor* input1 =
+    ITensorProxyPtr input1 =
         network->addInput("input1", nvinfer1::DataType::kFLOAT, dims);
-    EXPECT_NE(nullptr, input1);
+    EXPECT_NE(nullptr, input1->trt_tensor());
 
-    nvinfer1::ITensor* input2 =
+    ITensorProxyPtr input2 =
         network->addInput("input2", nvinfer1::DataType::kFLOAT, dims);
-    EXPECT_NE(nullptr, input1);
+    EXPECT_NE(nullptr, input2->trt_tensor());
 
-    auto layer = network->addElementWise(*input1, *input2,
-                                         nvinfer1::ElementWiseOperation::kSUM);
+    auto layer =
+        network->addElementWise(*input1->trt_tensor(), *input2->trt_tensor(),
+                                nvinfer1::ElementWiseOperation::kSUM);
     EXPECT_NE(nullptr, layer);
     // Mark the output.
-    nvinfer1::ITensor* output = layer->getOutput(0);
+    ITensorProxyPtr output = layer->getOutput(0);
     output->setName("output");
-    network->markOutput(*output);
+    network->markOutput(*output->trt_tensor());
   }
 
   void CheckProfile(const std::vector<nvinfer1::Dims3>& dimvec,
@@ -141,7 +142,7 @@ class TrtShapeOptimizationProfileTest
 #endif
   }
 
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)

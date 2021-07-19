@@ -371,14 +371,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._initialize_multi_worker(devices)
 
   def _make_collective_ops(self, devices):
-    if ops.executing_eagerly_outside_functions():
-      try:
-        context.context().configure_collective_ops(
-            scoped_allocator_enabled_ops=("CollectiveReduce",))
-      except RuntimeError:
-        logging.warning("Collective ops is not configured at program startup."
-                        " Some performance features may not be enabled.")
-
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)  # pylint: disable=protected-access
     return cross_device_ops_lib.CollectiveAllReduce(

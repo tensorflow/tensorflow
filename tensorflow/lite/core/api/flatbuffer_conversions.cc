@@ -760,7 +760,8 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_CONV_3D: {
+    case BuiltinOperator_CONV_3D:
+    case BuiltinOperator_CONV_3D_TRANSPOSE: {
       auto params = safe_allocator.Allocate<TfLiteConv3DParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
       if (const auto* conv3d_params = op->builtin_options_as_Conv3DOptions()) {
@@ -788,6 +789,21 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
         TF_LITE_ENSURE_STATUS(ConvertTensorType(hashtable_params->value_dtype(),
                                                 &params->value_dtype,
                                                 error_reporter));
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_VAR_HANDLE: {
+      auto params = safe_allocator.Allocate<TfLiteVarHandleParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      params->container = nullptr;
+      params->shared_name = nullptr;
+      if (const auto* var_handle_params =
+              op->builtin_options_as_VarHandleOptions()) {
+        if (var_handle_params->container())
+          params->container = var_handle_params->container()->c_str();
+        if (var_handle_params->shared_name())
+          params->shared_name = var_handle_params->shared_name()->c_str();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -828,6 +844,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_HASHTABLE_FIND:
     case BuiltinOperator_HASHTABLE_IMPORT:
     case BuiltinOperator_HASHTABLE_SIZE:
+    case BuiltinOperator_READ_VARIABLE:
+    case BuiltinOperator_ASSIGN_VARIABLE:
+    case BuiltinOperator_BROADCAST_ARGS:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;

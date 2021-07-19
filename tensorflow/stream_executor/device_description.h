@@ -22,14 +22,51 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+
 #include "absl/base/macros.h"
 #include "tensorflow/stream_executor/launch_dim.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
 class DeviceDescriptionBuilder;
 }  // namespace internal
+
+// CUDA compute capability, as reported by the device description.
+struct CudaComputeCapability {
+  int major = 0;
+  int minor = 0;
+
+  // MSVC does not like "PASCAL" symbol.
+  enum CudaComputeCapabilities { PASCAL_ = 6, VOLTA = 7, AMPERE = 8 };
+
+  CudaComputeCapability() {}
+  CudaComputeCapability(int major, int minor) {
+    this->major = major;
+    this->minor = minor;
+  }
+
+  bool IsAtLeast(int other_major, int other_minor = 0) const {
+    return !(*this < CudaComputeCapability{other_major, other_minor});
+  }
+
+  bool operator<(const CudaComputeCapability &other) const {
+    return ToPair() < other.ToPair();
+  }
+
+  bool operator==(const CudaComputeCapability &other) const {
+    return ToPair() == other.ToPair();
+  }
+
+  bool operator!=(const CudaComputeCapability &other) const {
+    return !(*this == other);
+  }
+
+  std::string ToString() const { return absl::StrCat(major, ".", minor); }
+
+  std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }
+};
 
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
@@ -130,8 +167,8 @@ class DeviceDescription {
 
   // Returns the CUDA compute capability if we're running on the CUDA platform.
   // If a CUDA compute capability is not available, the major version will be
-  // zero, and the return value will be false.
-  bool cuda_compute_capability(int *major, int *minor) const;
+  // zero.
+  CudaComputeCapability cuda_compute_capability() const;
 
   // Returns the AMDGPU ISA version if we're running on the ROCm platform.
   // If the information is not available, the version is not modified,
@@ -204,8 +241,7 @@ class DeviceDescription {
   float clock_rate_ghz_;
 
   // CUDA "CC" major value, -1 if not available.
-  int cuda_compute_capability_major_;
-  int cuda_compute_capability_minor_;
+  CudaComputeCapability cuda_compute_capability_{-1, -1};
 
   // ROCM AMDGPU ISA version, 0 if not available.
   int rocm_amdgpu_isa_version_;
@@ -257,37 +293,37 @@ class DeviceDescriptionBuilder {
     device_description_->block_dim_limit_ = value;
   }
 
-  void set_threads_per_core_limit(int64 value) {
+  void set_threads_per_core_limit(int64_t value) {
     device_description_->threads_per_core_limit_ = value;
   }
-  void set_threads_per_block_limit(int64 value) {
+  void set_threads_per_block_limit(int64_t value) {
     device_description_->threads_per_block_limit_ = value;
   }
-  void set_threads_per_warp(int64 value) {
+  void set_threads_per_warp(int64_t value) {
     device_description_->threads_per_warp_ = value;
   }
 
-  void set_registers_per_core_limit(int64 value) {
+  void set_registers_per_core_limit(int64_t value) {
     device_description_->registers_per_core_limit_ = value;
   }
-  void set_registers_per_block_limit(int64 value) {
+  void set_registers_per_block_limit(int64_t value) {
     device_description_->registers_per_block_limit_ = value;
   }
 
-  void set_device_address_bits(int64 value) {
+  void set_device_address_bits(int64_t value) {
     device_description_->device_address_bits_ = value;
   }
-  void set_device_memory_size(int64 value) {
+  void set_device_memory_size(int64_t value) {
     device_description_->device_memory_size_ = value;
   }
-  void set_memory_bandwidth(int64 value) {
+  void set_memory_bandwidth(int64_t value) {
     device_description_->memory_bandwidth_ = value;
   }
 
-  void set_shared_memory_per_core(int64 value) {
+  void set_shared_memory_per_core(int64_t value) {
     device_description_->shared_memory_per_core_ = value;
   }
-  void set_shared_memory_per_block(int64 value) {
+  void set_shared_memory_per_block(int64_t value) {
     device_description_->shared_memory_per_block_ = value;
   }
 
@@ -296,8 +332,8 @@ class DeviceDescriptionBuilder {
   }
 
   void set_cuda_compute_capability(int major, int minor) {
-    device_description_->cuda_compute_capability_major_ = major;
-    device_description_->cuda_compute_capability_minor_ = minor;
+    device_description_->cuda_compute_capability_ =
+        CudaComputeCapability{major, minor};
   }
 
   void set_rocm_amdgpu_isa_version(int version) {
@@ -339,14 +375,14 @@ bool ThreadDimOk(const DeviceDescription &device_description,
 
 // Equivalent to ceil(double(element_count) / threads_per_block).
 ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
-int64 DivideCeil(int64 x, int64 y);
+int64 DivideCeil(int64_t x, int64_t y);
 
 // Calculate the number of threads/blocks required to process element_count
 // elements. Note that you can still end up with more threads than
 // element_count due to rounding, so kernels often start with an "is this
 // thread id in the element_count range?" test.
 void CalculateDimensionality(const DeviceDescription &device_description,
-                             int64 element_count, int64 *threads_per_block,
+                             int64_t element_count, int64 *threads_per_block,
                              int64 *block_count);
 
 }  // namespace stream_executor

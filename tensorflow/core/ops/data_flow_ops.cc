@@ -52,7 +52,7 @@ REGISTER_OP("DynamicPartition")
     .Attr("num_partitions: int")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      int64 num_partitions;
+      int64_t num_partitions;
       TF_RETURN_IF_ERROR(c->GetAttr("num_partitions", &num_partitions));
 
       ShapeHandle data_shape = c->input(0);
@@ -62,7 +62,7 @@ REGISTER_OP("DynamicPartition")
         return shape_inference::UnknownShape(c);
       }
 
-      const int64 rank = c->Rank(partitions_shape);
+      const int64_t rank = c->Rank(partitions_shape);
 
       // data shape must start with partitions_shape
       ShapeHandle unused;
@@ -106,7 +106,7 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
     if (!c->RankKnown(indices_shape)) {
       continue;
     }
-    const int64 indices_rank = c->Rank(indices_shape);
+    const int64_t indices_rank = c->Rank(indices_shape);
 
     // Assert that data_shape starts with indices_shape.
     ShapeHandle unused;
@@ -121,8 +121,8 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
     if (indices_t != nullptr) {
       // The length is based on the highest index from flattened indices.
       const int32* indices = indices_t->flat<int32>().data();
-      int64 count = indices_t->NumElements();
-      for (int64 i = 0; i < count; ++i) {
+      int64_t count = indices_t->NumElements();
+      for (int64_t i = 0; i < count; ++i) {
         if (indices[i] > max_index) {
           max_index = indices[i];
         }
@@ -687,7 +687,7 @@ REGISTER_OP("TensorArrayGradWithShape")
         // Note that shape_to_preped is a rank 1 Tensor representing a shape.
         // The size of dimension 0 is the number of dimensions we need to add to
         // output shape.
-        int64 prepend_rank = c->Value(c->Dim(c->input(2), 0));
+        int64_t prepend_rank = c->Value(c->Dim(c->input(2), 0));
         if (c->RankKnown(input_shape) &&
             prepend_rank != InferenceContext::kUnknownDim) {
           int32 input_rank = c->Rank(input_shape);

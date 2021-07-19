@@ -195,7 +195,7 @@ class StreamExecutorInterface {
 
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
-  virtual DeviceMemoryBase Allocate(uint64 size, int64 memory_space) = 0;
+  virtual DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) = 0;
   DeviceMemoryBase Allocate(uint64 size) {
     return Allocate(size, /*memory_space=*/0);
   }
@@ -376,6 +376,13 @@ class StreamExecutorInterface {
   virtual absl::optional<AllocatorStats> GetAllocatorStats() {
     return absl::nullopt;
   }
+
+  // If implemented, clears the internal stats except for the `in_use` fields
+  // and sets the `peak_bytes_in_use` to be equal to the `bytes_in_use`. Returns
+  // true if implemented.
+  //
+  // REQUIRES: GetAllocatorStats is overridden.
+  virtual bool ClearAllocatorStats() { return false; }
 
   // Clears the compilation cache from volatile memory. Returns OK if no
   // compilation cache exists or if clearing the compilation cache is

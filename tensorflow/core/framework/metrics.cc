@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
 namespace tensorflow {
@@ -125,6 +126,10 @@ auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
 
+auto* tf_data_model_gauge =
+    monitoring::Gauge<std::function<std::string()>, 1>::New(
+        "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
+
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
@@ -172,6 +177,12 @@ auto* bfc_allocator_delay =
                                 "The total time spent running each graph "
                                 "optimization pass in microseconds.");
 
+auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/tpu/variable_distribution_time",
+    "Time spent sending variables from primary task to other worker tasks "
+    "at the start of a call to TPUExecute.  Timer starts at RunGraph "
+    "invocation and ends when TPUExecute args are ready on the current task.");
+
 }  // namespace
 
 void RecordTFDataAutotune(const string& name) {
@@ -192,6 +203,11 @@ monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
 
 monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
   return tf_data_elements_counter->GetCell(name);
+}
+
+monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
+    const string& id) {
+  return tf_data_model_gauge->GetCell(id);
 }
 
 void RecordTFDataBytesFetched(int64 num_bytes) {
@@ -312,6 +328,13 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs) {
         build_graph_time_usecs->GetCell();
     build_graph_calls_cell->IncrementBy(1);
     build_graph_time_usecs_cell->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {
+  if (distribution_time_usecs > 0) {
+    tpu_variable_distribution_time_usecs->GetCell()->IncrementBy(
+        distribution_time_usecs);
   }
 }
 

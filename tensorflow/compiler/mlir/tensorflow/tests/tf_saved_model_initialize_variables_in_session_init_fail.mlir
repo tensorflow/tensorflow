@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-saved-model-initialize-variables-in-session-init-test -verify-diagnostics -fail-to-fetch-local-device-manager %s
+// RUN: tf-opt -tf-saved-model-initialize-variables-in-session-init -verify-diagnostics -fail-to-fetch-local-device-manager %s
 
 // expected-error@below{{No Local Device Manager}}
 module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {

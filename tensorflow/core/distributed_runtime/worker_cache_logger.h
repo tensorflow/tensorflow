@@ -45,7 +45,7 @@ class WorkerCacheLogger {
 
   // Return logs for the identified step in *ss.  Any returned data will no
   // longer be stored.  Returns true iff *ss was modified.
-  bool RetrieveLogs(int64 step_id, StepStats* ss);
+  bool RetrieveLogs(int64_t step_id, StepStats* ss);
 
   // Return true if there is any outstanding request for logging on
   // the RPC channels.
@@ -56,16 +56,16 @@ class WorkerCacheLogger {
 
   // Generates a NodeExecStats record with the given data, and saves for
   // later retrieval by RetrieveLogs().
-  void RecordRecvTensor(int64 step_id, int64 start_usecs, int64 end_usecs,
+  void RecordRecvTensor(int64_t step_id, int64_t start_usecs, int64_t end_usecs,
                         const string& tensor_name, const string& src_device,
-                        const string& dst_device, int64 bytes);
+                        const string& dst_device, int64_t bytes);
 
   // Generates a NodeExecStats record with the given data, and saves for
   // later retrieval by RetrieveLogs().
-  void RecordDataTransfer(int64 step_id, int64 start_usecs, int64 end_usecs,
-                          const string& tensor_name, const string& src_device,
-                          const string& dst_device, int64 bytes,
-                          const string& details,
+  void RecordDataTransfer(int64_t step_id, int64_t start_usecs,
+                          int64_t end_usecs, const string& tensor_name,
+                          const string& src_device, const string& dst_device,
+                          int64_t bytes, const string& details,
                           const string& transfer_method_name);
 
  private:
@@ -81,7 +81,7 @@ class WorkerCacheLogger {
   LogMap log_map_ TF_GUARDED_BY(mu_);
 
   // Records "ns" in log_map_ under the given device and step.
-  void Save(const string& device, int64 step_id, NodeExecStats* ns);
+  void Save(const string& device, int64_t step_id, NodeExecStats* ns);
 
   void ClearLogsWithLock() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 };

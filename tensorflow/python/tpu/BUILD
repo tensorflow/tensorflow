@@ -59,12 +59,12 @@ pytype_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -74,6 +74,7 @@ tpu_py_test(
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_v2 = True,  # TODO(b/193351923): Re-enable v2 after fix the hanging issue.
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",
@@ -139,13 +140,13 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/summary",
         "@six_archive//:six",
     ],
 )
@@ -307,9 +308,9 @@ pytype_library(
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/user_ops:ops",
     ],
 )
 
@@ -592,6 +593,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
@@ -624,6 +626,7 @@ tpu_py_test(
     ],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    disable_tfrt = True,  # TODO(b/192605977)
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",

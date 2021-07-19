@@ -121,7 +121,7 @@ class GpuCompiler : public LLVMCompiler {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     }
     // Each dynamic dimension size is represented as a S32.
-    int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+    int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
     return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
   }
 
@@ -154,8 +154,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, GpuDeviceInfo gpu_device_info,
-    absl::optional<CudaComputeCapability> cuda_compute_capability,
-    int pointer_size);
+    se::CudaComputeCapability cuda_compute_capability, int pointer_size);
 
 // Compiles the given LMHLO module to an executable.
 // ir_emitter_context should be partially populated: buffer_assignment

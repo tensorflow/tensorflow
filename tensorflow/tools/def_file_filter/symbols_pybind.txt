@@ -88,6 +88,13 @@ tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 [//tensorflow/core/common_runtime:session_state]  # tf_session
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
+[//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
+tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
+tensorflow::data::DataServiceDispatcherClient::GetElementSpec
+
+[//tensorflow/core/data/service:grpc_util] # grpc_util
+tensorflow::data::grpc_util::Retry
+
 [//tensorflow/core/data/service:server_lib] # server_lib
 tensorflow::data::GrpcDataServerBase::Join
 tensorflow::data::GrpcDataServerBase::Start
@@ -110,6 +117,7 @@ toco::TocoConvert
 toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
+toco::RetrieveCollectedErrors
 
 [//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -216,6 +224,16 @@ tensorflow::ImportFunction
 
 [//tensorflow/core:op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
+tensorflow::AttrValue::CopyFrom  # tf_text
+tensorflow::AttrValue::MergeFrom
+tensorflow::AttrValue::SetCachedSize
+tensorflow::AttrValue::GetMetadata
+tensorflow::AttrValue::New
+tensorflow::AttrValue::Clear
+tensorflow::AttrValue::IsInitialized
+tensorflow::AttrValue::ByteSizeLong
+tensorflow::AttrValue::GetCachedSize
+tensorflow::AttrValue::~AttrValue
 
 [//tensorflow/core/common_runtime:graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
@@ -237,7 +255,7 @@ tensorflow::AddWhileInputHack
 tensorflow::ImportNumpy
 _tensorflow_numpy_api
 
-[//tensorflow/python:tf_session_helper] # tf_session
+[//tensorflow/python/client:tf_session_helper] # tf_session
 tensorflow::TF_NewSessionRef
 tensorflow::TF_SessionMakeCallable
 tensorflow::TF_SessionRunCallable
@@ -369,6 +387,12 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
 
+[//tensorflow/cc/experimental/libexport:metrics_impl] # SavedModel metrics
+tensorflow::libexport::metrics::Write
+tensorflow::libexport::metrics::Read
+tensorflow::libexport::metrics::WriteApi
+tensorflow::libexport::metrics::ReadApi
+
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
@@ -399,6 +423,3 @@ tensorflow::CopyPythonAPITensorLists
 
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
-
-[//tensorflow/core/framework:attr_value_proto] # tf_text
-tensorflow::AttrValue

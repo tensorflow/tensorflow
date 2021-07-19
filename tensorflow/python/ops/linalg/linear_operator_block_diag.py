@@ -336,21 +336,41 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
         as `self`, or if `x` is blockwise, a list of `Tensor`s with shapes that
         concatenate to `[..., M, R]`.
     """
+    def _check_operators_agree(r, l, message):
+      if (r.range_dimension is not None and
+          l.domain_dimension is not None and
+          r.range_dimension != l.domain_dimension):
+        raise ValueError(message)
+
     if isinstance(x, linear_operator.LinearOperator):
       left_operator = self.adjoint() if adjoint else self
       right_operator = x.adjoint() if adjoint_arg else x
 
-      if (right_operator.range_dimension is not None and
-          left_operator.domain_dimension is not None and
-          right_operator.range_dimension != left_operator.domain_dimension):
-        raise ValueError(
-            "Operators are incompatible. Expected `x` to have dimension"
-            " {} but got {}.".format(
-                left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
+      _check_operators_agree(
+          right_operator, left_operator,
+          "Operators are incompatible. Expected `x` to have dimension"
+          " {} but got {}.".format(
+              left_operator.domain_dimension, right_operator.range_dimension))
+
+      # We can efficiently multiply BlockDiag LinearOperators if the number of
+      # blocks agree.
+      if isinstance(x, LinearOperatorBlockDiag):
+        if len(left_operator.operators) != len(right_operator.operators):
+          raise ValueError(
+              "Can not efficiently multiply two `LinearOperatorBlockDiag`s "
+              "together when number of blocks differ.")
+
+        for o1, o2 in zip(left_operator.operators, right_operator.operators):
+          _check_operators_agree(
+              o2, o1,
+              "Blocks are incompatible. Expected `x` to have dimension"
+              " {} but got {}.".format(
+                  o1.domain_dimension, o2.range_dimension))
+
+      with self._name_scope(name):  # pylint: disable=not-callable
         return linear_operator_algebra.matmul(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       arg_dim = -1 if adjoint_arg else -2
       block_dimensions = (self._block_range_dimensions() if adjoint
                           else self._block_domain_dimensions())
@@ -427,7 +447,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_range_dimensions() if adjoint
                           else self._block_domain_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, -1):
@@ -512,26 +532,42 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
       raise NotImplementedError(
           "Exact solve not implemented for an operator that is expected to "
           "not be square.")
-    if not all(operator.is_square for operator in self.operators):
-      raise NotImplementedError(
-          "Exact solve not implemented for an operator whose blocks are not "
-          "square.")
+
+    def _check_operators_agree(r, l, message):
+      if (r.range_dimension is not None and
+          l.domain_dimension is not None and
+          r.range_dimension != l.domain_dimension):
+        raise ValueError(message)
 
     if isinstance(rhs, linear_operator.LinearOperator):
       left_operator = self.adjoint() if adjoint else self
       right_operator = rhs.adjoint() if adjoint_arg else rhs
 
-      if (right_operator.range_dimension is not None and
-          left_operator.domain_dimension is not None and
-          right_operator.range_dimension != left_operator.domain_dimension):
-        raise ValueError(
-            "Operators are incompatible. Expected `rhs` to have dimension"
-            " {} but got {}.".format(
-                left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
+      _check_operators_agree(
+          right_operator, left_operator,
+          "Operators are incompatible. Expected `x` to have dimension"
+          " {} but got {}.".format(
+              left_operator.domain_dimension, right_operator.range_dimension))
+
+      # We can efficiently solve BlockDiag LinearOperators if the number of
+      # blocks agree.
+      if isinstance(right_operator, LinearOperatorBlockDiag):
+        if len(left_operator.operators) != len(right_operator.operators):
+          raise ValueError(
+              "Can not efficiently solve `LinearOperatorBlockDiag` when "
+              "number of blocks differ.")
+
+        for o1, o2 in zip(left_operator.operators, right_operator.operators):
+          _check_operators_agree(
+              o2, o1,
+              "Blocks are incompatible. Expected `x` to have dimension"
+              " {} but got {}.".format(
+                  o1.domain_dimension, o2.range_dimension))
+
+      with self._name_scope(name):  # pylint: disable=not-callable
         return linear_operator_algebra.solve(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
                           else self._block_range_dimensions())
       arg_dim = -1 if adjoint_arg else -2
@@ -611,7 +647,7 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     Raises:
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
                           else self._block_range_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, rhs, -1):

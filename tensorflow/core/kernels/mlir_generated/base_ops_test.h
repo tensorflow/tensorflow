@@ -24,6 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
+template <typename T>
+using is_integer = llvm::is_one_of<T, int8, int16, int32, int64, uint8, uint16,
+                                   uint32, uint64>;
+
 /// Helper functions to create or derive inputs of the right type and size.
 
 template <typename T, typename LiteralT>
@@ -44,6 +48,18 @@ absl::InlinedVector<T, 10> RepeatInputToMatchShape(
   for (int i = 0; i < size; i++) {
     auto value = input[i % input.size()];
     result.push_back(value);
+  }
+  return result;
+}
+
+template <typename T>
+absl::InlinedVector<T, 10> RepeatElements(absl::InlinedVector<T, 10> input,
+                                          int num_repeats) {
+  absl::InlinedVector<T, 10> result;
+  for (T value : input) {
+    for (int i = 0; i < num_repeats; ++i) {
+      result.push_back(value);
+    }
   }
   return result;
 }
@@ -124,16 +140,16 @@ absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
                                    std::numeric_limits<double>::infinity()});
 }
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
+template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
   return InputAsVector<T, T>({std::numeric_limits<T>::min(),
                               std::numeric_limits<T>::min() + 1, -1, 0, 1,
                               std::numeric_limits<T>::max()});
 }
 
-template <typename T>
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
 absl::InlinedVector<T, 10> NearZeroInfAndNanInput() {
   return InputAsVector<T, double>({-std::numeric_limits<double>::quiet_NaN(),
                                    -std::numeric_limits<double>::infinity(),
@@ -175,12 +191,9 @@ absl::InlinedVector<T, 10> DefaultInputNonZero() {
                                          0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
+template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInputNonZero() {
-  return test::InputAsVector<T, double>(
-      {-18, -9, -1, 1, 3, 4, 5, 7, 9, 10, 18});
+  return test::InputAsVector<T, int>({-18, -9, -1, 1, 3, 4, 5, 7, 9, 10, 18});
 }
 
 template <typename T, std::enable_if_t<
@@ -192,9 +205,7 @@ absl::InlinedVector<T, 10> DefaultInputBetweenZeroAndOne() {
                                          0.999});
 }
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
+template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInputLessThanBitwidth() {
   auto max_shift = sizeof(T) * 8 - 1;
   absl::InlinedVector<T, 10> v;
@@ -204,9 +215,7 @@ absl::InlinedVector<T, 10> DefaultInputLessThanBitwidth() {
 
 /// Helper functions to get default input data.
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
+template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInput() {
   return InputAsVector<T, int>({-18, -9, -1, 0, 0, 1, 1, 2, 3, 5, 7, 9, 9, 18});
 }
@@ -259,6 +268,24 @@ absl::InlinedVector<T, 10> DefaultInputNonZero() {
   auto real = test::DefaultInputNonZero<typename T::value_type>();
   auto imag = real;
   std::reverse(imag.begin(), imag.end());
+  return test::ComplexInputFromValues<T>(real, imag);
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
+                                           std::complex<double>>::value,
+                           bool> = true>
+absl::InlinedVector<T, 10> NearZeroInfAndNanInput() {
+  using ElementType = typename T::value_type;
+  auto input = test::NearZeroInfAndNanInput<ElementType>();
+  absl::InlinedVector<ElementType, 10> real;
+  absl::InlinedVector<ElementType, 10> imag;
+  for (ElementType r : input) {
+    for (ElementType i : input) {
+      real.push_back(r);
+      imag.push_back(i);
+    }
+  }
   return test::ComplexInputFromValues<T>(real, imag);
 }
 

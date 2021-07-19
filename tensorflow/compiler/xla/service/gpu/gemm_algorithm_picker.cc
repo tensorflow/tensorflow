@@ -48,8 +48,8 @@ static tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
 static auto& autotune_cache TF_GUARDED_BY(autotune_cache_mu) =
     *new absl::flat_hash_map<GemmCacheKey,
                              absl::optional<se::blas::AlgorithmType>>();
-static int64 cache_hits TF_GUARDED_BY(autotune_cache_mu) = 0;
-static int64 cache_misses TF_GUARDED_BY(autotune_cache_mu) = 0;
+static int64_t cache_hits TF_GUARDED_BY(autotune_cache_mu) = 0;
+static int64_t cache_misses TF_GUARDED_BY(autotune_cache_mu) = 0;
 
 // Experimentally tries to pick the best algorithm for the given gemm.
 //
@@ -65,15 +65,19 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   }
 
   const HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
-  const bool init_cublas_data =
-      hlo_module_config.debug_options().xla_gpu_autotune_level() > 1;
+  const int32 cublas_autotune_level =
+      gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
+  const bool init_cublas_data = cublas_autotune_level >= 2;
+  const bool reinit_cublas_data = cublas_autotune_level >= 3;
+  const bool check_cublas = cublas_autotune_level >= 4;
+
   se::RedzoneAllocator input_output_allocator(
       stream, allocator, PtxOptsFromConfig(hlo_module_config),
       /*memory_limit=*/std::numeric_limits<int64>::max());
 
   BufferComparator comparator(gemm->shape(), hlo_module_config);
 
-  int64 rng_state = 0;
+  int64_t rng_state = 0;
   auto get_initialized_buffer =
       [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
@@ -102,10 +106,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
   GemmBackendConfig backend_config =
       gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-  const int32 cublas_autotune_level =
-      gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
-  const bool reinit_cublas_data = cublas_autotune_level > 2;
-  const bool check_cublas = cublas_autotune_level > 3;
 
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
 
@@ -121,7 +121,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     // Make sure the output buffer always has the same value if we use
     // the bias parameter.
     if (reinit_cublas_data && backend_config.beta() != 0) {
-      int64 rng_state = 0;
+      int64_t rng_state = 0;
       InitializeBuffer(stream, gemm->shape().element_type(), &rng_state,
                        output_buffer);
     }
@@ -227,7 +227,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
   tensorflow::mutex_lock cache_lock(autotune_cache_mu);
   auto it = autotune_cache.find(key);
-  int64 autotuning_requests = cache_hits + cache_misses;
+  int64_t autotuning_requests = cache_hits + cache_misses;
   if (autotuning_requests && autotuning_requests % 10 == 0) {
     VLOG(2) << "Autotuning cache hits/(hits + misses): " << cache_hits << "/"
             << autotuning_requests;

@@ -45,6 +45,7 @@ enum CollectiveType {
   BROADCAST_COLLECTIVE,
   GATHER_COLLECTIVE,
   PERMUTE_COLLECTIVE,
+  ALL_TO_ALL_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
 };
 
@@ -71,9 +72,6 @@ struct CollGroupParams {
   bool same_num_devices_per_task = false;
   // Task -> number of devices on that task.
   std::unordered_map<string, int32> num_devices_per_task;
-  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
-  // GPUs.  Assumes same GPU configuration at each worker.
-  string gpu_ring_order = "";
   int32 num_tasks;  // number of distinct tasks in group
   CollGroupRuntimeDetails runtime_details;
   string ToString() const;
@@ -395,6 +393,8 @@ class NcclCommunicatorInterface {
  public:
   virtual ~NcclCommunicatorInterface() = default;
 
+  virtual string GenerateCommunicatorKey() = 0;
+
   virtual void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                        StatusCallback done) = 0;
 
@@ -425,13 +425,6 @@ class CollectiveImplementationInterface : public core::RefCounted {
   // object.
   virtual Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) = 0;
-
-  // Performs collective implementation specific group initialization.  The
-  // intention is to do group-specific initialization of runtime details for the
-  // collective implementation.  Currently used only to set `communicator_key`
-  // in techniques which use a communicator for distributed collectives (NCCL).
-  virtual Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails* col_group_runtime_details) = 0;
 
   // Processes and moves data according to the logic of this Collective
   // implementation.  Relies on appropriate initialization of op-specific

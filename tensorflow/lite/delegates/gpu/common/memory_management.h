@@ -132,6 +132,7 @@ absl::Status AssignObjectsToTensors(
 absl::Status AssignOffsetsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     const MemoryStrategy& strategy, OffsetsAssignment* assignment,
+    size_t base_addr_align_bytes = 1,
     const UsageGraph* reallocation_graph = nullptr);
 
 }  // namespace gpu

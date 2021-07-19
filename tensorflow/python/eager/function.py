@@ -57,10 +57,10 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_util
+from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
@@ -625,7 +625,7 @@ class _EagerDefinedFunction(object):
                 executor_type=executor_type)
 
     for i, func_graph_output in enumerate(self._func_graph_outputs):
-      custom_gradient.copy_handle_data(func_graph_output, outputs[i])
+      handle_data_util.copy_handle_data(func_graph_output, outputs[i])
     if executing_eagerly:
       return outputs
     else:
@@ -771,7 +771,7 @@ class _DelayedRewriteGradientFunctions(object):
         forward_function._output_shapes[len(op.outputs):])
     for i in range(len(op.outputs)):
       func_graph_output = forward_function._func_graph_outputs[i]
-      custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
+      handle_data_util.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
 
     capture_mapping = dict(
@@ -938,7 +938,7 @@ class _TapeGradientFunctions(object):
         gradient_shape, gradient_dtype = default_gradient.shape_and_dtype(
             output)
         gradient_placeholder = graph_placeholder(gradient_dtype, gradient_shape)
-        custom_gradient.copy_handle_data(output, gradient_placeholder)
+        handle_data_util.copy_handle_data(output, gradient_placeholder)
         gradients_wrt_outputs.append(gradient_placeholder)
       with ops.device(None):
         gradients_wrt_inputs = gradients_util._GradientsHelper(  # pylint: disable=protected-access
@@ -1039,7 +1039,7 @@ class _TapeGradientFunctions(object):
           if capture is not None:
             forward_wrapper_graph.add_capture(capture, input_placeholder)
             if capture.dtype == dtypes.resource:
-              custom_gradient.copy_handle_data(capture, input_placeholder)
+              handle_data_util.copy_handle_data(capture, input_placeholder)
           else:
             forward_wrapper_graph.inputs.append(input_placeholder)
         for inp, arg in zip(forward_wrapper_graph.inputs, inference_args):
@@ -1860,6 +1860,7 @@ class ConcreteFunction(core.ConcreteFunction):
     arg_pieces = nest.flatten(arg, expand_composites=True)
     spec_pieces = nest.flatten(spec, expand_composites=True)
     for (arg_piece, spec_piece) in zip(arg_pieces, spec_pieces):
+      # TODO(mdan): Use consistent error messages.
       if isinstance(spec_piece, tensor_spec.DenseSpec):
         # TODO(edloper): Consider calling convert_to_tensor on non-tensor
         # values here.  That would match the behavior of
@@ -1872,12 +1873,18 @@ class ConcreteFunction(core.ConcreteFunction):
               "{} expected a Tensor in {}, but got {} value {}".format(
                   self._structured_signature_summary(), name,
                   type(arg_piece).__name__, arg_piece))
-      elif arg_piece is not _BOUND_VALUE and arg_piece != spec_piece:
-        raise TypeError("ConcreteFunction {} was constructed with {} value "
-                        "{} in {}, but was called with {} value {}".format(
-                            self._structured_signature_summary(),
-                            type(spec_piece).__name__, spec_piece, name,
-                            type(arg_piece).__name__, arg_piece))
+      elif arg_piece is not _BOUND_VALUE:
+        try:
+          arg_matches_spec = bool(arg_piece == spec_piece)
+        except (ValueError, TypeError):
+          logging.vlog(1, "Error matching value with spec", exc_info=True)
+          arg_matches_spec = False
+        if not arg_matches_spec:
+          raise TypeError("ConcreteFunction {} was constructed with {} value "
+                          "{} in {}, but was called with {} value {}".format(
+                              self._structured_signature_summary(),
+                              type(spec_piece).__name__, spec_piece, name,
+                              type(arg_piece).__name__, arg_piece))
 
   def _call_flat(self, args, captured_inputs, cancellation_manager=None):
     """Executes the wrapped function.
@@ -2200,7 +2207,7 @@ class ConcreteFunction(core.ConcreteFunction):
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
-        custom_gradient.copy_handle_data(self.outputs[j], result[j])
+        handle_data_util.copy_handle_data(self.outputs[j], result[j])
         outputs_list[i] = result[j]
         j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,

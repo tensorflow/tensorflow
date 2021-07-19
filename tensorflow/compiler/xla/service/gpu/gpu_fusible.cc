@@ -35,7 +35,7 @@ namespace {
 //
 // Stay on the conservative side, this is smaller than full 64kB, but allows
 // some extra space for cache.
-int64 kSharedMemoryBudgetInBytes = 40000;
+int64_t kSharedMemoryBudgetInBytes = 40000;
 
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
@@ -69,7 +69,7 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
 
 std::vector<int64> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
   std::vector<int64> relative_order;
-  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+  for (int64_t dim : LayoutUtil::MinorToMajor(shape)) {
     if (shape.dimensions(dim) > 1) {
       relative_order.push_back(dim);
     }
@@ -78,7 +78,7 @@ std::vector<int64> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
   std::vector<int64> sorted_dims = relative_order;
   std::sort(sorted_dims.begin(), sorted_dims.end());
   for (int64& dim : relative_order) {
-    int64 sorted_index = std::distance(
+    int64_t sorted_index = std::distance(
         sorted_dims.begin(),
         std::lower_bound(sorted_dims.begin(), sorted_dims.end(), dim));
     dim = sorted_index;
@@ -93,7 +93,7 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   std::vector<HloInstruction*> params;
   AppendParams(producer, &params);
   AppendParams(reduce, &params);
-  int64 max_true_rank = -1;
+  int64_t max_true_rank = -1;
   std::vector<int64> max_rank_order;
   for (HloInstruction* param : params) {
     if (param->shape().IsArray() &&
@@ -322,7 +322,7 @@ static int64 SharedMemoryUsage(const HloInstruction& instr) {
       IsReductionFromOrToContiguousDimensions(instr)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
-    int64 primitive_size =
+    int64_t primitive_size =
         ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
     if (reduction_info.is_row_reduction) {
       // __shared__[32] is used for row reduction.
@@ -333,7 +333,7 @@ static int64 SharedMemoryUsage(const HloInstruction& instr) {
       return 2 * 32 * 33 * primitive_size;
     }
   } else if (instr.opcode() == HloOpcode::kFusion) {
-    int64 sum = 0;
+    int64_t sum = 0;
     for (const HloInstruction* hlo :
          instr.fused_instructions_computation()->MakeInstructionPostOrder()) {
       sum += SharedMemoryUsage(*hlo);
@@ -393,8 +393,8 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   // But because this is a heuristic and our limit
   // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
   // big difference), we ignore this small inaccuracy in favor of simplicity.
-  int64 num_output_buffers = ShapeUtil::SubshapeCount(instr1.shape()) +
-                             ShapeUtil::SubshapeCount(instr2.shape());
+  int64_t num_output_buffers = ShapeUtil::SubshapeCount(instr1.shape()) +
+                               ShapeUtil::SubshapeCount(instr2.shape());
 
   // The new fusion will have no more operands and outputs than
   //   producer_operands + consumer_operands - 1 + num_output_buffers

@@ -72,7 +72,7 @@ namespace stream_executor {
 namespace gpu {
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
-/* static */ int64 CreatedContexts::next_id_ = 1;  // 0 means "no context"
+/* static */ int64_t CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 namespace {
 

@@ -114,7 +114,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow/python/summary",
     ],
 )
 
@@ -355,8 +355,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "manual",
-        "no-internal-py3",
         "nosan",
     ],
     deps = [

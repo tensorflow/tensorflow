@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "grpcpp/support/byte_buffer.h"
 #include "grpcpp/support/slice.h"
-#include "absl/flags/flag.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -27,8 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/proto_encode_helper.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-
-// (Omitted internal-only flag)
 
 namespace tensorflow {
 namespace grpc {
@@ -98,7 +95,7 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
   const int ndims = val.shape().dims();
   int tensor_shape_bytes = 0;
   for (int d = 0; d < ndims; d++) {
-    int64 dim_size = val.shape().dim_size(d);
+    int64_t dim_size = val.shape().dim_size(d);
     tensor_shape_bytes +=
         2 +  // TensorShapeProto dim tag + varintlength of submessage
         1 +  // TensorShapeProto_Dim::kSizeFieldNumber
@@ -110,9 +107,9 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
                                tensor_shape_bytes);
     // Encode val.shape()
     for (int d = 0; d < ndims; d++) {
-      int64 dim_size = val.shape().dim_size(d);
-      int64 dim_varlen = 1 +  // TensorShapeProto_Dim::kSizeFieldNumber
-                         core::VarintLength(dim_size);
+      int64_t dim_size = val.shape().dim_size(d);
+      int64_t dim_varlen = 1 +  // TensorShapeProto_Dim::kSizeFieldNumber
+                           core::VarintLength(dim_size);
       e->WriteVarlengthBeginning(TensorShapeProto::kDimFieldNumber, dim_varlen);
       e->WriteUint64(TensorShapeProto_Dim::kSizeFieldNumber, dim_size);
     }
@@ -140,7 +137,7 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
 void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
                               ::grpc::ByteBuffer* result) {
   const int kLargeTensorBytes = 1024;
-  const int64 kProtoBufLimitBytes = 1LL << 31;
+  const int64_t kProtoBufLimitBytes = 1LL << 31;
 
   if (val.TotalBytes() > kProtoBufLimitBytes) {
     size_t exceeded_bytes = val.TotalBytes() - kProtoBufLimitBytes;
@@ -193,8 +190,6 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
     //
     // We enable this behavior if the tensor is large.
     bool share_tensor_slice_memory = (tdata.size() > kLargeTensorBytes);
-
-    // (Omitted internal-only conditional)
 
     size_t encoder_size = expected_size - tdata.size();
 

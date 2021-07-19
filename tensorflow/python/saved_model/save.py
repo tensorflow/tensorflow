@@ -761,7 +761,18 @@ def _trace_gradient_functions(graph, saveable_view):
           saveable_view.captured_tensor_node_ids[capture] = (
               saveable_view.captured_tensor_node_ids[outer_capture])
         elif outer_capture.graph is outer_fn.graph:
-          node = _CapturedTensor(outer_capture.name, outer_fn.name)
+          capture_name = outer_capture.name
+          # It's possible for EagerDefinedFunctions to save different names for
+          # input tensors when serialized to FunctionDef (all non-alphanumeric
+          # characters are converted to '_').
+          if isinstance(outer_fn, defun._EagerDefinedFunction):  # pylint:disable=protected-access
+            try:
+              arg_index = outer_fn.graph.inputs.index(outer_capture)
+              capture_name = outer_fn.signature.input_arg[arg_index].name + ":0"
+            except ValueError:
+              pass
+
+          node = _CapturedTensor(capture_name, outer_fn.name)
           saveable_view.add_capture_and_node(capture, node)
         else:
           bad_captures.append(capture.name)
@@ -927,17 +938,14 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
     if serialized is not None:
       proto.concrete_functions[name].CopyFrom(serialized)
 
-  saved_object_metadata = False
   for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
-    has_saved_object_metadata = _write_object_proto(
-        obj, obj_proto, asset_file_def_index, saveable_view.function_name_map)
-    saved_object_metadata = saved_object_metadata or has_saved_object_metadata
-  return proto, saved_object_metadata
+    _write_object_proto(obj, obj_proto, asset_file_def_index,
+                        saveable_view.function_name_map)
+  return proto
 
 
 def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
   """Saves an object into SavedObject proto."""
-  has_saved_object_metadata = False  # The metadata field will be deprecated.
   if isinstance(obj, tracking.Asset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
@@ -963,18 +971,12 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
     if registered_type_proto is None:
       # Fallback for types with no matching registration
       # pylint:disable=protected-access
-      metadata = obj._tracking_metadata
-      if metadata:
-        has_saved_object_metadata = True
       registered_type_proto = saved_object_graph_pb2.SavedUserObject(
           identifier=obj._object_identifier,
           version=versions_pb2.VersionDef(
-              producer=1, min_consumer=1, bad_consumers=[]),
-          metadata=metadata)
+              producer=1, min_consumer=1, bad_consumers=[]))
       # pylint:enable=protected-access
     proto.user_object.CopyFrom(registered_type_proto)
-
-  return has_saved_object_metadata
 
 
 def _export_debug_info(exported_graph, export_dir):
@@ -1187,18 +1189,15 @@ def save(obj, export_dir, signatures=None, options=None):
   @end_compatibility
   """
   # pylint: enable=line-too-long
-  metrics.IncrementWriteApi(_SAVE_V2_LABEL)
-  result = save_and_return_nodes(
-      obj, export_dir, signatures, options, raise_metadata_warning=True)
+  metrics.IncrementWriteApi(_SAVE_V2_LABEL, write_version="2")
+  save_and_return_nodes(obj, export_dir, signatures, options)
   metrics.IncrementWrite()
-  return result
 
 
 def save_and_return_nodes(obj,
                           export_dir,
                           signatures=None,
                           options=None,
-                          raise_metadata_warning=False,
                           experimental_skip_checkpoint=False):
   """Saves a SavedModel while returning all saved nodes and their paths.
 
@@ -1210,8 +1209,6 @@ def save_and_return_nodes(obj,
     signatures: A function or dictionary of functions to save in the SavedModel
       as signatures.
     options: `tf.saved_model.SaveOptions` object for configuring save options.
-    raise_metadata_warning: Whether to raise the metadata warning. This arg will
-      be removed in TF 2.5.
     experimental_skip_checkpoint: If set to `True`, the checkpoint will not
       be written.
 
@@ -1228,8 +1225,7 @@ def save_and_return_nodes(obj,
   meta_graph_def = saved_model.meta_graphs.add()
 
   _, exported_graph, object_saver, asset_info, saved_nodes, node_paths = (
-      _build_meta_graph(obj, signatures, options, meta_graph_def,
-                        raise_metadata_warning))
+      _build_meta_graph(obj, signatures, options, meta_graph_def))
   saved_model.saved_model_schema_version = (
       pywrap_libexport.SAVED_MODEL_SCHEMA_VERSION)
 
@@ -1322,8 +1318,7 @@ def export_meta_graph(obj, filename, signatures=None, options=None):
 def _build_meta_graph_impl(obj,
                            signatures,
                            options,
-                           meta_graph_def=None,
-                           raise_metadata_warning=True):
+                           meta_graph_def=None):
   """Creates a MetaGraph containing the resources and functions of an object."""
   if ops.inside_function():
     raise AssertionError(
@@ -1364,25 +1359,9 @@ def _build_meta_graph_impl(obj,
       for fdef in func._stateless_fn._function_cache.all_values():  # pylint: disable=protected-access
         function_aliases[fdef.name] = alias
 
-  object_graph_proto, saved_object_metadata = _serialize_object_graph(
+  object_graph_proto = _serialize_object_graph(
       saveable_view, asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
-
-  if saved_object_metadata and raise_metadata_warning:
-    tf_logging.warning(
-        'FOR KERAS USERS: The object that you are saving contains one or more '
-        'Keras models or layers. If you are loading the SavedModel with '
-        '`tf.keras.models.load_model`, continue reading (otherwise, you may '
-        'ignore the following instructions). Please change your code to save '
-        'with `tf.keras.models.save_model` or `model.save`, and confirm that '
-        'the file "keras.metadata" exists in the export directory. In the '
-        'future, Keras will only load the SavedModels that have this file. In '
-        'other words, `tf.saved_model.save` will no longer write SavedModels '
-        'that can be recovered as Keras models (this will apply in TF 2.5).'
-        '\n\nFOR DEVS: If you are overwriting _tracking_metadata in your class,'
-        ' this property has been used to save metadata in the SavedModel. The '
-        'metadata field will be deprecated soon, so please move the metadata to'
-        ' a different file.')
 
   return (meta_graph_def, exported_graph, object_saver, asset_info,
           saveable_view.nodes, saveable_view.node_paths)
@@ -1391,8 +1370,7 @@ def _build_meta_graph_impl(obj,
 def _build_meta_graph(obj,
                       signatures,
                       options,
-                      meta_graph_def=None,
-                      raise_metadata_warning=True):
+                      meta_graph_def=None):
   """Creates a MetaGraph under a save context.
 
   Args:
@@ -1405,8 +1383,6 @@ def _build_meta_graph(obj,
     options: `tf.saved_model.SaveOptions` object that specifies options for
       saving.
     meta_graph_def: Optional, the MetaGraphDef proto fill.
-    raise_metadata_warning: Whether to raise a warning when user objects contain
-      non-empty metadata.
 
   Raises:
     AssertionError: If `export_meta_graph` is executing inside a `tf.function`.
@@ -1420,5 +1396,4 @@ def _build_meta_graph(obj,
   """
 
   with save_context.save_context(options):
-    return _build_meta_graph_impl(obj, signatures, options, meta_graph_def,
-                                  raise_metadata_warning)
+    return _build_meta_graph_impl(obj, signatures, options, meta_graph_def)

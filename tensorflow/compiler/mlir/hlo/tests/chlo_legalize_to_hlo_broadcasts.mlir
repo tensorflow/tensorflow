@@ -129,8 +129,8 @@ func @selectv2_broadcast_all(%arg0: tensor<8x1x1xi1>, %arg1: tensor<1x8x1xi32>, 
 
 // CHECK-LABEL: func @selectv2_dynamic_ranked
 func @selectv2_dynamic_ranked(%arg0: tensor<1xi1>, %arg1: tensor<2x?x8xi32>, %arg2: tensor<2x8x8xi32>) -> tensor<2x?x8xi32> {
-  // CHECK-NEXT: %[[SHAPE0:.*]] = shape.const_shape [1] : tensor<1xindex>
-  // CHECK-NEXT: %[[SHAPE2:.*]] = shape.const_shape [2, 8, 8] : tensor<3xindex>
+  // CHECK-DAG: %[[SHAPE0:.*]] = shape.const_shape [1] : tensor<1xindex>
+  // CHECK-DAG: %[[SHAPE2:.*]] = shape.const_shape [2, 8, 8] : tensor<3xindex>
   // CHECK-NEXT: %[[SHAPE1:.*]] = shape.shape_of %arg1 : tensor<2x?x8xi32> -> tensor<3xindex>
   // CHECK-NEXT: %[[CSTR:.*]] = shape.cstr_broadcastable %[[SHAPE1]], %[[SHAPE0]], %[[SHAPE2]] : tensor<3xindex>, tensor<1xindex>, tensor<3xindex>
   // CHECK-NEXT: %[[ASSUME:.*]] = shape.assuming %[[CSTR]] -> (tensor<2x?x8xi32>) {
@@ -313,11 +313,12 @@ func @xorWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4x
 }
 
 // -----
-// CHECK-LABEL: @ZetaWithoutBroadcast
-func @ZetaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+// CHECK-LABEL: @NextAfterWithoutBroadcast
+// CHECK-SAME: (%[[LHS:.*]]: tensor<4xf32>, %[[RHS:.*]]: tensor<4xf32>)
+func @NextAfterWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
     -> tensor<4xf32> {
-  // CHECK: chlo.zeta %arg0, %arg1
-  %0 = chlo.broadcast_zeta %arg0, %arg1
+  // CHECK: chlo.next_after %[[LHS]], %[[RHS]]
+  %0 = chlo.broadcast_next_after %arg0, %arg1
       : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -329,6 +330,16 @@ func @PolygammaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
     -> tensor<4xf32> {
   // CHECK: chlo.polygamma %[[LHS]], %[[RHS]]
   %0 = chlo.broadcast_polygamma %arg0, %arg1
+      : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// -----
+// CHECK-LABEL: @ZetaWithoutBroadcast
+func @ZetaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+    -> tensor<4xf32> {
+  // CHECK: chlo.zeta %arg0, %arg1
+  %0 = chlo.broadcast_zeta %arg0, %arg1
       : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }

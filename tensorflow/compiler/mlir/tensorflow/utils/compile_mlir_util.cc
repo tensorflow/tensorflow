@@ -274,7 +274,7 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     return error_handler.Combine(
         errors::Internal("MLIR Shape refinement failed"));
   }
-  return Status::OK();
+  return error_handler.ConsumeStatus();
 }
 
 void CreateConvertMlirToXlaHloPipeline(
@@ -324,6 +324,8 @@ void CreateConvertMlirToXlaHloPipeline(
 
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
+  if (prefer_tf2xla)
+    pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateTFEnsureStaticShapesPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
@@ -386,7 +388,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("legalize_hlo_after", module_op);
 
-  return Status::OK();
+  return error_handler.ConsumeStatus();
 }
 
 Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
@@ -631,6 +633,14 @@ Status CompileGraphSetup(
 
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("compile_graph_setup_before", module_op);
+  if (VLOG_IS_ON(2)) {
+    // Print the whole module after each pass which requires disabling
+    // multi-threading as well.
+    module_op.getContext()->disableMultithreading();
+    pm.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
+        /*print_module_scope=*/true));
+  }
+
   mlir::StatusScopedDiagnosticHandler diag_handler(module_op.getContext());
   if (failed(pm.run(module_op))) return diag_handler.ConsumeStatus();
   if (VLOG_IS_ON(1))

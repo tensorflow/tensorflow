@@ -29,6 +29,10 @@ from absl.testing import absltest
 import numpy as np
 import tensorflow.compat.v2 as tf
 
+# Prevent Python exception from circular dependencies (b/117329403) looking very
+# similar to https://bugs.python.org/issue43546.
+from tensorflow.python.distribute import distribution_strategy_context  # pylint: disable=unused-import
+
 from tensorflow.tools.docs import tf_doctest_lib
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.

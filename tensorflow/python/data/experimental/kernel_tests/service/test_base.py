@@ -64,6 +64,7 @@ def _make_worker(dispatcher_address, shutdown_quiet_period_ms=0, port=0):
   return server_lib.WorkerServer(config_proto, start=False)
 
 
+# pylint: disable=protected-access
 class TestWorker(object):
   """A tf.data service worker."""
 
@@ -74,12 +75,11 @@ class TestWorker(object):
     self._running = False
 
   def stop(self):
-    self._server._stop()  # pylint: disable=protected-access
+    self._server._stop()
     self._running = False
 
   def start(self):
     self._server.start()
-    # pylint: disable=protected-access
     self._port = int(self._server._address.split(":")[1])
     self._running = True
 
@@ -93,13 +93,17 @@ class TestWorker(object):
     self._server = _make_worker(self._dispatcher_address,
                                 self._shutdown_quiet_period_ms, port)
     self._server.start()
-    # pylint: disable=protected-access
     self._port = int(self._server._address.split(":")[1])
     self._running = True
 
+  def join(self):
+    self._server.join()
+
   def num_tasks(self):
-    # pylint: disable=protected-access
     return self._server._num_tasks()
+
+  def worker_address(self):
+    return self._server._address
 
 
 class TestCluster(object):
@@ -195,6 +199,9 @@ class TestCluster(object):
   def num_registered_workers(self):
     return self.dispatcher._num_workers()
 
+  def num_tasks_on_workers(self):
+    return sum(worker.num_tasks() for worker in self.workers)
+
   def __del__(self):
     # Destroy workers before the dispatcher for clean shutdown.
     self.workers.clear()
@@ -212,7 +219,8 @@ class TestBase(test_base.DatasetTestBase):
                                consumer_index=None,
                                num_consumers=None,
                                max_outstanding_requests=None,
-                               compression="AUTO"):
+                               compression="AUTO",
+                               target_workers="AUTO"):
     # pylint: disable=protected-access
     return dataset.apply(
         data_service_ops._distribute(
@@ -223,7 +231,8 @@ class TestBase(test_base.DatasetTestBase):
             num_consumers=num_consumers,
             max_outstanding_requests=max_outstanding_requests,
             task_refresh_interval_hint_ms=20,
-            compression=compression))
+            compression=compression,
+            target_workers=target_workers))
 
   def make_distributed_range_dataset(self,
                                      num_elements,
@@ -231,7 +240,8 @@ class TestBase(test_base.DatasetTestBase):
                                      processing_mode="parallel_epochs",
                                      job_name=None,
                                      max_outstanding_requests=None,
-                                     compression="AUTO"):
+                                     compression="AUTO",
+                                     target_workers="AUTO"):
     dataset = dataset_ops.Dataset.range(num_elements)
     return self.make_distributed_dataset(
         dataset,
@@ -239,7 +249,8 @@ class TestBase(test_base.DatasetTestBase):
         processing_mode=processing_mode,
         job_name=job_name,
         max_outstanding_requests=max_outstanding_requests,
-        compression=compression)
+        compression=compression,
+        target_workers=target_workers)
 
   def make_coordinated_read_dataset(self, cluster, num_consumers):
     """Creates a dataset that performs coordinated reads.

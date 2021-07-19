@@ -35,22 +35,17 @@ int64 GetTotalGPUMemory(PlatformDeviceId gpu_id) {
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie();
 
-  int64 total_memory, available_memory;
+  int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
   return total_memory;
 }
 
-Status GetComputeCapability(PlatformDeviceId gpu_id, int* cc_major,
-                            int* cc_minor) {
-  se::StreamExecutor* se =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .ValueOrDie();
-  if (!se->GetDeviceDescription().cuda_compute_capability(cc_major, cc_minor)) {
-    *cc_major = 0;
-    *cc_minor = 0;
-    return errors::Internal("Failed to get compute capability for device.");
-  }
-  return Status::OK();
+se::CudaComputeCapability GetComputeCapability() {
+  return DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+                                                   PlatformDeviceId(0))
+      .ValueOrDie()
+      ->GetDeviceDescription()
+      .cuda_compute_capability();
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
@@ -349,10 +344,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithPriority) {
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
 // error.
 TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
-  int cc_major, cc_minor;
-  TF_ASSERT_OK(GetComputeCapability(PlatformDeviceId(0), &cc_major, &cc_minor));
-  // Exit early while running on Pascal or later GPUs.
-  if (cc_major >= 6) {
+  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
     return;
   }
 
@@ -373,10 +365,8 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr double kGpuMemoryFraction = 1.2;
   static constexpr PlatformDeviceId kPlatformDeviceId(0);
 
-  int cc_major, cc_minor;
-  TF_ASSERT_OK(GetComputeCapability(kPlatformDeviceId, &cc_major, &cc_minor));
   // Exit early if running on pre-Pascal GPUs.
-  if (cc_major < 6) {
+  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
     LOG(INFO)
         << "Unified memory allocation is not supported with pre-Pascal GPUs.";
     return;
@@ -388,7 +378,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
       opts, kDeviceNamePrefix, &devices));
   ASSERT_EQ(1, devices.size());
 
-  int64 memory_limit = devices[0]->attributes().memory_limit();
+  int64_t memory_limit = devices[0]->attributes().memory_limit();
   ASSERT_EQ(memory_limit,
             static_cast<int64>(GetTotalGPUMemory(kPlatformDeviceId) *
                                kGpuMemoryFraction));
@@ -496,7 +486,7 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
 
   // Mature the kernels in order until empty.
   while (!queued_counts.empty()) {
-    int64 x = queued_counts.front();
+    int64_t x = queued_counts.front();
     queued_counts.pop_front();
     kernel_tracker_->RecordTerminated(x);
     EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());
@@ -507,12 +497,12 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
   // Next inject so many kernel events that the ring buffer needs
   // to grow a couple of times, while maturing a few in random order
   // to introduce gaps between last_completed_ and first_available_.
-  int64 lower_bound = timing_counter_->get();
+  int64_t lower_bound = timing_counter_->get();
   for (int i = 0; i < 1111; ++i) {
     uint64 queued_count = timing_counter_->next();
     queued_counts.push_back(queued_count);
     RecordQueued(queued_count);
-    int64 upper_bound = timing_counter_->get();
+    int64_t upper_bound = timing_counter_->get();
     if (0 == (i % 16)) {
       size_t index = (random::New64() % queued_counts.size());
       kernel_tracker_->RecordTerminated(queued_counts[index]);
@@ -524,7 +514,7 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
 
   // Next mature the remaining kernels in order until empty.
   while (!queued_counts.empty()) {
-    int64 x = queued_counts.front();
+    int64_t x = queued_counts.front();
     queued_counts.pop_front();
     kernel_tracker_->RecordTerminated(x);
     EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());

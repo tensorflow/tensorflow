@@ -23,7 +23,9 @@ cc_library(
     deps = [
         ":op_signature",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/schema:schema_utils",
@@ -41,6 +43,7 @@ tf_cc_test(
     ],
     deps = [
         ":versioning",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
@@ -58,10 +61,73 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:stderr_reporter",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "op_signature_test",
+    srcs = [
+        "op_signature_test.cc",
+    ],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+    ],
+    deps = [
+        ":op_signature",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite:model_builder",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_compatibility",
+    srcs = [
+        "gpu_compatibility.cc",
+    ],
+    hdrs = [
+        "gpu_compatibility.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":op_signature",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/lite/schema:schema_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_compatibility_test",
+    srcs = [
+        "gpu_compatibility_test.cc",
+    ],
+    data = [
+        "//tensorflow/lite:testdata/conv3d_huge_im2col.bin",
+        "//tensorflow/lite:testdata/conv_huge_im2col.bin",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
+    ],
+    deps = [
+        ":gpu_compatibility",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite:model_builder",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )

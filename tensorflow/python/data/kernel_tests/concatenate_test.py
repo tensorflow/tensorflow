@@ -148,6 +148,13 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(TypeError, "have different types"):
       input_dataset.concatenate(dataset_to_concatenate)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testConcatenateWindows(self):
+    a = dataset_ops.Dataset.range(5).window(1)
+    b = dataset_ops.Dataset.range(5, 10).window(1)
+    c = a.concatenate(b).flat_map(lambda x: x)
+    self.assertDatasetProduces(c, list(range(10)))
+
 
 class ConcatenateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
@@ -161,12 +168,13 @@ class ConcatenateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     return dataset_ops.Dataset.from_tensor_slices(input_components).concatenate(
         dataset_ops.Dataset.from_tensor_slices(to_concatenate_components))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testConcatenateCore(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
     num_outputs = 9
     array = np.tile(np.array([[16], [17], [18], [19], [20]]), 15)
-    self.run_core_tests(lambda: self._build_concatenate_dataset(array),
-                        num_outputs)
+    verify_fn(self, lambda: self._build_concatenate_dataset(array), num_outputs)
 
 
 if __name__ == "__main__":

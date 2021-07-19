@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
+#include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -43,7 +46,7 @@ CollectiveExecutorMgr::~CollectiveExecutorMgr() {
   }
 }
 
-CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64 step_id) {
+CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64_t step_id) {
   CollectiveExecutor* ce = nullptr;
   {
     mutex_lock l(exec_mu_);
@@ -59,14 +62,13 @@ CollectiveExecutor* CollectiveExecutorMgr::FindOrCreate(int64 step_id) {
   return ce;
 }
 
-CollectiveExecutor* CollectiveExecutorMgr::Create(int64 step_id) {
+CollectiveExecutor* CollectiveExecutorMgr::Create(int64_t step_id) {
   CollectiveRemoteAccessLocal* rma =
       new CollectiveRemoteAccessLocal(dev_mgr_, dev_resolver_.get(), step_id);
-  return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_,
-                                    &gpu_ring_order_, work_queue_);
+  return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_, work_queue_);
 }
 
-void CollectiveExecutorMgr::Cleanup(int64 step_id) {
+void CollectiveExecutorMgr::Cleanup(int64_t step_id) {
   CollectiveExecutor* ce = nullptr;
   {
     mutex_lock l(exec_mu_);
@@ -87,9 +89,21 @@ void CollectiveExecutorMgr::GetStepSequenceAsync(
 }
 
 void CollectiveExecutorMgr::RefreshStepIdSequenceAsync(
-    int64 graph_key, const StatusCallback& done) {
+    int64_t graph_key, const StatusCallback& done) {
   done(errors::Internal(
       "CollectiveExecutorMgr does not implement RefreshStepIdSequence."));
+}
+
+std::unique_ptr<CollectiveExecutorMgr> CreateProdLocalCollectiveExecutorMgr(
+    const ConfigProto& config, const DeviceMgr* device_mgr,
+    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator) {
+  auto device_resolver = absl::make_unique<DeviceResolverLocal>(device_mgr);
+  auto param_resolver = absl::make_unique<CollectiveParamResolverLocal>(
+      config, device_mgr, device_resolver.get(), nccl_communicator.get(),
+      "/job:localhost/replica:0/task:0");
+  return absl::make_unique<CollectiveExecutorMgr>(
+      config, device_mgr, std::move(device_resolver), std::move(param_resolver),
+      std::move(nccl_communicator));
 }
 
 }  // namespace tensorflow

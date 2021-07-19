@@ -32,6 +32,19 @@ func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
 
 // -----
 
+// CHECK-LABEL: func @reduce_scatter
+func @reduce_scatter(%data: memref<4x16xf32>, %result:memref<4x4xf32>) {
+  "lmhlo.reduce_scatter"(%data, %result) ( {
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (memref<4x16xf32>, memref<4x4xf32>) -> ()
+  return
+}
+// -----
+
 // CHECK-LABEL: func @mixed_types_allgather
 func @mixed_types_allgather(%a0: memref<1x1xf32>, %a1:memref<1x1xi32>) {
   "lmhlo.all_gather"(%a0, %a1, %a0, %a1) {all_gather_dimension = 0 : i64,

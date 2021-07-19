@@ -39,6 +39,15 @@ namespace {
 struct TestResourceAliasAnalysis
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TestResourceAliasAnalysis, TF::ResourceAliasAnalysis> {
+  StringRef getArgument() const final {
+    return "tf-test-resource-alias-analysis";
+  }
+
+  StringRef getDescription() const final {
+    return "Add remarks based on resource alias analysis result, for testing "
+           "purpose.";
+  }
+
   void runOnFunction(FuncOp func,
                      const TF::ResourceAliasAnalysis::Info& analysis) {
     int64_t next_id = 0;
@@ -101,10 +110,7 @@ struct TestResourceAliasAnalysis
   }
 };
 
-static mlir::PassRegistration<TestResourceAliasAnalysis> pass(
-    "tf-test-resource-alias-analysis",
-    "Add remarks based on resource alias analysis result, for testing "
-    "purpose.");
+static mlir::PassRegistration<TestResourceAliasAnalysis> pass;
 
 }  // anonymous namespace
 }  // namespace TF

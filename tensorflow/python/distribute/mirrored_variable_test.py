@@ -24,6 +24,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -33,6 +34,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
@@ -439,8 +441,6 @@ class MirroredVariableCreationTest(test.TestCase):
         _ = distribution.extended.call_for_each_replica(model_fn, args=(names,))
 
   def testSyncOnReadVariable(self, distribution):
-    if context.executing_eagerly():
-      self.skipTest("Skip the test due to b/137400477.")
 
     all_v_sum = {}
     all_v_mean = {}
@@ -544,8 +544,6 @@ class MirroredVariableCreationTest(test.TestCase):
         self.assertStartsWith(v1._op.name, "replica_1/")
 
   def testSyncOnReadVariableUpdate(self, distribution):
-    if context.executing_eagerly():
-      self.skipTest("Skip the test due to b/137400477.")
 
     def model_fn():
       v_sum = variable_scope.variable(
@@ -615,6 +613,37 @@ class MirroredVariableCreationTest(test.TestCase):
 
       for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES):
         self.assertIsNotNone(v.initializer)
+
+  def testCustomGradient(self, distribution):
+
+    class CustomModel:
+
+      def __init__(self):
+        self._v = variables.Variable(1.0)
+
+      def __call__(self):
+
+        @custom_gradient.recompute_grad
+        def _call():
+          return self._v + 1
+
+        return _call()
+
+    with distribution.scope():
+      model = CustomModel()
+
+      @def_function.function
+      def train_step():
+
+        def replica_step():
+          with backprop.GradientTape() as tape:
+            result = model()
+          return tape.gradient(result, [model._v])
+
+        return distribution.run(replica_step)
+
+    grads = distribution.experimental_local_results(train_step())
+    self.assertLen(grads, distribution.num_replicas_in_sync)
 
 
 if __name__ == "__main__":

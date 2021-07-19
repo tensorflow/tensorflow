@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 
@@ -73,9 +74,15 @@ bool MatchBinaryInstructionOperandOpcode(HloOpcode opcode,
                                          HloInstruction** matching_operand,
                                          HloInstruction** other_operand);
 
+// Returns whether the module contains the given collective communication
+// instructions with constrained layout.
+bool ContainsLayoutConstrainedCollective(const HloModule& module, HloOpcode op);
+
 // Returns whether the module contains all-reduce instructions with constrained
 // layout.
-bool ContainsLayoutConstrainedAllReduce(const HloModule& module);
+inline bool ContainsLayoutConstrainedAllReduce(const HloModule& module) {
+  return ContainsLayoutConstrainedCollective(module, HloOpcode::kAllReduce);
+}
 
 // Returns the next available channel id that can be used in the given module
 // (for HloChannelInstructions).

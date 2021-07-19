@@ -53,8 +53,11 @@ class CopyInsertion : public HloModulePass {
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
   explicit CopyInsertion(
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
-      : can_share_buffer_(can_share_buffer) {}
+      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr,
+      bool use_region_based_live_range_analysis = false)
+      : can_share_buffer_(can_share_buffer),
+        use_region_based_live_range_analysis_(
+            use_region_based_live_range_analysis) {}
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
@@ -65,7 +68,7 @@ class CopyInsertion : public HloModulePass {
   // eligible for copy elision are considered for removal.
   // If check_live_range_ordering is true, check that live ranges are ordered
   // in all the existing aliased buffers.
-  Status RemoveUnnecessaryCopies(const HloOrdering& ordering, HloModule* module,
+  Status RemoveUnnecessaryCopies(HloOrdering* ordering, HloModule* module,
                                  bool check_live_range_ordering = false);
 
   // Add copies to address special constraints on the roots of computations not
@@ -95,6 +98,10 @@ class CopyInsertion : public HloModulePass {
 
  private:
   Status AddCopiesToResolveInterference(HloModule* module);
+  // TODO(b/189898980): the region based live range analysis currently
+  // does not enforce a strict ordering of the merged live ranges. This may
+  // cause problems for parallel workloads (e.g., in SPMD).
+  bool use_region_based_live_range_analysis_;
 };
 
 }  // namespace xla

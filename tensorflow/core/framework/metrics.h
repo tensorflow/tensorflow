@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -52,6 +55,12 @@ monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name);
 //
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
 monitoring::CounterCell* GetTFDataElementsCounter(const string& name);
+
+// Returns a gauge than can be used to record the performance model information.
+//
+// The `id` argument represents the (unique) model ID.
+monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
+    const string& id);
 
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64 num_bytes);
@@ -134,6 +143,9 @@ void UpdateGraphOptimizationPassTime(const string& pass_name,
                                      const uint64 running_time_usecs);
 void UpdateGrapplerPassTime(const string& pass_name,
                             const uint64 running_time_usecs);
+
+// Updates metrics for time to distribute variables to all TPU hosts.
+void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);

@@ -164,29 +164,29 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   }
 }
 
-// Create a 8-bit TOSA TABLE constant tensor
+// Create a 8-bit TOSA TABLE constant tensor with int8[256] array.
 // Follow PopulateLookupTable() tensorflow/lite/kernels/activations.cc
 Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             double output_scale, int32_t output_zp,
                             std::function<double(double)> func) {
-  SmallVector<int16_t, 513> table;
+  SmallVector<int8_t, 256> table;
 
-  for (int32_t i = -256; i <= 256; i++) {
+  for (int32_t i = -128; i < 128; i++) {
     double dequantized = input_scale * (i - input_zp);
     double transformed = func(dequantized);
     int32_t rescaled = std::llround(transformed / output_scale);
     int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
     table.push_back(
-        static_cast<int16_t>(std::min(std::max(quantized, -32768), 32767)));
+        static_cast<int8_t>(std::min(std::max(quantized, -128), 127)));
   }
 
   auto element_qtype =
-      UniformQuantizedType::get(true, rewriter.getIntegerType(16),
-                                rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
-  auto const_type = RankedTensorType::get({513}, element_qtype);
+      UniformQuantizedType::get(true, rewriter.getIntegerType(8),
+                                rewriter.getF32Type(), 1.0f, 0, -128, 127);
+  auto const_type = RankedTensorType::get({256}, element_qtype);
   auto storage_type =
-      RankedTensorType::get({513}, element_qtype.getStorageType());
+      RankedTensorType::get({256}, element_qtype.getStorageType());
   auto const_attr =
       DenseElementsAttr::get(storage_type, llvm::makeArrayRef(table));
 
@@ -195,8 +195,8 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
-// Create a 16-bit TOSA TABLE constant tensor
-// Only used for 16-bit softmax now
+// Create a 16-bit TOSA TABLE constant tensor with int16[513] array.
+// Output is restricted to [-1.0, 1.0].
 // Follow gen_lut() tensorflow/lite/kernels/internal/common.h
 Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
                              std::function<double(double)> func, double min,
@@ -238,8 +238,8 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
-// Create a 32-bit TOSA TABLE constant tensor
-// Output is restricted to [-1.0, 1.0] as s0.31 format
+// Create a 32-bit TOSA TABLE constant tensor with int16[513] array.
+// Output is restricted to [-1.0, 1.0] as s0.31 format.
 void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             std::function<double(double)> func,
@@ -358,7 +358,7 @@ bool getPaddingValuesFromPadType(
     int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
     int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
 
-    tensorflow::int64 op_size, pad_before_tf,
+    int64_t op_size, pad_before_tf,
         pad_after_tf;  // Complains if using int64_T
     tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
         input_type.getDimSize(ifm_dim), filter_type.getDimSize(filter_dim),
@@ -525,43 +525,6 @@ template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
                                                        Operation*,
                                                        ArrayRef<int32_t> vec,
                                                        ArrayRef<int64_t> shape);
-
-static ElementsAttr getDefiningOpConstElementsAttr(Value input) {
-  if (!input.getDefiningOp()) {
-    return nullptr;
-  }
-  if (auto qconst_op = dyn_cast<TFL::QConstOp>(input.getDefiningOp())) {
-    return qconst_op.value().dyn_cast<ElementsAttr>();
-  }
-  if (auto tosa_const_op = dyn_cast<tosa::ConstOp>(input.getDefiningOp())) {
-    return tosa_const_op.value().dyn_cast<ElementsAttr>();
-  }
-  return nullptr;
-}
-
-// Strip off quantization information for bias tensor and return a unquantized
-// bias. This assumes that the input is defined as a constant.
-Value getUnquantizedBias(PatternRewriter& rewriter, Operation* op,
-                         Value input) {
-  auto input_type = input.getType().dyn_cast<mlir::RankedTensorType>();
-  assert(input_type && "bias input is not a RankedTensorType");
-  auto input_element_type = input_type.getElementType();
-  auto input_element_qtype =
-      input_element_type.dyn_cast<mlir::quant::QuantizedType>();
-  ElementsAttr input_value_attr = getDefiningOpConstElementsAttr(input);
-
-  if (input_element_qtype && input_value_attr) {
-    auto output_type = RankedTensorType::get(
-        input_type.getShape(),
-        rewriter.getIntegerType(
-            input_element_qtype.getStorageTypeIntegralWidth()));
-    auto const_op = rewriter.create<tosa::ConstOp>(op->getLoc(), output_type,
-                                                   input_value_attr);
-    return const_op.getResult();
-  }
-
-  return input;
-}
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {

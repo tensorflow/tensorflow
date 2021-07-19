@@ -50,6 +50,16 @@ namespace {
 
 using ::tensorflow::profiler::ScopedAnnotation;
 
+bool NeedsAsyncCommsStream(Thunk& thunk) {
+  switch (thunk.kind()) {
+    case Thunk::Kind::kNcclAllReduceStart:
+    case Thunk::Kind::kNcclAllReduceDone:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -98,26 +108,21 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   stream_executor::PlatformKind platform_kind =
       main_stream->parent()->platform_kind();
   if (platform_kind == stream_executor::PlatformKind::kROCm) {
-    int stream_isa_version;
-    main_stream->parent()->GetDeviceDescription().rocm_amdgpu_isa_version(
-        &stream_isa_version);
-    int gpu_exec_isa_version =
-        absl::get<std::pair<int, std::string>>(gpu_version_).first;
-    TF_RET_CHECK(stream_isa_version == gpu_exec_isa_version)
-        << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_isa_version
-        << ", but was " << stream_isa_version;
+    std::string stream_arch = main_stream->parent()
+                                  ->GetDeviceDescription()
+                                  .rocm_amdgpu_gcn_arch_name();
+    std::string gpu_exec_arch = absl::get<std::string>(gpu_version_);
+    TF_RET_CHECK(stream_arch == gpu_exec_arch)
+        << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
+        << ", but was " << stream_arch;
   } else if (platform_kind == stream_executor::PlatformKind::kCuda) {
-    std::pair<int, int> stream_compute_compatibility;
-    main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
-        &stream_compute_compatibility.first,
-        &stream_compute_compatibility.second);
-    GpuVersion nvidia_compute_compatibility = stream_compute_compatibility;
-    TF_RET_CHECK(nvidia_compute_compatibility == gpu_version_)
+    GpuVersion cc = main_stream->GetCudaComputeCapability();
+    TF_RET_CHECK(absl::get<se::CudaComputeCapability>(cc) ==
+                 absl::get<se::CudaComputeCapability>(gpu_version_))
         << "Compute capability mismatch; expected {"
-        << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
-        << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
-        << stream_compute_compatibility.first << ", "
-        << stream_compute_compatibility.second << "}";
+        << absl::get<se::CudaComputeCapability>(gpu_version_).ToString()
+        << "}, but was {" << absl::get<se::CudaComputeCapability>(cc).ToString()
+        << "}";
   } else {
     return InternalError("Unknown platform: %d", platform_kind);
   }
@@ -137,6 +142,9 @@ Status GpuExecutable::ExecuteThunks(
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
+
+  StatusOr<StreamPool::Ptr> async_comms_stream =
+      run_options->BorrowStream(executor->device_ordinal());
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {
@@ -182,11 +190,16 @@ Status GpuExecutable::ExecuteThunks(
 
     VLOG(2) << "Executing the thunk for " << thunk->profile_annotation()
             << " on stream " << stream_no;
+
+    TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
+        << "`run_options` must have a stream borrower for async thunks.";
+
     const GpuExecutableRunOptions* gpu_options =
         run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
         &buffer_allocations,
         stream,
+        async_comms_stream.ok() ? async_comms_stream->get() : nullptr,
         run_options->run_options().run_id(),
         &profiler,
         run_options->run_options().device_assignment(),
@@ -305,11 +318,11 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
     se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
-    int64 arg_idx) {
+    int64_t arg_idx) {
   if (allocation.is_thread_local()) {
     return se::DeviceMemoryBase{};
   } else if (allocation.is_entry_computation_parameter()) {
-    int64 param_no = allocation.parameter_number();
+    int64_t param_no = allocation.parameter_number();
     se::DeviceMemoryBase registered_buffer = [&] {
       if (auto unowned_shapedbuffers =
               absl::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
@@ -339,7 +352,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
   } else {
     // Allocate each allocation that might escape, or is the temp buffer.
     CHECK(allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer());
-    const int64 buffer_size = allocation.size();
+    const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
       TF_ASSIGN_OR_RETURN(
@@ -353,7 +366,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
 
 static Status CheckAlignment(const BufferAllocation& allocation,
                              se::DeviceMemoryBase buffer, int arg_idx) {
-  const int64 expected_alignment = [&] {
+  const int64_t expected_alignment = [&] {
     if (allocation.is_entry_computation_parameter()) {
       return kEntryParameterAlignBytes;
     } else if (allocation.is_constant()) {
@@ -381,10 +394,10 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
       [&] { return std::string("Build buffer allocations"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  const int64 num_buffers = allocations_.size();
+  const int64_t num_buffers = allocations_.size();
   std::vector<se::DeviceMemoryBase> buffers;
   buffers.reserve(num_buffers);
-  for (int64 i = 0; i < num_buffers; ++i) {
+  for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = allocations_[i];
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase buffer,
@@ -520,7 +533,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         // buffer.
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";
-        int64 allocation_size =
+        int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
         TF_ASSIGN_OR_RETURN(
             se::OwningDeviceMemory allocated_buffer,
@@ -575,7 +588,7 @@ int64 GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   if (binary().empty() && !text_.empty()) {
     return -1;
   }
-  int64 size = binary().size();
+  int64_t size = binary().size();
   for (BufferAllocation::Index i = 0; i < allocations_.size(); ++i) {
     const BufferAllocation& allocation = allocations_[i];
     if (allocation.is_constant()) {

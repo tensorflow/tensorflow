@@ -101,6 +101,9 @@ def _validate_deprecation_args(date, instructions):
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
   # Two up: <_call_location>, <_call_location's caller>
+  # tf_inspect is not required here. Please ignore the lint warning by adding
+  # DISABLE_IMPORT_INSPECT_CHECK=TRUE to your cl description. Using it caused
+  # test timeouts (b/189384061).
   f = inspect.currentframe().f_back.f_back
   parent = f.f_back
   if outer and parent is not None:
@@ -390,8 +393,8 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
       Must be ISO 8601 (YYYY-MM-DD), or None.
     instructions: String. Instructions on how to update code using the
       deprecated function.
-    *deprecated_arg_names_or_tuples: String or 2-Tuple(String,
-      [ok_vals]).  The string is the deprecated argument name.
+    *deprecated_arg_names_or_tuples: String or 2-Tuple (String,
+      ok_val).  The string is the deprecated argument name.
       Optionally, an ok-value may be provided.  If the user provided
       argument equals this value, the warning is suppressed.
     **kwargs: If `warn_once=False` is passed, every call with a deprecated

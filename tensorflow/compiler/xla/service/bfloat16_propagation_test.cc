@@ -1224,14 +1224,14 @@ true_branch {
   constant.1 = f32[4096,4096] constant(0)
   add0 = f32[4096,4096] fusion(true_param,true_param), kind=kLoop, calls=add.0
   constant.2 = f32[4096,4096] constant(0)
-  ROOT tuple.2 = (f32[4096,4096], f32[4096,4096], f32[]) tuple(true_param,add0,constant.2)
+  ROOT tuple.2 = (f32[4096,4096], f32[4096,4096], f32[4096,4096]) tuple(true_param,add0,constant.2)
 }
 
 false_branch {
   false_param = f32[4096,4096] parameter(0)
   add3 = f32[4096,4096] fusion(false_param,false_param), kind=kLoop, calls=add.1
   constant.1 = f32[4096,4096] constant(0)
-  ROOT tuple.2 = (f32[4096,4096], f32[4096,4096], f32[]) tuple(add3, add3,constant.1)
+  ROOT tuple.2 = (f32[4096,4096], f32[4096,4096], f32[4096,4096]) tuple(add3, add3,constant.1)
 }
 
 ENTRY entry {

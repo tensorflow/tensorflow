@@ -17,38 +17,50 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
+
+// Match the instruction to a reduction kind. We can represent and/or of pred as
+// min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
+absl::optional<ReductionKind> MatchReductionInstruction(
+    const HloInstruction* hlo) {
+  PrimitiveType type = hlo->shape().element_type();
+  switch (hlo->opcode()) {
+    case HloOpcode::kAdd:
+      return ReductionKind::SUM;
+    case HloOpcode::kMultiply:
+      return ReductionKind::PRODUCT;
+    case HloOpcode::kMinimum:
+      return ReductionKind::MIN;
+    case HloOpcode::kMaximum:
+      return ReductionKind::MAX;
+    case HloOpcode::kAnd:
+      return type == PRED ? absl::optional<ReductionKind>(ReductionKind::MIN)
+                          : absl::nullopt;
+    case HloOpcode::kOr:
+      return type == PRED ? absl::optional<ReductionKind>(ReductionKind::MAX)
+                          : absl::nullopt;
+    default:
+      return absl::nullopt;
+  }
+}
 
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation) {
   namespace m = match;
   const HloInstruction* root = computation->root_instruction();
-
-  auto match_opcode = [&](HloOpcode opcode) {
-    return Match(
-        root, m::Op()
-                  .WithOpcode(opcode)
-                  .WithBinaryOperandsAnyOrder(m::Parameter(0), m::Parameter(1))
-                  .WithShape(m::Shape().IsEffectiveScalar()));
-  };
-
-  // Match the operation to a reduction kind. We can represent and/or of pred as
-  // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
-  PrimitiveType type = computation->root_instruction()->shape().element_type();
-  if (match_opcode(HloOpcode::kAdd)) {
-    return ReductionKind::SUM;
-  } else if (match_opcode(HloOpcode::kMultiply)) {
-    return ReductionKind::PRODUCT;
-  } else if (match_opcode(HloOpcode::kMinimum) ||
-             (type == PRED && match_opcode(HloOpcode::kAnd))) {
-    return ReductionKind::MIN;
-  } else if (match_opcode(HloOpcode::kMaximum) ||
-             (type == PRED && match_opcode(HloOpcode::kOr))) {
-    return ReductionKind::MAX;
-  } else {
-    return absl::nullopt;
+  auto kind = MatchReductionInstruction(root);
+  if (kind && !Match(root, m::Op()
+                               .WithBinaryOperandsAnyOrder(m::Parameter(0),
+                                                           m::Parameter(1))
+                               .WithShape(m::Shape().IsEffectiveScalar()))) {
+    kind = absl::nullopt;
   }
+  return kind;
 }
 
 StatusOr<std::vector<int>> GetParticipatingIDs(
@@ -121,7 +133,7 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
   int partition_count = device_assignment.computation_count();
 
   std::vector<ReplicaGroup> participating_replica_groups =
-      std::vector<ReplicaGroup>(replica_groups.begin(), replica_groups.end());
+      SpanToVector(replica_groups);
 
   // If replica groups are empty, assume a group with all replicas.
   if (replica_groups.empty()) {
@@ -311,6 +323,24 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       return participants;
     }
   }
+}
+
+bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
+                             absl::Span<const ReplicaGroup> second) {
+  if (first.size() != second[0].replica_ids_size()) {
+    return false;
+  }
+  if (first[0].replica_ids_size() != second.size()) {
+    return false;
+  }
+  for (int64 i = 0; i < first.size(); ++i) {
+    for (int64 j = 0; j < first[i].replica_ids_size(); ++j) {
+      if (first[i].replica_ids(j) != second[j].replica_ids(i)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 }  // end namespace xla

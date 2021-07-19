@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
@@ -703,6 +703,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -735,9 +736,10 @@ tf_cc_test(
     name = "xplane_to_tf_data_stats_test",
     size = "small",
     srcs = ["xplane_to_tf_data_stats_test.cc"],
-    tags = [
-        "no_oss",  # b/169705709
-    ],
+    tags = if_oss([
+        "manual",
+        "no_oss",
+    ]),  # b/169705709, no protobuf matchers in OSS.
     deps = [
         ":xplane_to_tf_data_stats",
         "//tensorflow/core:test",

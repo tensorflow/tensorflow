@@ -112,6 +112,22 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         device_util.resolve(destination), device_util.resolve(result.device))
 
+  @combinations.generate(
+      combinations.combine(mode=["graph", "eager"], required_gpus=1))
+  def testCopyIndexedSlicesNoDenseShape(self):
+    with ops.device("/cpu:0"):
+      t = ops.IndexedSlices(
+          indices=array_ops.identity([0]), values=array_ops.identity([1.]))
+    destination = "/gpu:0"
+    result = cross_device_utils.copy_tensor_or_indexed_slices_to_device(
+        t, destination)
+
+    self.assertIsInstance(result, ops.IndexedSlices)
+    self.assertAllEqual(t.indices, result.indices)
+    self.assertAllEqual(t.values, result.values)
+    self.assertEqual(
+        device_util.resolve(destination), device_util.resolve(result.device))
+
 
 class GroupBySizeTest(test.TestCase):
 

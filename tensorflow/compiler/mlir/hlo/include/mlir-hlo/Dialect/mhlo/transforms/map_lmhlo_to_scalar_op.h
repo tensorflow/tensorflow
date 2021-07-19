@@ -38,7 +38,12 @@ namespace impl {
 // A struct to map LhloBinaryOpTy type to the corresponding floating-point and
 // integer scalar operation types.
 template <typename LhloBinaryOpTy>
-struct LhloToScalarOp;
+struct LhloToScalarOp {
+  using FOp = void;
+  using IOp = void;
+  using UOp = void;
+  using COp = void;
+};
 
 template <>
 struct LhloToScalarOp<lmhlo::AddOp> {
@@ -122,6 +127,16 @@ struct MapLhloOpToScalarOpImpl<SupportedType, StdScalarOp, Args...> {
       return b->template create<StdScalarOp>(loc, result_types, args,
                                              mlir::None);
     }
+    return MapLhloOpToScalarOpImpl<Args...>{}(loc, result_types, arg_types,
+                                              args, b);
+  }
+};
+
+template <typename SupportedType, typename... Args>
+struct MapLhloOpToScalarOpImpl<SupportedType, void, Args...> {
+  Value operator()(Location loc, ArrayRef<Type> result_types,
+                   ArrayRef<Type> arg_types, ArrayRef<Value> args,
+                   OpBuilder* b) {
     return MapLhloOpToScalarOpImpl<Args...>{}(loc, result_types, arg_types,
                                               args, b);
   }
@@ -323,7 +338,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ExpOp>(Location loc,
                                                   ArrayRef<Type> arg_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::ExpOp>{}(
+  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::ExpOp,
+                                 isComplexType, ::mlir::complex::ExpOp>{}(
       loc, result_types, arg_types, args, b);
 }
 
@@ -558,7 +574,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogOp>(Location loc,
                                                   ArrayRef<Type> arg_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::LogOp>{}(
+  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::LogOp,
+                                 isComplexType, ::mlir::complex::LogOp>{}(
       loc, result_types, arg_types, args, b);
 }
 
@@ -598,7 +615,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::Log1pOp>(Location loc,
                                                     ArrayRef<Type> arg_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::Log1pOp>{}(
+  return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::math::Log1pOp,
+                                 isComplexType, ::mlir::complex::Log1pOp>{}(
       loc, result_types, arg_types, args, b);
 }
 
@@ -670,8 +688,9 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::NegOp>(Location loc,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
   Type element_type = getElementTypeOrSelf(args.front().getType());
-  if (element_type.isa<FloatType>()) {
-    return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::NegFOp>{}(
+  if (element_type.isa<ComplexType, FloatType>()) {
+    return MapLhloOpToScalarOpImpl<isFloatType, ::mlir::NegFOp, isComplexType,
+                                   ::mlir::complex::NegOp>{}(
         loc, result_types, arg_types, args, b);
   }
   if (element_type.isa<IntegerType>()) {
@@ -885,6 +904,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
         b->create<::mlir::SignedShiftRightOp>(loc, args[0], bitwidth_minus_one);
     Value or_op = b->create<::mlir::OrOp>(loc, ashr, one);
     return b->create<::mlir::SelectOp>(loc, cmp, zero, or_op);
+  } else if (element_type.isa<ComplexType>()) {
+    return b->create<::mlir::complex::SignOp>(loc, element_type, args.front());
   }
   return nullptr;
 }

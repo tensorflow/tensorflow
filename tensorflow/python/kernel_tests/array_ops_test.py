@@ -733,7 +733,10 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       f = func.get_concrete_function(
           tensor_spec.TensorSpec([2, 2], dtypes.int16))
 
-      ones = constant_op.constant([[1, 1], [1, 1]], dtypes.int16)
+      # TODO(b/190416665): Allow the constant to be eagerly copied/created on
+      # the GPU.
+      with ops.device("CPU"):
+        ones = constant_op.constant([[1, 1], [1, 1]], dtypes.int16)
       self.assertAllEqual([[1, 1]], self.evaluate(f(ones)))
 
   def testTensorIndexing(self):
@@ -1572,7 +1575,7 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       for dtype in [dtypes.int32, dtypes.int64]:
         with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    "index is out of bound as with dims"):
+                                    "dims cannot contain a dim of zero"):
           indices = constant_op.constant([2, 5, 7], dtype=dtype)
           dims = constant_op.constant([3, 0], dtype=dtype)
           self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))

@@ -121,6 +121,42 @@ inline void UpdateStateValues(Node::ModelParameters* parameters) {
   }
 }
 
+// Recursively produces protos for nodes in a subtree of `output` node and
+// appends them to nodes of the given model.
+Status ModelToProtoHelper(std::shared_ptr<Node> output, ModelProto* model) {
+  model->set_output(output->id());
+  std::list<std::shared_ptr<Node>> to_serialize = {output};
+  auto& nodes = *model->mutable_nodes();
+  while (!to_serialize.empty()) {
+    const std::shared_ptr<Node> node = to_serialize.front();
+    to_serialize.pop_front();
+    TF_RETURN_IF_ERROR(node->ToProto(&(nodes[node->id()])));
+    for (auto input : node->inputs()) {
+      to_serialize.push_back(input);
+    }
+  }
+  return Status::OK();
+}
+
+// Recursively produces node tree rooted in `output` from the given model proto.
+Status ModelFromProtoHelper(ModelProto model, std::shared_ptr<Node>* output) {
+  TF_RETURN_IF_ERROR(Node::FromProto(model.nodes().at(model.output()),
+                                     /*output=*/nullptr, output));
+  std::list<std::shared_ptr<Node>> to_restore_inputs = {*output};
+  while (!to_restore_inputs.empty()) {
+    std::shared_ptr<Node> node = to_restore_inputs.front();
+    to_restore_inputs.pop_front();
+    for (int64 input_id : model.nodes().at(node->id()).inputs()) {
+      std::shared_ptr<Node> input;
+      TF_RETURN_IF_ERROR(
+          Node::FromProto(model.nodes().at(input_id), node, &input));
+      node->add_input(input);
+      to_restore_inputs.push_back(input);
+    }
+  }
+  return Status::OK();
+}
+
 // The first input of InterleaveMany corresponds to the input dataset whose
 // elements are used to create the (derived) input datasets whose elements are
 // interleaved as output.
@@ -1481,10 +1517,9 @@ Status Node::ToProto(ModelProto::Node* node_proto) const {
     parameter_proto->set_tunable(parameter.second->state->tunable);
   }
 
-  // Produce protos for all inputs.
+  // Add input node ids.
   for (auto const& input : inputs_) {
-    ModelProto::Node* input_proto = node_proto->add_inputs();
-    TF_RETURN_IF_ERROR(input->ToProto(input_proto));
+    node_proto->add_inputs(input->id());
   }
   return Status::OK();
 }
@@ -1529,44 +1564,44 @@ Status Node::FromProto(ModelProto::Node node_proto,
                        std::shared_ptr<Node>* node) {
   // Note that parameters are restored in `FromProtoHelper`.
   Args args = {node_proto.id(), node_proto.name(), std::move(output)};
-  std::shared_ptr<Node> restored_node;
   switch (node_proto.node_class()) {
     case NodeClass::INTERLEAVE_MANY:
-      restored_node = std::make_shared<InterleaveMany>(args);
+      *node = std::make_shared<InterleaveMany>(args);
       break;
     case NodeClass::ASYNC_INTERLEAVE_MANY:
-      restored_node = std::make_shared<AsyncInterleaveMany>(
+      *node = std::make_shared<AsyncInterleaveMany>(
           args, /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
       break;
     case NodeClass::KNOWN_RATIO:
-      restored_node = std::make_shared<KnownRatio>(args, node_proto.ratio());
+      *node = std::make_shared<KnownRatio>(args, node_proto.ratio());
       break;
     case NodeClass::ASYNC_KNOWN_RATIO:
-      restored_node = std::make_shared<AsyncKnownRatio>(
+      *node = std::make_shared<AsyncKnownRatio>(
           args, node_proto.ratio(), node_proto.memory_ratio(),
           /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
       break;
     case NodeClass::UNKNOWN_RATIO:
-      restored_node = std::make_shared<UnknownRatio>(args);
+      *node = std::make_shared<UnknownRatio>(args);
       break;
     default:
-      restored_node = std::make_shared<Unknown>(args);
+      *node = std::make_shared<Unknown>(args);
   }
-  TF_RETURN_IF_ERROR(FromProtoHelper(node_proto, restored_node));
-
-  // Restore all input nodes as well.
-  int64 num_inputs = node_proto.inputs_size();
-  for (int64 i = 0; i < num_inputs; i++) {
-    const ModelProto::Node& input_proto = node_proto.inputs(i);
-    std::shared_ptr<Node> input;
-    TF_RETURN_IF_ERROR(FromProto(input_proto, restored_node, &input));
-    restored_node->add_input(input);
-  }
-  (*node) = std::move(restored_node);
-  return Status::OK();
+  return FromProtoHelper(node_proto, *node);
 }
 
-bool Model::publish_ = false;
+Model::Model()
+    : collect_resource_usage_(false),
+      optimization_period_ms_(kOptimizationPeriodMinMs) {
+  model_gauge_cell_ = metrics::GetTFDataModelGauge(
+      strings::StrCat(reinterpret_cast<uint64>(this)));
+  model_gauge_cell_->Set([&]() { return DebugString(); });
+}
+
+Model::~Model() {
+  // Before the model is destroyed, we record its final state in the gauge.
+  auto result = DebugString();
+  model_gauge_cell_->Set([result]() { return result; });
+}
 
 void Model::AddNode(Node::Factory factory, const string& name,
                     std::shared_ptr<Node> parent,
@@ -1635,22 +1670,6 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
                  "optimization.";
       return;
-  }
-  if (publish() || !save_dir_.empty()) {
-    mutex_lock l(*snapshot_buffer_mu_);
-    if (snapshot_buffer_->size() >= kMaxNumBufferedSnapshots) {
-      snapshot_buffer_->pop_back();
-    }
-    snapshot_buffer_->push_front(
-        OptimizationSnapshot{snapshot, optimization_params, /*saved=*/false});
-    if (!save_dir_.empty()) {
-      Status status = EnsureSaveLoopThreadStarted();
-      save_cond_var_.notify_all();
-      if (!status.ok()) {
-        LOG(WARNING) << "Model saving thread failed to start: "
-                     << status.error_message();
-      }
-    }
   }
 }
 
@@ -1913,21 +1932,17 @@ double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
 }
 
 Status Model::ToProto(ModelProto* model_proto) {
-  ModelProto::Node* output_proto = model_proto->mutable_output();
   tf_shared_lock l(mu_);
-  TF_RETURN_IF_ERROR(output_->ToProto(output_proto));
   model_proto->set_id_counter(id_counter_);
   model_proto->set_collect_resource_usage(collect_resource_usage_);
-  return Status::OK();
+  return ModelToProtoHelper(output_, model_proto);
 }
 
 Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
   std::unique_ptr<Model> restored_model = std::make_unique<Model>();
-  std::shared_ptr<Node> output;
-  TF_RETURN_IF_ERROR(
-      Node::FromProto(model_proto.output(), /*output=*/nullptr, &output));
   mutex_lock l(restored_model->mu_);
-  restored_model->output_ = output;
+  TF_RETURN_IF_ERROR(
+      ModelFromProtoHelper(model_proto, &restored_model->output_));
   restored_model->id_counter_ = model_proto.id_counter();
   restored_model->collect_resource_usage_.store(
       model_proto.collect_resource_usage());
@@ -1963,79 +1978,25 @@ Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
   return Status::OK();
 }
 
-Status Model::EnsureSaveLoopThreadStarted()
-    TF_EXCLUSIVE_LOCKS_REQUIRED(snapshot_buffer_mu_) {
-  if (!save_thread_) {
-    save_thread_ = absl::WrapUnique(
-        Env::Default()->StartThread({}, "tf_data_model_save", [this]() {
-          Status status = SaveLoop();
-          if (!status.ok()) {
-            VLOG(2) << "Model save loop failed: " << status.ToString();
-          }
-        }));
+std::string Model::DebugString() {
+  constexpr int64 kMinSecondsBetweenCalls = 30;
+  if (absl::Now() < cache_until_) return cached_debug_string_;
+  std::shared_ptr<Node> snapshot;
+  {
+    tf_shared_lock l(mu_);
+    if (!output_) return cached_debug_string_;
+    snapshot = output_->Snapshot();
   }
-  return Status::OK();
-}
-
-Status Model::SaveLoop() {
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(save_dir_));
-  while (true) {
-    OptimizationSnapshot to_save;
-    {
-      mutex_lock l(*snapshot_buffer_mu_);
-      while (!save_thread_cancelled_ &&
-             (snapshot_buffer_->empty() || snapshot_buffer_->front().saved)) {
-        save_cond_var_.wait(l);
-      }
-      if (save_thread_cancelled_) {
-        return Status::OK();
-      }
-      // Find and save the oldest snapshot that hasn't been saved.
-      for (auto snapshot = snapshot_buffer_->rbegin();
-           snapshot != snapshot_buffer_->rend(); ++snapshot) {
-        if (!snapshot->saved) {
-          snapshot->saved = true;
-          to_save = *snapshot;
-          break;
-        }
-      }
-    }
-    string model_name =
-        absl::StrCat("autotune_model_",
-                     Hash64Combine(static_cast<uint64>(EnvTime::NowMicros()),
-                                   reinterpret_cast<uint64>(this)));
-    string fname = io::JoinPath(save_dir_, model_name);
-    TF_RETURN_IF_ERROR(Save(fname, to_save.output, to_save.params));
-    VLOG(2) << "Model was saved as " << fname;
+  // TODO(jsimsa): Populate OptimizationParams.
+  ModelProto model_proto;
+  Status s = ModelToProtoHelper(snapshot, &model_proto);
+  if (s.ok()) {
+    cached_debug_string_ = model_proto.DebugString();
+  } else {
+    LOG(WARNING) << s.error_message();
   }
-}
-
-Status Model::PublishLatest(absl::Cord* model) {
-  tf_shared_lock l(*publish_mu());
-  for (auto& pair : *snapshot_buffers()) {
-    model->Append(
-        absl::StrCat("Model #", reinterpret_cast<uint64>(pair.first), ":\n"));
-    OptimizationSnapshot to_publish;
-    {
-      auto& snapshot_buffer = pair.second;
-      tf_shared_lock l(*(snapshot_buffer.mu));
-      if (snapshot_buffer.snapshots->empty()) {
-        return Status::OK();
-      }
-      to_publish = snapshot_buffer.snapshots->front();
-    }
-    // Note that we only publish the output node snapshot and the optimization
-    // parameters, `id_counter_` and `collect_resource_usage_` will have default
-    // values but can be recovered from `output_` if needed.
-    ModelProto model_proto;
-    ModelProto::Node* node_proto = model_proto.mutable_output();
-    TF_RETURN_IF_ERROR(to_publish.output->ToProto(node_proto));
-    OptimizationParams* saved_optimization_params =
-        model_proto.mutable_optimization_params();
-    *saved_optimization_params = to_publish.params;
-    model->Append(absl::StrCat(model_proto.DebugString(), "\n"));
-  }
-  return Status::OK();
+  cache_until_ = absl::Now() + absl::Seconds(kMinSecondsBetweenCalls);
+  return cached_debug_string_;
 }
 
 }  // namespace model

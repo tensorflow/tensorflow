@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 
+#include <algorithm>
+#include <string>
+#include <utility>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -100,10 +104,15 @@ void Arguments::RenameArgs(const std::string& postfix,
   }
 }
 
-absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
+absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix,
+                              const std::vector<std::string>& exception_names) {
   std::vector<std::string> object_names;
   object_names.reserve(args.object_refs_.size() + args.objects_.size());
   for (auto& v : args.object_refs_) {
+    if (std::find(exception_names.begin(), exception_names.end(), v.first) !=
+        exception_names.end()) {
+      continue;
+    }
     object_names.push_back(v.first);
     const std::string name = v.first + postfix;
     if (object_refs_.find(name) != object_refs_.end()) {
@@ -113,6 +122,10 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
     object_refs_[name] = {std::move(v.second)};
   }
   for (auto& v : args.objects_) {
+    if (std::find(exception_names.begin(), exception_names.end(), v.first) !=
+        exception_names.end()) {
+      continue;
+    }
     object_names.push_back(v.first);
     const std::string name = v.first + postfix;
     if (objects_.find(name) != objects_.end()) {
@@ -133,6 +146,21 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
   return absl::OkStatus();
 }
 
+absl::Status Arguments::GetDescriptor(const std::string& name,
+                                      GPUObjectDescriptor** descriptor) const {
+  auto it_ref = object_refs_.find(name);
+  if (it_ref != object_refs_.end()) {
+    *descriptor = it_ref->second.get();
+    return absl::OkStatus();
+  }
+  auto it = objects_.find(name);
+  if (it != objects_.end()) {
+    *descriptor = it->second.get();
+    return absl::OkStatus();
+  }
+  return absl::NotFoundError(absl::StrCat("No GPU object with name - ", name));
+}
+
 void Arguments::ReleaseCPURepresentation() {
   for (auto& t : objects_) {
     t.second->Release();
@@ -149,6 +177,38 @@ void Arguments::GetActiveArguments(const std::string& args_prefix,
   }
   for (auto& half_val : half_values_) {
     half_val.second.active = HasWord(args_prefix + half_val.first, code);
+  }
+}
+
+int Arguments::GetReadTexturesCount(const GpuInfo& gpu_info) const {
+  int counter = 0;
+  for (auto& t : objects_) {
+    counter += t.second->GetGPUResources(gpu_info).GetReadImagesCount();
+  }
+  for (auto& t : object_refs_) {
+    counter += t.second->GetGPUResources(gpu_info).GetReadImagesCount();
+  }
+  return counter;
+}
+
+int Arguments::GetWriteTexturesCount(const GpuInfo& gpu_info) const {
+  int counter = 0;
+  for (auto& t : objects_) {
+    counter += t.second->GetGPUResources(gpu_info).GetWriteImagesCount();
+  }
+  for (auto& t : object_refs_) {
+    counter += t.second->GetGPUResources(gpu_info).GetWriteImagesCount();
+  }
+  return counter;
+}
+
+void Arguments::SetStateValueForAllObjects(const std::string& key,
+                                           const std::string& value) {
+  for (auto& obj : object_refs_) {
+    obj.second->SetStateVar(key, value);
+  }
+  for (auto& obj : objects_) {
+    obj.second->SetStateVar(key, value);
   }
 }
 

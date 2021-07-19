@@ -26,6 +26,13 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
+#if defined(__AVX2__)
+// Matrix multiplication for float values.
+void Avx2MatrixBatchVectorMultiplyAccumulateImpl(
+    const float* __restrict__ matrix, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result);
+#endif  // defined(__AVX2__)
+
 #ifdef __SSSE3__
 
 // Matrix multiplication for quantized values using symmetric quantization.

@@ -107,6 +107,8 @@ enum HostEventType {
   kMapAndBatchConsume,
   kParseExampleProduce,
   kParseExampleConsume,
+  kParallelBatchProduce,
+  kParallelBatchConsume,
   // Batching related.
   kBatchingSessionRun,
   kProcessBatch,
@@ -198,6 +200,8 @@ enum StatType {
   kBytesAccessed,
   kSelectedGroupIds,
   kSourceInfo,
+  kModelName,
+  kModelVersion,
   // Performance counter related.
   kRawValue,
   kScaledValue,

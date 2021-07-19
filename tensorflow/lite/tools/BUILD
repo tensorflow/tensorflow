@@ -24,6 +24,16 @@ py_binary(
     ],
 )
 
+py_library(
+    name = "visualize_lib",
+    srcs = ["visualize.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "visualize_test",
     srcs = ["visualize_test.py"],
@@ -256,7 +266,10 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite/tools:logging"],
+    deps = [
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_test(

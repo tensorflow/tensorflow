@@ -30,11 +30,9 @@ limitations under the License.
 namespace tensorflow {
 
 // A profiler which will start profiling when creating the object and will stop
-// when either the object is destroyed or SerializedToString is called. It will
-// profile all operations run under the given EagerContext.
-// Multiple instances of it can be created, but at most one of them will profile
-// for each EagerContext. Status() will return OK only for the instance that is
-// profiling.
+// when either the object is destroyed or CollectData is called.
+// Multiple instances can be created, but at most one of them will profile.
+// Status() will return OK only for the instance that is profiling.
 // Thread-safety: ProfilerSession is thread-safe.
 class ProfilerSession {
  public:
@@ -61,16 +59,20 @@ class ProfilerSession {
   tensorflow::Status CollectData(profiler::XSpace* space)
       TF_LOCKS_EXCLUDED(mutex_);
 
-  tensorflow::Status CollectData(RunMetadata* run_metadata)
-      TF_LOCKS_EXCLUDED(mutex_);
-
  private:
+  friend class DeviceProfilerSession;
+
   // Constructs an instance of the class and starts profiling
   explicit ProfilerSession(ProfileOptions options);
 
   // ProfilerSession is neither copyable or movable.
   ProfilerSession(const ProfilerSession&) = delete;
   ProfilerSession& operator=(const ProfilerSession&) = delete;
+
+  // For now, this can only be called from DeviceProfilerSession.
+  // Long-term, remove and replace with a converter from XSpace.
+  tensorflow::Status CollectData(RunMetadata* run_metadata)
+      TF_LOCKS_EXCLUDED(mutex_);
 
   std::vector<std::unique_ptr<profiler::ProfilerInterface>> profilers_
       TF_GUARDED_BY(mutex_);

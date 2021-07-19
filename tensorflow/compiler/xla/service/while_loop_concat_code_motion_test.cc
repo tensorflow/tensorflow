@@ -345,7 +345,7 @@ TEST_F(WhileLoopConcatCodeMotionTest, NonElementwiseOps) {
     HloModule test
 
     %cond {
-      %param = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024]) parameter(0)
+      %param = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1]) parameter(0)
       %gte.0 = s32[] get-tuple-element(%param), index=0
       %constant = s32[] constant(5)
       ROOT result = pred[] compare(%gte.0, %constant), direction=LT
@@ -358,7 +358,7 @@ TEST_F(WhileLoopConcatCodeMotionTest, NonElementwiseOps) {
     }
 
     %body {
-      %param = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024]) parameter(0)
+      %param = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1]) parameter(0)
       %gte.0 = s32[] get-tuple-element(%param), index=0
       %gte.1 = f32[1024,1024] get-tuple-element(%param), index=1
       %gte.2 = f32[1024,1024] get-tuple-element(%param), index=2
@@ -381,10 +381,22 @@ TEST_F(WhileLoopConcatCodeMotionTest, NonElementwiseOps) {
       %br1 = f32[1024,1024] broadcast(%add.1), dimensions={1}
       %sub.0 = f32[1024,1024] subtract(%reshape.2, %br0)
       %sub.1 = f32[1024,1024] subtract(%reshape.3, %br1)
+      %gte.5 = f32[1] get-tuple-element(%param), index=5
+      %gte.6 = f32[1] get-tuple-element(%param), index=6
+      %reshape.4 = f32[] reshape(%gte.5)
+      %reshape.5 = f32[] reshape(%gte.6)
+      %br2 = f32[1024] broadcast(%reshape.4), dimensions={}
+      %br3 = f32[1024] broadcast(%reshape.5), dimensions={}
+      %add.2 = f32[1024] add(%add.0, %br2)
+      %add.3 = f32[1024] add(%add.1, %br3)
+      %inc0 = f32[] add(%constant.0, %reshape.4)
+      %inc1 = f32[] add(%constant.0, %reshape.5)
+      %reshape.6 = f32[1] reshape(%inc0)
+      %reshape.7 = f32[1] reshape(%inc1)
       %constant = s32[] constant(1)
       %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
-      ROOT %loop_result = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024])
-        tuple(%increment_iteration, %sub.0, %sub.1, %add.0, %add.1)
+      ROOT %loop_result = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1])
+        tuple(%increment_iteration, %sub.0, %sub.1, %add.2, %add.3, %reshape.6, %reshape.7)
     }
 
     ENTRY test_main {
@@ -392,10 +404,12 @@ TEST_F(WhileLoopConcatCodeMotionTest, NonElementwiseOps) {
       %param.1 = f32[1024,1024] parameter(1)
       %param.2 = f32[1024] parameter(2)
       %param.3 = f32[1024] parameter(3)
+      %param.4 = f32[1] parameter(4)
+      %param.5 = f32[1] parameter(5)
       %constant.0 = s32[] constant(0)
-      %while_init = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024])
-        tuple(%constant.0, %param.0, %param.1, %param.2, %param.3)
-      ROOT %while = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024])
+      %while_init = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1])
+        tuple(%constant.0, %param.0, %param.1, %param.2, %param.3, %param.4, %param.5)
+      ROOT %while = (s32[], f32[1024,1024], f32[1024,1024], f32[1024], f32[1024], f32[1], f32[1])
         while(%while_init), condition=%cond, body=%body
     }
   )";
@@ -412,13 +426,17 @@ TEST_F(WhileLoopConcatCodeMotionTest, NonElementwiseOps) {
                                       op::Reshape(op::Parameter(1)))),
                 AllOf(op::Shape("f32[2,1024]"),
                       op::Concatenate(op::Reshape(op::Parameter(2)),
-                                      op::Reshape(op::Parameter(3))))));
+                                      op::Reshape(op::Parameter(3)))),
+                AllOf(op::Shape("f32[2]"),
+                      op::Concatenate(op::Parameter(4), op::Parameter(5)))));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::GetTupleElement(loop),
                         op::Reshape(op::Slice(op::GetTupleElement(loop))),
                         op::Reshape(op::Slice(op::GetTupleElement(loop))),
                         op::Reshape(op::Slice(op::GetTupleElement(loop))),
-                        op::Reshape(op::Slice(op::GetTupleElement(loop)))));
+                        op::Reshape(op::Slice(op::GetTupleElement(loop))),
+                        op::Slice(op::GetTupleElement(loop)),
+                        op::Slice(op::GetTupleElement(loop))));
 }
 
 }  // namespace
