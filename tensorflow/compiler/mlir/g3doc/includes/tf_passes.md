@@ -607,7 +607,7 @@ For example, the following non replicated computation:
 func @tpu_computation(%arg0: tensor<i32>) -> tensor<i32> {
   // Metadata op for cluster `cluster` with 1 replica, 1 core per replica and
   // with topology `<topology>`.
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", num_relicas = 1, num_cores_per_replica = 1, topology = "<topology>", device_assignment = []} : () -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", num_relicas = 1, num_cores_per_replica = 1, topology = "<topology>", device_assignment = [], padding_map = []} : () -> ()
   %replicated_input = "tf.TPUReplicatedInput"(%arg0) : (tensor<i32>) -> tensor<i32>
   %identity = "tf.Identity"(%replicated_input) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
   %replicated_output = "tf.TPUReplicatedOutput(%identity) : (tensor<i32>) -> tensor<i32>
@@ -622,7 +622,7 @@ func @tpu_computation(%arg0: tensor<i32>) -> tensor<i32> {
   %cluster = "tf_device.cluster"() ( {
     %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
     tf_device.return %identity : tensor<i32>
-  }) {_tpu_replicate = "cluster", num_cores_per_replica = 1, topology = "topology", device_assignment = []} : () -> (tensor<i32>)
+  }) {_tpu_replicate = "cluster", num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> (tensor<i32>)
   return %cluster : tensor<i32>
 }
 ```
@@ -631,7 +631,7 @@ The following replicated computation:
 
 ```mlir
 func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", num_relicas = 2, num_cores_per_replica = 1, topology = "topology", device_assignment = []} : () -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", num_relicas = 2, num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> ()
   %replicated_input = "tf.TPUReplicatedInput"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   %identity = "tf.Identity"(%replicated_input) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
   %replicated_output:2 = "tf.TPUReplicatedOutput(%identity) : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
@@ -647,15 +647,13 @@ func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, t
     %cluster = "tf_device.cluster"() ( {
       %identity = "tf.Identity"(%replicated_input) : (tensor<i32>) -> tensor<i32>
       tf_device.return %identity : tensor<i32>
-    }) {_tpu_replicate = "cluster", num_cores_per_replica = 1, topology = "topology", device_assignment = []} : () -> (tensor<i32>)
+    }) {_tpu_replicate = "cluster", num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> (tensor<i32>)
     tf_device.return %cluster : tensor<i32>
   }
   return %replicate#0, %replicate#1 : tensor<i32>, tensor<i32>
 }
 ```
-
 ### `-tf-tpu-extract-head-tail-outside-compilation`: Extracts TPU head or tail outside compilation to separate host launches before/after device cluster.
-
 This pass extracts a CPU computation cluster with `_xla_outside_compilation`
 annotation from the head or tail of a TPU cluster.
 
@@ -689,13 +687,11 @@ becomes:
 return %2 : tensor<i32>
 
 ```
-
 ### `-tf-tpu-extract-outside-compilation`: Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.
-
 This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-annotation, which denotes ops that should be run on CPU/host, from a TPU
-cluster. Each outside compilation cluster is moved to a
-tf_device.parallel_execute region. The TPU cluster is also moved to a
+annotation, which denotes ops that should be run on CPU/host, from a TPU cluster.
+Each outside compilation cluster is moved to
+a tf_device.parallel_execute region. The TPU cluster is also moved to a
 tf_device.parallel_execute region. Communication ops between device and host are
 added to pass inputs/outputs to/from the outside compiled region.
 
