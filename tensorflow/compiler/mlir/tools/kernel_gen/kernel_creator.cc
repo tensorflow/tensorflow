@@ -257,7 +257,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(::mlir::createConvertComplexToStandardPass());
 
   // Fuse linalg operations.
-  pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgFusionOfTensorOpsPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
   // Partial bufferization: Transforms inparticular HLO and Linalg operations to
   // their corresponding LHLO operations and converts the function signature.
