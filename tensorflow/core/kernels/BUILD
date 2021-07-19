@@ -1843,6 +1843,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["depthwise_conv_ops_test.cc"],
     tags = tf_cuda_tests_tags() + [
+        "no_cuda",  # TODO(b/194100358): re-enable after flakiness resolved.
         "no_cuda_asan",  # TODO(b/171342266): re-enable.
     ],
     deps = [
