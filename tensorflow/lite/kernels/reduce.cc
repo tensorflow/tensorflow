@@ -826,8 +826,9 @@ TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
     TF_LITE_ENSURE(context, output_size != 0);
 
     const int reduced_axis_size = input_size / output_size;
-    const float scaling = GetQuantProdScaling(
-        input->params.scale, output->params.scale, reduced_axis_size);
+    const double scaling = GetQuantProdScaling(
+        static_cast<double>(input->params.scale),
+        static_cast<double>(output->params.scale), reduced_axis_size);
     QuantizeMultiplier(scaling, &data->multiplier, &data->shift);
   }
 
