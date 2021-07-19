@@ -197,8 +197,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    *     model.
    */
   public Interpreter(@NonNull File modelFile, Options options) {
-    super(modelFile, options);
-    signatureNameList = getSignatureDefNames();
+    this(new NativeInterpreterWrapperExperimental(modelFile.getAbsolutePath(), options));
   }
 
   /**
@@ -228,7 +227,12 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    *     direct {@code ByteBuffer} of nativeOrder.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer, Options options) {
-    super(byteBuffer, options);
+    this(new NativeInterpreterWrapperExperimental(byteBuffer, options));
+  }
+
+  private Interpreter(NativeInterpreterWrapperExperimental wrapper) {
+    super(wrapper);
+    wrapperExperimental = wrapper;
     signatureNameList = getSignatureDefNames();
   }
 
@@ -374,7 +378,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    */
   public void resetVariableTensors() {
     checkNotClosed();
-    wrapper.resetVariableTensors();
+    wrapperExperimental.resetVariableTensors();
   }
 
   /**
@@ -397,5 +401,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     wrapper.setCancelled(cancelled);
   }
 
+  NativeInterpreterWrapperExperimental wrapperExperimental;
   String[] signatureNameList;
 }

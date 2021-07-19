@@ -34,7 +34,7 @@ import org.tensorflow.lite.nnapi.NnApiDelegate;
  *
  * <p>Note: This class is not thread safe.
  */
-final class NativeInterpreterWrapper implements AutoCloseable {
+class NativeInterpreterWrapper implements AutoCloseable {
 
   NativeInterpreterWrapper(String modelPath) {
     this(modelPath, /* options= */ null);
@@ -302,10 +302,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native long allocateTensors(
       long interpreterHandle, long errorHandle, int subgraphIndex);
-
-  void resetVariableTensors() {
-    resetVariableTensors(interpreterHandle, errorHandle);
-  }
 
   /** Gets index of an input given its name. */
   int getInputIndex(String name) {
@@ -583,9 +579,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static final int ERROR_BUFFER_SIZE = 512;
 
-  private long errorHandle;
+  long errorHandle;
 
-  private long interpreterHandle;
+  long interpreterHandle;
 
   private long modelHandle;
 

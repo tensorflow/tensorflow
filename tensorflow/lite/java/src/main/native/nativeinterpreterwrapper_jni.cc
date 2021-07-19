@@ -902,26 +902,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
   }
 }
 
-JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_resetVariableTensors(
-    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle) {
-  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return;
-
-  Interpreter* interpreter = convertLongToInterpreter(env, interpreter_handle);
-  if (interpreter == nullptr) return;
-
-  BufferErrorReporter* error_reporter =
-      convertLongToErrorReporter(env, error_handle);
-  if (error_reporter == nullptr) return;
-
-  TfLiteStatus status = interpreter->ResetVariableTensors();
-  if (status != kTfLiteOk) {
-    ThrowException(env, tflite::jni::kIllegalArgumentException,
-                   "Internal error: Failed to reset variable tensors: %s",
-                   error_reporter->CachedErrorMessage());
-  }
-}
-
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createCancellationFlag(
     JNIEnv* env, jclass clazz, jlong interpreter_handle) {
