@@ -124,6 +124,10 @@ class InterpreterImpl implements InterpreterApi {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
   }
 
+  InterpreterImpl(NativeInterpreterWrapper wrapper) {
+    this.wrapper = wrapper;
+  }
+
   @Override
   public void run(Object input, Object output) {
     Object[] inputs = {input};
