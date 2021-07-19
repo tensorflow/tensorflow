@@ -29,6 +29,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include <utility>
+
 #include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -652,9 +654,9 @@ Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
   RefIfNonNull(buf);
 }
 
-Tensor::Tensor(DataType type, const TensorShape& shape,
+Tensor::Tensor(DataType type, TensorShape shape,
                core::RefCountPtr<TensorBuffer> buf)
-    : shape_(shape), buf_(buf.release()) {
+    : shape_(std::move(shape)), buf_(buf.release()) {
   set_dtype(type);
 }
 
