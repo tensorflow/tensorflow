@@ -109,7 +109,8 @@ Status CompilationCacheEntryRef::ToSubEntryRef(
   return Status::OK();
 }
 
-TpuCompilationCacheInterface::TpuCompilationCacheInterface(int64 max_cache_size)
+TpuCompilationCacheInterface::TpuCompilationCacheInterface(
+    int64_t max_cache_size)
     : max_cache_size_(max_cache_size) {
   CHECK_GE(max_cache_size_, 0);
   VLOG(1) << "Created compilation cache size " << max_cache_size_ << " bytes.";
@@ -139,7 +140,8 @@ TpuCompilationCacheInterface::~TpuCompilationCacheInterface() {
   CHECK_EQ(marked_for_eviction_size_, 0);
 }
 
-Status TpuCompilationCacheInterface::MarkEntryForEviction(int64 subgraph_uid) {
+Status TpuCompilationCacheInterface::MarkEntryForEviction(
+    int64_t subgraph_uid) {
   profiler::TraceMe key_release_traceme(
       "TPU compilation cache possibly evict uid",
       /*level=*/2);
@@ -186,7 +188,7 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(int64 subgraph_uid) {
   return Status::OK();
 }
 
-Status TpuCompilationCacheInterface::Release(int64 subgraph_uid) {
+Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
   profiler::TraceMe key_release_traceme("TPU compilation cache release uid",
                                         /*level=*/2);
 
@@ -541,7 +543,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 }
 
 Status TpuCompilationCacheInterface::GetKeysFromUid(
-    int64 uid, std::vector<std::string>* keys) {
+    int64_t uid, std::vector<std::string>* keys) {
   keys->clear();
 
   absl::MutexLock lock(&mu_);
@@ -554,7 +556,7 @@ Status TpuCompilationCacheInterface::GetKeysFromUid(
 }
 
 Status TpuCompilationCacheInterface::Lookup(
-    int64 uid, int proto_index,
+    int64_t uid, int proto_index,
     std::unique_ptr<CompilationCacheEntryRef>* entry) {
   entry->reset();
 

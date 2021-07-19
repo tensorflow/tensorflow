@@ -84,13 +84,16 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
   if (total_count == 0) {
     return;
   }
-  GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
   if (data_format == FORMAT_NHWC) {
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(total_count, d, BiasNHWCKernel<T>, 0, 0);
     TF_CHECK_OK(GpuLaunchKernel(BiasNHWCKernel<T>, config.block_count,
                                 config.thread_per_block, 0, d.stream(),
                                 config.virtual_thread_count, input, bias,
                                 output, bias_size));
   } else {
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(total_count, d, BiasNCHWKernel<T>, 0, 0);
     TF_CHECK_OK(GpuLaunchKernel(BiasNCHWKernel<T>, config.block_count,
                                 config.thread_per_block, 0, d.stream(),
                                 config.virtual_thread_count, input, bias,

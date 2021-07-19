@@ -131,28 +131,22 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
-  // AlgebraicSimplifier
-  {
-    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-        "algebraic_simplification_post_conv_rewriter");
-    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
-                                               /*allow_mixed_precision=*/false);
-
-    AlgebraicSimplifierOptions options;
-    // When transposes appear in a fusion node, we can easily adjust the
-    // multi-dimensional index to create the one needed for the operand. This
-    // is not as easy with bitcasts, because we don't have the information
-    // readily available which dimensions are permuted. In addition to that,
-    // if we have a transpose and a reshape next to each other, they will both
-    // be replaced by a bitcast, and we replace bitcast(bitcast) with one
-    // bitcast. This leads to having to linearize and then delinearize the
-    // index.
-    options.set_replace_transpose_with_bitcast(false);
-    options.set_enable_conv_operand_swap(false);
-    options.set_cudnn_batchnorm_forward_training_metadata(
-        kCudnnBatchNormForwardTrainingCallTarget);
-    pass.AddPass<AlgebraicSimplifier>(options);
-  }
+  // AlgebraicSimplifier  We run algsimp to a fixed point.
+  //
+  // When transposes appear in a fusion node, we can easily adjust the
+  // multi-dimensional index to create the one needed for the operand. This
+  // is not as easy with bitcasts, because we don't have the information
+  // readily available which dimensions are permuted. In addition to that,
+  // if we have a transpose and a reshape next to each other, they will both
+  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+  // bitcast. This leads to having to linearize and then delinearize the
+  // index.
+  AlgebraicSimplifierOptions options;
+  options.set_replace_transpose_with_bitcast(false);
+  options.set_enable_conv_operand_swap(false);
+  options.set_cudnn_batchnorm_forward_training_metadata(
+      kCudnnBatchNormForwardTrainingCallTarget);
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   // GpuConvRewriter, GpuConvPaddingLegalization and
   // CudnnConvPadForTensorCores may add instructions which can be simplified

@@ -2216,3 +2216,43 @@ func @cosh_f16(%x : tensor<f16>) -> tensor<f16> {
   %1 = chlo.cosh %x : tensor<f16> -> tensor<f16>
   return %1 : tensor<f16>
 }
+
+// ----
+
+// CHECK-LABEL: @next_after_f32
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>, %[[ARG1:.*]]: tensor<2xf32>)
+func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: %[[X_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[ARG0]]) : (tensor<2xf32>) -> tensor<2xi32>
+  // CHECK: %[[Y_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[ARG1]]) : (tensor<2xf32>) -> tensor<2xi32>
+  // CHECK: %[[X_IS_NAN:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG0]]) {comparison_direction = "NE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHECK: %[[Y_IS_NAN:.*]] = "mhlo.compare"(%[[ARG1]], %[[ARG1]]) {comparison_direction = "NE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHECK: %[[INPUT_IS_NAN:.*]] = mhlo.or %[[X_IS_NAN]], %[[Y_IS_NAN]] : tensor<2xi1>
+  // CHECK: %[[NAN:.*]] = mhlo.constant dense<0x7FC00000> : tensor<2xf32>
+  // CHECK: %[[NAN_AS_INT:.*]] = "mhlo.bitcast_convert"(%[[NAN]]) : (tensor<2xf32>) -> tensor<2xi32>
+  // CHECK: %[[SIGN_MASK:.*]] = mhlo.constant dense<-2147483648> : tensor<2xi32>
+  // CHECK: %[[NEGATED_SIGN_MASK:.*]] = mhlo.constant dense<2147483647> : tensor<2xi32>
+  // CHECK: %[[X_ABS:.*]] = mhlo.and %[[X_AS_INT]], %[[NEGATED_SIGN_MASK]] : tensor<2xi32>
+  // CHECK: %[[Y_ABS:.*]] = mhlo.and %[[Y_AS_INT]], %[[NEGATED_SIGN_MASK]] : tensor<2xi32>
+  // CHECK: %[[X_AND_Y_ARE_EQUAL:.*]] = "mhlo.compare"(%[[ARG0]], %[[ARG1]]) {comparison_direction = "EQ"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
+  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<2xi32>
+  // CHECK: %[[X_ABS_IS_ZERO:.*]] = "mhlo.compare"(%[[X_ABS]], %[[ZERO]]) {comparison_direction = "EQ"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[Y_ABS_IS_ZERO:.*]] = "mhlo.compare"(%[[Y_ABS]], %[[ZERO]]) {comparison_direction = "EQ"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[X_SIGN:.*]] = mhlo.and %[[X_AS_INT]], %[[SIGN_MASK]] : tensor<2xi32>
+  // CHECK: %[[Y_SIGN:.*]] = mhlo.and %[[Y_AS_INT]], %[[SIGN_MASK]] : tensor<2xi32>
+  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1> : tensor<2xi32>
+  // CHECK: %[[RESULT_FOR_X_ZERO_Y_NON_ZERO:.*]] = mhlo.or %[[Y_SIGN]], %[[ONE]] : tensor<2xi32>
+  // CHECK: %[[SIGNS_DISAGREE:.*]] = "mhlo.compare"(%[[X_SIGN]], %[[Y_SIGN]]) {comparison_direction = "NE"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[X_MAGNITUDE_LARGER_THAN_Y:.*]] = "mhlo.compare"(%[[X_ABS]], %[[Y_ABS]]) {comparison_direction = "GT"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  // CHECK: %[[RESULT_HAS_SMALLER_MAGNITUDE:.*]] = mhlo.or %[[X_MAGNITUDE_LARGER_THAN_Y]], %[[SIGNS_DISAGREE]] : tensor<2xi1>
+  // CHECK: %[[MINUS_ONE:.*]] = mhlo.constant dense<-1> : tensor<2xi32>
+  // CHECK: %[[MAGNITUDE_ADJUSTMENT:.*]] = "mhlo.select"(%[[RESULT_HAS_SMALLER_MAGNITUDE]], %[[MINUS_ONE]], %[[ONE]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: %[[RESULT0:.*]] = mhlo.add %[[X_AS_INT]], %[[MAGNITUDE_ADJUSTMENT]] : tensor<2xi32>
+  // CHECK: %[[RESULT1:.*]] = "mhlo.select"(%[[Y_ABS_IS_ZERO]], %[[Y_AS_INT]], %[[RESULT_FOR_X_ZERO_Y_NON_ZERO]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: %[[RESULT2:.*]] = "mhlo.select"(%[[X_ABS_IS_ZERO]], %[[RESULT1]], %[[RESULT0]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: %[[RESULT3:.*]] = "mhlo.select"(%[[X_AND_Y_ARE_EQUAL]], %[[Y_AS_INT]], %[[RESULT2]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: %[[RESULT4:.*]] = "mhlo.select"(%[[INPUT_IS_NAN]], %[[NAN_AS_INT]], %[[RESULT3]]) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: %[[FINAL_RESULT:.*]] = "mhlo.bitcast_convert"(%[[RESULT4]]) : (tensor<2xi32>) -> tensor<2xf32>
+  // CHECK: return %[[FINAL_RESULT]]
+  %1 = chlo.broadcast_next_after %x, %y : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %1 : tensor<2xf32>
+}

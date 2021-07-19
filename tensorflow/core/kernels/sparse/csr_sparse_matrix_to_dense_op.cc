@@ -92,8 +92,9 @@ class CSRSparseMatrixToDenseCPUOp : public OpKernel {
     auto dense_ptr = dense_t.flat<T>().data();
 
     // Process the individual batches in parallel using a threadpool.
-    auto shard = [&](int64 batch_begin, int64 batch_end) {
-      for (int64 batch_idx = batch_begin; batch_idx < batch_end; ++batch_idx) {
+    auto shard = [&](int64_t batch_begin, int64_t batch_end) {
+      for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
+           ++batch_idx) {
         const int64 csr_batch_offset = batch_ptrs(batch_idx);
         const int64 dense_batch_offset = batch_idx * num_rows * num_cols;
 
@@ -101,7 +102,7 @@ class CSRSparseMatrixToDenseCPUOp : public OpKernel {
           const int64 row_offset = batch_idx * (num_rows + 1) + row_idx;
           const int64 col_begin = row_ptr(row_offset);
           const int64 col_end = row_ptr(row_offset + 1);
-          for (int64 i = col_begin; i < col_end; ++i) {
+          for (int64_t i = col_begin; i < col_end; ++i) {
             const int64 col_idx = col_ind(csr_batch_offset + i);
             dense_ptr[dense_batch_offset + (row_idx * num_cols) + col_idx] =
                 values(csr_batch_offset + i);

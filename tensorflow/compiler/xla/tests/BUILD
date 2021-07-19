@@ -1508,6 +1508,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -2166,8 +2167,8 @@ xla_test(
 )
 
 xla_test(
-    name = "dynamism_inference_test",
-    srcs = ["dynamism_inference_test.cc"],
+    name = "value_inference_test",
+    srcs = ["value_inference_test.cc"],
     deps = [
         ":literal_test_util",
         ":test_macros_header",

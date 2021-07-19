@@ -15,7 +15,7 @@ tf_class {
   }
   member_method {
     name: "from_concrete_functions"
-    argspec: "args=[\'cls\', \'funcs\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'funcs\', \'trackable_obj\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "from_keras_model"

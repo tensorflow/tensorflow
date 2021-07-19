@@ -81,8 +81,8 @@ class LuOp : public OpKernel {
     for (int dim = 0; dim < input_rank - 2; ++dim) {
       batch_shape.AddDim(input.dim_size(dim));
     }
-    const int64 num_rows = input.dim_size(input_rank - 2);
-    const int64 num_cols = input.dim_size(input_rank - 1);
+    const int64_t num_rows = input.dim_size(input_rank - 2);
+    const int64_t num_cols = input.dim_size(input_rank - 1);
 
     input_matrix_shape.AppendShape({num_rows, num_cols});
     OP_REQUIRES(context, TensorShapeUtils::IsSquareMatrix(input_matrix_shape),
@@ -113,8 +113,8 @@ class LuOp : public OpKernel {
 
     // Process the individual matrix problems in parallel using a threadpool.
     auto shard = [this, &input, &num_rows, &num_cols, &outputs,
-                  &output_matrix_shapes, context](int64 begin, int64 end) {
-      for (int64 i = begin; i < end; ++i) {
+                  &output_matrix_shapes, context](int64_t begin, int64_t end) {
+      for (int64_t i = begin; i < end; ++i) {
         ComputeTensorSlice(context, i, input, num_rows, num_cols, outputs,
                            output_matrix_shapes);
       }
@@ -125,9 +125,9 @@ class LuOp : public OpKernel {
           shard);
   }
 
-  void ComputeTensorSlice(OpKernelContext* context, int64 matrix_index,
-                          const Tensor& input, int64 num_rows, int64 num_cols,
-                          const TensorOutputs& outputs,
+  void ComputeTensorSlice(OpKernelContext* context, int64_t matrix_index,
+                          const Tensor& input, int64_t num_rows,
+                          int64_t num_cols, const TensorOutputs& outputs,
                           const TensorShapes& output_matrix_shapes) {
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.

@@ -246,7 +246,7 @@ class Feature {
           if (!stream.ReadRaw(float_list->data() + initial_size, bytes_to_copy))
             return false;
         } else {
-          int64 index = initial_size;
+          int64_t index = initial_size;
           while (!stream.ExpectAtEnd()) {
             uint32 buffer32;
             if (!stream.ReadLittleEndian32(&buffer32)) return false;
@@ -265,7 +265,7 @@ class Feature {
         const int64 num_elements =
             stream.BytesUntilLimit() / (1 + kNumFloatBytes);
         float_list->resize(initial_size + num_elements);
-        int64 index = initial_size;
+        int64_t index = initial_size;
         while (!stream.ExpectAtEnd()) {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32 buffer32;
@@ -482,7 +482,7 @@ bool TestFastParse(const string& serialized, Example* example) {
         SmallVector<int64> list;
         if (!name_and_feature.second.ParseInt64List(&list)) return false;
         auto* result_list = value.mutable_int64_list();
-        for (int64 i : list) {
+        for (int64_t i : list) {
           result_list->add_value(i);
         }
         break;
@@ -1054,7 +1054,7 @@ class TensorVector {
   int64 size() const {
     return tensor_.has_value() ? tensor_->NumElements() : 0;
   }
-  void resize(int64 new_size) {
+  void resize(int64_t new_size) {
     DCHECK(!tensor_.has_value());
     tensor_ = Tensor(DataTypeToEnum<T>::v(), TensorShape({new_size}));
     data_ = tensor_->flat<T>().data();
@@ -1334,7 +1334,7 @@ Status FastParseExample(const Config& config,
       // end_indices (adjusting each to start after the previous one ends).
       if (config.ragged[d].splits_dtype == DT_INT64) {
         int64* row_splits_out = &row_splits->flat<int64>()(splits_offset);
-        int64 start = *row_splits_out;
+        int64_t start = *row_splits_out;
         for (size_t example_end_index : buffer.example_end_indices) {
           *++row_splits_out = start + example_end_index;
         }
@@ -2505,7 +2505,8 @@ Status ParseSequenceDenseFeatures(const FeatureProtosMap& sequence_features,
           expected_max_elements,
           " is not consistent with output shape: ", total_shape.DebugString());
     }
-    int64 expected_max_rows = expected_max_elements / row_shape.num_elements();
+    int64_t expected_max_rows =
+        expected_max_elements / row_shape.num_elements();
     if (is_batch) {
       dense_shape.AddDim(num_examples);
     }

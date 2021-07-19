@@ -10,7 +10,7 @@ load(
     "tf_proto_library",
 )
 load(
-    "//third_party/mlir:tblgen.bzl",
+    "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
 )
 
@@ -23,7 +23,7 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["//third_party/mlir:subpackages"],
+    includes = ["@llvm-project//mlir:subpackages"],
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
@@ -57,7 +57,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "quantization.td",
-    td_srcs = [
+    deps = [
         ":quantization_td_files",
     ],
 )

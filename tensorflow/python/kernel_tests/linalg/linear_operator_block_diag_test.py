@@ -23,6 +23,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_block_diag as block_diag
@@ -245,6 +246,86 @@ class SquareLinearOperatorBlockDiagTest(
         inverse,
         block_diag.LinearOperatorBlockDiag)
     self.assertEqual(2, len(inverse.operators))
+
+  def test_block_diag_matmul_type(self):
+    matrices1 = []
+    matrices2 = []
+    for i in range(1, 5):
+      matrices1.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [2, i], dtype=dtypes.float32)))
+
+      matrices2.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [i, 3], dtype=dtypes.float32)))
+
+    operator1 = block_diag.LinearOperatorBlockDiag(matrices1, is_square=False)
+    operator2 = block_diag.LinearOperatorBlockDiag(matrices2, is_square=False)
+
+    expected_matrix = math_ops.matmul(
+        operator1.to_dense(), operator2.to_dense())
+    actual_operator = operator1.matmul(operator2)
+
+    self.assertIsInstance(
+        actual_operator, block_diag.LinearOperatorBlockDiag)
+    actual_, expected_ = self.evaluate([
+        actual_operator.to_dense(), expected_matrix])
+    self.assertAllClose(actual_, expected_)
+
+  def test_block_diag_matmul_raises(self):
+    matrices1 = []
+    for i in range(1, 5):
+      matrices1.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [2, i], dtype=dtypes.float32)))
+    operator1 = block_diag.LinearOperatorBlockDiag(matrices1, is_square=False)
+    operator2 = linalg.LinearOperatorFullMatrix(
+        linear_operator_test_util.random_normal(
+            [15, 3], dtype=dtypes.float32))
+
+    with self.assertRaisesRegex(ValueError, "Operators are incompatible"):
+      operator1.matmul(operator2)
+
+  def test_block_diag_solve_type(self):
+    matrices1 = []
+    matrices2 = []
+    for i in range(1, 5):
+      matrices1.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_tril_matrix(
+              [i, i],
+              dtype=dtypes.float32,
+              force_well_conditioned=True)))
+
+      matrices2.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [i, 3], dtype=dtypes.float32)))
+
+    operator1 = block_diag.LinearOperatorBlockDiag(matrices1)
+    operator2 = block_diag.LinearOperatorBlockDiag(matrices2, is_square=False)
+
+    expected_matrix = linalg.solve(
+        operator1.to_dense(), operator2.to_dense())
+    actual_operator = operator1.solve(operator2)
+
+    self.assertIsInstance(
+        actual_operator, block_diag.LinearOperatorBlockDiag)
+    actual_, expected_ = self.evaluate([
+        actual_operator.to_dense(), expected_matrix])
+    self.assertAllClose(actual_, expected_)
+
+  def test_block_diag_solve_raises(self):
+    matrices1 = []
+    for i in range(1, 5):
+      matrices1.append(linalg.LinearOperatorFullMatrix(
+          linear_operator_test_util.random_normal(
+              [i, i], dtype=dtypes.float32)))
+    operator1 = block_diag.LinearOperatorBlockDiag(matrices1)
+    operator2 = linalg.LinearOperatorFullMatrix(
+        linear_operator_test_util.random_normal(
+            [15, 3], dtype=dtypes.float32))
+
+    with self.assertRaisesRegex(ValueError, "Operators are incompatible"):
+      operator1.solve(operator2)
 
   def test_tape_safe(self):
     matrices = []

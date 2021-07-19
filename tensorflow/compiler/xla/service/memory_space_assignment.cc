@@ -1538,38 +1538,46 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
         // already have a copy in the default memory space. We search backwards
         // (latest to earliest in execution time) for a suitable allocation in
         // order to find the most recent one.
-        auto allocation_sequence = allocation_value.allocation_sequence();
-        auto prev_allocation_in_default_mem_it = std::find_if(
-            allocation_sequence->rbegin(), allocation_sequence->rend(),
-            [&](const auto& allocation) {
-              return allocation->memory_space() == MemorySpace::kDefault &&
-                     allocation->defining_position() ==
-                         allocation_value.defining_position();
-            });
-        if (prev_allocation_in_default_mem_it != allocation_sequence->rend()) {
-          VLOG(3) << "Found a prev allocation in default mem for while use: "
-                  << (*prev_allocation_in_default_mem_it)->ToString();
-          auto body_allocation_value_it = absl::c_find_if(
-              allocation_values, [&](const AllocationValue& value) {
-                return value.computation() ==
-                           hlo_use.instruction->while_body() &&
-                       value.defining_instruction()->opcode() ==
-                           HloOpcode::kParameter;
+        if (absl::c_find_if(allocation_value.value()->positions(),
+                            [&hlo_use](const HloPosition& position) {
+                              return position.instruction ==
+                                         hlo_use.instruction &&
+                                     position.index == hlo_use.operand_index;
+                            }) != allocation_value.value()->positions().end()) {
+          auto allocation_sequence = allocation_value.allocation_sequence();
+          auto prev_allocation_in_default_mem_it = std::find_if(
+              allocation_sequence->rbegin(), allocation_sequence->rend(),
+              [&](const auto& allocation) {
+                return allocation->memory_space() == MemorySpace::kDefault &&
+                       allocation->defining_position() ==
+                           allocation_value.defining_position();
               });
-          CHECK_NE(body_allocation_value_it, allocation_values.end());
-          VLOG(3) << "Body allocation value: "
-                  << body_allocation_value_it->ToShortString();
-          int64_t body_parameter_time = instruction_schedule.at(
-              body_allocation_value_it->defining_instruction());
-          body_allocation_value_it->allocation_sequence()->push_back(
-              absl::make_unique<MemorySpaceAssignment::ParentAllocation>(
-                  **prev_allocation_in_default_mem_it, hlo_use.instruction,
-                  body_allocation_value_it->defining_position(),
-                  body_parameter_time));
-          VLOG(3) << "Created: "
-                  << body_allocation_value_it->allocation_sequence()
-                         ->back()
-                         ->ToString();
+          if (prev_allocation_in_default_mem_it !=
+              allocation_sequence->rend()) {
+            VLOG(3) << "Found a prev allocation in default mem for while use: "
+                    << (*prev_allocation_in_default_mem_it)->ToString();
+            auto body_allocation_value_it = absl::c_find_if(
+                allocation_values, [&](const AllocationValue& value) {
+                  return value.computation() ==
+                             hlo_use.instruction->while_body() &&
+                         value.defining_instruction()->opcode() ==
+                             HloOpcode::kParameter;
+                });
+            CHECK_NE(body_allocation_value_it, allocation_values.end());
+            VLOG(3) << "Body allocation value: "
+                    << body_allocation_value_it->ToShortString();
+            int64_t body_parameter_time = instruction_schedule.at(
+                body_allocation_value_it->defining_instruction());
+            body_allocation_value_it->allocation_sequence()->push_back(
+                absl::make_unique<MemorySpaceAssignment::ParentAllocation>(
+                    **prev_allocation_in_default_mem_it, hlo_use.instruction,
+                    body_allocation_value_it->defining_position(),
+                    body_parameter_time));
+            VLOG(3) << "Created: "
+                    << body_allocation_value_it->allocation_sequence()
+                           ->back()
+                           ->ToString();
+          }
         }
         // Special case for while loops since the root offset must agree with
         // other offsets: remember the preferred offset for the while loop body.

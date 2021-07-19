@@ -201,7 +201,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // A helper method for HandleSort(). It adds the inner comparison loop where
   // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.
-  void EmitCompareLoop(int64 dimension_to_sort,
+  void EmitCompareLoop(int64_t dimension_to_sort,
                        const llvm_ir::IrArray::Index& keys_index,
                        const llvm_ir::IrArray::Index& compare_keys_index,
                        const llvm_ir::IrArray& keys_array);

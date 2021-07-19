@@ -53,24 +53,40 @@ class ModelAnalyzer:
   """Provides a collection of TFLite model analyzer tools."""
 
   @staticmethod
-  def analyze(tflite_model, result_format):
+  def analyze(model_path=None,
+              model_content=None,
+              result_format="txt",
+              gpu_compatibility=False):
     """Analyzes the given tflite_model.
 
     Args:
-      tflite_model: TFLite flatbuffer model.
+      model_path: TFLite flatbuffer model path.
+      model_content: TFLite flatbuffer model object.
       result_format: txt|mlir|html|webserver.
+      gpu_compatibility: Whether to check GPU delegate compatibility.
+          It only works with 'txt' output for now.
 
     Returns:
       Analyzed report with the given result_format.
     """
+    if not model_path and not model_content:
+      raise ValueError("neither `model_path` nor `model_content` is provided")
+    if model_path:
+      tflite_model = model_path
+      input_is_filepath = True
+    else:
+      tflite_model = model_content
+      input_is_filepath = False
+
     if result_format == "txt":
-      return _analyzer_wrapper.ModelAnalyzer(tflite_model)
+      return _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath,
+                                             gpu_compatibility)
     elif result_format == "mlir":
-      return _analyzer_wrapper.FlatBufferToMlir(tflite_model)
+      return _analyzer_wrapper.FlatBufferToMlir(tflite_model, input_is_filepath)
     elif result_format == "html":
-      return visualize.create_html(tflite_model)
+      return visualize.create_html(tflite_model, input_is_filepath)
     elif result_format == "webserver":
-      html_body = visualize.create_html(tflite_model)
+      html_body = visualize.create_html(tflite_model, input_is_filepath)
       _handle_webserver("localhost", 8080, html_body)
     else:
       raise ValueError(f"result_format '{result_format}' is not supported")

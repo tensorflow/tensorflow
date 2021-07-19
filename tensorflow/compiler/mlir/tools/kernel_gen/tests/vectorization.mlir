@@ -10,6 +10,8 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
   }
   return
 }
+
+// CHECK: #[[$DIFF_MAP:.*]] = affine_map<()[s0, s1] -> (s0 - s1)>
 // CHECK-LABEL:   func @Abs(
 // CHECK-SAME:              %[[BUF:.*]]: memref<?xf64>) {
 // CHECK-DAG:       %[[CF0:.*]] = constant 0.000000e+00 : f64
@@ -28,7 +30,7 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NEXT:      }
 // CHECK-NEXT:      %[[LAST_ITER:.*]] = cmpi ult, %[[SPLIT_POINT]], %[[SIZE]] : index
 // CHECK-NEXT:      scf.if %[[LAST_ITER]] {
-// CHECK-NEXT:        %[[TILE_SIZE:.*]] = affine.min #map1(){{\[}}%[[SIZE]], %[[SPLIT_POINT]]]
+// CHECK-NEXT:        %[[TILE_SIZE:.*]] = affine.apply #[[$DIFF_MAP]]()[%[[SIZE]], %[[SPLIT_POINT]]]
 // CHECK-NEXT:        %[[SUBVIEW:.*]] = memref.subview %[[BUF]]{{\[}}%[[SPLIT_POINT]]] {{\[}}%[[TILE_SIZE]]] [1] : memref<?xf64> to memref<?xf64, #map0>
 // CHECK-NEXT:        %[[VAL_20:.*]] = vector.transfer_read %[[SUBVIEW]]{{\[}}%[[C0]]], %[[CF0]] : memref<?xf64, #map0>, vector<4xf64>
 // CHECK-NEXT:        %[[VAL_21:.*]] = vector.type_cast %[[FULL_BUF]] : memref<4xf64> to memref<vector<4xf64>>

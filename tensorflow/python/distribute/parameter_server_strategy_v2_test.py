@@ -25,6 +25,8 @@ import os
 
 from absl.testing import parameterized
 import numpy as np
+
+from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
@@ -39,25 +41,50 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
+from tensorflow.python.saved_model import save
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as tracking_util
 
+# We create one cluster to share between tests. The cluster should be large
+# enough to accommodate all the tests. Adjust the following constants as needed
+# but be aware of resource limitations in OSS tests.
+MAX_NUM_WORKER = 2
+MAX_NUM_PS = 3
+
+_cluster = None
+
+
+def get_cluster_def(num_workers, num_ps):
+  if num_workers > MAX_NUM_WORKER or num_ps > MAX_NUM_PS:
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "MAX_NUM_PS and MAX_NUM_WORKER")
+  global _cluster
+  if _cluster is None:
+    _cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=MAX_NUM_WORKER, num_ps=MAX_NUM_PS)
+  return {
+      "worker": _cluster["worker"][:num_workers],
+      "ps": _cluster["ps"][:num_ps],
+  }
+
 
 class ParameterServerStrategyV2Test(test.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(ParameterServerStrategyV2Test, cls).setUpClass()
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=2, num_ps=3)
-    cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=3)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -220,13 +247,13 @@ class ParameterServerStrategyV2Test(test.TestCase):
     with self._assertRaisesUsageWarningWithSchedule():
       strategy.reduce("SUM", None, axis=None)
 
-  def testDistributeDatasetNotUsedWithClusterCoordinator(self):
+  def testDistributeDatasetUsedDirectly(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     dataset = dataset_ops.DatasetV2.range(3)
-    with self._assertRaisesUsageError():
-      def_function.function(
-          lambda: strategy.experimental_distribute_dataset(dataset))()
+    distributed_dataset = strategy.experimental_distribute_dataset(dataset)
+    with self.assertRaises(ValueError):
+      iter(distributed_dataset)
 
   def testDistributeDatasetFromFunctionNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
@@ -238,6 +265,62 @@ class ParameterServerStrategyV2Test(test.TestCase):
     with self._assertRaisesUsageError():
       def_function.function(
           lambda: strategy.distribute_datasets_from_function(dataset_fn))()
+
+  def testSparselyReadForEmbeddingLookup(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    class FakeModel(module.Module):
+
+      def __init__(self):
+        self._var0 = variables.Variable([1.0, 2.0, 3.0, 4.0])
+        self._var1 = variables.Variable([5.0, 6.0, 7.0, 8.0])
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[2], dtype=dtypes.int32, name="inputs")
+      ])
+      def func(self, x):
+        return embedding_ops.embedding_lookup([self._var0, self._var1], x)
+
+    with strategy.scope():
+      model = FakeModel()
+
+    # Assert that ResourceGather op exists instead of Gather in training
+    # function.
+    found_resource_gather = False
+    found_gather = False
+
+    for n in model.func.get_concrete_function().graph.as_graph_def().node:
+      if n.op == "ResourceGather":
+        found_resource_gather = True
+      elif n.op == "Gather":
+        found_gather = True
+    self.assertTrue(found_resource_gather)
+    self.assertFalse(found_gather)
+
+    # Assert that ResourceGather op exists instead of Gather in saved_model.
+    found_resource_gather = False
+    found_gather = False
+
+    tmp_dir = self.get_temp_dir()
+    save.save(model, tmp_dir, signatures=model.func)
+
+    with gfile.Open("%s/saved_model.pb" % tmp_dir, "rb") as f:
+      saved_model_proto = saved_model_pb2.SavedModel().FromString(f.read())
+
+    for function in saved_model_proto.meta_graphs[0].graph_def.library.function:
+      for n in function.node_def:
+        if n.op == "ResourceGather":
+          found_resource_gather = True
+          resource_gather_device = n.device
+        elif n.op == "Gather":
+          found_gather = True
+    self.assertTrue(found_resource_gather)
+    self.assertFalse(found_gather)
+
+    # We also assert that the colocate_with in embedding_ops will not result in
+    # a hard-coded device string.
+    self.assertEmpty(resource_gather_device)
 
 
 class PartitionAwareIdentity(object):
@@ -253,12 +336,10 @@ class PartitionAwareIdentity(object):
 
 class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
-  @classmethod
-  def setUpClass(cls):
-    super(VariablePartitioningTest, cls).setUpClass()
-    cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=2, num_ps=2)
-    cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(num_workers=2, num_ps=2)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()
@@ -600,35 +681,10 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
 
 class ClusterTypeNameTest(test.TestCase):
 
-  def testArbitraryChiefName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1,
-        num_ps=1,
-        has_chief=True,
-        chief_name="some_arbitrary_name")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
-
-  def testArbitraryWorkerName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1, worker_name="some_arbitrary_name")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
-    cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer="grpc")
-    with self.assertRaisesRegexp(ValueError, "Disallowed task type found in"):
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
-
-  def testArbitraryPsName(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1, ps_name="some_arbitrary_name")
-    cluster_def["chief"] = [
+  def testArbitraryJobName(self):
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=1, has_chief=True)
+    cluster_def["some_arbitrary_name"] = [
         "localhost:%d" % multi_worker_test_base.pick_unused_port()
     ]
     cluster_resolver = SimpleClusterResolver(
@@ -637,18 +693,15 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testArbitraryCurrentTaskType(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=1)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=1, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer="grpc", task_type="foobar")
     with self.assertRaisesRegexp(ValueError, "Unrecognized task_type: foobar"):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testMoreThanOneChief(self):
-    cluster_def = multi_worker_test_base._create_cluster(
+    cluster_def = multi_worker_test_base.create_cluster_spec(
         num_workers=1, num_ps=1)
     chief_ports = [multi_worker_test_base.pick_unused_port() for _ in range(3)]
     cluster_def["chief"] = ["localhost:%s" % port for port in chief_ports]
@@ -662,11 +715,8 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testLessThanOneWorker(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=0, num_ps=1)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=0, num_ps=1, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def), rpc_layer="grpc", task_type="ps", task_id=0)
     with self.assertRaisesRegexp(ValueError,
@@ -674,11 +724,8 @@ class ClusterTypeNameTest(test.TestCase):
       parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver)
 
   def testLessThanOnePs(self):
-    cluster_def = multi_worker_test_base._create_cluster(
-        num_workers=1, num_ps=0)
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
+    cluster_def = multi_worker_test_base.create_cluster_spec(
+        num_workers=1, num_ps=0, has_chief=True)
     cluster_resolver = SimpleClusterResolver(
         ClusterSpec(cluster_def),
         rpc_layer="grpc",

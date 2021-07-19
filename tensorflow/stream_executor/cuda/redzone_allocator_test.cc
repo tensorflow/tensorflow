@@ -77,8 +77,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
     TF_ASSERT_OK(stream.ThenMemcpy(host_buf.data(), redzone, kRedzoneSize)
                      .BlockHostUntilDone());
     const int64 kMaxMismatches = 16;
-    int64 mismatches = 0;
-    for (int64 i = 0; i < host_buf.size(); ++i) {
+    int64_t mismatches = 0;
+    for (int64_t i = 0; i < host_buf.size(); ++i) {
       if (mismatches == kMaxMismatches) {
         ADD_FAILURE() << "Hit max number of mismatches; skipping others.";
         break;
@@ -96,7 +96,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   // Modifies a redzone, checks that RedzonesAreUnmodified returns false, then
   // reverts it back to its original value and checks that RedzonesAreUnmodified
   // returns true.
-  auto modify_redzone = [&](DeviceMemoryBase redzone, int64 offset,
+  auto modify_redzone = [&](DeviceMemoryBase redzone, int64_t offset,
                             absl::string_view name) {
     SCOPED_TRACE(absl::StrCat(name, ", offset=", offset));
     DeviceMemoryBase redzone_at_offset(

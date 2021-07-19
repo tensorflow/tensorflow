@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
+#include <string>
+#include <utility>
+
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -191,6 +194,19 @@ class HloAsyncCopyMatcher : public HloMatcher {
   int64 from_space_;
 };
 
+class HloConstantMatcher : public HloMatcher {
+ public:
+  explicit HloConstantMatcher(Literal literal)
+      : HloMatcher(HloOpcode::kConstant, /*operands=*/{}),
+        literal_(std::move(literal)) {}
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  Literal literal_;
+};
+
 // HloInstruction* matchers for opcode and operands. Example:
 //   namespace op = xla::opcode_matchers;
 //   EXPECT_THAT(instruction,
@@ -208,7 +224,6 @@ HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
 HLO_MATCHER(AllGather);
 HLO_MATCHER(AllReduce);
-HLO_MATCHER(AllReduceScatter);
 HLO_MATCHER(AllToAll);
 HLO_MATCHER(And);
 HLO_MATCHER(BatchNormGrad);
@@ -222,7 +237,6 @@ HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(Compare);
 HLO_MATCHER(Concatenate);
 HLO_MATCHER(Conditional);
-HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
@@ -257,6 +271,7 @@ HLO_MATCHER(Recv);
 HLO_MATCHER(RecvDone);
 HLO_MATCHER(Reduce);
 HLO_MATCHER(ReducePrecision);
+HLO_MATCHER(ReduceScatter);
 HLO_MATCHER(ReduceWindow);
 HLO_MATCHER(Remainder);
 HLO_MATCHER(ReplicaId);
@@ -285,6 +300,16 @@ HLO_MATCHER(Tuple);
 HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
+
+#define HLO_MATCHER_VECTOR_OPERANDS(opcode)                              \
+  template <>                                                            \
+  inline ::testing::Matcher<const ::xla::HloInstruction*> opcode(        \
+      std::vector<::testing::Matcher<const HloInstruction*>> operands) { \
+    return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(        \
+        ::xla::HloOpcode::k##opcode, operands));                         \
+  }
+
+HLO_MATCHER_VECTOR_OPERANDS(DynamicSlice);
 
 // The special cases below let you check additional information about the
 // HloInstruction, beyond just its opcode and operands.  In all cases you can
@@ -461,6 +486,18 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> AsyncCopy(
     ::testing::Matcher<const HloInstruction*> operand_matcher) {
   return ::testing::MakeMatcher(new ::xla::testing::HloAsyncCopyMatcher(
       to_space, from_space, operand_matcher));
+}
+
+//  - Constant() matches any constant.
+//  - Constant(V) matches a constant with the given value.
+inline ::testing::Matcher<const ::xla::HloInstruction*> Constant() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kConstant, {}));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> Constant(
+    Literal value) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloConstantMatcher(std::move(value)));
 }
 
 #undef HLO_MATCHER

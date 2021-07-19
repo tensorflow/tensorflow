@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -26,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
+std::string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
   switch (alg) {
     case OptimizationAlgorithm::kAdagrad:
       return "Adagrad";
@@ -66,7 +69,7 @@ string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
   return "*** Not set ***";
 }
 
-string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
+std::string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
   switch (alg) {
     case OptimizationAlgorithm::kAdagrad:
       return "Adagrad";
@@ -194,21 +197,6 @@ Status GetGradientAccumulationSupport(const OptimizationParameters& params,
   return Status::OK();
 }
 
-namespace {
-// Make a normal state variable specification. Please refer to
-// //tensorflow/core/protobuf/tpu/optimization_parameters.proto
-// (StateVariableSpecification message) for instructions on how to set the
-// padding_initial_value field.
-StateVariableSpecification MakeStandardStateVariableSpecification(
-    const string& name, double padding_initial_value) {
-  StateVariableSpecification result;
-  result.set_name(name);
-  result.mutable_user_defined()->set_padding_initial_value(
-      padding_initial_value);
-  return result;
-}
-}  // namespace
-
 Status UseGradientAccumulation(const OptimizationParameters& params,
                                bool* use_gradient_accumulation) {
   GradientAccumulationSupport support;
@@ -264,112 +252,104 @@ Status GetOptimizationAlgorithmStateVariables(
   TF_RETURN_IF_ERROR(
       UseGradientAccumulation(params, &use_gradient_accumulation));
 
-  auto add_state_variable = [&](const std::string& name, float value) {
-    state_variables->push_back(
-        MakeStandardStateVariableSpecification(name, value));
+  auto add_state_variable = [&](const std::string& name) {
+    StateVariableSpecification spec;
+    spec.set_name(name);
+    (void)spec.mutable_user_defined();
+    state_variables->push_back(spec);
   };
 
   switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
       break;
     }
     case OptimizationAlgorithm::kBoundedAdagrad: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
       break;
     }
     case OptimizationAlgorithm::kStochasticGradientDescent: {
-      add_state_variable("parameters", 0.0);
+      add_state_variable("parameters");
       break;
     }
     case OptimizationAlgorithm::kFtrl: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
-      add_state_variable("linears", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("linears");
       break;
     }
     case OptimizationAlgorithm::kAdam: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("momenta", 0.0);
-      add_state_variable("velocities", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("momenta");
+      add_state_variable("velocities");
       break;
     }
     case OptimizationAlgorithm::kMomentum: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("momenta", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("momenta");
       break;
     }
     case OptimizationAlgorithm::kRmsProp: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("ms", 1.0);
-      add_state_variable("mom", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("ms");
+      add_state_variable("mom");
       break;
     }
     case OptimizationAlgorithm::kCenteredRmsProp: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("ms", 1.0);
-      add_state_variable("mom", 0.0);
-      add_state_variable("mg", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("ms");
+      add_state_variable("mom");
+      add_state_variable("mg");
       break;
     }
     case OptimizationAlgorithm::kMdlAdagradLight: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
-      add_state_variable("weights", 0.0);
-      add_state_variable("benefits", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("weights");
+      add_state_variable("benefits");
       break;
     }
     case OptimizationAlgorithm::kAdadelta: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.0);
-      add_state_variable("updates", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("updates");
       break;
     }
     case OptimizationAlgorithm::kProximalAdagrad: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("accumulators", 0.1);
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
       break;
     }
     case OptimizationAlgorithm::kOnlineYogi: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("vs", 0.1);
-      add_state_variable("linears", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("vs");
+      add_state_variable("linears");
       break;
     }
     case OptimizationAlgorithm::kProximalYogi: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("v", 0.1);
-      add_state_variable("m", 0.0);
+      add_state_variable("parameters");
+      add_state_variable("v");
+      add_state_variable("m");
       break;
     }
     case OptimizationAlgorithm::kFrequencyEstimator: {
-      add_state_variable("parameters", 0.0);
-      add_state_variable("last_hit_step", 0);
+      add_state_variable("parameters");
+      add_state_variable("last_hit_step");
       break;
     }
     case OptimizationAlgorithm::kUserDefinedProgram: {
-      add_state_variable("parameters",
-                         params.user_defined_program().padding_values(0));
+      add_state_variable("parameters");
       int num_slots = -1;
       TF_RETURN_IF_ERROR(GetBaseAuxiliaryParameterCount(params, &num_slots));
-      if (num_slots + 1 !=
-          params.user_defined_program().padding_values_size()) {
-        return errors::InvalidArgument(
-            absl::StrCat("Number of slots ", num_slots + 1,
-                         " does not agree with the number of padding values ",
-                         params.user_defined_program().padding_values_size(),
-                         " specified for ", params.ShortDebugString(), "."));
-      }
       for (int i = 0; i < num_slots; ++i) {
-        add_state_variable(absl::StrCat("Slot_", i),
-                           params.user_defined_program().padding_values(i + 1));
+        add_state_variable(absl::StrCat("Slot_", i));
       }
       break;
     }
     case OptimizationAlgorithm::kAssign: {
-      add_state_variable("parameters", 0.0);
+      add_state_variable("parameters");
       break;
     }
     case OptimizationAlgorithm::PARAMETERS_NOT_SET: {

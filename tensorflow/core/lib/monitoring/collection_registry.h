@@ -16,8 +16,89 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
+// We use a null implementation for mobile platforms.
+#ifdef IS_MOBILE_PLATFORM
+
+#include <functional>
 #include <map>
 #include <memory>
+
+#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/core/platform/macros.h"
+
+namespace tensorflow {
+namespace monitoring {
+
+// MetricCollector which has a null implementation.
+template <MetricKind metric_kind, typename Value, int NumLabels>
+class MetricCollector {
+ public:
+  ~MetricCollector() = default;
+
+  void CollectValue(const std::array<std::string, NumLabels>& labels,
+                    Value value) {}
+
+ private:
+  friend class MetricCollectorGetter;
+
+  MetricCollector() {}
+};
+
+// MetricCollectorGetter which has a null implementation.
+class MetricCollectorGetter {
+ public:
+  template <MetricKind metric_kind, typename Value, int NumLabels>
+  MetricCollector<metric_kind, Value, NumLabels> Get(
+      const MetricDef<metric_kind, Value, NumLabels>* const metric_def) {
+    return MetricCollector<metric_kind, Value, NumLabels>();
+  }
+
+ private:
+  MetricCollectorGetter() {}
+};
+
+// CollectionRegistry which has a null implementation.
+class CollectionRegistry {
+ public:
+  ~CollectionRegistry() = default;
+
+  static CollectionRegistry* Default() { return new CollectionRegistry(); }
+
+  using CollectionFunction = std::function<void(MetricCollectorGetter getter)>;
+
+  // RegistrationHandle which has a null implementation.
+  class RegistrationHandle {
+   public:
+    RegistrationHandle() {}
+
+    ~RegistrationHandle() {}
+  };
+
+  std::unique_ptr<RegistrationHandle> Register(
+      const AbstractMetricDef* metric_def,
+      const CollectionFunction& collection_function) {
+    return std::unique_ptr<RegistrationHandle>(new RegistrationHandle());
+  }
+
+ private:
+  CollectionRegistry() {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CollectionRegistry);
+};
+
+}  // namespace monitoring
+}  // namespace tensorflow
+#else  // !defined(IS_MOBILE_PLATFORM)
+
+#include <functional>
+#include <map>
+#include <memory>
+#include <utility>
 
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
@@ -60,7 +141,8 @@ class MetricCollector {
   ~MetricCollector() = default;
 
   // Collects the value with these labels.
-  void CollectValue(const std::array<string, NumLabels>& labels, Value value);
+  void CollectValue(const std::array<std::string, NumLabels>& labels,
+                    Value value);
 
  private:
   friend class internal::Collector;
@@ -73,7 +155,7 @@ class MetricCollector {
         registration_time_millis_(registration_time_millis),
         collector_(collector),
         point_set_(point_set) {
-    point_set_->metric_name = string(metric_def->name());
+    point_set_->metric_name = std::string(metric_def->name());
   }
 
   const MetricDef<metric_kind, Value, NumLabels>* const metric_def_;
@@ -168,7 +250,7 @@ class CollectionRegistry {
   friend class test_util::CollectionRegistryTestAccess;
   friend class internal::Collector;
 
-  CollectionRegistry(Env* env);
+  explicit CollectionRegistry(Env* env);
 
   // Unregisters the metric from this registry. This is private because the
   // public interface provides a Registration handle which automatically calls
@@ -220,15 +302,34 @@ inline void CollectValue(int64 value, Point* const point) {
 }
 
 template <>
-inline void CollectValue(string value, Point* const point) {
+inline void CollectValue(std::function<int64()> value_fn, Point* const point) {
+  point->value_type = ValueType::kInt64;
+  point->int64_value = value_fn();
+}
+
+template <>
+inline void CollectValue(std::string value, Point* const point) {
   point->value_type = ValueType::kString;
   point->string_value = std::move(value);
+}
+
+template <>
+inline void CollectValue(std::function<std::string()> value_fn,
+                         Point* const point) {
+  point->value_type = ValueType::kString;
+  point->string_value = value_fn();
 }
 
 template <>
 inline void CollectValue(bool value, Point* const point) {
   point->value_type = ValueType::kBool;
   point->bool_value = value;
+}
+
+template <>
+inline void CollectValue(std::function<bool()> value_fn, Point* const point) {
+  point->value_type = ValueType::kBool;
+  point->bool_value = value_fn();
 }
 
 template <>
@@ -256,7 +357,7 @@ inline void CollectValue(Percentiles value, Point* const point) {
 // This class is thread-safe.
 class Collector {
  public:
-  Collector(const uint64 collection_time_millis)
+  explicit Collector(const uint64 collection_time_millis)
       : collected_metrics_(new CollectedMetrics()),
         collection_time_millis_(collection_time_millis) {}
 
@@ -268,7 +369,7 @@ class Collector {
     auto* const point_set = [&]() {
       mutex_lock l(mu_);
       return collected_metrics_->point_set_map
-          .insert(std::make_pair(string(metric_def->name()),
+          .insert(std::make_pair(std::string(metric_def->name()),
                                  std::unique_ptr<PointSet>(new PointSet())))
           .first->second.get();
     }();
@@ -331,10 +432,10 @@ inline void WriteTimestamps<MetricKind::kCumulative>(
 
 template <MetricKind metric_kind, typename Value, int NumLabels>
 void MetricCollector<metric_kind, Value, NumLabels>::CollectValue(
-    const std::array<string, NumLabels>& labels, Value value) {
+    const std::array<std::string, NumLabels>& labels, Value value) {
   point_set_->points.emplace_back(new Point());
   auto* const point = point_set_->points.back().get();
-  const std::vector<string> label_descriptions =
+  const std::vector<std::string> label_descriptions =
       metric_def_->label_descriptions();
   point->labels.reserve(NumLabels);
   for (int i = 0; i < NumLabels; ++i) {
@@ -394,4 +495,5 @@ class ExporterRegistration {
 }  // namespace monitoring
 }  // namespace tensorflow
 
+#endif  // IS_MOBILE_PLATFORM
 #endif  // TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_

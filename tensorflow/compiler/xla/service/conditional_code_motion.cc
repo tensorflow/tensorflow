@@ -181,7 +181,7 @@ bool WorthHoisting(HloOpcode op, HloOpcode child_op) {
           return true;
       }
     case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceScatter:
+    case HloOpcode::kReduceScatter:
     case HloOpcode::kAbs:
     case HloOpcode::kReduce:
     case HloOpcode::kAdd:

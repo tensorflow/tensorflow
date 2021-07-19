@@ -59,7 +59,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
       if (node->output_type(0) == DT_INT32) {
         auto flat = t.flat<int>();
         for (int i = 0; i < input_rank; i++) {
-          int64 dimension = c->Value(c->Dim(c->input(0), i));
+          int64_t dimension = c->Value(c->Dim(c->input(0), i));
           if (!FastBoundsCheck(dimension, std::numeric_limits<int32>::max())) {
             return errors::InvalidArgument(
                 "Shape has output type int32, but dimension exceeds maximum "
@@ -93,7 +93,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
     if (fully_defined_inputs) {
       int32 rank = c->Rank(c->input(0));
       Tensor t(node->output_type(0), TensorShape({}));
-      int64 size = 1;
+      int64_t size = 1;
       for (int i = 0; i < rank; i++) {
         size *= c->Value(c->Dim(c->input(0), i));
       }
@@ -350,7 +350,7 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
                               int32 graph_def_version, bool* evaluated,
                               Tensor* result, GraphRunner* graph_runner,
                               std::unordered_map<string, Tensor>* cached_values,
-                              int64 max_cached_value_size,
+                              int64_t max_cached_value_size,
                               bool disable_constant_propagation,
                               InferenceContext* outer_context) {
   *evaluated = false;

@@ -1,14 +1,14 @@
 ---
 name: Keras Issue
 about: Use this template for reporting a keras issue
-labels: 'type:keras'
+labels: 'comp:keras'
 
 ---
 
 <em>Please make sure that this is an issue related to keras.
 tag:keras_template</em>
 
-## **Important Notice**
+**Important Notice**
 
 Please note that `tf.keras` code was moved entirely to
 [keras-team/keras](https://github.com/keras-team/keras) repository

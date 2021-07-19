@@ -382,7 +382,7 @@ inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
     static_assert(
         sizeof(std::atomic<LargeCounts>) >= alignof(std::atomic<LargeCounts>),
         "std::atomic<LargeCounts> must be packed");
-    int64 offset = ((static_cast<int64>(next_offset_) + B - 1) / B) * B;
+    int64_t offset = ((static_cast<int64>(next_offset_) + B - 1) / B) * B;
     result.byte_offset_ = offset;
     result.is_large_ = true;
     next_offset_ = result.byte_offset_ + B;

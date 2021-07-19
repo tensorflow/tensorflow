@@ -33,6 +33,13 @@ extern "C" MLIR_RUNNERUTILS_EXPORT void _mlir_ciface_tf_dealloc(
 extern "C" MLIR_RUNNERUTILS_EXPORT void _mlir_ciface_tf_report_error(
     void* op_kernel_ctx, int32_t error_code, char* msg);
 
+extern "C" MLIR_RUNNERUTILS_EXPORT void* _mlir_ciface_tf_jit_compile(
+    void* op_kernel_ctx, char* code);
+
+extern "C" MLIR_RUNNERUTILS_EXPORT void _mlir_ciface_tf_jit_execute(
+    void* op_kernel_ctx, void* callable, void* result, int64_t arg_rank,
+    void* arg_descr);
+
 }  // namespace tf_framework
 }  // namespace kernel_gen
 }  // namespace mlir

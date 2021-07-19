@@ -31,9 +31,9 @@ namespace xla {
 namespace tridiagonal {
 namespace {
 
-class TridiagonalTest : public ClientLibraryTestBase,
-                        public ::testing::WithParamInterface<
-                            std::tuple<int, int, int, SolverAlgorithm>> {};
+class TridiagonalTest
+    : public ClientLibraryTestBase,
+      public ::testing::WithParamInterface<std::tuple<int, int, int>> {};
 
 XLA_TEST_P(TridiagonalTest, Solves) {
   const auto& spec = GetParam();
@@ -43,7 +43,6 @@ XLA_TEST_P(TridiagonalTest, Solves) {
   const int64 batch_size = std::get<0>(spec);
   const int64 num_eqs = std::get<1>(spec);
   const int64 num_rhs = std::get<2>(spec);
-  const SolverAlgorithm algorithm = std::get<3>(spec);
 
   Array3D<float> lower_diagonal(batch_size, 1, num_eqs);
   Array3D<float> main_diagonal(batch_size, 1, num_eqs);
@@ -51,14 +50,8 @@ XLA_TEST_P(TridiagonalTest, Solves) {
   Array3D<float> rhs(batch_size, num_rhs, num_eqs);
 
   lower_diagonal.FillRandom(1.0, /*mean=*/0.0, /*seed=*/0);
-  if (algorithm == kPartialPivoting) {
-    // Without pivoting the algorithm fails with a zero diagonal.
-    main_diagonal.Fill(0.0);
-
-  } else {
-    main_diagonal.FillRandom(0.05, /*mean=*/1.0,
-                             /*seed=*/batch_size * num_eqs);
-  }
+  main_diagonal.FillRandom(0.05, /*mean=*/1.0,
+                           /*seed=*/batch_size * num_eqs);
   upper_diagonal.FillRandom(1.0, /*mean=*/0.0,
                             /*seed=*/2 * batch_size * num_eqs);
   rhs.FillRandom(1.0, /*mean=*/0.0, /*seed=*/3 * batch_size * num_eqs);
@@ -77,15 +70,14 @@ XLA_TEST_P(TridiagonalTest, Solves) {
   auto rhs_data = CreateR3Parameter<float>(rhs, 3, "rhs", &builder, &rhs_xla);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      XlaOp x,
-      TridiagonalSolver(algorithm, lower_diagonal_xla, main_diagonal_xla,
-                        upper_diagonal_xla, rhs_xla));
+      XlaOp x, TridiagonalSolver(kThomas, lower_diagonal_xla, main_diagonal_xla,
+                                 upper_diagonal_xla, rhs_xla));
 
   auto Coefficient = [](auto operand, auto i) {
     return SliceInMinorDims(operand, /*start=*/{i}, /*end=*/{i + 1});
   };
 
-  std::vector<XlaOp> relative_residuals(num_eqs);
+  std::vector<XlaOp> relative_errors(num_eqs);
 
   for (int64 i = 0; i < num_eqs; i++) {
     auto a_i = Coefficient(lower_diagonal_xla, i);
@@ -94,19 +86,19 @@ XLA_TEST_P(TridiagonalTest, Solves) {
     auto d_i = Coefficient(rhs_xla, i);
 
     if (i == 0) {
-      relative_residuals[i] =
+      relative_errors[i] =
           (b_i * Coefficient(x, i) + c_i * Coefficient(x, i + 1) - d_i) / d_i;
     } else if (i == num_eqs - 1) {
-      relative_residuals[i] =
+      relative_errors[i] =
           (a_i * Coefficient(x, i - 1) + b_i * Coefficient(x, i) - d_i) / d_i;
     } else {
-      relative_residuals[i] =
+      relative_errors[i] =
           (a_i * Coefficient(x, i - 1) + b_i * Coefficient(x, i) +
            c_i * Coefficient(x, i + 1) - d_i) /
           d_i;
     }
   }
-  Abs(ConcatInDim(&builder, relative_residuals, 2));
+  Abs(ConcatInDim(&builder, relative_errors, 2));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
@@ -116,15 +108,14 @@ XLA_TEST_P(TridiagonalTest, Solves) {
 
   auto result_data = result.data<float>({});
   for (auto result_component : result_data) {
-    EXPECT_LT(result_component, 5e-3);
+    EXPECT_TRUE(result_component < 5e-3);
   }
 }
 
-INSTANTIATE_TEST_CASE_P(
-    TridiagonalTestInstantiation, TridiagonalTest,
-    ::testing::Combine(::testing::Values(1, 12), ::testing::Values(4, 8),
-                       ::testing::Values(1, 12),
-                       ::testing::Values(kThomas, kPartialPivoting)));
+INSTANTIATE_TEST_CASE_P(TridiagonalTestInstantiation, TridiagonalTest,
+                        ::testing::Combine(::testing::Values(1, 12),
+                                           ::testing::Values(4, 8),
+                                           ::testing::Values(1, 12)));
 
 }  // namespace
 }  // namespace tridiagonal

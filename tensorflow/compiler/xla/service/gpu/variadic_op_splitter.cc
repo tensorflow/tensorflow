@@ -42,7 +42,7 @@ StatusOr<bool> SplitConcatenate(HloInstruction* concat, HloComputation* comp) {
   while (operands_to_split.size() > 1) {
     std::vector<HloInstruction*> new_operands;
     absl::Span<HloInstruction*> operands_span(operands_to_split);
-    for (int64 offset = 0; offset < operands_to_split.size();
+    for (int64_t offset = 0; offset < operands_to_split.size();
          offset += kMaxParameters) {
       // Check if there is a remainder of operands that does not completely fill
       // one "batch" of exactly 'kMaxParameters' operands. If there are only
@@ -56,8 +56,8 @@ StatusOr<bool> SplitConcatenate(HloInstruction* concat, HloComputation* comp) {
                             operands_to_split.end());
       } else {
         Shape new_shape = concat->shape();
-        int64 concat_dimension_size = 0;
-        for (int64 i = 0;
+        int64_t concat_dimension_size = 0;
+        for (int64_t i = 0;
              i < kMaxParameters && offset + i < operands_to_split.size(); ++i) {
           concat_dimension_size +=
               operands_to_split[i + offset]->shape().dimensions(

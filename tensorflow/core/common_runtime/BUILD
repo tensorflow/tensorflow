@@ -252,6 +252,7 @@ filegroup(
         "costmodel_manager.h",
         "placer_inspection_required_ops_utils.h",
         "debugger_state_interface.h",
+        "all_to_all.h",
         "device_resolver_local.h",
         "dma_helper.h",
         "executor.h",
@@ -305,6 +306,27 @@ cc_library(
     deps = [
         ":optimization_registry",
         "//tensorflow/core:graph",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "all_to_all",
+    srcs = ["all_to_all.cc"],
+    hdrs = ["all_to_all.h"],
+    copts = tf_copts(),
+    deps = [
+        ":base_collective_executor",
+        ":collective_rma_local",
+        ":collective_util",
+        ":copy_tensor",
+        ":device",
+        ":device_mgr",
+        ":dma_helper",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -597,7 +619,6 @@ cc_library(
         ":graph_view",
         ":immutable_executor_state",
         ":local_executor_params",
-        ":metric_util",
         ":pending_counts",
         ":propagator_state",
         ":renamed_device",
@@ -626,19 +647,6 @@ cc_library(
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "metric_util",
-    srcs = ["metric_util.cc"],
-    hdrs = ["metric_util.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tflite_portable_logging",
     ],
 )
 
@@ -1696,6 +1704,7 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":accumulate_n_optimizer",
+        ":all_to_all",
         ":base_collective_executor",
         ":bfc_allocator",
         ":buf_rendezvous",
@@ -1921,6 +1930,25 @@ tf_cc_test(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "all_to_all_test",
+    srcs = ["all_to_all_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
+    deps = [
+        ":collective_test_util",
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 

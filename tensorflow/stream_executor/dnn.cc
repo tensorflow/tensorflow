@@ -49,7 +49,7 @@ std::string AlgorithmDesc::ToString() const {
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -83,13 +83,13 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, CudaComputeCapability cuda_compute_capability,
+    CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -384,6 +384,29 @@ std::vector<int64> BatchDescriptor::full_strides(
   return ReorderDims(phys_strides, this->layout(), layout);
 }
 
+std::vector<int64> BatchDescriptor::vectorized_dims(const DataLayout& layout,
+                                                    int vector_size,
+                                                    int vector_dim) const {
+  std::vector<int64> bdyx_dims = full_dims(dnn::DataLayout::kBatchDepthYX);
+  if (vector_dim != -1) {
+    bdyx_dims[vector_dim] /= vector_size;
+  }
+  return dnn::ReorderDims(bdyx_dims, dnn::DataLayout::kBatchDepthYX, layout);
+}
+
+std::vector<int64> BatchDescriptor::vectorized_strides(const DataLayout& layout,
+                                                       int vector_size,
+                                                       int vector_dim) const {
+  std::vector<int64> phys_dims =
+      vectorized_dims(this->layout(), vector_size, vector_dim);
+  std::vector<int64> phys_strides(phys_dims.size());
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return ReorderDims(phys_strides, this->layout(), layout);
+}
+
 void BatchDescriptor::CloneFrom(const BatchDescriptor& other) {
   tensor_ = other.tensor_;
   value_max_ = other.value_max_;
@@ -441,7 +464,7 @@ std::string BatchDescriptor::ToShortString() const {
 }
 
 int64 BatchDescriptor::NodesPerFeatureMap() const {
-  int64 ret = 1;
+  int64_t ret = 1;
   for (int i = 0; i < ndims(); i++) {
     ret *= spatial_size()[i];
   }
@@ -548,7 +571,7 @@ std::string FilterDescriptor::ToShortString() const {
 }
 
 int64 FilterDescriptor::ComputeWeightCount() const {
-  int64 ret = output_feature_map_count() * input_feature_map_count();
+  int64_t ret = output_feature_map_count() * input_feature_map_count();
   for (int i = 0; i < ndims(); i++) {
     ret *= input_filter_dims()[i];
   }
@@ -571,6 +594,28 @@ std::vector<int64> FilterDescriptor::full_strides(
   std::vector<int64> phys_strides(phys_dims.size());
   phys_strides[ndims() + 1] = 1;
   for (int i = ndims(); i >= 0; i--) {
+    phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
+  }
+  return ReorderDims(phys_strides, this->layout(), layout);
+}
+
+std::vector<int64> FilterDescriptor::vectorized_dims(const FilterLayout& layout,
+                                                     int vector_size,
+                                                     int vector_dim) const {
+  std::vector<int64> oiyx_dims = full_dims(dnn::FilterLayout::kOutputInputYX);
+  if (vector_dim != -1) {
+    oiyx_dims[vector_dim] /= vector_size;
+  }
+  return ReorderDims(oiyx_dims, FilterLayout::kOutputInputYX, layout);
+}
+
+std::vector<int64> FilterDescriptor::vectorized_strides(
+    const FilterLayout& layout, int vector_size, int vector_dim) const {
+  std::vector<int64> phys_dims =
+      vectorized_dims(this->layout(), vector_size, vector_dim);
+  std::vector<int64> phys_strides(phys_dims.size());
+  phys_strides[phys_dims.size() - 1] = 1;
+  for (int i = phys_dims.size() - 2; i >= 0; i--) {
     phys_strides[i] = phys_strides[i + 1] * phys_dims[i + 1];
   }
   return ReorderDims(phys_strides, this->layout(), layout);

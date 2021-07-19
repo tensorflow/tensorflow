@@ -77,14 +77,14 @@ namespace internal {
 // Specialized template class method GetNodeDefFromGraph.
 template <>
 NodeDef* NodeMapInternal<GraphDef, NodeDef>::GetNodeDefFromGraph(
-    GraphDef* graph, int64 i) const {
+    GraphDef* graph, int64_t i) const {
   return graph->mutable_node(i);
 }
 
 template <>
 const NodeDef*
 NodeMapInternal<const GraphDef, const NodeDef>::GetNodeDefFromGraph(
-    const GraphDef* graph, int64 i) const {
+    const GraphDef* graph, int64_t i) const {
   return &graph->node(i);
 }
 }  // namespace internal

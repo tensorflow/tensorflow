@@ -40,3 +40,7 @@ RUN pip install pip --upgrade
 RUN pip install pybind11
 RUN pip3 install pip --upgrade
 RUN pip3 install pybind11
+RUN curl -OL https://github.com/Kitware/CMake/releases/download/v3.16.8/cmake-3.16.8-Linux-x86_64.sh
+RUN mkdir /opt/cmake
+RUN sh cmake-3.16.8-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
+RUN ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake

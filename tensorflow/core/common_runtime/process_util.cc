@@ -176,7 +176,8 @@ void SchedClosure(std::function<void()> closure) {
   });
 }
 
-void SchedNonBlockingClosureAfter(int64 micros, std::function<void()> closure) {
+void SchedNonBlockingClosureAfter(int64_t micros,
+                                  std::function<void()> closure) {
   Env::Default()->SchedClosureAfter(micros, std::move(closure));
 }
 

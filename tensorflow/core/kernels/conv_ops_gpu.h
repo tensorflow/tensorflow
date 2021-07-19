@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -132,37 +133,15 @@ class ConvParameters {
   uint64 hash() const { return hash_code_; }
 
   string ToString() const {
-    // clang-format off
-    return strings::StrCat(
-        batch_, ", ", in_depths_, ", ",
-        "(", str_util::Join(in_, ", "), "), ",
-        ::tensorflow::ToString(data_format_), ", ",
-        out_depths_, ", ",
-        "(", str_util::Join(filter_, ", "), "), ",
-        "(", str_util::Join(dilation_, ", "), "), ",
-        "(", str_util::Join(stride_, ", "), "), ",
-        "(", str_util::Join(padding_, ", "), "), ",
-        dtype_, ", ",
-        device_id_,
-        group_count_);
-    // clang-format on
-  }
-
-  // The purpose of this function is to disable winograd nonfused conv algorithm
-  // for certain input parameters so as to avoid a bug in cuDNNv5 and cuDNNv6.
-  template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgo(
-      se::StreamExecutor* stream_exec) const {
-    auto* dnn_support = stream_exec->AsDnn();
-    if (!dnn_support) {
-      return false;
-    }
-    // Skip this check for cuDNN 7 and newer.
-    auto version = dnn_support->GetVersion();
-    if (version.ok() && version.ValueOrDie().major_version() >= 7) {
-      return true;
-    }
-    return ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
+    return absl::StrFormat(
+        "batch=%d, in_depth=%d, in=(%s), out_depth=%d, filter=(%s), "
+        "%s, %s, dilation=(%s), stride=(%s), padding=(%s), group_count=%d, "
+        "device_id=%d",
+        batch_, in_depths_, absl::StrJoin(in_, ","), out_depths_,
+        absl::StrJoin(filter_, ","), DataTypeString(dtype_),
+        ::tensorflow::ToString(data_format_), absl::StrJoin(dilation_, ","),
+        absl::StrJoin(stride_, ","), absl::StrJoin(padding_, ","), group_count_,
+        device_id_);
   }
 
  protected:
@@ -179,24 +158,9 @@ class ConvParameters {
   uint64 hash_code_;
 
  private:
-  friend struct ConvParametersPeer;  // For testing purposes.
-
   static const SpatialArray& CheckSpatialArraySize(const SpatialArray& array) {
     CHECK_LE(array.size(), 3);  // Catch corruptions related to b/124313574.
     return array;
-  }
-
-  template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() const {
-    int64 total_size = 16 * std::ceil(batch_ / 16.0) *
-                       std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
-                       sizeof(T);
-    int64 threshold = 1LL << 31;
-    if (total_size >= threshold) {
-      return false;
-    } else {
-      return true;
-    }
   }
 
   int64 batch_;

@@ -39,6 +39,15 @@ namespace {
 struct TPUParallelExecuteSinkResourceWrite
     : public PassWrapper<TPUParallelExecuteSinkResourceWrite, FunctionPass> {
   void runOnFunction() override;
+
+  StringRef getArgument() const final {
+    return "tf-tpu-parallel-execute-sink-resource-write";
+  }
+
+  StringRef getDescription() const final {
+    return "Moves tf.AssignVariableOp consumers of tf_device.parallel_execute "
+           "into tf_device.parallel_execute regions";
+  }
 };
 
 // Finds an AssignVariableOp that can be moved into the parallel_execute region.
@@ -157,10 +166,7 @@ CreateTPUParallelExecuteSinkResourceWritePass() {
   return std::make_unique<TPUParallelExecuteSinkResourceWrite>();
 }
 
-static PassRegistration<TPUParallelExecuteSinkResourceWrite> pass(
-    "tf-tpu-parallel-execute-sink-resource-write",
-    "Moves tf.AssignVariableOp consumers of tf_device.parallel_execute into "
-    "tf_device.parallel_execute regions");
+static PassRegistration<TPUParallelExecuteSinkResourceWrite> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

@@ -213,7 +213,7 @@ class TraceMe {
   static int64 ActivityStart(NameGeneratorT name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      int64 activity_id = TraceMeRecorder::NewActivityId();
+      int64_t activity_id = TraceMeRecorder::NewActivityId();
       TraceMeRecorder::Record(
           {name_generator(), GetCurrentTimeNanos(), -activity_id});
       return activity_id;
@@ -227,7 +227,7 @@ class TraceMe {
   static int64 ActivityStart(absl::string_view name, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      int64 activity_id = TraceMeRecorder::NewActivityId();
+      int64_t activity_id = TraceMeRecorder::NewActivityId();
       TraceMeRecorder::Record(
           {std::string(name), GetCurrentTimeNanos(), -activity_id});
       return activity_id;
@@ -247,7 +247,7 @@ class TraceMe {
   }
 
   // Record the end time of an activity started by ActivityStart().
-  static void ActivityEnd(int64 activity_id) {
+  static void ActivityEnd(int64_t activity_id) {
 #if !defined(IS_MOBILE_PLATFORM)
     // We don't check the level again (see TraceMe::Stop()).
     if (TF_PREDICT_FALSE(activity_id != kUntracedActivity)) {
@@ -264,7 +264,7 @@ class TraceMe {
   static void InstantActivity(NameGeneratorT name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      int64 now = GetCurrentTimeNanos();
+      int64_t now = GetCurrentTimeNanos();
       TraceMeRecorder::Record(
           {name_generator(), /*start_time=*/now, /*end_time=*/now});
     }

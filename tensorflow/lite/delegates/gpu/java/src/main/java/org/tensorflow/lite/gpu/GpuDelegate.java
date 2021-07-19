@@ -22,12 +22,12 @@ import org.tensorflow.lite.annotations.UsedByReflection;
 /**
  * {@link Delegate} for GPU inference.
  *
- * <p>Note: When calling {@code Interpreter.modifyGraphWithDelegate()}/ {@code
- * Interpreter.Options.addDelegate()} and {@code Interpreter.run()}, the caller must have an {@code
- * EGLContext} in the <b>current thread</b> and {@code Interpreter.run()} must be called from the
- * same {@code EGLContext}. If an {@code EGLContext} does not exist, the delegate will internally
- * create one, but then the developer must ensure that {@code Interpreter.run()} is always called
- * from the same thread in which {@code Interpreter.modifyGraphWithDelegate()} was called.
+ * <p>Note: When calling {@code Interpreter.Options.addDelegate()} and {@code Interpreter.run()},
+ * the caller must have an {@code EGLContext} in the <b>current thread</b> and {@code
+ * Interpreter.run()} must be called from the same {@code EGLContext}. If an {@code EGLContext} does
+ * not exist, the delegate will internally create one, but then the developer must ensure that
+ * {@code Interpreter.run()} is always called from the same thread in which {@code
+ * Interpreter.Options.addDelegate()} was called.
  */
 @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
 public class GpuDelegate implements Delegate, Closeable {

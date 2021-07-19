@@ -36,8 +36,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/dnn.pb.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #endif
@@ -62,10 +64,10 @@ class ScratchAllocator : public se::ScratchAllocator {
   }
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
+  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
 
   template <typename T>
-  StatusOr<se::DeviceMemory<T>> Allocate(int64 num_elements) {
+  StatusOr<se::DeviceMemory<T>> Allocate(int64_t num_elements) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8> bytes,
                         AllocateBytes(num_elements * sizeof(T)));
     return se::DeviceMemory<T>(bytes);
@@ -79,7 +81,7 @@ class ScratchAllocator : public se::ScratchAllocator {
 };
 
 StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
-    int64 byte_size) {
+    int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
     return se::port::Status(
@@ -105,15 +107,14 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
   bool succ = false;
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
-      succ =
-          stream_exec->GetConvolveBackwardFilterAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms);
       break;
     case CudnnConvKind::kBackwardInput:
-      succ = stream_exec->GetConvolveBackwardDataAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms);
       break;
     case CudnnConvKind::kForward:
     case CudnnConvKind::kForwardActivation:
-      succ = stream_exec->GetConvolveAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveAlgorithms(&algorithms);
       break;
   }
   DCHECK(succ);
@@ -149,7 +150,7 @@ StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
   return algorithms;
 }
 
-string NumBytesToString(int64 bytes) {
+string NumBytesToString(int64_t bytes) {
   return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
                       bytes, "B)");
 }
@@ -347,7 +348,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr->ToString()));
 
   const Shape& result_shape = instr->shape().tuple_shapes(0);
-  int64 rng_state = 0;
+  int64_t rng_state = 0;
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   const int32 conv_autotune_level =
@@ -397,7 +398,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const bool crash_on_checking_failure =
       debug_options.xla_gpu_crash_on_verification_failures();
 
-  const auto canonical_hlo =
+  std::string canonical_hlo =
       std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
 
   string blas_version;
@@ -420,6 +421,16 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     if (absl::c_linear_search(disabled_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm " << alg.ToString()
                 << " for conv " << instr->ToString();
+      continue;
+    }
+
+    // For fused convolutions with the identity function as the activation, only
+    // ALGO_IMPLICIT_PRECOMP_GEMM does the right thing. Other algorithms
+    // silently do Relu. See
+    // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
+    if (kind == CudnnConvKind::kForwardActivation &&
+        backend_config.activation_mode() == se::dnn::ActivationMode::kNone &&
+        alg.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
       continue;
     }
 
@@ -450,7 +461,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     result.mutable_conv()->set_algorithm(alg.algo_id());
     result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
 
-    int64 scratch_bytes_used =
+    int64_t scratch_bytes_used =
         scratch_allocator.TotalAllocatedBytesExcludingRedzones();
     result.set_scratch_bytes(scratch_bytes_used);
     *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
@@ -670,7 +681,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       result.mutable_conv()->set_algorithm(alg.algo_id());
       result.mutable_conv()->set_tensor_ops_enabled(alg.tensor_ops_enabled());
 
-      int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
+      int64_t scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       result.set_scratch_bytes(scratch_bytes_used);
       *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));

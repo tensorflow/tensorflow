@@ -42,11 +42,16 @@ void PopulateEmbedTFFrameworkAssertPattern(RewritePatternSet *patterns);
 
 namespace transforms {
 
-/// Collects a set of patterns that bufferize operations from the standard
-/// dialect.
-void populateExtraStdBufferizePattern(MLIRContext *context,
-                                      BufferizeTypeConverter *converter,
-                                      RewritePatternSet *patterns);
+/// Collects a set of patterns that bufferize operations from the standard and
+/// other dialects.
+void populateExtraBufferizePatterns(MLIRContext *context,
+                                    BufferizeTypeConverter *converter,
+                                    RewritePatternSet *patterns);
+
+/// Populate patterns to rewrite TF operations to TF framework JIT invocations.
+void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
+                                       RewritePatternSet *patterns);
+
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir

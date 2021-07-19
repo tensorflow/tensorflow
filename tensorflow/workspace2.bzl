@@ -125,15 +125,18 @@ def _tf_repositories():
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
+
+    # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "7320355409ae5dd2c8600cafbd07b56c379cd13666a7c971ffd3a01025c0f63e",
-        strip_prefix = "XNNPACK-56b78a03e359ac04a3ba758596cd28b198a8000f",
+        sha256 = "dec35e45065ba476614b365b5a1d5722c89f75d7bf011421a7d81808cc85bfb0",
+        strip_prefix = "XNNPACK-89cd59bcfbfb43c086aab0541e863bc91da74693",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/56b78a03e359ac04a3ba758596cd28b198a8000f.zip",
-            "https://github.com/google/XNNPACK/archive/56b78a03e359ac04a3ba758596cd28b198a8000f.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/89cd59bcfbfb43c086aab0541e863bc91da74693.zip",
+            "https://github.com/google/XNNPACK/archive/89cd59bcfbfb43c086aab0541e863bc91da74693.zip",
         ],
     )
+    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     tf_http_archive(
         name = "FXdiv",
@@ -159,11 +162,11 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = "//third_party:cudnn_frontend_header_fix.patch",
-        sha256 = "60b085e1412144e0b24f8b01809857d3a4491c9b2b1c58f0766f673b791d05ca",
-        strip_prefix = "cudnn-frontend-51e60d891b689d618e7a623509a779c422a420f7",
+        sha256 = "fdf4234e9c9c481b3b3a80ad404bc278e6ecb761c5574beb4d3a2cde4a9002ad",
+        strip_prefix = "cudnn-frontend-73210a930333eaf66b42b01693bce7b70719c354",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVIDIA/cudnn-frontend/archive/51e60d891b689d618e7a623509a779c422a420f7.zip",
-            "https://github.com/NVIDIA/cudnn-frontend/archive/51e60d891b689d618e7a623509a779c422a420f7.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVIDIA/cudnn-frontend/archive/73210a930333eaf66b42b01693bce7b70719c354.zip",
+            "https://github.com/NVIDIA/cudnn-frontend/archive/73210a930333eaf66b42b01693bce7b70719c354.zip",
         ],
     )
 
@@ -192,23 +195,23 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        sha256 = "4d655c0751ee6439584ef5e3d465953fe0c2f4ee2700bc02699bdc1d1572af0d",
-        strip_prefix = "oneDNN-2.2",
+        sha256 = "ccb2dbd9da36cd873cf573b4201d61bdba7438f12b144e6c7d061eb12a641751",
+        strip_prefix = "oneDNN-2.3",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.3.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.3.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "cdb3d8a7ab7ea13f0df207a20657f2827ac631c24aa0e8487bacf97697237bdf",
-        strip_prefix = "ComputeLibrary-21.02",
+        sha256 = "18011eb6dc999f030df609ff2b528e0067ab9f76921fa0b53e35859e06a0aa10",
+        strip_prefix = "ComputeLibrary-21.05",
         build_file = "//third_party/compute_library:BUILD",
         patch_file = "//third_party/compute_library:compute_library.patch",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.02.tar.gz",
-            "https://github.com/ARM-software/ComputeLibrary/archive/v21.02.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.05.tar.gz",
+            "https://github.com/ARM-software/ComputeLibrary/archive/v21.05.tar.gz",
         ],
     )
 
@@ -517,17 +520,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "org_python_pypi_backports_weakref",
-        build_file = "//third_party:backports_weakref.BUILD",
-        sha256 = "8813bf712a66b3d8b85dc289e1104ed220f1878cf981e2fe756dfaabe9a82892",
-        strip_prefix = "backports.weakref-1.0rc1/src",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
-            "https://pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
         name = "dill_archive",
         build_file = "//third_party:dill.BUILD",
         system_build_file = "//third_party/systemlibs:dill.BUILD",
@@ -612,12 +604,12 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "3b4378156ba09e224008e81dcce854b7ce4d182b1f9cfb97fe5ed9e9c18c6bd3",
-        strip_prefix = "curl-7.76.0",
+        sha256 = "b0a3428acb60fa59044c4d0baae4e4fc09ae9af1d8a3aa84b2e3fbcd99841f77",
+        strip_prefix = "curl-7.77.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.76.0.tar.gz",
-            "https://curl.haxx.se/download/curl-7.76.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.77.0.tar.gz",
+            "https://curl.haxx.se/download/curl-7.77.0.tar.gz",
         ],
     )
 
@@ -715,6 +707,7 @@ def _tf_repositories():
         ],
     )
 
+    # LINT.IfChange
     tf_http_archive(
         name = "fft2d",
         build_file = "//third_party/fft2d:fft2d.BUILD",
@@ -725,6 +718,7 @@ def _tf_repositories():
             "https://github.com/petewarden/OouraFFT/archive/v1.0.tar.gz",
         ],
     )
+    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/fft2d.cmake)
 
     tf_http_archive(
         name = "snappy",
@@ -855,6 +849,7 @@ def _tf_repositories():
         ],
     )
 
+    # LINT.IfChange
     tf_http_archive(
         name = "arm_neon_2_x86_sse",
         build_file = "//third_party:arm_neon_2_x86_sse.BUILD",
@@ -865,6 +860,7 @@ def _tf_repositories():
             "https://github.com/intel/ARM_NEON_2_x86_SSE/archive/1200fe90bb174a6224a525ee60148671a786a71f.tar.gz",
         ],
     )
+    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/neon2sse.cmake)
 
     tf_http_archive(
         name = "double_conversion",
@@ -1054,6 +1050,7 @@ def _tf_repositories():
         sha256 = "90b705137b69ee3b5fc655eaca66d0dc9862ea1759226f7ccd3098425ae69571",
         strip_prefix = "pybind11-2.6.0",
         build_file = "//third_party:pybind11.BUILD",
+        patch_file = "//third_party:pybind11.patch",
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )
 

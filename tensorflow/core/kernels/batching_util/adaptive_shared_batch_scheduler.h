@@ -328,8 +328,8 @@ class ASBSQueue : public BatchScheduler<TaskType> {
 template <typename TaskType>
 class ASBSBatch : public Batch<TaskType> {
  public:
-  ASBSBatch(ASBSQueue<TaskType>* queue, int64 creation_time_micros,
-            int64 batch_timeout_micros, uint64 traceme_context_id)
+  ASBSBatch(ASBSQueue<TaskType>* queue, int64_t creation_time_micros,
+            int64_t batch_timeout_micros, uint64 traceme_context_id)
       : queue_(queue),
         creation_time_micros_(creation_time_micros),
         schedulable_time_micros_(creation_time_micros + batch_timeout_micros),
@@ -466,7 +466,8 @@ void AdaptiveSharedBatchScheduler<TaskType>::AddBatch(
   } else {
     batches_.push_back(batch);
   }
-  int64 delay_micros = batch->schedulable_time_micros() - GetEnv()->NowMicros();
+  int64_t delay_micros =
+      batch->schedulable_time_micros() - GetEnv()->NowMicros();
   if (delay_micros <= 0) {
     MaybeScheduleNextBatch();
     return;
@@ -548,7 +549,7 @@ void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatch() {
 
   auto best_it = batches_.end();
   double best_score = (std::numeric_limits<double>::max)();
-  int64 now_micros = GetEnv()->NowMicros();
+  int64_t now_micros = GetEnv()->NowMicros();
   for (auto it = batches_.begin(); it != batches_.end(); it++) {
     if ((*it)->schedulable_time_micros() > now_micros) continue;
     const double score =
@@ -619,10 +620,10 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
       },
       profiler::ContextType::kAdaptiveSharedBatchScheduler,
       batch->traceme_context_id());
-  int64 start_time = batch->creation_time_micros();
+  int64_t start_time = batch->creation_time_micros();
   callback(std::unique_ptr<Batch<TaskType>>(
       const_cast<internal::ASBSBatch<TaskType>*>(batch)));
-  int64 end_time = GetEnv()->NowMicros();
+  int64_t end_time = GetEnv()->NowMicros();
   mutex_lock l(mu_);
   if (is_express) {
     in_flight_express_batches_--;

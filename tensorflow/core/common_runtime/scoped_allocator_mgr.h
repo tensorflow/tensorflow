@@ -45,7 +45,7 @@ class ScopedAllocatorContainer : public core::RefCounted {
 
  protected:
   friend class ScopedAllocatorMgr;
-  ScopedAllocatorContainer(const ScopedAllocatorMgr* mgr, int64 step_id)
+  ScopedAllocatorContainer(const ScopedAllocatorMgr* mgr, int64_t step_id)
       : mgr_(mgr), step_id_(step_id) {}
   ~ScopedAllocatorContainer();
 
@@ -77,16 +77,16 @@ class ScopedAllocatorMgr {
       : device_name_(device_name) {}
   ~ScopedAllocatorMgr();
 
-  ScopedAllocatorContainer* GetContainer(int64 step_id);
+  ScopedAllocatorContainer* GetContainer(int64_t step_id);
 
   // Establishes a reachable ScopedAllocator.
   Status AddScopedAllocator(
-      const Tensor& backing_tensor, int64 step_id, int32 scope_id,
+      const Tensor& backing_tensor, int64_t step_id, int32 scope_id,
       const std::string& scope_name,
       const gtl::ArraySlice<ScopedAllocator::Field>& fields,
       int32 expected_call_count);
 
-  void Cleanup(int64 step_id);
+  void Cleanup(int64_t step_id);
 
   // Populate the bytes and offset members of Field.  Instance allocaters get
   // consecutive scope_id values following that of the base ScopedAllocator.

@@ -88,7 +88,7 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
     virtual ~Rewriter() {}
 
     virtual Status Rewrite(ScopedAllocatorOptimizer* paopti,
-                           int64 invocation_count, GraphDef* graph,
+                           int64_t invocation_count, GraphDef* graph,
                            const string& op_name,
                            const std::vector<NodeDef*>& nodes,
                            bool* applied) = 0;

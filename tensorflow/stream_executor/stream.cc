@@ -126,7 +126,7 @@ std::string ToVlogString(uint32 i) { return absl::StrCat(i); }
 
 std::string ToVlogString(uint64 i) { return absl::StrCat(i); }
 
-std::string ToVlogString(int64 i) { return absl::StrCat(i); }
+std::string ToVlogString(int64_t i) { return absl::StrCat(i); }
 
 std::string ToVlogString(float f) { return absl::StrCat(f); }
 
@@ -538,52 +538,6 @@ Stream &Stream::ThenSeparableConvolve(
     SetErrorAndLogNoDnnSupport();
   }
   return *this;
-}
-
-template <typename T>
-Stream &Stream::ThenConvolveBackwardBiasImpl(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<T> &input_data,
-    const dnn::BatchDescriptor &bias_descriptor,
-    DeviceMemory<T> *backward_bias_data) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data), PARAM(bias_descriptor),
-            PARAM(backward_bias_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoConvolveBackwardBias(this, input_descriptor, input_data,
-                                           bias_descriptor,
-                                           backward_bias_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveBackwardBias(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<double> &input_data,
-    const dnn::BatchDescriptor &bias_descriptor,
-    DeviceMemory<double> *backward_bias_data) {
-  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
-                                      bias_descriptor, backward_bias_data);
-}
-
-Stream &Stream::ThenConvolveBackwardBias(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<float> &input_data,
-    const dnn::BatchDescriptor &bias_descriptor,
-    DeviceMemory<float> *backward_bias_data) {
-  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
-                                      bias_descriptor, backward_bias_data);
-}
-
-Stream &Stream::ThenConvolveBackwardBias(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<Eigen::half> &input_data,
-    const dnn::BatchDescriptor &bias_descriptor,
-    DeviceMemory<Eigen::half> *backward_bias_data) {
-  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
-                                      bias_descriptor, backward_bias_data);
 }
 
 Stream &Stream::ThenMatMul(const DeviceMemory<float> &input_data,
@@ -1050,8 +1004,9 @@ Stream &Stream::ThenElementwiseOperateScaledQuantized(
 }
 
 Stream &Stream::ThenXYPad(const dnn::BatchDescriptor &dimensions,
-                          const DeviceMemory<float> &input_data, int64 left_pad,
-                          int64 right_pad, int64 top_pad, int64 bottom_pad,
+                          const DeviceMemory<float> &input_data,
+                          int64_t left_pad, int64_t right_pad, int64_t top_pad,
+                          int64_t bottom_pad,
                           DeviceMemory<float> *output_data) {
   VLOG_CALL(PARAM(dimensions), PARAM(input_data), PARAM(left_pad),
             PARAM(right_pad), PARAM(top_pad), PARAM(bottom_pad),
@@ -1068,8 +1023,8 @@ Stream &Stream::ThenXYPad(const dnn::BatchDescriptor &dimensions,
 
 Stream &Stream::ThenXYSlice(const dnn::BatchDescriptor &dimensions,
                             const DeviceMemory<float> &input_data,
-                            int64 left_trim, int64 right_trim, int64 top_trim,
-                            int64 bottom_trim,
+                            int64_t left_trim, int64_t right_trim,
+                            int64_t top_trim, int64_t bottom_trim,
                             DeviceMemory<float> *output_data) {
   VLOG_CALL(PARAM(dimensions), PARAM(input_data), PARAM(left_trim),
             PARAM(right_trim), PARAM(top_trim), PARAM(bottom_trim),
@@ -1086,7 +1041,7 @@ Stream &Stream::ThenXYSlice(const dnn::BatchDescriptor &dimensions,
 
 Stream &Stream::ThenXYBroadcast(const dnn::BatchDescriptor &dimensions,
                                 const DeviceMemory<float> &input_data,
-                                int64 replicate_x, int64 replicate_y,
+                                int64_t replicate_x, int64_t replicate_y,
                                 DeviceMemory<float> *output_data) {
   VLOG_CALL(PARAM(dimensions), PARAM(input_data), PARAM(replicate_x),
             PARAM(replicate_y), PARAM(output_data));
@@ -1190,7 +1145,7 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
   absl::MutexLock lock(&mu_);
 
   // Look for the sub-stream.
-  for (int64 index = 0, end = sub_streams_.size(); index < end; ++index) {
+  for (int64_t index = 0, end = sub_streams_.size(); index < end; ++index) {
     std::pair<std::unique_ptr<Stream>, bool> &pair = sub_streams_[index];
     if (pair.first.get() != sub_stream) {
       continue;

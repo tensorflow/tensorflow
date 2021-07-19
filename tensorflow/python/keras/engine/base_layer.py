@@ -34,7 +34,6 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -93,15 +92,6 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 # to tf.cast?
 _AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
                    ragged_tensor.RaggedTensor)
-
-keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
-                                          'keras layers usage', 'method')
-keras_models_gauge = monitoring.BoolGauge(
-    '/tensorflow/api/keras/models', 'keras model usage', 'method')
-keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
-                                       'keras api usage', 'method')
-keras_premade_model_gauge = monitoring.BoolGauge(
-    '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
 @keras_export('keras.layers.Layer')
@@ -311,13 +301,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._instrumented_keras_layer_class = False
     self._instrumented_keras_model_class = False
     if not getattr(self, '_disable_keras_instrumentation', False):
-      keras_api_gauge.get_cell('layer').set(True)
       self._instrumented_keras_api = True
       if getattr(self, '_is_model_for_instrumentation', False):
-        keras_models_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_model_class = True
       else:
-        keras_layers_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_layer_class = True
 
   @trackable.no_automatic_dependency_tracking

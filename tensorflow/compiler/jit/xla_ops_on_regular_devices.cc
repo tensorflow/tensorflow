@@ -64,6 +64,10 @@ namespace tensorflow {
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaReduce").Device(DEVICE),                    \
                           XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaVariadicReduce").Device(DEVICE),            \
+                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("XlaVariadicReduceV2").Device(DEVICE),          \
+                          XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaReduceWindow")                              \
                               .HostMemory("window_dimensions")                 \
                               .HostMemory("window_strides")                    \

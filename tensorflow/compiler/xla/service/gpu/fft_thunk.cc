@@ -33,12 +33,12 @@ FftScratchAllocator::FftScratchAllocator(
     : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
 int64 FftScratchAllocator::GetMemoryLimitInBytes() {
-  constexpr int64 kFftScratchSize = 1LL << 32;  // 4GB by default.
+  constexpr int64_t kFftScratchSize = 1LL << 32;  // 4GB by default.
   return kFftScratchSize;
 }
 
 StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
-    int64 byte_size) {
+    int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
     return se::port::Status(
@@ -143,7 +143,7 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::MutexLock lock(&fft_plan_ptr->mu);
   std::unique_ptr<se::fft::Plan>& fft_plan = fft_plan_ptr->plan;
   if (fft_plan == nullptr) {
-    const int64 fft_rank = fft_length_.size();
+    const int64_t fft_rank = fft_length_.size();
     CHECK_LE(fft_rank, 3);
     int batch_size = 1;
     for (int i = 0; i < input_shape_.dimensions_size() - fft_rank; ++i) {

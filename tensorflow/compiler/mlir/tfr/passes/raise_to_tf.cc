@@ -458,6 +458,12 @@ struct RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
       : external_tfr_module(tfr_module),
         materialize_derived_attrs(materialize_derived_attrs) {}
 
+  StringRef getArgument() const final { return "tfr-raise-to-tf"; }
+
+  StringRef getDescription() const final {
+    return "Raise all the TFR call ops to TF ops.";
+  }
+
   void runOnFunction() override;
 
  private:
@@ -488,9 +494,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRaiseToTFOpsPass(
                                             materialize_derived_attrs);
 }
 
-static PassRegistration<RaiseToTFOpsPass> pass(
-    "tfr-raise-to-tf", "Raise all the TFR call ops to TF ops.",
-    [] { return CreateRaiseToTFOpsPass(); });
+static PassRegistration<RaiseToTFOpsPass> pass([] {
+  return CreateRaiseToTFOpsPass();
+});
 
 }  // namespace TFR
 }  // namespace mlir

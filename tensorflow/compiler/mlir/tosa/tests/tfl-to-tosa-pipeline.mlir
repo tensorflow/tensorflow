@@ -808,7 +808,7 @@ func @test_dequantize_quant_uniform(%arg0: tensor<4x!quant.uniform<i8:f32, 1.0:-
 func @test_dequantize_quant_per_axis(%arg0: tensor<1x4x!quant.uniform<i8:f32:1, {1.0:5, 2.0:6, 3.0:7, 4.0:8}>>) -> tensor<1x4xf32> {
   // CHECK-DAG: %[[VAL0:.+]] = "tosa.const"() {value = dense<{{\[}}[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]]> : tensor<1x4xf32>}
   // CHECK-DAG: %[[VAL1:.+]] = "tosa.const"() {value = dense<{{\[}}[5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00]]> : tensor<1x4xf32>}
-  // CHECK-DAG: %[[VAL2:.+]] = "tosa.cast"(%arg0) : (tensor<1x4x!quant.uniform<i8:f32:1, {1.000000e+00:5,2.000000e+00:6,3.000000e+00:7,4.000000e+00:8}>>)
+  // CHECK-DAG: %[[VAL2:.+]] = "tosa.cast"(%arg0) : (tensor<1x4xi8>) -> tensor<1x4xf32>
   // CHECK-DAG: %[[VAL3:.+]] = "tosa.sub"(%[[VAL2]], %[[VAL1]]) : (tensor<1x4xf32>, tensor<1x4xf32>) -> tensor<1x4xf32>
   // CHECK-DAG: %[[VAL4:.+]] = "tosa.mul"(%[[VAL3]], %[[VAL0]]) {shift = 0 : i32} : (tensor<1x4xf32>, tensor<1x4xf32>) -> tensor<1x4xf32>
   // CHECK: return %[[VAL4]]
@@ -828,6 +828,7 @@ func @test_quant_stats(%arg0: tensor<2x1xf32>) -> (tensor<2x1xf32>) {
 // -----
 
 // CHECK-LABEL: test_add_qi8
+// CHECK-SAME: %arg0: tensor<13x21x3xi8>, %arg1: tensor<13x21x3xi8>) -> tensor<13x21x3xi8> {
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.rescale"(%arg0)
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.rescale"(%arg1)
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.add"(%[[VAR0]], %[[VAR1]])

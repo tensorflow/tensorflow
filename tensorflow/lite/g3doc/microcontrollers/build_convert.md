@@ -12,7 +12,7 @@ guidance on designing and training a model to fit in limited memory.
 For an end-to-end, runnable example of building and converting a model, see the
 following Colab which is part of the *Hello World* example:
 
-<a class="button button-primary" href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb">train_hello_world_model.ipynb</a>
+<a class="button button-primary" href="https://colab.research.google.com/github/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb">train_hello_world_model.ipynb</a>
 
 ## Model conversion
 
@@ -54,7 +54,7 @@ important to change the array declaration to `const` for better memory
 efficiency on embedded platforms.
 
 For an example of how to include and use a model in your program, see
-[`model.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/model.cc)
+[`model.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/model.cc)
 in the *Hello World* example.
 
 ## Model architecture and training
@@ -92,4 +92,4 @@ to run. We are working on expanding operation support, both in terms of
 reference implementations and optimizations for specific architectures.
 
 The supported operations can be seen in the file
-[`all_ops_resolver.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/all_ops_resolver.cc)
+[`all_ops_resolver.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/all_ops_resolver.cc)

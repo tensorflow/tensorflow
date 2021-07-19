@@ -56,8 +56,7 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def) {
   c += "    int src_c = dst_c % args.src_tensor.Channels();\n";
   c += "    int src_z = src_c / 4;\n";
   c += "    FLT4 t =  args.src_tensor.Read(src_x, src_y, src_z);\n";
-  c += "    FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
-  c += "    tmp[i] = t_ar[src_c % 4];\n";
+  c += "    tmp[i] = SELECT_BY_INDEX_FROM_FLT4(t, src_c % 4);\n";
   c += "  }\n";
   c += "  FLT4 result;\n";
   c += "  result.x = tmp[0];\n";
@@ -102,8 +101,7 @@ std::string GetDepthToSpaceCode(const OperationDef& op_def) {
   c += "    int src_c = block_id * args.dst_tensor.Channels() + dst_c;\n";
   c += "    int src_z = src_c / 4;\n";
   c += "    FLT4 t =  args.src_tensor.Read(src_x, src_y, src_z);\n";
-  c += "    FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
-  c += "    tmp[i] = t_ar[src_c % 4];\n";
+  c += "    tmp[i] = SELECT_BY_INDEX_FROM_FLT4(t, src_c % 4);\n";
   c += "  }\n";
   c += "  FLT4 result;\n";
   c += "  result.x = tmp[0];\n";

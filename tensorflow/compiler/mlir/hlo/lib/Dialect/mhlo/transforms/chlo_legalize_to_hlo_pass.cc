@@ -63,7 +63,8 @@ struct ChloLegalizeToHloPass
     if (expand_compositions_) {
       chlo::PopulateDecomposeChloPatterns(&getContext(), &conversionPatterns);
     } else {
-      conversionTarget.addLegalOp<chlo::ZetaOp, chlo::PolygammaOp>();
+      conversionTarget
+          .addLegalOp<chlo::NextAfterOp, chlo::PolygammaOp, chlo::ZetaOp>();
     }
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,

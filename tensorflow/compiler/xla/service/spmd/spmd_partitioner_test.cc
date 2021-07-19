@@ -37,7 +37,7 @@ namespace op = xla::testing::opcode_matchers;
 class SpmdPartitioningTest : public HloTestBase {
  public:
   StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
-      absl::string_view hlo_module, int64 num_devices,
+      absl::string_view hlo_module, int64_t num_devices,
       bool conv_halo_exchange_always_on_lhs = true,
       bool choose_faster_windowed_einsum = false) {
     // Some tests (BackpropFilter convs) set this flag false to test two
@@ -4570,6 +4570,26 @@ ENTRY entry {
             op::Shape("s32[4]")));
 }
 
+TEST_F(SpmdPartitioningTest, ManualRng) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = s32[] parameter(0), sharding={manual}
+  %rhs = s32[] parameter(1), sharding={manual}
+  ROOT %rng = s32[4]{0} rng(%lhs, %rhs),
+      distribution=rng_uniform, sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Rng(op::Parameter(0), op::Parameter(1)),
+                          op::Shape("s32[4]")));
+}
+
 TEST_F(SpmdPartitioningTest, PartitionedRng) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -4720,6 +4740,40 @@ ENTRY entry {
                                  input, update, op::Parameter(1), op::Select()),
                              input),
                   op::Shape("s32[128,32]")));
+}
+
+TEST_F(SpmdPartitioningTest, DynamicUpdateSliceAlongPartitionedDimension2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = s32[8,790,2] parameter(0),
+    sharding={devices=[8,1,1]0,1,2,3,4,5,6,7}
+  %index = s32[] parameter(1)
+  %constant = s32[] constant(0)
+  %update = s32[1,790,2] parameter(2),
+    sharding={devices=[8,1,1]0,1,2,3,4,5,6,7}
+  ROOT %dynamic-update-slice = s32[8,790,2]
+    dynamic-update-slice(%input, %update, %index, %constant, %constant),
+    sharding={devices=[8,1,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Parameter(0), op::Shape("s32[1,790,2]"));
+  auto update = AllOf(op::AllReduce(op::Select(
+                          op::Broadcast(), op::Parameter(2), op::Broadcast())),
+                      op::Shape("s32[1,790,2]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Select(op::Broadcast(),
+                       op::DynamicUpdateSlice(input, update, op::Select(),
+                                              op::Constant(), op::Constant()),
+                       input),
+            op::Shape("s32[1,790,2]")));
 }
 
 TEST_F(SpmdPartitioningTest, DynamicUpdateSlicePartitionSliceAndNonSliceDims) {

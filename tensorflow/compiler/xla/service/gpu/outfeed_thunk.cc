@@ -49,13 +49,13 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     return Status::OK();
   }
 
-  const int64 leaf_count = output_buffers->leaf_count();
+  const int64_t leaf_count = output_buffers->leaf_count();
   TF_RET_CHECK(source_slices_.size() == leaf_count)
       << "Mismatch between number of outfeed inputs (" << source_slices_.size()
       << ") and outputs (" << leaf_count << ")";
 
   auto output_leaf_it = output_buffers->leaf_begin();
-  for (int64 index = 0; index < leaf_count; ++index) {
+  for (int64_t index = 0; index < leaf_count; ++index) {
     // Assert that the shapes are compatible.
     const ShapeIndex& shape_index = output_leaf_it->first;
     std::unique_ptr<OutfeedBuffer>& buffer = output_leaf_it->second;

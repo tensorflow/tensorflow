@@ -209,14 +209,14 @@ class ForLoopNest {
   // A convenient wrapper of the other flavor of AddLoop. The given start and
   // end index are constant.
   std::unique_ptr<ForLoop> AddLoop(
-      int64 start_index, int64 end_index, int64 stride,
+      int64_t start_index, int64_t end_index, int64_t stride,
       absl::string_view suffix,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
   // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(
-      int64 start_index, int64 end_index, absl::string_view suffix,
+      int64_t start_index, int64_t end_index, absl::string_view suffix,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
@@ -251,7 +251,7 @@ class ForLoopNest {
   // name_suffix is the string to append to the names of LLVM constructs (eg,
   // basic blocks) constructed by this method.
   std::vector<llvm::Value*> EmitOperandArrayLoopNest(
-      const llvm_ir::IrArray& operand_array, int64 dimension_to_skip,
+      const llvm_ir::IrArray& operand_array, int64_t dimension_to_skip,
       absl::string_view name_suffix);
 
   // Convenience methods which return particular basic blocks of the outermost
@@ -268,7 +268,7 @@ class ForLoopNest {
     index_type_ = index_ty == nullptr ? b_->getInt64Ty() : index_ty;
   }
 
-  llvm::Constant* GetConstantWithIndexType(int64 c) const {
+  llvm::Constant* GetConstantWithIndexType(int64_t c) const {
     return llvm::ConstantInt::get(index_type_, c);
   }
 

@@ -19,6 +19,7 @@ limitations under the License.
 #define DIALECT_TFR_OPS_
 
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
@@ -88,7 +89,8 @@ def TFR_allowedResultType : TypeAlias<TFR_AllTensorTypes,
 // standard tensor type and tfr.tensor types can be casted to each other.
 def TFR_singleTensorType : Type<Or<[
     TFR_TensorType.predicate,
-    TF_Tensor.predicate]>, "single tensor or tfr.tensor type">;
+    TF_Tensor.predicate,
+    TensorOf<[quant_QuantizedType]>.predicate]>, "single tensor or tfr.tensor type">;
 
 // all allowed build list input types
 def TFR_allowedBuiltListType : Type<Or<[
@@ -529,6 +531,8 @@ def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
   let assemblyFormat = [{
     `(` $input `,` $scale `,` $zp `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TFR_TFRQuantRawDataOp : TFR_Op<"quant_raw_data", [
@@ -552,6 +556,8 @@ def TFR_TFRQuantRawDataOp : TFR_Op<"quant_raw_data", [
   let assemblyFormat = [{
     `(` $input `)` attr-dict `:` functional-type($input, results)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TFR_TFRQuantQParamsOp : TFR_Op<"quant_qparam", [NoSideEffect]> {
@@ -573,6 +579,8 @@ def TFR_TFRQuantQParamsOp : TFR_Op<"quant_qparam", [NoSideEffect]> {
   let assemblyFormat = [{
     `(` $input `)` attr-dict `:` functional-type($input, results)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 
@@ -597,6 +605,8 @@ def TFR_TFRQuantScaleFactorOp : TFR_Op<"quant_scale_factor", [NoSideEffect]> {
   let assemblyFormat = [{
     `(` $out_scale `,` $in_scales `)` attr-dict `:` functional-type(operands, results)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 #endif // DIALECT_TFR_OPS_

@@ -168,7 +168,7 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         }
         const TensorShapeProto& shape1 = prop1[0].shape();
         const TensorShapeProto& shape2 = prop2[0].shape();
-        int64 result = ComputeSizeRatio(shape1, shape2);
+        int64_t result = ComputeSizeRatio(shape1, shape2);
         if (result >= 0) {
           // Replace div with constant.
           node.set_op("Const");

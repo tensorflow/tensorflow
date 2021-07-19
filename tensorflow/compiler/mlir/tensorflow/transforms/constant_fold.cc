@@ -32,17 +32,20 @@ namespace mlir {
 namespace TF {
 
 // Implements a TF specific policy on when constant folding is allowed.
-// Policy: Always allow folding if we do not know the shape of an operand or
+// Policy:
+//
+// Disable constant folding if operands size is greater than a certain
+// threshold (`kOperandsSizeThreshold`).
+//
+// Otherwise, allow folding if we do not know the shape of an operand or
 // result i.e., one of these values has non-static shape. If we know all the
 // shapes, find the total size of the operands and results. Folding of the op is
 // allowed if one of the following conditions are met:
-// 1. size of results is less than a certain threshold (`kSizeThreshold`), or
+// 1. size of results is less than a certain threshold
+// (`kResultsSizeThreshold`), or
 // 2. size of results is within a factor (`kSizeFactor`) of size of operands, or
 // TODO(b/157226221): Look into other heuristics for constant fold policy.
-// LINT.IfChange(folding-policy)
 static bool ShouldBeFolded(Operation* inst) {
-  constexpr int kSizeFactor = 2;
-  constexpr int64_t kSizeThreshold = (1 << 21);  // 256 KB
   bool has_unknown_shape = false;
   auto get_size = [&](TypeRange types) {
     int64_t size = 0;
@@ -63,10 +66,14 @@ static bool ShouldBeFolded(Operation* inst) {
   int64_t results_size = get_size(inst->getResultTypes());
   int64_t operands_size = get_size(inst->getOperandTypes());
 
-  return has_unknown_shape || (results_size <= kSizeThreshold) ||
-         (results_size <= kSizeFactor * operands_size);
+  constexpr int kSizeFactor = 2;
+  constexpr int64_t kResultsSizeThreshold = (1 << 21);   // 256 KB
+  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 1 GB
+
+  return (operands_size <= kOperandsSizeThreshold) &&
+         (has_unknown_shape || (results_size <= kResultsSizeThreshold) ||
+          (results_size <= kSizeFactor * operands_size));
 }
-// LINT.ThenChange(../tests/constant-fold.mlir:folding-policy-test)
 
 LogicalResult ConstantFoldFallbackHook(
     Operation* inst, ArrayRef<Attribute> operands,

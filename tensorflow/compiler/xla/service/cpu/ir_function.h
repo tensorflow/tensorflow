@@ -54,7 +54,7 @@ class IrFunction {
  public:
   IrFunction(const string& function_name, llvm::Function::LinkageTypes linkage,
              const HloModuleConfig& module_config, llvm::Module* llvm_module,
-             llvm::IRBuilder<>* b, int64 num_dynamic_loop_bounds);
+             llvm::IRBuilder<>* b, int64_t num_dynamic_loop_bounds);
   ~IrFunction();
 
   // Emit ir to read and return the set of ir values representing the dynamic
@@ -96,7 +96,7 @@ class IrFunction {
 
   // Emit ir to read and return the ir value for the dynamic loop bound at
   // 'offset' from the "dynamic_loop_bounds" argument of this function.
-  llvm::Value* GetDynamicLoopBound(int64 offset);
+  llvm::Value* GetDynamicLoopBound(int64_t offset);
 
   llvm::IRBuilder<>* b_;
   llvm::Module* llvm_module_;

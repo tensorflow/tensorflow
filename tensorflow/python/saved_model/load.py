@@ -860,7 +860,6 @@ def load(export_dir, tags=None, options=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
-  metrics.IncrementReadApi(_LOAD_V2_LABEL)
   result = load_internal(export_dir, tags, options)["root"]
   metrics.IncrementRead()
   return result
@@ -879,6 +878,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
 
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
+    metrics.IncrementReadApi(_LOAD_V2_LABEL, write_version="2")
     meta_graph_def = saved_model_proto.meta_graphs[0]
     # tensor_content field contains raw bytes in litle endian format
     # which causes problems when loaded on big-endian systems

@@ -432,7 +432,7 @@ Status DebugNodeInserter::SetDebugNodeAttributes(
         }
         debug_node->AddAttr<float>(attr.name(), float_value);
       } else if (attr.type() == "int") {
-        int64 int_value = 0;
+        int64_t int_value = 0;
         if (!::tensorflow::strings::safe_strto64(attr_value, &int_value)) {
           return errors::InvalidArgument(
               "Invalid value string for int-type attribute ", attr.name(),

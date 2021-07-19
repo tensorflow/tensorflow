@@ -137,7 +137,7 @@ absl::Status ExpTest(TestExecutionEnvironment* env) {
 
   for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 2e-2f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);

@@ -74,6 +74,9 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
     case PERMUTE_COLLECTIVE:
       return "Permute";
 
+    case ALL_TO_ALL_COLLECTIVE:
+      return "AllToAll";
+
     default:
       return "undef";
   }

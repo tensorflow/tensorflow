@@ -25,6 +25,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -38,8 +39,8 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 
-namespace {}  // namespace
 constexpr int kMaxAttempts = 2;
+constexpr int64_t ValidatorRunner::kDefaultEventTimeoutUs;
 
 ValidatorRunner::ValidatorRunner(const std::string& model_path,
                                  const std::string& storage_path,
@@ -314,7 +315,8 @@ std::vector<const BenchmarkEvent*> ValidatorRunner::GetAndFlushEventsToLog(
       break;
     }
     if (event->event_type() == BenchmarkEventType_END ||
-        event->event_type() == BenchmarkEventType_ERROR) {
+        event->event_type() == BenchmarkEventType_ERROR ||
+        event->event_type() == BenchmarkEventType_RECOVERED_ERROR) {
       events.push_back(event);
       seen_end = true;
     } else if (event->event_type() == BenchmarkEventType_START) {

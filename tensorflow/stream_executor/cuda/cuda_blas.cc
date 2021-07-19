@@ -2176,9 +2176,9 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
 port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
-    blas::DataType type_a, int lda, int64 stride_a, const DeviceMemoryBase &b,
-    blas::DataType type_b, int ldb, int64 stride_b, const void *beta,
-    DeviceMemoryBase *c, blas::DataType type_c, int ldc, int64 stride_c,
+    blas::DataType type_a, int lda, int64_t stride_a, const DeviceMemoryBase &b,
+    blas::DataType type_b, int ldb, int64_t stride_b, const void *beta,
+    DeviceMemoryBase *c, blas::DataType type_c, int ldc, int64_t stride_c,
     int batch_count, blas::ComputationType computation_type,
     blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
   TF_ASSIGN_OR_RETURN(cublasMath_t math_type,
@@ -2530,9 +2530,9 @@ bool CUDABlas::DoBlasGemmBatched(
 port::Status CUDABlas::DoBlasGemmStridedBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, blas::DataType dtype, const void *alpha,
-    const DeviceMemoryBase &a, int lda, int64 stride_a,
-    const DeviceMemoryBase &b, int ldb, int64 stride_b, const void *beta,
-    DeviceMemoryBase *c, int ldc, int64 stride_c, int batch_count) {
+    const DeviceMemoryBase &a, int lda, int64_t stride_a,
+    const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
+    DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count) {
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
 #if CUDA_VERSION < 11000
   if (dtype == dnn::kHalf) {
@@ -3156,8 +3156,8 @@ port::StatusOr<UniqueOpDesc> CreateCublasLtOperationDesc(
 }
 
 port::StatusOr<UniqueLayoutDesc> CreateCublasLtLayoutDesc(
-    blas::DataType data_type, uint64 rows, uint64 cols, int64 ld, int64 stride,
-    int batch_count) {
+    blas::DataType data_type, uint64 rows, uint64 cols, int64_t ld,
+    int64_t stride, int batch_count) {
   cublasLtMatrixLayout_t desc;
   cublasStatus_t status = cublasLtMatrixLayoutCreate(
       &desc, GetCUDADataType(data_type), rows, cols, ld);
@@ -3361,7 +3361,7 @@ port::StatusOr<UniqueMatmulPreference> CreateCublasLtMatmulPreference(
   // This is a workaround for a known issue in cuBlasLt where the heuristic may
   // in rare cases select an algo that does not support the specified stride.
   // Specifying the alignment requirements manually like this avoids the issue.
-  auto get_alignment_bytes = [](int64 stride, blas::DataType dtype) {
+  auto get_alignment_bytes = [](int64_t stride, blas::DataType dtype) {
     return (stride & -stride) * GetDataTypeSizeBytes(dtype);
   };
   if (cuda_plan.params().stride_a) {

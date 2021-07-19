@@ -62,9 +62,9 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
     batch_ptr(0) = 0;
     ++prev_batch;
 
-    for (int64 i = 0; i < total_nnz; ++i) {
+    for (int64_t i = 0; i < total_nnz; ++i) {
       // For now, the rows pointers store the corresponding row counts.
-      int64 ix = indices(i, 0) + 1;
+      int64_t ix = indices(i, 0) + 1;
       if (ix >= csr_row_ptr.size()) {
         return errors::InvalidArgument("Got an index ", ix,
                                        " that is outside of csr_row_ptr");
@@ -73,7 +73,7 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
       csr_col_ind(i) = indices(i, 1);
     }
   } else {  // rank == 3
-    for (int64 i = 0; i < total_nnz; ++i) {
+    for (int64_t i = 0; i < total_nnz; ++i) {
       const int cur_batch = indices(i, 0);
       // For now, the rows pointers store the corresponding row counts.
       csr_row_ptr(cur_batch * (num_rows + 1) + indices(i, 1) + 1) += 1;

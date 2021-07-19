@@ -161,6 +161,47 @@ func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex_log
+func @complex_log(%input: memref<2x2xcomplex<f32>>,
+                  %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.log"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                  memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.log %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @log1p
+func @log1p(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "lmhlo.log_plus_one"(%input, %result) : (memref<2x2xf32>,
+                                           memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = math.log1p %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @complex_log1p
+func @complex_log1p(%input: memref<2x2xcomplex<f32>>,
+                    %result: memref<2x2xcomplex<f32>>) {
+  "lmhlo.log_plus_one"(%input, %result) : (memref<2x2xcomplex<f32>>,
+                                           memref<2x2xcomplex<f32>>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = complex.log1p %[[OPERAND_IN]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
 // CHECK-LABEL: func @copy
 func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
   "lmhlo.copy"(%in, %out) : (memref<2x4x8xf32>, memref<2x4x8xf32>) -> ()
@@ -377,7 +418,7 @@ func @static_broadcast_in_dim_expansion(%operand: memref<1x5xf32>,
   } : (memref<1x5xf32>, memref<5x10x100xf32>) -> ()
   return
 }
-// CHECK: %[[RESHAPED_ARG:.*]] = linalg.collapse_shape %{{.*}} {{\[}}[0, 1]]
+// CHECK: %[[RESHAPED_ARG:.*]] = memref.collapse_shape %{{.*}} {{\[}}[0, 1]]
 // CHECK-SAME:                   memref<1x5xf32> into memref<5xf32>
 // CHECK: linalg.generic {{{.*}}indexing_maps =
 // CHECK-SAME:       [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
@@ -919,13 +960,27 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
 
 // -----
 
+// CHECK: func @slice_with_strides(%[[IN:.*]]: memref<?xf32>, %[[OUT:.*]]: memref<?xf32>)
+func @slice_with_strides(%operand: memref<?xf32>, %result: memref<?xf32>) {
+  "lmhlo.slice"(%operand, %result) {
+    limit_indices = dense<12> : tensor<1xi64>,
+    start_indices = dense<0> : tensor<1xi64>,
+    strides = dense<2> : tensor<1xi64>
+  } : (memref<?xf32>, memref<?xf32>) -> ()
+  return
+}
+// CHECK: %[[RESULT:.*]] = memref.subview %[[IN]][0] [6] [2] : memref<?xf32> to memref<6xf32, #{{.*}}>
+// CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
+
+// -----
+
 // CHECK-LABEL: func @reshape_3D_2D
 func @reshape_3D_2D(%arg0: memref<12x1x42xi32>, %arg1 : memref<12x42xi32>) {
   "lmhlo.reshape"(%arg0, %arg1)
     : (memref<12x1x42xi32>, memref<12x42xi32>) -> ()
   return
 }
-// CHECK: linalg.collapse_shape %{{.*}} {{\[}}[0, 1], [2]]
+// CHECK: memref.collapse_shape %{{.*}} {{\[}}[0, 1], [2]]
 // CHECK-NEXT: linalg.copy
 
 // -----
@@ -936,7 +991,7 @@ func @reshape_4D_2D(%arg0: memref<12x42x1x1xi32>, %arg1 : memref<12x42xi32>) {
     : (memref<12x42x1x1xi32>, memref<12x42xi32>) -> ()
   return
 }
-// CHECK: linalg.collapse_shape %{{.*}} {{\[}}[0], [1, 2, 3]]
+// CHECK: memref.collapse_shape %{{.*}} {{\[}}[0], [1, 2, 3]]
 // CHECK-NEXT: linalg.copy
 
 // -----
@@ -947,7 +1002,7 @@ func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
     : (memref<12x42xi32>, memref<12x1x42x1xi32>) -> ()
   return
 }
-// CHECK: linalg.expand_shape %{{.*}} {{\[}}[0, 1], [2, 3]]
+// CHECK: memref.expand_shape %{{.*}} {{\[}}[0, 1], [2, 3]]
 // CHECK-NEXT: linalg.copy
 
 // -----
@@ -958,8 +1013,8 @@ func @reshape_3D_4D(%arg0: memref<1x49x16xf32>, %arg1: memref<1x784x1x1xf32>) {
    : (memref<1x49x16xf32>, memref<1x784x1x1xf32>) -> ()
   return
 }
-// CHECK: linalg.collapse_shape %{{.*}} {{\[}}[0, 1, 2]]
-// CHECK: linalg.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
+// CHECK: memref.collapse_shape %{{.*}} {{\[}}[0, 1, 2]]
+// CHECK: memref.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
 // CHECK: linalg.copy
 
 // -----
@@ -970,8 +1025,8 @@ func @reshape_4D_3D(%arg0: memref<1x8x10x3xf32>, %arg1: memref<1x240x1xf32>) {
    : (memref<1x8x10x3xf32>, memref<1x240x1xf32>) -> ()
   return
 }
-// CHECK: linalg.collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
-// CHECK: linalg.expand_shape %{{.*}} {{\[}}[0, 1, 2]]
+// CHECK: memref.collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
+// CHECK: memref.expand_shape %{{.*}} {{\[}}[0, 1, 2]]
 // CHECK: linalg.copy
 
 // -----
@@ -983,8 +1038,8 @@ func @reshape1_4D_4D(%arg0: memref<4x512x1x1xi32>,
    : (memref<4x512x1x1xi32>, memref<1x4x1x512xi32>) -> ()
   return
 }
-// CHECK: linalg.collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
-// CHECK: linalg.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
+// CHECK: memref.collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
+// CHECK: memref.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
 
 // -----
 
@@ -995,8 +1050,8 @@ func @reshape2_4D_4D(%arg0: memref<4x1x1x1024xi32>,
    : (memref<4x1x1x1024xi32>, memref<4x1024x1x1xi32>) -> ()
   return
 }
-// CHECK: linalg.collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
-// CHECK: linalg.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
+// CHECK: memref.collapse_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
+// CHECK: memref.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]]
 
 // -----
 

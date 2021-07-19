@@ -33,8 +33,8 @@ double GenerateUniformRandomNumberBetween(double a, double b) {
 
 }  // namespace
 
-int64 ComputeBackoffMicroseconds(int current_retry_attempt, int64 min_delay,
-                                 int64 max_delay) {
+int64 ComputeBackoffMicroseconds(int current_retry_attempt, int64_t min_delay,
+                                 int64_t max_delay) {
   DCHECK_GE(current_retry_attempt, 0);
 
   // This function with the constants below is calculating:

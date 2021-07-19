@@ -126,7 +126,7 @@ class Input {
     Initializer(const T& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
-      for (int64 i = 0; i < t.NumElements(); ++i) {
+      for (int64_t i = 0; i < t.NumElements(); ++i) {
         t.flat<RealT>()(i) = RealT(v);
       }
       tensor = t;

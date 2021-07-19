@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
 namespace tensorflow {
@@ -125,6 +126,10 @@ auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
 
+auto* tf_data_model_gauge =
+    monitoring::Gauge<std::function<std::string()>, 1>::New(
+        "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
+
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
@@ -198,6 +203,11 @@ monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
 
 monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
   return tf_data_elements_counter->GetCell(name);
+}
+
+monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
+    const string& id) {
+  return tf_data_model_gauge->GetCell(id);
 }
 
 void RecordTFDataBytesFetched(int64 num_bytes) {

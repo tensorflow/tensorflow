@@ -146,7 +146,7 @@ class GradientTape {
   // This is a no-op if the tensor is already being watched either from an
   // earlier call to `GradientTape::Watch` or being an output of an op with
   // watched inputs.
-  void Watch(int64 tensor_id);
+  void Watch(int64_t tensor_id);
 
   // Records an operation with inputs `input_tensor_id` and outputs
   // `output_tensors` on the tape and marks all its outputs as watched if at
@@ -161,7 +161,7 @@ class GradientTape {
       const std::function<BackwardFunction*()>& backward_function_getter,
       const std::function<void(BackwardFunction*)>& backward_function_deleter);
 
-  void DeleteTrace(int64 tensor_id);
+  void DeleteTrace(int64_t tensor_id);
 
   // Consumes the internal state of the tape (so cannot be called more than
   // once) and produces the gradient of the target tensors with respect to the
@@ -246,11 +246,11 @@ class ForwardAccumulator {
   // vector `tangent` of matching shape and dtype. Tangents are the "vector" in
   // "Jacobian-vector product"; `Watch`ing a new Tensor and immediately calling
   // FetchJVP for it would return `tangent`.
-  void Watch(int64 tensor_id, Gradient* tangent);
+  void Watch(int64_t tensor_id, Gradient* tangent);
 
   // Removes the gradient associated with tensor_id. Should be called when the
   // Tensor associated with `tensor_id` is deleted.
-  void DeleteGradient(int64 tensor_id);
+  void DeleteGradient(int64_t tensor_id);
 
   // Runs forward autodiff. Should be called whenever a new operation is
   // available and the accumulator is active.
@@ -300,7 +300,7 @@ class ForwardAccumulator {
   // return value. The caller should increment the reference count before
   // deleting the ForwardAccumulator or calling DeleteGradient if keeping a
   // persistent reference to a non-null result.
-  Gradient* FetchJVP(int64 tensor_id);
+  Gradient* FetchJVP(int64_t tensor_id);
 
   // Indicates whether the forward accumulator should run on an operation with
   // the specified inputs and dtypes.
@@ -398,7 +398,7 @@ bool GradientTape<Gradient, BackwardFunction, TapeTensor>::ShouldRecord(
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 void GradientTape<Gradient, BackwardFunction, TapeTensor>::Watch(
-    int64 tensor_id) {
+    int64_t tensor_id) {
   tensor_tape_.emplace(tensor_id, -1);
 }
 
@@ -414,7 +414,7 @@ void GradientTape<Gradient, BackwardFunction, TapeTensor>::RecordOperation(
   }
   std::vector<int64> ids;
   ids.reserve(input_tensor_id.size());
-  for (int64 i : input_tensor_id) {
+  for (int64_t i : input_tensor_id) {
     tensor_usage_[i]++;
     ids.push_back(i);
   }
@@ -435,7 +435,7 @@ void GradientTape<Gradient, BackwardFunction, TapeTensor>::RecordOperation(
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 void GradientTape<Gradient, BackwardFunction, TapeTensor>::DeleteTrace(
-    int64 tensor_id) {
+    int64_t tensor_id) {
   auto it = tensor_usage_.find(tensor_id);
   if (it == tensor_usage_.end()) {
     return;
@@ -463,7 +463,7 @@ void GradientTape<Gradient, BackwardFunction, TapeTensor>::DeleteTrace(
       return;
     }
   }
-  for (int64 id : op_it->second.input_tensor_id) {
+  for (int64_t id : op_it->second.input_tensor_id) {
     DeleteTrace(id);
   }
   op_it->second.backward_function_deleter(op_it->second.backward_function);
@@ -531,13 +531,13 @@ BackpropInitialState<BackwardFunction, TapeTensor> PrepareBackprop(
   }
   BackpropInitialState<BackwardFunction, TapeTensor> result;
   while (!tensor_stack.empty()) {
-    int64 tensor_id = tensor_stack.back();
+    int64_t tensor_id = tensor_stack.back();
     tensor_stack.pop_back();
     auto op_id_it = tensor_tape.find(tensor_id);
     if (op_id_it == tensor_tape.end()) {
       continue;
     }
-    int64 op_id = op_id_it->second;
+    int64_t op_id = op_id_it->second;
     auto op_it = op_tape->find(op_id);
     auto result_op_it = result.op_tape.find(op_id);
     if (op_id == -1 || op_it == op_tape->end() ||
@@ -807,7 +807,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
         unaggregated_grads.push_back(in_gradients[i]);
         if (unaggregated_grads.size() > kMinAggregateCount) {
           auto size_it = gradients_size.find(id);
-          int64 size;
+          int64_t size;
           if (size_it == gradients_size.end()) {
             size = vspace.NumElements(unaggregated_grads[0]);
             gradients_size.emplace(id, size);
@@ -870,7 +870,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
   }
   std::unordered_set<int64> used_gradient_ids(source_tensor_ids.size());
   for (int i = 0; i < source_tensor_ids.size(); i++) {
-    int64 tensor_id = source_tensor_ids[i];
+    int64_t tensor_id = source_tensor_ids[i];
     auto grad_it = gradients.find(tensor_id);
     if (grad_it == gradients.end()) {
       result[i] = nullptr;
@@ -964,7 +964,7 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
           " with dtype ", output_tensor.GetDType());
     }
     forwardprop_aids.push_back(aid);
-    int64 aid_id = vspace_.TensorId(aid);
+    int64_t aid_id = vspace_.TensorId(aid);
     sources.push_back(aid_id);
     sources_set.insert(aid_id);
     tape->Watch(aid_id);
@@ -998,7 +998,7 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
   for (int grad_index = 0, end = grad.size(); grad_index < end; ++grad_index) {
     Gradient* grad_tensor = grad[grad_index];
     if (grad_tensor != nullptr) {
-      int64 tensor_id = vspace_.TensorId(grad_tensor);
+      int64_t tensor_id = vspace_.TensorId(grad_tensor);
       targets.push_back(tensor_id);
       if (sources_set.find(tensor_id) != sources_set.end()) {
         sources_that_are_targets.emplace(
@@ -1095,7 +1095,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
   }
   for (int i = 0; i < forward_grads.size(); ++i) {
     if (forward_grads[i] != nullptr) {
-      int64 tensor_id = output_tensors[i].GetID();
+      int64_t tensor_id = output_tensors[i].GetID();
       auto existing = accumulated_gradients_.find(tensor_id);
       if (existing != accumulated_gradients_.end()) {
         // This is a somewhat odd case to be in, since it means we have two
@@ -1114,7 +1114,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 void ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Watch(
-    int64 tensor_id, Gradient* tangent) {
+    int64_t tensor_id, Gradient* tangent) {
   typename std::unordered_map<int64, Gradient*>::iterator existing =
       accumulated_gradients_.find(tensor_id);
   vspace_.MarkAsResult(tangent);
@@ -1132,7 +1132,7 @@ void ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Watch(
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 void ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::DeleteGradient(
-    int64 tensor_id) {
+    int64_t tensor_id) {
   auto existing = accumulated_gradients_.find(tensor_id);
   if (existing != accumulated_gradients_.end()) {
     vspace_.DeleteGradient(existing->second);
@@ -1142,7 +1142,7 @@ void ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::DeleteGradient(
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 Gradient* ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::FetchJVP(
-    int64 tensor_id) {
+    int64_t tensor_id) {
   auto lookup = accumulated_gradients_.find(tensor_id);
   if (lookup == accumulated_gradients_.end()) {
     return nullptr;

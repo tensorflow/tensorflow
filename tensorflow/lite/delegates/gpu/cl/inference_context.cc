@@ -18,9 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
+#include <limits>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -137,6 +141,12 @@ bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
   return true;
 }
 
+// Calculates the total size of the assignment.
+size_t TotalSize(const ObjectsAssignment<size_t>& assignment) {
+  return std::accumulate(assignment.object_sizes.begin(),
+                         assignment.object_sizes.end(), static_cast<size_t>(0));
+}
+
 }  // namespace
 
 absl::Status InferenceContext::InitFromGraph(
@@ -204,7 +214,8 @@ absl::Status InferenceContext::InitFromGraph(
       out_refs[i] = outputs[i]->tensor.ref;
     }
     flatbuffers::FlatBufferBuilder builder;
-    auto encoded_fb = Encode(*this, in_refs, out_refs, &builder);
+    auto encoded_fb = Encode(*env->GetDevicePtr(), *this, *env->program_cache(),
+                             in_refs, out_refs, &builder);
     data::FinishInferenceContextBuffer(builder, encoded_fb);
     serialized_model->resize(builder.GetSize());
     std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
@@ -225,7 +236,8 @@ absl::Status InferenceContext::RestoreDeserialized(
     return absl::DataLossError("Deserialization failed.");
   }
   auto decoded_fb = data::GetInferenceContext(serialized_model.data());
-  RETURN_IF_ERROR(Decode(decoded_fb, this));
+  RETURN_IF_ERROR(Decode(env->context(), *env->GetDevicePtr(),
+                         env->program_cache(), decoded_fb, this));
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
@@ -237,7 +249,7 @@ absl::Status InferenceContext::RestoreDeserialized(
       AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
   BindMemoryToOperations();
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.cl_operation.CompileDeserialized(creation_context));
+    RETURN_IF_ERROR(node.cl_operation.RestoreDeserialized(creation_context));
   }
   RETURN_IF_ERROR(UpdateParams());
   InitRecordableQueue(env);
@@ -593,10 +605,33 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
   RETURN_IF_ERROR(AssignObjectsToTensors(
       buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
 
-  shared_buffers_.resize(buffer_assignment.object_sizes.size());
-  for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
-    RETURN_IF_ERROR(CreateReadWriteBuffer(buffer_assignment.object_sizes[i],
-                                          context, &shared_buffers_[i]));
+  size_t base_align_bytes =
+      std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
+  OffsetsAssignment offset_assignment;
+  if (gpu_info.IsCL11OrHigher()) {
+    RETURN_IF_ERROR(AssignOffsetsToTensors(
+        buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
+        &offset_assignment, base_align_bytes));
+  }
+
+  bool use_offset_assignment =
+      gpu_info.IsCL11OrHigher() &&
+      offset_assignment.total_size < TotalSize(buffer_assignment);
+  if (use_offset_assignment) {
+    shared_buffers_.resize(offset_assignment.offsets.size());
+    RETURN_IF_ERROR(CreateReadWriteBuffer(offset_assignment.total_size, context,
+                                          &shared_buffers_parent_));
+    for (int i = 0; i < offset_assignment.offsets.size(); ++i) {
+      RETURN_IF_ERROR(CreateReadWriteSubBuffer(
+          shared_buffers_parent_, offset_assignment.offsets[i],
+          buffer_usage_records[i].tensor_size, context, &shared_buffers_[i]));
+    }
+  } else {
+    shared_buffers_.resize(buffer_assignment.object_sizes.size());
+    for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+      RETURN_IF_ERROR(CreateReadWriteBuffer(buffer_assignment.object_sizes[i],
+                                            context, &shared_buffers_[i]));
+    }
   }
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
@@ -609,7 +644,9 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
       if (created_tensors[tensor_index]) continue;
       const auto& shape = tensor_reserver_.Get(t.first).shape;
-      const int buffer_index = buffer_assignment.object_ids[tensor_index];
+      const int buffer_index = use_offset_assignment
+                                   ? tensor_index
+                                   : buffer_assignment.object_ids[tensor_index];
       if (t.second.storage_type == TensorStorageType::TEXTURE_2D ||
           t.second.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
         const int row_bytes_alignment =

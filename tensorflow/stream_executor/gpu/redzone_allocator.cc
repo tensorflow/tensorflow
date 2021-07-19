@@ -48,7 +48,7 @@ using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 RedzoneAllocator::RedzoneAllocator(Stream* stream,
                                    DeviceMemoryAllocator* memory_allocator,
                                    GpuAsmOpts ptx_compilation_opts,
-                                   int64 memory_limit, int64 redzone_size,
+                                   int64_t memory_limit, int64_t redzone_size,
                                    uint8 redzone_pattern)
     : device_ordinal_(stream->parent()->device_ordinal()),
       stream_(stream),
@@ -61,7 +61,7 @@ RedzoneAllocator::RedzoneAllocator(Stream* stream,
       gpu_compilation_opts_(ptx_compilation_opts) {}
 
 port::StatusOr<DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
-    int64 byte_size) {
+    int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
     return port::Status(
@@ -71,7 +71,7 @@ port::StatusOr<DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
             byte_size, GetMemoryLimitInBytes()));
   }
 
-  int64 rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
+  int64_t rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
   TF_ASSIGN_OR_RETURN(
       OwningDeviceMemory allocated_buffer,
       memory_allocator_->Allocate(device_ordinal_,
@@ -191,7 +191,7 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
   uint64 pattern64;
   std::memcpy(&pattern64, pattern_arr.data(), sizeof(uint64));
 
-  int64 i;
+  int64_t i;
   for (i = 0; i + 7 < size; i += sizeof(uint64)) {
     uint64 rz_value = *reinterpret_cast<uint64*>(&redzone_data[i]);
     if (rz_value != pattern64) {
@@ -219,10 +219,10 @@ static void RunRedzoneChecker(Stream* stream,
                               const ComparisonKernelT& comparison_kernel) {
   StreamExecutor* executor = stream->parent();
 
-  int64 num_elements = redzone.size();
-  int64 threads_per_block = std::min(
+  int64_t num_elements = redzone.size();
+  int64_t threads_per_block = std::min(
       executor->GetDeviceDescription().threads_per_block_limit(), num_elements);
-  int64 block_count =
+  int64_t block_count =
       tensorflow::MathUtil::CeilOfRatio(num_elements, threads_per_block);
 
   stream->ThenLaunch(ThreadDim(threads_per_block), BlockDim(block_count),
@@ -250,10 +250,10 @@ static port::Status ReinitializeRedzone(Stream* stream,
 static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
     Stream* stream, DeviceMemoryBase memory,
     const DeviceMemory<uint64>& out_param,
-    const ComparisonKernelT& comparison_kernel, int64 user_allocation_size,
+    const ComparisonKernelT& comparison_kernel, int64_t user_allocation_size,
     uint64 redzone_size, uint8 redzone_pattern) {
   StreamExecutor* executor = stream->parent();
-  int64 rhs_slop =
+  int64_t rhs_slop =
       RoundUpToNearest<int64>(user_allocation_size, kRhsRedzoneAlign) -
       user_allocation_size;
   CHECK_EQ(memory.size(), user_allocation_size + rhs_slop + 2 * redzone_size);
@@ -273,7 +273,7 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
                     comparison_kernel);
   RunRedzoneChecker(stream, rhs_redzone, redzone_pattern, out_param,
                     comparison_kernel);
-  int64 result;
+  int64_t result;
   CHECK_EQ(out_param.size(), sizeof(result));
   stream->ThenMemcpy(&result, out_param, sizeof(result));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -322,17 +322,25 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
       executor->AllocateOwnedScalar<uint64>();
   stream_->ThenMemZero(out_param.ptr(), sizeof(uint64));
 
+#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ComparisonKernelT> comparison_kernel,
+      std::shared_ptr<ComparisonKernelT> loaded_kernel,
+      (LoadKernelOrGetPtr<DeviceMemory<uint8>, uint8, uint64,
+                          DeviceMemory<uint64>>(
+          executor, "redzone_checker", redzone_checker_ptx, compiled_ptx)));
+#else
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ComparisonKernelT> loaded_kernel,
       (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64,
                                    DeviceMemory<uint64>>(
           "redzone_checker", redzone_checker_ptx, compiled_ptx)));
+#endif  // GOOGLE_CUDA
 
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first, out_param.cref(),
-                               *comparison_kernel, buf_and_size.second,
+                               *loaded_kernel, buf_and_size.second,
                                redzone_size_, redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;

@@ -18,7 +18,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
@@ -252,10 +255,15 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
       return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
+    type_converter.addConversion([&](tf_framework::JITCallableType type) {
+      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+    });
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
     populateStdExpandOpsPatterns(patterns);
+    populateMemRefToLLVMConversionPatterns(type_converter, patterns);
+    populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
     populateVectorToLLVMConversionPatterns(type_converter, patterns);
@@ -270,7 +278,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     target.addIllegalDialect<StandardOpsDialect, complex::ComplexDialect,
                              gpu::GPUDialect, tf_framework::TFFrameworkDialect,
                              math::MathDialect>();
-    target.addIllegalOp<LLVM::DialectCastOp>();
+    target.addIllegalOp<UnrealizedConversionCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.

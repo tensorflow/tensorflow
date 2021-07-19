@@ -24,6 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
+template <typename T>
+using is_integer = llvm::is_one_of<T, int8, int16, int32, int64, uint8, uint16,
+                                   uint32, uint64>;
+
 /// Helper functions to create or derive inputs of the right type and size.
 
 template <typename T, typename LiteralT>
@@ -136,9 +140,7 @@ absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
                                    std::numeric_limits<double>::infinity()});
 }
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
+template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
   return InputAsVector<T, T>({std::numeric_limits<T>::min(),
                               std::numeric_limits<T>::min() + 1, -1, 0, 1,
@@ -189,12 +191,9 @@ absl::InlinedVector<T, 10> DefaultInputNonZero() {
                                          0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
+template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInputNonZero() {
-  return test::InputAsVector<T, double>(
-      {-18, -9, -1, 1, 3, 4, 5, 7, 9, 10, 18});
+  return test::InputAsVector<T, int>({-18, -9, -1, 1, 3, 4, 5, 7, 9, 10, 18});
 }
 
 template <typename T, std::enable_if_t<
@@ -206,9 +205,7 @@ absl::InlinedVector<T, 10> DefaultInputBetweenZeroAndOne() {
                                          0.999});
 }
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
+template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInputLessThanBitwidth() {
   auto max_shift = sizeof(T) * 8 - 1;
   absl::InlinedVector<T, 10> v;
@@ -218,9 +215,7 @@ absl::InlinedVector<T, 10> DefaultInputLessThanBitwidth() {
 
 /// Helper functions to get default input data.
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
+template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInput() {
   return InputAsVector<T, int>({-18, -9, -1, 0, 0, 1, 1, 2, 3, 5, 7, 9, 9, 18});
 }

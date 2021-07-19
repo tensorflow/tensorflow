@@ -503,7 +503,7 @@ class BatchNormTestManySizes
 std::vector<BatchNormTestParam> BuildBatchNormTestParams() {
   std::vector<BatchNormTestParam> params;
 
-  auto add_testcase = [&](std::vector<int64> bounds, int64 feature_index,
+  auto add_testcase = [&](std::vector<int64> bounds, int64_t feature_index,
                           float random_value_mean, float random_value_var) {
     BatchNormTestParam p{bounds, feature_index, random_value_mean,
                          random_value_var, /*use_cudnn_batchnorm=*/false};
@@ -562,7 +562,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
   auto input_squared =
       ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
   std::vector<int64> reduce_dims;
-  for (int64 i = 0; i < static_cast<int64>(bounds.size()); ++i) {
+  for (int64_t i = 0; i < static_cast<int64>(bounds.size()); ++i) {
     if (i != feature_index) {
       reduce_dims.push_back(i);
     }
@@ -578,22 +578,22 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
 
   std::vector<float> mean(feature_bound);
 
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     mean[i] = sum[i] / num_elements_per_feature;
   }
 
   std::vector<float> mean_square(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     mean_square[i] = mean[i] * mean[i];
   }
 
   std::vector<float> square_mean(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     square_mean[i] = sum_squared[i] / num_elements_per_feature;
   }
 
   std::vector<float> var(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     var[i] = square_mean[i] - mean_square[i];
   }
 
@@ -663,7 +663,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
   auto input_squared =
       ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
   std::vector<int64> reduce_dims;
-  for (int64 i = 0; i < static_cast<int64>(bounds.size()); ++i) {
+  for (int64_t i = 0; i < static_cast<int64>(bounds.size()); ++i) {
     if (i != feature_index) {
       reduce_dims.push_back(i);
     }
@@ -679,22 +679,22 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
 
   std::vector<float> mean(feature_bound);
 
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     mean[i] = sum[i] / num_elements_per_feature;
   }
 
   std::vector<float> mean_square(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     mean_square[i] = mean[i] * mean[i];
   }
 
   std::vector<float> square_mean(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     square_mean[i] = sum_squared[i] / num_elements_per_feature;
   }
 
   std::vector<float> var(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     var[i] = square_mean[i] - mean_square[i];
   }
 
@@ -774,7 +774,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   auto input_squared =
       ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
   std::vector<int64> reduce_dims;
-  for (int64 i = 0; i < static_cast<int64>(bounds.size()); ++i) {
+  for (int64_t i = 0; i < static_cast<int64>(bounds.size()); ++i) {
     if (i != feature_index) {
       reduce_dims.push_back(i);
     }
@@ -790,7 +790,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
 
   std::vector<float> mean(feature_bound);
 
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     if (num_elements_per_feature > 0) {
       mean[i] = sum[i] / num_elements_per_feature;
     } else {
@@ -799,12 +799,12 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   }
 
   std::vector<float> mean_square(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     mean_square[i] = mean[i] * mean[i];
   }
 
   std::vector<float> square_mean(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     if (num_elements_per_feature > 0) {
       square_mean[i] = sum_squared[i] / num_elements_per_feature;
     } else {
@@ -813,7 +813,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   }
 
   std::vector<float> var(feature_bound);
-  for (int64 i = 0; i < feature_bound; ++i) {
+  for (int64_t i = 0; i < feature_bound; ++i) {
     var[i] = square_mean[i] - mean_square[i];
   }
 

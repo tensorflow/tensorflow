@@ -105,13 +105,10 @@ tf_py_test(
     srcs = ["local_workers_test.py"],
     shard_count = 24,
     deps = [
+        ":multi_process_cluster",
         ":test_base",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:multi_process_lib",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:errors",
         "@absl_py//absl/testing:parameterized",
@@ -133,6 +130,32 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+py_library(
+    name = "multi_process_cluster",
+    srcs = ["multi_process_cluster.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/distribute:multi_process_lib",
+        "//tensorflow/python/platform:test",
+    ],
+)
+
+tf_py_test(
+    name = "multi_process_cluster_test",
+    size = "medium",
+    srcs = ["multi_process_cluster_test.py"],
+    shard_count = 3,
+    deps = [
+        ":multi_process_cluster",
+        ":test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/framework:combinations",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

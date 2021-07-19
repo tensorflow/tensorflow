@@ -428,7 +428,7 @@ void TFCode::AddNode(TFGraphNode* node) {
     traces.insert(trace);
     pre_code_node = pre_code_node->AddChildren(
         trace, &node->call_stack()->traces().at(i), "");
-    const int64 last_index = node->call_stack()->traces().size() - 1;
+    const int64_t last_index = node->call_stack()->traces().size() - 1;
     if (i == last_index) {
       pre_code_node->node->AddGraphNode(node);
     }
@@ -436,7 +436,7 @@ void TFCode::AddNode(TFGraphNode* node) {
 }
 
 void TFCode::Build() {
-  int64 unaccounted_nodes = 0;
+  int64_t unaccounted_nodes = 0;
   for (const auto& it : grad_nodes_) {
     const string& forward_name = it.first;
     auto forward_it = forward_nodes_.find(forward_name);
@@ -452,7 +452,7 @@ void TFCode::Build() {
           GetTraceString(fn->call_stack()->traces().at(i)) + kGradientSuffix;
       pre_code_node = pre_code_node->AddChildren(
           trace, &fn->call_stack()->traces().at(i), kGradientSuffix);
-      const int64 last_trace = fn->call_stack()->traces().size() - 1;
+      const int64_t last_trace = fn->call_stack()->traces().size() - 1;
       if (i == last_trace) {
         leaf = pre_code_node;
       }
@@ -631,8 +631,8 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
   return act_nodes;
 }
 
-string TFCode::FormatNodeMemory(CodeNode* node, int64 bytes,
-                                int64 total_bytes) const {
+string TFCode::FormatNodeMemory(CodeNode* node, int64_t bytes,
+                                int64_t total_bytes) const {
   string memory = FormatMemory(total_bytes);
   if (node->account) {
     memory = FormatMemory(bytes) + "/" + memory;
@@ -643,7 +643,7 @@ string TFCode::FormatNodeMemory(CodeNode* node, int64 bytes,
 }
 
 string TFCode::FormatNode(CodeNode* node, const Options& opts,
-                          int64 indent) const {
+                          int64_t indent) const {
   std::vector<string> attrs;
   if (opts.select.find(kShown[0]) != opts.select.end()) {
     attrs.push_back(FormatNodeMemory(node, node->proto().requested_bytes(),

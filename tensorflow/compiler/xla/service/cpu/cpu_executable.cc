@@ -111,7 +111,7 @@ static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     return MaybeOwningDeviceMemory{se::DeviceMemoryBase{}};
   }
 
-  int64 buffer_size = allocation.size();
+  int64_t buffer_size = allocation.size();
   TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory out,
                       memory_allocator->Allocate(device_ordinal, buffer_size));
   VLOG(3) << "buffer allocated " << buffer_size << " bytes [" << out->opaque()
@@ -291,7 +291,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
       } else {
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";
-        int64 allocation_size =
+        int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(root_shape, index));
         TF_ASSIGN_OR_RETURN(
             se::OwningDeviceMemory allocated_buffer,
@@ -335,7 +335,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     const HloComputation* entry_comp = hlo_module_->entry_computation();
     CHECK_EQ(entry_comp->num_parameters(), arguments.size())
         << "Wrong number of arguments passed when running executable";
-    for (int64 i = 0; i < entry_comp->num_parameters(); ++i) {
+    for (int64_t i = 0; i < entry_comp->num_parameters(); ++i) {
       const Shape& expected_shape =
           entry_comp->parameter_instruction(i)->shape();
       const Shape& actual_shape = arguments[i].Buffers().shape();
@@ -402,7 +402,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
   }
   // Each dynamic dimension size is represented as a S32.
-  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*)) + metadata_size;
 }
 

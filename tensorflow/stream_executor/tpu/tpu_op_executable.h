@@ -35,7 +35,7 @@ namespace tensorflow {
 // An executable capable of being fed to a TPU device via TpuExecutor.
 class TpuOpExecutable : public xla::TpuExecutableInterface {
  public:
-  using HostCommandHandler = std::function<void(uint32, int64)>;
+  using HostCommandHandler = std::function<void(uint32, int64_t)>;
 
   // Constructs an executable that holds a non-owning reference to an
   // XLA_TpuProgram.

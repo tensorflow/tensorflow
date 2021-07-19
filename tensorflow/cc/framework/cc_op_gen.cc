@@ -152,9 +152,9 @@ string PrintTensorShape(const TensorShapeProto& shape_proto) {
 }
 
 template <typename T>
-string PrintArray(int64 num_elts, const T* array) {
+string PrintArray(int64_t num_elts, const T* array) {
   string ret;
-  for (int64 i = 0; i < num_elts; ++i) {
+  for (int64_t i = 0; i < num_elts; ++i) {
     if (i > 0) strings::StrAppend(&ret, ", ");
     strings::StrAppend(&ret, array[i]);
   }
@@ -190,7 +190,7 @@ string PrintTensor(const TensorProto& tensor_proto) {
       return PrintArray(num_elts, t.flat<bool>().data());
     case DT_STRING: {
       string ret;
-      for (int64 i = 0; i < num_elts; ++i) {
+      for (int64_t i = 0; i < num_elts; ++i) {
         if (i > 0) strings::StrAppend(&ret, " ");
         strings::StrAppend(&ret, absl::CEscape(t.flat<tstring>()(i)));
       }

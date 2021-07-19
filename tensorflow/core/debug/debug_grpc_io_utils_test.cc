@@ -44,7 +44,7 @@ class GrpcDebugTest : public ::testing::Test {
   void TearDown() override { TearDownInProcessServer(&server_data_); }
 
   void SetUpInProcessServer(ServerData* server_data,
-                            int64 server_start_delay_micros) {
+                            int64_t server_start_delay_micros) {
     server_data->port = testing::PickUnusedPortOrDie();
     server_data->url = strings::StrCat("grpc://localhost:", server_data->port);
     server_data->server.reset(new test::TestEventListenerImpl());
@@ -69,7 +69,7 @@ class GrpcDebugTest : public ::testing::Test {
     return DebugGrpcIO::channel_connection_timeout_micros_;
   }
 
-  void SetChannelConnectionTimeoutMicros(const int64 timeout) {
+  void SetChannelConnectionTimeoutMicros(const int64_t timeout) {
     DebugGrpcIO::channel_connection_timeout_micros_ = timeout;
   }
 
@@ -78,8 +78,8 @@ class GrpcDebugTest : public ::testing::Test {
 
 TEST_F(GrpcDebugTest, ConnectionTimeoutWorks) {
   // Use a short timeout so the test won't take too long.
-  const int64 kOriginalTimeoutMicros = GetChannelConnectionTimeoutMicros();
-  const int64 kShortTimeoutMicros = 500 * 1000;
+  const int64_t kOriginalTimeoutMicros = GetChannelConnectionTimeoutMicros();
+  const int64_t kShortTimeoutMicros = 500 * 1000;
   SetChannelConnectionTimeoutMicros(kShortTimeoutMicros);
   ASSERT_EQ(kShortTimeoutMicros, GetChannelConnectionTimeoutMicros());
 

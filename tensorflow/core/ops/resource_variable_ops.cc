@@ -222,8 +222,8 @@ Status VariableShapeShapeFn(InferenceContext* c) {
     return Status::OK();
   }
   ShapeHandle var_shape = (*handle_data)[0].shape;
-  int64 rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
-                                       : InferenceContext::kUnknownDim;
+  int64_t rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
+                                         : InferenceContext::kUnknownDim;
   c->set_output(0, c->Vector(rank));
   return Status::OK();
 }

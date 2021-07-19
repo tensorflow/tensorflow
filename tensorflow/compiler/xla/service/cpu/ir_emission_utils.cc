@@ -33,7 +33,7 @@ int64 GetMinimumAlignmentForArray(
   // because we don't pad our tensors or otherwise have complicated data tiling
   // schemes.
 
-  int64 allocation_size_bytes =
+  int64_t allocation_size_bytes =
       ShapeUtil::ElementsIn(shape) *
       ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
   return target_machine_features.minimum_alignment_for_allocation(
@@ -89,7 +89,7 @@ bool PotentiallyImplementedAsEigenConvolution(
     return false;
   }
 
-  for (int64 i = 0; i < num_spatial_dims; ++i) {
+  for (int64_t i = 0; i < num_spatial_dims; ++i) {
     if (dnums.input_spatial_dimensions(i) != i + 1) {
       return false;
     }

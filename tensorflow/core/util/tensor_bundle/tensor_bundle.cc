@@ -259,7 +259,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
   string lengths;
   lengths.reserve(val.NumElements());  // At least 1 byte per element.
   *crc32c = 0;
-  for (int64 i = 0; i < val.NumElements(); ++i) {
+  for (int64_t i = 0; i < val.NumElements(); ++i) {
     const tstring* elem = &strings[i];
     DCHECK_EQ(elem->size(), static_cast<uint64>(elem->size()));
     const uint64 elem_size = static_cast<uint64>(elem->size());
@@ -289,7 +289,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
   *bytes_written += sizeof(uint32);
 
   // Writes all the string bytes out.
-  for (int64 i = 0; i < val.NumElements(); ++i) {
+  for (int64_t i = 0; i < val.NumElements(); ++i) {
     const tstring* string = &strings[i];
     TF_RETURN_IF_ERROR(out->Append(*string));
     *bytes_written += string->size();
@@ -310,7 +310,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
 
   *crc32c = 0;
   *bytes_written = 0;
-  for (int64 i = 0; i < val.NumElements(); ++i) {
+  for (int64_t i = 0; i < val.NumElements(); ++i) {
     VariantTensorData data;
     val.flat<Variant>()(i).Encode(&data);
     VariantTensorDataProto proto;
@@ -763,7 +763,7 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   metadata_ = wrapper.release();
 
   table::Options o;
-  int64 cache_size;
+  int64_t cache_size;
   Status s =
       ReadInt64FromEnvVar("TF_TABLE_INDEX_CACHE_SIZE_IN_MB", 0, &cache_size);
   if (s.ok() && cache_size > 0) {

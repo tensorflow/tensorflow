@@ -38,6 +38,11 @@ def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
   let constructor = "tf_framework::CreateRewriteTFFrameworkAssert()";
 }
 
+def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
+  let summary = "Pass to rewrite all TF operations to JIT invocations";
+  let constructor = "transforms::CreateTFToJITInvocationPass()";
+}
+
 def BufferReusePass : FunctionPass<"buffer-reuse"> {
   let summary = "Pass to find and annotate candidates for buffer reuse.";
   let constructor = "transforms::CreateBufferReusePass()";
@@ -58,6 +63,11 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
                 "ones.";
   let constructor = "transforms::CreateFinalBufferizePass()";
+}
+
+def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
+  let summary = "Pass to transform the IR to be on signless integers.";
+  let constructor = "transforms::CreateConvertToSignlessPass()";
 }
 
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
@@ -81,6 +91,8 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
            "fatbin.">,
     Option<"print_ptx_", "print-ptx", "bool", /*default=*/"false",
            "Print generated PTX code per target architecture.">,
+    Option<"print_llvmir_", "print-llvmir", "bool", /*default=*/"false",
+           "Print llvm ir when lowering code per target architecture.">,
   ];
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
@@ -125,6 +137,12 @@ def FuseInnerParallelLoopsPass
     a passmanager alone ATM, as nested pass managers require operations to
     be closed from above.
   }];
+}
+
+def LowerIndexCastPass
+    : FunctionPass<"kernelgen-lower-index-cast"> {
+  let summary = "Lower index cast on tensors to tensor dialect";
+  let constructor = "transforms::CreateLowerIndexCastPass()";
 }
 
 def ShapeSimplification

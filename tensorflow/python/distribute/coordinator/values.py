@@ -25,6 +25,8 @@ from __future__ import print_function
 import enum
 import threading
 
+from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -34,6 +36,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import type_spec as type_spec_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -150,6 +154,8 @@ class RemoteValue(object):
     raise NotImplementedError("Must be implemented in subclasses.")
 
 
+# TODO(yuefengz): create an implementation for resource RemoteValue which needs
+# to remember the closure object while a normal RemoteValue doesn't.
 class RemoteValueImpl(RemoteValue):
   """Implementation of `RemoteValue`."""
 
@@ -311,15 +317,14 @@ class PerWorkerValuesTypeSpec(type_spec_lib.TypeSpec):
     return value
 
 
-class PerWorkerDistributedDataset(object):
+class PerWorkerDatasetFromDatasetFunction(object):
   """Represents worker-distributed datasets created from dataset function."""
 
-  def __init__(self, dataset_fn, input_workers, coordinator):
+  def __init__(self, dataset_fn, coordinator):
     """Makes an iterable from datasets created by the given function.
 
     Args:
       dataset_fn: A function that returns a `Dataset`.
-      input_workers: an `InputWorkers` object.
       coordinator: a `ClusterCoordinator` object, used to create dataset
         resources.
     """
@@ -334,7 +339,6 @@ class PerWorkerDistributedDataset(object):
       with variable_scope.variable_creator_scope(disallow_variable_creation):
         dataset_fn = def_function.function(dataset_fn).get_concrete_function()
     self._dataset_fn = dataset_fn
-    self._input_workers = input_workers
     self._coordinator = coordinator
     self._element_spec = None
 
@@ -350,7 +354,7 @@ class PerWorkerDistributedDataset(object):
       dataset = self._dataset_fn()
       return iter(dataset)
 
-    # If PerWorkerDistributedDataset.__iter__ is called multiple
+    # If PerWorkerDatasetFromDatasetFunction.__iter__ is called multiple
     # times, for the same object it should only create and register resource
     # once. Using object id to distinguish different iterator resources.
     per_worker_iterator = self._coordinator._create_per_worker_resources(
@@ -376,6 +380,75 @@ class PerWorkerDistributedDataset(object):
           "`element_spec` is not supported when the `dataset_fn` is not "
           "a `ConcreteFunction`.")
     return self._dataset_fn.structured_outputs.element_spec
+
+
+def serialize_dataset_to_graph(dataset):
+  dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
+  graph_def = gen_dataset_ops.dataset_to_graph_v2(
+      dataset._variant_tensor,  # pylint: disable=protected-access
+      external_state_policy=ExternalStatePolicy.WARN.value,
+      strip_device_assignment=True)
+  return graph_def
+
+
+class _RemoteDataset(dataset_ops.DatasetSource):
+  """Creates a dataset given a graph def."""
+
+  def __init__(self, graph_def, element_spec):
+    self._elem_spec = element_spec
+    variant_tensor = ged_ops.dataset_from_graph(graph_def)
+    super(_RemoteDataset, self).__init__(variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._elem_spec
+
+
+def deserialize_dataset_from_graph(graph_def, element_spec):
+  return _RemoteDataset(graph_def, element_spec)
+
+
+class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
+  """Represents worker-distributed datasets created from a dataset."""
+
+  def __init__(self, dataset, coordinator):
+    """Makes an iterable from datasets created by the given dataset.
+
+    It creates a dataset_fn which deserializes a dataset from a graph under the
+    hood.
+
+    Args:
+      dataset: A tf.data.Dataset or a DistributedDataset.
+      coordinator: a `ClusterCoordinator` object, used to create dataset
+        resources.
+    """
+    if isinstance(dataset, input_lib.DistributedDataset):
+      original_dataset = dataset._original_dataset
+      serialized = serialize_dataset_to_graph(original_dataset)
+
+      def dataset_fn():
+        deserialized = deserialize_dataset_from_graph(
+            serialized, original_dataset.element_spec)
+        dataset.build(dataset_to_replace=deserialized)
+        return dataset
+    elif isinstance(dataset, dataset_ops.Dataset):
+      serialized = serialize_dataset_to_graph(dataset)
+
+      def dataset_fn():
+        return deserialize_dataset_from_graph(serialized, dataset.element_spec)
+    else:
+      raise NotImplementedError(
+          "DistributedDatasetsFromFunction is not supported yet.")
+
+    super(PerWorkerDatasetFromDataset, self).__init__(dataset_fn, coordinator)
+
+
+def get_per_worker_dataset(dataset_or_dataset_fn, coordinator):
+  if callable(dataset_or_dataset_fn):
+    return PerWorkerDatasetFromDatasetFunction(dataset_or_dataset_fn,
+                                               coordinator)
+  else:
+    return PerWorkerDatasetFromDataset(dataset_or_dataset_fn, coordinator)
 
 
 class PerWorkerDistributedIterator(PerWorkerValues):

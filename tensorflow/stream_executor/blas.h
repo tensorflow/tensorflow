@@ -1120,9 +1120,9 @@ class BlasSupport {
   virtual port::Status DoBlasGemmStridedBatchedWithAlgorithm(
       Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
       uint64 n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
-      DataType type_a, int lda, int64 stride_a, const DeviceMemoryBase &b,
-      DataType type_b, int ldb, int64 stride_b, const void *beta,
-      DeviceMemoryBase *c, DataType type_c, int ldc, int64 stride_c,
+      DataType type_a, int lda, int64_t stride_a, const DeviceMemoryBase &b,
+      DataType type_b, int ldb, int64_t stride_b, const void *beta,
+      DeviceMemoryBase *c, DataType type_c, int ldc, int64_t stride_c,
       int batch_count, ComputationType computation_type,
       AlgorithmType algorithm, ProfileResult *output_profile_result) = 0;
 
@@ -1172,9 +1172,9 @@ class BlasSupport {
   virtual port::Status DoBlasGemmStridedBatched(
       Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
       uint64 n, uint64 k, DataType dtype, const void *alpha,
-      const DeviceMemoryBase &a, int lda, int64 stride_a,
-      const DeviceMemoryBase &b, int ldb, int64 stride_b, const void *beta,
-      DeviceMemoryBase *c, int ldc, int64 stride_c, int batch_count) = 0;
+      const DeviceMemoryBase &a, int lda, int64_t stride_a,
+      const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
+      DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count) = 0;
 
   // Computes a matrix-matrix product where one input matrix is Hermitian:
   //

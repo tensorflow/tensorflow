@@ -1535,16 +1535,13 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
               plan->getWorkspaceSize()));
         }
       } else {
-        OP_REQUIRES(context,
-                    stream->parent()->GetConvolveBackwardDataAlgorithms(
-                        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                            stream->parent()),
-                        &algorithms),
-                    errors::Unknown(
-                        "Failed to get convolution execution plan. This is "
-                        "probably because cuDNN failed to initialize, so try "
-                        "looking to see if a warning log message was printed "
-                        "above."));
+        OP_REQUIRES(
+            context,
+            stream->parent()->GetConvolveBackwardDataAlgorithms(&algorithms),
+            errors::Unknown(
+                "Failed to get convolution execution plan. This is probably "
+                "because cuDNN failed to initialize, so try looking to see if "
+                "a warning log message was printed above."));
         for (const auto& algorithm : algorithms) {
           configs.push_back(AlgorithmConfig(algorithm));
         }
@@ -2097,16 +2094,13 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
               plan->getWorkspaceSize()));
         }
       } else {
-        OP_REQUIRES(context,
-                    stream->parent()->GetConvolveBackwardFilterAlgorithms(
-                        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                            stream->parent()),
-                        &algorithms),
-                    errors::Unknown(
-                        "Failed to get convolution execution plan. This is "
-                        "probably because cuDNN failed to initialize, so try "
-                        "looking to see if a warning log message was printed "
-                        "above."));
+        OP_REQUIRES(
+            context,
+            stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms),
+            errors::Unknown(
+                "Failed to get convolution execution plan. This is probably "
+                "because cuDNN failed to initialize, so try looking to see if "
+                "a warning log message was printed above."));
         for (const auto& algorithm : algorithms) {
           configs.push_back(AlgorithmConfig(algorithm));
         }

@@ -95,6 +95,15 @@ enum class AdrenoGpu {
   kUnknown
 };
 
+struct AMDInfo {
+  AMDInfo() = default;
+  int shader_engines;
+  int compute_units_per_shader_engine;
+  int GetComputeUnitsCount() const {
+    return shader_engines * compute_units_per_shader_engine;
+  }
+};
+
 struct AdrenoInfo {
   AdrenoInfo() = default;
   explicit AdrenoInfo(const std::string& device_version);
@@ -264,6 +273,11 @@ enum class OpenClVersion {
 std::string OpenClVersionToString(OpenClVersion version);
 
 struct OpenClInfo {
+  std::string device_name;
+  std::string vendor_name;
+  std::string opencl_c_version;
+  std::string platform_version;
+
   OpenClVersion cl_version;
 
   std::vector<std::string> extensions;
@@ -285,6 +299,7 @@ struct OpenClInfo {
   int max_work_group_size_z;
   int max_work_group_total_size;
   uint64_t image_pitch_alignment;
+  uint64_t base_addr_align_in_bits;
 
   // rtn is ROUND_TO_NEAREST
   // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
@@ -337,6 +352,8 @@ struct GpuInfo {
   bool IsAMD() const;
   bool IsIntel() const;
 
+  bool IsGlsl() const;
+
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
 
@@ -346,6 +363,8 @@ struct GpuInfo {
   bool SupportsTextureArray() const;
   bool SupportsImageBuffer() const;
   bool SupportsImage3D() const;
+
+  bool SupportsPointersInKernels() const;
 
   // returns true if device have fixed wave size equal to 32
   bool IsWaveSizeEqualTo32() const;
@@ -379,6 +398,7 @@ struct GpuInfo {
   std::vector<int> supported_subgroup_sizes;
 
   AdrenoInfo adreno_info;
+  AMDInfo amd_info;
   AppleInfo apple_info;
   MaliInfo mali_info;
 
@@ -396,6 +416,7 @@ struct GpuInfo {
 
   OpenClInfo opencl_info;
   bool IsApiOpenCl() const;
+  bool IsCL11OrHigher() const;
   bool IsCL20OrHigher() const;
   bool IsCL30OrHigher() const;
 };

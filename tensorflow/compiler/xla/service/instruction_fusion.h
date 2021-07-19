@@ -59,6 +59,9 @@ class InstructionFusion : public HloModulePass {
   static bool IsExpensive(const HloInstruction& instruction);
 
  protected:
+  // Returns a list of computations on which Fusion is performed.
+  virtual std::vector<HloComputation*> GetFusionComputations(HloModule* module);
+
   // Returns a FusionQueue that implements custom order of instructions being
   // fused. The default implementation processes consumers in reverse post
   // order.

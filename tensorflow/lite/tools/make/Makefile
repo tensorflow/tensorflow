@@ -1,3 +1,6 @@
+$(warning "WARNING: Using Makefile to build TensorFlow Lite will be deprecated soon.")
+$(warning "WARNING: Please use CMake instead.")
+
 # Make uses /bin/sh by default, which is incompatible with the bashisms seen
 # below.
 SHELL := /bin/bash

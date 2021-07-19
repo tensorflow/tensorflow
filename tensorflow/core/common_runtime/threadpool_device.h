@@ -31,7 +31,7 @@ class ThreadPoolDevice : public LocalDevice {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                int64 step_id) override;
+                                int64_t step_id) override;
   ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
     return scoped_allocator_mgr_.get();
   }

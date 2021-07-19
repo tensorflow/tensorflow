@@ -61,9 +61,9 @@ class DefaultCostModel : public ParallelCostModel {
 
   int64 GetParallelTaskCount(HloInstruction* instruction) override {
     // Parameters for parallel task count computation.
-    int64 instruction_cost;
-    int64 min_cost_per_thread;
-    int64 max_parallelism;
+    int64_t instruction_cost;
+    int64_t min_cost_per_thread;
+    int64_t max_parallelism;
     // Calculate flops-to-bytes-ratio for 'instruction'.
     const int64 bytes_accessed =
         std::max(int64{1}, cost_analysis_->bytes_accessed(*instruction));

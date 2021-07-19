@@ -62,7 +62,7 @@ Status EventsWriter::InitIfNeeded() {
     }
   }
 
-  int64 time_in_seconds = env_->NowMicros() / 1000000;
+  int64_t time_in_seconds = env_->NowMicros() / 1000000;
 
   filename_ =
       strings::Printf("%s.out.tfevents.%010lld.%s%s", file_prefix_.c_str(),

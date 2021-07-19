@@ -2809,9 +2809,9 @@ class DirectSessionCollectiveTest : public ::testing::Test {
 
 TEST_F(DirectSessionCollectiveTest,
        TestCollectiveGraphKeyUsesOnlyCalledFunctions) {
-  int64 key1;
+  int64_t key1;
   TF_ASSERT_OK(RunGraphWithCollectiveFunctions(false, &key1));
-  int64 key2;
+  int64_t key2;
   TF_ASSERT_OK(RunGraphWithCollectiveFunctions(true, &key2));
   ASSERT_EQ(key1, key2);
 }

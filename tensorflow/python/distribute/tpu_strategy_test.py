@@ -158,6 +158,8 @@ class TPUTest(test.TestCase):
                         "/job:localhost/replica:0/task:0/device:TPU:0")
 
   def test_on_demand_op_with_dynamic_output(self):
+    if FLAGS.tpu_use_tfrt:
+      self.skipTest("Support dynamic output in TFRT, see b/192576400")
     with ops.device("/device:TPU:0"):
       where_output = array_ops.where([True, False, True])
     self.assertAllEqual(where_output, [[0], [2]])
@@ -184,6 +186,12 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(ret, 2.0)
 
   def test_function_compile_with_xla(self, enable_packed_var):
+    if FLAGS.tpu_use_tfrt:
+      self.skipTest(
+          "This test triggers _XlaCompile and XlaLaunch which are not "
+          "supported in tfrt yet. We should avoid using these kernels on TPU. "
+          "However, it is a workaround to support b/129842431. We need more "
+          "discussion about how to support it in the long term.")
     strategy = get_tpu_strategy(enable_packed_var)
     with strategy.scope():
       v = variables.Variable(1.0)
@@ -396,6 +404,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2.0, v.numpy())
 
   def test_cluster_conditional_with_dynamic_shape(self, enable_packed_var):
+    if FLAGS.tpu_use_tfrt:
+      self.skipTest("Support dynamic output in TFRT, see b/192576400")
     strategy = get_tpu_strategy(enable_packed_var)
 
     @def_function.function

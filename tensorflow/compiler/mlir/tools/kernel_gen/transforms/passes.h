@@ -46,6 +46,10 @@ namespace transforms {
 // Pass to find and annotate candidates for buffer reuse.
 std::unique_ptr<FunctionPass> CreateBufferReusePass();
 
+// Pass to rewrite all TF operations to JIT invocations through the TF
+// framework.
+std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass();
+
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
     mlir::StringRef blob_annotation = {});
@@ -62,14 +66,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 // buffers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
 
+// Pass to replace unsigned types with signless integers.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
+
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation = {},
-    ArrayRef<std::string> architectures = {}, bool generate_fatbin = true,
-    bool print_ptx = false, bool enable_ftz = false);
+    ArrayRef<std::string> architectures = {}, bool print_ptx = false,
+    bool print_llvmir = false, bool enable_ftz = false);
 
 // Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
 std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();
@@ -95,6 +102,9 @@ CreateGpuKernelToNvvmPass();
 /// Pass that transforms gpu modules in standard dialect to ROCDL.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
 CreateGpuKernelToRocdlPass();
+
+// Pass to lower index cast on tensors to tensor dialect.
+std::unique_ptr<FunctionPass> CreateLowerIndexCastPass();
 
 // Pass to simplify shape ops.
 std::unique_ptr<FunctionPass> CreateShapeSimplification();

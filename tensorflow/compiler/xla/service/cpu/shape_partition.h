@@ -67,7 +67,7 @@ class ShapePartitionAssigner {
   ShapePartitionAssigner(const Shape& shape) : shape_(shape) {}
 
   // Returns dimension partition counts (starting at outer-most dimension).
-  std::vector<int64> Run(int64 target_partition_count);
+  std::vector<int64> Run(int64_t target_partition_count);
 
   // Returns the total partition count based on 'dimension_partition_counts'.
   static int64 GetTotalPartitionCount(
@@ -86,7 +86,7 @@ class ShapePartitionIterator {
 
   // Returns a partition [start, size] for each dimension.
   // Partitions are listed starting from outer-most dimension first.
-  std::vector<std::pair<int64, int64>> GetPartition(int64 index) const;
+  std::vector<std::pair<int64, int64>> GetPartition(int64_t index) const;
 
   int64 GetTotalPartitionCount() const;
 

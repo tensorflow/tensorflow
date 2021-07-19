@@ -61,7 +61,7 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       std::vector<int64> new_input_dims(num_dims);
       new_input_dim_order[0] = input_batch_dim;
       new_input_dims[0] = input->shape().dimensions(input_batch_dim);
-      for (int64 i = 0; i < num_spatial_dims; ++i) {
+      for (int64_t i = 0; i < num_spatial_dims; ++i) {
         new_input_dim_order[i + 1] = dnums.input_spatial_dimensions(i);
         new_input_dims[i + 1] =
             input->shape().dimensions(dnums.input_spatial_dimensions(i));
@@ -80,7 +80,7 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
 
       std::vector<int64> new_kernel_dim_order(num_dims);
       std::vector<int64> new_kernel_dims(num_dims);
-      for (int64 i = 0; i < num_spatial_dims; ++i) {
+      for (int64_t i = 0; i < num_spatial_dims; ++i) {
         new_kernel_dim_order[i] = dnums.kernel_spatial_dimensions(i);
         new_kernel_dims[i] =
             kernel->shape().dimensions(dnums.kernel_spatial_dimensions(i));
@@ -104,7 +104,7 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       auto output_feature_dim = dnums.output_feature_dimension();
       new_output_dim_order[0] = output_batch_dim;
       new_conv_dims[0] = hlo->shape().dimensions(output_batch_dim);
-      for (int64 i = 0; i < num_spatial_dims; ++i) {
+      for (int64_t i = 0; i < num_spatial_dims; ++i) {
         new_output_dim_order[i + 1] = dnums.output_spatial_dimensions(i);
         new_conv_dims[i + 1] =
             hlo->shape().dimensions(dnums.output_spatial_dimensions(i));
@@ -117,7 +117,7 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       ConvolutionDimensionNumbers new_dnums;
       new_dnums.set_input_batch_dimension(0);
       new_dnums.set_output_batch_dimension(0);
-      for (int64 i = 0; i < num_spatial_dims; ++i) {
+      for (int64_t i = 0; i < num_spatial_dims; ++i) {
         new_dnums.add_input_spatial_dimensions(i + 1);
         new_dnums.add_kernel_spatial_dimensions(i);
         new_dnums.add_output_spatial_dimensions(i + 1);

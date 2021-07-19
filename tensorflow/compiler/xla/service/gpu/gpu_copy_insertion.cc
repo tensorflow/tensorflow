@@ -48,7 +48,8 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
       if (!IsCustomCallToDnnBatchNorm(*hlo)) {
         continue;
       }
-      for (int64 i = hlo->operand_count() - 2; i < hlo->operand_count(); ++i) {
+      for (int64_t i = hlo->operand_count() - 2; i < hlo->operand_count();
+           ++i) {
         CHECK_EQ(hlo->operand(i)->opcode(), HloOpcode::kConstant);
       }
     }

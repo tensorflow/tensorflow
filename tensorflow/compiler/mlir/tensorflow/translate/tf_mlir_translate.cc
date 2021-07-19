@@ -173,9 +173,12 @@ StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     std::unique_ptr<tensorflow::SavedModelBundle>* saved_model_bundle) {
   // Create local bundle if no one is provided to use.
   std::unique_ptr<tensorflow::SavedModelBundle> bundle;
-  if (!saved_model_bundle)
+  if (saved_model_bundle == nullptr) {
     bundle = std::make_unique<tensorflow::SavedModelBundle>();
-  auto* bundle_ptr =
+  } else if (*saved_model_bundle == nullptr) {
+    *saved_model_bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  }
+  SavedModelBundle* bundle_ptr =
       saved_model_bundle ? saved_model_bundle->get() : bundle.get();
   tensorflow::SessionOptions session_options;
 

@@ -3466,7 +3466,7 @@ tf_module {
   }
   member_method {
     name: "RegisterDataset"
-    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Relu"
@@ -3907,6 +3907,10 @@ tf_module {
   member_method {
     name: "SaveDataset"
     argspec: "args=[\'input_dataset\', \'path\', \'shard_func_other_args\', \'shard_func\', \'compression\', \'use_shard_func\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "SaveDatasetV2"
+    argspec: "args=[\'input_dataset\', \'path\', \'shard_func_other_args\', \'shard_func\', \'output_types\', \'output_shapes\', \'compression\', \'use_shard_func\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\'], "
   }
   member_method {
     name: "SaveSlices"

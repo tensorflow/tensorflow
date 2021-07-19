@@ -61,8 +61,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:protobuf",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 
@@ -118,5 +117,28 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "util_test",
+    size = "small",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )

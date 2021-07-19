@@ -46,7 +46,7 @@ int64 CallOptions::GetTimeout() {
   return timeout_in_ms_;
 }
 
-void CallOptions::SetTimeout(int64 ms) {
+void CallOptions::SetTimeout(int64_t ms) {
   mutex_lock l(mu_);
   timeout_in_ms_ = ms;
 }

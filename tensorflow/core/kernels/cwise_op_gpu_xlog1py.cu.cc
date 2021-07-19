@@ -24,12 +24,8 @@ namespace functor {
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 DEFINE_BINARY3(xlog1py, Eigen::half, float, double);
-#endif
-#endif
-
-// TODO(ROCm): enable complex64 / complex128 after compiler fix.
-#if GOOGLE_CUDA
 DEFINE_BINARY2(xlog1py, complex64, complex128);
+#endif
 #endif
 
 }  // namespace functor

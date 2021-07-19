@@ -72,7 +72,9 @@ HloComputation::HloComputation(
       unique_id_(-1),
       root_instruction_(root_instruction),
       fusion_instruction_(fusion_instruction),
-      is_fusion_computation_(fusion_instruction != nullptr) {
+      is_fusion_computation_(fusion_instruction != nullptr),
+      custom_call_instruction_(nullptr),
+      is_custom_call_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -196,6 +198,25 @@ Status HloComputation::RemoveParameter(int64 param_no) {
   }
 
   return Status::OK();
+}
+
+HloInstruction* HloComputation::ReplaceParameter(
+    int64 param_no, std::unique_ptr<HloInstruction> instruction) {
+  CHECK_GE(param_no, 0);
+  CHECK_LT(param_no, param_instructions_.size());
+  CHECK(instruction->opcode() == HloOpcode::kParameter);
+  CHECK(IsFusionComputation());
+  CHECK_EQ(fusion_instruction_->operand_count(), param_instructions_.size());
+
+  instruction->set_parent(this);
+  HloInstruction* new_instruction =
+      AddInstructionInternal(std::move(instruction));
+  HloInstruction* old_instruction = param_instructions_[param_no];
+  CHECK(
+      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction).ok());
+  param_instructions_[param_no] = new_instruction;
+  CHECK(RemoveInstruction(old_instruction).ok());
+  return new_instruction;
 }
 
 Status HloComputation::RemoveUnusedParametersFromFusedComputation() {
@@ -420,9 +441,9 @@ void HloComputation::ComputeInstructionPostOrder(
       switch (inst->opcode()) {
         case HloOpcode::kRecvDone:
         case HloOpcode::kAllReduce:
-        case HloOpcode::kAllReduceScatter:
         case HloOpcode::kAllGather:
         case HloOpcode::kAllToAll:
+        case HloOpcode::kReduceScatter:
           return inst->channel_id();
         default:
           return absl::nullopt;
@@ -479,9 +500,9 @@ HloComputation::ComputeChannelDependencies() const {
       case HloOpcode::kSend:
       case HloOpcode::kRecvDone:
       case HloOpcode::kAllReduce:
-      case HloOpcode::kAllReduceScatter:
       case HloOpcode::kAllGather:
-      case HloOpcode::kAllToAll: {
+      case HloOpcode::kAllToAll:
+      case HloOpcode::kReduceScatter: {
         auto channel_id = instruction->channel_id();
         if (channel_id) {
           channel_dependency_group[channel_id.value()].push_back(
@@ -924,7 +945,11 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
       << ShapeUtil::HumanString(new_instruction->shape());
+  return ReplaceInstructionWithDifferentShape(old_instruction, new_instruction);
+}
 
+Status HloComputation::ReplaceInstructionWithDifferentShape(
+    HloInstruction* old_instruction, HloInstruction* new_instruction) {
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
   // Try to add metadata for HLO instructions that are created to replace
@@ -954,7 +979,8 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
     new_instruction->set_sharding(old_instruction->sharding_ptr());
   }
 
-  TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
+  TF_RETURN_IF_ERROR(
+      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 

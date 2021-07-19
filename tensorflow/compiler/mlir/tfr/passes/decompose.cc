@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -75,11 +76,27 @@ namespace TFR {
 
 namespace {
 
+// Quantize the float value based on given scale and zero point attributes.
+Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
+                   OpBuilder builder) {
+  double scale = scale_attr.cast<FloatAttr>().getValueAsDouble();
+  int64_t zp = zp_attr.cast<IntegerAttr>().getInt();
+
+  int quantized = static_cast<int>(std::round(value / scale) + zp);
+  return builder.getI32IntegerAttr(quantized);
+}
+
 // Decompose the TF ops with the registered composition library.
 struct DecomposeTFOpsPass
     : public PassWrapper<DecomposeTFOpsPass, FunctionPass> {
   explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
       : external_tfr_module(external_tfr_module) {}
+
+  StringRef getArgument() const final { return "tfr-decompose"; }
+
+  StringRef getDescription() const final {
+    return "Decompose TF ops with the registered composition library.";
+  }
 
   void runOnFunction() override;
 
@@ -98,10 +115,13 @@ struct DecomposeTFOpsPass
   llvm::Optional<ModuleOp> external_tfr_module;
 };
 
+#include "tensorflow/compiler/mlir/tfr/passes/generated_decompose.inc"
+
 void DecomposeTFOpsPass::ApplyCanonicalization() {
   FuncOp func = getFunction();
   OwningRewritePatternList patterns(&getContext());
 
+  populateWithGenerated(patterns);
   populateCanonicalizationPatterns(func, patterns);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
@@ -320,8 +340,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(
 }
 
 static PassRegistration<DecomposeTFOpsPass> pass(
-    "tfr-decompose",
-    "Decompose TF ops with the registered composition library.",
     [] { return CreateDecomposeTFOpsPass(); });
 
 }  // namespace TFR
