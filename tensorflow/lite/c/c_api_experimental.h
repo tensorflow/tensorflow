@@ -171,13 +171,13 @@ TFL_CAPI_EXPORT extern void TfLiteSetAllowBufferHandleOutput(
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterModifyGraphWithDelegate(
     const TfLiteInterpreter* interpreter, TfLiteDelegate* delegate);
 
-/// Returns the tensor index with the input index.
+/// Returns the tensor index corresponding to the input tensor
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetInputTensorIndex(
     const TfLiteInterpreter* interpreter, int32_t input_index);
 
-/// Returns the tensor index with the output index.
+/// Returns the tensor index corresponding to the output tensor
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorIndex(
