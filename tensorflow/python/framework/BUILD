@@ -18,6 +18,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additi
 
 visibility = [
     "//tensorflow:__subpackages__",
+    "//third_party/py/tensorflow_numerics:__subpackages__",
 ]
 
 package(
