@@ -3296,6 +3296,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "resource_ops_test",
+    size = "small",
+    srcs = ["resource_ops_test.cc"],
+    deps = [
+        ":dense_update_functor",
+        ":ops_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 MATH_DEPS = [
     ":fill_functor",
     "//tensorflow/core:core_cpu",
