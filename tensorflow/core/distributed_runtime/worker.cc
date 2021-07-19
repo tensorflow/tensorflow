@@ -105,7 +105,7 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
   done(s);
 }
 
-void Worker::AbortStep(int64 step_id) {
+void Worker::AbortStep(int64_t step_id) {
   Rendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
   SchedNonBlockingClosureAfter(1000000, [rendez, step_id]() {
     // Delay a bit before aborting the step. This way, the root

@@ -89,7 +89,7 @@ class LocalMaster : public MasterInterface {
   // corresponding deregister method, since clean server shutdown is
   // not currently implemented for any server type.
   static void Register(const string& target, Master* master,
-                       int64 default_timeout_in_ms);
+                       int64_t default_timeout_in_ms);
 
   // Returns a pointer to the local master associated with the given
   // `target`, or nullptr if none exists.

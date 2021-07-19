@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
 namespace mlir {
@@ -398,6 +399,24 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
   }
 };
 
+struct BufferizeJITExecuteOp
+    : public OpConversionPattern<tf_framework::JITExecuteOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      tf_framework::JITExecuteOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    SmallVector<Type, 2> result_types;
+    if (failed(getTypeConverter()->convertTypes(op.getResultTypes(),
+                                                result_types))) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
+        op, result_types, operands, op->getAttrs());
+    return success();
+  }
+};
+
 class BufferizeRankOp : public OpConversionPattern<RankOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -412,12 +431,17 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
 
 }  // namespace
 
-void populateExtraStdBufferizePattern(MLIRContext *context,
-                                      BufferizeTypeConverter *converter,
-                                      RewritePatternSet *patterns) {
-  patterns->insert<BufferizeAndConvertMinimumBroadcastShapesOp,
-                   BufferizeConstantOp, BufferizeDimOp, BufferizeRankOp>(
-      *converter, context);
+void populateExtraBufferizePatterns(MLIRContext *context,
+                                    BufferizeTypeConverter *converter,
+                                    RewritePatternSet *patterns) {
+  // clang-format off
+  patterns->insert<
+      BufferizeAndConvertMinimumBroadcastShapesOp,
+      BufferizeConstantOp,
+      BufferizeDimOp,
+      BufferizeJITExecuteOp,
+      BufferizeRankOp>(*converter, context);
+  // clang-format on
 }
 
 }  // namespace transforms

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -56,9 +57,10 @@ class DynamicDimensionInference {
   std::vector<HloInstruction*> GetDynamicSizes(HloInstruction* inst,
                                                const ShapeIndex& index) const;
 
-  // Returns if current instruction contains any dynamic dimension.
+  // Returns if `index` at `inst` contains any dynamic dimension.
   // Recursively go into tuples.
-  bool HasDynamicDimension(HloInstruction* inst) const;
+  bool HasDynamicDimension(HloInstruction* inst,
+                           ShapeIndexView index = {}) const;
 
   // Forward dynamic dimension size at `dim` from `inst` to `new_inst`.
   Status ForwardDynamicSize(HloInstruction* inst, HloInstruction* new_inst,
@@ -74,6 +76,10 @@ class DynamicDimensionInference {
   // `with`.
   void ReplaceAllDynamicDimensionUsesWith(HloInstruction* replace,
                                           HloInstruction* with);
+
+  // Update dynamic dimension inference to analyze `inst`. Useful to
+  // incrementally track new instructions added after initial run.
+  Status Update(HloInstruction* inst);
 
   friend class DynamicDimensionInferenceVisitor;
 

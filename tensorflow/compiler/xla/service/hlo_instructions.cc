@@ -618,12 +618,12 @@ bool HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 }
 
 HloAllGatherInstruction::HloAllGatherInstruction(
-    const Shape& shape, absl::Span<HloInstruction* const> operands,
-    int64 all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
-    bool constrain_layout, const absl::optional<int64>& channel_id,
-    bool use_global_device_ids)
-    : HloCollectiveInstruction(HloOpcode::kAllGather, shape, operands,
-                               replica_groups, constrain_layout, channel_id),
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands, int64 all_gather_dimension,
+    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+    const absl::optional<int64>& channel_id, bool use_global_device_ids)
+    : HloCollectiveInstruction(opcode, shape, operands, replica_groups,
+                               constrain_layout, channel_id),
       all_gather_dimension_(all_gather_dimension),
       use_global_device_ids_(use_global_device_ids) {}
 
@@ -643,7 +643,7 @@ HloAllGatherInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllGatherInstruction>(
-      shape, new_operands, all_gather_dimension(), replica_groups(),
+      opcode(), shape, new_operands, all_gather_dimension(), replica_groups(),
       constrain_layout(), channel_id(), use_global_device_ids());
 }
 

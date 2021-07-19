@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 
 #include <algorithm>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace xla {
@@ -119,8 +121,10 @@ TEST(TransposeTest, InvalidTilings) {
                             /*input_layout=*/TransposePlan::Tiling{{8, 128}},
                             /*output_tiling=*/TransposePlan::Tiling{{4}});
   EXPECT_EQ(plan.status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_THAT(plan.status().error_message(),
-              testing::HasSubstr("mismatched tilings for input dimension 2"));
+  EXPECT_THAT(
+      plan.status().error_message(),
+      testing::HasSubstr(
+          "Only one of the input and output may have a non-trivial tiling"));
 }
 
 // Computes the size in elements of a tiled array.
@@ -303,6 +307,7 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
       TransposeTestCase(/*dims=*/{11, 15, 13}, /*permutation=*/{1, 0, 2}),
       TransposeTestCase(/*dims=*/{11, 15, 13}, /*permutation=*/{2, 0, 1}),
       TransposeTestCase(/*dims=*/{64, 64, 64}, /*permutation=*/{2, 1, 0}),
+      TransposeTestCase(/*dims=*/{256, 256, 256}, /*permutation=*/{2, 1, 0}),
       TransposeTestCase(/*dims=*/{4, 8, 16, 32}, /*permutation=*/{3, 1, 0, 2}),
       TransposeTestCase(/*dims=*/{64, 224, 224, 3},
                         /*permutation=*/{3, 1, 2, 0}),
@@ -321,15 +326,16 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
                         /*input_tiling=*/{},
                         /*output_tiling=*/{3}),
       TransposeTestCase(/*dims=*/{8}, /*permutation=*/{0},
-                        /*input_tiling=*/{3},
+                        /*input_tiling=*/{},
                         /*output_tiling=*/{3}),
+      TransposeTestCase(/*dims=*/{8}, /*permutation=*/{0},
+                        /*input_tiling=*/{3},
+                        /*output_tiling=*/{}),
       TransposeTestCase(/*dims=*/{29}, /*permutation=*/{0},
                         /*input_tiling=*/{},
                         /*output_tiling=*/{3}),
       TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
                         /*input_tiling=*/{4}),
-      TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
-                        /*input_tiling=*/{4}, /*output_tiling=*/{4}),
       TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
                         /*input_tiling=*/{}, /*output_tiling=*/{5}),
       TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
@@ -347,14 +353,16 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
 class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
  protected:
   template <typename T>
-  void TestTranspose() {
+  void TestTranspose(int parallelism) {
     const TransposeTestCase test = GetParam();
+    tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
+                                              "Transpose", parallelism);
     std::vector<int64> output_dims = Permute(test.dims, test.permutation);
     TF_ASSERT_OK_AND_ASSIGN(
-        auto plan,
-        TransposePlan::Create(sizeof(T), test.dims, test.permutation,
-                              TransposePlan::Tiling{test.input_tiling},
-                              TransposePlan::Tiling{test.output_tiling}));
+        auto plan, TransposePlan::Create(
+                       sizeof(T), test.dims, test.permutation,
+                       TransposePlan::Tiling{test.input_tiling},
+                       TransposePlan::Tiling{test.output_tiling}, parallelism));
     VLOG(1) << plan->ToString();
     xla::Array<T> untiled_input(test.dims);
     untiled_input.FillIota(0);
@@ -368,17 +376,22 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
 
     std::vector<T> output(
         SizeOfTiledArray(plan->OutputDims(), test.output_tiling), -1);
-    plan->Execute(tiled_input.data(), output.data());
+    plan->Execute(
+        tiled_input.data(), output.data(),
+        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
 
     EXPECT_EQ(expected_tiled_output, output);
   }
 };
 
-TEST_P(TransposeTest, TransposeInt8) { TestTranspose<int8>(); }
-TEST_P(TransposeTest, TransposeInt16) { TestTranspose<int16>(); }
-TEST_P(TransposeTest, TransposeInt32) { TestTranspose<int32>(); }
-TEST_P(TransposeTest, TransposeInt64) { TestTranspose<int64>(); }
-TEST_P(TransposeTest, TransposeInt128) { TestTranspose<absl::int128>(); }
+TEST_P(TransposeTest, TransposeInt8) { TestTranspose<int8>(1); }
+TEST_P(TransposeTest, TransposeInt16) { TestTranspose<int16>(1); }
+TEST_P(TransposeTest, TransposeInt32) { TestTranspose<int32>(1); }
+TEST_P(TransposeTest, TransposeInt64) { TestTranspose<int64>(1); }
+TEST_P(TransposeTest, TransposeInt128) { TestTranspose<absl::int128>(1); }
+
+TEST_P(TransposeTest, ParallelTransposeInt8) { TestTranspose<int8>(16); }
+TEST_P(TransposeTest, ParallelTransposeInt32) { TestTranspose<int32>(16); }
 
 INSTANTIATE_TEST_SUITE_P(TransposeTestInstance, TransposeTest,
                          ::testing::ValuesIn(GetTransposeTestCases()));
@@ -415,20 +428,26 @@ void BM_Eigen_uint8(::testing::benchmark::State& state) {
 void BM_Eigen_float(::testing::benchmark::State& state) {
   BM_Eigen<float>(state);
 }
-BENCHMARK(BM_Eigen_uint8)->Range(0, benchmark_cases->size() - 1);
-BENCHMARK(BM_Eigen_float)->Range(0, benchmark_cases->size() - 1);
 
 template <typename T>
 void BM_Transpose(::testing::benchmark::State& state) {
   const TransposeTestCase& bm = benchmark_cases->at(state.range(0));
+  int parallelism = state.range(1);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto plan, TransposePlan::Create(sizeof(T), bm.dims, bm.permutation));
+      auto plan, TransposePlan::Create(sizeof(T), bm.dims, bm.permutation,
+                                       TransposePlan::Tiling{},
+                                       TransposePlan::Tiling{}, parallelism));
   Array<T> input(bm.dims);
   input.FillIota(0);
   std::vector<int64> output_dims = Permute(bm.dims, bm.permutation);
   Array<T> output(output_dims);
+  tensorflow::thread::ThreadPool threadpool(tensorflow::Env::Default(),
+                                            "Transpose", parallelism);
   for (auto s : state) {
-    plan->Execute(input.data(), output.data());
+    plan->Execute(input.data(), output.data(), [&](std::function<void()> fn) {
+      threadpool.Schedule(std::move(fn));
+    });
+
     tensorflow::testing::DoNotOptimize(output);
   }
 }
@@ -438,8 +457,47 @@ void BM_Transpose_uint8(::testing::benchmark::State& state) {
 void BM_Transpose_float(::testing::benchmark::State& state) {
   BM_Transpose<float>(state);
 }
-BENCHMARK(BM_Transpose_uint8)->Range(0, benchmark_cases->size() - 1);
-BENCHMARK(BM_Transpose_float)->Range(0, benchmark_cases->size() - 1);
+
+#if defined(TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_)
+#define USING_TF_BENCHMARK 1
+#else  // TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_
+#define USING_TF_BENCHMARK 0
+#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_
+
+static std::vector<tensorflow::testing::Benchmark*>* benchmarks =
+    []() -> std::vector<tensorflow::testing::Benchmark*>* {
+  std::vector<tensorflow::testing::Benchmark*>* bms =
+      new std::vector<tensorflow::testing::Benchmark*>();
+
+  std::vector<std::tuple<std::string, void (*)(testing::benchmark::State&),
+                         std::vector<int>>>
+      variants = {
+          {"BM_Eigen_uint8", BM_Eigen_uint8, {1}},
+          {"BM_Transpose_uint8", BM_Transpose_uint8, {1, 4, 8}},  //
+          {"BM_Eigen_float", BM_Eigen_float, {1}},
+          {"BM_Transpose_float", BM_Transpose_float, {1, 4, 8}},  //
+  };
+  for (size_t i = 0; i < benchmark_cases->size(); ++i) {
+    for (const auto& variant : variants) {
+      for (int num_threads : std::get<2>(variant)) {
+        std::string name = absl::StrCat(
+            std::get<0>(variant), "_",
+            absl::StrJoin(benchmark_cases->at(i).dims, "_"), "_perm_",
+            absl::StrJoin(benchmark_cases->at(i).permutation, "_"));
+#if USING_TF_BENCHMARK
+        auto* bm = new tensorflow::testing::Benchmark(name.c_str(),
+                                                      std::get<1>(variant));
+#else
+        auto* bm = new tensorflow::testing::Benchmark(
+            name, NewPermanentCallback(std::get<1>(variant)));
+#endif
+        bm->ArgPair(i, num_threads);
+        bms->push_back(bm);
+      }
+    }
+  }
+  return bms;
+}();
 
 TEST(TransposePlanCache, Basics) {
   TransposePlanCache cache(2);

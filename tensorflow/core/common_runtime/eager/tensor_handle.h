@@ -64,10 +64,10 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
                tensorflow::DataType dtype, EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
-  TensorHandle(int64 op_id, int32 output_num, const string& remote_task,
+  TensorHandle(int64_t op_id, int32 output_num, const string& remote_task,
                tensorflow::DataType dtype, Device* device, EagerContext* ctx,
                const bool unknown_device);
-  TensorHandle(int64 op_id, int32 output_num, tensorflow::DataType dtype,
+  TensorHandle(int64_t op_id, int32 output_num, tensorflow::DataType dtype,
                Device* device, const bool is_ready, EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
@@ -106,14 +106,14 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // ready until the shape is set. It controls the lifetime of the remote
   // tensor.
   static TensorHandle* CreateUnshapedRemoteHandle(
-      int64 op_id, int32 output_num, const string& remote_task,
+      int64_t op_id, int32 output_num, const string& remote_task,
       tensorflow::DataType dtype, Device* d, EagerContext* ctx,
       const bool unknown_device = false);
   // A lazy remote handle refers to a tensor on a remote worker. The lifetime of
   // the remote tensor is controlled by the remote worker, but not by the lazy
   // remote handle. Lazy handles are normally created on a default function
   // device.
-  static TensorHandle* CreateLazyRemoteHandle(int64 op_id, int32 output_num,
+  static TensorHandle* CreateLazyRemoteHandle(int64_t op_id, int32 output_num,
                                               tensorflow::DataType dtype,
                                               Device* d, const bool is_ready,
                                               EagerContext* ctx);
@@ -179,9 +179,9 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   bool HasRemoteMirror(const Device* d, uint64 context_view_id) const;
   bool HasResourceShapeMirror(const Device* d, uint64 context_view_id) const;
 
-  Status AddUnshapedRemoteMirror(const Device* d, int64 op_id, int output_num,
+  Status AddUnshapedRemoteMirror(const Device* d, int64_t op_id, int output_num,
                                  const string& remote_task, EagerContext* ctx);
-  Status AddResourceShapeMirror(const Device* d, int64 op_id, int output_num,
+  Status AddResourceShapeMirror(const Device* d, int64_t op_id, int output_num,
                                 EagerContext* ctx);
 
   // Return the op_id and output num if the handle refers to a remote tensor.

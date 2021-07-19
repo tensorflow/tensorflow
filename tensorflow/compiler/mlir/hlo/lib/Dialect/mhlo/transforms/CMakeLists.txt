@@ -59,6 +59,7 @@ add_mlir_library(MhloPasses
   materialize_broadcasts_pass.cc
   mhlo_canonicalize_reduction.cc
   mhlo_fusion.cc
+  mhlo_mark_shape_calc.cc
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc
@@ -189,6 +190,7 @@ add_mlir_library(LmhloPasses
 
   LINK_LIBS PUBLIC
   LmhloDialect
+  MLIRMhloUtils
   MLIRIR
   MLIRPass
 )
@@ -207,6 +209,7 @@ add_mlir_library(DiscRalPasses
   LINK_LIBS PUBLIC
   DiscRalDialect
   MLIRIR
+  MLIRLLVMCommonConversion
   MLIRPass
 )
 
@@ -223,6 +226,7 @@ add_mlir_library(DiscRalToLLVM
   LINK_LIBS PUBLIC
   DiscRalDialect
   MLIRIR
+  MLIRLLVMCommonConversion
   MLIRPass
 )
 

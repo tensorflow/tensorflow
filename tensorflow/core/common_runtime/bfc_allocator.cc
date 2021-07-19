@@ -237,7 +237,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
   if (r != nullptr) {
     return r;
   } else {
-    static const int64 kMaxMillisToWait = 10000;  // 10 seconds
+    static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
     r = retry_helper_.AllocateRaw(
         [this, &allocation_attr](size_t a, size_t nb, bool v) {
           uint64 freed_by_count = 0;
@@ -480,7 +480,7 @@ int64 BFCAllocator::LargestFreeChunk() {
 }
 
 double BFCAllocator::GetFragmentation() {
-  int64 bytes_available = total_region_allocated_bytes_ - stats_.bytes_in_use;
+  int64_t bytes_available = total_region_allocated_bytes_ - stats_.bytes_in_use;
   DCHECK_GT(bytes_available, 0);
   return static_cast<double>(bytes_available - LargestFreeChunk()) /
          bytes_available;
@@ -492,12 +492,12 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name, const void* ptr) {
 }
 
 void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
-                              const void* chunk_ptr, int64 req_bytes,
-                              int64 alloc_bytes) {
+                              const void* chunk_ptr, int64_t req_bytes,
+                              int64_t alloc_bytes) {
   tensorflow::profiler::TraceMe::InstantActivity(
       [this, traceme_name, chunk_ptr, req_bytes, alloc_bytes]()
           TF_NO_THREAD_SAFETY_ANALYSIS {
-            int64 bytes_available =
+            int64_t bytes_available =
                 memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
             const auto& annotation =
                 ScopedMemoryDebugAnnotation::CurrentAnnotation();
@@ -549,7 +549,7 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // kMaxInternalFragmentation bytes on padding this alloc. If this
         // threshold is not set by the user, then use 128MB as the default
         // threshold.
-        const int64 kMaxInternalFragmentation =
+        const int64_t kMaxInternalFragmentation =
             (internal_fragmentation_fraction_ > 0.0)
                 ? internal_fragmentation_fraction_ * memory_limit_
                 : 128 << 20;
@@ -666,8 +666,8 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   // Record chunk information before it's freed.
   Chunk* chunk = ChunkFromHandle(h);
   void* chunk_ptr = chunk->ptr;
-  int64 req_bytes = chunk->requested_size;
-  int64 alloc_bytes = chunk->size;
+  int64_t req_bytes = chunk->requested_size;
+  int64_t alloc_bytes = chunk->size;
 
   MarkFree(h);
 

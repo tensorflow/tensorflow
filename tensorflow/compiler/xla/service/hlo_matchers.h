@@ -301,6 +301,16 @@ HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
 
+#define HLO_MATCHER_VECTOR_OPERANDS(opcode)                              \
+  template <>                                                            \
+  inline ::testing::Matcher<const ::xla::HloInstruction*> opcode(        \
+      std::vector<::testing::Matcher<const HloInstruction*>> operands) { \
+    return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(        \
+        ::xla::HloOpcode::k##opcode, operands));                         \
+  }
+
+HLO_MATCHER_VECTOR_OPERANDS(DynamicSlice);
+
 // The special cases below let you check additional information about the
 // HloInstruction, beyond just its opcode and operands.  In all cases you can
 // still use the generic matcher which doesn't check this info.

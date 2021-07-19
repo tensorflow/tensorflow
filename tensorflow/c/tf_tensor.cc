@@ -249,7 +249,7 @@ static void DeleteArray(void* data, size_t size, void* arg) {
 static TF_Tensor* EmptyTensor(TF_DataType dtype,
                               const tensorflow::TensorShape& shape) {
   static char empty;
-  tensorflow::int64 nelems = 1;
+  int64_t nelems = 1;
   std::vector<tensorflow::int64> dims;
   for (int i = 0; i < shape.dims(); ++i) {
     dims.push_back(shape.dim_size(i));

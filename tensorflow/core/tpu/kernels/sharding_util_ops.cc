@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -98,6 +100,21 @@ Status GetAndValidateAttributes(OpKernelConstruction* ctx,
   }
 
   return Status::OK();
+}
+
+absl::string_view kHandle = "handle";
+absl::string_view kTensor = "tensor";
+
+template <bool Handle>
+Status CreateResourceInvalidDTypeError(const ResourceHandle& handle,
+                                       DataType actual_dtype,
+                                       DataType expected_dtype) {
+  absl::string_view resource_component = Handle ? kHandle : kTensor;
+  return errors::InvalidArgument(
+      "'T' must match 'resource' variable ", resource_component, " ('",
+      handle.name(), "') container ('", handle.container(), "') dtype ",
+      DataTypeString(actual_dtype), ", but got ",
+      DataTypeString(expected_dtype), ".");
 }
 
 // Converts flatten index to start indices (subscript scaled with slice shape)
@@ -516,12 +533,9 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
 
     tf_shared_lock ml(*variable->mu());
     const Tensor* input = variable->tensor();
-    OP_REQUIRES(ctx, input->dtype() == dtype_,
-                errors::InvalidArgument(
-                    "'T' must match 'resource' variable handle ('",
-                    handle.name(), "') container ('", handle.container(),
-                    "') dtype ", DataTypeString(input->dtype()), ", but got ",
-                    DataTypeString(dtype_), "."));
+    OP_REQUIRES(
+        ctx, input->dtype() == dtype_,
+        CreateResourceInvalidDTypeError<false>(handle, input->dtype(), dtype_));
 
     auto assign_or_copy_value_fn = [&ctx,
                                     &variable](const Tensor& input) -> Status {
@@ -562,6 +576,311 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_XLA_SPLIT_ND);
 TF_CALL_POD_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 TF_CALL_QUANTIZED_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 #undef REGISTER_READ_VARIABLE_XLA_SPLIT_ND
+
+template <typename Device, typename T, bool Resource>
+class XlaConcatNDBaseOp : public OpKernel {
+ public:
+  explicit XlaConcatNDBaseOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(
+        ctx, GetAndValidateAttributes<false>(ctx, num_concats_, num_slices_,
+                                             paddings_, has_paddings_));
+  }
+
+ protected:
+  Status GetInputsAndOutputShape(OpKernelContext* ctx, OpInputList& inputs,
+                                 TensorShape& output_shape) {
+    TF_RETURN_IF_ERROR(ctx->input_list("inputs", &inputs));
+    DCHECK_EQ(inputs.size(), num_slices_);
+
+    const TensorShape& slice_shape = inputs[0].shape();
+    if (slice_shape.dims() != num_concats_.size()) {
+      return errors::InvalidArgument(
+          "'inputs' rank must be the same as 'num_concats' length ",
+          num_concats_.size(), ", but got rank ", slice_shape.dims(), ".");
+    }
+    for (int i = 1; i < num_slices_; ++i) {
+      const TensorShape& slice_shape_i = inputs[i].shape();
+      if (slice_shape != slice_shape_i) {
+        return errors::InvalidArgument(
+            "'inputs' must all have the same expected shape ", slice_shape,
+            ", but got ", slice_shape_i, " at index ", i, ".");
+      }
+    }
+
+    for (int i = 0, e = num_concats_.size(); i < e; ++i) {
+      const int max_dim_size = slice_shape.dim_size(i) * num_concats_[i];
+      if (paddings_[i] > max_dim_size) {
+        return errors::InvalidArgument(
+            "'paddings' must not exceed expected output shape dimension ",
+            max_dim_size, " at index ", i, ", but got ", paddings_[i], ".");
+      }
+      output_shape.AddDim(max_dim_size - paddings_[i]);
+    }
+
+    return Status::OK();
+  }
+
+  void ComputeInternal(
+      OpKernelContext* ctx, const OpInputList& inputs,
+      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const std::function<StatusOr<Tensor*>()>& get_output_fn) {
+    const int rank = inputs[0].shape().dims();
+
+    OP_REQUIRES(ctx, rank > 0 && rank <= 8,
+                errors::InvalidArgument(
+                    "'inputs' tensors must have rank in range (0, 8], but got ",
+                    rank, "."));
+
+    if (has_paddings_) {
+      if (rank == 1) {
+        UnpadAndAssign<1>(ctx, inputs, get_output_fn);
+      } else if (rank == 2) {
+        UnpadAndAssign<2>(ctx, inputs, get_output_fn);
+      } else if (rank == 3) {
+        UnpadAndAssign<3>(ctx, inputs, get_output_fn);
+      } else if (rank == 4) {
+        UnpadAndAssign<4>(ctx, inputs, get_output_fn);
+      } else if (rank == 5) {
+        UnpadAndAssign<5>(ctx, inputs, get_output_fn);
+      } else if (rank == 6) {
+        UnpadAndAssign<6>(ctx, inputs, get_output_fn);
+      } else if (rank == 7) {
+        UnpadAndAssign<7>(ctx, inputs, get_output_fn);
+      } else if (rank == 8) {
+        UnpadAndAssign<8>(ctx, inputs, get_output_fn);
+      }
+      return;
+    }
+
+    if (rank == 1) {
+      Assign<1>(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    } else if (rank == 2) {
+      Assign<2>(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    } else if (rank == 3) {
+      Assign<3>(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    } else if (rank == 4) {
+      Assign<4>(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    } else if (rank == 5) {
+      Assign<5>(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    } else if (rank == 6) {
+      Assign<6>(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    } else if (rank == 7) {
+      Assign<7>(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    } else if (rank == 8) {
+      Assign<8>(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    }
+  }
+
+ private:
+  template <int Rank>
+  void UnpadAndAssign(OpKernelContext* ctx, const OpInputList& inputs,
+                      const std::function<StatusOr<Tensor*>()>& get_output_fn) {
+    auto status_or_output = get_output_fn();
+    OP_REQUIRES_OK(ctx, status_or_output.status());
+    Tensor* output = status_or_output.ConsumeValueOrDie();
+
+    const Device& device = ctx->eigen_device<Device>();
+    if (num_slices_ == 1) {
+      output->tensor<T, Rank>().device(device) =
+          inputs[0].tensor<T, Rank>().slice(
+              Eigen::DSizes<Eigen::DenseIndex, Rank>(),
+              output->shape().AsEigenDSizes<Rank>());
+      return;
+    }
+
+    Eigen::DSizes<Eigen::DenseIndex, Rank> slice_shape_dsizes =
+        inputs[0].shape().AsEigenDSizes<Rank>();
+    for (int i = 0; i < num_slices_; ++i) {
+      Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
+          GetSliceIndices<Rank>(num_concats_, slice_shape_dsizes, i);
+
+      int num_complete_pad_dims = 0;
+      int num_partial_pad_dims = 0;
+      TensorShape non_padded_slice_shape;
+      // Calculate paddings necessary to strip from slice.
+      for (int dim = 0; dim < Rank; ++dim) {
+        const int64 dim_size = output->shape().dim_size(dim);
+        if (slice_indices[dim] >= dim_size) {
+          // Complete padding.
+          slice_indices[dim] = dim_size;
+          non_padded_slice_shape.AddDim(0);
+          ++num_complete_pad_dims;
+        } else if (slice_indices[dim] + slice_shape_dsizes[dim] >= dim_size) {
+          // Partial padding.
+          non_padded_slice_shape.AddDim(dim_size - slice_indices[dim]);
+          ++num_partial_pad_dims;
+        } else {
+          non_padded_slice_shape.AddDim(slice_shape_dsizes[dim]);
+        }
+      }
+
+      if (num_complete_pad_dims == Rank) {
+        continue;
+      } else if (num_complete_pad_dims > 0 || num_partial_pad_dims > 0) {
+        Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes =
+            non_padded_slice_shape.AsEigenDSizes<Rank>();
+        output->tensor<T, Rank>()
+            .slice(slice_indices, non_padded_slice_shape_dsizes)
+            .device(device) = inputs[i].tensor<T, Rank>().slice(
+            Eigen::DSizes<Eigen::DenseIndex, Rank>(),
+            non_padded_slice_shape_dsizes);
+      } else {
+        output->tensor<T, Rank>()
+            .slice(slice_indices, slice_shape_dsizes)
+            .device(device) = inputs[i].tensor<T, Rank>();
+      }
+    }
+  }
+
+  template <int Rank>
+  void Assign(
+      OpKernelContext* ctx, const OpInputList& inputs,
+      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const std::function<StatusOr<Tensor*>()>& get_output_fn) {
+    const Device& device = ctx->eigen_device<Device>();
+    if (num_slices_ == 1) {
+      OP_REQUIRES_OK(ctx, assign_or_copy_value_fn(inputs[0]));
+      return;
+    }
+
+    auto status_or_output = get_output_fn();
+    OP_REQUIRES_OK(ctx, status_or_output.status());
+    Tensor* output = status_or_output.ConsumeValueOrDie();
+
+    Eigen::DSizes<Eigen::DenseIndex, Rank> slice_shape_dsizes =
+        inputs[0].shape().AsEigenDSizes<Rank>();
+    for (int i = 0; i < num_slices_; ++i) {
+      Eigen::DSizes<Eigen::DenseIndex, Rank> slice_indices =
+          GetSliceIndices<Rank>(num_concats_, slice_shape_dsizes, i);
+      output->tensor<T, Rank>()
+          .slice(slice_indices, slice_shape_dsizes)
+          .device(device) = inputs[i].tensor<T, Rank>();
+    }
+  }
+
+  std::vector<int32> num_concats_;
+  int num_slices_ = 1;
+  std::vector<int32> paddings_;
+  bool has_paddings_ = false;
+};
+
+template <typename Device, typename T>
+class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, false> {
+ public:
+  explicit XlaConcatNDOp(OpKernelConstruction* ctx)
+      : XlaConcatNDBaseOp<Device, T, false>(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    OpInputList inputs;
+    TensorShape output_shape;
+    OP_REQUIRES_OK(ctx,
+                   this->GetInputsAndOutputShape(ctx, inputs, output_shape));
+
+    auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
+      ctx->set_output(/*index=*/0, input);
+      return Status::OK();
+    };
+
+    auto get_output_fn = [&ctx, &output_shape]() -> StatusOr<Tensor*> {
+      Tensor* output = nullptr;
+      TF_RETURN_IF_ERROR(
+          ctx->allocate_output(/*index=*/0, output_shape, &output));
+      return output;
+    };
+    this->ComputeInternal(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+  }
+};
+
+template <typename Device, typename T>
+class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, true> {
+ public:
+  explicit AssignVariableXlaConcatNDOp(OpKernelConstruction* ctx)
+      : XlaConcatNDBaseOp<Device, T, true>(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    OpInputList inputs;
+    TensorShape output_shape;
+    OP_REQUIRES_OK(ctx,
+                   this->GetInputsAndOutputShape(ctx, inputs, output_shape));
+
+    core::RefCountPtr<Var> variable;
+    const ResourceHandle& handle = HandleFromInput(ctx, 0);
+    if (handle.dtypes_and_shapes().size() == 1) {
+      const DtypeAndPartialTensorShape dtype_and_shape =
+          handle.dtypes_and_shapes().front();
+      OP_REQUIRES(ctx, dtype_and_shape.dtype == dtype_,
+                  CreateResourceInvalidDTypeError<true>(
+                      handle, dtype_and_shape.dtype, dtype_));
+      OP_REQUIRES(ctx, dtype_and_shape.shape.IsCompatibleWith(output_shape),
+                  errors::InvalidArgument(
+                      "'resource' variable handle ('", handle.name(),
+                      "') container ('", handle.container(),
+                      "') shape must be compatible with expected shape ",
+                      output_shape, ", but got ", dtype_and_shape.shape, "."));
+    }
+    OP_REQUIRES_OK(ctx, LookupOrCreateResource<Var>(ctx, handle, &variable,
+                                                    [this](Var** ptr) {
+                                                      *ptr = new Var(dtype_);
+                                                      return Status::OK();
+                                                    }));
+    mutex_lock ml(*variable->mu());
+
+    OP_REQUIRES(ctx, variable->tensor()->dtype() == dtype_,
+                CreateResourceInvalidDTypeError<false>(
+                    handle, variable->tensor()->dtype(), dtype_));
+
+    auto assign_or_copy_value_fn = [this, &ctx, &output_shape,
+                                    &variable](const Tensor& input) -> Status {
+      if (variable->copy_on_read_mode.load()) {
+        TF_RETURN_IF_ERROR(
+            ctx->allocate_temp(dtype_, output_shape, variable->tensor()));
+        variable->tensor()->flat<T>().device(ctx->eigen_device<Device>()) =
+            input.flat<T>();
+      } else {
+        *variable->tensor() = input;
+      }
+      return Status::OK();
+    };
+
+    auto get_output_fn = [this, &ctx, &output_shape,
+                          &variable]() -> StatusOr<Tensor*> {
+      if (variable->copy_on_read_mode.load() ||
+          !variable->tensor()->RefCountIsOne() ||
+          !variable->tensor()->shape().IsSameSize(output_shape)) {
+        TF_RETURN_IF_ERROR(
+            ctx->allocate_temp(dtype_, output_shape, variable->tensor()));
+      }
+      return variable->tensor();
+    };
+
+    this->ComputeInternal(ctx, inputs, assign_or_copy_value_fn, get_output_fn);
+    variable->is_initialized = true;
+  }
+
+  DataType dtype_;
+};
+
+#define REGISTER_XLA_CONCAT_ND(type)                                    \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("XlaConcatND").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      XlaConcatNDOp<Eigen::ThreadPoolDevice, type>)
+
+TF_CALL_POD_TYPES(REGISTER_XLA_CONCAT_ND);
+TF_CALL_QUANTIZED_TYPES(REGISTER_XLA_CONCAT_ND);
+#undef REGISTER_XLA_CONCAT_ND
+
+#define REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND(type) \
+  REGISTER_KERNEL_BUILDER(                           \
+      Name("AssignVariableXlaConcatND")              \
+          .Device(DEVICE_CPU)                        \
+          .TypeConstraint<type>("T"),                \
+      AssignVariableXlaConcatNDOp<Eigen::ThreadPoolDevice, type>)
+
+TF_CALL_POD_TYPES(REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND);
+TF_CALL_QUANTIZED_TYPES(REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND);
+#undef REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND
 
 }  // anonymous namespace
 }  // namespace tensorflow

@@ -51,6 +51,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
     switch (opcode) {
       case HloOpcode::kAfterAll:
       case HloOpcode::kAllGather:
+      case HloOpcode::kAllGatherStart:
       case HloOpcode::kAllReduce:
       case HloOpcode::kReduceScatter:
       case HloOpcode::kAllReduceStart:

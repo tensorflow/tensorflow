@@ -23,6 +23,8 @@
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
+*   TF Core:
+    *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
 
 # Thanks to our Contributors
 
@@ -143,6 +145,7 @@ This release contains contributions from many people at Google, as well as:
     *   Added `tf.config.experimental.reset_memory_stats` to reset the tracked
         peak memory returned by `tf.config.experimental.get_memory_info`.
 *  `tf.data`:
+    *   Added checkpointing support for `tf.data.experimental.save()`.
     *   Added `target_workers` param to `data_service_ops.from_dataset_id` and
         `data_service_ops.distribute`. Users can specify `"AUTO"`, `"ANY"`, or
         `"LOCAL"` (case insensitive). If `"AUTO"`, tf.data service runtime

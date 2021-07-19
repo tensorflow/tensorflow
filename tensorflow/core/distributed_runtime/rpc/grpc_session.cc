@@ -96,7 +96,8 @@ void ReEncodeConsts(GraphDef* gdef) {
 }
 }  // namespace
 
-void GrpcSession::SetHandleAndGraphVersion(string handle, int64 graph_version) {
+void GrpcSession::SetHandleAndGraphVersion(string handle,
+                                           int64_t graph_version) {
   mutex_lock l(mu_);
   handle_ = std::move(handle);
   current_graph_version_ = graph_version;

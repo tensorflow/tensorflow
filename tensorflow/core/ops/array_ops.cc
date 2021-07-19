@@ -51,10 +51,10 @@ Status GetAxisForPackAndUnpack(InferenceContext* c, int32 rank_after_pack,
 }
 
 template <typename T>
-std::vector<int64> AsInt64(const Tensor* tensor, int64 num_elements) {
+std::vector<int64> AsInt64(const Tensor* tensor, int64_t num_elements) {
   std::vector<int64> ret(num_elements);
   auto data = tensor->vec<T>();
-  for (int64 i = 0; i < num_elements; ++i) {
+  for (int64_t i = 0; i < num_elements; ++i) {
     ret[i] = data(i);
   }
   return ret;
@@ -62,11 +62,11 @@ std::vector<int64> AsInt64(const Tensor* tensor, int64 num_elements) {
 
 template <typename T>
 Status PadKnown(InferenceContext* c, ShapeHandle input,
-                const Tensor* paddings_t, int64 num_dims) {
+                const Tensor* paddings_t, int64_t num_dims) {
   // paddings_t is known.
   std::vector<DimensionHandle> dims(num_dims);
   auto paddings_data = paddings_t->matrix<T>();
-  for (int64 i = 0; i < num_dims; ++i) {
+  for (int64_t i = 0; i < num_dims; ++i) {
     const T pad0 = paddings_data(i, 0);
     const T pad1 = paddings_data(i, 1);
     if (pad0 < 0 || pad1 < 0) {
@@ -107,7 +107,7 @@ Status PadShapeFn(InferenceContext* c) {
     return Status::OK();
   }
 
-  const int64 num_dims = paddings_t->shape().dim_size(0);
+  const int64_t num_dims = paddings_t->shape().dim_size(0);
   TF_RETURN_IF_ERROR(c->WithRank(input, num_dims, &input));
   TF_RETURN_IF_ERROR(c->WithValue(n_dim, num_dims, &n_dim));
 
@@ -132,7 +132,7 @@ Status TransposeShapeFn(InferenceContext* c) {
   }
 
   // Find our value of the rank.
-  int64 rank;
+  int64_t rank;
   if (c->RankKnown(input)) {
     rank = c->Rank(input);
   } else if (c->ValueKnown(perm_elems)) {
@@ -167,7 +167,7 @@ Status TransposeShapeFn(InferenceContext* c) {
     }
 
     for (int32 i = 0; i < rank; ++i) {
-      int64 in_idx = data[i];
+      int64_t in_idx = data[i];
       if (in_idx >= rank) {
         return errors::InvalidArgument("perm dim ", in_idx,
                                        " is out of range of input rank ", rank);
@@ -584,7 +584,7 @@ REGISTER_OP("Split")
           out = c->UnknownShape();
         }
       } else {
-        int64 split_dim = c->Value(split_dimension);
+        int64_t split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
         DimensionHandle split_dim_size;
         TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -645,7 +645,7 @@ REGISTER_OP("SplitV")
       } else {
         // Determine the output shape if split dimension and split sizes are
         // known.
-        int64 split_dim = c->Value(split_dimension);
+        int64_t split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
         std::vector<int64> data;
         if (size_splits->dtype() == DT_INT32) {
@@ -1021,7 +1021,7 @@ REGISTER_OP("ReverseV2")
         }
         std::vector<bool> axes_dense(c->Rank(input), false);
         for (int i = 0; i < axis_value.size(); i++) {
-          int64 canonical_axis =
+          int64_t canonical_axis =
               axis_value[i] < 0 ? rank + axis_value[i] : axis_value[i];
           if (canonical_axis < 0 || canonical_axis >= rank) {
             return errors::InvalidArgument("'axis'[", i, "] = ", axis_value[i],
@@ -1214,7 +1214,7 @@ REGISTER_OP("GatherV2")
       }
 
       // Note, axis can be negative.
-      int64 axis = 0;
+      int64_t axis = 0;
       if (axis_t->dtype() == DT_INT32) {
         axis = axis_t->scalar<int32>()();
       } else {
@@ -1472,14 +1472,14 @@ Status UniqueIdxShapeFn(InferenceContext* c) {
     c->set_output(1, input);
     return Status::OK();
   } else if (n == 1) {
-    int64 axis;
+    int64_t axis;
     if (axis_t->dtype() == DT_INT32) {
       axis = static_cast<int64>(axis_t->flat<int32>()(0));
     } else {
       axis = axis_t->flat<int64>()(0);
     }
 
-    int64 input_rank = c->Rank(input);
+    int64_t input_rank = c->Rank(input);
     if (axis < -input_rank || axis >= input_rank) {
       return errors::InvalidArgument("axis expects to be in the range [",
                                      -input_rank, ", ", input_rank, ")");
@@ -1626,9 +1626,9 @@ REGISTER_OP("ReverseSequence")
       ShapeHandle seq_lens_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &seq_lens_shape));
 
-      int64 seq_dim;
+      int64_t seq_dim;
       TF_RETURN_IF_ERROR(c->GetAttr("seq_dim", &seq_dim));
-      int64 batch_dim;
+      int64_t batch_dim;
       TF_RETURN_IF_ERROR(c->GetAttr("batch_dim", &batch_dim));
 
       if (!c->RankKnown(input)) {
@@ -1912,8 +1912,8 @@ REGISTER_OP("BroadcastArgs")
         return Status::OK();
       }
 
-      int64 x_dim = c->Value(c->Dim(shape_x, 0));
-      int64 y_dim = c->Value(c->Dim(shape_y, 0));
+      int64_t x_dim = c->Value(c->Dim(shape_x, 0));
+      int64_t y_dim = c->Value(c->Dim(shape_y, 0));
 
       // Broadcasted shape is going to be as large as the largest dimension.
       c->set_output(0, c->Vector(std::max(x_dim, y_dim)));
@@ -1970,12 +1970,12 @@ REGISTER_OP("MirrorPad")
 namespace {
 template <typename T>
 Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
-                      const Tensor* paddings_t, int64 input_rank) {
+                      const Tensor* paddings_t, int64_t input_rank) {
   auto paddings_data = paddings_t->matrix<T>();
   std::vector<DimensionHandle> dims(input_rank);
-  for (int64 i = 0; i < input_rank; ++i) {
-    const int64 pad0 = static_cast<int64>(paddings_data(i, 0));
-    const int64 pad1 = static_cast<int64>(paddings_data(i, 1));
+  for (int64_t i = 0; i < input_rank; ++i) {
+    const int64_t pad0 = static_cast<int64>(paddings_data(i, 0));
+    const int64_t pad1 = static_cast<int64>(paddings_data(i, 1));
     if (pad0 < 0 || pad1 < 0) {
       return errors::InvalidArgument("Paddings must be non-negative");
     }
@@ -2006,7 +2006,7 @@ REGISTER_OP("MirrorPadGrad")
         return Status::OK();
       }
 
-      int64 input_rank = c->Value(pad_0);
+      int64_t input_rank = c->Value(pad_0);
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), input_rank, &input));
       TF_RETURN_IF_ERROR(
@@ -2101,7 +2101,7 @@ REGISTER_OP("ExpandDims")
         return Status::OK();
       }
 
-      int64 dim;
+      int64_t dim;
       if (dim_t->dtype() == DT_INT32) {
         dim = static_cast<int64>(dim_t->flat<int32>()(0));
       } else {
@@ -2254,7 +2254,7 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
     return errors::InvalidArgument("block_shape must have known size.");
   }
 
-  const int64 num_block_dims = c->Value(num_block_dims_handle);
+  const int64_t num_block_dims = c->Value(num_block_dims_handle);
 
   TF_RETURN_IF_ERROR(
       c->WithRankAtLeast(input_shape, num_block_dims + 1, &input_shape));
@@ -2266,8 +2266,8 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
   std::vector<int64> block_shape_vec;
   if (block_shape_t && (block_shape_t->NumElements() > 0)) {
     block_shape_vec = GetFlatInt64(*block_shape_t);
-    for (int64 dim = 0; dim < num_block_dims; ++dim) {
-      const int64 block_shape_value = block_shape_vec[dim];
+    for (int64_t dim = 0; dim < num_block_dims; ++dim) {
+      const int64_t block_shape_value = block_shape_vec[dim];
       if (block_shape_value < 1) {
         return errors::InvalidArgument("block_shape must be positive");
       }
@@ -2287,9 +2287,9 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
 
   if (paddings_t && (paddings_t->NumElements() > 0)) {
     const std::vector<int64> paddings_vec = GetFlatInt64(*paddings_t);
-    for (int64 dim = 0; dim < num_block_dims; ++dim) {
-      const int64 pad_start = paddings_vec[dim * 2],
-                  pad_end = paddings_vec[dim * 2 + 1];
+    for (int64_t dim = 0; dim < num_block_dims; ++dim) {
+      const int64_t pad_start = paddings_vec[dim * 2],
+                    pad_end = paddings_vec[dim * 2 + 1];
       if (pad_start < 0 || pad_end < 0) {
         return errors::InvalidArgument("paddings cannot be negative");
       }
@@ -2329,7 +2329,7 @@ Status BatchToSpaceShapeHelper(InferenceContext* c, ShapeHandle input_shape,
     return errors::InvalidArgument("block_shape must have known size.");
   }
 
-  const int64 num_block_dims = c->Value(num_block_dims_handle);
+  const int64_t num_block_dims = c->Value(num_block_dims_handle);
 
   TF_RETURN_IF_ERROR(
       c->WithRankAtLeast(input_shape, num_block_dims + 1, &input_shape));
@@ -2341,8 +2341,8 @@ Status BatchToSpaceShapeHelper(InferenceContext* c, ShapeHandle input_shape,
   std::vector<int64> block_shape_vec;
   if (block_shape_t) {
     block_shape_vec = GetFlatInt64(*block_shape_t);
-    for (int64 dim = 0; dim < num_block_dims; ++dim) {
-      const int64 block_shape_value = block_shape_vec[dim];
+    for (int64_t dim = 0; dim < num_block_dims; ++dim) {
+      const int64_t block_shape_value = block_shape_vec[dim];
       if (block_shape_value < 1) {
         return errors::InvalidArgument("block_shape must be positive");
       }
@@ -2362,9 +2362,9 @@ Status BatchToSpaceShapeHelper(InferenceContext* c, ShapeHandle input_shape,
 
   if (crops_t) {
     const std::vector<int64> crops_vec = GetFlatInt64(*crops_t);
-    for (int64 dim = 0; dim < num_block_dims; ++dim) {
-      const int64 crop_start = crops_vec[dim * 2],
-                  crop_end = crops_vec[dim * 2 + 1];
+    for (int64_t dim = 0; dim < num_block_dims; ++dim) {
+      const int64_t crop_start = crops_vec[dim * 2],
+                    crop_end = crops_vec[dim * 2 + 1];
       if (crop_start < 0 || crop_end < 0) {
         return errors::InvalidArgument("crops cannot be negative");
       }
@@ -2654,8 +2654,8 @@ REGISTER_OP("ExtractImagePatches")
       Padding padding;
       TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
-      int64 output_rows, output_cols;
-      int64 padding_before, padding_after;
+      int64_t output_rows, output_cols;
+      int64_t padding_before, padding_after;
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
           in_rows, ksize_rows_eff, stride_rows, padding, &output_rows,
           &padding_before, &padding_after));
@@ -2760,8 +2760,8 @@ REGISTER_OP("ExtractVolumePatches")
       Padding padding;
       TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
-      int64 output_planes, output_rows, output_cols;
-      int64 padding_before, padding_after;
+      int64_t output_planes, output_rows, output_cols;
+      int64_t padding_before, padding_after;
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
           in_planes, ksize_planes, stride_planes, padding, &output_planes,
           &padding_before, &padding_after));

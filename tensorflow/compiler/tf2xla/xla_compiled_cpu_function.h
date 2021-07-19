@@ -294,12 +294,12 @@ class XlaCompiledCpuFunction {
   }
 
   static void set_static_data_num_args(StaticData* static_data,
-                                       int64 num_args) {
+                                       int64_t num_args) {
     static_data->num_args_ = num_args;
   }
 
   static void set_static_data_num_variables(StaticData* static_data,
-                                            int64 num_variables) {
+                                            int64_t num_variables) {
     static_data->num_variables_ = num_variables;
   }
 
@@ -340,7 +340,7 @@ class XlaCompiledCpuFunction {
   }
 
   static void set_static_data_profile_counters_size(
-      StaticData* static_data, int64 profile_counters_size) {
+      StaticData* static_data, int64_t profile_counters_size) {
     static_data->profile_counters_size_ = profile_counters_size;
   }
 

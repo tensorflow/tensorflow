@@ -14,9 +14,7 @@ package(
     default_visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/c/experimental/saved_model/internal:__pkg__",
-        # copybara:uncomment_begin(google-only)
-        # "//tensorflow/cc/experimental/libtf:__pkg__",
-        # copybara:uncomment_end
+        "//tensorflow/cc/experimental/libtf:__pkg__",
         "//tensorflow/core:__subpackages__",
     ],
     licenses = ["notice"],

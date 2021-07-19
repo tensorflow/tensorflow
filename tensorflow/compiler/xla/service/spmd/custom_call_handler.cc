@@ -78,19 +78,19 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
     return DefaultAction(hlo);
   }
 
-  const int64 batch_dim = 0;
-  const int64 sort_dim = 1;
-  const int64 shard_count = sharding.tile_assignment().dim(sort_dim);
+  const int64_t batch_dim = 0;
+  const int64_t sort_dim = 1;
+  const int64_t shard_count = sharding.tile_assignment().dim(sort_dim);
 
   if (shard_count <= 1) {
     return DefaultAction(hlo);
   }
 
-  const int64 batch_dim_partition = sharding.tile_assignment().dim(batch_dim);
-  const int64 input_size = hlo->operand(0)->shape().dimensions(sort_dim);
-  const int64 batch_size = hlo->shape().tuple_shapes(0).dimensions(batch_dim);
-  const int64 k = hlo->shape().tuple_shapes(0).dimensions(sort_dim);
-  const int64 per_partition_size = CeilOfRatio(input_size, shard_count);
+  const int64_t batch_dim_partition = sharding.tile_assignment().dim(batch_dim);
+  const int64_t input_size = hlo->operand(0)->shape().dimensions(sort_dim);
+  const int64_t batch_size = hlo->shape().tuple_shapes(0).dimensions(batch_dim);
+  const int64_t k = hlo->shape().tuple_shapes(0).dimensions(sort_dim);
+  const int64_t per_partition_size = CeilOfRatio(input_size, shard_count);
 
   if (k >= per_partition_size) {
     return DefaultAction(hlo);
@@ -241,21 +241,21 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   auto dim_it = attrs.find("dimension");
   TF_RET_CHECK(dim_it != attrs.end())
       << "No dimension attribute in SPMD rotate op";
-  int64 dim = dim_it->second;
+  int64_t dim = dim_it->second;
   auto amount_it = attrs.find("amount");
   TF_RET_CHECK(amount_it != attrs.end())
       << "No amount attribute in SPMD rotate op";
 
   PartitionedHlo input =
       GetPartitionedHlo(hlo->operand(0)).Reshard(hlo->sharding());
-  const int64 full_size = hlo->shape().dimensions(dim);
-  const int64 shard_size = input.hlo()->shape().dimensions(dim);
+  const int64_t full_size = hlo->shape().dimensions(dim);
+  const int64_t shard_size = input.hlo()->shape().dimensions(dim);
 
   // We exclude shards that are entirely padding.
-  const int64 participating_shards = CeilOfRatio(full_size, shard_size);
+  const int64_t participating_shards = CeilOfRatio(full_size, shard_size);
   // The last included shard might still have padding on the right.
-  const int64 right_padding = participating_shards * shard_size - full_size;
-  int64 amount = amount_it->second;
+  const int64_t right_padding = participating_shards * shard_size - full_size;
+  int64_t amount = amount_it->second;
   TF_RET_CHECK(amount >= 0)
       << "Rotate amount cannot be negative in SPMD rotate op";
 
@@ -269,16 +269,16 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   //      012|345|678|9__     (_: padding)
   // after:
   //      678|9__|012|345     (amount: 6)
-  auto rotate_with_padding = [&](int64 rotate_amount) {
-    int64 current_size = 0;
+  auto rotate_with_padding = [&](int64_t rotate_amount) {
+    int64_t current_size = 0;
     std::vector<HloInstruction*> concat_pieces;
     while (current_size < shard_size) {
-      int64 shard_distance =
+      int64_t shard_distance =
           CeilOfRatio(rotate_amount - current_size, shard_size);
-      int64 offset_in_shard =
+      int64_t offset_in_shard =
           shard_distance * shard_size - rotate_amount + current_size;
 
-      int64 halo_size =
+      int64_t halo_size =
           std::min(shard_size - offset_in_shard, shard_size - current_size);
 
       current_size += halo_size;
@@ -300,7 +300,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
       if (shard_distance != 0) {
         std::vector<std::pair<int64, int64>> pairs;
         hlo->sharding().tile_assignment().Each(
-            [&](absl::Span<const int64> indices, int64 device) {
+            [&](absl::Span<const int64> indices, int64_t device) {
               if (indices[dim] >= participating_shards) {
                 return;
               }
@@ -364,7 +364,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
 }
 
 std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
-    HloInstruction* input, int64 dim, int64 amount) {
+    HloInstruction* input, int64_t dim, int64_t amount) {
   string opaque = absl::StrCat("dimension=", dim, ",amount=", amount);
   return HloInstruction::CreateCustomCall(input->shape(), {input},
                                           kSPMDOpRotateRight, opaque);

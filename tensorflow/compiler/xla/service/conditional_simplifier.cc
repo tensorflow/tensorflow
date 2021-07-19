@@ -490,7 +490,6 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
       case HloOpcode::kDynamicSlice:
-      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kReduce:
       case HloOpcode::kReshape:

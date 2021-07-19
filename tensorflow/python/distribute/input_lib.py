@@ -68,6 +68,7 @@ def get_distributed_dataset(dataset,
                             strategy,
                             num_replicas_in_sync=None,
                             input_context=None,
+                            build=True,
                             options=None):
   """Returns a distributed dataset from the given tf.data.Dataset instance.
 
@@ -91,6 +92,8 @@ def get_distributed_dataset(dataset,
         graph multi-worker cases where there is only one `input_worker`. In
         these cases, we will shard based on the `input_pipeline_id` and
         `num_input_pipelines` in the `InputContext`.
+    build: whether to build underlying datasets when a DistributedDataset is
+        created.
     options: Default is None. `tf.distribute.InputOptions` used to control
         options on how this dataset is distributed.
 
@@ -104,6 +107,7 @@ def get_distributed_dataset(dataset,
         dataset,
         num_replicas_in_sync=num_replicas_in_sync,
         input_context=input_context,
+        build=build,
         options=options)
   else:
     return DistributedDatasetV1(
@@ -1137,6 +1141,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
                components=None,
                element_spec=None,
                enable_get_next_as_optional=None,
+               build=True,
                options=None):
     """Distribute the dataset on all workers.
 
@@ -1170,6 +1175,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
         DistributedDataset and verified against element_spec from components.
       enable_get_next_as_optional: this is required when components is passed
         instead of dataset.
+      build: whether to build underlying datasets when this object is created.
       options: `tf.distribute.InputOptions` used to control options on how this
         dataset is distributed.
     """
@@ -1181,11 +1187,23 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     if dataset is None and components is None:
       raise ValueError("At least one of dataset or components should be passed")
 
+    self._input_workers = input_workers
+    self._strategy = strategy
+    self._options = options
+    self._input_context = input_context
+    self._num_replicas_in_sync = num_replicas_in_sync
+
     if dataset is not None:
-      self._create_cloned_datasets_from_dataset(dataset, input_context,
-                                                input_workers, strategy,
-                                                num_replicas_in_sync)
+      self._original_dataset = dataset
+      self._built = False
+      if build:
+        self.build()
     else:
+      if not build:
+        raise ValueError(
+            "When constructing DistributedDataset with components, build "
+            "should not be False. This is an internal error. Please file a "
+            "bug.")
       if enable_get_next_as_optional is None:
         raise ValueError(
             "When constructing DistributedDataset with components, " +
@@ -1193,18 +1211,24 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
       self._cloned_datasets = components
       self._enable_get_next_as_optional = enable_get_next_as_optional
 
-    self._input_workers = input_workers
-    self._strategy = strategy
-    self._options = options
-
-    if element_spec is not None:
+      assert element_spec is not None
       if element_spec != _create_distributed_tensor_spec(
           self._strategy, self._cloned_datasets[0].element_spec):
         raise ValueError("Mismatched element_spec from the passed components")
       self._element_spec = element_spec
-    else:
-      self._element_spec = _create_distributed_tensor_spec(
-          self._strategy, self._cloned_datasets[0].element_spec)
+
+      self._built = True
+
+  def build(self, dataset_to_replace=None):
+    assert not self._built
+    dataset = dataset_to_replace or self._original_dataset
+    self._create_cloned_datasets_from_dataset(dataset, self._input_context,
+                                              self._input_workers,
+                                              self._strategy,
+                                              self._num_replicas_in_sync)
+    self._element_spec = _create_distributed_tensor_spec(
+        self._strategy, self._cloned_datasets[0].element_spec)
+    self._built = True
 
   def _create_cloned_datasets_from_dataset(self, dataset, input_context,
                                            input_workers, strategy,
@@ -1312,6 +1336,9 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
             ops.get_default_graph().building_function):
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
+    if not self._built:
+      raise ValueError("To use this dataset, you need to pass this dataset to "
+                       "ClusterCoordinator.create_per_worker_dataset.")
 
     # This is an optional flag that can be used to turn off using
     # OwnedMultiDeviceIterators and instead use the legacy MultiDeviceIterators

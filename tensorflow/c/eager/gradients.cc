@@ -280,7 +280,7 @@ Status Tape::ComputeGradient(
       source_tensor_ids.begin(), source_tensor_ids.end());
   std::unordered_map<int64, TapeTensor> sources_that_are_targets;
   for (int i = 0; i < target_tensor_ids.size(); ++i) {
-    int64 target_id = target_tensor_ids[i];
+    int64_t target_id = target_tensor_ids[i];
     if (sources_set.find(target_id) != sources_set.end()) {
       auto tensor = targets[i];
       sources_that_are_targets.insert(

@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   mlir::disc_ral::registerAllDiscRalPasses();
-  mlir::registerAllTransformPasses();
+  mlir::hlo::registerAllHloPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

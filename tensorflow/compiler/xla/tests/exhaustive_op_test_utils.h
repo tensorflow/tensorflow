@@ -508,7 +508,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // Testing will ignore inputs for which known_incorrect_fn_ returns true. The
   // argument to the function is the raw bits for the data being test, zero
   // extended to 64 bits if the data type is less than 64 bits.
-  std::function<bool(int64)> known_incorrect_fn_;
+  std::function<bool(int64_t)> known_incorrect_fn_;
 
   // If true, allows denormals to be flushed to non-sign-preserving 0.
   //
@@ -766,7 +766,7 @@ class FpValues {
   }
 
   int64 GetTotalNumValues() const {
-    int64 total = 1;
+    int64_t total = 1;
     absl::c_for_each(bit_chunks_, [&](const BitChunks& chunks) {
       total *= chunks.GetTotalBitChunks();
     });
@@ -931,7 +931,7 @@ inline std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
   // memory usage low.
   std::vector<std::pair<int64, int64>> result;
   const int64 step = 1 << 25;
-  for (int64 i = 0; i < (1l << 32); i += step) {
+  for (int64_t i = 0; i < (1l << 32); i += step) {
     result.push_back({i, i + step});
   }
   return result;

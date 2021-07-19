@@ -111,7 +111,7 @@ class ExecStep {
   int64 all_start_micros() const { return exec_.all_start_micros(); }
   int64 latest_end_micros() const { return exec_.latest_end_micros(); }
   int64 lastest_schedule_end_micros() const {
-    int64 ret = 0;
+    int64_t ret = 0;
     for (const auto& exec : cpu_execs_) {
       for (const auto& pair : exec.second) {
         ret = std::max(ret, pair.first + pair.second);
@@ -120,56 +120,56 @@ class ExecStep {
     return ret;
   }
   int64 requested_bytes() const {
-    int64 requested_bytes = 0;
+    int64_t requested_bytes = 0;
     for (const ExecMemory& exec : memory_execs_) {
       requested_bytes += exec.requested_bytes();
     }
     return requested_bytes;
   }
   int64 peak_bytes() const {
-    int64 peak_bytes = 0;
+    int64_t peak_bytes = 0;
     for (const ExecMemory& exec : memory_execs_) {
       peak_bytes += exec.peak_bytes();
     }
     return peak_bytes;
   }
   int64 residual_bytes() const {
-    int64 residual_bytes = 0;
+    int64_t residual_bytes = 0;
     for (const ExecMemory& exec : memory_execs_) {
       residual_bytes += exec.residual_bytes();
     }
     return residual_bytes;
   }
   int64 output_bytes() const {
-    int64 output_bytes = 0;
+    int64_t output_bytes = 0;
     for (const ExecMemory& exec : memory_execs_) {
       output_bytes += exec.output_bytes();
     }
     return output_bytes;
   }
   int64 accelerator_temp_bytes() const {
-    int64 accelerator_temp_bytes = 0;
+    int64_t accelerator_temp_bytes = 0;
     for (const ExecMemory& exec : memory_execs_) {
       accelerator_temp_bytes += exec.accelerator_temp_bytes();
     }
     return accelerator_temp_bytes;
   }
   int64 host_temp_bytes() const {
-    int64 host_temp_bytes = 0;
+    int64_t host_temp_bytes = 0;
     for (const ExecMemory& exec : memory_execs_) {
       host_temp_bytes += exec.host_temp_bytes();
     }
     return host_temp_bytes;
   }
   int64 accelerator_persistent_bytes() const {
-    int64 accelerator_persistent_bytes = 0;
+    int64_t accelerator_persistent_bytes = 0;
     for (const ExecMemory& exec : memory_execs_) {
       accelerator_persistent_bytes += exec.accelerator_persistent_bytes();
     }
     return accelerator_persistent_bytes;
   }
   int64 host_persistent_bytes() const {
-    int64 host_persistent_bytes = 0;
+    int64_t host_persistent_bytes = 0;
     for (const ExecMemory& exec : memory_execs_) {
       host_persistent_bytes += exec.host_persistent_bytes();
     }
@@ -313,7 +313,7 @@ class TFGraphNode {
     FromProto(node, profile, id_to_string);
   }
 
-  TFGraphNode(const NodeDef* node, int64 id,
+  TFGraphNode(const NodeDef* node, int64_t id,
               const std::map<string, std::unique_ptr<TFGraphNode>>* nodes_map) {
     nodes_map_ = nodes_map;
     node_.set_id(id);
@@ -342,17 +342,17 @@ class TFGraphNode {
     op_types_.insert(node->op());
   }
 
-  void AddInput(const string& input, int64 output_index, int input_idx) {
+  void AddInput(const string& input, int64_t output_index, int input_idx) {
     inputs_[input_idx] = input;
     src_output_idx_[input] = output_index;
   }
 
   void AddOpType(const string& op_type) { op_types_.insert(op_type); }
 
-  void AddStepStat(int64 step, const string& device,
+  void AddStepStat(int64_t step, const string& device,
                    const NodeExecStats& step_stat);
 
-  void AddFloatOps(int64 float_ops) { node_.set_float_ops(float_ops); }
+  void AddFloatOps(int64_t float_ops) { node_.set_float_ops(float_ops); }
 
   // TODO(xpan): This could take a lot of memory.
   void AddCode(const CodeDef& code,
@@ -367,7 +367,7 @@ class TFGraphNode {
   const string& op() const { return node_.op(); }
   const ProfileNode& node() { return node_; }
 
-  bool trackable(int64 step) const {
+  bool trackable(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) return false;
 
@@ -382,7 +382,7 @@ class TFGraphNode {
       const std::map<string, std::unique_ptr<TFGraphNode>>& nodes_map) {
     node_.clear_shape();
     node_.mutable_shape()->Reserve(shape().size());
-    for (int64 s : shape()) {
+    for (int64_t s : shape()) {
       node_.add_shape(s);
     }
 
@@ -406,7 +406,7 @@ class TFGraphNode {
     node_.clear_input_shapes();
     for (const auto& s : input_shapes_) {
       auto& shape = (*node_.mutable_input_shapes())[s.first];
-      for (int64 d : s.second) {
+      for (int64_t d : s.second) {
         shape.add_int64_values(d);
       }
     }
@@ -414,14 +414,14 @@ class TFGraphNode {
     node_.clear_output_shapes();
     for (const auto& s : output_shapes_) {
       auto& shape = (*node_.mutable_output_shapes())[s.first];
-      for (int64 d : s.second) {
+      for (int64_t d : s.second) {
         shape.add_int64_values(d);
       }
     }
 
     node_.clear_src_output_index();
     for (const auto& s : src_output_idx_) {
-      int64 id = nodes_map.at(s.first)->id();
+      int64_t id = nodes_map.at(s.first)->id();
       (*node_.mutable_src_output_index())[id] = s.second;
     }
 
@@ -443,7 +443,7 @@ class TFGraphNode {
     op_types_.insert(node_.op_types().begin(), node_.op_types().end());
 
     shape_.clear();
-    for (int64 s : node_.shape()) {
+    for (int64_t s : node_.shape()) {
       shape_.push_back(s);
     }
 
@@ -461,7 +461,7 @@ class TFGraphNode {
     input_shapes_.clear();
     for (const auto& s : node.input_shapes()) {
       auto& shape = input_shapes_[s.first];
-      for (const int64 d : s.second.int64_values()) {
+      for (const int64_t d : s.second.int64_values()) {
         shape.push_back(d);
       }
     }
@@ -469,7 +469,7 @@ class TFGraphNode {
     output_shapes_.clear();
     for (const auto& s : node.output_shapes()) {
       auto& shape = output_shapes_[s.first];
-      for (const int64 d : s.second.int64_values()) {
+      for (const int64_t d : s.second.int64_values()) {
         shape.push_back(d);
       }
     }
@@ -484,7 +484,7 @@ class TFGraphNode {
 
   // Number of times the graph node is executed. When step < 0, the
   // average number of times executed across all steps.
-  int64 run_count(int64 step) const {
+  int64 run_count(int64_t step) const {
     if (execs_.empty()) {
       return 0;
     }
@@ -495,7 +495,7 @@ class TFGraphNode {
       }
       return exec->second.run_count();
     }
-    int64 total_run_count = 0;
+    int64_t total_run_count = 0;
     for (const auto& exec : execs_) {
       total_run_count += exec.second.run_count();
     }
@@ -503,7 +503,7 @@ class TFGraphNode {
   }
   // This is overall computation time, including both cpu and accelerator.
   // Note, cpu and accelerator might or might not run in parallel.
-  int64 exec_micros(int64 step) const {
+  int64 exec_micros(int64_t step) const {
     // Empty when no RunMetadata is provided.
     if (execs_.empty()) {
       return 0;
@@ -516,7 +516,7 @@ class TFGraphNode {
       return exec->second.exec_micros();
     }
 
-    int64 total_micros = 0;
+    int64_t total_micros = 0;
     for (const auto& exec : execs_) {
       total_micros += exec.second.exec_micros();
     }
@@ -525,7 +525,7 @@ class TFGraphNode {
 
   // This is accelerator computation time of a step, or average of
   // multiple step, when step < 0.
-  int64 accelerator_exec_micros(int64 step) const {
+  int64 accelerator_exec_micros(int64_t step) const {
     // Empty when no RunMetadata is provided.
     if (execs_.empty()) {
       return 0;
@@ -538,7 +538,7 @@ class TFGraphNode {
       return exec->second.accelerator_exec_micros();
     }
 
-    int64 total_micros = 0;
+    int64_t total_micros = 0;
     for (const auto& exec : execs_) {
       total_micros += exec.second.accelerator_exec_micros();
     }
@@ -547,7 +547,7 @@ class TFGraphNode {
 
   // This is cpu computation time of a step, or average of
   // multiple step, when step < 0.
-  int64 cpu_exec_micros(int64 step) const {
+  int64 cpu_exec_micros(int64_t step) const {
     // Empty when no RunMetadata is provided.
     if (execs_.empty()) {
       return 0;
@@ -560,19 +560,19 @@ class TFGraphNode {
       return exec->second.cpu_exec_micros();
     }
 
-    int64 total_micros = 0;
+    int64_t total_micros = 0;
     for (const auto& exec : execs_) {
       total_micros += exec.second.cpu_exec_micros();
     }
     return total_micros / execs_.size();
   }
 
-  int64 requested_bytes(int64 step) const { GRAPH_NODE_BYTES(requested); }
-  int64 peak_bytes(int64 step) const { GRAPH_NODE_BYTES(peak); }
-  int64 residual_bytes(int64 step) const { GRAPH_NODE_BYTES(residual); }
-  int64 output_bytes(int64 step) const { GRAPH_NODE_BYTES(output); }
+  int64 requested_bytes(int64_t step) const { GRAPH_NODE_BYTES(requested); }
+  int64 peak_bytes(int64_t step) const { GRAPH_NODE_BYTES(peak); }
+  int64 residual_bytes(int64_t step) const { GRAPH_NODE_BYTES(residual); }
+  int64 output_bytes(int64_t step) const { GRAPH_NODE_BYTES(output); }
 
-  int64 all_start_micros(int64 step) const {
+  int64 all_start_micros(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return 0;
@@ -580,7 +580,7 @@ class TFGraphNode {
     return exec->second.all_start_micros();
   }
 
-  int64 latest_end_micros(int64 step) const {
+  int64 latest_end_micros(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return 0;
@@ -588,7 +588,7 @@ class TFGraphNode {
     return exec->second.latest_end_micros();
   }
 
-  int64 lastest_schedule_end_micros(int64 step) const {
+  int64 lastest_schedule_end_micros(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return 0;
@@ -597,7 +597,7 @@ class TFGraphNode {
   }
 
   const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs(
-      int64 step) const {
+      int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return empty_execs_;
@@ -605,7 +605,7 @@ class TFGraphNode {
     return exec->second.op_execs();
   }
   const std::map<string, std::vector<std::pair<int64, int64>>>& cpu_execs(
-      int64 step) const {
+      int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return empty_execs_;
@@ -615,14 +615,14 @@ class TFGraphNode {
 
   const std::map<int64, ExecStep>& all_op_execs() const { return execs_; }
 
-  int64 accelerator_temp_bytes(int64 step) const {
+  int64 accelerator_temp_bytes(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return 0;
     }
     return exec->second.accelerator_temp_bytes();
   }
-  int64 host_temp_bytes(int64 step) const {
+  int64 host_temp_bytes(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return 0;
@@ -630,14 +630,14 @@ class TFGraphNode {
     return exec->second.host_temp_bytes();
   }
   int64 accelerator_persistent_bytes() const {
-    int64 persistent_bytes = 0;
+    int64_t persistent_bytes = 0;
     for (const auto& exec : execs_) {
       persistent_bytes = std::max(persistent_bytes,
                                   exec.second.accelerator_persistent_bytes());
     }
     return persistent_bytes;
   }
-  const std::map<int64, int64> allocator_bytes_in_use(int64 step) const {
+  const std::map<int64, int64> allocator_bytes_in_use(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return empty_bytes_in_use_;
@@ -645,7 +645,7 @@ class TFGraphNode {
     return exec->second.allocator_bytes_in_use();
   }
 
-  const std::vector<AllocationRecord>& allocations(int64 step) const {
+  const std::vector<AllocationRecord>& allocations(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return empty_allocations_;
@@ -655,9 +655,9 @@ class TFGraphNode {
 
   int64 parameters() const {
     if (!shape().empty()) {
-      int64 params = 1;
+      int64_t params = 1;
       bool complete_shape = true;
-      for (int64 d : shape()) {
+      for (int64_t d : shape()) {
         // Sometimes parameters could be <0 when a dim is unknown.
         if (d < 0) {
           complete_shape = false;
@@ -674,7 +674,7 @@ class TFGraphNode {
     return 0;
   }
 
-  int64 float_ops(int64 step) const {
+  int64 float_ops(int64_t step) const {
     // If not run, return static analysis.
     if (execs_.empty()) {
       return node_.float_ops();
@@ -771,7 +771,7 @@ class TFMultiGraphNode {
         float_ops_(0),
         parameters_(0) {}
 
-  bool SnapshotNodes(int64 step, const std::vector<string>& type_regexes) {
+  bool SnapshotNodes(int64_t step, const std::vector<string>& type_regexes) {
     run_count_ = 0;
     exec_micros_ = 0;
     accelerator_exec_micros_ = 0;

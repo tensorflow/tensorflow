@@ -47,6 +47,8 @@ public final class InterpreterTest {
       "tensorflow/lite/java/src/testdata/tile_with_bool_input.bin";
   private static final String MODEL_WITH_SIGNATURE_PATH =
       "tensorflow/lite/java/src/testdata/mul_add_signature_def.bin";
+  private static final String MODEL_WITH_MULTI_SIGNATURE_PATH =
+      "tensorflow/lite/java/src/testdata/multi_signature_def.bin";
 
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
@@ -60,6 +62,8 @@ public final class InterpreterTest {
   private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
   private static final ByteBuffer MODEL_WITH_SIGNATURE_BUFFER =
       TestUtils.getTestFileAsBuffer(MODEL_WITH_SIGNATURE_PATH);
+  private static final ByteBuffer MODEL_WITH_MULTI_SIGNATURE_BUFFER =
+      TestUtils.getTestFileAsBuffer(MODEL_WITH_MULTI_SIGNATURE_PATH);
 
   @Before
   public void setUp() {
@@ -676,7 +680,8 @@ public final class InterpreterTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+                "Cannot cancel the inference. "
+                    + "Have you called InterpreterApi.Options.setCancellable?");
       }
     }
   }
@@ -874,6 +879,63 @@ public final class InterpreterTest {
                 "Input error: SignatureDef methodName should not be null. null is only allowed if"
                     + " the model has a single Signature");
       }
+    }
+  }
+
+  @Test
+  public void testModelWithMultiSignatureDef() {
+    if (!SupportedFeatures.supportsSignatures()) {
+      System.err.println("Not testing signature defs, since they aren't supported.");
+      return;
+    }
+    try (Interpreter interpreter = new Interpreter(MODEL_WITH_MULTI_SIGNATURE_BUFFER)) {
+      String[] signatureNames = interpreter.getSignatureDefNames();
+      String[] expectedSignatureNames = {"add", "sub"};
+      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+
+      String[] addSignatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[0]);
+      String[] expectedAddSignatureInputs = {"a", "b"};
+      assertThat(addSignatureInputs).isEqualTo(expectedAddSignatureInputs);
+
+      String[] addSignatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[0]);
+      String[] expectedAddSignatureOutputs = {"add_result"};
+      assertThat(addSignatureOutputs).isEqualTo(expectedAddSignatureOutputs);
+
+      String[] subSignatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[1]);
+      String[] expectedSubSignatureInputs = {"x", "y"};
+      assertThat(subSignatureInputs).isEqualTo(expectedSubSignatureInputs);
+
+      String[] subSignatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[1]);
+      String[] expectedSubSignatureOutputs = {"sub_result"};
+      assertThat(subSignatureOutputs).isEqualTo(expectedSubSignatureOutputs);
+
+      // Test "add" signature.
+      FloatBuffer output = FloatBuffer.allocate(1);
+      float[] inputA = {2.0f};
+      float[] inputB = {4.0f};
+      Map<String, Object> inputs = new HashMap<>();
+      inputs.put("a", inputA);
+      inputs.put("b", inputB);
+      Map<String, Object> outputs = new HashMap<>();
+      outputs.put("add_result", output);
+      interpreter.runSignature(inputs, outputs, "add");
+      // Result should be a + b
+      FloatBuffer expected = fill(FloatBuffer.allocate(1), 6.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+
+      // Test "sub" signature.
+      output = FloatBuffer.allocate(1);
+      float[] inputX = {4.0f};
+      float[] inputY = {2.0f};
+      inputs = new HashMap<>();
+      inputs.put("x", inputX);
+      inputs.put("y", inputY);
+      outputs = new HashMap<>();
+      outputs.put("sub_result", output);
+      interpreter.runSignature(inputs, outputs, "sub");
+      // Result should be x - y
+      expected = fill(FloatBuffer.allocate(1), 2.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
     }
   }
 

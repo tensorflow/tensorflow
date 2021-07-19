@@ -348,7 +348,8 @@ def DecomposeResourceScatterAdd : Pat<
     $resource,
     (TF_TensorScatterAddOp
       (CreateTFReadVariableOp $src_op, $updates, $resource),
-      $indices,
+      (TF_ExpandDimsOp $indices,
+       (TF_ConstOp (GetScalarOfType<-1> $indices))),
       $updates
     )
   )>;
@@ -363,7 +364,8 @@ def DecomposeResourceScatterUpdate : Pat<
     $resource,
     (TF_TensorScatterUpdateOp
       (CreateTFReadVariableOp $src_op, $updates, $resource),
-      $indices,
+      (TF_ExpandDimsOp $indices,
+       (TF_ConstOp (GetScalarOfType<-1> $indices))),
       $updates
     )
   )>;

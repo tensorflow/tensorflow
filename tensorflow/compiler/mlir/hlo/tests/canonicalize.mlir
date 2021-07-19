@@ -1758,6 +1758,30 @@ func @identity_broadcast_in_dim_reshape(%arg0: tensor<128xf32>) -> tensor<128xf3
   // CHECK: return %arg0 : tensor<128xf32>
 }
 
+// CHECK-LABEL: @eliminate_identity_convert
+func @eliminate_identity_convert(%arg : tensor<?x32xi16>) -> tensor<?x32xi16> {
+  // CHECK-NOT: mhlo.convert
+  %0 = "mhlo.convert"(%arg) : (tensor<?x32xi16>) -> tensor<?x32xi16>
+  // CHECK: return %arg0 : tensor<?x32xi16>
+  return %0 : tensor<?x32xi16>
+}
+
+// CHECK-LABEL: @eliminate_redundant_reshape
+func @eliminate_redundant_reshape(%arg : tensor<1x32xi16>) -> tensor<1x32xi16> {
+  %0 = "mhlo.reshape"(%arg) : (tensor<1x32xi16>) -> tensor<2x16xi16>
+  %1 = "mhlo.reshape"(%0) : (tensor<2x16xi16>) -> tensor<1x32xi16>
+  // CHECK: return %arg0 : tensor<1x32xi16>
+  return %1 : tensor<1x32xi16>
+}
+
+// CHECK-LABEL: @eliminate_identity_reshape
+func @eliminate_identity_reshape(%arg : tensor<1x32xi16>) -> tensor<1x32xi16> {
+  // CHECK-NOT: mhlo.reshape
+  %0 = "mhlo.reshape"(%arg) : (tensor<1x32xi16>) -> tensor<1x32xi16>
+  // CHECK: return %arg0 : tensor<1x32xi16>
+  return %0 : tensor<1x32xi16>
+}
+
 // CHECK-LABEL: @broadcast_of_reshape
 func @broadcast_of_reshape(%arg: tensor<?xf32>,
                            %shape: tensor<2xindex>) -> tensor<?x?xf32> {

@@ -128,10 +128,10 @@ std::string OpType(const DeviceStepStats& ds, const NodeExecStats& ns) {
 }  // namespace
 
 void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
-  int64 curr_total_us = 0;
-  int64 mem_total = 0;
+  int64_t curr_total_us = 0;
+  int64_t mem_total = 0;
 
-  int64 first_node_start_us =
+  int64_t first_node_start_us =
       (step_stats.dev_stats_size() > 0 &&
        step_stats.dev_stats(0).node_stats_size() > 0)
           ? step_stats.dev_stats(0).node_stats(0).all_start_micros()
@@ -208,7 +208,7 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
         }
       }
 
-      int64 curr_node_mem = 0;
+      int64_t curr_node_mem = 0;
       for (const auto& mem : ns.memory()) {
         const int64 mem_usage = mem.total_bytes();
         curr_node_mem += mem_usage;

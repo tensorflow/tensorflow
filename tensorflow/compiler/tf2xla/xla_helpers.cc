@@ -50,7 +50,7 @@ xla::XlaOp XlaHelpers::One(xla::XlaBuilder* b, DataType data_type) {
 }
 
 xla::XlaOp XlaHelpers::IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
-                                      int64 value) {
+                                      int64_t value) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return ::tensorflow::IntegerLiteral(b, type, value);
@@ -71,8 +71,8 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
   }
   xla::Shape shape =
       xla::ShapeUtil::MakeShape(input.shape().element_type(), dimensions);
-  int64 elements_before = xla::ShapeUtil::ElementsIn(input.shape());
-  int64 elements_after = xla::ShapeUtil::ElementsIn(shape);
+  int64_t elements_before = xla::ShapeUtil::ElementsIn(input.shape());
+  int64_t elements_after = xla::ShapeUtil::ElementsIn(shape);
   if (elements_before != elements_after) {
     return errors::InvalidArgument(
         "Shapes before and after ReshapeLiteral have different numbers of "
@@ -84,7 +84,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
   return Status::OK();
 }
 
-Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
+Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
                           DataType index_type, const TensorShape& indices_shape,
                           const xla::XlaOp& indices, const xla::XlaOp& on_value,
                           const xla::XlaOp& off_value, xla::XlaOp* one_hot) {
@@ -157,12 +157,12 @@ Status RewriteLayoutWithShardedShape(
     // TODO(endlessroad): for variable input & update, we might have
     // different layouts which will prevent input output aliasing and
     // increase memory usage. Investigate such cases.
-    int64 device = *sharding->tile_assignment().begin();
+    int64_t device = *sharding->tile_assignment().begin();
     std::vector<int64> offset =
         sharding->TileOffsetForDevice(*xla_shape, device);
     std::vector<int64> limit = sharding->TileLimitForDevice(*xla_shape, device);
     std::vector<int64> dimensions(xla_shape->rank());
-    for (int64 i = 0; i < xla_shape->rank(); ++i) {
+    for (int64_t i = 0; i < xla_shape->rank(); ++i) {
       dimensions[i] = limit[i] - offset[i];
     }
     xla::Shape per_device_xla_shape =
@@ -188,7 +188,7 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     absl::optional<xla::OpSharding> sharding, bool fast_mem) {
   if (original_shape.IsTuple()) {
     std::vector<xla::XlaOp> elements;
-    for (int64 i = 0; i < original_shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < original_shape.tuple_shapes_size(); ++i) {
       auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
       TF_ASSIGN_OR_RETURN(auto element,
                           ReshapeWithCorrectRepresentationAndSharding(
@@ -213,7 +213,7 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
         hlo_sharding, fast_mem, shape_representation_fn, &to_shape));
   }
   if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
-    for (int64 i = 0; i < original_shape.rank(); ++i) {
+    for (int64_t i = 0; i < original_shape.rank(); ++i) {
       to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
     }
   }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -46,6 +47,12 @@ namespace {
 // the end.
 struct UnrollBatchMatMulPass
     : public PassWrapper<UnrollBatchMatMulPass, FunctionPass> {
+  StringRef getArgument() const final { return "tf-unroll-batch-matmul"; }
+
+  StringRef getDescription() const final {
+    return "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.";
+  }
+
   void runOnFunction() override;
 };
 
@@ -86,36 +93,42 @@ std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
   int num_rows = tensorType.getShape()[rank - 2];
   int num_cols = tensorType.getShape()[rank - 1];
 
-  // Reshape to rank-3 Tensor with first dimension as the batch size.
-  auto reshape_op = createReshapeOp(value, {batch_size, num_rows, num_cols},
-                                    element_type, loc, rewriter);
-
-  SmallVector<int64_t, 3> slice_size = {1, num_rows, num_cols};
-
   std::vector<Value> sliced;
-  Type int64_type = rewriter.getIntegerType(64);
-  Type slice_result_type = RankedTensorType::get(slice_size, element_type);
 
-  // Slice along each batch index and remember the slice output for future
-  // use.
-  for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-    auto vector3_type = RankedTensorType::get({3}, int64_type);
-
-    auto begin_attr =
-        DenseElementsAttr::get<int64_t>(vector3_type, {batch_idx, 0, 0});
-    auto size_attr = DenseElementsAttr::get<int64_t>(vector3_type, slice_size);
-    auto begin = rewriter.create<TF::ConstOp>(loc, vector3_type, begin_attr);
-    auto size = rewriter.create<TF::ConstOp>(loc, vector3_type, size_attr);
-    auto slice_op = rewriter.create<TF::SliceOp>(loc, slice_result_type,
-                                                 /*input=*/reshape_op.output(),
-                                                 begin, size);
-
-    // Squeeze matrix, i.e. reshape [1, num_rows, num_cols] -> [num_rows,
-    // num_cols]
-    auto squeeze_op = createReshapeOp(slice_op.output(), {num_rows, num_cols},
+  if (batch_size == 1) {
+    // Batch size is 1, no splitting is required
+    // Squeeze the batch dimension, i.e. reshape
+    // [1, num_rows, num_cols] -> [num_rows, num_cols]
+    auto squeeze_op = createReshapeOp(value, {num_rows, num_cols}, element_type,
+                                      loc, rewriter);
+    sliced.emplace_back(squeeze_op.output());
+  } else {
+    // Reshape to rank-3 Tensor with first dimension as the batch size.
+    auto reshape_op = createReshapeOp(value, {batch_size, num_rows, num_cols},
                                       element_type, loc, rewriter);
 
-    sliced.emplace_back(squeeze_op.output());
+    // Create a constant op for the split axis (=0)
+    auto split_dimension_type =
+        RankedTensorType::get({}, rewriter.getIntegerType(32));
+    auto split_dimension_attr = DenseElementsAttr::get(split_dimension_type, 0);
+    auto split_dimension_op = rewriter.create<TF::ConstOp>(
+        loc, split_dimension_type, split_dimension_attr);
+
+    // Split along each batch.
+    SmallVector<int64_t, 3> slice_size = {1, num_rows, num_cols};
+    Type slice_result_type = RankedTensorType::get(slice_size, element_type);
+    llvm::SmallVector<Type, 4> output_types(batch_size, slice_result_type);
+    auto split_op = rewriter.create<TF::SplitOp>(
+        loc, output_types, split_dimension_op.output(), reshape_op.output());
+
+    // Squeeze each batch, i.e. reshape
+    // [1, num_rows, num_cols] -> [num_rows, num_cols]
+    for (const auto& split_value : split_op.output()) {
+      auto squeeze_op = createReshapeOp(split_value, {num_rows, num_cols},
+                                        element_type, loc, rewriter);
+
+      sliced.emplace_back(squeeze_op.output());
+    }
   }
   return sliced;
 }
@@ -314,9 +327,7 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   return success();
 }
 
-static PassRegistration<UnrollBatchMatMulPass> pass(
-    "tf-unroll-batch-matmul",
-    "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.");
+static PassRegistration<UnrollBatchMatMulPass> pass;
 
 std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
   return std::make_unique<UnrollBatchMatMulPass>();

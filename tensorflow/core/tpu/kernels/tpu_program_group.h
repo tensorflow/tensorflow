@@ -38,7 +38,7 @@ namespace tpu {
 
 class TpuAotCompilationOptions : public xla::AotCompilationOptions {
  public:
-  explicit TpuAotCompilationOptions(int64 replica_count)
+  explicit TpuAotCompilationOptions(int64_t replica_count)
       : num_cores_(0), replica_count_(replica_count) {}
 
   // Returns the ID of the platform to which these options apply.
@@ -47,7 +47,7 @@ class TpuAotCompilationOptions : public xla::AotCompilationOptions {
     return nullptr;
   };
 
-  void set_num_cores(int64 tpu_cores) { num_cores_ = tpu_cores; }
+  void set_num_cores(int64_t tpu_cores) { num_cores_ = tpu_cores; }
   int64 replica_count() const override { return replica_count_; }
   int64 num_cores() const override { return num_cores_; }
 

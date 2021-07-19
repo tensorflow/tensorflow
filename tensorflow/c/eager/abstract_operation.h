@@ -125,6 +125,28 @@ class AbstractOperation {
   const AbstractOperationKind kind_;
 };
 
+// TODO(b/193656009): Defining these in a cc file causes linker errors with
+// fastbuild.
+inline Status AbstractOperation::SetAttrShape(const char* attr_name,
+                                              const PartialTensorShape shape) {
+  return SetAttrShape(attr_name, shape.dim_sizes().data(), shape.dims());
+}
+
+inline Status AbstractOperation::SetAttrStringList(
+    const char* attr_name, absl::Span<string const> values) {
+  std::vector<const char*> raw_strs;
+  std::vector<size_t> lengths;
+  raw_strs.reserve(values.size());
+  lengths.reserve(values.size());
+  for (const auto& s : values) {
+    raw_strs.emplace_back(s.data());
+    lengths.emplace_back(s.size());
+  }
+  return SetAttrStringList(attr_name,
+                           reinterpret_cast<const void**>(raw_strs.data()),
+                           lengths.data(), values.size());
+}
+
 namespace internal {
 struct AbstractOperationDeleter {
   void operator()(AbstractOperation* p) const {

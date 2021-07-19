@@ -160,7 +160,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
                                 py::bool_(tool_data_and_success.second));
         });
 
-  m.def("xspace_to_tools_data_from_string",
+  m.def("xspace_to_tools_data_from_byte_string",
         [](const py::list& xspace_string_list, const py::list& filenames_list,
            const py::str& py_tool_name) {
           std::vector<tensorflow::profiler::XSpace> xspaces;
@@ -170,7 +170,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
           // XSpace string inputs
           for (py::handle obj : xspace_string_list) {
-            std::string xspace_string = std::string(py::cast<py::str>(obj));
+            std::string xspace_string = std::string(py::cast<py::bytes>(obj));
 
             tensorflow::profiler::XSpace xspace;
 

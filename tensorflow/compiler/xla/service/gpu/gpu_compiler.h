@@ -121,7 +121,7 @@ class GpuCompiler : public LLVMCompiler {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     }
     // Each dynamic dimension size is represented as a S32.
-    int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+    int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
     return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
   }
 

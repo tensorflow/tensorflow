@@ -44,7 +44,7 @@ class XlaHelpers {
   // element of data_type.
   // Note that unlike One and Zero, does not work on boolean types.
   static xla::XlaOp IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
-                                   int64 value);
+                                   int64_t value);
 
   // Returns a handle representing the given value of a floating-point scalar
   // element of data_type.
@@ -62,7 +62,7 @@ class XlaHelpers {
   // axis. `indices_shape` is the shape of `indices`. `on_value` and
   // `off_value` represent the values to use for the on and off positions,
   // respectively.
-  static Status OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
+  static Status OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
                        DataType index_type, const TensorShape& indices_shape,
                        const xla::XlaOp& indices, const xla::XlaOp& on_value,
                        const xla::XlaOp& off_value, xla::XlaOp* one_hot);

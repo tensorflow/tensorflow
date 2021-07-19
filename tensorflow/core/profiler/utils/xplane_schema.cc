@@ -206,6 +206,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"bytes_accessed", kBytesAccessed},
       {"selected_group_ids", kSelectedGroupIds},
       {"source", kSourceInfo},
+      {"model_name", kModelName},
+      {"model_version", kModelVersion},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},

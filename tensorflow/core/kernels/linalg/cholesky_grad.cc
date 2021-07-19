@@ -69,10 +69,10 @@ class CholeskyGrad : public LinearAlgebraOp<Scalar> {
     // Algorithm only depends on lower triangular half on input_matrix_grad.
     output_matrix = input_matrix_grad.template triangularView<Eigen::Lower>();
 
-    const int64 kMatrixSize = input_matrix_l.rows();
-    const int64 kMaxBlockSize = 32;
+    const int64_t kMatrixSize = input_matrix_l.rows();
+    const int64_t kMaxBlockSize = 32;
 
-    for (int64 block_end = kMatrixSize; block_end > 0;
+    for (int64_t block_end = kMatrixSize; block_end > 0;
          block_end -= kMaxBlockSize) {
       /* This shows the block structure.
 
@@ -84,9 +84,9 @@ class CholeskyGrad : public LinearAlgebraOp<Scalar> {
       Variables names representing the derivative matrix have a trailing '_bar'.
       */
 
-      const int64 block_begin = std::max(int64{0}, block_end - kMaxBlockSize);
-      const int64 block_size = block_end - block_begin;
-      const int64 trailing_size = kMatrixSize - block_end;
+      const int64_t block_begin = std::max(int64{0}, block_end - kMaxBlockSize);
+      const int64_t block_size = block_end - block_begin;
+      const int64_t trailing_size = kMatrixSize - block_end;
 
       auto B = input_matrix_l.block(block_end, 0, trailing_size, block_begin);
       auto B_bar =
@@ -120,8 +120,8 @@ class CholeskyGrad : public LinearAlgebraOp<Scalar> {
 
  private:
   void CholeskyGradUnblocked(const ConstRef& l_block, Ref grad_block) {
-    const int64 kMatrixSize = l_block.rows();
-    for (int64 k = kMatrixSize - 1; k >= 0; k--) {
+    const int64_t kMatrixSize = l_block.rows();
+    for (int64_t k = kMatrixSize - 1; k >= 0; k--) {
       /* This shows the block structure.
 
       /      \
@@ -132,8 +132,8 @@ class CholeskyGrad : public LinearAlgebraOp<Scalar> {
       Variables names representing the derivative matrix have a trailing '_bar'.
       */
 
-      const int64 number_rows_B = kMatrixSize - (k + 1);
-      const int64 number_rows_r_stack_B = number_rows_B + 1;
+      const int64_t number_rows_B = kMatrixSize - (k + 1);
+      const int64_t number_rows_r_stack_B = number_rows_B + 1;
 
       auto r = l_block.block(k, 0, 1, k);
       auto r_bar = grad_block.block(k, 0, 1, k);

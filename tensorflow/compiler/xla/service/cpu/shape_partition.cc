@@ -18,12 +18,12 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-std::vector<int64> ShapePartitionAssigner::Run(int64 target_partition_count) {
+std::vector<int64> ShapePartitionAssigner::Run(int64_t target_partition_count) {
   // Gather outer-most dims where dim_size >= 'target_partition_count'.
   // This may include the inner-dim as LLVM can vectorize loops with dynamic
   // bounds.
   std::vector<int64> outer_dims;
-  int64 outer_dim_size = 1;
+  int64_t outer_dim_size = 1;
   // TODO(b/27458679) Consider reserving enough minor dimensions (based on
   // target vector register width) to enable vector instructions.
   for (int i = shape_.layout().minor_to_major_size() - 1; i >= 0; --i) {
@@ -50,7 +50,7 @@ std::vector<int64> ShapePartitionAssigner::Run(int64 target_partition_count) {
   // Assign feasible dimension partitions based on 'target_dim_partition_count'
   // and actual dimension sizes from 'shape_'.
   std::vector<int64> dimension_partition_counts(outer_dims.size());
-  for (int64 i = 0; i < outer_dims.size(); ++i) {
+  for (int64_t i = 0; i < outer_dims.size(); ++i) {
     dimension_partition_counts[i] =
         std::min(static_cast<int64>(shape_.dimensions(outer_dims[i])),
                  target_dim_partition_count);
@@ -64,14 +64,14 @@ std::vector<int64> ShapePartitionAssigner::Run(int64 target_partition_count) {
     // Assign additional partitions (greedily to outer dimensions), if doing
     // so would keep the total number of partitions <= 'target_partition_count',
     // using one pass over 'dimension_partition_counts'.
-    for (int64 i = 0; i < dimension_partition_counts.size(); ++i) {
+    for (int64_t i = 0; i < dimension_partition_counts.size(); ++i) {
       const int64 current_dim_partition_count = dimension_partition_counts[i];
       const int64 other_dims_partition_count =
           GetTotalPartitionCount(dimension_partition_counts) /
           current_dim_partition_count;
       // Constraint: (current + additional) * other <= target
       // Calculate: additional = target / other - current
-      int64 additional_partition_count =
+      int64_t additional_partition_count =
           target_partition_count / other_dims_partition_count -
           current_dim_partition_count;
       // Clip 'additional_partition_count' by current dimension size.
@@ -89,8 +89,8 @@ std::vector<int64> ShapePartitionAssigner::Run(int64 target_partition_count) {
 
 int64 ShapePartitionAssigner::GetTotalPartitionCount(
     const std::vector<int64>& dimension_partition_counts) {
-  int64 total_partition_count = 1;
-  for (int64 dim_partition_count : dimension_partition_counts) {
+  int64_t total_partition_count = 1;
+  for (int64_t dim_partition_count : dimension_partition_counts) {
     total_partition_count *= dim_partition_count;
   }
   return total_partition_count;
@@ -127,11 +127,11 @@ ShapePartitionIterator::ShapePartitionIterator(
 }
 
 std::vector<std::pair<int64, int64>> ShapePartitionIterator::GetPartition(
-    int64 index) const {
+    int64_t index) const {
   // Calculate and return the partition for 'index'.
   // Returns for each dimension: (partition_start, partition_size).
   std::vector<std::pair<int64, int64>> partition(dimensions_.size());
-  for (int64 i = 0; i < partition.size(); ++i) {
+  for (int64_t i = 0; i < partition.size(); ++i) {
     // Calculate the index for dimension 'i'.
     const int64 partition_index = index / dimension_partition_strides_[i];
     // Calculate dimension partition start at 'partition_index'.

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -44,26 +45,9 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
-// A pass that rewrites tensor list operations to tensor operations on buffers
-// and size values.
-//
-// This pass requires that the full shape of the tensor list can be inferred: 1)
-// the maximum size needs to be a constant and 2) the element shape needs to be
-// constant.
-//
-// A tensor list creation op "tf.EmptyTensorList"/"tf.TensorListReserve" will be
-// turned in to a zero-initialized buffer, and the size is initialized to a 0
-// for "tf.EmptyTensorList" or the specified size for "tf.TensorListReserve".
-// Each push will be turned into "tf.XlaDynamicUpdateSlice" with the incremented
-// size, and each pop will be turned into a "tf.Slice" and a copy of the buffer
-// with decremented size. Each SetItem will be turned into a
-// "tf.XlaDynamicUpdateSlice" with unchanged size, and each GetItem will be
-// turned into a "tf.Slice".
-//
-// The pass also works across control flow and functional calls.
 struct TensorListOpsDecompositionPass
-    : public PassWrapper<TensorListOpsDecompositionPass,
-                         OperationPass<ModuleOp>> {
+    : public TF::TensorListOpsDecompositionPassBase<
+          TensorListOpsDecompositionPass> {
   void runOnOperation() override;
 };
 
@@ -957,11 +941,6 @@ void TensorListOpsDecompositionPass::runOnOperation() {
     signalPassFailure();
   }
 }
-
-static PassRegistration<TensorListOpsDecompositionPass> pass(
-    "tf-tensor-list-ops-decomposition",
-    "Decompose tensor list operations into operations on buffers and sizes. "
-    "Needs static shapes.");
 
 }  // namespace
 

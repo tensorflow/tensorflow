@@ -26,7 +26,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/tools/versioning:gpu_compatibility",
+        "@com_google_absl//absl/strings",
     ],
 )

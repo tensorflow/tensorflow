@@ -51,8 +51,9 @@ Node* MatrixTriangularSolve(Graph* g, Node* in0, Node* in1, bool adjoint) {
 }
 
 template <typename T>
-static Graph* MatrixTriangularSolveWithBroadcast(int64 b0, int64 b1, int64 m,
-                                                 int64 n, bool manual_broadcast,
+static Graph* MatrixTriangularSolveWithBroadcast(int64_t b0, int64_t b1,
+                                                 int64_t m, int64_t n,
+                                                 bool manual_broadcast,
                                                  DataType type) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor in0(type, TensorShape({b0, m, m}));

@@ -19,7 +19,7 @@ namespace xla {
 namespace gpu {
 
 StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
-  int64 local_device_ordinal = stream->parent()->device_ordinal();
+  int64_t local_device_ordinal = stream->parent()->device_ordinal();
   if (gpu_global_device_ids) {
     TF_RET_CHECK(0 <= local_device_ordinal &&
                  local_device_ordinal < gpu_global_device_ids->size());
@@ -105,7 +105,7 @@ std::string ThunkSequence::ToString(
         return Thunk::KindToString(a->kind()).length() <
                Thunk::KindToString(b->kind()).length();
       });
-  int64 max_thunk_kind_len =
+  int64_t max_thunk_kind_len =
       Thunk::KindToString(thunk_with_longest_kind->get()->kind()).length();
   std::string result;
   for (const std::unique_ptr<Thunk>& thunk : *this) {

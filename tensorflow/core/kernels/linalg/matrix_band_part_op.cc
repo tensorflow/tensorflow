@@ -71,7 +71,7 @@ class MatrixBandPartOp : public OpKernel {
         return tensor.scalar<int64>()();
       }
     };
-    const int64 num_lower = as_int64_scalar(num_lower_in);
+    const int64_t num_lower = as_int64_scalar(num_lower_in);
     OP_REQUIRES(
         context, num_lower <= input_reshaped.dimension(1),
         errors::InvalidArgument(
@@ -82,7 +82,7 @@ class MatrixBandPartOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_upper_in.shape()),
                 errors::InvalidArgument("num_upper must be scalar, got shape ",
                                         num_upper_in.shape().DebugString()));
-    const int64 num_upper = as_int64_scalar(num_upper_in);
+    const int64_t num_upper = as_int64_scalar(num_upper_in);
     OP_REQUIRES(context, num_upper <= input_reshaped.dimension(2),
                 errors::InvalidArgument("num_upper must be negative or less or "
                                         "equal to number of columns (",
@@ -139,30 +139,30 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
                   int num_lower_diags, int num_upper_diags,
                   typename TTypes<Scalar, 3>::ConstTensor input,
                   typename TTypes<Scalar, 3>::Tensor output) {
-    const int64 b = input.dimension(0);
-    const int64 m = input.dimension(1);
-    const int64 n = input.dimension(2);
+    const int64_t b = input.dimension(0);
+    const int64_t m = input.dimension(1);
+    const int64_t n = input.dimension(2);
     auto thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
-    const int64 total_rows = b * m;
-    const int64 row_cost = 10 * n;
+    const int64_t total_rows = b * m;
+    const int64_t row_cost = 10 * n;
     const bool in_place = input.data() == output.data();
-    auto compute_shard = [=, &input, &output](int64 begin, int64 end) {
+    auto compute_shard = [=, &input, &output](int64_t begin, int64_t end) {
       if (!in_place) {
         std::fill(output.data() + begin * n, output.data() + end * n,
                   Scalar(0));
       }
-      const int64 batch_begin = begin / m;
-      const int64 batch_end = (end + m - 1) / m;
-      for (int64 batch = batch_begin; batch < batch_end; ++batch) {
-        const int64 row_begin = begin > batch * m ? begin % m : 0;
-        const int64 row_end = end < (batch + 1) * m ? end % m : m;
-        for (int64 row = row_begin; row < row_end; ++row) {
-          const int64 band_start =
+      const int64_t batch_begin = begin / m;
+      const int64_t batch_end = (end + m - 1) / m;
+      for (int64_t batch = batch_begin; batch < batch_end; ++batch) {
+        const int64_t row_begin = begin > batch * m ? begin % m : 0;
+        const int64_t row_end = end < (batch + 1) * m ? end % m : m;
+        for (int64_t row = row_begin; row < row_end; ++row) {
+          const int64_t band_start =
               num_lower_diags < 0
                   ? 0
                   : std::min(n, std::max(int64{0}, row - num_lower_diags));
-          const int64 band_end =
+          const int64_t band_end =
               num_upper_diags < 0
                   ? n
                   : std::min(static_cast<int64>(n), row + num_upper_diags + 1);

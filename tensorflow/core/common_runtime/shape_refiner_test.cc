@@ -59,7 +59,7 @@ class ShapeRefinerTest : public ::testing::Test {
     return ShapeRefiner::IsUpdatedShapesOrTypes(c, existing, updated);
   }
 
-  static constexpr int64 kMaxTensorSize = ShapeRefiner::kMaxTensorSize;
+  static constexpr int64_t kMaxTensorSize = ShapeRefiner::kMaxTensorSize;
 
   void TestStridedSlice(const PartialTensorShape& input_shape, int begin,
                         int end, int stride, const char* expected,
@@ -414,7 +414,7 @@ REGISTER_OP("ShapeVectorForAllElements")
       if (shape_data == nullptr) {
         return shape_inference::UnknownShape(c);
       }
-      int64 total = 0;
+      int64_t total = 0;
       for (int i = 0; i < shape_data->NumElements(); ++i) {
         total += shape_data->flat<int32>()(i);
       }

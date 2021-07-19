@@ -54,7 +54,7 @@ class TF_ManagedBuffer : public tensorflow::TensorBuffer {
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(
       tensorflow::AllocationDescription* proto) const override {
-    tensorflow::int64 rb = size();
+    int64_t rb = size();
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }

@@ -69,9 +69,9 @@ class QrOp : public LinearAlgebraOp<Scalar> {
 
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 m = input_matrix_shapes[0].dim_size(0);
-    int64 n = input_matrix_shapes[0].dim_size(1);
-    int64 min_size = std::min(m, n);
+    int64_t m = input_matrix_shapes[0].dim_size(0);
+    int64_t n = input_matrix_shapes[0].dim_size(1);
+    int64_t min_size = std::min(m, n);
     if (full_matrices_) {
       return TensorShapes({TensorShape({m, m}), TensorShape({m, n})});
     } else {

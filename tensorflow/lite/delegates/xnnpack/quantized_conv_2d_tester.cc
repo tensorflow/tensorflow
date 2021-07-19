@@ -24,7 +24,6 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
@@ -33,6 +32,56 @@ limitations under the License.
 
 namespace tflite {
 namespace xnnpack {
+
+template <class T>
+void QuantizedConv2DTester::Test(Interpreter* delegate_interpreter,
+                                 Interpreter* default_interpreter) const {
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto input_rng = std::bind(
+      std::uniform_int_distribution<int32_t>(std::numeric_limits<T>::min(),
+                                             std::numeric_limits<T>::max()),
+      std::ref(rng));
+  T* default_input_data = default_interpreter->typed_input_tensor<T>(0);
+  std::generate(default_input_data,
+                default_input_data + BatchSize() * InputHeight() *
+                                         InputWidth() * InputChannels(),
+                input_rng);
+
+  T* delegate_input_data = delegate_interpreter->typed_input_tensor<T>(0);
+  std::copy(default_input_data,
+            default_input_data +
+                BatchSize() * InputHeight() * InputWidth() * InputChannels(),
+            delegate_input_data);
+
+  ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
+  ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+
+  T* default_output_data = default_interpreter->typed_output_tensor<T>(0);
+  T* delegate_output_data = delegate_interpreter->typed_output_tensor<T>(0);
+
+  for (int32_t i = 0; i < BatchSize(); i++) {
+    for (int32_t y = 0; y < OutputHeight(); y++) {
+      for (int32_t x = 0; x < OutputWidth(); x++) {
+        for (int32_t c = 0; c < OutputChannels(); c++) {
+          const int32_t index = ((i * OutputHeight() + y) * OutputWidth() + x) *
+                                    OutputChannels() +
+                                c;
+          ASSERT_LE(std::abs(static_cast<int32_t>(default_output_data[index]) -
+                             static_cast<int32_t>(delegate_output_data[index])),
+                    1)
+              << "default " << static_cast<int32_t>(default_output_data[index])
+              << ", delegate "
+              << static_cast<int32_t>(delegate_output_data[index]) << ", batch "
+              << i << " / " << BatchSize() << ", y position " << y << " / "
+              << OutputHeight() << ", x position " << x << " / "
+              << OutputWidth() << ", channel " << c << " / "
+              << OutputChannels();
+        }
+      }
+    }
+  }
+}
 
 void QuantizedConv2DTester::Test(TfLiteDelegate* delegate) const {
   std::vector<char> buffer = CreateTfLiteModel();
@@ -67,54 +116,10 @@ void QuantizedConv2DTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto input_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                 std::numeric_limits<int8_t>::min(),
-                                 std::numeric_limits<int8_t>::max()),
-                             std::ref(rng));
-  int8_t* default_input_data = default_interpreter->typed_tensor<int8_t>(
-      default_interpreter->inputs()[0]);
-  std::generate(default_input_data,
-                default_input_data + BatchSize() * InputHeight() *
-                                         InputWidth() * InputChannels(),
-                input_rng);
-
-  int8_t* delegate_input_data = delegate_interpreter->typed_tensor<int8_t>(
-      delegate_interpreter->inputs()[0]);
-  std::copy(default_input_data,
-            default_input_data +
-                BatchSize() * InputHeight() * InputWidth() * InputChannels(),
-            delegate_input_data);
-
-  ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
-  ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
-
-  int8_t* default_output_data = default_interpreter->typed_tensor<int8_t>(
-      default_interpreter->outputs()[0]);
-  int8_t* delegate_output_data = delegate_interpreter->typed_tensor<int8_t>(
-      delegate_interpreter->outputs()[0]);
-
-  for (int32_t i = 0; i < BatchSize(); i++) {
-    for (int32_t y = 0; y < OutputHeight(); y++) {
-      for (int32_t x = 0; x < OutputWidth(); x++) {
-        for (int32_t c = 0; c < OutputChannels(); c++) {
-          const int32_t index = ((i * OutputHeight() + y) * OutputWidth() + x) *
-                                    OutputChannels() +
-                                c;
-          ASSERT_LE(std::abs(static_cast<int32_t>(default_output_data[index]) -
-                             static_cast<int32_t>(delegate_output_data[index])),
-                    1)
-              << "default " << static_cast<int32_t>(default_output_data[index])
-              << ", delegate "
-              << static_cast<int32_t>(delegate_output_data[index]) << ", batch "
-              << i << " / " << BatchSize() << ", y position " << y << " / "
-              << OutputHeight() << ", x position " << x << " / "
-              << OutputWidth() << ", channel " << c << " / "
-              << OutputChannels();
-        }
-      }
-    }
+  if (Unsigned()) {
+    Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());
+  } else {
+    Test<int8_t>(delegate_interpreter.get(), default_interpreter.get());
   }
 }
 
@@ -160,7 +165,9 @@ std::vector<char> QuantizedConv2DTester::CreateTfLiteModel() const {
 
   flatbuffers::Offset<flatbuffers::Vector<float>> filter_scale_offset = 0;
   flatbuffers::Offset<flatbuffers::Vector<float>> bias_scale_offset = 0;
-  flatbuffers::Offset<flatbuffers::Vector<int64_t>> zero_point_offset = 0;
+  flatbuffers::Offset<flatbuffers::Vector<int64_t>> filter_zero_point_offset =
+      0;
+  flatbuffers::Offset<flatbuffers::Vector<int64_t>> bias_zero_point_offset = 0;
   if (ChannelWise()) {
     filter_scale_offset = builder.CreateVector<float>(KernelScales());
 
@@ -171,40 +178,52 @@ std::vector<char> QuantizedConv2DTester::CreateTfLiteModel() const {
     bias_scale_offset = builder.CreateVector<float>(bias_scales);
 
     const auto zero_points = std::vector<int64_t>(OutputChannels());
-    zero_point_offset = builder.CreateVector<int64_t>(zero_points);
+    filter_zero_point_offset = builder.CreateVector<int64_t>(zero_points);
+    bias_zero_point_offset = filter_zero_point_offset;
   } else {
     filter_scale_offset = builder.CreateVector<float>({KernelScale()});
     bias_scale_offset =
         builder.CreateVector<float>({InputScale() * KernelScale()});
-    zero_point_offset = builder.CreateVector<int64_t>({0});
+    bias_zero_point_offset = builder.CreateVector<int64_t>({0});
+    if (Unsigned()) {
+      filter_zero_point_offset =
+          builder.CreateVector<int64_t>({KernelZeroPoint()});
+    } else {
+      filter_zero_point_offset = bias_zero_point_offset;
+    }
   }
 
   const std::array<flatbuffers::Offset<tflite::Tensor>, 4> tensors{{
       CreateTensor(
           builder,
           builder.CreateVector<int32_t>(input_shape.data(), input_shape.size()),
-          TensorType_INT8, /*buffer=*/0, /*name=*/0,
+          Unsigned() ? TensorType_UINT8 : TensorType_INT8, /*buffer=*/0,
+          /*name=*/0,
           CreateQuantizationParameters(
               builder, /*min=*/0, /*max=*/0,
               builder.CreateVector<float>({InputScale()}),
               builder.CreateVector<int64_t>({InputZeroPoint()}))),
-      CreateTensor(
-          builder,
-          builder.CreateVector<int32_t>(filter_shape.data(),
-                                        filter_shape.size()),
-          TensorType_INT8, /*buffer=*/1, /*name=*/0,
-          CreateQuantizationParameters(builder, /*min=*/0, /*max=*/0,
-                                       filter_scale_offset, zero_point_offset)),
+      CreateTensor(builder,
+                   builder.CreateVector<int32_t>(filter_shape.data(),
+                                                 filter_shape.size()),
+                   Unsigned() ? TensorType_UINT8 : TensorType_INT8,
+                   /*buffer=*/1,
+                   /*name=*/0,
+                   CreateQuantizationParameters(builder, /*min=*/0, /*max=*/0,
+                                                filter_scale_offset,
+                                                filter_zero_point_offset)),
       CreateTensor(
           builder,
           builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
           TensorType_INT32, /*buffer=*/2, /*name=*/0,
           CreateQuantizationParameters(builder, /*min=*/0, /*max=*/0,
-                                       bias_scale_offset, zero_point_offset)),
+                                       bias_scale_offset,
+                                       bias_zero_point_offset)),
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(output_shape.data(),
                                                  output_shape.size()),
-                   TensorType_INT8, /*buffer=*/0, /*name=*/0,
+                   Unsigned() ? TensorType_UINT8 : TensorType_INT8,
+                   /*buffer=*/0, /*name=*/0,
                    CreateQuantizationParameters(
                        builder, /*min=*/0, /*max=*/0,
                        builder.CreateVector<float>({OutputScale()}),

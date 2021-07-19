@@ -1018,7 +1018,7 @@ StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
   if (shape.IsToken()) return builder_->getUnitAttr();
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
-    for (int64 i = 0; i < shape.tuple_shapes_size(); i++) {
+    for (int64_t i = 0; i < shape.tuple_shapes_size(); i++) {
       TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
                           ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
       tuple_layouts.push_back(layout);
@@ -1029,7 +1029,7 @@ StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
   if (shape.IsArray()) {
     const xla::Layout l = shape.layout();
     std::vector<mlir::Attribute> minor_to_major;
-    for (int64 i : l.minor_to_major()) {
+    for (int64_t i : l.minor_to_major()) {
       minor_to_major.push_back(builder_->getI64IntegerAttr(i));
     }
     llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);

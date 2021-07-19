@@ -296,6 +296,20 @@ def _gen_kernel_library(
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
             gpu_arch_option = "sm_70,compute_75" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
+            test_args = [
+                "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
+                "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
+                    op = op,
+                    platform = platform,
+                    type = type,
+                    output_type = output_type,
+                ),
+                "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
+                "--tile_sizes=%s" % tile_size,
+                "--enable_ftz=%s" % (type == "f32"),
+            ]
+            if filtered_unroll_factors:
+                test_args.append("--unroll_factors=%s" % filtered_unroll_factors)
             native.sh_test(
                 name = "{op}_{platform}_{type}_{output_type}_gen_test".format(
                     op = op,
@@ -304,6 +318,7 @@ def _gen_kernel_library(
                     output_type = output_type,
                 ),
                 srcs = ["build_test.sh"],
+<<<<<<< HEAD
                 tags = test_tags,
                 args = [
                     "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
@@ -315,6 +330,10 @@ def _gen_kernel_library(
                     ),
                     "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
                 ] + amdhsa_obj,
+=======
+                tags = ["no_rocm"] + test_tags,
+                args = test_args,
+>>>>>>> google_upstream/master
                 size = test_size,
                 data = [
                     ":{op}_{platform}_{type}_{output_type}.mlir".format(

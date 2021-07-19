@@ -172,15 +172,15 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
     const Tensor& matrix_b = ctx->input(1);
 
     int rank;
-    int64 batch_size;
+    int64_t batch_size;
     OP_REQUIRES_OK(ctx, this->ValidateInputs(*sparse_matrix_a, matrix_b, &rank,
                                              &batch_size));
 
     const auto dense_shape = sparse_matrix_a->dense_shape().vec<int64>();
-    int64 num_lhs_rows = dense_shape(rank - 2);
-    int64 num_lhs_cols = dense_shape(rank - 1);
-    int64 num_rhs_rows = matrix_b.dim_size(rank - 2);
-    int64 num_rhs_cols = matrix_b.dim_size(rank - 1);
+    int64_t num_lhs_rows = dense_shape(rank - 2);
+    int64_t num_lhs_cols = dense_shape(rank - 1);
+    int64_t num_rhs_rows = matrix_b.dim_size(rank - 2);
+    int64_t num_rhs_cols = matrix_b.dim_size(rank - 1);
 
     if (this->transpose_a_) {
       std::swap(num_lhs_rows, num_lhs_cols);
@@ -268,7 +268,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
     row_ptrs->resize(num_shard_rows + 1);
     const int64 row_offset =
         csr_matrix.row_pointers_vec(batch_index)(row_begin);
-    for (int64 row_idx = 0; row_idx <= num_shard_rows; ++row_idx) {
+    for (int64_t row_idx = 0; row_idx <= num_shard_rows; ++row_idx) {
       row_ptrs->at(row_idx) =
           csr_matrix.row_pointers_vec(batch_index)(row_begin + row_idx) -
           row_offset;
@@ -301,10 +301,10 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
             thread::ThreadPool::SchedulingStrategy::
                 kFixedBlockSize /* strategy */,
             absl::nullopt /* cost_per_unit */, block_size),
-        [&](int64 batch_and_row_begin, int64 batch_and_row_end) {
+        [&](int64_t batch_and_row_begin, int64_t batch_and_row_end) {
           HandleBatchAndRowRange(
               num_lhs_rows, batch_and_row_begin, batch_and_row_end,
-              [&](int64 batch_idx, int64 row_begin, int64 row_end) {
+              [&](int64_t batch_idx, int64_t row_begin, int64_t row_end) {
                 const int64 num_shard_rows = row_end - row_begin;
 
                 // Define an Eigen::SparseMatrix over the row range:
@@ -372,10 +372,10 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
             thread::ThreadPool::SchedulingStrategy::
                 kFixedBlockSize /* strategy */,
             absl::nullopt /* cost_per_unit */, block_size),
-        [&](int64 batch_and_row_begin, int64 batch_and_row_end, int tid) {
+        [&](int64_t batch_and_row_begin, int64_t batch_and_row_end, int tid) {
           HandleBatchAndRowRange(
               num_lhs_cols, batch_and_row_begin, batch_and_row_end,
-              [&](int64 batch_idx, int64 row_begin, int64 row_end) {
+              [&](int64_t batch_idx, int64_t row_begin, int64_t row_end) {
                 const int64 num_shard_rows = row_end - row_begin;
 
                 // Define a new sparse sub-matrix from the row range
@@ -425,12 +425,12 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   void HandleBatchAndRowRange(
       const int64 num_rows, const int64 batch_and_row_begin,
       const int64 batch_and_row_end,
-      const std::function<void(int64, int64, int64)>& fn) {
+      const std::function<void(int64_t, int64_t, int64_t)>& fn) {
     // Obtain the batch indices overlapping with the current shard.
     const int64 batch_begin = batch_and_row_begin / num_rows;
     const int64 batch_end_inclusive = batch_and_row_end / num_rows;
 
-    for (int64 batch_idx = batch_begin; batch_idx <= batch_end_inclusive;
+    for (int64_t batch_idx = batch_begin; batch_idx <= batch_end_inclusive;
          ++batch_idx) {
       // Find the contiguous set of rows which are contained in this shard as
       // well as the current batch. We intersect with interval [batch_idx *
@@ -502,7 +502,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     const Tensor& b_t = ctx->input(1);
 
     int rank;
-    int64 batch_size;
+    int64_t batch_size;
     OP_REQUIRES_OK(ctx,
                    this->ValidateInputs(*a_matrix, b_t, &rank, &batch_size));
 

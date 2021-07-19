@@ -41,15 +41,16 @@ class XlaResource {
 
   // Creates a new Stack resource.
   static std::unique_ptr<XlaResource> CreateStack(string name, DataType type,
-                                                  int64 max_size);
+                                                  int64_t max_size);
 
   // Creates a new TensorArray resource.
   static std::unique_ptr<XlaResource> CreateTensorArray(
       string name, DataType type, TensorShape shape, xla::XlaOp initial_value,
-      int64 max_array_size);
+      int64_t max_array_size);
 
   XlaResource(Kind kind, int arg_num, string name, DataType type,
-              TensorShape shape, xla::XlaOp initial_value, int64 max_array_size,
+              TensorShape shape, xla::XlaOp initial_value,
+              int64_t max_array_size,
               const std::set<string>& tensor_array_gradients,
               bool tensor_array_multiple_writes_aggregate,
               const absl::optional<ManagedStackTrace>& definition_stack_trace =
@@ -148,7 +149,7 @@ class XlaResource {
   // lazily since we do not know the element shape at construction time.
   // Used by both TensorArrays and Stacks.
   int64 max_array_size() const { return max_array_size_; }
-  void set_max_array_size(int64 size) { max_array_size_ = size; }
+  void set_max_array_size(int64_t size) { max_array_size_ = size; }
 
   bool tensor_array_multiple_writes_aggregate() const {
     return tensor_array_multiple_writes_aggregate_;

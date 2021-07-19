@@ -30,7 +30,6 @@ import time
 import weakref
 from six.moves import queue
 
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import values as values_lib
@@ -70,8 +69,6 @@ RemoteValueStatus = values_lib.RemoteValueStatus
 RemoteValue = values_lib.RemoteValue
 RemoteValueImpl = values_lib.RemoteValueImpl
 PerWorkerValues = values_lib.PerWorkerValues
-PerWorkerDistributedDataset = values_lib.PerWorkerDistributedDataset
-PerWorkerDistributedIterator = values_lib.PerWorkerDistributedIterator
 
 
 class InputError(Exception):
@@ -82,6 +79,7 @@ class InputError(Exception):
                "error message is %s." %
                (original_exception, str(original_exception)))
     super().__init__(message)
+    self.with_traceback(original_exception.__traceback__)
 
 
 def _maybe_rebuild_remote_values(worker, structure):
@@ -193,23 +191,40 @@ class Closure(object):
     if hasattr(self, "_concrete_function"):
       # If we have a concrete function, we get to retrieve the output type spec
       # via the structured_output.
-      output_type_spec = func_graph.convert_structure_to_signature(
+      self._output_type_spec = func_graph.convert_structure_to_signature(
           self._concrete_function.structured_outputs)
       self._function = cancellation_mgr.get_cancelable_function(
           self._concrete_function)
     else:
       # Otherwise (i.e. what is passed in is a regular python function), we have
       # no such information.
-      output_type_spec = None
+      self._output_type_spec = None
       self._function = function
 
-    self.output_remote_value = RemoteValueImpl(self, output_type_spec)
+    self._output_remote_value_ref = None
+
+  def build_output_remote_value(self):
+    if self._output_remote_value_ref is None:
+      ret = RemoteValueImpl(None, self._output_type_spec)
+      self._output_remote_value_ref = weakref.ref(ret)
+      return ret
+    else:
+      raise ValueError(
+          "The output of the Closure cannot be built more than once.")
+
+  def maybe_call_with_output_remote_value(self, method):
+    if self._output_remote_value_ref is None:
+      return None
+    output_remote_value = self._output_remote_value_ref()
+    if output_remote_value is not None:
+      return method(output_remote_value)
+    return None
 
   def mark_cancelled(self):
-    self.output_remote_value._set_error(  # pylint: disable=protected-access
-        errors.CancelledError(
-            None, None, "The corresponding function is "
-            "cancelled. Please reschedule the function."))
+    e = errors.CancelledError(
+        None, None, "The corresponding function is "
+        "cancelled. Please reschedule the function.")
+    self.maybe_call_with_output_remote_value(lambda r: r._set_error(e))  # pylint: disable=protected-access
 
   def execute_on(self, worker):
     """Executes the closure on the given worker.
@@ -226,8 +241,7 @@ class Closure(object):
     if e:
       if not isinstance(e, InputError):
         e = InputError(e)
-      self.output_remote_value._set_error(e)  # pylint: disable=protected-access
-      return
+      raise e
 
     with ops.device(worker.device_name):
       with context.executor_scope(worker.executor):
@@ -235,7 +249,20 @@ class Closure(object):
           output_values = self._function(
               *nest.map_structure(_maybe_get_remote_value, replica_args),
               **nest.map_structure(_maybe_get_remote_value, replica_kwargs))
-    self.output_remote_value._set_values(output_values)  # pylint: disable=protected-access
+    self.maybe_call_with_output_remote_value(
+        lambda r: r._set_values(output_values))  # pylint: disable=protected-access
+
+
+class ResourceClosure(Closure):
+
+  def build_output_remote_value(self):
+    if self._output_remote_value_ref is None:
+      # We need to remember the Closure object in the `RemoteValue` here.
+      ret = RemoteValueImpl(self, self._output_type_spec)
+      self._output_remote_value_ref = weakref.ref(ret)
+      return ret
+    else:
+      return self._output_remote_value_ref()
 
 
 class _CoordinatedClosureQueue(object):
@@ -470,7 +497,7 @@ class WorkerPreemptionHandler(object):
     # Only categorize the failure as a worker preemption if the cancellation
     # manager did not attempt to cancel the blocking operations.
     if _is_worker_failure(e) and (
-        not self._cluster._closure_queue._cancellation_mgr.is_cancelled):  # pylint: disable=protected-access
+        not self._cluster.closure_queue._cancellation_mgr.is_cancelled):  # pylint: disable=protected-access
       return
     raise e
 
@@ -641,23 +668,23 @@ class Worker(object):
     assert closure is not None
     try:
       with self._cluster.failure_handler.wait_on_failure(
-          on_failure_fn=lambda: self._cluster._closure_queue.put_back(closure),  # pylint: disable=protected-access
+          on_failure_fn=lambda: self._cluster.closure_queue.put_back(closure),
           on_recovery_fn=self._set_resources_aborted,
           worker_device_name=self.device_name):
         closure.execute_on(self)
         with metric_utils.monitored_timer("remote_value_fetch"):
           # Copy the remote tensor to local (the coordinator) in case worker
           # becomes unavailable at a later time.
-          closure.output_remote_value.get()
-        self._cluster._closure_queue.mark_finished()  # pylint: disable=protected-access
+          closure.maybe_call_with_output_remote_value(lambda r: r.get())
+        self._cluster.closure_queue.mark_finished()
     except Exception as e:  # pylint: disable=broad-except
       # Avoid logging the derived cancellation error
       if not isinstance(e, errors.CancelledError):
         logging.error(
             "/job:worker/task:%d encountered the following error when "
             "processing closure: %r:%s", self.worker_index, e, e)
-      closure.output_remote_value._set_error(e)  # pylint: disable=protected-access
-      self._cluster._closure_queue.mark_failed(e)  # pylint: disable=protected-access
+      closure.maybe_call_with_output_remote_value(lambda r: r._set_error(e))  # pylint: disable=protected-access
+      self._cluster.closure_queue.mark_failed(e)
 
   def _maybe_delay(self):
     """Delay if corresponding env vars are set."""
@@ -679,7 +706,7 @@ class Worker(object):
     """Function running in a worker thread to process closure queues."""
     self._maybe_delay()
     while self._should_worker_thread_run:
-      closure = self._cluster._closure_queue.get()  # pylint: disable=protected-access
+      closure = self._cluster.closure_queue.get()
       if not self._should_worker_thread_run or closure is None:
         return
       self._process_closure(closure)
@@ -687,11 +714,11 @@ class Worker(object):
       # `ClusterCoordinator` object is not held onto so its `__del__` can be
       # called. By removing the reference to the `closure` that has already been
       # processed, we ensure that the `closure` object is released, while
-      # getting the next `closure` at above `self._cluster._closure_queue.get()`
+      # getting the next `closure` at above `self._cluster.closure_queue.get()`
       # call.
       del closure
 
-  def _create_resource(self, function, args=None, kwargs=None):
+  def create_resource(self, function, args=None, kwargs=None):
     """Synchronously creates a per-worker resource represented by a `RemoteValue`.
 
     Args:
@@ -708,12 +735,12 @@ class Worker(object):
     # the same worker such as creating resources, setting resources' aborted
     # status, and executing closures happen on the same thread. This allows us
     # to have simpler logic of concurrency.
-    closure = Closure(
+    closure = ResourceClosure(
         function,
-        self._cluster._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
+        self._cluster.closure_queue._cancellation_mgr,  # pylint: disable=protected-access
         args=args,
         kwargs=kwargs)
-    resource_remote_value = closure.output_remote_value
+    resource_remote_value = closure.build_output_remote_value()
     self._register_resource(resource_remote_value)
 
     # The following is a short-term solution to lazily create resources in
@@ -748,6 +775,7 @@ class Cluster(object):
     failure_handler: The failure handler used to handler worker preemption
       failure.
     workers: a list of `Worker` objects in the cluster.
+    closure_queue: the global Closure queue.
   """
 
   def __init__(self, strategy):
@@ -772,7 +800,7 @@ class Cluster(object):
     self._potential_ps_failures_lock = threading.Lock()
     self._potential_ps_failures_count = [0] * self._num_ps
 
-    self._closure_queue = _CoordinatedClosureQueue()
+    self.closure_queue = _CoordinatedClosureQueue()
     self.failure_handler = WorkerPreemptionHandler(context.get_server_def(),
                                                    self)
     worker_device_strings = [
@@ -788,7 +816,7 @@ class Cluster(object):
 
     for worker in self.workers:
       worker.stop()
-    self._closure_queue.stop()
+    self.closure_queue.stop()
 
   def _record_and_ignore_transient_ps_failure(self, e):
     """Records potential PS failures and return if failure should be ignored."""
@@ -820,19 +848,20 @@ class Cluster(object):
     """
     closure = Closure(
         function,
-        self._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
+        self.closure_queue._cancellation_mgr,  # pylint: disable=protected-access
         args=args,
         kwargs=kwargs)
-    self._closure_queue.put(closure)
-    return closure.output_remote_value
+    ret = closure.build_output_remote_value()
+    self.closure_queue.put(closure)
+    return ret
 
   def join(self):
     """Blocks until all scheduled functions are executed."""
-    self._closure_queue.wait()
+    self.closure_queue.wait()
 
   def done(self):
     """Returns true if all scheduled functions are executed."""
-    return self._closure_queue.done()
+    return self.closure_queue.done()
 
 
 @tf_export("distribute.experimental.coordinator.ClusterCoordinator", v1=[])
@@ -1102,11 +1131,7 @@ class ClusterCoordinator(object):
       a `tf.distribute.experimental.coordinator.PerWorkerValues` of the
       iterators (that are on the workers).
     """
-    input_workers = input_lib.InputWorkers(
-        [(w.device_name, [w.device_name]) for w in self._cluster.workers],
-        False)
-
-    return PerWorkerDistributedDataset(dataset_fn, input_workers, self)
+    return values_lib.get_per_worker_dataset(dataset_fn, self)
 
   def _create_per_worker_resources(self, fn, args=None, kwargs=None):
     """Synchronously create resources on the workers.
@@ -1127,7 +1152,7 @@ class ClusterCoordinator(object):
     """
     results = []
     for w in self._cluster.workers:
-      results.append(w._create_resource(fn, args=args, kwargs=kwargs))  # pylint: disable=protected-access
+      results.append(w.create_resource(fn, args=args, kwargs=kwargs))  # pylint: disable=protected-access
     return PerWorkerValues(tuple(results))
 
   def fetch(self, val):

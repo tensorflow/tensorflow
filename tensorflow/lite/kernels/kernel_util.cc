@@ -119,6 +119,7 @@ TfLiteStatus GetInputSafe(const TfLiteContext* context, const TfLiteNode* node,
 TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
   TfLiteTensor* tensor = GetMutableInput(context, node, index);
+  if (tensor == nullptr) return nullptr;
   return tensor->is_variable ? tensor : nullptr;
 }
 
@@ -497,42 +498,42 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
 int TfLiteTypeGetSize(TfLiteType type) {
   switch (type) {
     case kTfLiteUInt8:
-      TF_LITE_ASSERT_EQ(sizeof(uint8_t), 1);
+      static_assert(sizeof(uint8_t) == 1, "");
       return 1;
     case kTfLiteInt8:
-      TF_LITE_ASSERT_EQ(sizeof(int8_t), 1);
+      static_assert(sizeof(int8_t) == 1, "");
       return 1;
     case kTfLiteBool:
       return sizeof(bool);
     case kTfLiteInt16:
-      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      static_assert(sizeof(int16_t) == 2, "");
       return 2;
     case kTfLiteFloat16:
-      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      static_assert(sizeof(int16_t) == 2, "");
       return 2;
     case kTfLiteFloat32:
-      TF_LITE_ASSERT_EQ(sizeof(float), 4);
+      static_assert(sizeof(float) == 4, "");
       return 4;
     case kTfLiteInt32:
-      TF_LITE_ASSERT_EQ(sizeof(int32_t), 4);
+      static_assert(sizeof(int32_t) == 4, "");
       return 4;
     case kTfLiteUInt32:
-      TF_LITE_ASSERT_EQ(sizeof(uint32_t), 4);
+      static_assert(sizeof(uint32_t) == 4, "");
       return 4;
     case kTfLiteInt64:
-      TF_LITE_ASSERT_EQ(sizeof(int64_t), 8);
+      static_assert(sizeof(int64_t) == 8, "");
       return 8;
     case kTfLiteUInt64:
-      TF_LITE_ASSERT_EQ(sizeof(uint64_t), 8);
+      static_assert(sizeof(uint64_t) == 8, "");
       return 8;
     case kTfLiteFloat64:
-      TF_LITE_ASSERT_EQ(sizeof(double), 8);
+      static_assert(sizeof(double) == 8, "");
       return 8;
     case kTfLiteComplex64:
-      TF_LITE_ASSERT_EQ(sizeof(std::complex<float>), 8);
+      static_assert(sizeof(std::complex<float>) == 8, "");
       return 8;
     case kTfLiteComplex128:
-      TF_LITE_ASSERT_EQ(sizeof(std::complex<double>), 16);
+      static_assert(sizeof(std::complex<double>) == 16, "");
       return 16;
     default:
       return 0;

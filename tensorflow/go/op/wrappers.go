@@ -464,6 +464,83 @@ func ReadVariableXlaSplitND(scope *Scope, resource tf.Output, T tf.DataType, N i
 	return outputs
 }
 
+// XlaConcatNDAttr is an optional argument to XlaConcatND.
+type XlaConcatNDAttr func(optionalAttr)
+
+// XlaConcatNDPaddings sets the optional paddings attribute to value.
+//
+// value: Optional list of right paddings per dimension to strip from the final merged
+// tensor. These paddings must not exceed the dimension size of the merged result
+// prior to stripping paddings.
+// If not specified, defaults to <>
+func XlaConcatNDPaddings(value []int64) XlaConcatNDAttr {
+	return func(m optionalAttr) {
+		m["paddings"] = value
+	}
+}
+
+// Concats input tensor across all dimensions.
+//
+// An op which merges slices the input tensor based on the given num_splits
+// attribute, strips paddings optionally, and returns the merged tensor without
+// paddings.
+//
+// This op may be generated via the TPU bridge.
+//
+// For example, with `input` tensor:
+// ```
+// [[0, 1],
+//  [4, 5]]
+// [[2, 3],
+//  [6, 7]]
+// [[8, 9],
+//  [12, 13]]
+// [[10, 11],
+//  [14, 15]]
+// ```
+// `num_splits`:
+// ```
+// [2, 2]
+// ```
+// and `paddings`:
+// ```
+// [1, 1]
+// ```
+// the expected `outputs` is:
+// ```
+// [[0, 1, 2],
+//  [4, 5, 6],
+//  [8, 9, 10]]
+// ```
+//
+// Arguments:
+//	inputs: Input tensor slices in row-major order to merge across all dimensions. All
+// inputs must have the same shape.
+//   }
+//   out_arg {
+//     name: "output"
+//     description: <<END
+// Output tensor formed from merging input slices based on num_concats defined.
+//	num_concats: Number of ways to merge per dimension.
+func XlaConcatND(scope *Scope, inputs []tf.Output, num_concats []int64, optional ...XlaConcatNDAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_concats": num_concats}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaConcatND",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // XlaSplitNDAttr is an optional argument to XlaSplitND.
 type XlaSplitNDAttr func(optionalAttr)
 
@@ -6554,6 +6631,90 @@ func ResourceScatterAdd(scope *Scope, resource tf.Output, indices tf.Output, upd
 		Input: []tf.Input{
 			resource, indices, updates,
 		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// AssignVariableXlaConcatNDAttr is an optional argument to AssignVariableXlaConcatND.
+type AssignVariableXlaConcatNDAttr func(optionalAttr)
+
+// AssignVariableXlaConcatNDPaddings sets the optional paddings attribute to value.
+//
+// value: Optional list of right paddings per dimension to strip from the final merged
+// tensor. These paddings must not exceed the dimension size of the merged result
+// prior to stripping paddings.
+// If not specified, defaults to <>
+func AssignVariableXlaConcatNDPaddings(value []int64) AssignVariableXlaConcatNDAttr {
+	return func(m optionalAttr) {
+		m["paddings"] = value
+	}
+}
+
+// Concats input tensor across all dimensions.
+//
+// An op which merges slices the input tensor based on the given num_splits
+// attribute, strips paddings optionally, and writes the merged tensor without
+// paddings to the resource variable.
+//
+// This op may be generated via the TPU bridge.
+//
+// For example, with `input` tensor:
+// ```
+// [[0, 1],
+//  [4, 5]]
+// [[2, 3],
+//  [6, 7]]
+// [[8, 9],
+//  [12, 13]]
+// [[10, 11],
+//  [14, 15]]
+// ```
+// `num_splits`:
+// ```
+// [2, 2]
+// ```
+// and `paddings`:
+// ```
+// [1, 1]
+// ```
+// the expected `outputs` is:
+// ```
+// [[0, 1, 2],
+//  [4, 5, 6],
+//  [8, 9, 10]]
+// ```
+//
+// Arguments:
+//	resource: Resource variable for concatenated input tensors across all dimensions.
+//   }
+//   in_arg {
+//     name: "inputs"
+//     description: <<END
+// Input tensor slices in row-major order to merge across all dimensions. All
+// inputs must have the same shape.
+//   }
+//   out_arg {
+//     name: "output"
+//     description: <<END
+// Output tensor formed from merging input slices based on num_concats defined.
+//
+//	num_concats: Number of ways to merge per dimension.
+//
+// Returns the created operation.
+func AssignVariableXlaConcatND(scope *Scope, resource tf.Output, inputs []tf.Output, num_concats []int64, optional ...AssignVariableXlaConcatNDAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_concats": num_concats}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "AssignVariableXlaConcatND",
+		Input: []tf.Input{
+			resource, tf.OutputList(inputs),
+		},
+		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
 }
@@ -22948,12 +23109,26 @@ func ExperimentalSqlDataset(scope *Scope, driver_name tf.Output, data_source_nam
 	return op.Output(0)
 }
 
+// RegisterDatasetAttr is an optional argument to RegisterDataset.
+type RegisterDatasetAttr func(optionalAttr)
+
+// RegisterDatasetElementSpec sets the optional element_spec attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetElementSpec(value string) RegisterDatasetAttr {
+	return func(m optionalAttr) {
+		m["element_spec"] = value
+	}
+}
+
 // Registers a dataset with the tf.data service.
-func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
+func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64, optional ...RegisterDatasetAttr) (dataset_id tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "RegisterDataset",
 		Input: []tf.Input{
@@ -49608,10 +49783,10 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 	return op.Output(0)
 }
 
-// Inverse of XlaSetDynamicDimensionSize. Make an xla bounded
+// Inverse of XlaSetDynamicDimensionSize.
 //
-//         dynamic dimension into a static dimension. The bound of the size of
-//         dimension `dim_index` becomes the static dimension size.
+// Make an xla bounded dynamic dimension into a static dimension. The bound of the
+// size of dimension `dim_index` becomes the static dimension size.
 func XlaRemoveDynamicDimensionSize(scope *Scope, input tf.Output, dim_index tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return

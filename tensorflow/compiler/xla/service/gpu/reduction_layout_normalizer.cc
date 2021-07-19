@@ -58,9 +58,9 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
     std::vector<int64> reduce_shape_logical_to_physical =
         LayoutUtil::MakeLogicalToPhysical(reduce_shape.layout());
 
-    auto to_reduce_logical_dim = [&](int64 op_logical_dim) {
+    auto to_reduce_logical_dim = [&](int64_t op_logical_dim) {
       return op_logical_dim -
-             absl::c_count_if(reduce->dimensions(), [&](int64 dim) {
+             absl::c_count_if(reduce->dimensions(), [&](int64_t dim) {
                CHECK(dim != op_logical_dim);
                return dim < op_logical_dim;
              });
@@ -69,9 +69,10 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
     for (int i = 0; i < operand_shape.rank(); i++) {
       // Process the dimensions in the major-to-minor order in order to enforce
       // the default layout.
-      int64 major_to_minor_dim_idx = operand_shape.rank() - i - 1;
-      int64 logical_dim = operand_layout.minor_to_major(major_to_minor_dim_idx);
-      int64 dim_size = operand_shape.dimensions(logical_dim);
+      int64_t major_to_minor_dim_idx = operand_shape.rank() - i - 1;
+      int64_t logical_dim =
+          operand_layout.minor_to_major(major_to_minor_dim_idx);
+      int64_t dim_size = operand_shape.dimensions(logical_dim);
       VLOG(5) << "Processing logical dimension " << logical_dim << " of size "
               << dim_size;
       new_operand_shape_data.push_back(dim_size);
@@ -80,8 +81,8 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
         new_reduce_dimensions.push_back(i);
       } else {
         new_reduce_shape_data.push_back(dim_size);
-        int64 logical_reduce_dim = to_reduce_logical_dim(logical_dim);
-        int64 physical_reduce_dim =
+        int64_t logical_reduce_dim = to_reduce_logical_dim(logical_dim);
+        int64_t physical_reduce_dim =
             reduce_shape_logical_to_physical[logical_reduce_dim];
         VLOG(5) << "logical_reduce_dim = " << logical_reduce_dim << ", "
                 << "physical_reduce_dim = " << physical_reduce_dim;

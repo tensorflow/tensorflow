@@ -331,7 +331,7 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
     *fingerprint = FingerprintCat128(*fingerprint, c);
   } else {
     for (int i = 0; i < shape.dims(); i++) {
-      int64 dim = shape.dim_size(i);
+      int64_t dim = shape.dim_size(i);
       *fingerprint = FingerprintCat128(*fingerprint, dim);
     }
   }
@@ -631,7 +631,8 @@ Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
         *arg_def = arg;
         arg_def->set_name(EscapeOrigName(arg.name()));
         if (!arg.type_attr().empty()) {
-          arg_def->set_type_attr(EscapeOrigName(arg.type_attr()));
+          // Don't escape: type attrs are still referenced by the original name.
+          arg_def->set_type_attr(arg.type_attr());
         }
       }
     }
@@ -1008,7 +1009,7 @@ Status CreateUnshapedOutput(
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
-  int64 op_id;
+  int64_t op_id;
   if (remote_func_params.has_value()) {
     op_id = remote_func_params.value().op_id;
   } else {

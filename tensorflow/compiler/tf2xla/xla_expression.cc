@@ -118,7 +118,7 @@ StatusOr<Tensor> XlaExpression::ResolveDynamism(xla::Client* client) const {
       // Constant values are considered static.
       Tensor constant_false(DT_BOOL, constant_value()->shape());
       auto flat = constant_false.flat<bool>();
-      for (int64 i = 0; i < flat.size(); ++i) flat(i) = false;
+      for (int64_t i = 0; i < flat.size(); ++i) flat(i) = false;
       return constant_false;
     }
     case Kind::kXlaOp:

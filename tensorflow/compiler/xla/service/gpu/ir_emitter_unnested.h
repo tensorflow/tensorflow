@@ -104,9 +104,9 @@ class IrEmitterUnnested : public IrEmitter {
   //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64 x_iter_num)>;
+      llvm::Value* x_loc, int64_t x_iter_num)>;
 
-  using ConstantGenerator = std::function<llvm::Value*(int64)>;
+  using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
   // A function to generate the code to emit the entire tile.
   using TileElementGenerator = std::function<void(
@@ -401,7 +401,7 @@ class IrEmitterUnnested : public IrEmitter {
                      const llvm_ir::IrArray& output,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
                      const llvm_ir::ElementGenerator& updates_gen,
-                     std::function<llvm::Type*(int64)> get_index_type);
+                     std::function<llvm::Type*(int64_t)> get_index_type);
 
   // Structure describing a scatter operation for IR emission.
   // TODO(jurahul): Migrate element generators to use MLIR.
@@ -417,7 +417,7 @@ class IrEmitterUnnested : public IrEmitter {
     llvm_ir::IrArray output;
     llvm_ir::ElementGenerator scatter_indices_gen;
     llvm_ir::ElementGenerator updates_gen;
-    std::function<llvm::Type*(int64)> get_index_type;
+    std::function<llvm::Type*(int64_t)> get_index_type;
   };
 
   // Emits code for an in-place scatter using the provided scatter operation
@@ -523,7 +523,7 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const llvm_ir::IrArray> result_ir_arrays,
       absl::Span<HloComputation* const> reducers,
       const llvm_ir::IrArray::Index& index,
-      const ReductionCodegenInfo& reduction_info, int64 x_iter_num,
+      const ReductionCodegenInfo& reduction_info, int64_t x_iter_num,
       const FusionLayoutAnalysis& layout_analysis);
 
   // Prepares for the code generation for a tile block of a reduction kernel.
@@ -612,7 +612,7 @@ class IrEmitterUnnested : public IrEmitter {
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
   StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
-      const int64 loop_limit);
+      const int64_t loop_limit);
 
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
@@ -623,14 +623,14 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits current thread id with the given type.
   //
   // Sets the return value range to [0, threads_per_block).
-  llvm::Value* EmitThreadId(int64 threads_per_block, llvm::Type* index_ty);
+  llvm::Value* EmitThreadId(int64_t threads_per_block, llvm::Type* index_ty);
 
   // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane
   // id.
   //
   // Returns a struct containting these values.
-  ThreadIdInfo EmitThreadIdInfo(int64 threads_per_block, llvm::Type* index_ty,
-                                int64 num_threads_x);
+  ThreadIdInfo EmitThreadIdInfo(int64_t threads_per_block, llvm::Type* index_ty,
+                                int64_t num_threads_x);
 
   // Emit __syncthreads(), synchronization barrier for all threads in a block.
   llvm::CallInst* EmitSyncThreads();

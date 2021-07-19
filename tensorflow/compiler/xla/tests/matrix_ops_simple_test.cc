@@ -129,8 +129,8 @@ class TestLinspaceMaxParametric
   template <typename T>
   void TestImpl() {
     TestLinspaceMaxParam param = GetParam();
-    int64 rows = param.rows;
-    int64 cols = param.cols;
+    int64_t rows = param.rows;
+    int64_t cols = param.cols;
     float from = -128.0, to = 256.0;
     std::unique_ptr<Array2D<T>> alhs =
         MakeLinspaceArray2D<T>(from, to, rows, cols);

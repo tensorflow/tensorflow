@@ -114,13 +114,17 @@ void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64 reshaped_dim,
                   bool lhs) {
   auto update_dims =
       [&reshaped_dim](tensorflow::protobuf::RepeatedField<int64>* dims) {
+        bool add_reshaped_dim = false;
+        if (absl::c_linear_search(*dims, reshaped_dim)) {
+          add_reshaped_dim = true;
+        }
         for (int64 i = 0; i < dims->size(); ++i) {
           auto dim = dims->at(i);
           if (reshaped_dim <= dim) {
             dims->Set(i, dim + 1);
           }
         }
-        if (absl::c_linear_search(*dims, reshaped_dim)) {
+        if (add_reshaped_dim) {
           dims->Add(reshaped_dim);
         }
       };
@@ -450,6 +454,51 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     }
   }
   return absl::nullopt;
+}
+
+std::vector<ReplicaGroup> GetLoopReplicaGroups(HloInstruction* while_loop) {
+  std::vector<ReplicaGroup> groups;
+  for (auto inst : while_loop->while_body()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCollectivePermute) {
+      std::vector<std::pair<int64, int64>> st_pairs =
+          inst->source_target_pairs();
+      std::vector<int64> source_index(st_pairs.size());
+      for (int64 i = 0; i < st_pairs.size(); ++i) {
+        source_index[st_pairs[i].first] = i;
+      }
+
+      absl::flat_hash_set<int64> visited;
+      for (int64 i = 0; i < st_pairs.size(); ++i) {
+        if (visited.contains(st_pairs[i].first)) {
+          continue;
+        }
+        std::vector<int64> replica_group;
+        int64 source = st_pairs[i].first;
+        int64 target = st_pairs[i].second;
+        replica_group.push_back(source);
+        replica_group.push_back(target);
+        visited.insert(source);
+        visited.insert(target);
+        while (target != source) {
+          target = st_pairs[source_index[target]].second;
+          if (target != source) {
+            replica_group.push_back(target);
+            visited.insert(target);
+          }
+        }
+        absl::c_sort(replica_group);
+        groups.emplace_back();
+        for (auto id : replica_group) {
+          groups.back().add_replica_ids(id);
+        }
+      }
+
+      VLOG(3) << "while loop: " << while_loop->name()
+              << ", replica groups: " << ReplicaGroupsToString(groups);
+      break;
+    }
+  }
+  return groups;
 }
 
 // We use a recursive approach where sets of matching dimensions are recognized
@@ -979,7 +1028,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(
                 : indices_map.rhs_to_output_indices[rhs_concat_dim];
         new_dims[slice_dim] /= 2;
         new_dims.insert(new_dims.begin() + slice_dim, 2);
-      } else {
+      } else if (original_hlo->opcode() != HloOpcode::kDot) {
         new_dims.push_back(1);
       }
       new_dot_shape =
@@ -1027,9 +1076,11 @@ StatusOr<HloInstruction*> PartitionBaseCase(
       VLOG(2) << dot->ToString();
 
       if (windowed_at_contracting_dims) {
-        // Reshape to the original sharded dot shape.
-        dot = body_b.AddInstruction(
-            HloInstruction::CreateReshape(original_sharded_dot_shape, dot));
+        if (original_hlo->opcode() != HloOpcode::kDot) {
+          // Reshape to the original sharded dot shape.
+          dot = body_b.AddInstruction(
+              HloInstruction::CreateReshape(original_sharded_dot_shape, dot));
+        }
 
         // Accumulate the partial output to the result buffer.
         o = body_b.AddInstruction(
@@ -1458,7 +1509,8 @@ StatusOr<HloInstruction*> PartitionBaseCase(
             {lhs_hlo, rhs_hlo, result_buffer, extra_buffer, iteration}))));
     windowed_dot_general_loops->push_back(
         {while_loop, windowed_op_is_lhs ? 0 : 1, windowed_at_contracting_dims,
-         windowed_at_batch_dims, operands_sharded_at_contracting_dims});
+         windowed_at_batch_dims, operands_sharded_at_contracting_dims,
+         num_partitions, GetLoopReplicaGroups(while_loop)});
     auto result = b->AddInstruction(HloInstruction::CreateGetTupleElement(
         result_buffer->shape(), while_loop, 2));
     if (((options.bidirectional_windowed_einsum && num_partitions % 4 == 0) ||

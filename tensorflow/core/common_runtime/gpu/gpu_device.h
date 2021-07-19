@@ -99,7 +99,7 @@ class BaseGPUDevice : public LocalDevice {
   se::StreamExecutor* executor() const { return executor_; }
 
   Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                int64 step_id) override;
+                                int64_t step_id) override;
 
   ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
     return scoped_allocator_mgr_.get();
@@ -364,7 +364,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // 'devices' vector.
   Status CreateGPUDevice(const SessionOptions& options,
                          const std::string& name_prefix,
-                         TfDeviceId tf_device_id, int64 memory_limit,
+                         TfDeviceId tf_device_id, int64_t memory_limit,
                          const DeviceLocality& dev_locality, size_t num_tf_gpus,
                          std::vector<std::unique_ptr<Device>>* devices);
 

@@ -462,7 +462,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite/micro:debug_log"],
 )
 
 cc_library(
@@ -2005,7 +2004,10 @@ cc_test(
     name = "strided_slice_test",
     size = "small",
     srcs = ["strided_slice_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "notap",  # TODO(b/193935673): re-enable the test.
+        "tflite_nnapi",
+    ],
     deps = [
         ":test_main",
         ":test_util",

@@ -280,7 +280,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
   Add(lhs_param, rhs_param);
 
   std::vector<uint64> expected(lhs.size());
-  for (int64 i = 0; i < lhs.size(); ++i) {
+  for (int64_t i = 0; i < lhs.size(); ++i) {
     expected[i] = lhs[i] + rhs[i];
   }
 
@@ -319,7 +319,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
   Sub(lhs_param, rhs_param);
 
   std::vector<int64> expected(lhs.size());
-  for (int64 i = 0; i < lhs.size(); ++i) {
+  for (int64_t i = 0; i < lhs.size(); ++i) {
     expected[i] = lhs[i] - rhs[i];
   }
 
@@ -374,7 +374,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   sum = Add(sum, sum4);
 
   std::vector<float> expected;
-  for (int64 i = 0; i < count; ++i) {
+  for (int64_t i = 0; i < count; ++i) {
     expected.push_back(4 * (a_values[i] + b_values[i]));
   }
 
@@ -402,8 +402,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, DeeplyNestedAddWithSlices) {
   // first element. In this way, we index into the add with different
   // multi-dimensional index arrays, which defeats the caching we use to avoid
   // exponential compile time.
-  std::function<XlaOp(int64)> generate_recursive =
-      [&](int64 slice_size) -> XlaOp {
+  std::function<XlaOp(int64_t)> generate_recursive =
+      [&](int64_t slice_size) -> XlaOp {
     if (slice_size == values.size()) {
       return Add(a, b);
     }
@@ -1621,7 +1621,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowOfExpF32) {
   Pow(Exp(param0), param1);
 
   std::vector<float> expected(values0.size());
-  for (int64 i = 0; i < values0.size(); ++i) {
+  for (int64_t i = 0; i < values0.size(); ++i) {
     expected[i] = std::pow(std::exp(values0[i]), values1[i]);
   }
 
@@ -1648,7 +1648,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogOfPowerF32) {
   Log(Pow(param0, param1));
 
   std::vector<float> expected(values0.size());
-  for (int64 i = 0; i < values0.size(); ++i) {
+  for (int64_t i = 0; i < values0.size(); ++i) {
     expected[i] = std::log(std::pow(values0[i], values1[i]));
   }
 
@@ -1673,7 +1673,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulOfExpF32) {
   Mul(Exp(param0), Exp(param1));
 
   std::vector<float> expected(values0.size());
-  for (int64 i = 0; i < values0.size(); ++i) {
+  for (int64_t i = 0; i < values0.size(); ++i) {
     expected[i] = std::exp(values0[i]) * std::exp(values1[i]);
   }
 
@@ -1698,7 +1698,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivOfExpF32) {
   Div(param0, Exp(param1));
 
   std::vector<float> expected(values0.size());
-  for (int64 i = 0; i < values0.size(); ++i) {
+  for (int64_t i = 0; i < values0.size(); ++i) {
     expected[i] = values0[i] / std::exp(values1[i]);
   }
 
@@ -1730,7 +1730,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div3_lhs_F32) {
   Div(Div(param0, param1), param2);
 
   std::vector<float> expected(values0.size());
-  for (int64 i = 0; i < values0.size(); ++i) {
+  for (int64_t i = 0; i < values0.size(); ++i) {
     expected[i] = (values0[i] / values1[i]) / values2[i];
   }
 
@@ -1763,7 +1763,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div3_rhs_F32) {
   Div(param0, Div(param1, param2));
 
   std::vector<float> expected(values0.size());
-  for (int64 i = 0; i < values0.size(); ++i) {
+  for (int64_t i = 0; i < values0.size(); ++i) {
     expected[i] = values0[i] / (values1[i] / values2[i]);
   }
 
@@ -1796,7 +1796,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivOfPowerF32) {
   Div(param0, Pow(param1, param2));
 
   std::vector<float> expected(values0.size());
-  for (int64 i = 0; i < values0.size(); ++i) {
+  for (int64_t i = 0; i < values0.size(); ++i) {
     expected[i] = values0[i] / std::pow(values1[i], values2[i]);
   }
 
@@ -1835,7 +1835,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, Div4F32) {
   Div(Div(param0, param1), Div(param2, param3));
 
   std::vector<float> expected(values0.size());
-  for (int64 i = 0; i < values0.size(); ++i) {
+  for (int64_t i = 0; i < values0.size(); ++i) {
     expected[i] = (values0[i] / values1[i]) / (values2[i] / values3[i]);
   }
 
@@ -2457,9 +2457,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
   Exp(input);
 
   std::vector<float> expected_result;
-  int64 input_size = input_literal.shape().dimensions(0);
+  int64_t input_size = input_literal.shape().dimensions(0);
   expected_result.reserve(input_size);
-  for (int64 i = 0; i < input_size; i++) {
+  for (int64_t i = 0; i < input_size; i++) {
     expected_result.push_back(std::exp(input_literal.Get<float>({i})));
   }
 
@@ -2495,9 +2495,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
   Log(input);
 
   std::vector<float> expected_result;
-  int64 input_size = input_literal.shape().dimensions(0);
+  int64_t input_size = input_literal.shape().dimensions(0);
   expected_result.reserve(input_size);
-  for (int64 i = 0; i < input_size; i++) {
+  for (int64_t i = 0; i < input_size; i++) {
     expected_result.push_back(std::log(input_literal.Get<float>({i})));
   }
 
@@ -2965,10 +2965,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, 4DBinaryOpF32s) {
   std::unique_ptr<Array4D<float>> operand_b_4d(new Array4D<float>(2, 3, 4, 5));
   std::unique_ptr<Array4D<float>> expected_4d(new Array4D<float>(2, 3, 4, 5));
   float value = 0.0;
-  for (int64 p = 0; p < 2; ++p) {
-    for (int64 z = 0; z < 3; ++z) {
-      for (int64 y = 0; y < 4; ++y) {
-        for (int64 x = 0; x < 5; ++x) {
+  for (int64_t p = 0; p < 2; ++p) {
+    for (int64_t z = 0; z < 3; ++z) {
+      for (int64_t y = 0; y < 4; ++y) {
+        for (int64_t x = 0; x < 5; ++x) {
           (*operand_a_4d)(p, z, y, x) = value;
           (*operand_b_4d)(p, z, y, x) = 2.0 * value;
           (*expected_4d)(p, z, y, x) = 3.0 * value;
@@ -2994,10 +2994,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, R4PlusR1InDim1) {
   std::iota(operand_b_1d.begin(), operand_b_1d.end(), 1.0);
 
   float value = 0.0;
-  for (int64 p = 0; p < 2; ++p) {
-    for (int64 z = 0; z < 3; ++z) {
-      for (int64 y = 0; y < 4; ++y) {
-        for (int64 x = 0; x < 5; ++x) {
+  for (int64_t p = 0; p < 2; ++p) {
+    for (int64_t z = 0; z < 3; ++z) {
+      for (int64_t y = 0; y < 4; ++y) {
+        for (int64_t x = 0; x < 5; ++x) {
           (*operand_a_4d)(p, z, y, x) = value;
           (*expected_4d)(p, z, y, x) = value + operand_b_1d[z];
           value += 0.1;

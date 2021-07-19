@@ -519,6 +519,12 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
 // Transform Einsum to other TF Ops for the supported variants.
 struct TransformEinsumPass
     : public PassWrapper<TransformEinsumPass, FunctionPass> {
+  StringRef getArgument() const final { return "tf-einsum"; }
+
+  StringRef getDescription() const final {
+    return "Transform Einsum to other TF Ops for the supported variants";
+  }
+
   void runOnFunction() override;
 };
 
@@ -530,8 +536,7 @@ void TransformEinsumPass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
-static PassRegistration<TransformEinsumPass> pass(
-    "tf-einsum", "Transform Einsum to other TF Ops for the supported variants");
+static PassRegistration<TransformEinsumPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

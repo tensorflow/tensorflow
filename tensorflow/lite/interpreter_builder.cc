@@ -760,9 +760,9 @@ TfLiteStatus InterpreterBuilder::operator()(
         (*interpreter)->subgraph(subgraph_index);
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
-    if (!operators || !tensors) {
+    if (!tensors) {
       TF_LITE_REPORT_ERROR(error_reporter_,
-                           "Did not get operators or tensors in subgraph %d.\n",
+                           "Did not get tensors in subgraph %d.\n",
                            subgraph_index);
       return cleanup_and_error();
     }
@@ -781,7 +781,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     // nodes.
     if (ParseTensors(buffers, tensors, modified_subgraph) != kTfLiteOk)
       return cleanup_and_error();
-    if (ParseNodes(operators, modified_subgraph) != kTfLiteOk)
+    if (operators && ParseNodes(operators, modified_subgraph) != kTfLiteOk)
       return cleanup_and_error();
 
     std::vector<int> variables;

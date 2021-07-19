@@ -208,6 +208,8 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<"convert",
 
   let hasFolder = 1;
 
+  let hasCanonicalizer = 1;
+
   let hasCustomHLOConverter = 1;
 }
 
@@ -2305,7 +2307,7 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp 
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
 }
-
+  
 def HLO_PrintOp : HLO_Op<"print", []> {
   let summary = "Print operation";
   let description = [{

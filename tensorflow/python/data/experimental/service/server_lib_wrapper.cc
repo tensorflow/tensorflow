@@ -21,8 +21,11 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
+#include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
@@ -90,6 +93,27 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
             tensorflow::data::NewWorkerServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
+      },
+      py::return_value_policy::reference);
+
+  m.def(
+      "TF_DATA_GetElementSpec",
+      [](tensorflow::int64 dataset_id, const std::string& address,
+         const std::string& protocol) -> py::bytes {
+        std::string element_spec;
+        tensorflow::data::DataServiceDispatcherClient client(address, protocol);
+        tensorflow::int64 deadline_micros = tensorflow::kint64max;
+        tensorflow::Status status;
+        Py_BEGIN_ALLOW_THREADS;
+        status = tensorflow::data::grpc_util::Retry(
+            [&]() { return client.GetElementSpec(dataset_id, element_spec); },
+            /*description=*/
+            tensorflow::strings::StrCat(
+                "get the element_spec with dispatcher at ", address),
+            deadline_micros);
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseFromStatus(status);
+        return py::bytes(element_spec);
       },
       py::return_value_policy::reference);
 };

@@ -36,7 +36,7 @@ Status PartitionFunctionGraph(
     // Currently, we simply split the graph at device boundaries.
     return node->assigned_device_name();
   };
-  int64 edge_name_counter = 0;
+  int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
     return strings::StrCat(prefix, "/_", ++edge_name_counter);
   };

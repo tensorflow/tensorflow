@@ -48,15 +48,15 @@ namespace {
 
 // Adds the inner comparison loop body where we compare elements.
 Status EmitCompareLoopBody(
-    int64 iteration_bound, int64 num_values, llvm::Value* element_pair_index,
-    int64 xor_mask, llvm::Type* index_type,
-    std::function<llvm::Value*(int64 operand, llvm::Value* index)>
+    int64_t iteration_bound, int64_t num_values,
+    llvm::Value* element_pair_index, int64_t xor_mask, llvm::Type* index_type,
+    std::function<llvm::Value*(int64_t operand, llvm::Value* index)>
         element_address,
-    std::function<void(int64 operand, llvm::Value* index, llvm::Value* value)>
+    std::function<void(int64_t operand, llvm::Value* index, llvm::Value* value)>
         write_element,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
     llvm::IRBuilder<>* b, bool needs_bounds_checks = true) {
-  auto index_typed_constant = [&](int64 value) {
+  auto index_typed_constant = [&](int64_t value) {
     return llvm::ConstantInt::get(index_type, value);
   };
   // The 'xor_mask' determines which elements are compared against each other.
@@ -67,7 +67,7 @@ Status EmitCompareLoopBody(
   // block. We can also have 'xor_mask' being 2^k - 1 (for some value of k). In
   // that case, we essentially flip the last 'k' - 1 bits when computing the
   // position of the element to compare to, so the block size is 2^(k - 1).
-  int64 block_size = xor_mask;
+  int64_t block_size = xor_mask;
   // Check if it is a value 2^k - 1.
   if (xor_mask > 1 && (xor_mask & (xor_mask + 1)) == 0) {
     block_size = (xor_mask + 1) / 2;
@@ -130,7 +130,7 @@ Status EmitCompareLoopBody(
         b->CreateICmpNE(result, llvm::ConstantInt::get(result->getType(), 0),
                         "boolean_predicate");
     ksl.If("is_smaller_than", is_smaller_than, [&]() {
-      for (int64 i = 0; i < num_values; ++i) {
+      for (int64_t i = 0; i < num_values; ++i) {
         // Swap the values.
         auto value1 = b->CreateLoad(values_to_compare[i * 2]);
         auto value2 = b->CreateLoad(values_to_compare[i * 2 + 1]);
@@ -143,10 +143,10 @@ Status EmitCompareLoopBody(
 }
 
 Status EmitTiledCompareLoop(
-    const IrArray::Index& tiled_keys_index, int64 dimension_to_sort,
-    int64 dimension_to_sort_bound, absl::Span<const int64> xor_masks,
+    const IrArray::Index& tiled_keys_index, int64_t dimension_to_sort,
+    int64_t dimension_to_sort_bound, absl::Span<const int64> xor_masks,
     const std::vector<IrArray>& params,
-    const std::vector<llvm::Value*>& param_shmem_buffers, int64 tile_size,
+    const std::vector<llvm::Value*>& param_shmem_buffers, int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
     llvm::IRBuilder<>* b) {
   KernelSupportLibrary ksl(b);
@@ -189,7 +189,7 @@ Status EmitTiledCompareLoop(
 
   // Copy operand tiles from the operand buffers to shared memory.
   std::vector<llvm::Value*> keys_multi_index = tiled_keys_index.multidim();
-  for (int64 i = 0; i < params.size(); ++i) {
+  for (int64_t i = 0; i < params.size(); ++i) {
     copy_loop_body([&](llvm::Value* cache_index, llvm::Value* index) {
       keys_multi_index[dimension_to_sort] = index;
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
@@ -205,7 +205,7 @@ Status EmitTiledCompareLoop(
   gpu::EmitCallToTargetIntrinsic(gpu::TargetIntrinsicID::kBarrierId, {}, {}, b);
 
   // Now emit the bodies of the comparison loops.
-  auto element_address = [&](int64 operand, llvm::Value* index) {
+  auto element_address = [&](int64_t operand, llvm::Value* index) {
     auto shared_memory_address =
         b->CreateGEP(param_shmem_buffers[operand],
                      {tiled_keys_index.GetConstantWithIndexType(0), index});
@@ -218,14 +218,14 @@ Status EmitTiledCompareLoop(
         llvm::PointerType::get(ptr_type->getPointerElementType(),
                                /*AddressSpace=*/0));
   };
-  auto write_element = [&](int64 operand, llvm::Value* index,
+  auto write_element = [&](int64_t operand, llvm::Value* index,
                            llvm::Value* value) {
     b->CreateStore(
         value,
         b->CreateGEP(param_shmem_buffers[operand],
                      {tiled_keys_index.GetConstantWithIndexType(0), index}));
   };
-  for (int64 xor_mask : xor_masks) {
+  for (int64_t xor_mask : xor_masks) {
     // The index of the element pair to be compared within the tile stored in
     // shared memory. We order the element pairs by the element with the smaller
     // index.
@@ -268,7 +268,7 @@ Status EmitTiledCompareLoop(
   }
 
   // Copy the operand tiles back from shared memory to the operand buffers.
-  for (int64 i = 0; i < params.size(); ++i) {
+  for (int64_t i = 0; i < params.size(); ++i) {
     copy_loop_body([&](llvm::Value* cache_index, llvm::Value* index) {
       keys_multi_index[dimension_to_sort] = index;
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
@@ -292,10 +292,10 @@ Status EmitTiledCompareLoop(
 }  // namespace
 
 Status EmitSortInPlace(
-    int64 dimension_to_sort, const std::vector<IrArray>& values_arrays,
+    int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64> xor_masks,
     llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
-    int64 num_iterations_in_sort_dim, const int64 tile_size,
+    int64_t num_iterations_in_sort_dim, const int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback) {
   // Iterate through the keys shape in physical order, but skip the dimension to
   // sort and make it the innermost loop which is the loop where the comparisons
@@ -307,12 +307,12 @@ Status EmitSortInPlace(
   // comparisons).
 
   const Shape& keys_shape = values_arrays[0].GetShape();
-  int64 rank = keys_shape.rank();
-  int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
+  int64_t rank = keys_shape.rank();
+  int64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   std::vector<int64> dimensions_in_iteration_order(rank);
   std::vector<int64> iteration_order_to_logical_order(rank);
-  int64 dim = 0;
-  for (int64 dimension : LayoutUtil::MinorToMajor(keys_shape)) {
+  int64_t dim = 0;
+  for (int64_t dimension : LayoutUtil::MinorToMajor(keys_shape)) {
     if (dimension != dimension_to_sort) {
       dimensions_in_iteration_order[dim] = keys_shape.dimensions(dimension);
       iteration_order_to_logical_order[dim++] = dimension;
@@ -328,7 +328,7 @@ Status EmitSortInPlace(
   std::vector<llvm::Value*> param_shmem_buffers(values_arrays.size(), nullptr);
   if (xor_masks.size() > 1) {
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-    for (int64 i = 0; i < values_arrays.size(); ++i) {
+    for (int64_t i = 0; i < values_arrays.size(); ++i) {
       llvm::Type* tile_type = llvm::ArrayType::get(
           llvm_ir::PrimitiveTypeToIrType(
               values_arrays[i].GetShape().element_type(), module),
@@ -355,7 +355,7 @@ Status EmitSortInPlace(
     // This follows the algorithm described on Wikipedia:
     // https://en.wikipedia.org/wiki/Bitonic_sorter
     std::vector<llvm::Value*> keys_multi_index(rank);
-    for (int64 i = 0; i < rank; ++i) {
+    for (int64_t i = 0; i < rank; ++i) {
       keys_multi_index[iteration_order_to_logical_order[i]] = tiles_index[i];
     }
     if (xor_masks.size() > 1) {
@@ -366,14 +366,14 @@ Status EmitSortInPlace(
           values_arrays, param_shmem_buffers, tile_size, emit_compare_callback,
           b));
     } else {
-      auto element_address = [&](int64 operand, llvm::Value* index) {
+      auto element_address = [&](int64_t operand, llvm::Value* index) {
         keys_multi_index[dimension_to_sort] = index;
         IrArray::Index keys_index(keys_multi_index,
                                   values_arrays[operand].GetShape(),
                                   tiles_index.GetType());
         return values_arrays[operand].EmitArrayElementAddress(keys_index, b);
       };
-      auto write_element = [&](int64 operand, llvm::Value* index,
+      auto write_element = [&](int64_t operand, llvm::Value* index,
                                llvm::Value* value) {
         keys_multi_index[dimension_to_sort] = index;
         IrArray::Index keys_index(keys_multi_index,

@@ -800,6 +800,21 @@ cc_test(
 )
 
 cc_test(
+    name = "quantization_util_test",
+    srcs = ["quantization_util_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantization_util",
+        ":test_main",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "relu_test",
     srcs = ["relu_test.cc"],
     linkopts = select({
@@ -1028,16 +1043,31 @@ cc_test(
 )
 
 cc_test(
-    name = "quantization_util_test",
-    srcs = ["quantization_util_test.cc"],
+    name = "unsigned_quantized_conv_2d_test",
+    srcs = ["unsigned_quantized_conv_2d_test.cc"],
     linkopts = select({
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
     deps = [
-        ":quantization_util",
+        ":quantized_conv_2d_tester",
         ":test_main",
-        "//tensorflow/lite/kernels/internal:types",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_depthwise_conv_2d_test",
+    srcs = ["unsigned_quantized_depthwise_conv_2d_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )

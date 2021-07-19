@@ -43,7 +43,7 @@ Status CheckValidPadding(Padding padding_type,
           "explicit_paddings attribute must contain ", 2 * num_dims,
           " values, but got: ", explicit_paddings.size());
     }
-    for (int64 padding_value : explicit_paddings) {
+    for (int64_t padding_value : explicit_paddings) {
       if (padding_value < 0) {
         return errors::InvalidArgument(
             "All elements of explicit_paddings must be nonnegative");

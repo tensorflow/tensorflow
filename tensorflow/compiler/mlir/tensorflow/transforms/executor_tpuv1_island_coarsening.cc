@@ -63,6 +63,14 @@ constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
 struct TpuV1BridgeExecutorIslandCoarsening
     : public PassWrapper<TpuV1BridgeExecutorIslandCoarsening,
                          OperationPass<ModuleOp>> {
+  StringRef getArgument() const final {
+    return "tf-executor-tpu-v1-island-coarsening";
+  }
+
+  StringRef getDescription() const final {
+    return "Merges TPU clusters IslandOps, intended for V1 compatibility mode";
+  }
+
   void runOnOperation() override;
 };
 
@@ -347,9 +355,7 @@ CreateTFExecutorTPUV1IslandCoarseningPass() {
   return std::make_unique<TpuV1BridgeExecutorIslandCoarsening>();
 }
 
-static PassRegistration<TpuV1BridgeExecutorIslandCoarsening> tpu_pass(
-    "tf-executor-tpu-v1-island-coarsening",
-    "Merges TPU clusters IslandOps, intended for V1 compatibility mode");
+static PassRegistration<TpuV1BridgeExecutorIslandCoarsening> tpu_pass;
 
 }  // namespace tf_executor
 }  // namespace mlir
