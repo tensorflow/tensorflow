@@ -772,8 +772,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_REDUCE_PROD:
-      if (op_sig.input_types.at(0) == TensorType_INT8 ||
-          op_sig.input_types.at(0) == TensorType_INT16) {
+      if (op_sig.inputs.at(0).type == TensorType_INT8 ||
+          op_sig.inputs.at(0).type == TensorType_INT16) {
         return 2;
       }
       return 1;
