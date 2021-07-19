@@ -795,7 +795,7 @@ TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
                                OpContext* op_context) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  int64_t num_axis = NumElements(op_context->axis);
+  const int64_t num_axis = NumElements(op_context->axis);
   TfLiteTensor* temp_index;
   TF_LITE_ENSURE_OK(context,
                     GetTemporarySafe(context, node, /*index=*/0, &temp_index));
