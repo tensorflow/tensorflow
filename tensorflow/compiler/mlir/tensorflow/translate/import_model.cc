@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -271,9 +272,25 @@ class ImporterBase {
   StatusOr<mlir::Type> InferOutputType(const Node& node, int idx,
                                        mlir::Builder builder);
 
+  // Convert deferred TF functions to the MLIR representation.
+  // Conversion is deferred for efficiency reasons, e.g., to limit depth
+  // of recursion and reduce stack size pressure.
+  Status ConvertDeferredFunctions();
+
  private:
   // Most types with subtypes have only one subtype.
   using ElementSubtypes = llvm::SmallVector<TensorType, 1>;
+
+  // Metadata used for deferred function conversion.
+  struct DeferredConversionMetaData {
+    DeferredConversionMetaData(
+        const std::string& function_name,
+        const std::vector<mlir::NamedAttribute>& attributes)
+        : function_name(function_name), attributes(attributes) {}
+
+    std::string function_name;
+    std::vector<mlir::NamedAttribute> attributes;
+  };
 
   // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
@@ -443,6 +460,8 @@ class ImporterBase {
  protected:
   // Maps feed as TensorId to new Placeholder node name.
   absl::flat_hash_map<TensorId, absl::string_view> remapped_feeds_;
+  // Keep track of functions required deferred conversion.
+  std::queue<DeferredConversionMetaData> deferred_functions_;
 };
 
 // Returns true if the node with given name has a non primary output that is
@@ -562,6 +581,77 @@ std::string GetUniqueNodeName(
     new_node_name = absl::StrCat(new_node_name_base, "_", count++);
   }
   return new_node_name;
+}
+
+Status ImporterBase::ConvertDeferredFunctions() {
+  while (!deferred_functions_.empty()) {
+    auto conversion_metadata = deferred_functions_.front();
+    deferred_functions_.pop();
+
+    const FunctionDef* func_def =
+        graph_flib_.Find(conversion_metadata.function_name);
+    // Converts the graph to an MLIR function and adds it to the module.
+    // We populate the NodeSpec so that all the _Arg ops get their shape
+    // added correctly.
+    GraphImportConfig specs;
+    specs.enable_shape_inference = specs_.enable_shape_inference;
+    for (const auto& name_and_value : func_def->attr()) {
+      if (name_and_value.first == "_input_shapes") {
+        auto& list = name_and_value.second.list();
+        auto& signature = func_def->signature();
+        // Some models have "_input_shapes" attribute, but with its value empty
+        if (list.shape_size() > 0 &&
+            list.shape_size() != signature.input_arg_size()) {
+          return errors::FailedPrecondition(
+              "Number of input arguments must be equal to the length of "
+              "_input_shapes attribute in function '",
+              StringRefToView(conversion_metadata.function_name), "'.");
+        }
+        for (int i = 0, e = signature.input_arg_size(); i < e; i++) {
+          auto& input_arg = signature.input_arg(i);
+          auto& array_info = specs.inputs[input_arg.name()];
+          array_info.imported_dtype = input_arg.type();
+          // set to unranked for empty "_input_shapes" attribute
+          if (list.shape_size() > 0)
+            array_info.shape = list.shape(i);
+          else
+            array_info.shape.set_unknown_rank(true);
+        }
+      }
+    }
+
+    ImporterBase importer(graph_flib_, debug_info_, specs, module_,
+                          tf_name_to_mlir_name_, function_name_uniquifier_,
+                          conversion_metadata.function_name);
+
+    std::unique_ptr<FunctionBody> fbody;
+    TF_RETURN_IF_ERROR(
+        FunctionDefToBodyHelper(*func_def, AttrSlice(), &graph_flib_, &fbody));
+    TF_RETURN_IF_ERROR(importer.PrepareConvert(*fbody->graph));
+
+    TF_ASSIGN_OR_RETURN(auto func_type, importer.InferLibFunctionType(*fbody));
+
+    absl::InlinedVector<OutputTensor, 4> arg_nodes;
+    absl::InlinedVector<OutputTensor, 4> ret_nodes;
+    absl::InlinedVector<Node*, 4> control_ret_nodes;
+    importer.GetArgsAndRetsFromFunctionBody(*fbody, &arg_nodes, &ret_nodes,
+                                            &control_ret_nodes);
+    const std::string& mlir_func_name =
+        (*tf_name_to_mlir_name_)[conversion_metadata.function_name];
+
+    TF_RETURN_IF_ERROR(importer.Convert(mlir_func_name, func_type, arg_nodes,
+                                        ret_nodes, control_ret_nodes,
+                                        conversion_metadata.attributes));
+
+    // Additional function bodies could be discovered during the deferred
+    // loading of the current function. Add them to the working queue.
+    while (!importer.deferred_functions_.empty()) {
+      deferred_functions_.push(importer.deferred_functions_.front());
+      importer.deferred_functions_.pop();
+    }
+  }
+
+  return Status::OK();
 }
 
 Status ImporterBase::RemoveBackedges(const Graph& graph) {
@@ -1186,8 +1276,7 @@ StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
 
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
-  auto func = module_.lookupSymbol<mlir::FuncOp>(mlir_func_name);
-  return builder_.getSymbolRefAttr(func);
+  return builder_.getSymbolRefAttr(mlir_func_name);
 }
 
 StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
@@ -1261,13 +1350,8 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
                      "'. The imported TensorFlow GraphDef is ill-formed."));
   }
 
-  // Converts the function definition to a graph.
-  std::unique_ptr<FunctionBody> fbody;
-  TF_RETURN_IF_ERROR(
-      FunctionDefToBodyHelper(*func_def, AttrSlice(), &func_lib, &fbody));
-
   // Converts the argument and return types to MLIR types.
-  absl::InlinedVector<mlir::NamedAttribute, 8> attributes;
+  std::vector<mlir::NamedAttribute> attributes;
   attributes.reserve(func_def->attr_size());
   for (const auto& name_and_value : func_def->attr()) {
     // This is a function definition attribute, so it shouldn't contain
@@ -1292,61 +1376,12 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   if (!grad_func_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
-    auto grad_func = module_.lookupSymbol<mlir::FuncOp>(mlir_grad_func_name);
-    auto gradient_attr = builder_.getSymbolRefAttr(grad_func);
+    auto gradient_attr = builder_.getSymbolRefAttr(mlir_grad_func_name);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_.getNamedAttr(grad_string, gradient_attr));
   }
 
-  // Converts the graph to an MLIR function and adds it to the module.
-  // We populate the NodeSpec so that all the _Arg ops get their shape
-  // added correctly.
-  GraphImportConfig specs;
-  specs.enable_shape_inference = specs_.enable_shape_inference;
-  for (const auto& name_and_value : func_def->attr()) {
-    if (name_and_value.first == "_input_shapes") {
-      auto& list = name_and_value.second.list();
-      auto& signature = func_def->signature();
-      // Some models have "_input_shapes" attribute, but with its value empty
-      if (list.shape_size() > 0 &&
-          list.shape_size() != signature.input_arg_size()) {
-        return errors::FailedPrecondition(
-            "Number of input arguments must be equal to the length of "
-            "_input_shapes attribute in function '",
-            StringRefToView(func_name), "'.");
-      }
-      for (int i = 0; i < signature.input_arg_size(); i++) {
-        auto& input_arg = signature.input_arg(i);
-        auto& array_info = specs.inputs[input_arg.name()];
-        array_info.imported_dtype = input_arg.type();
-        // set to unranked for empty "_input_shapes" attribute
-        if (list.shape_size() > 0)
-          array_info.shape = list.shape(i);
-        else
-          array_info.shape.set_unknown_rank(true);
-      }
-    }
-  }
-
-  // std::make_unique is not possible here, using `new` to access
-  // a non-public constructor.
-  std::unique_ptr<ImporterBase> child_importer(new ImporterBase(
-      graph_flib_, debug_info_, specs, module_, tf_name_to_mlir_name_,
-      function_name_uniquifier_, func_name));
-  TF_RETURN_IF_ERROR(child_importer->PrepareConvert(*fbody->graph));
-
-  TF_ASSIGN_OR_RETURN(auto func_type,
-                      child_importer->InferLibFunctionType(*fbody));
-
-  absl::InlinedVector<OutputTensor, 4> arg_nodes;
-  absl::InlinedVector<OutputTensor, 4> ret_nodes;
-  absl::InlinedVector<Node*, 4> control_ret_nodes;
-  GetArgsAndRetsFromFunctionBody(*fbody, &arg_nodes, &ret_nodes,
-                                 &control_ret_nodes);
-
-  TF_RETURN_IF_ERROR(child_importer->Convert(
-      mlir_func_name, func_type, arg_nodes, ret_nodes, control_ret_nodes,
-      llvm::makeArrayRef(attributes.begin(), attributes.end())));
+  deferred_functions_.emplace(func_name.str(), attributes);
   return Status::OK();
 }
 
@@ -2374,6 +2409,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(graph_func_name, func_type,
                                                     arg_nodes, ret_nodes,
                                                     control_ret_nodes, attrs));
+  TF_RETURN_IF_ERROR(importer.ImporterBase::ConvertDeferredFunctions());
 
   // Mark main function public, others private.
   for (auto function : module.get().getOps<mlir::FuncOp>()) {
@@ -3376,6 +3412,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
   for (const auto& fn_name : fn_names) {
     TF_RETURN_IF_ERROR(importer.ConvertLibFunction(fn_name));
   }
+  TF_RETURN_IF_ERROR(importer.ConvertDeferredFunctions());
 
   if (!saved_model->meta_graph_def().has_object_graph_def()) {
     return errors::InvalidArgument(
