@@ -161,6 +161,8 @@ TFL_CAPI_EXPORT extern void TfLiteSetAllowBufferHandleOutput(
 /// parts of the graph themselves. After this is called, the graph may
 /// contain new nodes that replace 1 more nodes.
 /// 'delegate' must outlive the interpreter.
+/// Use `TfLiteInterpreterOptionsAddDelegate` instead of this unless
+/// absolutely required.
 /// Returns one of the following three status codes:
 /// 1. kTfLiteOk: Success.
 /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
