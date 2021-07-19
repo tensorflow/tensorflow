@@ -170,8 +170,12 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
                                 source_id.value_or(-1), target_id.value_or(-1));
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
-  TF_ASSIGN_OR_RETURN(ncclDataType_t datatype,
-                      ToNcclDataType(config_.operand_element_type[0]));
+
+  PrimitiveType element_type = config_.operand_element_type[0];
+  TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
+                      ToNcclDataTypeAndCountMultiplier(element_type));
+  ncclDataType_t dtype = dtype_and_multiplier.first;
+  int element_count = buffer_.element_count * dtype_and_multiplier.second;
 
   cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
       params.stream->implementation()->GpuStreamMemberHack());
@@ -181,10 +185,10 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
     VLOG(3) << absl::StreamFormat(
         "%s : Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
         "comm=%p, stream=%p)",
-        GetDeviceString(params), src_addr.opaque(), buffer_.element_count,
-        *target_id, static_cast<const void*>(comm), *cu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), buffer_.element_count,
-                                      datatype, *target_id, comm, *cu_stream));
+        GetDeviceString(params), src_addr.opaque(), element_count, *target_id,
+        static_cast<const void*>(comm), *cu_stream);
+    XLA_CUDA_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
+                                      *target_id, comm, *cu_stream));
   }
 
   // Receive data from the source peer to the destination buffer.
@@ -192,10 +196,10 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
     VLOG(3) << absl::StreamFormat(
         "%s : Calling ncclRecv(recvbuff=%p, count=%d, peer=%d comm=%p, "
         "stream=%p)",
-        GetDeviceString(params), dest_addr.opaque(), buffer_.element_count,
-        *source_id, static_cast<const void*>(comm), *cu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), buffer_.element_count,
-                                      datatype, *source_id, comm, *cu_stream));
+        GetDeviceString(params), dest_addr.opaque(), element_count, *source_id,
+        static_cast<const void*>(comm), *cu_stream);
+    XLA_CUDA_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
+                                      *source_id, comm, *cu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
