@@ -242,6 +242,7 @@ class MklDnnConvUtil {
 
         *filter_dims = mkldnn_sizes;
       } else if (*is_grouped_convolution) {
+        // TODO(intel-tf): Directly set filter_dims. Same for other places.
         std::vector<MKLDNN_SIZE_DTYPE> mkldnn_sizes(5, -1);
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_G] = group_count;
         mkldnn_sizes[MKL_GROUP_FILTER_DIM_O] = filter_out_depth / group_count;
