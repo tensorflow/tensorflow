@@ -20,6 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
@@ -27,8 +31,6 @@ namespace gpu {
 //
 // This thunk's `ExecuteOnStream` implementation executes a host function
 // `call_target` which is expected to enqueue operations onto the GPU.
-//
-// For information about the calling convention, see xla/g3doc/custom_call.md
 //
 // Note that not all kCustomCall HLOs in XLA:GPU end up being run by this thunk.
 // XLA itself creates kCustomCall instructions when lowering kConvolution HLOs
@@ -39,7 +41,16 @@ namespace gpu {
 class CustomCallThunk : public Thunk {
  public:
   using OptionalSlice = ::absl::optional<BufferAllocation::Slice>;
-  CustomCallThunk(ThunkInfo thunk_info, void* call_target,
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  using Stream = stream_executor::gpu::GpuStreamHandle;
+#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  using Stream = void*;
+#endif  //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+  using CustomCallTarget =
+      std::function<void(Stream, void**, const char*, size_t)>;
+  CustomCallThunk(ThunkInfo thunk_info, CustomCallTarget call_target,
                   std::vector<OptionalSlice> operands,
                   std::vector<OptionalSlice> results,
                   const std::string& opaque);
@@ -47,7 +58,7 @@ class CustomCallThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  void* call_target_;
+  const CustomCallTarget call_target_;
   const std::vector<OptionalSlice> operands_;
   const std::vector<OptionalSlice> results_;
   const std::string opaque_;
