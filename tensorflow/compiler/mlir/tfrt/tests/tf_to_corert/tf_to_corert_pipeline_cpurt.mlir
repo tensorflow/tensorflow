@@ -1,6 +1,6 @@
 // RUN: tf-tfrt-opt %s                                                         \
 // RUN:   -split-input-file                                                    \
-// RUN:   -tf-executor-to-tfrt-pipeline="                                    \
+// RUN:   -tf-executor-to-tfrt-pipeline="                                      \
 // RUN:       enable-native-ops=false                                          \
 // RUN:       enable-optimizer=true                                            \
 // RUN:       tfrt-cost-threshold=1024                                         \
@@ -15,6 +15,10 @@
 // Simple cluster consisting of a single operation.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
+  // CHECK: func @_tfrt_fallback_init
+  // CHECK:   tf_cpurt.fallback.compile @kernel::@compute
+
+  // CHECK: func @call
   func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
@@ -41,6 +45,10 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // Constants sunk into the outlined compiled functions.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
+  // CHECK: func @_tfrt_fallback_init
+  // CHECK:   tf_cpurt.fallback.compile @kernel::@compute
+
+  // CHECK: func @call
   func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
@@ -74,6 +82,10 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // and its permutation parameter should compile to be value-constrained.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
+  // CHECK: func @_tfrt_fallback_init
+  // CHECK:   tf_cpurt.fallback.compile @kernel::@compute
+
+  // CHECK: func @call
   func @call(%arg0: tensor<?x?xf32>, %arg1: tensor<?xi32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0,input_1",

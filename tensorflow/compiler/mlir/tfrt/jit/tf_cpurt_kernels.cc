@@ -25,6 +25,7 @@ limitations under the License.
 #include "tfrt/cpu/jit/cpurt.h"
 #include "tfrt/host_context/async_dispatch.h"
 #include "tfrt/host_context/async_value_ref.h"
+#include "tfrt/host_context/chain.h"
 #include "tfrt/host_context/execution_context.h"
 #include "tfrt/host_context/host_buffer.h"
 #include "tfrt/host_context/host_context.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tfrt/support/error_util.h"
 #include "tfrt/support/forward_decls.h"
 #include "tfrt/support/rc_array.h"
+#include "tfrt/support/string_util.h"
 #include "tfrt/tensor/tensor_metadata.h"
 #include "tfrt/tensor/tensor_shape.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -55,17 +57,22 @@ using ::llvm::Expected;
 using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
+using ::tfrt::AsyncValueRef;
+using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
 using ::tfrt::EnqueueWork;
 using ::tfrt::ExecutionContext;
 using ::tfrt::IndirectAsyncValue;
 using ::tfrt::KernelRegistry;
+using ::tfrt::MakeConstructedAsyncValueRef;
+using ::tfrt::MakeErrorAsyncValueRef;
 using ::tfrt::MakeStringError;
 using ::tfrt::RCArray;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RepeatedArguments;
 using ::tfrt::RequestContext;
+using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
 
 using ::tfrt::cpu::jit::CompilationOptions;
@@ -105,7 +112,7 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
 // Compile compilation unit attribute to an executable result.
 // -------------------------------------------------------------------------- //
 
-static Expected<AsyncValuePtr<JitExecutable>> Compile(
+static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx) {
   // We only support functions nested in top level compiled module.
   if (kernel.nested_symbols().size() != 1)
@@ -163,6 +170,31 @@ static Expected<AsyncValuePtr<JitExecutable>> Compile(
   });
 
   return entry.ptr;
+}
+
+// Compiles kernel into the JitExecutable and updates JitExecutableCache.
+static AsyncValueRef<Chain> Compile(StringAttribute device,
+                                    CompilationUnitAttribute kernel,
+                                    const ExecutionContext& exec_ctx) {
+  // Trigger kernel compilation, that will update the JitExecutableCache.
+  Expected<AsyncValuePtr<JitExecutable>> executable =
+      CompileImpl(kernel, exec_ctx);
+
+  // Return immediately if can't compile the kernel.
+  if (auto err = executable.takeError())
+    return MakeErrorAsyncValueRef(StrCat(err));
+
+  // Signal compilation completion using an async chain.
+  auto compiled = MakeConstructedAsyncValueRef<Chain>();
+
+  executable->AndThen([executable = *executable, res = compiled.CopyRef()]() {
+    if (executable.IsError())
+      res.SetError(executable.GetError());
+    else
+      res.SetStateConcrete();
+  });
+
+  return compiled;
 }
 
 // -------------------------------------------------------------------------- //
@@ -331,7 +363,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         const ExecutionContext& exec_ctx, bool debug) {
   // Compile kernel module into the JitExecutable.
   Expected<AsyncValuePtr<JitExecutable>> jit_executable =
-      Compile(kernel, exec_ctx);
+      CompileImpl(kernel, exec_ctx);
 
   if (auto err = jit_executable.takeError())
     return EmitErrors(results, std::move(err), exec_ctx);
@@ -403,6 +435,7 @@ static void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
 }  // namespace
 
 void RegisterTfCpuRuntimeKernels(KernelRegistry* registry) {
+  registry->AddKernel("tf_cpurt.fallback.compile", TFRT_KERNEL(Compile));
   registry->AddKernel("tf_cpurt.fallback.execute", TFRT_KERNEL(Execute));
   registry->AddKernel("tf_cpurt.fallback.debug.execute",
                       TFRT_KERNEL(ExecuteDebug));

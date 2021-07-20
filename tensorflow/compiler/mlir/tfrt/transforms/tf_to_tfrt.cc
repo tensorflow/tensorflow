@@ -43,6 +43,7 @@ limitations under the License.
 #include "tfrt/test_kernels/opdefs/test_kernels.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
+#include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace {
@@ -1719,6 +1721,8 @@ class TfToTfrtConversionPass
     builder.setInsertionPointToStart(block);
 
     mlir::Value chain_value = block->getArgument(0);
+
+    // Create operations for all fallback kernels in the module.
     for (auto *op : fallback_converter.GetFallbackOps()) {
       auto create_op = builder.create<tfrt::fallback_async::CreateOp>(
           func_op.getLoc(), chain_type, chain_value);
@@ -1727,6 +1731,24 @@ class TfToTfrtConversionPass
       create_op->setAttr("num_args", builder.getI64IntegerAttr(GetNumArgs(op)));
 
       chain_value = create_op;
+    }
+
+    // Pre-compile all JIT compiled kernels found in the module.
+    llvm::SmallVector<Value> compiled;
+
+    // Compile all kernels in parallell.
+    module.walk([&](tf_cpurt::FallbackExecuteOp execute) {
+      auto compile = builder.create<tf_cpurt::FallbackCompileOp>(
+          execute.getLoc(), chain_type, execute.kernel(), execute.device());
+      compiled.push_back(compile.getResult());
+    });
+
+    // Wait for the compilation completion before returning from init function.
+    if (compiled.size() == 1) {
+      chain_value = compiled[0];
+    } else if (compiled.size() > 1) {
+      chain_value = builder.create<tfrt::compiler::MergeChainsOp>(
+          func_op.getLoc(), chain_type, compiled);
     }
 
     builder.create<tfrt::compiler::ReturnOp>(func_op.getLoc(), chain_value);

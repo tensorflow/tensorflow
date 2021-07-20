@@ -18,6 +18,7 @@ limitations under the License.
 #define TF_CPURT_OPS
 
 include "mlir/IR/OpBase.td"
+include "tfrt/tfrt_op_base.td"
 include "tfrt/compiler/opdefs/tfrt_op_interfaces.td"
 include "tfrt/compiler/opdefs/tfrt_traits.td"
 include "tfrt/cpu/jit/opdefs/cpurt_base.td"
@@ -47,6 +48,33 @@ def TF_CPURT_Dialect : Dialect {
 
 class TF_CPURT_Op<string mnemonic, list<OpTrait> traits = []> :
       Op<TF_CPURT_Dialect, mnemonic, traits> {
+}
+
+def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
+    [TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
+  let summary = "compiles kernel at runtime using LLVM JIT compiler";
+  let description = [{
+    `tf_cpurt.fallback.compile` compiles a Tensorflow program defined by the
+    kernel function in the nested module to the CPURT JIT executable using
+    LLVM JIT APIs and caches it in the JitExecutableCache owned by the
+    resource context.
+
+    This kernel can be used in the init function to make sure that when execute
+    kernel (see definition below) called at runtime, the compiled kernel will be
+    already pre-compiled and ready to run.
+    ```
+  }];
+
+  let arguments = (ins
+    SymbolRefAttr:$kernel,
+    StrAttr:$device
+  );
+
+  let results = (outs TFRT_ChainType:$compiled);
+
+  let assemblyFormat = [{
+    $kernel `device` `(` $device `)` attr-dict
+  }];
 }
 
 def FallbackExecuteOp : TF_CPURT_Op<"fallback.execute",
