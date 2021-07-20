@@ -1413,7 +1413,6 @@ cc_library(
         ":cudnn_batchnorm_rewriter",
         ":fusion_bitcast_lift",
         ":fusion_merger",
-        ":gemm_broadcast_folding_rewriter",
         ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
@@ -2307,24 +2306,5 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
-    ],
-)
-
-cc_library(
-    name = "gemm_broadcast_folding_rewriter",
-    srcs = ["gemm_broadcast_folding_rewriter.cc"],
-    hdrs = ["gemm_broadcast_folding_rewriter.h"],
-    deps = [
-        ":backend_configs_cc",
-        ":ir_emission_utils",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_casting_utils",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )

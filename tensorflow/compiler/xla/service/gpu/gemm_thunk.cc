@@ -76,7 +76,8 @@ struct MatrixDescriptor {
   se::blas::Transpose transpose;
   int64 num_rows;
   int64 num_cols;
-  int64 stride;
+
+  int64 stride() const { return num_rows * num_cols; }
 
   int64 reduced_dim() const {
     return transpose == se::blas::Transpose::kTranspose ? num_rows : num_cols;
@@ -129,12 +130,13 @@ static Status DoGemmWithAlgorithm(
         lhs.transpose, rhs.transpose, output_matrix.num_rows,
         output_matrix.num_cols,
         /*size of reduce dim=*/lhs.reduced_dim(),
-        /*alpha=*/alpha, lhs.cast<Input>(), lhs.stride,
+        /*alpha=*/alpha, lhs.cast<Input>(), lhs.stride(),
         /*leading dim of LHS=*/lhs.num_rows, rhs.cast<Input>(),
-        /*leading dim of RHS=*/rhs.num_rows, rhs.stride,
+        /*leading dim of RHS=*/rhs.num_rows, rhs.stride(),
         /*beta=*/beta, &output_data,
-        /*leading dim of output=*/output_matrix.num_rows, output_matrix.stride,
-        batch_size, computation_type, algorithm, output_profile_result);
+        /*leading dim of output=*/output_matrix.num_rows,
+        output_matrix.stride(), batch_size, computation_type, algorithm,
+        output_profile_result);
   } else {
     return stream->ThenBlasGemmWithAlgorithm(
         lhs.transpose, rhs.transpose, output_matrix.num_rows,
@@ -170,11 +172,11 @@ static Status DoGemm(int64_t batch_size, const MatrixDescriptor &lhs,
         lhs.transpose, rhs.transpose, output_matrix.num_rows,
         output_matrix.num_cols, /*size of reduce dim=*/lhs.reduced_dim(),
         /*alpha=*/alpha, lhs.cast<Input>(),
-        /*leading dim of LHS=*/lhs.num_rows, lhs.stride, rhs.cast<Input>(),
-        /*leading dim of RHS=*/rhs.num_rows, rhs.stride,
+        /*leading dim of LHS=*/lhs.num_rows, lhs.stride(), rhs.cast<Input>(),
+        /*leading dim of RHS=*/rhs.num_rows, rhs.stride(),
         /*beta=*/beta, &output_data,
-        /*leading dim of output=*/output_matrix.num_rows, output_matrix.stride,
-        batch_size);
+        /*leading dim of output=*/output_matrix.num_rows,
+        output_matrix.stride(), batch_size);
   }
   return stream->ThenBlasGemm(
       lhs.transpose, rhs.transpose, output_matrix.num_rows,
@@ -200,45 +202,32 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   const Shape &lhs_shape = gemm_config.lhs_shape;
   const Shape &rhs_shape = gemm_config.rhs_shape;
   const GemmBackendConfig &backend_config = gemm_config.backend_config;
+
   const DotDimensionNumbers &dim_nums = backend_config.dot_dimension_numbers();
-  absl::Span<const int64> output_batch_dims =
-      AsInt64Slice((dim_nums.lhs_batch_dimensions_size() >
-                    dim_nums.rhs_batch_dimensions_size())
-                       ? dim_nums.lhs_batch_dimensions()
-                       : dim_nums.rhs_batch_dimensions());
+  CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
+           dim_nums.rhs_batch_dimensions_size());
+  CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2, output_shape.rank());
+
+  int64_t row_dim = dim_nums.lhs_batch_dimensions_size();
+  int64_t col_dim = dim_nums.lhs_batch_dimensions_size() + 1;
 
   int64_t batch_size = backend_config.batch_size();
-  int64_t output_row_dim = output_batch_dims.size();
-  int64_t output_col_dim = output_row_dim + 1;
 
-  if (backend_config.rhs_stride() && backend_config.lhs_stride()) {
-    CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
-             dim_nums.rhs_batch_dimensions_size());
+  // Check that the batch dims don't cover the last two dims.
+  for (int64_t batch_dim : dim_nums.lhs_batch_dimensions()) {
+    CHECK_NE(row_dim, batch_dim);
+    CHECK_NE(col_dim, batch_dim);
   }
 
-  int64_t output_num_rows = output_shape.dimensions(output_row_dim);
-  int64_t output_num_cols = output_shape.dimensions(output_col_dim);
+  // Verify that the non-batch dimensions are minor-most. This is required for
+  // efficient access.
+  for (const auto *shape : {&lhs_shape, &rhs_shape, &output_shape}) {
+    CHECK_LT(shape->layout().minor_to_major(row_dim), 2);
+    CHECK_LT(shape->layout().minor_to_major(col_dim), 2);
+  }
 
-  auto validate_matrix = [&](const Shape &shape, auto batch_dimensions) {
-    int64_t row_dim = batch_dimensions.size();
-    int64_t col_dim = row_dim + 1;
-    CHECK_EQ(row_dim + 2, shape.rank());
-
-    // Check that the batch dims don't cover the last two dims.
-    for (int64_t batch_dim : batch_dimensions) {
-      CHECK_NE(row_dim, batch_dim);
-      CHECK_NE(col_dim, batch_dim);
-    }
-
-    // Verify that the non-batch dimensions are minor-most. This is required for
-    // efficient access.
-    CHECK_LT(shape.layout().minor_to_major(row_dim), 2);
-    CHECK_LT(shape.layout().minor_to_major(col_dim), 2);
-  };
-
-  validate_matrix(lhs_shape, dim_nums.lhs_batch_dimensions());
-  validate_matrix(rhs_shape, dim_nums.rhs_batch_dimensions());
-  validate_matrix(output_shape, output_batch_dims);
+  int64_t output_num_rows = output_shape.dimensions(row_dim);
+  int64_t output_num_cols = output_shape.dimensions(col_dim);
 
   // BLAS gemm expects the inputs and the output are in column-major order.
   // Therefore, we need to convert dot between row-major matrices to that
@@ -261,51 +250,35 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   // the leading dimension of the LHS matrix of gemm is the number of rows in
   // B^T and thus the number of columns in B.
   auto make_descriptor = [&](se::DeviceMemoryBase data, const Shape &shape,
-                             int64_t row_dim, bool transpose,
-                             int64_t stride) -> MatrixDescriptor {
+                             bool transpose) -> MatrixDescriptor {
     bool is_row_major = LayoutUtil::Minor(shape.layout(), row_dim) != 0;
-    bool layout_mismatch =
-        LayoutUtil::Minor(shape.layout(), row_dim) !=
-        LayoutUtil::Minor(output_shape.layout(), output_row_dim);
-    int64_t rows =
-        shape.dimensions(row_dim + static_cast<int64_t>(is_row_major));
-    int64_t cols =
-        shape.dimensions(row_dim + static_cast<int64_t>(!is_row_major));
-    if (stride != 0) {
-      CHECK_EQ(stride, rows * cols);
-    }
-    return MatrixDescriptor{data,
-                            transpose ^ layout_mismatch
-                                ? se::blas::Transpose::kTranspose
-                                : se::blas::Transpose::kNoTranspose,
-                            rows, cols, stride};
+    bool layout_mismatch = LayoutUtil::Minor(shape.layout(), row_dim) !=
+                           LayoutUtil::Minor(output_shape.layout(), row_dim);
+    return MatrixDescriptor{
+        data,
+        transpose ^ layout_mismatch ? se::blas::Transpose::kTranspose
+                                    : se::blas::Transpose::kNoTranspose,
+        shape.dimensions(row_dim + static_cast<int64>(is_row_major)),
+        shape.dimensions(row_dim + static_cast<int64>(!is_row_major))};
   };
 
-  bool lhs_transpose = dim_nums.lhs_contracting_dimensions(0) ==
-                       dim_nums.lhs_batch_dimensions_size();
-  bool rhs_transpose = dim_nums.rhs_contracting_dimensions(0) ==
-                       dim_nums.rhs_batch_dimensions_size() + 1;
-
   MatrixDescriptor lhs_matrix = make_descriptor(
-      lhs_buffer, lhs_shape, dim_nums.lhs_batch_dimensions_size(),
-      lhs_transpose, backend_config.lhs_stride());
+      lhs_buffer, lhs_shape, dim_nums.lhs_contracting_dimensions(0) == row_dim);
   MatrixDescriptor rhs_matrix = make_descriptor(
-      rhs_buffer, rhs_shape, dim_nums.rhs_batch_dimensions_size(),
-      rhs_transpose, backend_config.rhs_stride());
-
+      rhs_buffer, rhs_shape, dim_nums.rhs_contracting_dimensions(0) == col_dim);
   std::unique_ptr<ScopedInstructionProfiler> op_profiler =
       profiler ? profiler->MakeScopedInstructionProfiler(
                      implements_whole_instruction ? profile_index : -1)
                : nullptr;
 
-  if (LayoutUtil::Minor(output_shape.layout(), output_row_dim) != 0) {
+  if (LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
     std::swap(lhs_matrix, rhs_matrix);
     std::swap(output_num_cols, output_num_rows);
   }
 
-  const MatrixDescriptor output_matrix{
-      output_buffer, se::blas::Transpose::kNoTranspose, output_num_rows,
-      output_num_cols, output_num_rows * output_num_cols};
+  const MatrixDescriptor output_matrix{output_buffer,
+                                       se::blas::Transpose::kNoTranspose,
+                                       output_num_rows, output_num_cols};
   auto best_algorithm = [&]() -> absl::optional<se::blas::AlgorithmType> {
     if (algorithm) {
       return *algorithm;
