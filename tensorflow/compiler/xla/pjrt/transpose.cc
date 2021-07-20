@@ -220,23 +220,51 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
   }
 }
 
+// This kernel is "unrolled" by 3 loop levels. Recursive calls have a non-zero
+// overhead, which we can amortize by having more than one loop per recursive
+// step. The loop planning code adds additional size-1 outer loops to ensure the
+// number of loops in the plan is a multiple of 3.
+static constexpr int kMemcpyUnrollFactor = 3;
 template <typename T>
 void TransposeConstStride1(const char* __restrict a, char* __restrict b,
                            TransposePlan::Node const* node) {
-  const int64_t start = node->start;
-  const int64_t end = node->end;
-  const int64_t lda = node->lda;
-  const int64_t ldb = node->ldb;
-  if (node->inc == 0) {
-    DCHECK_EQ(lda, sizeof(T));
-    DCHECK_EQ(ldb, sizeof(T));
-    std::memcpy(b + start * sizeof(T), a + start * sizeof(T),
-                (end - start) * sizeof(T));
+  DCHECK_EQ(node[0].inc, 1);
+  DCHECK_EQ(node[1].inc, 1);
+  for (int i = 0; i < kMemcpyUnrollFactor; ++i) {
+    a += node[i].start * node[i].lda;
+    b += node[i].start * node[i].ldb;
+  }
+  if (node[2].inc == 0) {
+    int64_t num_bytes = (node[2].end - node[2].start) * sizeof(T);
+    for (int64_t i = node[0].start; i < node[0].end; ++i) {
+      const char* a1 = a;
+      char* b1 = b;
+      for (int64_t j = node[1].start; j < node[1].end; ++j) {
+        std::memcpy(b1, a1, num_bytes);
+        a1 += node[1].lda;
+        b1 += node[1].ldb;
+      }
+      a += node[0].lda;
+      b += node[0].ldb;
+    }
   } else {
-    DCHECK_EQ(node->inc, 1);
-    int64_t i;
-    for (i = start; i < end; ++i) {
-      TransposeConstStride1<T>(a + i * lda, b + i * ldb, node + 1);
+    TransposePlan::Node const* next = node + 3;
+    for (int64_t i = node[0].start; i < node[0].end; ++i) {
+      const char* a1 = a;
+      char* b1 = b;
+      for (int64_t j = node[1].start; j < node[1].end; ++j) {
+        const char* a2 = a1;
+        char* b2 = b1;
+        for (int64_t k = node[2].start; k < node[2].end; ++k) {
+          TransposeConstStride1<T>(a2, b2, next);
+          a2 += node[2].lda;
+          b2 += node[2].ldb;
+        }
+        a1 += node[1].lda;
+        b1 += node[1].ldb;
+      }
+      a += node[0].lda;
+      b += node[0].ldb;
     }
   }
 }
@@ -765,6 +793,22 @@ void TransposePlan::BuildPlanNodes(
   output_nodes.reserve(current_agenda.size());
   for (Agendum& agendum : current_agenda) {
     agendum.nodes.back().inc = 0;  // Marks the last node as a sentinel.
+
+    // The memcpy kernel requires that the number of loops is a multiple of
+    // kMemcpyUnrollFactor.
+    if (inner_kernel_is_memcpy_) {
+      while (agendum.nodes.size() % kMemcpyUnrollFactor != 0) {
+        std::vector<Node> nodes(agendum.nodes.size() + 1);
+        std::copy(agendum.nodes.begin(), agendum.nodes.end(),
+                  nodes.begin() + 1);
+        Node* node = &nodes.front();
+        node->start = 0;
+        node->end = 1;
+        node->inc = 1;
+        node->lda = node->ldb = 0;
+        agendum.nodes = std::move(nodes);
+      }
+    }
     output_nodes.push_back(std::move(agendum.nodes));
   }
 }
