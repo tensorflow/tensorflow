@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
@@ -370,6 +373,7 @@ static void PrintFuncOp(OpAsmPrinter &p, TFRFuncOp op) {
 
 namespace mlir {
 namespace TFR {
+namespace {
 struct ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
   using OpRewritePattern<ConstantTensorOp>::OpRewritePattern;
 
@@ -578,26 +582,50 @@ struct RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
     if (!cast_qtype) {
       return failure();
     }
+
+    TF::ConstOp scale_op;
+    TF::ConstOp zp_op;
+
     // Reads quantization parameters from the quantized type, and converts
     // them to constants.
     rewriter.setInsertionPoint(qparams_op);
+    Location loc = qparams_op->getLoc();
     if (auto qtype = cast_qtype.dyn_cast<quant::UniformQuantizedType>()) {
-      auto scale = rewriter.create<ConstantOp>(
-          qparams_op->getLoc(), rewriter.getF32FloatAttr(qtype.getScale()));
-      auto scale_tensor = rewriter.create<TFR::ConstantTensorOp>(
-          qparams_op->getLoc(), qparams_op.scale().getType(),
-          scale.getResult());
-      auto zp = rewriter.create<ConstantOp>(
-          qparams_op->getLoc(),
+      scale_op = rewriter.create<TF::ConstOp>(
+          loc, RankedTensorType::get({}, rewriter.getF32Type()),
+          rewriter.getF32FloatAttr(qtype.getScale()));
+      zp_op = rewriter.create<TF::ConstOp>(
+          loc, RankedTensorType::get({}, rewriter.getI32Type()),
           rewriter.getI32IntegerAttr(qtype.getZeroPoint()));
-      auto zp_tensor = rewriter.create<TFR::ConstantTensorOp>(
-          qparams_op->getLoc(), qparams_op.zp().getType(), zp.getResult());
-      qparams_op.scale().replaceAllUsesWith(scale_tensor.getResult());
-      qparams_op.zp().replaceAllUsesWith(zp_tensor.getResult());
-    } else {
-      // TODO(b/192720615): Add handling of UniformQuantizedPerAxisType
+    } else if (auto qtype =
+                   cast_qtype.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+      SmallVector<float> scales(qtype.getScales().begin(),
+                                qtype.getScales().end());
+      SmallVector<int32_t> zps(qtype.getZeroPoints().begin(),
+                               qtype.getZeroPoints().end());
+      const size_t num_channels = qtype.getScales().size();
+
+      auto scales_type = RankedTensorType::get(
+          {static_cast<int64_t>(num_channels)}, rewriter.getF32Type());
+      auto scales_attr =
+          DenseElementsAttr::get(scales_type, llvm::makeArrayRef(scales));
+      scale_op = rewriter.create<TF::ConstOp>(loc, scales_attr);
+
+      auto zps_type = RankedTensorType::get(
+          {static_cast<int64_t>(num_channels)}, rewriter.getI32Type());
+      auto zps_attr = DenseElementsAttr::get(zps_type, llvm::makeArrayRef(zps));
+      zp_op = rewriter.create<TF::ConstOp>(loc, zps_attr);
+    }
+    if (!scale_op || !zp_op) {
       return failure();
     }
+    auto scale_cast = rewriter.create<CastOp>(loc, qparams_op.scale().getType(),
+                                              scale_op.output());
+    auto zp_cast =
+        rewriter.create<CastOp>(loc, qparams_op.zp().getType(), zp_op.output());
+
+    qparams_op.scale().replaceAllUsesWith(scale_cast.out());
+    qparams_op.zp().replaceAllUsesWith(zp_cast.out());
     return success();
   }
 };
@@ -721,6 +749,8 @@ struct RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     return success();
   }
 };
+
+}  // namespace
 
 void ConstantTensorOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
