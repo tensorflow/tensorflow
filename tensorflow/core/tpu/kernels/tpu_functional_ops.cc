@@ -1214,6 +1214,9 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     VLOG(3) << "Cache Miss: partitioning function " << func_.name()
             << " cache_hash: " << cache_hash
             << " device_ordinal: " << device_ordinal;
+
+    profiler::TraceMe trace_me(
+        "TPUPartitionedCallOp-RewriteAndInstantiateFunctions");
     std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
     int num_cores_per_replica = 1;
     bool enable_spmd_xla_partitioning = false;
@@ -2586,6 +2589,7 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
 void TPUPartitionedCallOp::ExecuteFunctions(
     const std::vector<DeviceAndFHandle>& functions, OpKernelContext* ctx,
     int device_ordinal, int64_t ordinal_selector_req_id, DoneCallback done) {
+  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
   FunctionLibraryRuntime::Options opts;
   opts.step_container = ctx->step_container();
   opts.cancellation_manager = ctx->cancellation_manager();
