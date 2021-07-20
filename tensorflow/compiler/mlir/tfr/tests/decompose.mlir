@@ -154,3 +154,52 @@ func @quantized_tensor(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615
 // CHECK: "tfr.cast"(%[[arg0:.*]]) : (tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> !tfr.tensor
 // CHECK: "tfr.cast"(%[[result:.*]]) : (!tfr.tensor) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
 }
+
+// CHECK-LABEL: decompose_quant_act_range
+func @decompose_quant_act_range() -> !tfr.tensor_list {
+  %scale = constant 0.1 : f32
+  %zp = constant 42 : i64
+  %none_attr = tfr.constant "NONE" -> !tfr.attr
+  %relu_attr = tfr.constant "RELU" -> !tfr.attr
+  %relu6_attr = tfr.constant "RELU6" -> !tfr.attr
+  %reluN1_1_attr = tfr.constant "RELU_N1_TO_1" -> !tfr.attr
+  %none:2 = "tfr.quant_act_range"(%none_attr, %scale, %zp) : (!tfr.attr, f32, i64) -> (!tfr.tensor, !tfr.tensor)
+  %relu:2 = "tfr.quant_act_range"(%relu_attr, %scale, %zp) : (!tfr.attr, f32, i64) -> (!tfr.tensor, !tfr.tensor)
+  %relu6:2 = "tfr.quant_act_range"(%relu6_attr, %scale, %zp) : (!tfr.attr, f32, i64) -> (!tfr.tensor, !tfr.tensor)
+  %reluN1_1:2 = "tfr.quant_act_range"(%reluN1_1_attr, %scale, %zp) : (!tfr.attr, f32, i64) -> (!tfr.tensor, !tfr.tensor)
+  %result = "tfr.build_list"(
+    %none#0, %none#1, %relu#0, %relu#1,
+    %relu6#0, %relu6#1, %reluN1_1#0, %reluN1_1#1) : (
+      !tfr.tensor, !tfr.tensor, !tfr.tensor, !tfr.tensor,
+      !tfr.tensor, !tfr.tensor, !tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+  return %result : !tfr.tensor_list
+// CHECK-DAG: %[[N_128:.*]] = constant -128 : i32
+// CHECK-DAG: %[[N32:.*]] = constant 32 : i32
+// CHECK-DAG: %[[N42:.*]] = constant 42 : i32
+// CHECK-DAG: %[[N52:.*]] = constant 52 : i32
+// CHECK-DAG: %[[N102:.*]] = constant 102 : i32
+// CHECK-DAG: %[[N127:.*]] = constant 127 : i32
+// CHECK-NEXT: %[[none_min:.*]] = "tfr.constant_tensor"(%[[N_128]])
+// CHECK-NEXT: %[[none_max:.*]] = "tfr.constant_tensor"(%[[N127]])
+// CHECK-NEXT: %[[relu_min:.*]] = "tfr.constant_tensor"(%[[N42]])
+// CHECK-NEXT: %[[relu_max:.*]] = "tfr.constant_tensor"(%[[N127]])
+// CHECK-NEXT: %[[relu6_min:.*]] = "tfr.constant_tensor"(%[[N42]])
+// CHECK-NEXT: %[[relu6_max:.*]] = "tfr.constant_tensor"(%[[N102]])
+// CHECK-NEXT: %[[reluN1_1_min:.*]] = "tfr.constant_tensor"(%[[N32]])
+// CHECK-NEXT: %[[reluN1_1_max:.*]] = "tfr.constant_tensor"(%[[N52]])
+// CHECK-NEXT: %[[result:.*]] = "tfr.build_list"(%[[none_min]], %[[none_max]], %[[relu_min]], %[[relu_max]],
+// CHECK-SAME: %[[relu6_min]], %[[relu6_max]], %[[reluN1_1_min]], %[[reluN1_1_max]]
+// CHECK-NEXT: return %[[result]]
+}
+
+// CHECK-LABEL: decompose_quant_act_range_invalid
+func @decompose_quant_act_range_invalid() -> (!tfr.tensor, !tfr.tensor) {
+  %scale = constant 0.1 : f32
+  %zp = constant 42 : i64
+  %elu_attr = tfr.constant "ELU" -> !tfr.attr
+  %min, %max = "tfr.quant_act_range"(%elu_attr, %scale, %zp) : (!tfr.attr, f32, i64) -> (!tfr.tensor, !tfr.tensor)
+  return %min, %max : !tfr.tensor, !tfr.tensor
+// CHECK: %[[elu_attr:.*]] = tfr.constant "ELU" -> !tfr.attr
+// CHECK: %[[min:.*]], %[[max:.*]] = tfr.quant_act_range(%[[elu_attr]]
+// CHECK: return %[[min]], %[[max]]
+}
