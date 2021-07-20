@@ -695,13 +695,11 @@ cc_library(
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
             "//tensorflow/compiler/mlir/hlo:lhlo",
-            # copybara:uncomment_begin(target not open-sourced yet)
-            # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
-            # "//tensorflow/compiler/mlir/xla:attribute_exporter",
-            # "//tensorflow/compiler/xla/service:collective_ops_utils",
-            # "//tensorflow/core/tfrt/gpu:gpu_shared_context",
-            # "//tensorflow/core/tfrt/runtime:work_queue_interface",
-            # copybara:uncomment_end
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "//tensorflow/compiler/mlir/xla:attribute_exporter",
+            "//tensorflow/compiler/xla/service:collective_ops_utils",
+            "//tensorflow/core/tfrt/gpu:gpu_shared_context",
+            "//tensorflow/core/tfrt/runtime:work_queue_interface",
             "//tensorflow/stream_executor/cuda:cublas_plugin",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
@@ -711,10 +709,8 @@ cc_library(
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
-            # copybara:uncomment_begin(breaks bazel query)
-            # "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-            # "@tf_runtime//backends/gpu:gpu_types",
-            # copybara:uncomment_end
+            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_types",
         ],
         "//conditions:default": [],
     }),
