@@ -58,8 +58,8 @@ string CollGroupParams::ToString() const {
       "CollGroupParams {group_key=", group_key, " group_size=", group_size,
       " device_type=", device_type.type_string(), " num_tasks=", num_tasks,
       " runtime_details=", runtime_details.ToString(), " devices {");
-  for (const auto& d : device_names) {
-    strings::StrAppend(&v, d, ",");
+  for (const auto& d : devices) {
+    strings::StrAppend(&v, d.name(), ",");
   }
   strings::StrAppend(&v, "} task_names={");
   for (const auto& n : task_names) {
@@ -182,7 +182,7 @@ CollectiveContext::CollectiveContext(
       input(input),
       output(output),
       device(nullptr),
-      device_name(col_params->group.device_names[col_params->default_rank]) {}
+      device_name(col_params->group.devices[col_params->default_rank].name()) {}
 
 /*static*/
 int64 CollectiveExecutor::kInvalidId = -1;

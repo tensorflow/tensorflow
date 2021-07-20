@@ -115,12 +115,8 @@ void CollectiveParamResolverDistributed::CompleteParamsAsync(
       device, cp, cancel_mgr,
       [this, device, cp, cancel_mgr, done](Status s, const GroupRec* gr) {
         if (s.ok()) {
-          std::vector<DeviceAttributes> attributes;
           mutex_lock l(gr->mu);
-          for (const auto& item : gr->devices) {
-            attributes.push_back(item.second);
-          }
-          s = dev_resolver_->UpdateDeviceAttributes(attributes);
+          s = dev_resolver_->UpdateDeviceAttributes(gr->group.devices);
         }
         if (s.ok()) {
           CompleteInstanceDistributed(device.name(), gr, cp, cancel_mgr, done);
@@ -154,8 +150,8 @@ void CollectiveParamResolverDistributed::CompleteGroupAsync(
           response->set_group_size(gr->group.group_size);
           response->set_device_type(gr->group.device_type.type_string());
           response->set_num_tasks(gr->group.num_tasks);
-          for (const auto& item : gr->devices) {
-            *response->add_device_attributes() = item.second;
+          for (const DeviceAttributes& device : gr->group.devices) {
+            *response->add_device_attributes() = device;
           }
           response->set_communicator_key(
               gr->group.runtime_details.communicator_key);
@@ -178,7 +174,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   }
   {
     mutex_lock l(gr->mu);
-    if (!gr->status.ok() || gr->devices.size() != gr->group.group_size) {
+    if (!gr->status.ok() || gr->group.devices.size() != gr->group.group_size) {
       done(errors::FailedPrecondition(
           "group ", request->group_key(),
           " failed to resolve. This normally means the server has restarted"));
@@ -251,8 +247,10 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
       return errors::Internal(
           "CompleteGroupResponse group_size doesn't match device_name list");
     }
+    gr->group.devices.reserve(resp.device_attributes().size());
     for (const DeviceAttributes& device : resp.device_attributes()) {
-      gr->devices[device.name()] = device;
+      gr->group.devices.push_back(device);
+      gr->incarnations_by_device_name[device.name()] = device.incarnation();
     }
     gr->group.runtime_details.communicator_key = resp.communicator_key();
     FinishGroup(gr.get());

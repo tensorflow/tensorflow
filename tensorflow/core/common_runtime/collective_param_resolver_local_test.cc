@@ -60,8 +60,7 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
   }
 
   void RunCompleteDefaultRanking(
-      CollGroupParams group, const std::vector<DeviceAttributes>& attributes,
-      const std::vector<int32>& gpu_ring_order,
+      CollGroupParams group, const std::vector<int32>& gpu_ring_order,
       const std::vector<string>& expected_device_order) {
     ConfigProto config;
     if (!gpu_ring_order.empty()) {
@@ -70,8 +69,12 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
           ->set_collective_ring_order(absl::StrJoin(gpu_ring_order, ","));
     }
     ResetParamResolver(config);
-    prl_->CompleteDefaultRanking(attributes, &group);
-    EXPECT_EQ(group.device_names, expected_device_order);
+    prl_->CompleteDefaultRanking(&group);
+    std::vector<string> actual_device_order;
+    for (const DeviceAttributes& device : group.devices) {
+      actual_device_order.push_back(device.name());
+    }
+    EXPECT_EQ(actual_device_order, expected_device_order);
   }
 
   DeviceAttributes GetDeviceAttributes(const string& device_name) {
@@ -89,16 +92,15 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
 TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
   constexpr int kNumGpus = 8;
   CollGroupParams group;
-  std::vector<DeviceAttributes> attributes(kNumGpus);
   group.device_type = DeviceType("GPU");
   group.num_tasks = 1;
   group.group_size = kNumGpus;
   std::unordered_set<int> clique1 = {0, 1, 6, 7};
   for (int gpu_idx = 0; gpu_idx < kNumGpus; ++gpu_idx) {
     group.task_names.push_back("/job:localhost/replica:0/task:0");
-    group.device_names.push_back(strings::StrCat(
+    DeviceAttributes device;
+    device.set_name(strings::StrCat(
         "/job:localhost/replica:0/task:0/device:GPU:", gpu_idx));
-    DeviceLocality locality;
     // Build localities so that 0,1,6,7 and 2,3,4,5 form 2 strongly connected
     // components.  Across components, connect 3 and 7.
     for (int link_idx = 0; link_idx < kNumGpus; ++link_idx) {
@@ -107,21 +109,21 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
       bool link_in_clique1 = clique1.find(link_idx) != clique1.end();
       if ((gpu_in_clique1 && link_in_clique1) ||
           (!gpu_in_clique1 && !link_in_clique1)) {
-        LocalLinks* links = locality.mutable_links();
+        LocalLinks* links = device.mutable_locality()->mutable_links();
         InterconnectLink* ilink = links->add_link();
         ilink->set_device_id(link_idx);
         ilink->set_strength(2);
       } else if ((gpu_idx == 3 && link_idx == 7) ||
                  (gpu_idx == 7 && link_idx == 3)) {
-        LocalLinks* links = locality.mutable_links();
+        LocalLinks* links = device.mutable_locality()->mutable_links();
         InterconnectLink* ilink = links->add_link();
         ilink->set_device_id(link_idx);
         ilink->set_strength(1);
       }
     }
-    *attributes[gpu_idx].mutable_locality() = locality;
+    group.devices.push_back(device);
   }
-  RunCompleteDefaultRanking(group, attributes, {1, 3, 5, 7, 6, 4, 2, 0},
+  RunCompleteDefaultRanking(group, {1, 3, 5, 7, 6, 4, 2, 0},
                             {
                                 "/job:localhost/replica:0/task:0/device:GPU:1",
                                 "/job:localhost/replica:0/task:0/device:GPU:3",
@@ -132,7 +134,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
                                 "/job:localhost/replica:0/task:0/device:GPU:2",
                                 "/job:localhost/replica:0/task:0/device:GPU:0",
                             });
-  RunCompleteDefaultRanking(group, attributes, {7, 6, 5, 4, 3, 2, 1, 0},
+  RunCompleteDefaultRanking(group, {7, 6, 5, 4, 3, 2, 1, 0},
                             {
                                 "/job:localhost/replica:0/task:0/device:GPU:7",
                                 "/job:localhost/replica:0/task:0/device:GPU:6",
@@ -145,7 +147,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
                             });
   // With no gpu_ring_order passed, automatic link detection should kick in.
   // Starting at dev 0, the best order would be: 0,1,6,7,3,2,4,5
-  RunCompleteDefaultRanking(group, attributes, {},
+  RunCompleteDefaultRanking(group, {},
                             {
                                 "/job:localhost/replica:0/task:0/device:GPU:0",
                                 "/job:localhost/replica:0/task:0/device:GPU:1",
@@ -191,11 +193,11 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
     TF_ASSERT_OK(statuses[i]);
-    ASSERT_EQ(cps[i]->group.device_names.size(), 3);
+    ASSERT_EQ(cps[i]->group.devices.size(), 3);
     for (int j = 0; j < NUM_DEVS; ++j) {
       EXPECT_EQ(
           strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", j),
-          cps[i]->group.device_names[j]);
+          cps[i]->group.devices[j].name());
       EXPECT_TRUE(cps[i]->task.is_local[j]);
     }
     EXPECT_EQ(cps[i]->instance.impl_details.subdiv_source_rank.size(), 0);
@@ -246,11 +248,11 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
     TF_ASSERT_OK(statuses[i]);
-    ASSERT_EQ(cps[i]->group.device_names.size(), 3);
+    ASSERT_EQ(cps[i]->group.devices.size(), 3);
     for (int j = 0; j < NUM_DEVS; ++j) {
       EXPECT_EQ(
           strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", j),
-          cps[i]->group.device_names[j]);
+          cps[i]->group.devices[j].name());
       EXPECT_TRUE(cps[i]->task.is_local[j]);
     }
     EXPECT_EQ(cps[i]->is_source, (i == 1));
