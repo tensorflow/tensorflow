@@ -63,11 +63,9 @@ limitations under the License.
 //   case.
 // * we don't yet search for a good loop ordering. This probably matters less
 //   for arrays that fit entirely in cache.
-// * we don't yet parallelize.
 // * we could do a better job of vectorizing where the stride-1 dimensions are
 //   small (e.g., inner dimensions of size [..., 3] are not uncommon in some
 //   use cases.)
-// * consider adding a TransposePlanCache.
 
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 
@@ -972,6 +970,9 @@ void TransposePlan::Initialize() {
     b_tiling_.push_back(1);
     ++ndim;
   }
+  b_dims_ = Permute(a_dims_, permutation_);
+  ComputeStrides(elem_size_in_bytes_, b_dims_, b_tiling_, ldb_, ldb_tile_);
+
   const int pos_stride1a = ndim - 1;
   inner_kernel_is_memcpy_ = (permutation_[ndim - 1] == pos_stride1a);
 
@@ -991,7 +992,7 @@ void TransposePlan::Initialize() {
                                                         : lda_[l.dim_in_a];
     int b_dim = inverse_permutation[l.dim_in_a];
     int64_t b_stride =
-        (l.tile_interior && b_is_tiled_) ? lda_tile_[b_dim] : lda_[b_dim];
+        (l.tile_interior && b_is_tiled_) ? ldb_tile_[b_dim] : ldb_[b_dim];
     // Add a small penalty to the input strides: given the choice between
     // consecutive writes and consecutive reads, we would prefer consecutive
     // writes.
@@ -999,11 +1000,12 @@ void TransposePlan::Initialize() {
     return a_stride * penalty + b_stride;
   };
   absl::c_stable_sort(loop_order_, [&](const Loop& a, const Loop& b) {
-    return cost(a) > cost(b);
+    return std::make_tuple(inner_kernel_is_memcpy_ && a.tile_interior,
+                           -cost(a)) <
+           std::make_tuple(inner_kernel_is_memcpy_ && b.tile_interior,
+                           -cost(b));
   });
 
-  b_dims_ = Permute(a_dims_, permutation_);
-  ComputeStrides(elem_size_in_bytes_, b_dims_, b_tiling_, ldb_, ldb_tile_);
   if (inner_kernel_is_memcpy_) {
     // The stride-1 loop must be innermost.
     CHECK_EQ(loop_order_.back().dim_in_a, ndim - 1);
