@@ -395,7 +395,7 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options;
     options.set_replace_transpose_with_bitcast(false);
     options.set_enable_conv_operand_swap(false);
-    collectives_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+    collectives_pipeline.AddPass<AlgebraicSimplifier>(options);
 
     collectives_pipeline.AddPass<AllGatherBroadcastReorder>();
     TF_RETURN_IF_ERROR(collectives_pipeline.Run(hlo_module).status());
