@@ -280,8 +280,9 @@ TEST(PadOpTest, DynamicUnequalDimensions) {
     return;
   }
   PadOpDynamicModel m({TensorType_FLOAT32, {}}, {3, 2}, {TensorType_FLOAT32});
-  m.SetInput({1, 2, 3, 4});
-  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  // Skip invoking m.SetInput() since the method doesn't work with dynamic
+  // shapes.
+  m.SetPaddings({0, 0, 1, 1, 1, 1});
   ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions.";
 }
 
@@ -576,7 +577,8 @@ TEST(PadV2OpTest, DynamicUnequalDimensions) {
   }
   PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {}}, {4, 2}, 0.0,
                                {TensorType_FLOAT32});
-  m.SetInput({1, 2, 3, 4});
+  // Skip invoking m.SetInput() since the method doesn't work with dynamic
+  // shapes.
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
   ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions";
 }
