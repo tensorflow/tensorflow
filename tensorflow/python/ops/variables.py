@@ -3122,6 +3122,15 @@ def global_variables(scope=None):
   An alternative to global variables are local variables. See
   `tf.compat.v1.local_variables`
 
+  @compatibility(TF2)
+  Not compatible with eager execution and `tf.function`. In particular, Graph
+  collections are deprecated in TF2. Instead please create a
+  [tf.Module](https://www.tensorflow.org/guide/intro_to_modules)
+  container for all your model state, including variables.
+  You can then list all the variables in your `tf.Module` through the
+  `variables` attribute.
+  @end_compatibility
+
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered to
       include only items whose `name` attribute matches `scope` using
@@ -3213,6 +3222,14 @@ def trainable_variables(scope=None):
   adds new variables to the graph collection
   `GraphKeys.TRAINABLE_VARIABLES`. This convenience function returns the
   contents of that collection.
+
+  @compatibility(TF2)
+  Not compatible with eager execution and `tf.function`. In particular, Graph
+  collections are deprecated in TF2. Instead please create a `tf.Module`
+  container for all your model state, including variables.
+  You can then list all the trainable variables in your `tf.Module` through the
+  `trainable_variables` attribute.
+  @end_compatibility
 
   Args:
     scope: (Optional.) A string. If supplied, the resulting list is filtered to
