@@ -76,7 +76,8 @@ tool_names = [
     'flatbuffer_translate', 'tf-mlir-translate', 'mlir-tflite-runner',
     'tfcompile', 'json_to_flatbuffer', 'xla-gpu-opt', 'xla-mlir-gpu-opt',
     'xla-opt', 'hlo_to_llvm_ir', 'kernel-gen-opt', 'tf_to_kernel',
-    'tf_to_gpu_binary', 'xla-thunks-opt', 'tfjs-opt'
+    'tf_to_gpu_binary', 'xla-thunks-opt', 'tfjs-opt', 'tac-opt-all-backends',
+    'tac-translate'
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)
