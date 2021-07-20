@@ -661,6 +661,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",

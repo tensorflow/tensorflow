@@ -1525,9 +1525,16 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(results, values_to_slices(custom_call.output()));
   }
 
+  // For information about this calling convention, see
+  // xla/g3doc/custom_call.md.
+  using call_type = void (*)(CustomCallThunk::Stream /*stream*/,
+                             void** /*buffers*/, const char* /*opaque*/, size_t
+                             /*opaque_len*/);
+  auto typed_call_target = reinterpret_cast<call_type>(call_target);
+
   AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
-      GetThunkInfo(op), call_target, std::move(operands), std::move(results),
-      custom_call.backend_config().str()));
+      GetThunkInfo(op), typed_call_target, std::move(operands),
+      std::move(results), custom_call.backend_config().str()));
   return Status::OK();
 }
 
