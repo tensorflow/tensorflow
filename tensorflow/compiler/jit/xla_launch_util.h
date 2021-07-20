@@ -220,7 +220,7 @@ class XlaTensorBuffer : public TensorBuffer {
     if (allocator_->TracksAllocationSizes()) {
       auto ab = static_cast<int64>(allocator_->AllocatedSize(data()));
       proto->set_allocated_bytes(ab);
-      int64 id = allocator_->AllocationId(data());
+      int64_t id = allocator_->AllocationId(data());
       if (id > 0) {
         proto->set_allocation_id(id);
       }
