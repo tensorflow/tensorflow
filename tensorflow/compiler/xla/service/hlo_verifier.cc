@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 
@@ -502,6 +504,105 @@ Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
 
 namespace {
 
+Status CheckBufferOffset(const Shape& buffer_shape,
+                         const Shape& buffer_offset_shape) {
+  if (!buffer_offset_shape.IsTuple()) {
+    return InternalError("Buffer offset is not tuple.");
+  }
+  bool all_is_array =
+      absl::c_all_of(buffer_offset_shape.tuple_shapes(),
+                     [](const Shape& shape) { return shape.IsArray(); });
+  bool all_is_tuple =
+      absl::c_all_of(buffer_offset_shape.tuple_shapes(),
+                     [](const Shape& shape) { return shape.IsTuple(); });
+  if (!all_is_array && !all_is_tuple) {
+    return InternalError(
+        "Buffer offset should either be a tuple of arrays or "
+        " a tuple of tuples.");
+  }
+
+  if (all_is_tuple) {
+    if (absl::c_any_of(buffer_offset_shape.tuple_shapes(),
+                       [&buffer_shape](const Shape& shape) {
+                         return ShapeUtil::TupleElementCount(shape) !=
+                                buffer_shape.rank();
+                       })) {
+      return InternalError(
+          "Buffer offset index should have the same number of "
+          "elements as the buffer's rank.");
+    }
+  } else {
+    if (buffer_offset_shape.tuple_shapes_size() != buffer_shape.rank()) {
+      return InternalError(
+          "Buffer offset index should have the same number of "
+          "elements as the buffer's rank.");
+    }
+  }
+  return Status::OK();
+}
+
+Status CheckInplaceCollectivePermute(HloInstruction* collective_permute) {
+  if (collective_permute->operand_count() == 1) {
+    return Status::OK();
+  }
+  if (collective_permute->operand_count() != 4) {
+    return InternalError("Unexpected number of operands: %d.",
+                         collective_permute->operand_count());
+  }
+
+  const Shape& input_buffer_shape = collective_permute->operand(0)->shape();
+  const Shape& output_buffer_shape = collective_permute->operand(1)->shape();
+  const Shape& input_offset_shape = collective_permute->operand(2)->shape();
+  const Shape& output_offset_shape = collective_permute->operand(3)->shape();
+
+  if (input_buffer_shape.IsArray() && output_buffer_shape.IsArray()) {
+    Status check_input_buffer_offset =
+        CheckBufferOffset(input_buffer_shape, input_offset_shape);
+    if (!check_input_buffer_offset.ok()) {
+      return check_input_buffer_offset;
+    }
+    Status check_output_buffer_offset =
+        CheckBufferOffset(output_buffer_shape, output_offset_shape);
+    if (!check_output_buffer_offset.ok()) {
+      return check_output_buffer_offset;
+    }
+  } else if (input_buffer_shape.IsTuple() && output_buffer_shape.IsTuple()) {
+    if (ShapeUtil::TupleElementCount(input_buffer_shape) !=
+        ShapeUtil::TupleElementCount(output_buffer_shape)) {
+      return InternalError("Unmatching input buffers and output buffers.");
+    }
+    if (!input_offset_shape.IsTuple() ||
+        ShapeUtil::TupleElementCount(input_offset_shape) !=
+            ShapeUtil::TupleElementCount(input_buffer_shape)) {
+      return InternalError("Unmatching input buffers and input offset.");
+    }
+    for (int i = 0; i < input_buffer_shape.tuple_shapes_size(); ++i) {
+      Status check_input_buffer_offset =
+          CheckBufferOffset(input_buffer_shape.tuple_shapes(i),
+                            input_offset_shape.tuple_shapes(i));
+      if (!check_input_buffer_offset.ok()) {
+        return check_input_buffer_offset;
+      }
+    }
+    if (!output_offset_shape.IsTuple() ||
+        ShapeUtil::TupleElementCount(output_offset_shape) !=
+            ShapeUtil::TupleElementCount(output_buffer_shape)) {
+      return InternalError("Unmatching output buffers and output offset.");
+    }
+    for (int i = 0; i < output_buffer_shape.tuple_shapes_size(); ++i) {
+      Status check_output_buffer_offset =
+          CheckBufferOffset(output_buffer_shape.tuple_shapes(i),
+                            output_offset_shape.tuple_shapes(i));
+      if (!check_output_buffer_offset.ok()) {
+        return check_output_buffer_offset;
+      }
+    }
+  } else {
+    return InternalError("Unmatching input buffers and output buffers.");
+  }
+  return Status::OK();
+}
+
 Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
                                      CollectiveOpGroupMode group_mode) {
   // A source or target cannot appear twice in the collective-permute's
@@ -514,9 +615,18 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
   const int64 limit = group_mode == CollectiveOpGroupMode::kCrossReplica
                           ? config.replica_count()
                           : config.num_partitions();
+  absl::flat_hash_map<int64, std::vector<int64>> seen_source_to_targets;
+  absl::flat_hash_map<int64, std::vector<int64>> seen_target_to_sources;
+  int allowed_seen_count = 1;
+  if (hlo->operand_count() == 4) {
+    if (hlo->operand(0)->shape().IsArray()) {
+      allowed_seen_count = hlo->operand(2)->shape().tuple_shapes_size();
+    } else {
+      allowed_seen_count =
+          hlo->operand(2)->shape().tuple_shapes(0).tuple_shapes_size();
+    }
+  }
 
-  absl::flat_hash_set<int64> seen_sources;
-  absl::flat_hash_set<int64> seen_targets;
   for (const auto& p : hlo->source_target_pairs()) {
     TF_RET_CHECK(p.first >= 0)
         << "Source " << p.first
@@ -526,11 +636,22 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
         << "Source " << p.first
         << " in the instruction's source-target pair must be < " << limit
         << " : " << hlo->ToString();
-    if (!seen_sources.insert(p.first).second) {
-      return InternalError(
-          "Source %d appears more than once in instruction's source-target "
-          "pairs: %s",
-          p.first, hlo->ToString());
+    if (seen_source_to_targets.contains(p.first) &&
+        seen_source_to_targets[p.first].size() == allowed_seen_count) {
+      if (allowed_seen_count == 1) {
+        return InternalError(
+            "Source %d appears more than once in instruction's source-target "
+            "pairs: %s",
+            p.first, hlo->ToString());
+      } else {
+        return InternalError(
+            "Source %d appears more than %d times in instruction's "
+            "source-target "
+            "pairs: %s",
+            p.first, allowed_seen_count, hlo->ToString());
+      }
+    } else {
+      seen_source_to_targets[p.first].push_back(p.second);
     }
     TF_RET_CHECK(p.second >= 0)
         << "Target " << p.second
@@ -540,11 +661,22 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
         << "Target " << p.second
         << " in the instruction's source-target pair must be < " << limit
         << " : " << hlo->ToString();
-    if (!seen_targets.insert(p.second).second) {
-      return InternalError(
-          "Target %d appears more than once in instruction's source-target "
-          "pairs: %s",
-          p.second, hlo->ToString());
+    if (seen_target_to_sources.contains(p.second) &&
+        seen_target_to_sources[p.second].size() == allowed_seen_count) {
+      if (allowed_seen_count == 1) {
+        return InternalError(
+            "Target %d appears more than once in instruction's source-target "
+            "pairs: %s",
+            p.second, hlo->ToString());
+      } else {
+        return InternalError(
+            "Target %d appears more than %d times in instruction's "
+            "source-target "
+            "pairs: %s",
+            p.second, allowed_seen_count, hlo->ToString());
+      }
+    } else {
+      seen_target_to_sources[p.second].push_back(p.first);
     }
   }
   return Status::OK();
@@ -557,6 +689,7 @@ Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
       CollectiveOpGroupMode group_mode,
       GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
                                /*use_global_device_ids=*/absl::nullopt));
+  TF_RETURN_IF_ERROR(CheckInplaceCollectivePermute(hlo));
   TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
   std::vector<const Shape*> operand_shapes;
   absl::c_transform(
@@ -571,6 +704,7 @@ Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
       CollectiveOpGroupMode group_mode,
       GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
                                /*use_global_device_ids=*/absl::nullopt));
+  TF_RETURN_IF_ERROR(CheckInplaceCollectivePermute(hlo));
   TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
   std::vector<const Shape*> operand_shapes;
   absl::c_transform(

@@ -234,6 +234,8 @@ HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);
 HLO_MATCHER(CollectivePermute);
+HLO_MATCHER(CollectivePermuteStart);
+HLO_MATCHER(CollectivePermuteDone);
 HLO_MATCHER(Compare);
 HLO_MATCHER(Concatenate);
 HLO_MATCHER(Conditional);

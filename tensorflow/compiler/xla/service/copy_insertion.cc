@@ -1780,11 +1780,17 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
         TF_RETURN_IF_ERROR(
             AddCopiesForConditional(*alias_analysis, instruction));
       } else {
+        // When an operand is a tuple, we avoid copying the operand multiple
+        // times by recording and checking the operand number of operands that
+        // have been copied.
+        absl::flat_hash_set<int64> copied_operands;
         for (const auto& operand_and_output_index :
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
           const HloUse& operand = operand_and_output_index.first;
-          CHECK_EQ(operand.operand_index, ShapeIndex{})
-              << "Support for non-{} shape operand not currently implemented.";
+          if (copied_operands.contains(operand.operand_number)) {
+            continue;
+          }
+          copied_operands.insert(operand.operand_number);
           TF_RETURN_IF_ERROR(AddCopiesForInPlaceOperation(
               *alias_analysis, instruction, operand.operand_number));
         }

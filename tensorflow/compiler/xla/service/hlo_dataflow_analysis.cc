@@ -1003,12 +1003,26 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteStartValueSet(
   bool changed = false;
   // CollectivePermuteStart forwards the operand value to element {0} of its
   // output.
-  const HloValueSet& operand_value_set =
-      GetValueSet(collective_permute_start->operand(0));
-  HloValueSet& value_set = GetValueSet(collective_permute_start, {0});
-  if (value_set != operand_value_set) {
-    value_set = operand_value_set;
-    changed = true;
+  if (collective_permute_start->operand(0)->shape().IsTuple()) {
+    for (int i = 0; i < ShapeUtil::TupleElementCount(
+                            collective_permute_start->operand(0)->shape());
+         ++i) {
+      const HloValueSet& operand_value_set =
+          GetValueSet(collective_permute_start->operand(0), {i});
+      HloValueSet& value_set = GetValueSet(collective_permute_start, {0, i});
+      if (value_set != operand_value_set) {
+        value_set = operand_value_set;
+        changed = true;
+      }
+    }
+  } else {
+    const HloValueSet& operand_value_set =
+        GetValueSet(collective_permute_start->operand(0));
+    HloValueSet& value_set = GetValueSet(collective_permute_start, {0});
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
   }
   return changed;
 }
@@ -1019,12 +1033,26 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteDoneValueSet(
            HloOpcode::kCollectivePermuteDone);
   bool changed = false;
   // CollectivePermuteDone forwards the operand value at {1} to its output.
-  const HloValueSet& operand_value_set =
-      GetValueSet(collective_permute_done->operand(0), {1});
-  HloValueSet& value_set = GetValueSet(collective_permute_done);
-  if (value_set != operand_value_set) {
-    value_set = operand_value_set;
-    changed = true;
+  if (collective_permute_done->shape().IsTuple()) {
+    for (int i = 0;
+         i < ShapeUtil::TupleElementCount(collective_permute_done->shape());
+         ++i) {
+      const HloValueSet& operand_value_set =
+          GetValueSet(collective_permute_done->operand(0), {1, i});
+      HloValueSet& value_set = GetValueSet(collective_permute_done, {i});
+      if (value_set != operand_value_set) {
+        value_set = operand_value_set;
+        changed = true;
+      }
+    }
+  } else {
+    const HloValueSet& operand_value_set =
+        GetValueSet(collective_permute_done->operand(0), {1});
+    HloValueSet& value_set = GetValueSet(collective_permute_done);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
   }
   return changed;
 }
@@ -1306,11 +1334,21 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_value_at(/*index=*/{3});
           if (instruction->operand_count() > 1) {
             CHECK_EQ(instruction->operand_count(), 4);
+            if (instruction->operand(1)->shape().IsTuple()) {
+              for (int i = 0; i < ShapeUtil::TupleElementCount(
+                                      instruction->operand(1)->shape());
+                   ++i) {
+                define_value_at(/*index=*/{1, i});
+              }
+            }
             define_value_at(/*index=*/{4});
           }
           break;
         case HloOpcode::kCollectivePermuteDone:
           // CollectivePermuteDone's output aliases its input tuple element {1}.
+          if (instruction->shape().IsTuple()) {
+            define_value_at(/*index=*/{});
+          }
           break;
         case HloOpcode::kRecvDone:
           // RecvDone produces a two-element tuple. Element zero aliases its
