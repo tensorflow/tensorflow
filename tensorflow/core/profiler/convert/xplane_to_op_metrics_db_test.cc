@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
@@ -87,6 +90,7 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
 
   const OpMetrics& idle = op_metrics.metrics_db().at(1);
   EXPECT_EQ(kIdle, idle.name());
+  EXPECT_EQ(kIdle, idle.category());
   // Idle time is the gap between Op2 start and the end of Op1, which is 2000ns.
   EXPECT_EQ(NanosToPicos(2000), idle.time_ps());
 
@@ -143,7 +147,8 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   // from all GPU streams, which is from 100000 to 130000.
   uint64 total_duration =
       NanosToPicos(kKernel3StartNs + kKernel3DurationNs - kKernel1StartNs);
-  EXPECT_EQ(total_duration, op_metrics.total_time_ps());
+  EXPECT_EQ(std::max(total_duration, total_op_duration),
+            op_metrics.total_time_ps());
 
   // Verifies OpMetricsDb is built correctly.
   const OpMetrics& op_1 = op_metrics.metrics_db().at(0);
@@ -166,6 +171,7 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
 
   const OpMetrics& idle = op_metrics.metrics_db().at(3);
   EXPECT_EQ(kIdle, idle.name());
+  EXPECT_EQ(kIdle, idle.category());
   // GPU is always busy in this example.
   EXPECT_EQ(NanosToPicos(0), idle.time_ps());
 }
