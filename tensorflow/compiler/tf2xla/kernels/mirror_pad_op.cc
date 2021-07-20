@@ -38,13 +38,13 @@ class MirrorPadOp : public XlaOpKernel {
     // e.g. input is [1, 2, 3] and paddings is [0, 2], then the output is:
     // - [1, 2, 3, 2, 1] in reflect mode
     // - [1, 2, 3, 3, 2] in symmetric mode.
-    int64 excluded_edges = mode == MirrorPadMode::REFLECT ? 1 : 0;
+    int64_t excluded_edges = mode == MirrorPadMode::REFLECT ? 1 : 0;
     xla::XlaOp accum = t;
-    for (int64 dimno = original_shape.rank() - 1; dimno >= 0; --dimno) {
+    for (int64_t dimno = original_shape.rank() - 1; dimno >= 0; --dimno) {
       auto t_rev = xla::Rev(accum, {dimno});
-      int64 lhs_padding = pad_literal.Get<int64>({dimno, 0});
-      int64 rhs_padding = pad_literal.Get<int64>({dimno, 1});
-      int64 dim_size = original_shape.dimensions(dimno);
+      int64_t lhs_padding = pad_literal.Get<int64>({dimno, 0});
+      int64_t rhs_padding = pad_literal.Get<int64>({dimno, 1});
+      int64_t dim_size = original_shape.dimensions(dimno);
 
       // Padding amounts on each side must be no more than the size of the
       // original shape.
@@ -125,13 +125,13 @@ class MirrorPadGradOp : public XlaOpKernel {
     // e.g. input is [1, 2, 3] and paddings is [0, 2], then the output is:
     // - [1, 2, 3, 2, 1] in reflect mode
     // - [1, 2, 3, 3, 2] in symmetric mode.
-    int64 excluded_edges = mode == MirrorPadMode::REFLECT ? 1 : 0;
+    int64_t excluded_edges = mode == MirrorPadMode::REFLECT ? 1 : 0;
     xla::XlaOp grad = t;
-    for (int64 dimno = original_shape.rank() - 1; dimno >= 0; --dimno) {
-      int64 lhs_padding = pad_literal.Get<int64>({dimno, 0});
-      int64 rhs_padding = pad_literal.Get<int64>({dimno, 1});
-      int64 dim_size = original_shape.dimensions(dimno);
-      int64 result_dim_size = dim_size - lhs_padding - rhs_padding;
+    for (int64_t dimno = original_shape.rank() - 1; dimno >= 0; --dimno) {
+      int64_t lhs_padding = pad_literal.Get<int64>({dimno, 0});
+      int64_t rhs_padding = pad_literal.Get<int64>({dimno, 1});
+      int64_t dim_size = original_shape.dimensions(dimno);
+      int64_t result_dim_size = dim_size - lhs_padding - rhs_padding;
 
       // Padding amounts on each side must be no more than the size of the
       // original shape.

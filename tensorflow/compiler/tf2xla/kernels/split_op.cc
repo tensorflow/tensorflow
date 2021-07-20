@@ -42,7 +42,7 @@ class SplitOp : public XlaOpKernel {
         ctx, TensorShapeUtils::IsScalar(split_dim_shape),
         errors::InvalidArgument("split_dim must be a scalar but has rank ",
                                 split_dim_shape.dims()));
-    int64 split_dim_orig;
+    int64_t split_dim_orig;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &split_dim_orig));
 
     int32 split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()
@@ -78,7 +78,7 @@ class SplitOp : public XlaOpKernel {
     for (int i = 0; i < input_shape.dims(); ++i) {
       // Initially set up the limits to be the full size of the input:
       // the split dimension is filled in below.
-      int64 dim = input_shape.dim_size(i);
+      int64_t dim = input_shape.dim_size(i);
       limits[i] = dim;
     }
 
@@ -109,10 +109,10 @@ class SplitVOp : public XlaOpKernel {
                 errors::InvalidArgument(
                     "split_dim_tensor must have exactly one element."));
 
-    int64 split_dim_orig;
+    int64_t split_dim_orig;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(2, &split_dim_orig));
-    int64 split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()
-                                         : split_dim_orig;
+    int64_t split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()
+                                           : split_dim_orig;
     OP_REQUIRES(ctx, 0 <= split_dim && split_dim < input_shape.dims(),
                 errors::InvalidArgument("-input rank(-", input_shape.dims(),
                                         ") <= split_dim < input rank (",
@@ -147,7 +147,7 @@ class SplitVOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &split_sizes));
 
     for (int i = 0; i < num_split; ++i) {
-      int64 slice_size = split_sizes[i];
+      int64_t slice_size = split_sizes[i];
       if (slice_size == -1) {
         OP_REQUIRES(
             ctx, neg_one_dim == -1,

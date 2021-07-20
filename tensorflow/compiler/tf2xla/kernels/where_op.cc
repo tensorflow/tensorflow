@@ -44,7 +44,7 @@ class WhereOp : public XlaOpKernel {
     auto iota_shape = input_shape.ValueOrDie();
     iota_shape.set_element_type(xla::S32);
 
-    int64 flattened_size = xla::Product(iota_shape.dimensions());
+    int64_t flattened_size = xla::Product(iota_shape.dimensions());
     xla::XlaOp reshaped_condition = xla::Reshape(condition, {flattened_size});
     xla::XlaOp zeros = xla::ZerosLike(reshaped_condition);
     xla::XlaOp zeros_int = xla::ConvertElementType(zeros, xla::S32);
@@ -60,7 +60,7 @@ class WhereOp : public XlaOpKernel {
     std::vector<xla::PrimitiveType> types_to_sort = {xla::S32};
     // Generate iota for each dimension, which after combining becomes
     // indices of each element.
-    for (int64 axis = 0; axis < iota_shape.rank(); ++axis) {
+    for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
       xla::XlaOp iota = xla::Iota(ctx->builder(), iota_shape, axis);
       xla::XlaOp reshaped = xla::Reshape(iota, {flattened_size});
       to_sort.push_back(reshaped);
@@ -72,7 +72,7 @@ class WhereOp : public XlaOpKernel {
         /*dimension=*/0,
         /*is_stable=*/true);
     std::vector<xla::XlaOp> to_concat;
-    for (int64 i = 0; i < iota_shape.rank(); ++i) {
+    for (int64_t i = 0; i < iota_shape.rank(); ++i) {
       xla::XlaOp index_single_dim = xla::GetTupleElement(sorted, i + 1);
       to_concat.push_back(xla::Reshape(index_single_dim, {flattened_size, 1}));
     }

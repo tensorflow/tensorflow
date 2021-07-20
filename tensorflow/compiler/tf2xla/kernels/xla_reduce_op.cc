@@ -62,7 +62,7 @@ class XlaReduceOp : public XlaOpKernel {
                 errors::InvalidArgument("init_value must be a scalar but got ",
                                         init_value_shape.DebugString()));
 
-    auto dim_in_range = [rank](int64 dim) { return dim >= 0 && dim < rank; };
+    auto dim_in_range = [rank](int64_t dim) { return dim >= 0 && dim < rank; };
     OP_REQUIRES(context,
                 rank >= dimensions_to_reduce_.size() &&
                     absl::c_all_of(dimensions_to_reduce_, dim_in_range),
@@ -217,7 +217,7 @@ class XlaVariadicReduceOpV2 : public XlaOpKernel {
             xla::ShapeUtil::HumanString(expected_shape), " got ",
             xla::ShapeUtil::HumanString(reducer.xla_output_shape)));
 
-    auto dim_in_range = [rank](int64 dim) { return dim >= 0 && dim < rank; };
+    auto dim_in_range = [rank](int64_t dim) { return dim >= 0 && dim < rank; };
     OP_REQUIRES(context,
                 rank >= dimensions_to_reduce_.size() &&
                     absl::c_all_of(dimensions_to_reduce_, dim_in_range),

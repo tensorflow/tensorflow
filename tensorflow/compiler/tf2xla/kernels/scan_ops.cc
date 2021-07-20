@@ -54,7 +54,7 @@ class ScanOp : public XlaOpKernel {
                 errors::InvalidArgument("ScanOp: axis must be a scalar, not ",
                                         tensor_axis_shape.DebugString()));
 
-    int64 axis;
+    int64_t axis;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &axis));
     if (axis < 0) {
       axis += input_shape.dims();

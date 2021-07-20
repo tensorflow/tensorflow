@@ -99,13 +99,13 @@ class ExtractImagePatchesOp : public XlaOpKernel {
         ctx, input_shape.dims() == num_dims,
         errors::InvalidArgument("input must be ", num_dims, "-dimensional",
                                 input_shape.DebugString()));
-    const int64 depth = input_shape.dim_size(feature_dim);
+    const int64_t depth = input_shape.dim_size(feature_dim);
 
     xla::XlaBuilder* builder = ctx->builder();
 
     // The following code is equivalent to:
     // eye = np.eye(kH * kW * D).reshape([kH, kW, D, kH * kW * kD])
-    int64 kernel_size = 1;
+    int64_t kernel_size = 1;
     std::vector<int64> kernel_shape(num_dims, 1);
     for (int i = 0; i < num_spatial_dims; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
@@ -137,14 +137,14 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     dims.set_kernel_output_feature_dimension(num_spatial_dims + 1);
 
     for (int i = 0; i < num_spatial_dims; ++i) {
-      const int64 dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+      const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
       dims.add_input_spatial_dimensions(dim);
       dims.add_kernel_spatial_dimensions(i);
       dims.add_output_spatial_dimensions(dim);
       window_strides[i] = strides_.at(dim);
       rhs_dilation[i] = dilations_.at(dim);
 
-      int64 unused_output_size;
+      int64_t unused_output_size;
       OP_REQUIRES_OK(
           ctx, GetWindowedOutputSizeVerboseV2(
                    input_shape.dim_size(dim), ksizes_[dim], rhs_dilation[i],
