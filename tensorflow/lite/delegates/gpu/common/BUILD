@@ -27,7 +27,6 @@ exports_files(
         "custom_parsers.h",
         "custom_transformations.h",
     ],
-    visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
 cc_library(
