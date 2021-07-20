@@ -204,8 +204,6 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     I64Attr:$batch_size,
-    I64Attr:$lhs_stride,
-    I64Attr:$rhs_stride,
     OptionalAttr<I64Attr>:$algorithm);
 }
 
@@ -221,8 +219,6 @@ def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     I64Attr:$batch_size,
-    I64Attr:$lhs_stride,
-    I64Attr:$rhs_stride,
     OptionalAttr<I64Attr>:$algorithm);
 }
 

@@ -214,23 +214,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "gemm_broadcast_folding_rewrite_test",
-    srcs = [
-        "gemm_broadcast_folding_rewrite_test.cc",
-    ],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-    ],
-    deps = [
-        ":gpu_codegen_test",
-        "//tensorflow/compiler/xla:error_spec",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "gpu_too_many_blocks_test",
     srcs = [
         "gpu_too_many_blocks_test.cc",
