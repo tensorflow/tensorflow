@@ -7345,6 +7345,7 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // lowering pattern so this should be safe.
     TypeID::get<TF::OutfeedEnqueueTupleOp>(),
     TypeID::get<TF::CrossReplicaSumOp>(),
+    TypeID::get<TF::XlaShardingOp>(),
   };
   // clang-format on
   return *ops;
