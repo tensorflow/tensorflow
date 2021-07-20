@@ -162,6 +162,7 @@ def _gen_kernel_bin_impl(ctx):
             "--cpu_codegen=%s" % ctx.attr.cpu_codegen,
         ],
         mnemonic = "compile",
+	use_default_shell_env = True,
     )
     compilation_outputs = cc_common.create_compilation_outputs(
         # We always produce PIC object files, so use the same object files for both.
