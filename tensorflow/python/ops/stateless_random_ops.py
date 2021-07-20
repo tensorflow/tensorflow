@@ -91,12 +91,6 @@ def convert_alg_to_int(alg):
                     (alg, type(alg)))
 
 
-def _resolve_alg(alg):
-  if alg == Algorithm.AUTO_SELECT.value:
-    return gen_stateless_random_ops_v2.stateless_random_get_alg()
-  return alg
-
-
 def _get_key_counter(seed, alg):
   """Calculates the key and counter to pass to raw RNG ops.
 
@@ -135,7 +129,7 @@ def _get_key_counter_alg(seed, alg):
     alg = Algorithm.AUTO_SELECT.value
   alg = convert_alg_to_int(alg)
   key, counter = _get_key_counter(seed, alg)
-  return key, counter, _resolve_alg(alg)
+  return key, counter, alg
 
 
 def _philox_scramble_seed(seed):
