@@ -54,7 +54,10 @@ cc_library(
     srcs = ["shape.cc"],
     hdrs = ["shape.h"],
     visibility = ["//visibility:public"],
-    deps = ["@com_google_absl//absl/status:statusor"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_test(

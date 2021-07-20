@@ -60,13 +60,13 @@ using ConstTensorViewOr = absl::StatusOr<std::unique_ptr<const TensorView>>;
 // The interfaces are static and use the CRTP pattern instead of virtual
 // methods.
 
+// The attribute dictionary passed to the op
+using AttrValue = absl::variant<bool, int64_t, float, absl::string_view>;
+
 // The interface for available methods during an op kernel initialization
 template <typename SubType>
 class InitContext {
  public:
-  // The attribute dictionary passed to the op
-  using AttrValue = absl::variant<bool, int64_t, float, absl::string_view>;
-
   // Read the given attribute and populate the given value.
   template <typename AttrType>
   absl::Status GetAttr(const std::string& attr_name, AttrType* value) const;
@@ -90,6 +90,14 @@ class InvokeContext {
   TensorViewOr GetOutput(const int idx, const Shape& shape) const {
     return static_cast<const SubType&>(*this).GetOutput(idx, shape);
   }
+  // Number of input tensors
+  int NumInputs() const {
+    return static_cast<const SubType&>(*this).NumInputs();
+  }
+  // Number of output tensors
+  int NumOutputs() const {
+    return static_cast<const SubType&>(*this).NumOutputs();
+  }
 };
 
 // The interface for available methods during shape inference
@@ -107,6 +115,23 @@ class ShapeInferenceContext {
   // Read an input tensor during shape inference
   ConstTensorViewOr GetInputTensor(const int idx) const {
     return static_cast<const SubType&>(*this).GetInputTensor(idx);
+  }
+  // Number of input tensors
+  int NumInputs() const {
+    return static_cast<const SubType&>(*this).NumInputs();
+  }
+  // Number of output tensors
+  int NumOutputs() const {
+    return static_cast<const SubType&>(*this).NumOutputs();
+  }
+  // Read the given attribute and populate the given value.
+  template <typename AttrType>
+  absl::Status GetAttr(const std::string& attr_name, AttrType* value) const;
+
+ protected:
+  // Read a given attribute or return error
+  absl::StatusOr<AttrValue> GetAttr(const std::string& attr_name) const {
+    return static_cast<const SubType&>(*this).GetAttr(attr_name);
   }
 };
 
@@ -128,14 +153,17 @@ struct ContextTypeForRuntime {
 //   template<Runtime R>
 //   class MyOp : public OpKernelShim<MyOp, R> {
 //
-//     // Input tensors declaration (name, type, shape)
-//     static std::vector<TensorDeclaration> Inputs();
-//
-//     // Output tensors declaration (name, type, shape)
-//     static std::vector<TensorDeclaration> Outputs();
-//
-//     // Attributes declaration (name, type)
+//     // Attributes declaration
+//     // (syntax: https://www.tensorflow.org/guide/create_op)
 //     static std::vector<std::string> Attrs();
+//
+//     // Input tensors declaration
+//     // (syntax: https://www.tensorflow.org/guide/create_op)
+//     static std::vector<std::string> Inputs();
+//
+//     // Output tensors declaration
+//     // (syntax: https://www.tensorflow.org/guide/create_op)
+//     static std::vector<std::string> Outputs();
 //
 //     // Initializes the op
 //     absl::Status Init(InitContext* ctx);
@@ -183,25 +211,16 @@ class OpKernelShim {
   OpKernelShim() = default;
 };
 
-// Tensor declaration. It includes the declared name, type and shape of a
-// tensor
-struct TensorDeclaration {
-  // A name type string. See tensorflow/core/framework/op.h for
-  // documentation on its syntax.
-  absl::string_view name_type;
-  // Declared shape of the tensor.
-  Shape shape;
-};
-
 /////////////////////// Implementations
 
-template <typename SubType>
+namespace internal {
+// Extract the given AttrType from the AttrValue variant or returns error.
 template <typename AttrType>
-absl::Status InitContext<SubType>::GetAttr(const std::string& attr_name,
-                                           AttrType* value) const {
-  const auto attr_value_or = GetAttr(attr_name);
+absl::Status GetAttr(const std::string& attr_name,
+                     const absl::StatusOr<AttrValue> attr_value_or,
+                     AttrType* value) {
   if (!attr_value_or.ok()) return attr_value_or.status();
-  const InitContext::AttrValue& attr_value = attr_value_or.value();
+  const AttrValue& attr_value = attr_value_or.value();
   if (!absl::holds_alternative<AttrType>(attr_value)) {
     return absl::InternalError(
         absl::StrCat("The attribute type does not match the provided "
@@ -210,6 +229,23 @@ absl::Status InitContext<SubType>::GetAttr(const std::string& attr_name,
   }
   *value = absl::get<AttrType>(attr_value);
   return absl::OkStatus();
+}
+}  // namespace internal
+
+template <typename SubType>
+template <typename AttrType>
+absl::Status InitContext<SubType>::GetAttr(const std::string& attr_name,
+                                           AttrType* value) const {
+  const auto attr_value_or = GetAttr(attr_name);
+  return internal::GetAttr<AttrType>(attr_name, attr_value_or, value);
+}
+
+template <typename SubType>
+template <typename AttrType>
+absl::Status ShapeInferenceContext<SubType>::GetAttr(
+    const std::string& attr_name, AttrType* value) const {
+  const auto attr_value_or = GetAttr(attr_name);
+  return internal::GetAttr<AttrType>(attr_name, attr_value_or, value);
 }
 
 }  // namespace shim
