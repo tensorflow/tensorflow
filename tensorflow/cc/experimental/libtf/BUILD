@@ -254,6 +254,32 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "variable_test",
+    size = "small",
+    srcs = ["tests/variable_test.cc"],
+    tags = ["no_oss"],  # TODO(b/193268458): Need to disable TFRT.
+    deps = [
+        ":function",
+        ":libtf",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_function",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:graph_function",
+        "//tensorflow/c/eager:unified_api_testutil",
+        "//tensorflow/c/experimental/ops:resource_variable_ops",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+tf_cc_test(
     name = "libtf_transform_test",
     size = "medium",
     srcs = ["tests/mlir_transform_test.cc"],
