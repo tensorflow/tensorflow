@@ -12,23 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/cc/experimental/libtf/runtime/runtime.h"
-
-#include <string>
-
-#include "absl/strings/match.h"
-#include "tensorflow/c/eager/unified_api_testutil.h"
-#include "tensorflow/c/tf_datatype.h"
-#include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/cc/experimental/libtf/object.h"
-#include "tensorflow/cc/experimental/libtf/runtime/core/core.h"
-#include "tensorflow/cc/experimental/libtf/runtime/tfrt/tfrt.h"
-#include "tensorflow/cc/experimental/libtf/value.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/cc/experimental/libtf/tests/runtime_test.h"
 
 namespace tf {
 namespace libtf {
@@ -38,12 +22,8 @@ using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::tf::libtf::impl::TaggedValueTensor;
 
-typedef Runtime (*RuntimeFn)();
-
 constexpr char kSimpleModel[] =
     "tensorflow/cc/experimental/libtf/tests/testdata/simple-model";
-
-class RuntimeTest : public ::testing::TestWithParam<RuntimeFn> {};
 
 TEST_P(RuntimeTest, SimpleModelCallableFloatTest) {
   Runtime runtime = RuntimeTest::GetParam()();
@@ -145,15 +125,6 @@ TEST_P(RuntimeTest, TensorCopyInvalidSize) {
               StatusIs(tensorflow::error::INVALID_ARGUMENT,
                        HasSubstr("Mismatched number of elements")));
 }
-
-// TODO(b/190195305): Invoke test template from individual runtime test files.
-#ifdef PLATFORM_GOOGLE
-INSTANTIATE_TEST_SUITE_P(TF2CAPI, RuntimeTest,
-                         ::testing::Values(core::Runtime, tfrt::Runtime));
-#else
-INSTANTIATE_TEST_SUITE_P(TF2CAPI, RuntimeTest,
-                         ::testing::Values(core::Runtime));
-#endif
 
 }  // namespace runtime
 }  // namespace libtf

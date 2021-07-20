@@ -145,6 +145,47 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "runtime_test",
+    testonly = 1,
+    srcs = [
+        "tests/runtime_test.cc",
+    ],
+    hdrs = [
+        "tests/runtime_test.h",
+    ],
+    data = [":testdata"],
+    deps = [
+        ":libtf",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:unified_api_testutil",
+        "//tensorflow/cc/experimental/libtf/runtime",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "libtf_runtime_test",
+    size = "medium",
+    srcs = [
+        "tests/runtime_test_core.cc",
+        "tests/runtime_test_tfrt.cc",
+    ],
+    deps = [
+        ":runtime_test",
+        "//tensorflow/cc/experimental/libtf/runtime",
+        "//tensorflow/cc/experimental/libtf/runtime/core",
+        "//tensorflow/cc/experimental/libtf/runtime/tfrt",
+    ],
+)
+
 tf_cc_test(
     name = "libtf_module_test",
     size = "medium",
