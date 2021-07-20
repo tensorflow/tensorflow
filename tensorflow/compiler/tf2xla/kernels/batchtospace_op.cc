@@ -46,10 +46,10 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
                               ", 2] instead of ",
                               xla::ShapeUtil::HumanString(crops.shape())));
 
-  const int64 batch_size = input_shape[0];
+  const int64_t batch_size = input_shape[0];
 
   // Compute the product of the block_shape values.
-  int64 block_num_elems = 1;
+  int64_t block_num_elems = 1;
   for (int i = 0; i < block_rank; ++i) {
     block_num_elems *= block_shape[i];
   }
@@ -126,8 +126,8 @@ void BatchToSpace(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   std::vector<int64> end_indices = reshaped_permuted_shape;
   std::vector<int64> strides(input_rank, 1);
   for (int i = 0; i < block_rank; ++i) {
-    int64 crop_start = crops.Get<int64>({i, 0});
-    int64 crop_end = crops.Get<int64>({i, 1});
+    int64_t crop_start = crops.Get<int64>({i, 0});
+    int64_t crop_end = crops.Get<int64>({i, 1});
     OP_REQUIRES(ctx, crop_start >= 0 && crop_end >= 0,
                 errors::InvalidArgument("Crops must be non-negative"));
     start_indices[1 + i] = crop_start;

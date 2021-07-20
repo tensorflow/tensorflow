@@ -31,7 +31,7 @@ class RollOp : public XlaOpKernel {
     const TensorShape shift_shape = ctx->InputShape(1);
     const TensorShape axis_shape = ctx->InputShape(2);
 
-    int64 input_dims = input_shape.dims();
+    int64_t input_dims = input_shape.dims();
     OP_REQUIRES(ctx, input_dims >= 1,
                 errors::InvalidArgument("input must be 1-D or higher"));
     OP_REQUIRES(ctx, shift_shape.dims() <= 1,
@@ -51,10 +51,10 @@ class RollOp : public XlaOpKernel {
 
     xla::XlaOp output = ctx->Input(0);
     xla::PrimitiveType shift_type = ctx->input_xla_type(1);
-    int64 num_axes = axis_shape.dims() == 0 ? 1 : axis_shape.dim_size(0);
-    for (int64 i = 0; i != num_axes; ++i) {
-      int64 cur_axis = axis_shape.dims() == 0 ? *axis.GetIntegralAsS64({})
-                                              : *axis.GetIntegralAsS64({i});
+    int64_t num_axes = axis_shape.dims() == 0 ? 1 : axis_shape.dim_size(0);
+    for (int64_t i = 0; i != num_axes; ++i) {
+      int64_t cur_axis = axis_shape.dims() == 0 ? *axis.GetIntegralAsS64({})
+                                                : *axis.GetIntegralAsS64({i});
       OP_REQUIRES(ctx, cur_axis >= -input_dims && cur_axis < input_dims,
                   errors::InvalidArgument(
                       absl::StrCat("axis ", cur_axis, " is out of range [-",

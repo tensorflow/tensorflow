@@ -75,7 +75,7 @@ class CastOp : public XlaOpKernel {
 
         // Bitcast to same-width integer, mask off the LSBs, bitcast back to the
         // source datatype.
-        int64 mask = ~((1L << mantissa_difference) - 1);
+        int64_t mask = ~((1L << mantissa_difference) - 1);
         xla::PrimitiveType same_width_int =
             xla::primitive_util::UnsignedIntegralTypeForBitWidth(src_bitwidth);
         OP_REQUIRES(ctx, same_width_int != xla::PRIMITIVE_TYPE_INVALID,

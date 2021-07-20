@@ -49,7 +49,7 @@ class ConcatBaseOp : public XlaOpKernel {
                 errors::InvalidArgument(
                     "Concat dim tensor should be a scalar, but got shape ",
                     concat_dim_tensor_shape.DebugString()));
-    int64 concat_dim;
+    int64_t concat_dim;
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntScalar(axis_index_, &concat_dim));
 
@@ -156,9 +156,9 @@ class ConcatOffsetOp : public XlaOpKernel {
     const TensorShape inp0_shape = ctx->InputShape(1);
     std::vector<int64> inp0_dims;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &inp0_dims));
-    const int64 inp0_rank = inp0_shape.num_elements();
+    const int64_t inp0_rank = inp0_shape.num_elements();
 
-    int64 cdim;
+    int64_t cdim;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &cdim));
 
     VLOG(1) << "ConcatOffset " << cdim << "," << inp0_rank;
@@ -178,7 +178,7 @@ class ConcatOffsetOp : public XlaOpKernel {
 
       Tensor out_constant(DT_INT32, TensorShape({inp0_rank}));
       auto out_vec = out_constant.vec<int32>();
-      for (int64 j = 0; j < inp0_rank; ++j) {
+      for (int64_t j = 0; j < inp0_rank; ++j) {
         if (j == axis) {
           out_vec(j) = offset;
           offset += inp_dims[j];
