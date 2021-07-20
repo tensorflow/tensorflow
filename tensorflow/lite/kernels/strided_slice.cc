@@ -103,9 +103,10 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
   for (int i = 0; i < effective_dims;) {
     if ((1 << i) & op_context->params->ellipsis_mask) {
       ellipsis_start_idx = i;
-      int ellipsis_end_idx =
+      int ellipsis_end_idx = std::max(
+          i + 1,
           std::min(i + 1 + num_add_axis + op_context->input_dims - begin_count,
-                   effective_dims);
+                   effective_dims));
       expanded_ellipsis = ellipsis_end_idx - ellipsis_start_idx - 1;
 
       // Set bit for effective_ellipsis_mask.
