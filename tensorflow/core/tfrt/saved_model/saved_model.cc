@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -146,6 +147,9 @@ StatusOr<RCReference<RequestContext>> SetUpRequestContext(
       &request_context_builder, &fallback_state.device_manager(),
       &fallback_state.process_function_library_runtime(), intra_op_threadpool,
       model_metadata));
+
+  TF_RETURN_IF_ERROR(
+      tensorflow::SetUpTfCpuRtRequestContext(&request_context_builder));
 
   request_context_builder.set_request_options(
       RequestOptions{.priority = run_options.priority});

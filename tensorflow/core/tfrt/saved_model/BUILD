@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:saved_model",
         "//tensorflow/compiler/mlir/tfrt:tf_cpurt_kernels_alwayslink",
+        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_request_context",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core/tfrt/runtime:tf_threadpool_concurrent_work_queue",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",

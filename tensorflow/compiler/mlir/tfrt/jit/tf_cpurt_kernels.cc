@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_request_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -65,7 +66,6 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RepeatedArguments;
 using ::tfrt::RequestContext;
-using ::tfrt::ResourceContext;
 using ::tfrt::StringAttribute;
 
 using ::tfrt::cpu::jit::CompilationOptions;
@@ -112,9 +112,13 @@ static Expected<AsyncValuePtr<JitExecutable>> Compile(
     return MakeStringError(
         "kernel function has to be defined in a top-level module");
 
-  ResourceContext* res_ctx = exec_ctx.resource_context();
-  auto* jit_executable_cache =
-      res_ctx->GetOrCreateResource<JitExecutableCache>("cpurt.cache");
+  // Request context must be initialized with the tf_cpurt state.
+  TfCpuRtRequestState* state =
+      exec_ctx.request_ctx()->GetDataIfExists<TfCpuRtRequestState>();
+  if (!state)
+    return MakeStringError("cpurt state not found in the request context");
+
+  JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
 
   // TODO(ezhulenev): Compute cache key based on the content of MLIR module.
   intptr_t key = exec_ctx.location().data;

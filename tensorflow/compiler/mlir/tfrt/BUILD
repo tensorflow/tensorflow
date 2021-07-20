@@ -200,6 +200,7 @@ tfrt_cc_library(
     deps = [
         ":tf_cpurt",
         ":tf_cpurt_passes",
+        ":tf_cpurt_request_context",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -215,6 +216,18 @@ tfrt_cc_library(
         "@tf_runtime//:tensor",
         "@tf_runtime//backends/cpu:async_runtime",
         "@tf_runtime//backends/cpu:async_runtime_api",
+        "@tf_runtime//backends/cpu:cpurt",
+    ],
+)
+
+tfrt_cc_library(
+    name = "tf_cpurt_request_context",
+    srcs = ["jit/tf_cpurt_request_context.cc"],
+    hdrs = ["jit/tf_cpurt_request_context.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "@tf_runtime//:hostcontext",
         "@tf_runtime//backends/cpu:cpurt",
     ],
 )
