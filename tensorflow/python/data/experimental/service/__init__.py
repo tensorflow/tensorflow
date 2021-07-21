@@ -136,7 +136,7 @@ for worker in workers:
       processing_mode="parallel_epochs",
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
-      job_name="shared_job"))
+      job_name="shared_job")
 ```
 
 ### Processing Modes
@@ -181,7 +181,7 @@ dataset = dataset.map(preprocess_fn)
 dataset = dataset.batch(batch_size)
 dataset = dataset.apply(
     tf.data.experimental.service.distribute(
-        processing_mode="distributed_epochs", ...)
+        processing_mode="distributed_epochs", ...))
 ```
 
 The `from_tensor_slices` will be run on the dispatcher, while the `interleave`,
@@ -280,7 +280,7 @@ dataset = tf.data.experimental.service.from_dataset_id(
     processing_mode="parallel_epochs",
     service=FLAGS.tf_data_service_address,
     dataset_id=dataset_id,
-    job_name="shared_job"))
+    job_name="shared_job")
 
 dataset = strategy.experimental_distribute_dataset(dataset)
 ```
@@ -305,7 +305,7 @@ def new_dataset_fn(input_context):
       processing_mode="parallel_epochs",
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
-      job_name="shared_job"))
+      job_name="shared_job")
 
 dataset = strategy.distribute_datasets_from_function(new_dataset_fn)
 ```
@@ -327,7 +327,7 @@ def new_dataset_fn(input_context):
       processing_mode="parallel_epochs",
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
-      job_name="shared_job"))
+      job_name="shared_job")
 
 dataset = coordinator.create_per_worker_dataset(new_dataset_fn)
 ```
