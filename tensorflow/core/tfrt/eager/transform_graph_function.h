@@ -45,6 +45,7 @@ Status TransformGraphFunction(const std::string& func_name,
                               const tensorflow::DeviceSet& device_set,
                               EagerContext* eager_ctx, bool enable_grappler,
                               std::unique_ptr<FunctionBody>* fbody,
+                              std::unique_ptr<Graph> graph,
                               tfrt::ArrayRef<const tfrt::Device*> input_devices,
                               FunctionLibraryDefinition* func_lib_def);
 

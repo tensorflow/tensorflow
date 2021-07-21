@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/eager/function_cache.h"
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/tfrt/eager/transform_graph_function.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -64,12 +67,25 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
     return tensorflow::errors::NotFound(
         "Cannot find function from FunctionLibraryDefinition ", op_name);
 
+  // Run graph optimizations using current runtime components before converting
+  // the graph to MLIR module.
   std::unique_ptr<tensorflow::FunctionBody> fbody;
-  // Possibly run graph optimizations before BEF conversion, and might add more
-  // entries to `func_lib_def` in that case.
+  TF_RETURN_IF_ERROR(tensorflow::FunctionDefToBodyHelper(
+      *fdef, tensorflow::AttrSlice(), func_lib_def, &fbody));
+
+  // Transferring out the graph ownership from fbody.
+  auto graph = std::unique_ptr<tensorflow::Graph>(fbody->graph);
+  fbody->graph = nullptr;
+
+  tensorflow::GraphDef graph_def;
+  graph->ToGraphDef(&graph_def);
+  tensorflow::FunctionLibraryDefinition reachable_lib_def =
+      func_lib_def->ReachableDefinitions(graph_def);
+
   TF_RETURN_IF_ERROR(tensorflow::TransformGraphFunction(
       op_name, *fdef, device_name, device_set, eager_ctx,
-      compile_options.enable_grappler, &fbody, input_devices, func_lib_def));
+      compile_options.enable_grappler, &fbody, std::move(graph), input_devices,
+      &reachable_lib_def));
 
   BefBuffer bef_buffer;
 
@@ -81,7 +97,7 @@ tensorflow::Status FunctionCache::GetOrAddFunction(
 
   // Lower FunctionDef to BEF.
   TF_RETURN_IF_ERROR(tensorflow::ConvertFunctionToBef(
-      op_name, fbody.get(), *func_lib_def, device_names, compile_options,
+      op_name, fbody.get(), reachable_lib_def, device_names, compile_options,
       &bef_buffer));
 
   HostContext* host_ctx = corert->GetHostContext();
