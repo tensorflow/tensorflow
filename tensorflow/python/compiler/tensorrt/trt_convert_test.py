@@ -26,12 +26,11 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
-from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEngineInstance  # pylint: disable=g-importing-member
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -327,8 +326,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_OfflineConversion(self, device):
     """Test case for trt_convert.TrtGraphConverter()."""
-    if not is_tensorrt_enabled():
-      return
 
     for need_calibration in [False, True]:
       # Use GraphDef as input.
@@ -348,8 +345,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_OnlineConversion(self, device):
     """Test case for TF-TRT conversion using Grappler directly."""
-    if not is_tensorrt_enabled():
-      return
 
     conversion_params = trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
         precision_mode=trt_convert.TrtPrecisionMode.FP32)
@@ -415,8 +410,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testTrtGraphConverter_DynamicConversion_v2(self):
     """Test case for trt_convert.TrtGraphConverter()."""
-    if not is_tensorrt_enabled():
-      return
 
     np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
@@ -491,13 +484,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testTrtGraphConverter_ShapeOp_v2(self):
     """Test case for TrtGraphConverterV2 with ShapeOp."""
-    if not is_tensorrt_enabled():
-      return
-
-    # TODO(b/185944425): enable the test for TRT before TRT 7.
-    ver = get_linked_tensorrt_version()
-    if ver[0] < 7:
-      return
 
     class ShapeOpModel(tracking.AutoTrackable):
 
@@ -548,8 +534,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testTrtGraphConverter_Int8Conversion_v2(self):
-    if not is_tensorrt_enabled():
-      return
 
     np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
@@ -630,8 +614,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testTrtGraphConverter_DestroyEngineCache(self):
     """Test case for trt_convert.TrtGraphConverter()."""
-    if not is_tensorrt_enabled():
-      return
 
     np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
@@ -736,8 +718,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_NoInputs(self):
-    if not is_tensorrt_enabled():
-      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -749,8 +729,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_OneInput(self):
-    if not is_tensorrt_enabled():
-      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -764,8 +742,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_TwoInputs(self):
-    if not is_tensorrt_enabled():
-      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -780,8 +756,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_OneOutputSignatureKey(self):
-    if not is_tensorrt_enabled():
-      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -793,8 +767,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testRetainSignatureInfo_TwoOutputSignatureKeys(self):
-    if not is_tensorrt_enabled():
-      return
 
     class _Model(tracking.AutoTrackable):
 
@@ -825,8 +797,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   ])
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_MinimumSegmentSize(self, minimum_segment_size):
-    if not is_tensorrt_enabled():
-      return
     output_graph_def = self._ConvertGraphV1(
         minimum_segment_size=minimum_segment_size)
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
@@ -844,8 +814,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_DynamicOp(self):
-    if not is_tensorrt_enabled():
-      return
 
     output_saved_model_dir = self.mkdtemp()
     output_graph_def = self._ConvertGraphV1(
@@ -879,8 +847,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_StaticOp(self):
-    if not is_tensorrt_enabled():
-      return
 
     output_saved_model_dir = self.mkdtemp()
     output_graph_def = self._ConvertGraphV1(
@@ -910,15 +876,12 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testTrtGraphConverter_AllowEngineNativeSegmentExecution(self):
-    if not is_tensorrt_enabled():
-      return
 
     # This test will not work anymore with TRT >= 8. TensorRT does not
     # preallocate anymore the max_workspace_size_bytes, but rather allocates as
     # it needs up to this value.
     # TODO: update the unittest to make this TRTEngine creation fail with TRT8.
-    ver = get_linked_tensorrt_version()
-    if ver[0] >= 8:
+    if trt_utils.IsLinkedTensorRTVersionGreaterEqual(8, 0, 0):
       return
 
     np_input1, np_input2 = self._RandomInput([4, 1, 1])
@@ -952,8 +915,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testBackwardCompatibility(self):
     """Load and execute a model that was saved in TF2.0."""
-    if not is_tensorrt_enabled():
-      return
 
     model_dir = test.test_src_dir_path(
         "python/compiler/tensorrt/test/testdata/tftrt_2.0_saved_model")

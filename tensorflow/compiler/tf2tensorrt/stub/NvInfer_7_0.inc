@@ -9,7 +9,8 @@ void* createInferBuilder_INTERNAL(void* logger, int version) {
   return func_ptr(logger, version);
 }
 
-void* createInferRefitter_INTERNAL(void* engine, void* logger, int version) {
+void* createInferRefitter_INTERNAL(void* engine, void* logger, int version)
+    {
   using FuncPtr = void * (*)(void *, void *, int);
   static auto func_ptr = LoadSymbol<FuncPtr>("createInferRefitter_INTERNAL");
   if (!func_ptr) LogFatalSymbolNotFound("createInferRefitter_INTERNAL");
