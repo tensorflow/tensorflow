@@ -1837,7 +1837,6 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     ])
 
     converter = lite.TFLiteConverterV2.from_keras_model(keras_model)
-    converter.experimental_lower_to_saved_model = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
