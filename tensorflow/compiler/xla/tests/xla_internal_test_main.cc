@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -45,15 +47,9 @@ GTEST_API_ int main(int argc, char** argv) {
         }
         pattern = argv[i + 1];
       }
-      // Unfortunately Google's internal benchmark infrastructure has a
-      // different API than Tensorflow's.
+
       testing::InitGoogleTest(&argc, argv);
-#if defined(PLATFORM_GOOGLE)
-      absl::SetFlag(&FLAGS_benchmarks, pattern);
-      RunSpecifiedBenchmarks();
-#else
-      tensorflow::testing::Benchmark::Run(pattern);
-#endif
+      benchmark::RunSpecifiedBenchmarks();
       return 0;
     }
   }

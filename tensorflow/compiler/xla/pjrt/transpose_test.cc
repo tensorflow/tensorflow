@@ -396,8 +396,8 @@ TEST_P(TransposeTest, ParallelTransposeInt32) { TestTranspose<int32>(16); }
 INSTANTIATE_TEST_SUITE_P(TransposeTestInstance, TransposeTest,
                          ::testing::ValuesIn(GetTransposeTestCases()));
 
-const std::vector<TransposeTestCase>* benchmark_cases = []() {
-  return new std::vector<TransposeTestCase>{
+static std::vector<TransposeTestCase> BenchmarkCases() {
+  return std::vector<TransposeTestCase>{
       TransposeTestCase(/*dims=*/{256, 256},
                         /*permutation=*/{1, 0}),
       TransposeTestCase(/*dims=*/{64, 224, 224, 3},
@@ -407,11 +407,12 @@ const std::vector<TransposeTestCase>* benchmark_cases = []() {
       TransposeTestCase(/*dims=*/{1024, 1024},
                         /*permutation=*/{1, 0}),
   };
-}();
+}
 
 template <typename T>
-void BM_Eigen(::testing::benchmark::State& state) {
-  const TransposeTestCase& bm = benchmark_cases->at(state.range(0));
+void BM_Eigen(const TransposeTestCase& bm, int parallelism,
+              ::testing::benchmark::State& state) {
+  CHECK_EQ(parallelism, 1);
   Array<T> input(bm.dims);
   input.FillIota(0);
   std::vector<int64> output_dims = Permute(bm.dims, bm.permutation);
@@ -422,17 +423,18 @@ void BM_Eigen(::testing::benchmark::State& state) {
     tensorflow::testing::DoNotOptimize(output);
   }
 }
-void BM_Eigen_uint8(::testing::benchmark::State& state) {
-  BM_Eigen<uint8_t>(state);
+static void BM_Eigen_uint8(const TransposeTestCase& bm, int parallelism,
+                           ::testing::benchmark::State& state) {
+  BM_Eigen<uint8_t>(std::move(bm), parallelism, state);
 }
-void BM_Eigen_float(::testing::benchmark::State& state) {
-  BM_Eigen<float>(state);
+static void BM_Eigen_float(const TransposeTestCase& bm, int parallelism,
+                           ::testing::benchmark::State& state) {
+  BM_Eigen<float>(bm, parallelism, state);
 }
 
 template <typename T>
-void BM_Transpose(::testing::benchmark::State& state) {
-  const TransposeTestCase& bm = benchmark_cases->at(state.range(0));
-  int parallelism = state.range(1);
+void BM_Transpose(const TransposeTestCase& bm, int parallelism,
+                  ::testing::benchmark::State& state) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto plan, TransposePlan::Create(sizeof(T), bm.dims, bm.permutation,
                                        TransposePlan::Tiling{},
@@ -451,52 +453,43 @@ void BM_Transpose(::testing::benchmark::State& state) {
     tensorflow::testing::DoNotOptimize(output);
   }
 }
-void BM_Transpose_uint8(::testing::benchmark::State& state) {
-  BM_Transpose<uint8_t>(state);
+static void BM_Transpose_uint8(const TransposeTestCase& bm, int parallelism,
+                               ::testing::benchmark::State& state) {
+  BM_Transpose<uint8_t>(bm, parallelism, state);
 }
-void BM_Transpose_float(::testing::benchmark::State& state) {
-  BM_Transpose<float>(state);
+static void BM_Transpose_float(const TransposeTestCase& bm, int parallelism,
+                               ::testing::benchmark::State& state) {
+  BM_Transpose<float>(bm, parallelism, state);
 }
 
-#if defined(TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_)
-#define USING_TF_BENCHMARK 1
-#else  // TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_
-#define USING_TF_BENCHMARK 0
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_TEST_BENCHMARK_H_
-
-static std::vector<tensorflow::testing::Benchmark*>* benchmarks =
-    []() -> std::vector<tensorflow::testing::Benchmark*>* {
-  std::vector<tensorflow::testing::Benchmark*>* bms =
-      new std::vector<tensorflow::testing::Benchmark*>();
-
-  std::vector<std::tuple<std::string, void (*)(testing::benchmark::State&),
-                         std::vector<int>>>
-      variants = {
+static void* benchmarks = []() {
+  using BenchmarkFn =
+      void (*)(const TransposeTestCase&, int, testing::benchmark::State&);
+  std::vector<std::tuple<std::string, BenchmarkFn, std::vector<int>>> variants =
+      {
           {"BM_Eigen_uint8", BM_Eigen_uint8, {1}},
           {"BM_Transpose_uint8", BM_Transpose_uint8, {1, 4, 8}},  //
           {"BM_Eigen_float", BM_Eigen_float, {1}},
           {"BM_Transpose_float", BM_Transpose_float, {1, 4, 8}},  //
   };
-  for (size_t i = 0; i < benchmark_cases->size(); ++i) {
+  auto benchmark_cases = BenchmarkCases();
+  for (auto& benchmark_case : benchmark_cases) {
     for (const auto& variant : variants) {
       for (int num_threads : std::get<2>(variant)) {
         std::string name = absl::StrCat(
-            std::get<0>(variant), "_",
-            absl::StrJoin(benchmark_cases->at(i).dims, "_"), "_perm_",
-            absl::StrJoin(benchmark_cases->at(i).permutation, "_"));
-#if USING_TF_BENCHMARK
-        auto* bm = new tensorflow::testing::Benchmark(name.c_str(),
-                                                      std::get<1>(variant));
-#else
-        auto* bm = new tensorflow::testing::Benchmark(
-            name, NewPermanentCallback(std::get<1>(variant)));
-#endif
-        bm->ArgPair(i, num_threads);
-        bms->push_back(bm);
+            std::get<0>(variant), "_", absl::StrJoin(benchmark_case.dims, "_"),
+            "_perm_", absl::StrJoin(benchmark_case.permutation, "_"));
+        BenchmarkFn fn = std::get<1>(variant);
+        TransposeTestCase testcase = benchmark_case;
+        benchmark::RegisterBenchmark(
+            name.c_str(),
+            [fn, num_threads, &testcase](benchmark::State& state) {
+              fn(testcase, num_threads, state);
+            });
       }
     }
   }
-  return bms;
+  return nullptr;
 }();
 
 TEST(TransposePlanCache, Basics) {
