@@ -61,9 +61,10 @@ namespace TFR {
 
 namespace {
 /// This class defines the interface for inlining within the TFR dialect.
-struct TFRInlinerInterface : public DialectInlinerInterface {
+class TFRInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
+ public:
   // Allow all call operations to be inlined.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
@@ -374,9 +375,10 @@ static void PrintFuncOp(OpAsmPrinter &p, TFRFuncOp op) {
 namespace mlir {
 namespace TFR {
 namespace {
-struct ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
+class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
   using OpRewritePattern<ConstantTensorOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(ConstantTensorOp cst_tensor_op,
                                 PatternRewriter &rewriter) const override {
     Location loc = cst_tensor_op.getLoc();
@@ -416,9 +418,10 @@ struct ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
   }
 };
 
-struct RemoveRedundantCast : public OpRewritePattern<CastOp> {
+class RemoveRedundantCast : public OpRewritePattern<CastOp> {
   using OpRewritePattern<CastOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(CastOp cast_op,
                                 PatternRewriter &rewriter) const override {
     auto preceding_cast =
@@ -458,9 +461,10 @@ struct RemoveRedundantCast : public OpRewritePattern<CastOp> {
   }
 };
 
-struct GetTensorShape : public OpRewritePattern<GetShapeOp> {
+class GetTensorShape : public OpRewritePattern<GetShapeOp> {
   using OpRewritePattern<GetShapeOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(GetShapeOp shape_op,
                                 PatternRewriter &rewriter) const override {
     Operation *preceding_op = shape_op.arg().getDefiningOp();
@@ -473,9 +477,10 @@ struct GetTensorShape : public OpRewritePattern<GetShapeOp> {
   }
 };
 
-struct RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
+class RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
   using OpRewritePattern<GetElementOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(GetElementOp ge_op,
                                 PatternRewriter &rewriter) const override {
     IntegerAttr index;
@@ -499,9 +504,10 @@ struct RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
   }
 };
 
-struct RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
+class RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
   using OpRewritePattern<GetLengthOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(GetLengthOp gl_op,
                                 PatternRewriter &rewriter) const override {
     auto preceding_build_list = llvm::dyn_cast_or_null<BuildListOp>(
@@ -516,9 +522,10 @@ struct RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
   }
 };
 
-struct BuildConstantListAsAttr : public OpRewritePattern<BuildListOp> {
+class BuildConstantListAsAttr : public OpRewritePattern<BuildListOp> {
   using OpRewritePattern<BuildListOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(BuildListOp bl_op,
                                 PatternRewriter &rewriter) const override {
     SmallVector<Attribute, 4> array_list;
@@ -546,9 +553,10 @@ quant::QuantizedType getQuantizedElementType(CastOp cast_op) {
       .dyn_cast<quant::QuantizedType>();
 }
 
-struct RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
+class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
   using OpRewritePattern<TFRQuantRawDataOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(TFRQuantRawDataOp raw_data_op,
                                 PatternRewriter &rewriter) const override {
     auto preceding_cast = dyn_cast<CastOp>(raw_data_op.input().getDefiningOp());
@@ -572,9 +580,10 @@ struct RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
   }
 };
 
-struct RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
+class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
   using OpRewritePattern<TFRQuantQParamsOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(TFRQuantQParamsOp qparams_op,
                                 PatternRewriter &rewriter) const override {
     auto cast_op = dyn_cast<TFR::CastOp>(qparams_op.input().getDefiningOp());
@@ -631,9 +640,10 @@ struct RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
 };
 
 // TODO(b/193731721): Migrate tfr_ builtin canonicalizations to LowerTFROpPass
-struct RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
+class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
   using OpRewritePattern<TFRQuantScaleFactorOp>::OpRewritePattern;
 
+ public:
   // Replace quant_scale_factor with constant tensor equivalent to
   // TFR_ConstantTensorOp (
   //  ConstantOp (ConstAttr<F32Attr (in_scale[0] * in_scale [1] / filter_scale))
@@ -707,9 +717,10 @@ struct RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
   }
 };
 
-struct RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
+class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
   using OpRewritePattern<TFRQuantRescaleOp>::OpRewritePattern;
 
+ public:
   // Replace quant_rescale (input, scale, zp) with
   // tf.Cast(tf.Round(tf.Cast(input, f32) * scale) + tf.Cast(zp, f32), i32)
   LogicalResult matchAndRewrite(TFRQuantRescaleOp rescale_op,
