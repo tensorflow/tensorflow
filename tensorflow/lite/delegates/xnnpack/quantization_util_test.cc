@@ -61,6 +61,25 @@ TEST(Dequantize, Int8) {
               Pointwise(FloatNear(1e-6), {-0.3, -0.2, -0.1, 0.1, 0.2, 0.3}));
 }
 
+TEST(Dequantize, PerChannelInt8) {
+  const std::vector<float> scales = {0.5, 0.25};
+  const std::vector<int> zero_points = {-1, -1};
+  const int quantized_dimension = 0;
+
+  const RuntimeShape shape({2, 5});
+
+  const std::vector<int8_t> input = {-128, -127, -126, -125, -124,
+                                     123,  124,  125,  126,  127};
+  std::vector<float> output(10, -1);
+
+  PerChannelDequantizeInt8(input.data(), output.data(), shape,
+                           zero_points.data(), scales.data(),
+                           quantized_dimension);
+  EXPECT_THAT(output,
+              Pointwise(FloatNear(1e-6), {-63.5, -63., -62.5, -62., -61.5, 31.,
+                                          31.25, 31.5, 31.75, 32.}));
+}
+
 TEST(Dequantize, Float16) {
   std::vector<uint16_t> quantized_data = {
       UINT16_C(0x3000),  // 0.125

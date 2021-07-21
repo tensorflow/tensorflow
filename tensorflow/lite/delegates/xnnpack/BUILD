@@ -74,6 +74,7 @@ cc_library(
     hdrs = ["quantization_util.h"],
     deps = [
         "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:types",
         "@FP16",
     ],
