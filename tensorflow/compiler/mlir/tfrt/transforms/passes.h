@@ -135,6 +135,13 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, lower an TF op that's placed on TPU device "
                      "to be executed by tfrt_fallback.execute."),
       llvm::cl::init(true)};
+  // TODO(b/194081364): remove this option once we unify servo TPU serving
+  // result transfer behavior.
+  Option<bool> tpu_transfer_result_to_host{
+      *this, "tpu-transfer-result-to-host",
+      llvm::cl::desc("If true, transfer the result of tpurt.execute from TPU "
+                     "to host."),
+      llvm::cl::init(true)};
   Option<bool> enable_native_ops{
       *this, "enable-native-ops",
       llvm::cl::desc(

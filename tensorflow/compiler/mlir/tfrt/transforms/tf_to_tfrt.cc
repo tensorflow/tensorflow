@@ -1577,6 +1577,7 @@ class TfToTfrtConversionPass
     enable_native_ops_ = options.enable_native_ops;
     tpu_use_core_selector_ = options.tpu_use_core_selector;
     tpu_lower_to_fallback_ = options.tpu_lower_to_fallback;
+    tpu_transfer_result_to_host_ = options.tpu_transfer_result_to_host;
     cost_threshold_ = options.cost_threshold;
     upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
@@ -1600,7 +1601,8 @@ class TfToTfrtConversionPass
     if (target_tpu_)
       AddTPUTargetDialectAndPatterns(&target, &patterns, &context,
                                      &corert_converter, tpu_use_core_selector_,
-                                     tpu_lower_to_fallback_);
+                                     tpu_lower_to_fallback_,
+                                     tpu_transfer_result_to_host_);
 
     mlir::TypeConverter *func_type_converter;
     if (func_use_fallback_tensor_) {
@@ -1787,6 +1789,14 @@ class TfToTfrtConversionPass
       *this, "tpu-lower-to-fallback",
       llvm::cl::desc("If true, lower an TF op that's placed on TPU device "
                      "to be executed by tfrt_fallback.execute."),
+      llvm::cl::init(true)};
+
+  // TODO(b/194081364): remove this option once we unify servo TPU serving
+  // result transfer behavior.
+  Option<bool> tpu_transfer_result_to_host_{
+      *this, "tpu-transfer-result-to-host",
+      llvm::cl::desc("If true, transfer the result of tpurt.execute from TPU "
+                     "to host."),
       llvm::cl::init(true)};
 
   Option<uint64_t> cost_threshold_{

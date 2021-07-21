@@ -43,7 +43,7 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
 
   if (VLOG_IS_ON(1)) {
     VLOG(1) << "Input TF Executor dialect:";
-    DumpMlirOpToFile("tf_to_tfrt_before_bridge", module);
+    DumpMlirOpToFile("tf_to_tfrt_tf_executor_dialect", module);
   }
 
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
@@ -69,6 +69,8 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
   pass_options.target_tpu = true;
   pass_options.tpu_use_core_selector = options.tpu_use_core_selector;
   pass_options.tpu_lower_to_fallback = options.tpu_lower_to_fallback;
+  pass_options.tpu_transfer_result_to_host =
+      options.tpu_transfer_result_to_host;
   pass_options.enable_native_ops = options.enable_native_ops;
   tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
 
@@ -78,7 +80,7 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
 
   if (VLOG_IS_ON(1)) {
     VLOG(1) << "TFRT dialect: ";
-    DumpMlirOpToFile("tf_to_tfrt_after", module);
+    DumpMlirOpToFile("tf_to_tfrt_tfrt_dialect", module);
   }
 
   *bef_buffer =
