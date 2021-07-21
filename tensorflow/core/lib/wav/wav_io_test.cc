@@ -38,8 +38,6 @@ TEST(WavIO, BadArguments) {
 
   EXPECT_EQ(error::INVALID_ARGUMENT,
             EncodeAudioAsS16LEWav(nullptr, 44100, 2, 3, &result).code());
-  TF_EXPECT_OK(EncodeAudioAsS16LEWav(nullptr, 44100, 2, 0, &result));
-
   EXPECT_EQ(
       error::INVALID_ARGUMENT,
       EncodeAudioAsS16LEWav(audio, 44100, 2, 3, (tstring*)nullptr).code());
@@ -52,6 +50,8 @@ TEST(WavIO, BadArguments) {
             EncodeAudioAsS16LEWav(audio, 0, 2, 3, &result).code());
   EXPECT_EQ(error::INVALID_ARGUMENT,
             EncodeAudioAsS16LEWav(audio, 44100, 0, 3, &result).code());
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            EncodeAudioAsS16LEWav(audio, 44100, 2, 0, &result).code());
 
   // Sample rates 2^32 and greater are invalid.
   EXPECT_EQ(
