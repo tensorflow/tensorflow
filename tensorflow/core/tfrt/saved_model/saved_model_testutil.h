@@ -20,7 +20,6 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
