@@ -139,6 +139,7 @@ cc_library(
         "passes/decompose.cc",
         "passes/generated_decompose.inc",
         "passes/raise_to_tf.cc",
+        "passes/rewrite_quantized_io.cc",
     ],
     hdrs = [
         "passes/passes.h",
