@@ -135,8 +135,6 @@ class SavedModel {
     // Model metadata used for monitoring and tracing.
     ModelMetadata model_metadata;
 
-    tensorflow::SessionOptions session_options;
-
     tensorflow::TfrtCompileOptions compile_options;
   };
 
