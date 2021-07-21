@@ -121,8 +121,6 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
       if (IsCommutativeOp(op_name) && num_children == 2) {
         MutableNodeView* graph_child0_node_view =
             graph_view_->GetNode(graph_children[0].node_index());
-        MutableNodeView* graph_child1_node_view =
-            graph_view_->GetNode(graph_children[1].node_index());
         if (!IsSame(pattern.children[0].op, graph_child0_node_view->GetOp()) &&
             IsSame(pattern.children[1].op, graph_child0_node_view->GetOp()))
           std::swap(pattern_child_indices[0], pattern_child_indices[1]);
