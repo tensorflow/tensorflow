@@ -395,6 +395,7 @@ class IrEmitterUnnested : public IrEmitter {
   // guaranteed that the indices to be updated do not overlap. The caller is
   // responsible for ensuring this is the case.
   Status EmitScatter(Thunk* thunk, mlir::lmhlo::ScatterOp scatter,
+                     const LaunchDimensions& launch_dimensions,
                      const llvm_ir::IrArray& output,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
                      const llvm_ir::ElementGenerator& updates_gen,
@@ -419,7 +420,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits code for an in-place scatter using the provided scatter operation
   // description.
-  Status EmitScatter(const ScatterDescriptor& desc, Thunk* thunk);
+  Status EmitScatter(const ScatterDescriptor& desc, Thunk* thunk,
+                     const LaunchDimensions& launch_dimensions);
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.

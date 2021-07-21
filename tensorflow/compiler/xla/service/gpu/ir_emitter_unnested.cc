@@ -1894,9 +1894,16 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     // Now build the actual scatter, reading and writing to the freshly
     // filled output buffer.
     {
+      const Shape& updates_shape = root->operand(2)->shape();
+      TF_ASSIGN_OR_RETURN(
+          LaunchDimensions launch_dimensions,
+          CalculateLaunchDimensions(updates_shape,
+                                    ir_emitter_context_->gpu_device_info()));
       std::vector<llvm_ir::IrArray> ir_arrays;
       TF_ASSIGN_OR_RETURN(auto scatter_thunk,
                           BuildKernelThunk(op, Thunk::ThunkInfo(), &ir_arrays));
+      SetThunkLaunchDimensions(launch_dimensions, scatter_thunk.get(),
+                               ir_emitter_context_->llvm_module());
       thunks.push_back(std::move(scatter_thunk));
       // Spin up a new fused emitter for the scatter kernel and emit it.
       GpuElementalIrEmitter scatter_elemental_emitter(
@@ -1921,7 +1928,7 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       desc.name = IrName(root);
       desc.operand_shape = root->operand(0)->shape();
       desc.scatter_indices_shape = root->operand(1)->shape();
-      desc.updates_shape = root->operand(2)->shape();
+      desc.updates_shape = updates_shape;
       desc.dim_numbers = dim_numbers;
       desc.unique_indices = root->unique_indices();
       desc.update_computation = root->called_computations()[0];
@@ -1934,7 +1941,8 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
         return GetIndexTypeForKernel(root, launch_size, &b_);
       };
 
-      TF_RETURN_IF_ERROR(EmitScatter(desc, thunks.back().get()));
+      TF_RETURN_IF_ERROR(
+          EmitScatter(desc, thunks.back().get(), launch_dimensions));
     }
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         GetThunkInfo(op), std::move(thunks)));
@@ -2390,6 +2398,11 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
         ShapeUtil::ByteSizeOf(GetShape(scatter_op.output()))));
   }
 
+  const Shape& data_shape = GetShape(scatter_op.updates());
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      CalculateLaunchDimensions(
+                          data_shape, ir_emitter_context_->gpu_device_info()));
+
   // Create kernel thunk for all operands except the first one (`operand`). The
   // code generated for scatter below assumes that the input operand is already
   // copied into the output, so does not use it in codegen.
@@ -2399,6 +2412,8 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
       thunks.back(),
       BuildKernelThunk(scatter_op, scatter_op.getOperands().drop_front(),
                        GetThunkInfo(op), &ir_arrays));
+  SetThunkLaunchDimensions(launch_dimensions, thunks.back().get(),
+                           ir_emitter_context_->llvm_module());
 
   CHECK_EQ(ir_arrays.size(), 3);
   const IrArray& scatter_indices = ir_arrays[0];
@@ -2410,7 +2425,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
   };
 
   TF_RETURN_IF_ERROR(EmitScatter(
-      thunks.back().get(), scatter_op, output,
+      thunks.back().get(), scatter_op, launch_dimensions, output,
       /*scatter_indices_gen=*/
       [&](const IrArray::Index& index) {
         return scatter_indices.EmitReadArrayElement(index, &b_,
@@ -2436,7 +2451,7 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
 
 Status IrEmitterUnnested::EmitScatter(
     Thunk* thunk, mlir::lmhlo::ScatterOp scatter,
-    const llvm_ir::IrArray& output,
+    const LaunchDimensions& launch_dimensions, const llvm_ir::IrArray& output,
     const llvm_ir::ElementGenerator& scatter_indices_gen,
     const llvm_ir::ElementGenerator& updates_gen,
     std::function<llvm::Type*(int64_t)> get_index_type) {
@@ -2460,11 +2475,12 @@ Status IrEmitterUnnested::EmitScatter(
   desc.scatter_indices_gen = scatter_indices_gen;
   desc.updates_gen = updates_gen;
   desc.get_index_type = get_index_type;
-  return EmitScatter(desc, thunk);
+  return EmitScatter(desc, thunk, launch_dimensions);
 }
 
-Status IrEmitterUnnested::EmitScatter(const ScatterDescriptor& desc,
-                                      Thunk* thunk) {
+Status IrEmitterUnnested::EmitScatter(
+    const ScatterDescriptor& desc, Thunk* thunk,
+    const LaunchDimensions& launch_dimensions) {
   if (!desc.unique_indices) {
     TF_RETURN_IF_ERROR(AssertNonDeterminismIsOkay(desc.name));
   }
@@ -2591,13 +2607,6 @@ Status IrEmitterUnnested::EmitScatter(const ScatterDescriptor& desc,
   // Launch a kernel that reads every element in the updates tensor. We could
   // also do one kernel per window instead if bounds checks turn out to be a
   // bottleneck.
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      CalculateLaunchDimensions(desc.updates_shape,
-                                ir_emitter_context_->gpu_device_info()));
-  SetThunkLaunchDimensions(launch_dimensions, thunk,
-                           ir_emitter_context_->llvm_module());
-
   return ParallelLoopEmitter(loop_body_emitter, desc.updates_shape,
                              launch_dimensions, &b_)
       .EmitLoop(desc.name,
