@@ -693,7 +693,7 @@ cc_library(
     srcs = BUILTIN_KERNEL_SRCS,
     hdrs = [
         "dequantize.h",
-        "elementwise_portable.h"
+        "elementwise_portable.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
