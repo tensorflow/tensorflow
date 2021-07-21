@@ -60,7 +60,10 @@ cc_library(
         "gpu_passes.cc",
     ],
     hdrs = ["gpu_passes.h"],
-    tags = ["no_oss"],
+    tags = [
+        "gpu",
+        "no_oss",
+    ],
     visibility = [":friends"],
     deps = [
         ":pass_details",
@@ -91,7 +94,10 @@ cc_library(
 cc_library(
     name = "passes",
     hdrs = ["register_passes.h"],
-    tags = ["no_oss"],
+    tags = [
+        "gpu",
+        "no_oss",
+    ],
     visibility = [":friends"],
     deps = [
         ":TfrtGpuPassIncGen",

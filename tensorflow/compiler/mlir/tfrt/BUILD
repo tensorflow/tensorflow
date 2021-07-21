@@ -665,7 +665,10 @@ tf_cc_binary(
 tf_cc_binary(
     name = "lhlo-tfrt-opt",
     srcs = ["lhlo-tfrt-opt.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "gpu",
+        "no_oss",
+    ],
     deps = [
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
