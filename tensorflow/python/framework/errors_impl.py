@@ -394,6 +394,7 @@ class ResourceExhaustedError(OpError):
   >>>     config = tf.compat.v1.ConfigProto()
   >>>     config.gpu_options.allow_growth = True
   >>>     session = tf.compat.v1.Session(config=config)
+  >>>     print('Either per-user quota is exhausted or perhaps the Entire File System is Out of Space')
 
   @@__init__
   """
