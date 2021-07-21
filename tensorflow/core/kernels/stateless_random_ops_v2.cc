@@ -79,6 +79,9 @@ class StatelessRandomOpBase : public OpKernel {
     int alg_id;
     OP_REQUIRES_OK(ctx, GetScalar(alg_t, alg_input_idx, &alg_id));
     Algorithm alg = Algorithm(alg_id);
+    if (alg == RNG_ALG_AUTO_SELECT) {
+      alg = RNG_ALG_PHILOX;
+    }
 
     TensorShape shape;
     OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
