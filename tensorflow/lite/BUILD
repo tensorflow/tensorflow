@@ -140,6 +140,35 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "simple_planner",
+    srcs = ["simple_planner.cc"],
+    hdrs = ["simple_planner.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    deps = [
+        ":graph_info",
+        ":memory_planner",
+        ":simple_memory_arena",
+        ":util",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_test(
+    name = "simple_planner_test",
+    size = "small",
+    srcs = ["simple_planner_test.cc"],
+    deps = [
+        ":graph_info",
+        ":simple_planner",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # Main library. No ops are included here.
 # TODO(aselle): Resolve problems preventing C99 usage.
 cc_library(
