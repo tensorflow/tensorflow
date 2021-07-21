@@ -139,7 +139,7 @@ class MasterSession : public core::RefCounted {
 
   std::atomic<int64> partial_run_handle_counter_ = {0};
 
-  uint64 NewStepId(int64 graph_key);
+  uint64 NewStepId(int64_t graph_key);
 
   mutex mu_;
   std::unique_ptr<GraphExecutionState> execution_state_ TF_GUARDED_BY(mu_);
@@ -228,7 +228,7 @@ class MasterSession : public core::RefCounted {
                       RCGMap* rcg_map) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void FillPerStepState(MasterSession::ReffedClientGraph* rcg,
                         const RunOptions& run_options, uint64 step_id,
-                        int64 count, PerStepState* out_pss,
+                        int64_t count, PerStepState* out_pss,
                         std::unique_ptr<ProfileHandler>* out_ph);
   Status DoRunWithLocalExecution(CallOptions* opts,
                                  const RunStepRequestWrapper& req,
@@ -251,7 +251,7 @@ class MasterSession : public core::RefCounted {
 
   Status CreateDebuggerState(
       const DebugOptions& debug_options, const RunStepRequestWrapper& req,
-      int64 rcg_execution_count,
+      int64_t rcg_execution_count,
       std::unique_ptr<DebuggerStateInterface>* debugger_state);
 
   TF_DISALLOW_COPY_AND_ASSIGN(MasterSession);

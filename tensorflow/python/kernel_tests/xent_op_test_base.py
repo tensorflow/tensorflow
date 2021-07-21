@@ -151,6 +151,9 @@ class XentOpTestBase(test.TestCase):
     labels = np.array([[0., 0., 0., 1.]]).astype(np.float16)
     logits = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16)
     self._testXent2D(labels, logits, with_placeholders=True)
+    labels = np.array([[1.]]).astype(np.float16)
+    logits = np.array([[1.], [2.]]).astype(np.float16)
+    self._testXent2D(labels, logits, with_placeholders=True)
     labels = np.array([[0.], [2.], [0.25]]).astype(np.float16)
     logits = np.array([[1., 1., 1., 1.], [1., 2., 3., 4.],
                        [1., 2., 3., 4.]]).astype(np.float16)

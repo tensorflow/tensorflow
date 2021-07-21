@@ -38,8 +38,7 @@ GPUResources TensorLinearDescriptor::GetGPUResources(
     desc.access_type = access_type_;
     desc.element_size = 4;
     desc.memory_type = memory_type;
-    if (gpu_info.IsApiOpenGl() &&
-        memory_type == tflite::gpu::MemoryType::CONSTANT) {
+    if (gpu_info.IsGlsl() && memory_type == tflite::gpu::MemoryType::CONSTANT) {
       desc.attributes.push_back(std::to_string(size));
     }
     resources.buffers.push_back({"buffer", desc});
@@ -92,7 +91,7 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
                      args.size(), " was passed"));
   }
   if (storage_type == LinearStorageType::BUFFER) {
-    if (gpu_info.IsApiOpenGl()) {
+    if (gpu_info.IsGlsl()) {
       if (element_type == DataType::FLOAT16) {
         if (memory_type == MemoryType::CONSTANT) {
           const std::string arg0 = "(" + args[0] + ")";
@@ -123,8 +122,8 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
       *result =
           absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0], ", 0))");
       return absl::OkStatus();
-    } else if (gpu_info.IsApiOpenGl()) {
-      if (gpu_info.opengl_info.major_version < 3) {
+    } else if (gpu_info.IsGlsl()) {
+      if (gpu_info.IsApiOpenGl() && gpu_info.opengl_info.major_version < 3) {
         *result = absl::StrCat("texture2D(tex2d, vec2(float(", args[0],
                                ") * inv_tex_width, 0.0))");
         return absl::OkStatus();

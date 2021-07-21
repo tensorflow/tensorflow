@@ -52,7 +52,7 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
 
   llvm::Value* src = b->CreateSelect(pred_cond, on_true, on_false);
   llvm::Value* dst = select.GetBasePointer();
-  int64 table_size = ShapeUtil::ByteSizeOfTupleIndexTable(
+  int64_t table_size = ShapeUtil::ByteSizeOfTupleIndexTable(
       select.GetShape(), module->getDataLayout().getPointerSize());
   b->CreateMemCpy(dst, /*DstAlign=*/llvm::Align(1), src,
                   /*SrcAlign=*/llvm::Align(1), b->getInt64(table_size));
@@ -107,7 +107,7 @@ std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
   return generated_allocas;
 }
 
-llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
+llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64_t index,
                                  int alignment, llvm::Value* operand,
                                  llvm::IRBuilder<>* b) {
   llvm::Module* module = getModuleFromBuilder(b);

@@ -376,7 +376,7 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
 
     with ops.device("CPU:0"):
       if self._cache is not None:
-        return array_ops.identity(self._cache)
+        return self._cache
       else:
         self._cache = array_ops.identity(self._v)
         return self._cache

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -54,6 +55,12 @@ monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name);
 //
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
 monitoring::CounterCell* GetTFDataElementsCounter(const string& name);
+
+// Returns a gauge than can be used to record the performance model information.
+//
+// The `id` argument represents the (unique) model ID.
+monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
+    const string& id);
 
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64 num_bytes);
@@ -93,12 +100,6 @@ void RecordTFDataServiceWorkerCreated();
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataFilename(const string& name, const string& filename);
-
-// Registers a function to get the most recent tf.data autotuning models. The
-// function is only called when the corresponding metric is accessed.
-// Registration can only happen once.
-void RegisterTFDataModelExporter(
-    StatusOr<absl::flat_hash_map<uint64, string>*> export_models());
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64 num_features);

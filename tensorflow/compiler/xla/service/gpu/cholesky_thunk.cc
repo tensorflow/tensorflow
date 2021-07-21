@@ -41,7 +41,7 @@ CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
                              BufferAllocation::Slice a_buffer,
                              BufferAllocation::Slice workspace_buffer,
                              BufferAllocation::Slice info_buffer,
-                             PrimitiveType type, int64 batch_size, int64 n)
+                             PrimitiveType type, int64_t batch_size, int64_t n)
     : Thunk(Kind::kCholesky, thunk_info),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
@@ -78,7 +78,7 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.buffer_allocations->GetDeviceAddress(info_buffer_).opaque());
   se::DeviceMemoryBase workspace_data =
       params.buffer_allocations->GetDeviceAddress(workspace_buffer_);
-  for (int64 i = 0; i < batch_size_; ++i) {
+  for (int64_t i = 0; i < batch_size_; ++i) {
     se::DeviceMemoryBase a_data =
         se::DeviceMemoryBase(a_base + i * a_batch_stride_, a_batch_stride_);
     se::DeviceMemory<int> info_data(

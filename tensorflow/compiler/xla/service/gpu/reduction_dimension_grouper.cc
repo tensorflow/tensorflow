@@ -55,7 +55,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
     };
 
     bool changed = false;
-    int64 next_dim_size = 1;
+    int64_t next_dim_size = 1;
 
     // Since we have enforced the standard layout, iteration over logical
     // dimensions is equivalent to iteration over the major-to-minor order.

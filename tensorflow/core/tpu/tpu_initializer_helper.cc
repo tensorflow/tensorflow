@@ -53,11 +53,13 @@ bool TryAcquireTpuLock() {
     }
     should_load_library = true;
 
-    // if the TPU_HOST_BOUNDS or TPU_VISIBLE_DEVICES env var is set, that means
-    // we are loading each chip in a different process and thus multiple libtpu
-    // loads are OK.
-    if (GetEnvVar("TPU_HOST_BOUNDS").empty() &&
-        GetEnvVar("TPU_VISIBLE_DEVICES").empty()) {
+    // If TPU_CHIPS_PER_HOST_BOUND doesn't include all chips, we assume we're
+    // using different chips in different processes and thus multiple libtpu
+    // loads are ok.
+    // TODO(skyewm): we could make per-chip lock files and look at
+    // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
+    std::string chips_per_host_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUND");
+    if (chips_per_host_bounds.empty() || chips_per_host_bounds == "2,2,1") {
       int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
 
       // This lock is held until the process exits intentionally. The underlying

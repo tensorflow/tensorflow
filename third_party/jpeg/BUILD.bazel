@@ -1,11 +1,11 @@
 # Description:
 #   libjpeg-turbo is a drop in replacement for jpeglib optimized with SIMD.
 
+load("@org_tensorflow//third_party:common.bzl", "template_rule")
+
 licenses(["notice"])  # custom notice-style license, see LICENSE.md
 
 exports_files(["LICENSE.md"])
-
-load("@org_tensorflow//third_party:common.bzl", "template_rule")
 
 WIN_COPTS = [
     "/Ox",
@@ -15,8 +15,8 @@ WIN_COPTS = [
 
 libjpegturbo_copts = select({
     ":android": [
-        "-O2",
-        "-fPIE",
+        "-O3",
+        "-fPIC",
         "-w",
     ],
     ":windows": WIN_COPTS,
@@ -27,9 +27,14 @@ libjpegturbo_copts = select({
 }) + select({
     ":armeabi-v7a": [
         "-D__ARM_NEON__",
+        "-DNEON_INTRINSICS",
         "-march=armv7-a",
+        "-mfpu=neon",
         "-mfloat-abi=softfp",
         "-fprefetch-loop-arrays",
+    ],
+    ":arm64-v8a": [
+        "-DNEON_INTRINSICS",
     ],
     ":linux_ppc64le": [
         "-mcpu=power8",
@@ -81,6 +86,7 @@ cc_library(
         "jdmaster.c",
         "jdmaster.h",
         "jdmerge.c",
+        "jdmerge.h",
         "jdphuff.c",
         "jdpostct.c",
         "jdsample.c",
@@ -121,8 +127,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         ":k8": [":simd_x86_64"],
-        ":armeabi-v7a": [":simd_armv7a"],
-        ":arm64-v8a": [":simd_armv8a"],
+        # TODO(b/188696518): use :simd_armv7a for 32bit ARM, and :simd_armv8a
+        # for 64bit ARM.
+        ":armeabi-v7a": [":simd_none"],
+        ":arm64-v8a": [":simd_none"],
         ":linux_ppc64le": [":simd_altivec"],
         ":windows": [":simd_win_x86_64"],
         "//conditions:default": [":simd_none"],
@@ -257,7 +265,6 @@ genrule(
         "simd/x86_64/jsimdcpu.asm",
         "simd/nasm/jcolsamp.inc",
         "simd/nasm/jdct.inc",
-        "simd/nasm/jpeg_nbits_table.inc",
         "simd/nasm/jsimdcfg.inc",
         "simd/nasm/jsimdcfg.inc.h",
         "simd/nasm/jsimdext.inc",
@@ -304,44 +311,81 @@ genrule(
     tools = ["@nasm"],
 )
 
+template_rule(
+    name = "neon-compat_gen",
+    src = "simd/arm/neon-compat.h.in",
+    out = "simd/arm/neon-compat.h",
+    substitutions = {
+        "#cmakedefine HAVE_VLD1_S16_X3": "#define HAVE_VLD1_S16_X3",
+        "#cmakedefine HAVE_VLD1_U16_X2": "#define HAVE_VLD1_U16_X2",
+        "#cmakedefine HAVE_VLD1Q_U8_X4": "#define HAVE_VLD1Q_U8_X4",
+    },
+)
+
+genrule(
+    name = "neon-compat_hdr_src",
+    srcs = ["simd/arm/neon-compat.h"],
+    outs = ["neon-compat.h"],
+    cmd = "cp $(location simd/arm/neon-compat.h) $@",
+)
+
+cc_library(
+    name = "neon-compat_hdr",
+    hdrs = ["neon-compat.h"],
+    copts = libjpegturbo_copts,
+)
+
+SRCS_SIMD_ARM = [
+    "simd/arm/align.h",
+    "simd/arm/jccolor-neon.c",
+    "simd/arm/jcgray-neon.c",
+    "simd/arm/jcphuff-neon.c",
+    "simd/arm/jcsample-neon.c",
+    "simd/arm/jdcolor-neon.c",
+    "simd/arm/jdmerge-neon.c",
+    "simd/arm/jdsample-neon.c",
+    "simd/arm/jfdctfst-neon.c",
+    "simd/arm/jfdctint-neon.c",
+    "simd/arm/jidctfst-neon.c",
+    "simd/arm/jidctint-neon.c",
+    "simd/arm/jidctred-neon.c",
+    "simd/arm/jquanti-neon.c",
+]
+
 cc_library(
     name = "simd_armv7a",
     srcs = [
-        "jchuff.h",
         "jconfig.h",
-        "jdct.h",
-        "jerror.h",
-        "jinclude.h",
-        "jmorecfg.h",
-        "jpegint.h",
-        "jpeglib.h",
+        "jconfigint.h",
         "jsimd.h",
         "jsimddct.h",
-        "simd/arm/jsimd.c",
-        "simd/arm/jsimd_neon.S",
-        "simd/jsimd.h",
-    ],
+        "simd/arm/aarch32/jsimd.c",
+        "simd/arm/aarch32/jchuff-neon.c",
+    ] + SRCS_SIMD_ARM,
     copts = libjpegturbo_copts,
+    includes = [
+        ".",
+        "../../",
+    ],
+    deps = [":neon-compat_hdr"],
 )
 
 cc_library(
     name = "simd_armv8a",
     srcs = [
-        "jchuff.h",
         "jconfig.h",
-        "jdct.h",
-        "jerror.h",
-        "jinclude.h",
-        "jmorecfg.h",
-        "jpegint.h",
-        "jpeglib.h",
+        "jconfigint.h",
         "jsimd.h",
         "jsimddct.h",
-        "simd/arm64/jsimd.c",
-        "simd/arm64/jsimd_neon.S",
-        "simd/jsimd.h",
-    ],
+        "simd/arm/aarch64/jsimd.c",
+        "simd/arm/aarch64/jchuff-neon.c",
+    ] + SRCS_SIMD_ARM,
     copts = libjpegturbo_copts,
+    includes = [
+        ".",
+        "../../",
+    ],
+    deps = [":neon-compat_hdr"],
 )
 
 cc_library(
@@ -433,7 +477,6 @@ genrule(
         "simd/x86_64/jsimdcpu.asm",
         "simd/nasm/jcolsamp.inc",
         "simd/nasm/jdct.inc",
-        "simd/nasm/jpeg_nbits_table.inc",
         "simd/nasm/jsimdcfg.inc",
         "simd/nasm/jsimdcfg.inc.h",
         "simd/nasm/jsimdext.inc",
@@ -561,8 +604,8 @@ template_rule(
 )
 
 JCONFIGINT_COMMON_SUBSTITUTIONS = {
-    "@BUILD@": "20180831",
-    "@VERSION@": "2.0.0",
+    "@BUILD@": "20210424",
+    "@VERSION@": "2.1.0",
     "@CMAKE_PROJECT_NAME@": "libjpeg-turbo",
     "#undef inline": "",
     "#cmakedefine HAVE_INTRIN_H": "",

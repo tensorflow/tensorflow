@@ -234,6 +234,8 @@ HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);
 HLO_MATCHER(CollectivePermute);
+HLO_MATCHER(CollectivePermuteStart);
+HLO_MATCHER(CollectivePermuteDone);
 HLO_MATCHER(Compare);
 HLO_MATCHER(Concatenate);
 HLO_MATCHER(Conditional);
@@ -300,6 +302,16 @@ HLO_MATCHER(Tuple);
 HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
+
+#define HLO_MATCHER_VECTOR_OPERANDS(opcode)                              \
+  template <>                                                            \
+  inline ::testing::Matcher<const ::xla::HloInstruction*> opcode(        \
+      std::vector<::testing::Matcher<const HloInstruction*>> operands) { \
+    return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(        \
+        ::xla::HloOpcode::k##opcode, operands));                         \
+  }
+
+HLO_MATCHER_VECTOR_OPERANDS(DynamicSlice);
 
 // The special cases below let you check additional information about the
 // HloInstruction, beyond just its opcode and operands.  In all cases you can

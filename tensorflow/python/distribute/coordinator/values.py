@@ -154,6 +154,8 @@ class RemoteValue(object):
     raise NotImplementedError("Must be implemented in subclasses.")
 
 
+# TODO(yuefengz): create an implementation for resource RemoteValue which needs
+# to remember the closure object while a normal RemoteValue doesn't.
 class RemoteValueImpl(RemoteValue):
   """Implementation of `RemoteValue`."""
 

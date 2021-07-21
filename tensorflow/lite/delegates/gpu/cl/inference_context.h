@@ -228,6 +228,7 @@ class InferenceContext {
   std::map<ValueId, Tensor> const_tensors_;
 
   std::map<ValueId, Tensor> variable_tensors_;
+  Buffer shared_buffers_parent_;
   std::vector<Buffer> shared_buffers_;
   std::vector<Tensor>
       shared_buffer_tensors_;  // use references to memory from shared_buffers_

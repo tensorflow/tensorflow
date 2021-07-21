@@ -313,11 +313,12 @@ func @xorWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4x
 }
 
 // -----
-// CHECK-LABEL: @ZetaWithoutBroadcast
-func @ZetaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+// CHECK-LABEL: @NextAfterWithoutBroadcast
+// CHECK-SAME: (%[[LHS:.*]]: tensor<4xf32>, %[[RHS:.*]]: tensor<4xf32>)
+func @NextAfterWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
     -> tensor<4xf32> {
-  // CHECK: chlo.zeta %arg0, %arg1
-  %0 = chlo.broadcast_zeta %arg0, %arg1
+  // CHECK: chlo.next_after %[[LHS]], %[[RHS]]
+  %0 = chlo.broadcast_next_after %arg0, %arg1
       : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -329,6 +330,16 @@ func @PolygammaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
     -> tensor<4xf32> {
   // CHECK: chlo.polygamma %[[LHS]], %[[RHS]]
   %0 = chlo.broadcast_polygamma %arg0, %arg1
+      : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// -----
+// CHECK-LABEL: @ZetaWithoutBroadcast
+func @ZetaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+    -> tensor<4xf32> {
+  // CHECK: chlo.zeta %arg0, %arg1
+  %0 = chlo.broadcast_zeta %arg0, %arg1
       : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }

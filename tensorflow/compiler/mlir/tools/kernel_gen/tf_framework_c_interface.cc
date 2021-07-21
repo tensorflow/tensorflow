@@ -88,6 +88,25 @@ extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
       tensorflow::Status{ConvertAttrToEnumValue(symbol.getValue()), msg});
 }
 
+static void ReportError(void* op_kernel_ctx, ErrorCode error_code,
+                        const char* msg) {
+  _mlir_ciface_tf_report_error(op_kernel_ctx, static_cast<uint32_t>(error_code),
+                               const_cast<char*>(msg));
+}
+
+extern "C" void* _mlir_ciface_tf_jit_compile(void* op_kernel_ctx, char* code) {
+  ReportError(op_kernel_ctx, ErrorCode::UNIMPLEMENTED,
+              "JIT compilation is not yet implemented.");
+  return nullptr;
+}
+
+extern "C" void _mlir_ciface_tf_jit_execute(void* op_kernel_ctx, void* callable,
+                                            void* result, int64_t arg_rank,
+                                            void* arg_descr) {
+  ReportError(op_kernel_ctx, ErrorCode::UNIMPLEMENTED,
+              "JIT execution is not yet implemented.");
+}
+
 }  // namespace tf_framework
 }  // namespace kernel_gen
 }  // namespace mlir

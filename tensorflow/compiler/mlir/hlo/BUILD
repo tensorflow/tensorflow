@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 
 # TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -14,7 +14,7 @@ package(
 
 package_group(
     name = "friends",
-    includes = ["//third_party/mlir:subpackages"],
+    includes = ["@llvm-project//mlir:subpackages"],
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/dtensor/...",
@@ -1619,6 +1619,7 @@ cc_library(
         ":LmhloPassIncGen",
         ":MhloPassIncGen",
         ":broadcast_propagation",
+        ":buffer_reuse",
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_lhlo",
         ":hlo_legalize_to_memref",
@@ -1705,6 +1706,26 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "buffer_reuse",
+    srcs = ["lib/Transforms/buffer_reuse.cc"],
+    hdrs = [
+        "include/mlir-hlo/Analysis/userange_analysis.h",
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
 )

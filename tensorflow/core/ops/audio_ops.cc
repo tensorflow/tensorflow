@@ -82,9 +82,9 @@ Status SpectrogramShapeFn(InferenceContext* c) {
   if (!c->ValueKnown(input_length)) {
     output_length = c->UnknownDim();
   } else {
-    const int64 input_length_value = c->Value(input_length);
-    const int64 length_minus_window = (input_length_value - window_size);
-    int64 output_length_value;
+    const int64_t input_length_value = c->Value(input_length);
+    const int64_t length_minus_window = (input_length_value - window_size);
+    int64_t output_length_value;
     if (length_minus_window < 0) {
       output_length_value = 0;
     } else {

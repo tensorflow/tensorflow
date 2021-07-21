@@ -5,9 +5,9 @@
 # Description:
 #   The MLIR "Multi-Level Intermediate Representation" Compiler Infrastructure
 
-load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
-load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only", "if_cuda_available")
+load(":tblgen.bzl", "gentbl_cc_library", "td_library")
+load(":linalggen.bzl", "genlinalg")
+load(":build_defs.bzl", "cc_headers_only", "if_cuda_available")
 
 package(
     default_visibility = [":friends"],
@@ -33,10 +33,9 @@ exports_files([
 filegroup(
     name = "c_headers",
     srcs = glob(["include/mlir-c/**/*"]),  # <== i.e. match the entire tree
-    visibility = [
-        ":friends",
-    ],
 )
+
+exports_files(glob(["include/**/*.td"]))
 
 [
     gentbl_cc_library(
@@ -1450,6 +1449,7 @@ cc_library(
         ":SCFDialect",
         ":SCFPassIncGen",
         ":StandardOps",
+        ":Support",
         ":Transforms",
         "@llvm-project//llvm:Support",
     ],
@@ -2036,6 +2036,7 @@ cc_library(
         ":Affine",
         ":DialectUtils",
         ":IR",
+        ":InferTypeOpInterface",
         ":LinalgInterfacesIncGen",
         ":LinalgStructuredOpsIncGen",
         ":MemRefDialect",
@@ -2433,6 +2434,14 @@ gentbl_cc_library(
         (
             ["-gen-op-interface-defs"],
             "include/mlir/Dialect/LLVMIR/LLVMOpsInterfaces.cpp.inc",
+        ),
+        (
+            ["-gen-type-interface-decls"],
+            "include/mlir/Dialect/LLVMIR/LLVMTypeInterfaces.h.inc",
+        ),
+        (
+            ["-gen-type-interface-defs"],
+            "include/mlir/Dialect/LLVMIR/LLVMTypeInterfaces.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
@@ -3754,6 +3763,7 @@ td_library(
     deps = [
         ":CastInterfacesTdFiles",
         ":ControlFlowInterfacesTdFiles",
+        ":InferTypeOpInterfaceTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
         ":ViewLikeInterfaceTdFiles",
@@ -3807,6 +3817,7 @@ cc_library(
         ":ControlFlowInterfaces",
         ":DialectUtils",
         ":IR",
+        ":InferTypeOpInterface",
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
@@ -4980,12 +4991,6 @@ cc_library(
     ],
 )
 
-alias(
-    name = "AllPassesAndDialectsNoRegistration",
-    actual = ":AllPassesAndDialects",
-    deprecation = "Use AllPassesAndDialects instead",
-)
-
 cc_binary(
     name = "mlir-lsp-server",
     srcs = ["tools/mlir-lsp-server/mlir-lsp-server.cpp"],
@@ -5851,6 +5856,7 @@ cc_library(
         ":LLVMDialect",
         ":LinalgOps",
         ":LinalgTransforms",
+        ":MemRefToLLVM",
         ":Pass",
         ":SCFDialect",
         ":SCFToStandard",
@@ -5987,10 +5993,12 @@ cc_library(
         "lib/Dialect/Linalg/Transforms/*.cpp",
         "lib/Dialect/Linalg/Transforms/*.h",
     ]) + [
+        "lib/Dialect/Linalg/Analysis/ConstraintsSet.cpp",
         "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/Linalg/Analysis/ConstraintsSet.h",
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/CodegenStrategy.h",
@@ -6488,42 +6496,12 @@ cc_library(
     ],
 )
 
-exports_files(
-    [
-        "include/mlir/Bindings/Python/Attributes.td",
-        "include/mlir/Dialect/DLTI/DLTIBase.td",
-        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
-        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
-        "include/mlir/Dialect/StandardOps/IR/Ops.td",
-        "include/mlir/Dialect/Tensor/IR/TensorOps.td",
-        "include/mlir/Dialect/Vector/VectorOps.td",
-        "include/mlir/Dialect/X86Vector/X86Vector.td",
-        "include/mlir/IR/OpAsmInterface.td",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/IR/RegionKindInterface.td",
-        "include/mlir/IR/SymbolInterfaces.td",
-        "include/mlir/IR/TensorEncoding.td",
-        "include/mlir/Interfaces/CallInterfaces.h",
-        "include/mlir/Interfaces/CallInterfaces.td",
-        "include/mlir/Interfaces/CastInterfaces.h",
-        "include/mlir/Interfaces/CastInterfaces.td",
-        "include/mlir/Interfaces/ControlFlowInterfaces.h",
-        "include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "include/mlir/Interfaces/CopyOpInterface.td",
-        "include/mlir/Interfaces/DataLayoutInterfaces.td",
-        "include/mlir/Interfaces/InferTypeOpInterface.td",
-        "include/mlir/Interfaces/LoopLikeInterface.td",
-        "include/mlir/Interfaces/SideEffectInterfaceBase.td",
-        "include/mlir/Interfaces/SideEffectInterfaces.td",
-        "include/mlir/Interfaces/VectorInterfaces.td",
-        "include/mlir/Interfaces/ViewLikeInterface.td",
-        "include/mlir/Transforms/InliningUtils.h",
-    ],
-    visibility = [":friends"],
-)
+exports_files([
+    "include/mlir/Interfaces/CallInterfaces.h",
+    "include/mlir/Interfaces/CastInterfaces.h",
+    "include/mlir/Interfaces/ControlFlowInterfaces.h",
+    "include/mlir/Transforms/InliningUtils.h",
+])
 
 td_library(
     name = "MathOpsTdFiles",

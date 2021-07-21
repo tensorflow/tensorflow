@@ -715,7 +715,7 @@ TEST_F(MultiOutputFusionTest, PreferFuseProducerIntoFusionConsumer) {
 
 // Check that we limit the number of operands to fusions we create.
 TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
-  constexpr int64 kNumParams = 200;
+  constexpr int64_t kNumParams = 200;
   ASSERT_GT(kNumParams, kMaxOperandsAndOutputsPerFusion);
 
   // Compute
@@ -730,7 +730,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
 
   std::vector<HloInstruction*> params;
-  for (int64 i = 0; i < kNumParams; ++i) {
+  for (int64_t i = 0; i < kNumParams; ++i) {
     params.push_back(
         b.AddInstruction(HloInstruction::CreateParameter(i, shape, "p")));
   }
@@ -751,7 +751,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   };
 
   auto* sum = b.AddInstruction(make_fusion(params[0], params[1]));
-  for (int64 i = 2; i < kNumParams; ++i) {
+  for (int64_t i = 2; i < kNumParams; ++i) {
     sum = b.AddInstruction(HloInstruction::CreateBinary(
         shape, HloOpcode::kAdd, sum,
         b.AddInstruction(make_fusion(params[i - 1], params[i]))));

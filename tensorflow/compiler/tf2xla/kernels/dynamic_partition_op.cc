@@ -47,7 +47,8 @@ class DynamicPartitionOp : public XlaOpKernel {
 
   // Returns a S32 tensor representing how many items in `input` are equal to
   // `target`
-  xla::XlaOp CountS32(XlaOpKernelContext* ctx, xla::XlaOp input, int64 target) {
+  xla::XlaOp CountS32(XlaOpKernelContext* ctx, xla::XlaOp input,
+                      int64_t target) {
     xla::XlaOp equal_dim =
         xla::Compare(input, xla::ConstantR0<int32>(ctx->builder(), target), {},
                      xla::ComparisonDirection::kEq);
@@ -61,7 +62,7 @@ class DynamicPartitionOp : public XlaOpKernel {
   DynamicPartition1D(XlaOpKernelContext* ctx, xla::XlaOp data_1d,
                      xla::XlaOp partitions_1d, const xla::Shape& data_1d_shape,
                      const xla::Shape& partition_1d_shape) {
-    int64 input_count = data_1d_shape.dimensions(0);
+    int64_t input_count = data_1d_shape.dimensions(0);
     std::vector<xla::XlaOp> to_sort = {partitions_1d, data_1d};
     std::vector<xla::PrimitiveType> types_to_sort = {
         partition_1d_shape.element_type(), data_1d_shape.element_type()};
@@ -77,7 +78,7 @@ class DynamicPartitionOp : public XlaOpKernel {
     // `partition_start[i]` is sum(partition_start[0:i])
     std::vector<xla::XlaOp> partition_start(num_partitions_);
     xla::XlaOp count_so_far = xla::Zero(ctx->builder(), xla::S32);
-    for (int64 i = 0; i < num_partitions_; ++i) {
+    for (int64_t i = 0; i < num_partitions_; ++i) {
       xla::XlaOp count = CountS32(ctx, sorted_partitions, /*target=*/i);
       partition_length[i] = count;
       partition_start[i] = count_so_far;
@@ -95,7 +96,7 @@ class DynamicPartitionOp : public XlaOpKernel {
         xla::Pad(sorted_data, xla::Zero(ctx->builder(), ctx->input_xla_type(0)),
                  padding_config);
     std::vector<xla::XlaOp> output(num_partitions_);
-    for (int64 i = 0; i < num_partitions_; ++i) {
+    for (int64_t i = 0; i < num_partitions_; ++i) {
       // Dynamic size will be set later after this function.
       padded_data = xla::RemoveDynamicDimension(padded_data, 0);
       // Slice full size out of the input starting from the offsets.
@@ -130,7 +131,7 @@ class DynamicPartitionOp : public XlaOpKernel {
     if (data_shape.rank() > partition_shape.rank()) {
       // Broadcast parititon_shape so that it can be the same as data_shape.
       std::vector<int64> broadcasted_dims;
-      for (int64 i = 0; i < partition_shape.rank(); ++i) {
+      for (int64_t i = 0; i < partition_shape.rank(); ++i) {
         broadcasted_dims.push_back(i);
       }
       partitions = xla::BroadcastInDim(partitions, data_shape.dimensions(),
@@ -144,13 +145,13 @@ class DynamicPartitionOp : public XlaOpKernel {
     std::vector<int64> output_shape_bound_dims;
     output_shape_bound_dims.push_back(
         xla::ShapeUtil::ElementsIn(partition_shape));
-    int64 count_diff = 1;
-    for (int64 i = partition_shape.rank(); i < data_shape.rank(); ++i) {
+    int64_t count_diff = 1;
+    for (int64_t i = partition_shape.rank(); i < data_shape.rank(); ++i) {
       output_shape_bound_dims.push_back(data_shape.dimensions(i));
       count_diff *= data_shape.dimensions(i);
     }
 
-    int64 input_count = xla::ShapeUtil::ElementsIn(data_shape);
+    int64_t input_count = xla::ShapeUtil::ElementsIn(data_shape);
     auto data_1d = xla::Reshape(data, {input_count});
     auto partitions_1d = xla::Reshape(partitions, {input_count});
     xla::Shape data_1d_shape =
@@ -162,10 +163,10 @@ class DynamicPartitionOp : public XlaOpKernel {
     std::vector<xla::XlaOp> output, partition_length;
     std::tie(output, partition_length) = DynamicPartition1D(
         ctx, data_1d, partitions_1d, data_1d_shape, partitions_1d_shape);
-    for (int64 i = 0; i < num_partitions_; ++i) {
+    for (int64_t i = 0; i < num_partitions_; ++i) {
       auto reshape = xla::Reshape(output[i], output_shape_bound_dims);
       if (partitions_are_static) {
-        int64 size = absl::c_count(partitions_static, i);
+        int64_t size = absl::c_count(partitions_static, i);
         ctx->SetOutput(i, xla::SliceInDim(reshape, 0, size, 1, 0));
       } else {
         xla::XlaOp length;

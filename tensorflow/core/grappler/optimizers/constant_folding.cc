@@ -60,7 +60,7 @@ namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
 // We only fold/materialize constants smaller than 100kB.
-const int64 kMaxConstantSize = 100 * 1024;
+const int64_t kMaxConstantSize = 100 * 1024;
 
 namespace {
 template <typename T>
@@ -322,7 +322,7 @@ bool ConstantFolding::ForwardInputs(NodeDef* node,
 }
 
 // Puts the given value into the tensor at the given "flat" index.
-static Status PutValueIntoTensor(const int64 value, const DataType& type,
+static Status PutValueIntoTensor(const int64_t value, const DataType& type,
                                  const int index, Tensor* tensor) {
   if (type == DT_INT32) {
     if (value >= INT_MAX) {
@@ -346,7 +346,7 @@ static Status ConvertShapeToConstant(const string& op, const DataType& type,
       TF_RETURN_IF_ERROR(PutValueIntoTensor(shp.dim_size(i), type, i, tensor));
     }
   } else if (op == "Size") {
-    int64 size = 1;
+    int64_t size = 1;
     for (int i = 0; i < shp.dims(); ++i) {
       size *= shp.dim_size(i);
     }
@@ -619,7 +619,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
       OptimizedNodeExists(node, "-folded-2")) {
     return Status::OK();
   }
-  int64 min_id = 0;
+  int64_t min_id = 0;
   BCast::Vec shape1;
   if (!ExtractShape(*shape_node1, properties, &shape1, &min_id)) {
     return Status::OK();
@@ -1008,7 +1008,7 @@ bool ConstantFolding::IsFoldableUncached(
     const std::vector<OpInfo::TensorProperties>& output_props =
         properties->GetOutputProperties(node.name());
     // Compute total size of inputs.
-    int64 input_size_bytes = 0;
+    int64_t input_size_bytes = 0;
     for (const auto& input_prop : input_props) {
       const PartialTensorShape input_shape(input_prop.shape());
       if (input_shape.IsFullyDefined()) {
@@ -1019,7 +1019,7 @@ bool ConstantFolding::IsFoldableUncached(
     for (const auto& output_prop : output_props) {
       const PartialTensorShape output_shape(output_prop.shape());
       if (output_shape.IsFullyDefined()) {
-        const int64 num_bytes =
+        const int64_t num_bytes =
             output_shape.num_elements() * DataTypeSize(output_prop.dtype());
         if (num_bytes > input_size_bytes && num_bytes > kMaxConstantSize) {
           // Do not fold nodes if the in-memory size of output is too large.
@@ -1276,7 +1276,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
       case DT_DOUBLE:
         POPULATE_TENSOR_PROTO(tensor, t, double, double);
       case DT_INT64:
-        POPULATE_TENSOR_PROTO(tensor, t, int64, int64);
+        POPULATE_TENSOR_PROTO(tensor, t, int64_t, int64);
       case DT_UINT64:
         POPULATE_TENSOR_PROTO(tensor, t, uint64, uint64);
       case DT_INT32:
@@ -1729,7 +1729,7 @@ bool ConstantFolding::IsSimplifiableReshape(
   } else {
     std::vector<int64> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {
-      int64 dim = outputs[0]->flat<int64>()(i);
+      int64_t dim = outputs[0]->flat<int64>()(i);
       shp.push_back(dim);
     }
     TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
@@ -2806,7 +2806,7 @@ bool ConstantFolding::IsReductionSimplifiableToIdentity(
   }
   bool simplifiable = true;
   for (int i = 0; i < output_size; ++i) {
-    int64 dim;
+    int64_t dim;
     if (reduction_indices_vector[0]->dtype() == DT_INT32) {
       dim = reduction_indices_vector[0]->flat<int32>()(i);
     } else {
@@ -4022,7 +4022,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   GrapplerItem item_to_optimize = item;
   *optimized_graph = GraphDef();
   item_to_optimize.graph.Swap(optimized_graph);
-  int64 node_count;
+  int64_t node_count;
   do {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     graph_modified_ = false;

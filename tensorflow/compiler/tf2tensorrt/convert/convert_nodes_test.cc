@@ -3717,8 +3717,17 @@ TEST_P(OpConverter_FP32_Test, ConvertActivation) {
     std::vector<float> output_values;
     std::transform(input.begin(), input.end(),
                    std::back_inserter(output_values), op_map[op_name].second);
+
     TestOpConverter("my_unary", node_def, p.expected_output_dims, Status::OK(),
-                    Status::OK(), ArrayFloatNear(output_values, 0, false));
+                    Status::OK(),
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+                    // NVBug # 3322482 - Known bug with TRT 8.0 on specific GPU
+                    // architectures
+                    ArrayFloatNear(output_values, 1e-4, false)
+#else
+                    ArrayFloatNear(output_values, 0, false)
+#endif
+    );
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));

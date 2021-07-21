@@ -88,7 +88,6 @@ from tensorflow.python.saved_model import signature_constants as _signature_cons
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_debug_info as _parse_saved_model_with_debug_info
-from tensorflow.python.training.tracking import tracking as _tracking
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import tf_export as _tf_export
@@ -1154,7 +1153,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     super(TFLiteFrozenGraphConverterV2, self).__init__()
     self._funcs = funcs
     self._trackable_obj = trackable_obj
-    self.experimental_lower_to_saved_model = False
+    self.experimental_lower_to_saved_model = True
 
   @convert_phase(Component.PREPARE_TF_MODEL,
                  SubComponent.FREEZE_CONCRETE_FUNCTION)
@@ -1211,18 +1210,12 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
 
     # Without the provided trackable obj, it is not able to serialize the given
     # concrete functions as a saved model format.
-    trackable_obj = self._trackable_obj
-    if not trackable_obj:
-      if func.variables:
-        return None, None, None
-
-      # If there is no variable available, use an empty AutoTrackable object.
-      trackable_obj = _tracking.AutoTrackable()
-      trackable_obj.func = func
+    if not self._trackable_obj:
+      return None, None, None
 
     try:
       _saved_model.save(
-          trackable_obj,
+          self._trackable_obj,
           output_dir,
           signatures={"serving_default": func},
           options=_save_options.SaveOptions(save_debug_info=True))

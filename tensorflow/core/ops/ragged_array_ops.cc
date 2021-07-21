@@ -99,7 +99,7 @@ REGISTER_OP("RaggedCross")
       int dense_start = num_ragged * 2 + num_sparse * 3;
       for (int i = 0; i < dense_types.size(); ++i) {
         ShapeHandle dense_input = c->input(i + dense_start);
-        int64 batch_size = c->Value(c->Dim(dense_input, 0));
+        int64_t batch_size = c->Value(c->Dim(dense_input, 0));
         if (batch_size != InferenceContext::kUnknownDim) {
           ShapeHandle row_splits = c->Vector(batch_size + 1);
           if (!c->Merge(out_splits, row_splits, &out_splits).ok()) {
@@ -120,7 +120,7 @@ REGISTER_OP("RaggedCross")
 
 Status RaggedGatherShapeFn(InferenceContext* c) {
   int num_splits;
-  int64 PARAMS_RAGGED_RANK;
+  int64_t PARAMS_RAGGED_RANK;
   TF_RETURN_IF_ERROR(
       c->GetAttr<int64>("PARAMS_RAGGED_RANK", &PARAMS_RAGGED_RANK));
   TF_RETURN_IF_ERROR(c->GetAttr<int>("OUTPUT_RAGGED_RANK", &num_splits));
@@ -131,7 +131,7 @@ Status RaggedGatherShapeFn(InferenceContext* c) {
       c->WithRank(indices, num_splits - PARAMS_RAGGED_RANK + 1, &indices));
 
   // Check that all params_nested_splits have rank 1.
-  for (int64 i = 0; i < PARAMS_RAGGED_RANK; ++i) {
+  for (int64_t i = 0; i < PARAMS_RAGGED_RANK; ++i) {
     ShapeHandle splits = c->input(i);
     TF_RETURN_IF_ERROR(c->WithRank(splits, 1, &splits));
   }

@@ -33,7 +33,7 @@ namespace tensorflow {
 // kernel context `ctx`.
 static std::vector<int> GetResourceVariableIndices(OpKernelContext* ctx) {
   std::vector<int> out;
-  for (int64 i = 0; i < ctx->num_inputs(); i++) {
+  for (int64_t i = 0; i < ctx->num_inputs(); i++) {
     if (ctx->input(i).dtype() == DT_RESOURCE) {
       out.push_back(i);
     }

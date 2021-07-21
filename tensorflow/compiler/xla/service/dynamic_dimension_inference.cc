@@ -1218,20 +1218,7 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicUpdateSlice(
 }
 
 Status DynamicDimensionInferenceVisitor::HandleReverse(HloInstruction* hlo) {
-  return ForEachOperandDynamicDimension(
-      hlo,
-      [&](HloInstruction* /*operand*/, ShapeIndex /*index*/, int64 dimension,
-          int64 /*operand_index*/, HloInstruction* dynamic_size) {
-        if (absl::c_linear_search(hlo->dimensions(), dimension)) {
-          return Unimplemented(
-              "Dynamic dimension propagation on reversed dimension is not "
-              "supported %s",
-              hlo->ToString());
-        }
-        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
-
-        return Status::OK();
-      });
+  return PassThroughDynamicDimension(hlo);
 }
 
 Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {

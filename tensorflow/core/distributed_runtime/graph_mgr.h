@@ -77,7 +77,7 @@ class GraphMgr {
   Status Register(const string& handle, const GraphDef& gdef,
                   WorkerSession* session, const GraphOptions& graph_options,
                   const DebugOptions& debug_options,
-                  const ConfigProto& config_proto, int64 collective_graph_key,
+                  const ConfigProto& config_proto, int64_t collective_graph_key,
                   DistributedFunctionLibraryRuntime* cluster_flr,
                   string* graph_handle);
 
@@ -164,10 +164,10 @@ class GraphMgr {
   std::unordered_map<string, Item*> table_;
 
   void StartParallelExecutors(
-      const string& handle, int64 step_id, Item* item, Rendezvous* rendezvous,
+      const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
       CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
       CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-      WorkerSession* session, int64 start_time_usecs, StatusCallback done);
+      WorkerSession* session, int64_t start_time_usecs, StatusCallback done);
 
   // Don't attempt to process cost models unless explicitly requested for at
   // least one of the items.
@@ -179,7 +179,7 @@ class GraphMgr {
   Status InitItem(const string& handle, const GraphDef& gdef,
                   WorkerSession* session, const GraphOptions& graph_options,
                   const DebugOptions& debug_options,
-                  const ConfigProto& config_proto, int64 collective_graph_key,
+                  const ConfigProto& config_proto, int64_t collective_graph_key,
                   DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
 
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,

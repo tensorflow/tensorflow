@@ -516,6 +516,64 @@ This pass requires that the full shape of the tensor array can be inferred:
 or that can be inferred from a later write, and 3) all elements have the same
 shape.
 ### `-tf-tensor-device-copy`: Fold the tf.Identity op and the tf.IdentityN op if the op has the same device as its operand
+### `-tf-tensor-list-ops-decomposition`: Decomposes TensorList operations into generic operations on tensors.
+This pass rewrites TensorList operations into generic and non-mutating
+operations on tensors. This results in operations that can be legalized to XLA.
+
+The list is converted to a single large tensor that includes all list elements,
+with a new first dimension for the list index. List update operations are
+converted to operations that create a new tensor representing the list.
+
+In the current implementation, the resulting operations are statically shaped,
+which means it must be possible to infer a bound on the full shape of the
+TensorList. That is, the `element_shape` and `num_elements` arguments to a
+tensor list creation op are constant.
+
+A tensor list creation op `tf.EmptyTensorList`/`tf.TensorListReserve` will be
+turned in to a zero-initialized buffer, and the size is initialized to 0
+for `tf.EmptyTensorList` or the specified size for `tf.TensorListReserve`.
+Each push will be turned into `tf.XlaDynamicUpdateSlice` with the incremented
+size, and each pop will be turned into a `tf.Slice` and a copy of the buffer
+with decremented size. Each `tf.TensorListSetItem` will be turned into a
+`tf.XlaDynamicUpdateSlice` with unchanged size, and each `tf.TensorListGetItem`
+will be rewritten to a `tf.Slice`.
+
+The pass also works across control flow and functional calls.
+
+For example, the TensorList ops in the following function:
+
+```mlir
+func @main(%arg0: tensor<8x4xf32>) {
+  %elem_shape = "tf.Const"() {value = dense<[8, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<8x4xf32>>>
+  %push = "tf.TensorListPushBack"(%tl, %arg0) : (tensor<!tf.variant<tensor<8x4xf32>>>, tensor<8x4xf32>) -> tensor<!tf.variant<tensor<8x4xf32>>>
+  return
+}
+```
+
+will be transformed to:
+
+```mlir
+func @main(%arg0: tensor<8x4xf32>) {
+  // EmptyTensorList lowering
+  %emptyi = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %emptyf = "tf.Cast"(%emptyi) : (tensor<i32>) -> tensor<f32>
+  %size_shape = "tf.Const"() {value = dense<[10, 8, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %tl = "tf.BroadcastTo"(%emptyf, %size_shape) : (tensor<f32>, tensor<3xi32>) -> tensor<10x8x4xf32>
+  // TensorListPushBack lowering
+  %index_in_list = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  %arg0_shape = "tf.Const"() {value = dense<[1, 8, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %arg0_reshaped = "tf.Reshape"(%arg0, %arg0_shape) : (tensor<8x4xf32>, tensor<3xi32>) -> tensor<1x8x4xf32>
+  %zeroi2 = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
+  %axis = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %start_indices = "tf.ConcatV2"(%index_in_list, %zeroi2, %axis) : (tensor<1xi32>, tensor<2xi32>, tensor<i32>) -> tensor<3xi32>
+  %push = "tf.XlaDynamicUpdateSlice"(%tl, %arg0_reshaped, %start_indices) : (tensor<10x8x4xf32>, tensor<1x8x4xf32>, tensor<3xi32>) -> tensor<10x8x4xf32>
+  %one = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %next_index_in_list = "tf.AddV2"(%index_in_list, %one) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+  return
+}
+```
 ### `-tf-tpu-cleanup-cluster-attributes`: Eliminate _tpu_replicate and other attributes from ops in a cluster
 This pass eliminate `_tpu_replicate` and `device` attribute on operations
 that are contained in a tf_device.cluster op.

@@ -611,7 +611,8 @@ LogicalResult ConvertMemRefAllocOpToDispatchOpPattern::matchAndRewrite(
 
   // create dispatch op
   auto dispatch_op = rewriter.create<disc_ral::DispatchOp>(
-      loc, getVoidPtrType(), context_arg, sizeBytes, kMalloc, false, "gpu");
+      loc, getVoidPtrType(), context_arg, sizeBytes, kMalloc,
+      /*has_side_effect*/ false, "gpu");
   Value allocated_byte_ptr = dispatch_op.getResult(0);
 
   // Create the MemRef descriptor.
@@ -706,7 +707,7 @@ class RalToLLVMPass : public RalToLLVMPassBase<RalToLLVMPass> {
     target.addIllegalDialect<StandardOpsDialect, gpu::GPUDialect,
                              disc_ral::RalDialect, math::MathDialect,
                              memref::MemRefDialect>();
-    target.addIllegalOp<LLVM::DialectCastOp>();
+    target.addIllegalOp<UnrealizedConversionCastOp>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.

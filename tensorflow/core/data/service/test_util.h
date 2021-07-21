@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -28,7 +28,7 @@ namespace testing {
 // Returns a test dataset representing
 // tf.data.Dataset.range(range).map(lambda x: x*x). Useful for testing dataset
 // graph execution.
-StatusOr<DatasetDef> RangeSquareDataset(int64 range);
+DatasetDef RangeSquareDataset(int64 range);
 
 }  // namespace testing
 }  // namespace data

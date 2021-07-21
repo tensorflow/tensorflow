@@ -82,7 +82,7 @@ static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
     return;
   }
 
-  int64 vmaj, vmin, vdot;
+  int64_t vmaj, vmin, vdot;
   std::string vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(ptxas_version.ValueOrDie(),
                          R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str, &vmin_str,

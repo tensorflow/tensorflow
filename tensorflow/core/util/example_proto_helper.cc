@@ -158,7 +158,7 @@ int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
   if (num_elements > 0) {
     auto ix_t = indices->matrix<int64>();
     int64* ix_p = &ix_t(offset, 0);
-    for (int64 i = 0; i < num_elements; ++i, ix_p += 2) {
+    for (int64_t i = 0; i < num_elements; ++i, ix_p += 2) {
       *ix_p = batch;    // Column 0 stores the batch entry
       *(ix_p + 1) = i;  // Column 1 stores the index in the batch
     }
@@ -302,8 +302,8 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
                              const std::vector<Tensor>& sparse_values_tmp,
                              const int batch_size,
                              VarLenFeatureBatchShapes* output_shapes) {
-  int64 total_num_features = 0;
-  int64 max_num_features = 0;
+  int64_t total_num_features = 0;
+  int64_t max_num_features = 0;
   for (int b = 0; b < batch_size; ++b) {
     const Tensor& t = sparse_values_tmp[b];
     const int64 num_elements = t.shape().num_elements();
@@ -395,7 +395,7 @@ Status BatchExampleProtoToTensors(
     Tensor* sp_indices_d = &(*output_sparse_indices_tensor)[d];
     Tensor* sp_values_d = &(*output_sparse_values_tensor)[d];
 
-    int64 offset = 0;
+    int64_t offset = 0;
     for (int b = 0; b < batch_size; ++b) {
       const int64 num_elements = CopyIntoSparseTensor(
           sparse_values_tensor[b], b, offset, sp_indices_d, sp_values_d);

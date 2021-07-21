@@ -223,6 +223,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
+  TF_LITE_ENSURE(context, filter->dims->data[1] != 0);
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 

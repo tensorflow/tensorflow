@@ -128,6 +128,8 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   const std::vector<std::string>& fingerprints() const;
   void set_fingerprints();
 
+  const std::string& fingerprint(int index) const override;
+
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
   std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
   const XLA_TpuProgram* tpu_program(int index) const override;

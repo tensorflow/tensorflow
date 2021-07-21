@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
@@ -35,8 +36,7 @@ GPUResources BufferDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   desc.element_size = element_size;
   desc.memory_type = memory_type;
   desc.attributes = attributes;
-  if (gpu_info.IsApiOpenGl() &&
-      memory_type == tflite::gpu::MemoryType::CONSTANT) {
+  if (gpu_info.IsGlsl() && memory_type == tflite::gpu::MemoryType::CONSTANT) {
     desc.attributes.push_back(
         std::to_string(size / (element_size * SizeOf(element_type))));
   }
@@ -66,7 +66,7 @@ absl::Status BufferDescriptor::PerformReadSelector(
         absl::StrCat("BufferDescriptor Read require one argument, but ",
                      args.size(), " was passed"));
   }
-  if (gpu_info.IsApiOpenGl()) {
+  if (gpu_info.IsGlsl()) {
     if (element_type == DataType::FLOAT16) {
       if (memory_type == MemoryType::CONSTANT) {
         const std::string arg0 = "(" + args[0] + ")";
@@ -75,9 +75,30 @@ absl::Status BufferDescriptor::PerformReadSelector(
                          " % 2 == 0 ? 0 : 2]), unpackHalf2x16(buffer[", arg0,
                          " / 2][", arg0, " % 2 == 0 ? 1 : 3]))");
       } else {
-        *result =
-            absl::StrCat("vec4(unpackHalf2x16(buffer[", args[0],
-                         "].x), unpackHalf2x16(buffer[", args[0], "].y))");
+        if (element_size == 4) {
+          *result =
+              absl::StrCat("vec4(unpackHalf2x16(buffer[", args[0],
+                           "].x), unpackHalf2x16(buffer[", args[0], "].y))");
+        } else if (element_size == 16) {
+          const std::string vec0 = absl::Substitute(
+              "vec4(unpackHalf2x16(buffer[$0].a.x), "
+              "unpackHalf2x16(buffer[$0].a.y))",
+              args[0]);
+          const std::string vec1 = absl::Substitute(
+              "vec4(unpackHalf2x16(buffer[$0].a.z), "
+              "unpackHalf2x16(buffer[$0].a.w))",
+              args[0]);
+          const std::string vec2 = absl::Substitute(
+              "vec4(unpackHalf2x16(buffer[$0].b.x), "
+              "unpackHalf2x16(buffer[$0].b.y))",
+              args[0]);
+          const std::string vec3 = absl::Substitute(
+              "vec4(unpackHalf2x16(buffer[$0].b.z), "
+              "unpackHalf2x16(buffer[$0].b.w))",
+              args[0]);
+          *result = absl::Substitute("mat4x4($0, $1, $2, $3)", vec0, vec1, vec2,
+                                     vec3);
+        }
       }
     } else {
       *result = absl::StrCat("buffer[", args[0], "]");

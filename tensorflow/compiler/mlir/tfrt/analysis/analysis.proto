@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package mlir.tfrt;
+
+message CompatibilityAnalysisReportProto {
+  bool unknown_dialect = 1;
+  bool ref_variable = 2;
+  bool incompatible_variable = 3;
+  bool incompatible_attribute = 4;
+  bool control_flow_v1 = 5;
+  string method_name = 6;
+
+  // TODO(chky): add more checks, eg. tensor datatypes.
+}
+
+message CompatibilityAnalysisProto {
+  CompatibilityAnalysisReportProto summary = 1;
+
+  message OpInfo {
+    int32 count = 1;
+
+    CompatibilityAnalysisReportProto report = 2;
+  }
+
+  map<string, OpInfo> ops = 2;
+}

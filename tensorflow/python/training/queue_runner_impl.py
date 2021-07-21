@@ -51,9 +51,10 @@ class QueueRunner(object):
 
   The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
 
-  @compatibility(eager)
+  @compatibility(TF2)
   QueueRunners are not compatible with eager execution. Instead, please
-  use `tf.data` to get data into your model.
+  use [tf.data](https://www.tensorflow.org/guide/data) to get data into your
+  model.
   @end_compatibility
   """
 
@@ -403,6 +404,12 @@ def add_queue_runner(qr, collection=ops.GraphKeys.QUEUE_RUNNERS):
   The companion method `start_queue_runners()` can be used to start threads for
   all the collected queue runners.
 
+  @compatibility(TF2)
+  QueueRunners are not compatible with eager execution. Instead, please
+  use [tf.data](https://www.tensorflow.org/guide/data) to get data into your
+  model.
+  @end_compatibility
+
   Args:
     qr: A `QueueRunner`.
     collection: A `GraphKey` specifying the graph collection to add
@@ -421,6 +428,12 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
   This is a companion method to `add_queue_runner()`.  It just starts
   threads for all queue runners collected in the graph.  It returns
   the list of all threads.
+
+  @compatibility(TF2)
+  QueueRunners are not compatible with eager execution. Instead, please
+  use [tf.data](https://www.tensorflow.org/guide/data) to get data into your
+  model.
+  @end_compatibility
 
   Args:
     sess: `Session` used to run the queue ops.  Defaults to the
@@ -442,11 +455,6 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
   Raises:
     RuntimeError: If called with eager execution enabled.
     ValueError: If called without a default `tf.compat.v1.Session` registered.
-
-  @compatibility(eager)
-  Not compatible with eager execution. To ingest data under eager execution,
-  use the `tf.data` API instead.
-  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError("Queues are not compatible with eager execution.")

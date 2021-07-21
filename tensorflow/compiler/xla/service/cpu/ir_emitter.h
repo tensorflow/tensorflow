@@ -332,7 +332,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // most-minor dimension).
   llvm::Constant* CreateInitializerForConstantArray(
       const std::vector<llvm::Constant*>& array_elements, const Shape& shape,
-      int64 dimension_index);
+      int64_t dimension_index);
 
   // Tries to codegen a reduction operation using vectorized instructions.
   // Returns true if successful, and false on failure.  On failure, sets
@@ -411,7 +411,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits LLVM IR to transfer "element_count" elements of type "primitive_type"
   // from the address "source" to the address "target".
   void EmitTransferElements(llvm::Value* target, llvm::Value* source,
-                            int64 element_count, PrimitiveType primitive_type,
+                            int64_t element_count, PrimitiveType primitive_type,
                             const llvm_ir::IrArray& target_array,
                             const llvm_ir::IrArray& source_array);
 
@@ -554,14 +554,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Given a load instruction and a shape or buffer size, annotate the load's
   // result with the alignment required by the shape or size.
   void AttachAlignmentMetadataForLoad(llvm::LoadInst* load, const Shape& shape);
-  void AttachAlignmentMetadataForLoad(llvm::LoadInst* load, int64 buffer_size);
+  void AttachAlignmentMetadataForLoad(llvm::LoadInst* load,
+                                      int64_t buffer_size);
 
   // Given a load instruction and a shape or buffer size, annotate the load's
   // result with the dereferenceable bytes required by the shape / buffer size.
   void AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
                                             const Shape& shape);
   void AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
-                                            int64 buffer_size);
+                                            int64_t buffer_size);
 
   // Calculate the alignment of a buffer allocated for a given shape.
   int MinimumAlignmentForShape(const Shape& shape);

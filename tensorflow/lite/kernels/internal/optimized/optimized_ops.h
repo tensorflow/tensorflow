@@ -2694,19 +2694,15 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
   TFLITE_DCHECK_LT(params.output_offset, 256);
 
   auto div_func = [&](int indexes[N]) {
-    int32 input1_val =
+    const int32 input1_val =
         params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    int32 input2_val =
+    const int32 input2_val =
         params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
     TFLITE_DCHECK_NE(input2_val, 0);
-    if (input2_val < 0) {
-      // Invert signs to avoid a negative input2_val as input2_inv needs to be
-      // positive to be used as multiplier of MultiplyByQuantizedMultiplier.
-      input1_val = -input1_val;
-      input2_val = -input2_val;
-    }
     int recip_shift;
-    const int32 input2_inv = GetReciprocal(input2_val, 31, &recip_shift);
+    const int32 input2_inv =
+        (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
+                         : -GetReciprocal(-input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
     const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
         input1_val, input2_inv, headroom);
@@ -3176,7 +3172,7 @@ inline int NodeOffset(int b, int h, int w, int height, int width) {
   return (b * height + h) * width + w;
 }
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const float* input_data,
                         const RuntimeShape& output_shape, float* output_data) {
@@ -3190,6 +3186,9 @@ inline void AveragePool(const PoolParams& params,
   const int output_width = output_shape.Dims(2);
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
+
+  if (stride_height == 0) return false;
+  if (stride_width == 0) return false;
 
   // TODO(benoitjacob) make this a proper reference impl without Eigen!
   const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
@@ -3236,9 +3235,11 @@ inline void AveragePool(const PoolParams& params,
                                                   params.float_activation_min,
                                                   params.float_activation_max);
   }
+
+  return true;
 }
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const uint8* input_data,
                         const RuntimeShape& output_shape, uint8* output_data) {
@@ -3287,6 +3288,7 @@ inline void AveragePool(const PoolParams& params,
               std::min(params.filter_height, input_height - in_y_origin);
           const int filter_count =
               (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
+          if (filter_count == 0) return false;
           memset(acc, 0, tranche_depth * sizeof(acc[0]));
           const uint8* input_ptr =
               input_data + depth_base +
@@ -3373,6 +3375,7 @@ inline void AveragePool(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,

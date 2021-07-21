@@ -25,9 +25,7 @@ REGISTER5(BinaryOp, CPU, "Xlog1py", functor::xlog1py, float, Eigen::half,
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER3(BinaryOp, GPU, "Xlog1py", functor::xlog1py, float, Eigen::half,
           double);
-#if GOOGLE_CUDA
 REGISTER2(BinaryOp, GPU, "Xlog1py", functor::xlog1py, complex64, complex128);
-#endif
 #endif
 #endif
 

@@ -256,7 +256,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
   llvm::Value* target_ptr = target_array_.GetBasePointer();
 
   // Zero out the output buffer.
-  int64 size_bytes = ShapeUtil::ByteSizeOf(dot_info_.result_shape);
+  int64_t size_bytes = ShapeUtil::ByteSizeOf(dot_info_.result_shape);
   b_->CreateMemSet(target_ptr, b_->getInt8(0), /*Size=*/size_bytes,
                    /*Align=*/llvm::MaybeAlign(1));
 
@@ -322,7 +322,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
 
         mlir::linalg::LinalgTilingOptions tilingOptions;
         tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
-        int64 alignment =
+        int64_t alignment =
             target_machine_features_.minimum_alignment_for_allocation(
                 ShapeUtil::ByteSizeOf(dot_info_.result_shape));
         mlir::linalg::CodegenStrategy strategy;
@@ -350,24 +350,25 @@ void DotOpEmitter::EmitTiledLlvmIrGemm() {
   llvm::Value* lhs = lhs_array_.GetBasePointer();
   llvm::Value* rhs = rhs_array_.GetBasePointer();
   llvm::Value* target = target_array_.GetBasePointer();
-  int64 m = mat_mult_dims.m;
-  int64 k = mat_mult_dims.k;
-  int64 n = mat_mult_dims.n;
+  int64_t m = mat_mult_dims.m;
+  int64_t k = mat_mult_dims.k;
+  int64_t n = mat_mult_dims.n;
 
   if (mat_mult_dims.lhs_column_major) {
     std::swap(lhs, rhs);
     std::swap(m, n);
   }
 
-  int64 size_bytes = m * n * ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
+  int64_t size_bytes =
+      m * n * ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   b_->CreateMemSet(target, b_->getInt8(0), /*Size=*/size_bytes,
                    /*Align=*/llvm::MaybeAlign(1));
 
-  int64 max_target_vector_width =
+  int64_t max_target_vector_width =
       target_machine_features_.vector_register_num_elements(
           *b_->GetInsertBlock()->getParent(), primitive_type);
 
-  int64 tile_size_m, tile_size_k, tile_size_n_in_vector_width;
+  int64_t tile_size_m, tile_size_k, tile_size_n_in_vector_width;
   std::tie(tile_size_m, tile_size_k, tile_size_n_in_vector_width) =
       GetGemmTileSize();
 
@@ -391,7 +392,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemv() {
   bool is_column_major_matrix_vector_gemv = false;
   bool is_row_major_matrix_vector_gemv = false;
 
-  int64 m, k;
+  int64_t m, k;
   bool swap_operands;
 
   if (mat_mult_dims.m == 1) {
@@ -451,7 +452,7 @@ void DotOpEmitter::EmitTiledLlvmIrGemv() {
 
   CHECK(is_column_major_matrix_vector_gemv || is_row_major_matrix_vector_gemv);
 
-  int64 tiling_factor = GetGemvTilingFactor();
+  int64_t tiling_factor = GetGemvTilingFactor();
   CHECK_GT(tiling_factor, 0);
 
   llvm::Value* result_op = target_array_.GetBasePointer();
@@ -560,8 +561,8 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   // Reduce along dimension 0 of the LHS and 1 of the RHS. Vectors are a special
   // case where the reduction dimension is 0 for both LHS and RHS. This results
   // in a vector dot product producing a scalar.
-  int64 lhs_reduction_dimension = dim_nums.lhs_contracting_dimensions(0);
-  int64 rhs_reduction_dimension = dim_nums.rhs_contracting_dimensions(0);
+  int64_t lhs_reduction_dimension = dim_nums.lhs_contracting_dimensions(0);
+  int64_t rhs_reduction_dimension = dim_nums.rhs_contracting_dimensions(0);
 
   // Verify the reduction dimension in the two operands are the same size.
   CHECK_EQ(lhs_shape.dimensions(lhs_reduction_dimension),
@@ -894,7 +895,7 @@ absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     // Don't bother if the other operand is tiny, switching to column major
     // wouldn't use tiling.
     constexpr int kColumnMajorThresholdInBytes = 32;
-    int64 lhs_size =
+    int64_t lhs_size =
         ShapeUtil::ByteSizeOfPrimitiveType(hlo.shape().element_type()) *
         ShapeUtil::ElementsIn(hlo.operand(0)->shape());
     if (lhs_size < kColumnMajorThresholdInBytes) {
@@ -1066,9 +1067,9 @@ Shape DropFirstDim(const Shape& shape) {
                                                   array_shape_dims);
 }
 
-Shape CollapseFirstNDims(const Shape& shape, int64 n) {
+Shape CollapseFirstNDims(const Shape& shape, int64_t n) {
   absl::Span<int64 const> input_shape_dims(shape.dimensions());
-  int64 prefix_dim =
+  int64_t prefix_dim =
       std::accumulate(input_shape_dims.begin(), input_shape_dims.begin() + n,
                       1ll, std::multiplies<int64>());
   DimensionVector result_dims;
@@ -1080,7 +1081,7 @@ Shape CollapseFirstNDims(const Shape& shape, int64 n) {
 }
 
 llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilder<>* b,
-                                    const llvm_ir::IrArray& array, int64 n) {
+                                    const llvm_ir::IrArray& array, int64_t n) {
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   const Shape& shape = array.GetShape();
   CHECK(shape.has_layout() &&
@@ -1135,7 +1136,7 @@ Status EmitBatchDotOperation(
 
   // Lower a batch dot into a sequence of non-batch dot operations.
 
-  int64 num_batch_dims =
+  int64_t num_batch_dims =
       dot.dot_dimension_numbers().lhs_batch_dimensions_size();
 
   // First reshape the inputs to make sure we only have one batch dimension.
@@ -1150,7 +1151,7 @@ Status EmitBatchDotOperation(
   llvm_ir::IrArray target_array_reshaped =
       CollapseFirstNDims(b, target_array, num_batch_dims);
 
-  int64 batch_count = lhs_array_reshaped.GetShape().dimensions(0);
+  int64_t batch_count = lhs_array_reshaped.GetShape().dimensions(0);
 
   KernelSupportLibrary ksl(b);
 

@@ -976,7 +976,7 @@ GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Double, double, double,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Complex64, std::complex<float>,
                        std::complex<float>, baseline_xlogy,
-                       test::OpsTestConfig())
+                       test::OpsTestConfig().ATol(2e-6).RTol(2e-6))
 GENERATE_DEFAULT_TESTS(Xlogy, /*test_name=*/Complex128, std::complex<double>,
                        std::complex<double>, baseline_xlogy,
                        test::OpsTestConfig())

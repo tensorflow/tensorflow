@@ -208,6 +208,8 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<"convert",
 
   let hasFolder = 1;
 
+  let hasCanonicalizer = 1;
+
   let hasCustomHLOConverter = 1;
 }
 
@@ -1161,8 +1163,8 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
     HLO_Tensor:$update,
     Variadic<HLO_ScalarIntTensor>:$start_indices
   );
-
   let results = (outs HLO_Tensor:$result);
+  let hasFolder = 1;
 }
 
 

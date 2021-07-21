@@ -246,7 +246,7 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
 // CHECK-LABEL: @tensor_reshape
 // CHECK-SAME: (%[[T:.*]]: memref<1x2x2xf32>)
 func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
-  // CHECK: linalg.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
+  // CHECK: memref.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
   %result = linalg.tensor_collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
   return %result : tensor<4xf32>
 }

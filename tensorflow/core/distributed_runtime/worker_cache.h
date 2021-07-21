@@ -90,7 +90,7 @@ class WorkerCacheInterface {
 
   // Return logs for the identified step in *ss.  Any returned data will no
   // longer be stored.
-  virtual bool RetrieveLogs(int64 step_id, StepStats* ss) { return false; }
+  virtual bool RetrieveLogs(int64_t step_id, StepStats* ss) { return false; }
 };
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_CACHE_H_

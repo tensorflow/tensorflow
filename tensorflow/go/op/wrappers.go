@@ -49783,10 +49783,10 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 	return op.Output(0)
 }
 
-// Inverse of XlaSetDynamicDimensionSize. Make an xla bounded
+// Inverse of XlaSetDynamicDimensionSize.
 //
-//         dynamic dimension into a static dimension. The bound of the size of
-//         dimension `dim_index` becomes the static dimension size.
+// Make an xla bounded dynamic dimension into a static dimension. The bound of the
+// size of dimension `dim_index` becomes the static dimension size.
 func XlaRemoveDynamicDimensionSize(scope *Scope, input tf.Output, dim_index tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return

@@ -55,3 +55,33 @@ func @assert(%arg0: !tf_framework.op_kernel_context) attributes {tf_entry} {
 }
 // CHECK:   [[TRUE:%.*]] = constant true
 // CHECK-NEXT: tf_framework.assert [[CTX]], [[TRUE]], INVALID_ARGUMENT
+
+// -----
+
+// CHECK-LABEL: func @jit_execute
+// CHECK-SAME:  %[[CTX:.*]]: !tf_framework.op_kernel_context,
+// CHECK-SAME:  %[[F:.*]]: !tf_framework.jit_callable,
+// CHECK-SAME:  %[[ARG0:.*]]: tensor<2x?xf32>,
+// CHECK-SAME:  %[[ARG1:.*]]: tensor<2x?xf32>
+func @jit_execute(%ctx : !tf_framework.op_kernel_context,
+    %f : !tf_framework.jit_callable, %arg0 : tensor<2x?xf32>,
+    %arg1 : tensor<2x?xf32>) -> tensor<2x?xf32> attributes {tf_entry} {
+  // CHECK: %[[RES:.*]] = tf_framework.jit_execute
+  // CHECK-SAME: ctx = %[[CTX]], %[[F]](%[[ARG0]], %[[ARG1]])
+  // CHECK: return %[[RES]]
+  %0 = tf_framework.jit_execute %f(%arg0, %arg1)
+      : tensor<2x?xf32>, tensor<2x?xf32> -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @jit_compile_from_str
+// CHECK-SAME:  (%[[CTX:.*]]: !tf_framework.op_kernel_context)
+func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
+    -> !tf_framework.jit_callable attributes {tf_entry} {
+  // CHECK: %[[RES:.*]] = tf_framework.jit_compile_from_str %[[CTX]], "placeholder"
+  // CHECK: return %[[RES]]
+  %0 = tf_framework.jit_compile_from_str "placeholder"
+  return %0 : !tf_framework.jit_callable
+}

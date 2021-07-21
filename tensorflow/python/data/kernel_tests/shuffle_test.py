@@ -163,6 +163,24 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(5):
       self.assertEqual(10, counts[i])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testInputInitializations(self):
+    num_rounds = 3
+    def compute_orders(dataset):
+      orders = []
+      for _ in range(num_rounds):
+        orders.append(self.getDatasetOutput(dataset))
+      return orders
+
+    dataset = dataset_ops.Dataset.range(10).shuffle(10, seed=1)
+    first_orders = compute_orders(dataset)
+    dataset = dataset_ops.Dataset.range(10)
+
+    # Adding shuffle(1) should not change the order.
+    dataset = dataset_ops.Dataset.range(10).shuffle(10, seed=1).shuffle(1)
+    second_orders = compute_orders(dataset)
+    self.assertEqual(first_orders, second_orders)
+
   @combinations.generate(
       combinations.times(
           test_base.graph_only_combinations(),

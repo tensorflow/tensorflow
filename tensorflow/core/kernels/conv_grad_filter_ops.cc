@@ -1015,10 +1015,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     } else {
       OP_REQUIRES(
           ctx,
-          stream->parent()->GetConvolveBackwardFilterAlgorithms(
-              conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                  stream->parent()),
-              &algorithms),
+          stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms),
           errors::Unknown("Failed to get convolution execution plan. This is "
                           "probably because cuDNN failed to initialize, so try "
                           "looking to see if a warning log message was printed "

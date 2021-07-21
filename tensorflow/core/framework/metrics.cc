@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
 namespace tensorflow {
@@ -126,9 +126,9 @@ auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
 
-const monitoring::MetricDef<monitoring::MetricKind::kGauge, string, 1>
-    tf_data_model_gauge("/tensorflow/data/model",
-                        "tf.data autotuning model proto.", "id");
+auto* tf_data_model_gauge =
+    monitoring::Gauge<std::function<std::string()>, 1>::New(
+        "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
 
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -205,6 +205,11 @@ monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
   return tf_data_elements_counter->GetCell(name);
 }
 
+monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
+    const string& id) {
+  return tf_data_model_gauge->GetCell(id);
+}
+
 void RecordTFDataBytesFetched(int64 num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
@@ -245,33 +250,6 @@ void RecordTFDataServiceWorkerCreated() {
 
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
-}
-
-void RegisterTFDataModelExporter(
-    StatusOr<absl::flat_hash_map<uint64, string>*> export_models()) {
-  static bool registered = false;
-  static auto export_models_handle = export_models;
-  static auto model_registration_handle =
-      monitoring::CollectionRegistry::Default()->Register(
-          &tf_data_model_gauge, [&](monitoring::MetricCollectorGetter getter) {
-            auto metric_collector = getter.Get(&tf_data_model_gauge);
-            auto models = export_models_handle();
-            if (models.ok()) {
-              for (auto& pair : **models) {
-                metric_collector.CollectValue({std::to_string(pair.first)},
-                                              pair.second);
-              }
-            } else {
-              metric_collector.CollectValue({"-1"},
-                                            models.status().error_message());
-            }
-          });
-  if (registered) {
-    LOG(WARNING) << "tf.data model exporter registration can only happen "
-                    "once, ignoring this attempt.";
-  } else {
-    registered = true;
-  }
 }
 
 void RecordParseDenseFeature(int64 num_features) {

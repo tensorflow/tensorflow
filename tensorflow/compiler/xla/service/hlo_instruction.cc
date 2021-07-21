@@ -526,6 +526,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       } else {
         std::vector<std::vector<int64_t>> slice_sizes;
         HloInstruction* input = operands(0);
+        HloInstruction* input_start_indices = operands(2);
         if (input->shape().IsTuple() &&
             input->shape().tuple_shapes_size() > 1) {
           slice_sizes.resize(input->shape().tuple_shapes_size());
@@ -534,21 +535,65 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         }
         int proto_index = 0;
         if (input->shape().IsTuple()) {
-          for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
-            slice_sizes[i].resize(
-                input->shape().tuple_shapes(i).dimensions_size());
-            for (int j = 0;
-                 j < input->shape().tuple_shapes(i).dimensions_size(); ++j) {
-              CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
-              slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
-              proto_index += 1;
+          if (input_start_indices->shape()
+                  .tuple_shapes(0)
+                  .tuple_shapes(0)
+                  .IsArray()) {
+            slice_sizes.resize(input->shape().tuple_shapes_size());
+            for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
+              slice_sizes[i].resize(
+                  input->shape().tuple_shapes(i).dimensions_size());
+              for (int j = 0;
+                   j < input->shape().tuple_shapes(i).dimensions_size(); ++j) {
+                CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
+                slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
+                proto_index += 1;
+              }
+            }
+          } else {
+            slice_sizes.resize(
+                input->shape().tuple_shapes_size() *
+                ShapeUtil::TupleElementCount(
+                    input_start_indices->shape().tuple_shapes(0)));
+            int slice_sizes_count = 0;
+            for (int i = 0; i < input->shape().tuple_shapes_size(); ++i) {
+              for (int j = 0;
+                   j < ShapeUtil::TupleElementCount(
+                           input_start_indices->shape().tuple_shapes(i));
+                   ++j) {
+                slice_sizes[slice_sizes_count].resize(
+                    input->shape().tuple_shapes(i).rank());
+                for (int k = 0; k < input->shape().tuple_shapes(i).rank();
+                     ++k) {
+                  CHECK_GE(proto.dynamic_slice_sizes_size(), proto_index);
+                  slice_sizes[slice_sizes_count][k] =
+                      proto.dynamic_slice_sizes(proto_index);
+                  proto_index += 1;
+                }
+                slice_sizes_count += 1;
+              }
             }
           }
         } else {
-          slice_sizes[0].resize(input->shape().dimensions_size());
-          for (int j = 0; j < input->shape().dimensions_size(); ++j) {
-            slice_sizes[0][j] = proto.dynamic_slice_sizes(proto_index);
-            proto_index += 1;
+          slice_sizes.resize(
+              ShapeUtil::TupleElementCount(input_start_indices->shape()));
+          if (input_start_indices->shape().tuple_shapes(0).IsTuple()) {
+            for (int i = 0;
+                 i < ShapeUtil::TupleElementCount(input_start_indices->shape());
+                 ++i) {
+              slice_sizes[i].resize(input->shape().dimensions_size());
+              for (int j = 0; j < input->shape().dimensions_size(); ++j) {
+                slice_sizes[i][j] = proto.dynamic_slice_sizes(proto_index);
+                proto_index += 1;
+              }
+            }
+          } else {
+            slice_sizes.resize(1);
+            slice_sizes[0].resize(input->shape().dimensions_size());
+            for (int j = 0; j < input->shape().dimensions_size(); ++j) {
+              slice_sizes[0][j] = proto.dynamic_slice_sizes(proto_index);
+              proto_index += 1;
+            }
           }
         }
         if (opcode == HloOpcode::kCollectivePermute) {

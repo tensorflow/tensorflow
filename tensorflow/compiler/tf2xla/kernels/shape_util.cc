@@ -27,7 +27,7 @@ Status TensorShapeToConstant(const TensorShape& input_shape,
   if (shape_constant->dtype() == DT_INT32) {
     auto vec = shape_constant->vec<int32>();
     for (int i = 0; i < dims; ++i) {
-      int64 dim_size = input_shape.dim_size(i);
+      int64_t dim_size = input_shape.dim_size(i);
       if (!FastBoundsCheck(dim_size, std::numeric_limits<int32>::max())) {
         return errors::InvalidArgument(
             "Shape with out_type=int32 does not support tensors > int32max",
@@ -38,7 +38,7 @@ Status TensorShapeToConstant(const TensorShape& input_shape,
   } else {
     auto vec = shape_constant->vec<int64>();
     for (int i = 0; i < dims; ++i) {
-      int64 dim_size = input_shape.dim_size(i);
+      int64_t dim_size = input_shape.dim_size(i);
       vec(i) = dim_size;
     }
   }

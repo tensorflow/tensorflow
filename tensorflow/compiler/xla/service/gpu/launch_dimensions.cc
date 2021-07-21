@@ -35,7 +35,7 @@ std::ostream& operator<<(std::ostream& out,
 }
 
 static int64 ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
-  int64 threads_per_block = gpu_device_info.threads_per_block_limit;
+  int64_t threads_per_block = gpu_device_info.threads_per_block_limit;
   if (threads_per_block <= 0) {
     static std::atomic<int64> log_count{0};
     if (log_count.fetch_add(1) < 8) {
@@ -59,7 +59,7 @@ int64 ThreadsPerBlockRowVectorized(const Shape& shape,
   if (shape.dimensions().empty()) {
     return -1;
   }
-  int64 threads_per_block_row_vectorized =
+  int64_t threads_per_block_row_vectorized =
       shape.dimensions().back() / dim_config.unroll_factor;
   if (dim_config.row_vectorized &&
       shape.dimensions().back() % dim_config.unroll_factor == 0 &&
@@ -80,7 +80,7 @@ int64 ThreadsPerBlockRowVectorized(const Shape& shape,
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
     LaunchDimensionsConfig dim_config) {
-  int64 num_elements = ShapeUtil::ElementsIn(shape);
+  int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
   }
@@ -99,8 +99,8 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   //
   // TODO(jlebar): Investigate this further, and tune this heuristic so we can
   // run faster on the few benchmarks where smaller block size helps.
-  int64 threads_per_block = ThreadsPerBlockLimit(gpu_device_info);
-  int64 threads_per_block_row_vectorized =
+  int64_t threads_per_block = ThreadsPerBlockLimit(gpu_device_info);
+  int64_t threads_per_block_row_vectorized =
       ThreadsPerBlockRowVectorized(shape, gpu_device_info, dim_config);
   if (threads_per_block_row_vectorized > 0) {
     threads_per_block = threads_per_block_row_vectorized;
@@ -121,10 +121,10 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     }
   }
 
-  int64 block_count = CeilOfRatio(num_elements, threads_per_block);
+  int64_t block_count = CeilOfRatio(num_elements, threads_per_block);
   if (dim_config.few_waves && !dim_config.row_vectorized) {
-    int64 capped_threads_per_block = std::min<int64>(threads_per_block, 128);
-    int64 capped_block_count =
+    int64_t capped_threads_per_block = std::min<int64>(threads_per_block, 128);
+    int64_t capped_block_count =
         gpu_device_info.core_count *
         (gpu_device_info.threads_per_core_limit / capped_threads_per_block);
     if (capped_block_count < block_count) {
@@ -132,15 +132,15 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
       block_count = capped_block_count;
     }
   } else if (dim_config.few_waves && dim_config.row_vectorized) {
-    int64 capped_threads_per_block = std::min<int64>(threads_per_block, 128);
+    int64_t capped_threads_per_block = std::min<int64>(threads_per_block, 128);
     if (dim_config.row_vectorized) {
       // Keep the threads_per_block found for row_vectorized.
       capped_threads_per_block = threads_per_block;
     }
-    int64 min_block_count =
+    int64_t min_block_count =
         gpu_device_info.core_count *
         (gpu_device_info.threads_per_core_limit / capped_threads_per_block);
-    int64 capped_block_count = block_count;
+    int64_t capped_block_count = block_count;
     // This multiple of 32 was tuned to not cause regression on multiple
     // benchmarks.  It isn't a value that is optimal for all
     // kernels. Maybe looking at the arithmetic intensity of the

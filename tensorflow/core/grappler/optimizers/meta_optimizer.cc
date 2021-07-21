@@ -67,7 +67,7 @@ constexpr int kDefaultNumberOfIterations = 2;
 constexpr int kDefaultMinGraphNodes = 4;
 
 int64 NumEdges(const GraphDef& graph) {
-  int64 num_edges = 0;
+  int64_t num_edges = 0;
   for (const auto& node : graph.node()) {
     num_edges += node.input_size();
   }

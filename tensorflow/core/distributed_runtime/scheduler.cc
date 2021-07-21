@@ -280,7 +280,7 @@ Microseconds GreedyScheduler::ComputeSchedule(
 const Node* GreedyScheduler::GetNodeWithHighestPriority(
     const std::vector<const Node*>& nodes) {
   const Node* curr_node = nullptr;
-  int64 curr_priority = kint64max;
+  int64_t curr_priority = kint64max;
   for (const Node* n : nodes) {
     if ((*priority_)[n->id()] < curr_priority) {
       curr_node = n;

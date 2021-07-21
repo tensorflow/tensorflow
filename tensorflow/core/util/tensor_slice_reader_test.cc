@@ -415,7 +415,7 @@ static void VersionTest(const VersionDef& versions, const string& error) {
     TensorSliceWriter::Builder* builder;
     TF_ASSERT_OK(CreateTableTensorSliceBuilder(path, &builder));
     builder->Add(kSavedTensorSlicesKey, contents);
-    int64 file_size;
+    int64_t file_size;
     TF_EXPECT_OK(builder->Finish(&file_size));
     delete builder;
   }

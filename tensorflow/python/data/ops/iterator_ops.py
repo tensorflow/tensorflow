@@ -749,7 +749,7 @@ class OwnedIterator(IteratorBase):
   def _next_internal(self):
     autograph_status = autograph_ctx.control_status_ctx().status
     autograph_disabled = autograph_status == autograph_ctx.Status.DISABLED
-    if ops.get_default_graph().building_function and autograph_disabled:
+    if not context.executing_eagerly() and autograph_disabled:
       self._get_next_call_count += 1
       if self._get_next_call_count > GET_NEXT_CALL_ERROR_THRESHOLD:
         raise ValueError(GET_NEXT_CALL_ERROR_MESSAGE)

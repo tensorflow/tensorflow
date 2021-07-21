@@ -88,8 +88,8 @@ class KernelMappingScheme {
   };
 
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
-                      absl::Span<const int64> tile_sizes, int64 num_threads_y,
-                      int64 num_threads_x, IndexingOrder indexing_order,
+                      absl::Span<const int64> tile_sizes, int64_t num_threads_y,
+                      int64_t num_threads_x, IndexingOrder indexing_order,
                       int vector_size, bool is_row_contiguous = false)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},

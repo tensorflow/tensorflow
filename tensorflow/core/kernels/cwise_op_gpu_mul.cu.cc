@@ -23,8 +23,7 @@ namespace functor {
 DEFINE_BINARY5(mul, Eigen::half, int8, int16, int32, int64);
 #endif
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_BINARY5(mul_no_nan, Eigen::half, float, double, complex64, complex128);
 #endif
 

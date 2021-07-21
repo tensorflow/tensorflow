@@ -392,7 +392,7 @@ func @resource_after_cluster(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: 
   // CHECK-NEXT:   "tf.ReadVariableOp"([[USED_RESOURCE]])
   // CHECK-NEXT:   "tf.NoOp"
   // CHECK-NEXT:   tf_device.return
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_test_fn", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_test_fn", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
   %1 = "tf.ReadVariableOp"(%arg0) {_tpu_replicate = "cluster_test_fn"} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
 
   "tf.AssignSubVariableOp"(%arg1, %0) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -417,7 +417,7 @@ func @resource_before_cluster() {
   // CHECK:      "tf_device.cluster"
   // CHECK-NEXT:   "tf.NoOp"
   // CHECK-NEXT:   tf_device.return
-  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_test_fn", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_test_fn", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
 
   %1 = "tf.VarHandleOp"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   "tf.AssignAddVariableOp"(%1, %0) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()

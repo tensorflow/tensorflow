@@ -194,13 +194,17 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             return Status::OK();
           }
           epoch_++;
-          int64 n = slices_.back()->end;
-          slices_.push_back(absl::make_unique<Slice>(n, n));
-          for (const auto& provider : ctx->split_providers()) {
-            TF_RETURN_IF_ERROR(provider->Reset());
+          if (this->dataset()->count_ == -1 ||
+              epoch_ < this->dataset()->count_) {
+            // Only create a new iterator if there should be another epoch.
+            int64 n = slices_.back()->end;
+            slices_.push_back(absl::make_unique<Slice>(n, n));
+            for (const auto& provider : ctx->split_providers()) {
+              TF_RETURN_IF_ERROR(provider->Reset());
+            }
+            TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
+                ctx, this, this->prefix(), &input_impl_));
           }
-          TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-              ctx, this, this->prefix(), &input_impl_));
         }
         if (!end_of_input_sequence) {
           if (num_elements_ == 0) {
@@ -355,10 +359,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             reader->ReadScalar(this->full_name(kSlicesSize), &temp));
         slices_size = static_cast<size_t>(temp);
       }
-      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
-          this->dataset()->buffer_size_);
+      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>();
       TF_RETURN_IF_ERROR(
           ReadElementsFromCheckpoint(ctx, reader, prefix(), buffer_.get()));
+      buffer_->resize(dataset()->buffer_size_);
       slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;

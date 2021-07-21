@@ -70,7 +70,7 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
 //
 // For example given shape=s8[10, 32, 20], dim=1, vect_size=4, returns
 // s8[10, 8, 4, 20].
-static Shape SplitShapeAtDim(Shape shape, int64 dim, int64 vect_size) {
+static Shape SplitShapeAtDim(Shape shape, int64_t dim, int64_t vect_size) {
   absl::InlinedVector<int64, 5> new_dims(shape.dimensions().begin(),
                                          shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
@@ -81,15 +81,15 @@ static Shape SplitShapeAtDim(Shape shape, int64 dim, int64 vect_size) {
 
 // Reshapes `instr` so that it has an extra dimension of size `vect_size` right
 // after `dim`.
-static HloInstruction* SplitInstrAtDim(HloInstruction* instr, int64 dim,
-                                       int64 vect_size) {
+static HloInstruction* SplitInstrAtDim(HloInstruction* instr, int64_t dim,
+                                       int64_t vect_size) {
   return instr->parent()->AddInstruction(HloInstruction::CreateReshape(
       SplitShapeAtDim(instr->shape(), dim, vect_size), instr));
 }
 
 // Reshapes `instr` so that dimension `dim` is collapsed into the dimension
 // right before it.
-static HloInstruction* CollapseDimIntoPrev(HloInstruction* instr, int64 dim) {
+static HloInstruction* CollapseDimIntoPrev(HloInstruction* instr, int64_t dim) {
   CHECK_GT(dim, 0);
   absl::InlinedVector<int64, 5> new_dims(instr->shape().dimensions().begin(),
                                          instr->shape().dimensions().end());
@@ -107,12 +107,12 @@ static HloInstruction* CollapseDimIntoPrev(HloInstruction* instr, int64 dim) {
 // Requires that this is possible without merging and re-splitting the two
 // dimensions.  I.e. there should be some amount of dim or vect_dim that we can
 // "split off" and add to the other to get vect_dim to have size vect_size.
-static HloInstruction* RevectorizeInstr(HloInstruction* instr, int64 dim,
-                                        int64 vect_dim, int64 vect_size) {
+static HloInstruction* RevectorizeInstr(HloInstruction* instr, int64_t dim,
+                                        int64_t vect_dim, int64_t vect_size) {
   HloComputation* computation = instr->parent();
   const Shape& shape = instr->shape();
   PrimitiveType elem_ty = shape.element_type();
-  auto size = [&](int64 d) { return shape.dimensions(d); };
+  auto size = [&](int64_t d) { return shape.dimensions(d); };
 
   CHECK_EQ(size(dim) * size(vect_dim) % vect_size, 0);
 
@@ -125,7 +125,7 @@ static HloInstruction* RevectorizeInstr(HloInstruction* instr, int64 dim,
   }
 
   CHECK_EQ(vect_size % size(vect_dim), 0);
-  int64 split_factor = vect_size / size(vect_dim);
+  int64_t split_factor = vect_size / size(vect_dim);
   CHECK_EQ(size(dim) % split_factor, 0);
 
   absl::InlinedVector<int64, 6> new_dims(shape.dimensions().begin(),
@@ -165,7 +165,7 @@ static HloInstruction* RevectorizeInstr(HloInstruction* instr, int64 dim,
 // vector dim is then in this "empty" spot.
 static ConvolutionDimensionNumbers VectorizeDnums(
     ConvolutionDimensionNumbers dnums) {
-  int64 input_vect_dim = dnums.input_feature_dimension();
+  int64_t input_vect_dim = dnums.input_feature_dimension();
   if (dnums.input_batch_dimension() > input_vect_dim) {
     dnums.set_input_batch_dimension(dnums.input_batch_dimension() + 1);
   }
@@ -175,7 +175,7 @@ static ConvolutionDimensionNumbers VectorizeDnums(
     }
   }
 
-  int64 kernel_vect_dim = dnums.kernel_input_feature_dimension();
+  int64_t kernel_vect_dim = dnums.kernel_input_feature_dimension();
   if (dnums.kernel_output_feature_dimension() > kernel_vect_dim) {
     dnums.set_kernel_output_feature_dimension(
         dnums.kernel_output_feature_dimension() + 1);
@@ -186,7 +186,7 @@ static ConvolutionDimensionNumbers VectorizeDnums(
     }
   }
 
-  int64 output_vect_dim = dnums.output_feature_dimension();
+  int64_t output_vect_dim = dnums.output_feature_dimension();
   if (dnums.output_batch_dimension() > output_vect_dim) {
     dnums.set_output_batch_dimension(dnums.output_batch_dimension() + 1);
   }
@@ -226,12 +226,12 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
     return false;
   }
 
-  int64 input_feat_size =
+  int64_t input_feat_size =
       input_shape.dimensions(dnums.input_feature_dimension());
-  int64 output_feat_size =
+  int64_t output_feat_size =
       output_shape.dimensions(dnums.output_feature_dimension());
-  int64 input_vect_size = input_shape.dimensions(*input_vect_dim);
-  int64 output_vect_size = output_shape.dimensions(*output_vect_dim);
+  int64_t input_vect_size = input_shape.dimensions(*input_vect_dim);
+  int64_t output_vect_size = output_shape.dimensions(*output_vect_dim);
   if (vect_size % input_vect_size != 0 || vect_size % output_vect_size != 0 ||
       input_feat_size % (vect_size / input_vect_size) != 0 ||
       output_feat_size % (vect_size / output_vect_size) != 0) {
@@ -309,13 +309,14 @@ static StatusOr<bool> TryRevectorizeConv(HloInstruction* conv, int vect_size) {
 //
 // This requires that C be a multiple of vect_size.  CudnnPadForConvolutions can
 // add padding to make this true.
-static StatusOr<bool> TryVectorizeConv(HloInstruction* conv, int64 vect_size) {
+static StatusOr<bool> TryVectorizeConv(HloInstruction* conv,
+                                       int64_t vect_size) {
   HloComputation* comp = conv->parent();
   const Shape& input_shape = conv->operand(0)->shape();
   const Shape& output_shape = conv->shape().tuple_shapes(0);
   const auto& dnums = conv->convolution_dimension_numbers();
-  int64 in_channels = input_shape.dimensions(dnums.input_feature_dimension());
-  int64 out_channels =
+  int64_t in_channels = input_shape.dimensions(dnums.input_feature_dimension());
+  int64_t out_channels =
       output_shape.dimensions(dnums.output_feature_dimension());
 
   if (in_channels % vect_size != 0 || out_channels % vect_size != 0) {

@@ -164,7 +164,7 @@ class GpuBfloat16Support : public BFloat16Support {
         stream_exec_(stream_exec) {}
 
   bool SupportsBF16Operand(const HloInstruction& hlo,
-                           int64 operand_index) const override {
+                           int64_t operand_index) const override {
     return BFloat16Support::SupportsBF16Operand(hlo, operand_index) ||
            IsSupported(hlo);
   }
@@ -369,7 +369,7 @@ Status GpuCompiler::OptimizeHloModule(
 
   if (hlo_module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    const int64 num_partitions = hlo_module->config().num_partitions();
+    const int64_t num_partitions = hlo_module->config().num_partitions();
     if (num_partitions > 1) {
       spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
       spmd_pipeline.AddPass<GpuSpmdPartitioner>(

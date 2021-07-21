@@ -45,7 +45,7 @@ IrFunction::IrFunction(const string& function_name,
                        llvm::Function::LinkageTypes linkage,
                        const HloModuleConfig& module_config,
                        llvm::Module* llvm_module, llvm::IRBuilder<>* b,
-                       int64 num_dynamic_loop_bounds)
+                       int64_t num_dynamic_loop_bounds)
     : b_(b),
       llvm_module_(llvm_module),
       caller_insert_point_guard_(*b),

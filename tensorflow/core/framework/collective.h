@@ -64,8 +64,8 @@ struct CollGroupParams {
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
-  // Fully qualified name of device for each member, in default rank order.
-  std::vector<string> device_names;
+  // Devices in this group, in default rank order.
+  std::vector<DeviceAttributes> devices;
   // Task name prefix of corresponding device name.
   std::vector<string> task_names;
   // True if every task has the same number of devices.

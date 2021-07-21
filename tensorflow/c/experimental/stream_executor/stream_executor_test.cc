@@ -253,8 +253,8 @@ TEST_F(StreamExecutorTest, DeviceMemoryUsage) {
   };
 
   StreamExecutor* executor = GetExecutor(0);
-  int64 free = 0;
-  int64 total = 0;
+  int64_t free = 0;
+  int64_t total = 0;
   executor->DeviceMemoryUsage(&free, &total);
   ASSERT_EQ(free, 45);
   ASSERT_EQ(total, 7);

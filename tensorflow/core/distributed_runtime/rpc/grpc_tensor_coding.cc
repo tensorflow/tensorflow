@@ -95,7 +95,7 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
   const int ndims = val.shape().dims();
   int tensor_shape_bytes = 0;
   for (int d = 0; d < ndims; d++) {
-    int64 dim_size = val.shape().dim_size(d);
+    int64_t dim_size = val.shape().dim_size(d);
     tensor_shape_bytes +=
         2 +  // TensorShapeProto dim tag + varintlength of submessage
         1 +  // TensorShapeProto_Dim::kSizeFieldNumber
@@ -107,9 +107,9 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
                                tensor_shape_bytes);
     // Encode val.shape()
     for (int d = 0; d < ndims; d++) {
-      int64 dim_size = val.shape().dim_size(d);
-      int64 dim_varlen = 1 +  // TensorShapeProto_Dim::kSizeFieldNumber
-                         core::VarintLength(dim_size);
+      int64_t dim_size = val.shape().dim_size(d);
+      int64_t dim_varlen = 1 +  // TensorShapeProto_Dim::kSizeFieldNumber
+                           core::VarintLength(dim_size);
       e->WriteVarlengthBeginning(TensorShapeProto::kDimFieldNumber, dim_varlen);
       e->WriteUint64(TensorShapeProto_Dim::kSizeFieldNumber, dim_size);
     }
@@ -137,7 +137,7 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
 void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
                               ::grpc::ByteBuffer* result) {
   const int kLargeTensorBytes = 1024;
-  const int64 kProtoBufLimitBytes = 1LL << 31;
+  const int64_t kProtoBufLimitBytes = 1LL << 31;
 
   if (val.TotalBytes() > kProtoBufLimitBytes) {
     size_t exceeded_bytes = val.TotalBytes() - kProtoBufLimitBytes;

@@ -35,7 +35,7 @@ InfeedManager::InfeedManager(se::StreamExecutor* executor)
 }
 
 static StatusOr<se::ScopedDeviceMemory<uint8>> CopyBufferToDevice(
-    se::Stream* stream, int64 size, const void* source) {
+    se::Stream* stream, int64_t size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
     return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
                            size, std::numeric_limits<int32>::max());

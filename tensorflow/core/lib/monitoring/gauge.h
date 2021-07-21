@@ -25,6 +25,9 @@ limitations under the License.
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
 
+#include <functional>
+#include <string>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -55,10 +58,14 @@ class Gauge {
 
   template <typename... MetricDefArgs>
   static Gauge* New(MetricDefArgs&&... metric_def_args) {
-    static_assert(std::is_same<ValueType, int64>::value ||
-                      std::is_same<ValueType, string>::value ||
-                      std::is_same<ValueType, bool>::value,
-                  "Gauge only allows bool, int64, and string types.");
+    static_assert(
+        std::is_same<ValueType, int64>::value ||
+            std::is_same<ValueType, std::string>::value ||
+            std::is_same<ValueType, bool>::value ||
+            std::is_same<ValueType, std::function<int64()> >::value ||
+            std::is_same<ValueType, std::function<std::string()> >::value ||
+            std::is_same<ValueType, std::function<bool()> >::value,
+        "Gauge only allows bool, int64, and string types.");
     return new Gauge();
   }
 
@@ -84,7 +91,9 @@ class Gauge {
 
 #include <array>
 #include <atomic>
+#include <functional>
 #include <map>
+#include <string>
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
@@ -275,10 +284,14 @@ template <typename ValueType, int NumLabels>
 template <typename... MetricDefArgs>
 Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
-  static_assert(std::is_same<ValueType, int64>::value ||
-                    std::is_same<ValueType, string>::value ||
-                    std::is_same<ValueType, bool>::value,
-                "Gauge only allows bool, int64, and string types.");
+  static_assert(
+      std::is_same<ValueType, int64>::value ||
+          std::is_same<ValueType, std::string>::value ||
+          std::is_same<ValueType, bool>::value ||
+          std::is_same<ValueType, std::function<int64()> >::value ||
+          std::is_same<ValueType, std::function<std::string()> >::value ||
+          std::is_same<ValueType, std::function<bool()> >::value,
+      "Gauge only allows bool, int64, and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));

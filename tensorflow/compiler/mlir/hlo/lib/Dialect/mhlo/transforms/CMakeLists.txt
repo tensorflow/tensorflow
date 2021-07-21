@@ -190,6 +190,7 @@ add_mlir_library(LmhloPasses
 
   LINK_LIBS PUBLIC
   LmhloDialect
+  MLIRMhloUtils
   MLIRIR
   MLIRPass
 )

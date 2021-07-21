@@ -232,6 +232,20 @@ XLA_TEST_F(CollectiveOpsTest,
   TestAllOpsForReduce<bfloat16>();
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_sum_complex64)) {
+  TestTwoReplicasOneOperand<complex64>(
+      "add",
+      /*input_value=*/LiteralUtil::CreateR1<complex64>({{1, 2}, {3, 4}}),
+      /*expected_value=*/LiteralUtil::CreateR1<complex64>({{2, 4}, {6, 8}}));
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_sum_complex128)) {
+  TestTwoReplicasOneOperand<complex128>(
+      "add",
+      /*input_value=*/LiteralUtil::CreateR1<complex128>({{1, 2}, {3, 4}}),
+      /*expected_value=*/LiteralUtil::CreateR1<complex128>({{2, 4}, {6, 8}}));
+}
+
 XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
   // Test with equal elements.
   TestTwoReplicasOneOperand<bool>(
@@ -1079,7 +1093,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatter) {
   const char* const kModuleStr = R"(
   HloModule test
   add {
@@ -1115,7 +1129,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter)) {
   LiteralTestUtil::ExpectR1Equal<uint32>({19, 21, 23, 25}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter_Dim1)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   const char* const kModuleStr = R"(
   HloModule test
   add {

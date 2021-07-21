@@ -18,7 +18,6 @@ limitations under the License.
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/LoweringOptions.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
@@ -59,7 +58,6 @@ class GpuKernelToNVVMPass
         DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
     llvm_opts.overrideIndexBitwidth(32);
     LLVMTypeConverter converter(m.getContext(), llvm_opts);
-    populateMathToLLVMConversionPatterns(converter, patterns);
     populateMemRefToLLVMConversionPatterns(converter, patterns);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
@@ -87,7 +85,6 @@ class GpuKernelToROCDLPass
     RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(m.getContext());
     populateMemRefToLLVMConversionPatterns(converter, patterns);
-    populateMathToLLVMConversionPatterns(converter, patterns);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToROCDLConversionPatterns(converter, patterns);
     populateComplexToLLVMConversionPatterns(converter, patterns);

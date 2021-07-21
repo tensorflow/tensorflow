@@ -49,7 +49,7 @@ absl::optional<int64> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   auto it = extra_options_map.find(kLlvmIrDotTilingFactor);
-  int64 tiling_factor;
+  int64_t tiling_factor;
   if (it != extra_options_map.end() &&
       absl::SimpleAtoi(it->second, &tiling_factor)) {
     return tiling_factor;
@@ -82,9 +82,9 @@ absl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
   std::vector<string> tile_components = absl::StrSplit(it->second, ':');
   CHECK_EQ(tile_components.size(), 3);
 
-  int64 tile_size_m;
-  int64 tile_size_k;
-  int64 tile_size_n_in_vector_width;
+  int64_t tile_size_m;
+  int64_t tile_size_k;
+  int64_t tile_size_n_in_vector_width;
 
   CHECK(absl::SimpleAtoi(tile_components[0], &tile_size_m));
   CHECK(absl::SimpleAtoi(tile_components[1], &tile_size_k));

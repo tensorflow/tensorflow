@@ -41,7 +41,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
-load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -661,6 +661,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
@@ -694,13 +695,11 @@ cc_library(
             "@llvm-project//mlir:GPUTransforms",
             "@llvm-project//mlir:Pass",
             "//tensorflow/compiler/mlir/hlo:lhlo",
-            # copybara:uncomment_begin(target not open-sourced yet)
-            # "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
-            # "//tensorflow/compiler/mlir/xla:attribute_exporter",
-            # "//tensorflow/compiler/xla/service:collective_ops_utils",
-            # "//tensorflow/core/tfrt/gpu:gpu_shared_context",
-            # "//tensorflow/core/tfrt/runtime:work_queue_interface",
-            # copybara:uncomment_end
+            "//tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu:pass",
+            "//tensorflow/compiler/mlir/xla:attribute_exporter",
+            "//tensorflow/compiler/xla/service:collective_ops_utils",
+            "//tensorflow/core/tfrt/gpu:gpu_shared_context",
+            "//tensorflow/core/tfrt/runtime:work_queue_interface",
             "//tensorflow/stream_executor/cuda:cublas_plugin",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
@@ -710,10 +709,8 @@ cc_library(
             "@tf_runtime//:hostcontext",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
-            # copybara:uncomment_begin(breaks bazel query)
-            # "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-            # "@tf_runtime//backends/gpu:gpu_types",
-            # copybara:uncomment_end
+            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
+            "@tf_runtime//backends/gpu:gpu_types",
         ],
         "//conditions:default": [],
     }),
@@ -867,8 +864,10 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:dnn_proto_cc",
     ] + if_cuda_is_configured([
         ":buffer_comparator",
+        "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ]),
 )
@@ -976,7 +975,6 @@ cc_library(
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
-        "@local_config_rocm//rocm:rocblas",
     ]),
 )
 
@@ -2284,7 +2282,7 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/xla_thunks_ops.td",
-    td_srcs = [
+    deps = [
         "@llvm-project//mlir:LLVMOpsTdFiles",
     ],
 )

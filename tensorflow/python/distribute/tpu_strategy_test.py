@@ -1206,9 +1206,6 @@ class TPUStrategyDistributionTest(
     self._test_trainable_variable(strategy)
 
   def test_model_parallelism(self):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "Support multi-binary per compilation in TFRT, see b/192611863")
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
     topology = tpu_strategy_util.initialize_tpu_system(resolver)
@@ -1252,9 +1249,6 @@ class TPUStrategyDistributionTest(
       self.assertEqual(30., self.evaluate(result))
 
   def test_model_parallelism_checkpointing(self):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "Support multi-binary per compilation in TFRT, see b/192611863")
 
     class PartitionedModel(module.Module):
 

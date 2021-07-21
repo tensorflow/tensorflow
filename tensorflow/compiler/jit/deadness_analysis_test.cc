@@ -1221,7 +1221,7 @@ TEST(DeadnessAnalysisTest, RefBoolSwitchCondition) {
 }
 
 void CreateSwitchN(const Scope& scope, Input data, Input output_index,
-                   int64 num_outs, OutputList* outputs) {
+                   int64_t num_outs, OutputList* outputs) {
   if (!scope.ok()) return;
   auto _data = ops::AsNodeOut(scope, data);
   if (!scope.ok()) return;

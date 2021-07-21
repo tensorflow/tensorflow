@@ -41,8 +41,9 @@ class AllGatherBroadcastReorderTest : public HloTestBase {
         EXPECT_THAT(module->entry_computation()->root_instruction(),
                     m::Broadcast(m::AllGather(m::Parameter())));
       } else {
-        EXPECT_THAT(module->entry_computation()->root_instruction(),
-                    m::Reshape(m::Broadcast(m::Reshape(m::AllGather()))));
+        EXPECT_THAT(
+            module->entry_computation()->root_instruction(),
+            m::Reshape(m::Broadcast(m::AllGather(m::Reshape(m::Parameter())))));
       }
     }
   }
@@ -69,6 +70,19 @@ ENTRY main {
   x = f32[128, 5] parameter(0)
   bc = f32[5, 4, 8, 128] broadcast(x), dimensions={3, 0}
   ROOT ag = f32[5, 12, 8, 128] all-gather(bc), dimensions={1}, replica_groups={{0, 1, 2}}
+}
+)";
+  RunPass(hlo_string, PassOutput::UniformAGPattern);
+}
+
+TEST_F(AllGatherBroadcastReorderTest, Simple_GatherBroadcastScalar) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+ENTRY main {
+  x = f32[] parameter(0)
+  bc = f32[4, 8] broadcast(x), dimensions={}
+  ROOT ag = f32[12, 8] all-gather(bc), dimensions={0}, replica_groups={{0, 1, 2}}
 }
 )";
   RunPass(hlo_string, PassOutput::UniformAGPattern);

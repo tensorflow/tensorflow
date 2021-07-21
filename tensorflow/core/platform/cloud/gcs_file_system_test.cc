@@ -989,7 +989,7 @@ TEST(GcsFileSystemTest, NewWritableFile) {
   TF_EXPECT_OK(
       fs.NewWritableFile("gs://bucket/path/writeable", nullptr, &wfile));
   TF_EXPECT_OK(wfile->Append("content1,"));
-  int64 pos;
+  int64_t pos;
   TF_EXPECT_OK(wfile->Tell(&pos));
   EXPECT_EQ(9, pos);
   TF_EXPECT_OK(wfile->Append("content2"));
@@ -1250,7 +1250,7 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
   std::vector<string> results;
   TF_EXPECT_OK(
       Env::Default()->GetMatchingPaths("/tmp/tmp_file_tensorflow*", &results));
-  const int64 tmp_files_before = results.size();
+  const int64_t tmp_files_before = results.size();
 
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
@@ -3423,7 +3423,7 @@ TEST(GcsFileSystemTest, DeleteRecursively_Ok) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
   TF_EXPECT_OK(fs.DeleteRecursively("gs://bucket/path", nullptr,
                                     &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
@@ -3516,7 +3516,7 @@ TEST(GcsFileSystemTest, DeleteRecursively_DeletionErrors) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
   TF_EXPECT_OK(fs.DeleteRecursively("gs://bucket/path", nullptr,
                                     &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(1, undeleted_files);
@@ -3551,7 +3551,7 @@ TEST(GcsFileSystemTest, DeleteRecursively_NotAFolder) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
   EXPECT_EQ(error::Code::NOT_FOUND,
             fs.DeleteRecursively("gs://bucket/path", nullptr, &undeleted_files,
                                  &undeleted_dirs)

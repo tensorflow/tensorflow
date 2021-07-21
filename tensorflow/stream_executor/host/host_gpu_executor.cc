@@ -66,7 +66,7 @@ bool HostExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
   return true;
 }
 
-DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64 memory_space) {
+DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
   // This should probably be kept in sync with

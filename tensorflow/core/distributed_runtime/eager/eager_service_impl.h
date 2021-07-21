@@ -121,7 +121,7 @@ class EagerServiceImpl {
     }
 
     explicit ServerContext(tensorflow::EagerContext* ctx,
-                           int64 destroy_after_secs, const WorkerEnv* env,
+                           int64_t destroy_after_secs, const WorkerEnv* env,
                            const bool is_master = false)
         : ctx_(ctx), env_(env), is_master_(is_master) {
       ctx->Ref();
@@ -149,7 +149,8 @@ class EagerServiceImpl {
 
     bool IsStale() {
       mutex_lock l(last_accessed_mu_);
-      const int64 time_passed = env_->env->NowMicros() - last_accessed_micros_;
+      const int64_t time_passed =
+          env_->env->NowMicros() - last_accessed_micros_;
       return (destroy_after_micros_ > 0 && time_passed > destroy_after_micros_);
     }
 

@@ -254,11 +254,18 @@ class Interpreter {
     return primary_subgraph().tensor(tensor_index);
   }
 
-  /// Get a pointer to an operation and registration data structure if in
-  /// bounds.
+  /// Returns a pointer to an operation and registration data structure if in
+  /// bounds from the primary subgraph(subgraph_[0]).
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
     return primary_subgraph().node_and_registration(node_index);
+  }
+
+  /// Returns a pointer to an operation and registration data structure if in
+  /// bounds.
+  const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
+      int subgraph_index, int node_index) const {
+    return subgraph(subgraph_index)->node_and_registration(node_index);
   }
 
   /// Perform a checked cast to the appropriate tensor type (mutable pointer
@@ -419,7 +426,6 @@ class Interpreter {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
-  // WARNING: Experimental interface, subject to change
   // Change the dimensionality of a given tensor. This is only acceptable for
   // tensor indices that are inputs or variables. Only unknown dimensions can be
   // resized with this function. Unknown dimensions are indicated as `-1` in the

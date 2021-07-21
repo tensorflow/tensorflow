@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-string FormatNumber(int64 n) {
+string FormatNumber(int64_t n) {
   if (n < 1000) {
     return absl::StrFormat("%d", n);
   } else if (n < 1000000) {
@@ -43,7 +43,7 @@ string FormatNumber(int64 n) {
   }
 }
 
-string FormatTime(int64 micros) {
+string FormatTime(int64_t micros) {
   if (micros < 1000) {
     return absl::StrFormat("%dus", micros);
   } else if (micros < 1000000) {
@@ -53,7 +53,7 @@ string FormatTime(int64 micros) {
   }
 }
 
-string FormatMemory(int64 bytes) {
+string FormatMemory(int64_t bytes) {
   if (bytes < 1000) {
     return absl::StrFormat("%dB", bytes);
   } else if (bytes < 1000000) {

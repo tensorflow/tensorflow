@@ -736,13 +736,13 @@ class Stream {
       DeviceMemory<float> *output_data);
 
   Stream &ThenXYPad(const dnn::BatchDescriptor &dimensions,
-                    const DeviceMemory<float> &input_data, int64 left_pad,
-                    int64 right_pad, int64 top_pad, int64 bottom_pad,
+                    const DeviceMemory<float> &input_data, int64_t left_pad,
+                    int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
                     DeviceMemory<float> *output_data);
 
   Stream &ThenXYSlice(const dnn::BatchDescriptor &dimensions,
-                      const DeviceMemory<float> &input_data, int64 left_trim,
-                      int64 right_trim, int64 top_trim, int64 bottom_trim,
+                      const DeviceMemory<float> &input_data, int64_t left_trim,
+                      int64_t right_trim, int64_t top_trim, int64_t bottom_trim,
                       DeviceMemory<float> *output_data);
 
   // Grows the input tensor by replicating the X and Y dimensions. The batch and
@@ -750,7 +750,7 @@ class Stream {
   // limited to X=1 and Y=1.
   Stream &ThenXYBroadcast(const dnn::BatchDescriptor &dimensions,
                           const DeviceMemory<float> &input_data,
-                          int64 replicate_x, int64 replicate_y,
+                          int64_t replicate_x, int64_t replicate_y,
                           DeviceMemory<float> *output_data);
 
   // See DnnSupport::DoMemcpyD2HQuantized.
@@ -1477,9 +1477,9 @@ class Stream {
   port::Status ThenBlasGemmStridedBatchedWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
       uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
-      ConstantType beta, DeviceMemory<OutputType> *c, int ldc, int64 stride_c,
-      int batch_count, blas::ComputationType computation_type,
+      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
+      int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
+      int64_t stride_c, int batch_count, blas::ComputationType computation_type,
       blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result) {
     TF_RETURN_IF_ERROR(
@@ -1590,9 +1590,9 @@ class Stream {
   port::Status ThenBlasGemmStridedBatched(
       blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
       uint64 k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64 stride_a, const DeviceMemory<InputType> &b, int ldb, int64 stride_b,
-      ConstantType beta, DeviceMemory<InputType> *c, int ldc, int64 stride_c,
-      int batch_count) {
+      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
+      int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
+      int64_t stride_c, int batch_count) {
     static_assert(((std::is_same<InputType, Eigen::half>::value ||
                     std::is_same<InputType, Eigen::bfloat16>::value) &&
                    std::is_same<ConstantType, float>::value) ||

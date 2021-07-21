@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
@@ -1024,6 +1025,17 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
           [input_t], [result_t])
       self.assertEqual(dependent_vars, [])
 
+  def testGetVariableByName(self):
+    with context.graph_mode():
+      init = constant_op.constant(100.0)
+      var = variable_scope.variable(init, name="a/replica_1")
+      if isinstance(var, variables.RefVariable):
+        var._variable = array_ops.identity(var, name="a")
+      else:
+        var._handle = array_ops.identity(var, name="a")
+      var2 = custom_gradient.get_variable_by_name("a")
+      self.assertEqual(var2.name, var.name)
+
   def testVariablesOutsideAndNonTrainable(self):
     with ops.Graph().as_default():
       init = constant_op.constant(100.0, shape=(5,))
@@ -1492,6 +1504,42 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
         f, inputs, delta=delta)
     self.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
+
+  def testRecomputeGradZeroSizeInput(self):
+
+    def F(x):
+      return 2 * x
+
+    x = array_ops.constant(())
+    grads_re = self._grad(custom_gradient.recompute_grad(F))(x)
+    grads = self._grad(F)(x)
+    self.assertAllClose(grads_re, grads)
+
+    f_graph = function.defun(F, input_signature=[tensor_spec.TensorSpec(None)])
+    grads_re = self._grad(custom_gradient.recompute_grad(f_graph))(x)
+    grads = self._grad(f_graph)(x)
+    self.assertAllClose(grads_re, grads)
+
+  def testRecomputeGradDifferentDtypesInputs(self):
+
+    def F(x1, x2):
+      return 2 * x1, 2 * x2
+
+    x1 = array_ops.constant(1, dtype=dtypes.int32)
+    x2 = array_ops.constant(1., dtype=dtypes.float32)
+    grads_re = self._grad(custom_gradient.recompute_grad(F))(x1, x2)
+    grads = self._grad(F)(x1, x2)
+    self.assertAllClose(grads_re, grads)
+
+    f_graph = function.defun(
+        F,
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtype=dtypes.int32),
+            tensor_spec.TensorSpec(None, dtype=dtypes.float32),
+        ])
+    grads_re = self._grad(custom_gradient.recompute_grad(f_graph))(x1, x2)
+    grads = self._grad(f_graph)(x1, x2)
+    self.assertAllClose(grads_re, grads)
 
   @test_util.run_v2_only
   def testCustomGradientRecomputeGradHigherOrder(self):

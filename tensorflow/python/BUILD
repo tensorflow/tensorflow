@@ -47,11 +47,13 @@ visibility = [
     "//third_party/py/courier:__subpackages__",
     "//third_party/py/reverb:__subpackages__",
     "//third_party/py/neural_structured_learning:__subpackages__",
+    "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/tensorflow_examples:__subpackages__",
+    "//third_party/py/tensorflow_recommenders:__subpackages__",
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
-    "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/keras:__subpackages__",
+    "//third_party/py/starcraft2:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
 ]
@@ -1447,6 +1449,7 @@ py_library(
         ":gradients_impl",
         ":gradients_util",
         ":handle_data_util",
+        ":math_ops",
         ":unconnected_gradients",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:forwardprop",
@@ -2039,6 +2042,7 @@ py_library(
     deps = [
         ":math_ops",
         ":stateful_random_ops_gen",
+        ":stateless_random_ops",
         ":stateless_random_ops_v2_gen",
         ":variables",
         "//tensorflow/python/framework:dtypes",
@@ -2696,7 +2700,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/gradients_test.py"],
     python_version = "PY3",
-    tags = ["no_oss"],  # b/118709825
     deps = [
         ":array_grad",
         ":array_ops",
@@ -2721,6 +2724,7 @@ cuda_py_test(
         ":unconnected_gradients",
         ":variable_scope",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:test_ops",
         "//third_party/py/numpy",

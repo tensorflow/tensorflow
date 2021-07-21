@@ -25,7 +25,7 @@ INPUT="$2"
 PLATFORM="$3"
 
 # Do something
-${TF_TO_KERNEL} --input=${INPUT} --output=${OUTPUT_FILE} --unroll_factors=4 --tile_sizes=256 ${PLATFORM} "${@:4}"  || die "Failed to generate kernel"
+${TF_TO_KERNEL} --input=${INPUT} --output=${OUTPUT_FILE} ${PLATFORM} "${@:4}"  || die "Failed to generate kernel"
 
 # Check something
 [ -s ${OUTPUT_FILE} ] || die "output file was empty"

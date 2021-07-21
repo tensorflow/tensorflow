@@ -1,4 +1,4 @@
-load("//third_party/mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -78,7 +78,7 @@ gentbl_cc_library(
     )],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
-    td_srcs = ["@llvm-project//mlir:PassBaseTdFiles"],
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
