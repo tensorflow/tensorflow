@@ -96,9 +96,6 @@ autograph = lazy_loader.LazyLoader(
 interleave_ops = lazy_loader.LazyLoader(
     "interleave_ops", globals(),
     "tensorflow.python.data.experimental.ops.interleave_ops")
-scan_ops = lazy_loader.LazyLoader(
-    "scan_ops", globals(),
-    "tensorflow.python.data.experimental.ops.scan_ops")
 
 ops.NotDifferentiable("ReduceDataset")
 
@@ -5668,8 +5665,8 @@ def _estimate_initial_dist_ds(
     return updated_examples_per_class_seen, tiled_dist
 
   initial_dist_ds = (class_values_ds.batch(dist_estimation_batch_size)
-                     .apply(scan_ops.scan(initial_examples_per_class_seen,
-                                          update_estimate_and_tile))
+                     .scan(initial_examples_per_class_seen,
+                           update_estimate_and_tile)
                      .unbatch())
 
   return initial_dist_ds
