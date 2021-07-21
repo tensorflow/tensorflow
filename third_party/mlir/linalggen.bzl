@@ -34,7 +34,6 @@ def genlinalg(name, linalggen, src, linalg_outs):
             cmd = (" ".join(base_args)),
         )
 
-    # List of opts that do not generate cc files.
     hdrs = [f for (opts, f) in linalg_outs]
     native.cc_library(
         name = name,

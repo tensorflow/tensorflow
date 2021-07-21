@@ -333,10 +333,7 @@ def gentbl_filegroup(
       **kwargs: Extra keyword arguments to pass to all generated rules.
     """
 
-    llvm_project_execroot_path = Label(
-        "@llvm-project//mlir:tblgen.bzl",
-        relative_to_caller_repository = False,
-    ).workspace_root
+    llvm_project_execroot_path = Label("@llvm-project//mlir:tblgen.bzl").workspace_root
 
     # TODO(gcmn): Update callers to td_library and explicit includes and drop
     # this hardcoded include.
