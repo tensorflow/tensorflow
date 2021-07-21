@@ -96,7 +96,7 @@ struct TPUVariableInfo {
   // The TPU core which the variable will be placed on.
   int device_ordinal;
   // If true, try to place the variable on fast memory space if hardware
-  // support. For example, PuffyLite has CMEM space.
+  // support.
   bool fast_mem;
 };
 
@@ -2262,7 +2262,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
                   /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
                   /*num_cores_per_chip=*/2, &natural_order));
               break;
-            case 4:  // we assume this is a puffylite donut (2x2 w/ 1 core/chip)
+            case 4:  // we assume this is a device with one core per chip.
               TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
                   /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
                   /*num_cores_per_chip=*/1, &natural_order));
@@ -2275,7 +2275,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
             default:
               return errors::Unimplemented(
                   "You must specify a device assignment for all TPU "
-                  "configurations other than JF/DF/PL 1x1 or 2x2.");
+                  "configurations.");
           }
           if (*num_core_per_replica != num_cores &&
               !std::equal(natural_order.begin(), natural_order.end(),
