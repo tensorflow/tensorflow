@@ -104,6 +104,7 @@ REQUIRED_PACKAGES = [
     'tensorboard ~= 2.6',
     'tensorflow_estimator ~= 2.6',
     'keras ~= 2.6',
+    'tensorflow-io-gcs-filesystem >= 0.20.0',
 ]
 
 
