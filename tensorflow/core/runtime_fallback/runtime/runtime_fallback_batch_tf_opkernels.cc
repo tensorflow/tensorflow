@@ -203,8 +203,10 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
     // generated for the batched function, we can assert the pointers are equal
     OP_REQUIRES_ASYNC(
         c, br->bef_func()->name() == bef_func_.get()->name(),
-        errors::InvalidArgument(
-            "Provided BEF function doesn't match with FallbackBatchResource."),
+        errors::InvalidArgument(tfrt::StrCat(
+            "Provided BEF function doesn't match with FallbackBatchResource. "
+            "Expected:",
+            bef_func_.get()->name(), " Received:", br->bef_func()->name())),
         done);
     Status status = br->RegisterInput(random::New64(), c, batcher_queue_, done);
     br->Unref();
