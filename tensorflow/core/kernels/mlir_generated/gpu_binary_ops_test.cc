@@ -181,13 +181,28 @@ GENERATE_DEFAULT_TESTS(BitwiseOr,
                        /*test_name=*/Int8, int8, int8, baseline_bitwise_or,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/UInt8, uint8, uint8, baseline_bitwise_or,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(BitwiseOr,
                        /*test_name=*/Int16, int16, int16, baseline_bitwise_or,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/UInt16, uint16, uint16,
+                       baseline_bitwise_or,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseOr,
                        /*test_name=*/Int32, int32, int32, baseline_bitwise_or,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/UInt32, uint32, uint32,
+                       baseline_bitwise_or,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(BitwiseOr,
                        /*test_name=*/Int64, int64, int64, baseline_bitwise_or,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/UInt64, uint64, uint64,
+                       baseline_bitwise_or,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.BitwiseXor`.
@@ -201,13 +216,28 @@ GENERATE_DEFAULT_TESTS(BitwiseXor,
                        /*test_name=*/Int8, int8, int8, baseline_bitwise_xor,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/UInt8, uint8, uint8, baseline_bitwise_xor,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(BitwiseXor,
                        /*test_name=*/Int16, int16, int16, baseline_bitwise_xor,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/UInt16, uint16, uint16,
+                       baseline_bitwise_xor,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseXor,
                        /*test_name=*/Int32, int32, int32, baseline_bitwise_xor,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/UInt32, uint32, uint32,
+                       baseline_bitwise_xor,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(BitwiseXor,
                        /*test_name=*/Int64, int64, int64, baseline_bitwise_xor,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/UInt64, uint64, uint64,
+                       baseline_bitwise_xor,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Complex`.
