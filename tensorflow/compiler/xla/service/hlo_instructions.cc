@@ -2729,7 +2729,8 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   auto cloned = absl::make_unique<HloCustomCallInstruction>(
-      shape, new_operands, custom_call_target(), opaque());
+      shape, new_operands, called_computations(), custom_call_target(),
+      opaque());
   if (layout_constrained()) {
     cloned->layout_constrained_ = true;
     cloned->operand_shapes_with_layout_ = operand_shapes_with_layout();
