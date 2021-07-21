@@ -11,7 +11,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-==============================================================================*/
+*/
 
 // We extract stack traces in Python using the logic in tf_stack.cc, which
 // stores a list of PyCodeObject*. Such stack trace extraction is really fast.
@@ -78,13 +78,28 @@ class PyBindFileSet {
 // Precondition: must be holding Python GIL.
 py::str LineContents(const StackFrame& frame) {
   DCheckPyGilStateForStackTrace();
+  // Pointers are to avoid static destruction of pybind::object, which
+  // occurs in uncontrollable states.
+  static const auto* inspect = new py::module(py::module::import("inspect"));
+  static const auto* getmodule = new py::function(inspect->attr("getmodule"));
   static const auto* linecache =
       new py::module(py::module::import("linecache"));
-  const auto& checkcache = linecache->attr("checkcache");
-  const auto& getline = linecache->attr("getline");
-  checkcache(py::str(frame.file_name));
+  static const auto* checkcache =
+      new py::function(linecache->attr("checkcache"));
+  static const auto* getline = new py::function(linecache->attr("getline"));
+  (*checkcache)(py::str(frame.file_name));
+
+  // Here we use the undocumented second argument of inspect.getmodule to look
+  // up a module from a filename. It has been unchanged since 2015.
+  const auto& module = (*getmodule)(py::none(), py::str(frame.file_name));
+  py::object dict = py::none();
+  if (!module.is_none()) {
+    // module dict is used by getline to resolve import hooks; see the
+    // stdlib's inspect module.
+    dict = module.attr("__dict__");
+  }
   return py::cast<py::str>(
-      getline(py::str(frame.file_name), py::int_(frame.line_number))
+      (*getline)(py::str(frame.file_name), py::int_(frame.line_number), dict)
           .attr("strip")());
 }
 
@@ -150,20 +165,29 @@ class StackTraceWrapper : public AbstractStackTrace {
     return *stack_frames_cache_;
   }
 
-  StackFrame LastUserFrame() const override {
-    if (last_stack_frame_cache_) {
-      return *last_stack_frame_cache_;
-    }
-
+  std::vector<StackFrame> GetUserFrames(int limit = -1) const {
     PyGILState_STATE state = PyGILState_Ensure();
-    std::vector<StackFrame> last_frame = captured_.ToStackFrames(
+    std::vector<StackFrame> user_frames = captured_.ToStackFrames(
         *source_map_,
         [&](const char* file_name) {
           return StackTraceFiltering(file_name) ||
                  IsInternalFrameForFilename(file_name);
         },
         /*reverse_traversal=*/true,
-        /*limit=*/1);
+        /*limit=*/limit);
+    PyGILState_Release(state);
+    // ensure we use the original (outermost first) ordering.
+    absl::c_reverse(user_frames);
+    return user_frames;
+  }
+
+  StackFrame LastUserFrame() const override {
+    if (last_stack_frame_cache_) {
+      return *last_stack_frame_cache_;
+    }
+
+    PyGILState_STATE state = PyGILState_Ensure();
+    std::vector<StackFrame> last_frame = GetUserFrames(1);
 
     if (last_frame.empty()) {
       last_stack_frame_cache_ = StackFrame{"", -1, ""};
@@ -359,12 +383,22 @@ PYBIND11_MODULE(_tf_stack, m) {
            [](const StackTraceWrapper& self) {
              return py::hash(py::str(self.ToString({})));
            })
+      // NOTE(feyu): consider remove this and use traceback.format_list(tb)
+      // to format the trace.
       .def("__repr__",
            [](const StackTraceWrapper& self) {
              return py::str(self.ToString({}));
            })
-      .def("last_user_frame",
-           [](const StackTraceWrapper& self) { return self.LastUserFrame(); });
+      .def(
+          "get_user_frames",
+          [](const StackTraceWrapper& self) {
+            return StackTraceWrapper{self.GetUserFrames()};
+          },
+          "Returns the non-framework frames as a new trace object.")
+      .def(
+          "last_user_frame",
+          [](const StackTraceWrapper& self) { return self.LastUserFrame(); },
+          "Returns the last non-framework frame.");
 
   m.def(
       "extract_stack_for_node",

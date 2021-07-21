@@ -27,6 +27,7 @@ import itertools
 import os
 import re
 import site
+import traceback
 
 import six
 
@@ -241,7 +242,7 @@ def _is_framework_filename(filename):
   return False
 
 
-def _find_index_of_defining_frame(traceback):
+def _find_index_of_defining_frame(tb):
   """Return index in op.traceback with first 'useful' frame.
 
   This method reads through the stack stored in op.traceback looking for the
@@ -250,7 +251,7 @@ def _find_index_of_defining_frame(traceback):
   pattern matching the filename).
 
   Args:
-    traceback: A list of traceback frames (as from Operation.traceback).
+    tb: A list of traceback frames (as from Operation.traceback).
 
   Returns:
     Integer index into op.traceback where the first non-TF file was found
@@ -258,8 +259,8 @@ def _find_index_of_defining_frame(traceback):
     came from TensorFlow.
   """
   # Index 0 of traceback is the outermost frame.
-  size = len(traceback)
-  filenames = [frame.filename for frame in traceback]
+  size = len(tb)
+  filenames = [frame.filename for frame in tb]
   # We process the filenames from the innermost frame to outermost.
   for idx, filename in enumerate(reversed(filenames)):
     is_framework = _is_framework_filename(filename)
@@ -269,13 +270,9 @@ def _find_index_of_defining_frame(traceback):
   return 0
 
 
-def _get_defining_frame(traceback):
-  """Find and return stack frame where op was defined."""
-  frame_index = _find_index_of_defining_frame(traceback)
-  return traceback[frame_index]
-
-
-def _compute_useful_frames(traceback, num):
+# TODO(feyu): follow up with users of this function (saved model)
+# to see what 'useful' means and whether we can obliviate this.
+def _compute_useful_frames(tb, num):
   """Return a list of frames, which form a 'useful' stack.
 
   Starting from the defining frame to the outermost one, this method computes
@@ -283,20 +280,20 @@ def _compute_useful_frames(traceback, num):
   frames.
 
   Args:
-    traceback: A list of traceback frames (as from Operation.traceback).
+    tb: A list of traceback frames (as from Operation.traceback).
     num: total number of frames to return.
 
   Returns:
     A list of frames.
   """
-  defining_frame_index = _find_index_of_defining_frame(traceback)
+  defining_frame_index = _find_index_of_defining_frame(tb)
   # The stack trace is collected from two lines before the defining frame in the
   # model file to the outermost with `num` frames at most. These two extra lines
   # are included from the TensorFlow library to give the context which node is
   # defined.
-  innermost_excluded = min(defining_frame_index + 2 + 1, len(traceback))
+  innermost_excluded = min(defining_frame_index + 2 + 1, len(tb))
   outermost_included = max(innermost_excluded - num, 0)
-  return traceback[outermost_included:innermost_excluded]
+  return tb[outermost_included:innermost_excluded]
 
 
 def create_graph_debug_info_def(func_named_operations):
@@ -355,20 +352,19 @@ def create_graph_debug_info_def(func_named_operations):
   return graph_debug_info_def
 
 
-def _compute_field_dict(op, strip_file_prefix=""):
-  """Return a dictionary mapping interpolation tokens to values.
+def _compute_field_dict(op):
+  r"""Return a dictionary mapping interpolation tokens to values.
 
   Args:
     op: op.Operation object having a _traceback member.
-    strip_file_prefix: The common path in the stacktrace. We remove the prefix
-    from the file names.
 
   Returns:
     A dictionary mapping string tokens to string values.  The keys are shown
     below along with example values.
     {
       "file": "tool_utils.py",
-      "line": "124",
+      "lineno": "124",
+      "line": "  source code line",
       "defined_at": " (defined at tool_utils.py:124)",
       "colocations":
           '''Node-device colocations active during op creation:
@@ -393,19 +389,22 @@ def _compute_field_dict(op, strip_file_prefix=""):
 
   # Optional traceback info.
   try:
-    traceback = op.traceback
+    tb = op.traceback
   except AttributeError:
     # Some ops synthesized on as part of function or control flow definition
     # do not have tracebacks.
     filename = "<unknown>"
     lineno = 0
     defined_at = " (defined at <unknown>)"
+    definition_traceback = ""
+    line = ""
   else:
-    frame = _get_defining_frame(traceback)
+    frame = tb.last_user_frame()
     filename = frame.filename
-    if filename.startswith(strip_file_prefix):
-      filename = filename[len(strip_file_prefix):]
+    definition_traceback = traceback.format_list(tb.get_user_frames())
+
     lineno = frame.lineno
+    line = frame.line
     defined_at = " (defined at %s:%d)" % (filename, lineno)
 
   field_dict = {
@@ -414,91 +413,81 @@ def _compute_field_dict(op, strip_file_prefix=""):
       "devs_and_colocs": combined_summary,
       "defined_at": defined_at,
       "file": filename,
-      "line": lineno,
+      "lineno": lineno,
+      "line": line,
+      "definition_traceback": definition_traceback,
   }
   return field_dict
 
 
-def traceback_files_common_prefix(all_ops):
-  """Determines the common prefix from the paths of the stacktrace of 'all_ops'.
+def _get_input_ops_for_op(op, graph):
+  """Gets the input ops for op.
 
-  For example, if the paths are '/foo/bar/baz/' and '/foo/car', this would
-  return '/foo'.
-
-  Args:
-    all_ops: All the input nodes in the form of a list of lists of ops.
-
-  Returns:
-    The common prefix.
-  """
-  files = set()
-  for ops in all_ops:
-    if ops is None:
-      continue
-    for op in ops:
-      # TODO(slebedev): switch to .filename once 2.X support is dropped.
-      for filename, _, _, _ in op.traceback:
-        if "<embedded" not in filename:
-          files.add(filename)
-  return os.path.split(os.path.commonprefix(list(files)))[0]
-
-
-def _sources_for_node(node, graph):
-  """Gets the input op nodes for 'node'.
+  We do a best effort and may not always find all input Ops.
 
   Args:
-    node: The node.
+    op: The op node.
     graph: The graph containing the node.
 
   Returns:
-    The unique input nodes.
+    A list of (ind_inp, op_inp).
+    ind_inp: index in the input list.
+    op_inp: op_inp, the input Op at ind_inp in the input list.
   """
-  inputs = set()
-  for name in node.node_def.input:
+  inputs = []
+  for ind_inp, name in enumerate(op.node_def.input):
     if name.startswith("^"):
       name = name[1:]
     try:
       tensor = graph.get_tensor_by_name(name)
-      op = tensor.op
+      op_inp = tensor.op
     except (KeyError, ValueError):
       try:
-        op = graph.get_operation_by_name(name)
+        op_inp = graph.get_operation_by_name(name)
       except KeyError:
         continue
-    inputs.add(op)
+    inputs.append((ind_inp, op_inp))
 
-  return list(inputs)
+  return inputs
 
 
-def _build_error_message(op, input_ops, common_prefix):
+def _build_error_message(op, input_ops):
   """Returns the formatted error message for the given op.
 
   Args:
     op: The node.
     input_ops: The input nodes to the 'op' node
-    common_prefix: The prefix path common to the stacktrace of inputs.
 
   Returns:
     The formatted error message for the given op. The error message also
     includes the information about the input sources for the given op.
   """
-  field_dict = _compute_field_dict(op, common_prefix)
-  msg = "node %s%s " % (op.name, field_dict["defined_at"])
+  field_dict = _compute_field_dict(op)
+  msg = "node %s\n%s\n" % (op.name, field_dict["defined_at"])
   input_debug_info = []
   # This stores the line numbers that we have already printed.
   done = set()
   done.add(field_dict["defined_at"])
-  for op_inp in input_ops:
-    field_dict_inp = _compute_field_dict(op_inp, common_prefix)
+  for ind_inp, op_inp in input_ops:
+    field_dict_inp = _compute_field_dict(op_inp)
     if field_dict_inp["defined_at"] not in done:
       input_debug_info.append(
-          " %s%s" % (op_inp.name, field_dict_inp["defined_at"]))
+          "In[%d] %s%s" % (ind_inp, op_inp.name, field_dict_inp["defined_at"]))
       done.add(field_dict_inp["defined_at"])
+    else:
+      input_debug_info.append("In[%d] %s:" % (ind_inp, op_inp.name))
+
+  end_msg = ""
   if input_debug_info:
-    end_msg = ("\nInput Source operations connected to node %s:\n") % (op.name)
+    end_msg += ("\nInput Source operations connected to node %s:\n") % (op.name)
     end_msg += "\t\n".join(input_debug_info)
-  else:
-    end_msg = ""
+
+  end_msg += "\n\nOperation defined at: (most recent call last)\n"
+
+  definition_traceback = "\n".join(field_dict["definition_traceback"])
+  # Adds a prefix to differentiate from a Python Interpreter traceback.
+  end_msg += "\n".join([">>> " + s for s in definition_traceback.split("\n")])
+
   return msg, end_msg
 
 
@@ -521,6 +510,7 @@ def interpolate(error_message, graph):
   subs = []
   end_msg = collections.defaultdict(list)
   tagged_ops = []
+  all_ops = []
 
   for t in tags:
     try:
@@ -528,22 +518,24 @@ def interpolate(error_message, graph):
     except KeyError:
       op = None
     if op is None:
-      tagged_ops.append(None)
+      tagged_ops.append((None, None))
     else:
-      tagged_ops.append([op] + _sources_for_node(op, graph))
+      op_inps = _get_input_ops_for_op(op, graph)
+      tagged_ops.append((op, op_inps))
+      for _, op_inp in op_inps:
+        all_ops.append(op_inp)
 
-  common_prefix = traceback_files_common_prefix(tagged_ops)
-  for tag, ops in zip(tags, tagged_ops):
+  for tag, (op, op_inps), in zip(tags, tagged_ops):
     msg = "{{%s %s}}" % (tag.type, tag.name)
-    if ops is not None:
+    if op is not None:
       if tag.type == "node":
-        msg, source_msg = _build_error_message(ops[0], ops[1:], common_prefix)
+        msg, source_msg = _build_error_message(op, op_inps)
         if source_msg:
           end_msg["source_nodes"].append(source_msg)
       elif tag.type == "colocation_node":
-        field_dict = _compute_field_dict(ops[0], common_prefix)
+        field_dict = _compute_field_dict(op)
         msg = "node %s%s placed on device %s " % (
-            ops[0].name, field_dict["defined_at"], field_dict["devices"])
+            op.name, field_dict["defined_at"], field_dict["devices"])
         end_msg["colocations"].append(field_dict["devs_and_colocs"])
     if tag.type == "function_node":
       msg = ""
