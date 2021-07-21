@@ -308,8 +308,6 @@ static tensorflow::SessionOptions SetUpGrapplerConfig(
   auto session_options = options.session_options;
   auto& config = session_options.config;
 
-  // TODO(b/179924827): Remove enable_grappler as it can be controlled by
-  // session_options.
   config.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_disable_meta_optimizer(!options.compile_options.enable_grappler);
