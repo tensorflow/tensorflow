@@ -34,6 +34,13 @@ config_setting(
 )
 
 config_setting(
+    name = "tflite_use_simple_memory_planner",
+    values = {
+        "copt": "-DTFLITE_USE_SIMPLE_MEMORY_PLANNER",
+    },
+)
+
+config_setting(
     name = "mips",
     values = {
         "cpu": "mips",
@@ -488,7 +495,6 @@ cc_library(
     ],
     deps = [
         ":allocation",
-        ":arena_planner",
         ":builtin_ops",
         ":cc_api_stable",
         ":external_cpu_backend_context",
@@ -502,15 +508,22 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
+        "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers//:runtime_cc",
-        "@ruy//ruy:denormal",
-    ],
+    ] + select({
+        ":tflite_use_simple_memory_planner": [
+            ":simple_planner",
+        ],
+        "//conditions:default": [
+            ":arena_planner",
+        ],
+    }),
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
