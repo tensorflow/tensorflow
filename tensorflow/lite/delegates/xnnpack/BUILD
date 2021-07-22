@@ -1093,4 +1093,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "unsigned_quantized_fully_connected_test",
+    srcs = ["unsigned_quantized_fully_connected_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_fully_connected_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})
