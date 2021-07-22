@@ -41,7 +41,7 @@ class TestGraphDebugInfo(object):
       return y + y
 
     func = model.get_concrete_function()
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
     converter.convert()
 
 # pylint: disable=line-too-long
