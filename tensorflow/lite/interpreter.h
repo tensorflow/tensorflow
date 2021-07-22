@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -690,19 +691,6 @@ class Interpreter {
 #endif  // DOXYGEN_SKIP
 
  private:
-  // Structure representing SignatureDef inputs/outputs.
-  struct SignatureDef {
-    // Maps name in signature def as key to index of the tensor in the model.
-    std::map<std::string, uint32_t> inputs;
-    // Maps name in signature def as key to index of the tensor in the model.
-    std::map<std::string, uint32_t> outputs;
-    // The method name for this signature.
-    std::string method_name;
-    // The key of this SignatureDef in the SavedModel signature def map.
-    std::string signature_def_key;
-    // The subgraph index of the signature in the model.
-    uint32_t subgraph_index;
-  };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
@@ -752,7 +740,7 @@ class Interpreter {
   bool IsCancelled();
 
   // Sets the list of signature defs in the model.
-  void SetSignatureDef(std::vector<SignatureDef> signature_defs) {
+  void SetSignatureDef(std::vector<internal::SignatureDef> signature_defs) {
     signature_defs_ = std::move(signature_defs);
   }
 
@@ -818,7 +806,7 @@ class Interpreter {
 
   // List of signature def mapping inputs/output to tensor ids.
   // We just keep track of tensor index.
-  std::vector<SignatureDef> signature_defs_;
+  std::vector<internal::SignatureDef> signature_defs_;
 };
 
 }  // namespace tflite

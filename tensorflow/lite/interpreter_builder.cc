@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/model_builder.h"
@@ -506,7 +507,7 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
   if (signature_def_list == nullptr || signature_def_list->size() == 0) {
     return kTfLiteOk;
   }
-  std::vector<Interpreter::SignatureDef> signature_defs;
+  std::vector<internal::SignatureDef> signature_defs;
   signature_defs.reserve(signature_def_list->size());
   for (const auto fb_signature_def : *signature_def_list) {
     if (fb_signature_def == nullptr) {
