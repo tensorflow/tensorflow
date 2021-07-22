@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace delegates {
@@ -43,18 +44,10 @@ class SerializationTest : public ::testing::Test {
     return "";
   }
 
-  TfLiteContext GenerateTfLiteContext(int num_nodes) {
-    // Create a dummy execution plan.
-    auto* dummy_plan = TfLiteIntArrayCreate(num_nodes);
-    owned_arrays_.push_back(dummy_plan);
-    for (int i = 0; i < num_nodes; ++i) {
-      dummy_plan->data[i] = i + 1;
-    }
+  // Unique num_tensors creates unique context fingerprint for testing.
+  TfLiteContext GenerateTfLiteContext(int num_tensors) {
     owned_tensor_vecs_.emplace_back();
     auto& tensors_vec = owned_tensor_vecs_.back();
-    // Add large enough number of tensors so that context->tensors[i] never
-    // causes memory access issues.
-    const int num_tensors = 100;
     for (int i = 0; i < num_tensors; ++i) {
       tensors_vec.emplace_back();
       auto& tensor = tensors_vec.back();
@@ -63,13 +56,7 @@ class SerializationTest : public ::testing::Test {
 
     TfLiteContext context;
     context.tensors_size = num_tensors;
-    context.impl_ = dummy_plan;
     context.tensors = tensors_vec.data();
-    context.GetExecutionPlan = [](struct TfLiteContext* context,
-                                  TfLiteIntArray** execution_plan) {
-      *execution_plan = reinterpret_cast<TfLiteIntArray*>(context->impl_);
-      return kTfLiteOk;
-    };
     context.ReportError = EmptyReportError;
     return context;
   }
@@ -126,8 +113,8 @@ TEST_F(SerializationTest, DelegateEntryFingerprint) {
   const std::string dir = "/test/dir";
   const std::string delegate1 = "gpu";
   const std::string delegate2 = "nnapi";
-  TfLiteContext context1 = GenerateTfLiteContext(/*num_nodes*/ 3);
-  TfLiteContext context2 = GenerateTfLiteContext(/*num_nodes*/ 6);
+  TfLiteContext context1 = GenerateTfLiteContext(/*num_tensors*/ 20);
+  TfLiteContext context2 = GenerateTfLiteContext(/*num_tensors*/ 30);
 
   SerializationParams serialization_params = {model_token.c_str(), dir.c_str()};
   Serialization serialization(serialization_params);
@@ -155,7 +142,7 @@ TEST_F(SerializationTest, KernelEntryFingerprint) {
   SerializationParams serialization_params = {model_token.c_str(), dir.c_str()};
   Serialization serialization(serialization_params);
 
-  TfLiteContext ref_context = GenerateTfLiteContext(/*num_nodes*/ 6);
+  TfLiteContext ref_context = GenerateTfLiteContext(/*num_tensors*/ 30);
   TfLiteDelegateParams ref_partition = GenerateTfLiteDelegateParams(
       /*num_nodes=*/3, /*num_input_tensors=*/4, /*num_output_tensors=*/2);
   auto ref_entry = serialization.GetEntryForKernel(
@@ -189,7 +176,7 @@ TEST_F(SerializationTest, KernelEntryFingerprint) {
                 .GetFingerprint());
 
   // Different contexts, same partition.
-  TfLiteContext other_context = GenerateTfLiteContext(/*num_nodes*/ 3);
+  TfLiteContext other_context = GenerateTfLiteContext(/*num_tensors*/ 60);
   ASSERT_NE(
       ref_entry.GetFingerprint(),
       serialization
@@ -217,7 +204,7 @@ TEST_F(SerializationTest, ModelTokenFingerprint) {
   std::string model_token2 = "model2";
   const std::string dir = "/test/dir";
   const std::string delegate = "gpu";
-  TfLiteContext context = GenerateTfLiteContext(/*num_nodes*/ 3);
+  TfLiteContext context = GenerateTfLiteContext(/*num_tensors*/ 20);
   TfLiteDelegateParams partition = GenerateTfLiteDelegateParams(
       /*num_nodes=*/2, /*num_input_tensors=*/3, /*num_output_tensors=*/1);
 
@@ -254,7 +241,7 @@ TEST_F(SerializationTest, SerializationData) {
   const std::string fake_dir = "/test/dir";
 
   // Dummy context.
-  TfLiteContext context = GenerateTfLiteContext(/*num_nodes*/ 3);
+  TfLiteContext context = GenerateTfLiteContext(/*num_tensors*/ 30);
   TfLiteDelegateParams partition = GenerateTfLiteDelegateParams(
       /*num_nodes=*/2, /*num_input_tensors=*/3, /*num_output_tensors=*/1);
 
@@ -273,7 +260,7 @@ TEST_F(SerializationTest, SerializationData) {
               kTfLiteOk);
 
     // Same key instance should be able to read the data back.
-    std::string read_back1;
+    std::string read_back1 = "this string should be cleared";
     ASSERT_EQ(entry1.GetData(&context, &read_back1), kTfLiteOk);
     auto* retrieved_data1 = reinterpret_cast<float*>(&(read_back1[0]));
     ASSERT_FLOAT_EQ(*retrieved_data1, value1);
@@ -321,6 +308,63 @@ TEST_F(SerializationTest, SerializationData) {
     ASSERT_EQ(entry5.GetData(&context, &read_back5),
               kTfLiteDelegateDataNotFound);
   }
+}
+
+TEST_F(SerializationTest, CachingDelegatedNodes) {
+  std::string model_token = "model1";
+  std::string test_dir = getSerializationDir();
+  SerializationParams serialization_params = {model_token.c_str(),
+                                              test_dir.c_str()};
+  Serialization serialization(serialization_params);
+  TfLiteContext context = GenerateTfLiteContext(/*num_tensors*/ 30);
+  const std::string test_delegate_id = "dummy_delegate";
+
+  std::vector<int> nodes_to_delegate = {2, 3, 4, 7};
+  TfLiteIntArray* nodes_to_delegate_array =
+      ConvertVectorToTfLiteIntArray(nodes_to_delegate);
+  std::vector<int> empty_nodes = {};
+  TfLiteIntArray* empty_nodes_array =
+      ConvertVectorToTfLiteIntArray(empty_nodes);
+
+  {
+    ASSERT_EQ(SaveDelegatedNodes(&context, &serialization, test_delegate_id,
+                                 nodes_to_delegate_array),
+              kTfLiteOk);
+  }
+  {
+    TfLiteIntArray* read_back_array;
+    ASSERT_EQ(GetDelegatedNodes(&context, &serialization, "unknown_delegate",
+                                &read_back_array),
+              kTfLiteDelegateDataNotFound);
+    ASSERT_EQ(GetDelegatedNodes(&context, &serialization, test_delegate_id,
+                                &read_back_array),
+              kTfLiteOk);
+    ASSERT_EQ(TfLiteIntArrayEqual(nodes_to_delegate_array, read_back_array), 1);
+    TfLiteIntArrayFree(read_back_array);
+  }
+  {
+    ASSERT_EQ(SaveDelegatedNodes(&context, &serialization, test_delegate_id,
+                                 empty_nodes_array),
+              kTfLiteOk);
+    TfLiteIntArray* read_back_array;
+    ASSERT_EQ(GetDelegatedNodes(&context, &serialization, test_delegate_id,
+                                &read_back_array),
+              kTfLiteOk);
+    ASSERT_EQ(read_back_array->size, 0);
+    TfLiteIntArrayFree(read_back_array);
+  }
+  {
+    // nullptr invalid.
+    ASSERT_EQ(
+        SaveDelegatedNodes(&context, &serialization, test_delegate_id, nullptr),
+        kTfLiteError);
+    ASSERT_EQ(
+        GetDelegatedNodes(&context, &serialization, test_delegate_id, nullptr),
+        kTfLiteError);
+  }
+
+  TfLiteIntArrayFree(nodes_to_delegate_array);
+  TfLiteIntArrayFree(empty_nodes_array);
 }
 
 }  // namespace
