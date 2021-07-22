@@ -75,7 +75,10 @@ XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
                                type, Bytes(256 << 20), DeviceLocality(),
                                absl::StrCat("device: XLA compilation device ",
                                             type.type()))),
-      allocator_(new XlaCompilationAllocator()) {}
+      allocator_(new XlaCompilationAllocator()),
+      gpu_device_info_(new GpuDeviceInfo) {
+  set_tensorflow_gpu_device_info(gpu_device_info_);
+}
 
 XlaCompilationDevice::~XlaCompilationDevice() {}
 

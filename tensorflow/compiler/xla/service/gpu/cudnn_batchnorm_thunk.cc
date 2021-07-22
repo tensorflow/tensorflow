@@ -71,42 +71,65 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
 }
 
 CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
-    ThunkInfo thunk_info, CudnnBatchNormConfig config,
-    const BufferAllocation::Slice& operand,
-    const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
-    const BufferAllocation::Slice& output_data,
-    const BufferAllocation::Slice& output_mean,
-    const BufferAllocation::Slice& output_inv_stddev)
+    ThunkInfo thunk_info, CudnnBatchNormForwardTrainingConfig config,
+    std::vector<BufferAllocation::Slice> operand_slices,
+    std::vector<BufferAllocation::Slice> output_slices)
     : Thunk(Thunk::Kind::kCudnnBatchNormForwardTraining, thunk_info),
       config_(std::move(config)),
-      operand_(operand),
-      scale_(scale),
-      offset_(offset),
-      output_data_(output_data),
-      output_mean_(output_mean),
-      output_inv_stddev_(output_inv_stddev) {}
+      operand_slices_(operand_slices),
+      output_slices_(output_slices) {}
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
-  se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_);
+  CHECK_LE(operand_slices_.size(), 4);
+  CHECK_LE(output_slices_.size(), 5);
+  se::DeviceMemoryBase operand =
+      buffer_allocations.GetDeviceAddress(operand_slices_[0]);
+  se::DeviceMemory<float> scale(
+      buffer_allocations.GetDeviceAddress(operand_slices_[1]));
+  se::DeviceMemory<float> offset(
+      buffer_allocations.GetDeviceAddress(operand_slices_[2]));
+  bool has_side_input = operand_slices_.size() == 4;
+  se::DeviceMemoryBase side_input_base(nullptr);
+  if (has_side_input) {
+    side_input_base = buffer_allocations.GetDeviceAddress(operand_slices_[3]);
+    VLOG(2) << "BatchNorm side input buffer slice: "
+            << operand_slices_[3].ToString() << " with size "
+            << side_input_base.size();
+  }
+
   se::DeviceMemoryBase output_data =
-      buffer_allocations.GetDeviceAddress(output_data_);
-
+      buffer_allocations.GetDeviceAddress(output_slices_[0]);
   se::DeviceMemory<float> output_mean(
-      buffer_allocations.GetDeviceAddress(output_mean_));
+      buffer_allocations.GetDeviceAddress(output_slices_[1]));
   se::DeviceMemory<float> output_inv_stddev(
-      buffer_allocations.GetDeviceAddress(output_inv_stddev_));
+      buffer_allocations.GetDeviceAddress(output_slices_[2]));
 
-  se::DeviceMemory<float> null_device_ptr(nullptr);
+  bool use_reserve_space = output_slices_.size() == 5;
+  se::DeviceMemoryBase reserve_space(nullptr);
+  se::DeviceMemoryBase workspace(nullptr);
+  if (use_reserve_space) {
+    reserve_space = buffer_allocations.GetDeviceAddress(output_slices_[3]);
+    VLOG(1) << "DeviceMemory reserve_space BatchNorm Forward - the size, in "
+               "bytes, for the backing memory "
+            << reserve_space.size();
+    VLOG(2) << "BatchNorm forward reserve space buffer slice: "
+            << output_slices_[3].ToString();
+    VLOG(2) << "Reserve space device address in "
+               "CudnnBatchNormForwardTrainingThunk: "
+            << reserve_space.opaque();
+    workspace = buffer_allocations.GetDeviceAddress(output_slices_[4]);
+    VLOG(1) << "DeviceMemory workspace BatchNorm Forward - the size, in "
+               "bytes, for the backing memory "
+            << workspace.size();
+  }
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
   auto& stream = *params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardTraining(
-      config_, operand, output_data, output_mean, output_inv_stddev,
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
-      &stream));
+      config_, operand, output_data, output_mean, output_inv_stddev, scale,
+      offset, side_input_base, reserve_space, workspace, &stream));
 
   if (!stream.ok()) {
     return InternalError("BatchNormalizationTraining call failed.");
@@ -116,46 +139,63 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
 
 CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
     ThunkInfo thunk_info, CudnnBatchNormConfig config,
-    const BufferAllocation::Slice& operand,
-    const BufferAllocation::Slice& scale, const BufferAllocation::Slice& mean,
-    const BufferAllocation::Slice& inv_stddev,
-    const BufferAllocation::Slice& grad_output,
-    const BufferAllocation::Slice& output_grad_data,
-    const BufferAllocation::Slice& output_grad_scale,
-    const BufferAllocation::Slice& output_grad_offset)
+    std::vector<BufferAllocation::Slice> operand_slices,
+    std::vector<BufferAllocation::Slice> output_slices)
     : Thunk(Thunk::Kind::kCudnnBatchNormBackward, thunk_info),
       config_(std::move(config)),
-      operand_(operand),
-      scale_(scale),
-      mean_(mean),
-      inv_stddev_(inv_stddev),
-      grad_output_(grad_output),
-      output_grad_data_(output_grad_data),
-      output_grad_scale_(output_grad_scale),
-      output_grad_offset_(output_grad_offset) {}
+      operand_slices_(operand_slices),
+      output_slices_(output_slices) {}
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
-  se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_);
-  se::DeviceMemoryBase output_grad_data =
-      buffer_allocations.GetDeviceAddress(output_grad_data_);
-  se::DeviceMemoryBase grad_output =
-      buffer_allocations.GetDeviceAddress(grad_output_);
-  se::DeviceMemory<float> output_grad_scale(
-      buffer_allocations.GetDeviceAddress(output_grad_scale_));
-  se::DeviceMemory<float> output_grad_offset(
-      buffer_allocations.GetDeviceAddress(output_grad_offset_));
+  CHECK_LE(operand_slices_.size(), 6);
+  CHECK_GE(operand_slices_.size(), 5);
+  CHECK_LE(output_slices_.size(), 4);
+  CHECK_GE(output_slices_.size(), 3);
 
+  // Operand Slices
+  se::DeviceMemoryBase operand =
+      buffer_allocations.GetDeviceAddress(operand_slices_[0]);
+  se::DeviceMemory<float> scale(
+      buffer_allocations.GetDeviceAddress(operand_slices_[1]));
+  se::DeviceMemory<float> mean(
+      buffer_allocations.GetDeviceAddress(operand_slices_[2]));
+  se::DeviceMemory<float> inv_stddev(
+      buffer_allocations.GetDeviceAddress(operand_slices_[3]));
+  se::DeviceMemoryBase grad_output =
+      buffer_allocations.GetDeviceAddress(operand_slices_[4]);
+
+  // Output Slices
+  se::DeviceMemoryBase output_grad_data =
+      buffer_allocations.GetDeviceAddress(output_slices_[0]);
+  se::DeviceMemory<float> output_grad_scale(
+      buffer_allocations.GetDeviceAddress(output_slices_[1]));
+  se::DeviceMemory<float> output_grad_offset(
+      buffer_allocations.GetDeviceAddress(output_slices_[2]));
+
+  bool use_reserve_space = operand_slices_.size() == 6;
+  se::DeviceMemoryBase reserve_space_base(nullptr);
+  se::DeviceMemoryBase workspace(nullptr);
+  if (use_reserve_space) {
+    reserve_space_base =
+        buffer_allocations.GetDeviceAddress(operand_slices_[5]);
+    VLOG(1) << "DeviceMemory reserve_space BatchNorm Backward - the size, in "
+               "bytes, for the backing memory "
+            << reserve_space_base.size();
+    workspace = buffer_allocations.GetDeviceAddress(output_slices_[3]);
+    VLOG(2) << "BatchNorm backward reserve space buffer slice: "
+            << operand_slices_[5].ToString();
+  }
+  se::DeviceMemory<uint8> reserve_space(reserve_space_base);
+  VLOG(2) << "Reserve space device address in CudnnBatchNormBackwardThunk: "
+          << reserve_space.opaque();
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
   se::Stream* stream = params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormBackward(
       config_, operand, output_grad_data, grad_output, output_grad_scale,
-      output_grad_offset,
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(inv_stddev_)),
+      output_grad_offset, scale, mean, inv_stddev, reserve_space, workspace,
       stream));
 
   if (!stream->ok()) {

@@ -505,6 +505,17 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
       device_mgr_(absl::WrapUnique(device_)) {
+  VLOG(1) << "XlaCompiler: "
+          << "Device: " << device_
+          << "Device_allocator: " << options_.device_allocator
+          << "Device_ordinal: " << options_.device_ordinal
+          << "options_.device_type : " << options_.device_type;
+  if (options.device_ordinal >= 0) {
+    VLOG(1) << "Stream: "
+            << options_.device_allocator->GetStream(options_.device_ordinal)
+                   .ValueOrDie();
+  }
+
   CHECK(!options_.device_type.type_string().empty());
   if (options_.populate_resource_manager) {
     initialization_status_ =
@@ -526,6 +537,14 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   // The default shape representation function is the identity.
   if (!options_.shape_representation_fn) {
     options_.shape_representation_fn = IdentityShapeRepresentationFn();
+  }
+  // DeviceMemoryAllocator may be a nullptr. In such case, stream can be
+  // initialized using stream_executor. Since (as it seems) stream_executor is
+  // not accessible from here, the stream* in GpuDeviceInfo is null.
+  if (options_.device_allocator && options_.device_ordinal >= 0) {
+    device_->set_gpu_device_info_stream(
+        options_.device_allocator->GetStream(options_.device_ordinal)
+            .ValueOrDie());
   }
 }
 

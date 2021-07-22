@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -263,7 +264,32 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   auto shifted_normalized = add_binary(operand_shape, HloOpcode::kAdd,
                                        scaled_normalized, offset_broadcasted);
 
-  auto tuple = HloInstruction::CreateTuple({shifted_normalized, mean, var});
+  if (batch_norm->operand_count() == 4) {
+    auto side_input = batch_norm->mutable_operand(3);
+    shifted_normalized = add_binary(operand_shape, HloOpcode::kAdd,
+                                    shifted_normalized, side_input);
+  }
+
+  if (static_cast<HloBatchNormTrainingInstruction*>(batch_norm)
+          ->is_activation_relu()) {
+    auto zero_literal_relu = LiteralUtil::CreateR0(0.0f);
+    TF_ASSIGN_OR_RETURN(zero_literal_relu, zero_literal_relu.Convert(ptype));
+    shifted_normalized = add_binary(
+        operand_shape, HloOpcode::kMaximum, shifted_normalized,
+        add(HloInstruction::CreateBroadcast(
+            operand_shape,
+            add(HloInstruction::CreateConstant(std::move(zero_literal_relu))),
+            {})));
+  }
+  HloInstruction::InstructionVector replacing_tuple_elements = {
+      shifted_normalized, mean, var};
+  if (batch_norm->shape().tuple_shapes_size() == 4) {
+    HloInstruction* dummy_instr =
+        computation_->AddInstruction(HloInstruction::CreateConstant(
+            Literal::CreateFromShape(batch_norm->shape().tuple_shapes(3))));
+    replacing_tuple_elements.push_back(dummy_instr);
+  }
+  auto tuple = HloInstruction::CreateTuple(replacing_tuple_elements);
 
   if (batch_norm->has_sharding()) {
     int64 instruction_count_after = computation_->instruction_count();

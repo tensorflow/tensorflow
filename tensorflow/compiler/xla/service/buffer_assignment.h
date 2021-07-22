@@ -202,6 +202,8 @@ class BufferAllocation {
 
     string ToString() const;
 
+    void set_size(int64 size) { size_ = size; }
+
    private:
     const BufferAllocation* allocation_ = nullptr;
     int64 offset_ = 0;

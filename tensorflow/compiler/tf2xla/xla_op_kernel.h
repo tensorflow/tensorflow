@@ -326,6 +326,12 @@ class XlaOpKernelContext {
   // string if none found.
   std::string StackTrace() const;
 
+  void SetUseReserveSpaceMetadata(bool use_reserve_space) {
+    metadata_.use_reserve_space_ = use_reserve_space;
+  }
+
+  bool GetUseReserveSpaceMetadata() { return metadata_.use_reserve_space_; }
+
  private:
   // Returns the tensor of input `name`.
   const Tensor& GetInputTensorByName(absl::string_view name);
@@ -340,8 +346,19 @@ class XlaOpKernelContext {
       xla::Literal* constant_literal,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
+  // Metadata struct used to store device specific information.
+  struct Metadata {
+    // This flag is used for Batchnorm Ops on GPUs. It specifies whether a
+    // reserve space is required to allocated that produces and caches bits in
+    // batch-norm-training and is consumed by batch-norm-grad. This flag is
+    // primarily used when using cuDNN for Batch Normalization.
+    bool use_reserve_space_;
+    Metadata() {}
+  };
+
   OpKernelContext* const context_;
   bool dynamic_dimension_is_minus_one_;
+  Metadata metadata_;
 };
 
 }  // namespace tensorflow

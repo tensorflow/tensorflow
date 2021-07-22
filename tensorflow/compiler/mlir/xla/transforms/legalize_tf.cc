@@ -2422,6 +2422,7 @@ class ConvertFusedBatchNormGradBase
     Value scale = op.scale();
     Value mean = op.reserve_space_1();
     Value var = op.reserve_space_2();
+    Value reserve_space = op.reserve_space_3();
 
     // TODO(b/141785544): Update this to not require static shapes.
     // activation shape needs to be static to convert negative indices in
@@ -2455,8 +2456,8 @@ class ConvertFusedBatchNormGradBase
           rewriter.getContext(), {act.getType(), feature_type, feature_type});
 
       auto training_op = rewriter.create<BatchNormGradOp>(
-          loc, result_type, act, scale, mean, var, grad, op.epsilon(),
-          feature_dim);
+          loc, result_type, act, scale, mean, var, grad, reserve_space,
+          op.epsilon(), feature_dim);
 
       x_backprop =
           rewriter.create<GetTupleElementOp>(loc, training_op.getResult(), 0);
@@ -2593,9 +2594,10 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
                                             mean_var_type, mean_var_type};
       Type result_type = TupleType::get(rewriter.getContext(), operand_types);
 
+      Value side_input;
       auto bn_train_op = rewriter.create<mhlo::BatchNormTrainingOp>(
           op.getLoc(), result_type, bn_train_input, op.scale(), op.offset(),
-          op.epsilon(), feature_dim.getInt());
+          side_input, op.epsilon(), feature_dim.getInt(), 0, false, false);
       // HLO op outputs a tuple of tensors. Extract those results.
       auto bn_train_op_result = bn_train_op.getResult();
       Value y_out = rewriter.create<mhlo::GetTupleElementOp>(
@@ -2605,6 +2607,8 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       Value reserve_space_1 = batch_mean;
       Value batch_variance = rewriter.create<mhlo::GetTupleElementOp>(
           op.getLoc(), bn_train_op_result, 2);
+      Value reserve_space = rewriter.create<mhlo::GetTupleElementOp>(
+          op.getLoc(), bn_train_op_result, 3);
 
       // Apply Bessel's correction on the variance.
       int total_input_size = bn_train_input_type_tensor.getNumElements();
@@ -2687,7 +2691,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
                                 /*batch_variance=*/corrected_variance,
                                 /*reserve_space_1=*/reserve_space_1,
                                 /*reserve_space_2=*/batch_variance,
-                                /*reserve_space_3=*/dummy_const});
+                                /*reserve_space_3=*/reserve_space});
       }
     } else {  // Inference case.
       auto bn_train_op = rewriter.create<BatchNormInferenceOp>(

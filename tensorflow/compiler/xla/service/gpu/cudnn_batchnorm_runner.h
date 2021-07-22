@@ -35,9 +35,18 @@ struct CudnnBatchNormConfig {
   int64 feature_index;
 };
 
+struct CudnnBatchNormForwardTrainingConfig {
+  CudnnBatchNormConfig batchnorm_config;
+  se::dnn::ActivationMode activation_mode;
+};
+
 CudnnBatchNormConfig GetCudnnBatchNormConfig(const HloInstruction *instr,
                                              float epsilon,
-                                             int64_t feature_index);
+                                             int64 feature_index);
+
+StatusOr<CudnnBatchNormForwardTrainingConfig>
+GetCudnnBatchNormForwardTrainingConfig(const HloInstruction *instr,
+                                       float epsilon, int64 feature_index);
 
 Status RunCudnnBatchNormForwardInference(
     const CudnnBatchNormConfig &config, se::DeviceMemoryBase operand,
@@ -46,10 +55,13 @@ Status RunCudnnBatchNormForwardInference(
     se::DeviceMemory<float> variance, se::Stream *stream);
 
 Status RunCudnnBatchNormForwardTraining(
-    const CudnnBatchNormConfig &config, se::DeviceMemoryBase operand,
-    se::DeviceMemoryBase output_data, se::DeviceMemory<float> output_mean,
+    const CudnnBatchNormForwardTrainingConfig &config,
+    se::DeviceMemoryBase operand, se::DeviceMemoryBase output_data,
+    se::DeviceMemory<float> output_mean,
     se::DeviceMemory<float> output_inv_stddev, se::DeviceMemory<float> scale,
-    se::DeviceMemory<float> offset, se::Stream *stream);
+    se::DeviceMemory<float> offset, se::DeviceMemoryBase side_input,
+    se::DeviceMemoryBase reserve_space, se::DeviceMemoryBase workspace,
+    se::Stream *stream);
 
 Status RunCudnnBatchNormBackward(
     const CudnnBatchNormConfig &config, se::DeviceMemoryBase operand,
@@ -57,6 +69,7 @@ Status RunCudnnBatchNormBackward(
     se::DeviceMemory<float> output_grad_scale,
     se::DeviceMemory<float> output_grad_offset, se::DeviceMemory<float> scale,
     se::DeviceMemory<float> mean, se::DeviceMemory<float> inv_stddev,
+    se::DeviceMemory<uint8> reserve_space, se::DeviceMemoryBase workspace,
     se::Stream *stream);
 }  // namespace gpu
 }  // namespace xla

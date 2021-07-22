@@ -70,8 +70,8 @@ TEST_F(BatchNormExpanderTest, BatchNormTraining) {
 
   builder.AddInstruction(HloInstruction::CreateBatchNormTraining(
       ShapeUtil::MakeTupleShape({input_shape, scale_shape, offset_shape}),
-      param0, param1, param2,
-      /*epsilon=*/0.001, /*feature_index=*/3));
+      param0, param1, {param2},
+      /*epsilon=*/0.001, /*feature_index=*/3, false));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -113,7 +113,7 @@ TEST_F(BatchNormExpanderTest, BatchNormGrad) {
 
   builder.AddInstruction(HloInstruction::CreateBatchNormGrad(
       ShapeUtil::MakeTupleShape({input_shape, scale_shape, mean_shape}), param0,
-      param1, param2, param3, param4,
+      param1, {param2, param3, param4},
       /*epsilon=*/0.001, /*feature_index=*/3));
 
   auto module = CreateNewVerifiedModule();
@@ -139,7 +139,7 @@ ENTRY entry {
   %param.2 = f32[4] parameter(2)
   ROOT %batch-norm-training = (f32[8,4], f32[4], f32[4])
     batch-norm-training(f32[8,4] %param.0, f32[4] %param.1, f32[4] %param.2),
-    epsilon=0.001, feature_index=1, sharding={maximal device=1}
+    epsilon=0.001, feature_index=1, is_activation_relu=false, sharding={maximal device=1}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));

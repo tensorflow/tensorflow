@@ -944,8 +944,9 @@ class HloInstruction {
 
   // Creates a batch-norm-training instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
-      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
-      HloInstruction* offset, float epsilon, int64 feature_index);
+      const Shape& shape, HloInstruction* operand_0, HloInstruction* scale,
+      absl::Span<HloInstruction* const> other_operands, float epsilon,
+      int64 feature_index, bool is_activation_relu);
 
   // Creates a batch-norm-inference instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormInference(
@@ -955,9 +956,9 @@ class HloInstruction {
 
   // Creates a batch-norm-grad instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormGrad(
-      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
-      HloInstruction* mean, HloInstruction* variance,
-      HloInstruction* grad_output, float epsilon, int64 feature_index);
+      const Shape& shape, HloInstruction* operand_0, HloInstruction* scale,
+      absl::Span<HloInstruction* const> other_operands, float epsilon,
+      int64 feature_index);
 
   // Creates a scatter computation that scatters the `source` array to the
   // selected indices of each window.

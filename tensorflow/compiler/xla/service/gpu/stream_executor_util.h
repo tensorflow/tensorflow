@@ -35,6 +35,40 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// A StreamExecutor ScratchAllocator that wraps a single XLA allocation,
+// returning it (in its entirety) the first time Allocate() is called.
+class ScratchBufAllocator : public se::ScratchAllocator {
+ public:
+  explicit ScratchBufAllocator(se::DeviceMemoryBase scratch)
+      : scratch_(scratch) {}
+
+  ~ScratchBufAllocator() override = default;
+
+  int64 GetMemoryLimitInBytes() override { return scratch_.size(); }
+
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      int64 byte_size) override {
+    if (allocated_) {
+      return se::port::InternalError(
+          "Can't allocate twice from a ScratchBufAllocator.");
+    }
+    if (byte_size > scratch_.size()) {
+      return se::port::InternalError(absl::StrCat(
+          "Can't allocate ", byte_size,
+          " bytes from a ScratchBufAllocator of size ", scratch_.size()));
+    }
+
+    allocated_ = true;
+    return se::DeviceMemory<uint8>(scratch_);
+  }
+
+  bool IsBufferNull() { return scratch_.is_null(); }
+
+ private:
+  se::DeviceMemoryBase scratch_;
+  bool allocated_ = false;
+};
+
 // Returns (input, filter, output) XLA Layout protos given the StreamExecutor
 // layouts.
 StatusOr<std::tuple<Layout, Layout, Layout>>
@@ -126,6 +160,15 @@ StatusOr<tensorflow::AutotuneResult> PickBestResult(
 //                    phase of plumbing.
 bool RequireDeterminism(const HloModuleConfig& config);
 
+struct DnnBatchDescriptors {
+  se::dnn::BatchDescriptor input_desc;
+  se::dnn::BatchDescriptor scale_offset_desc;
+};
+
+// This helper function is used by cudnn_batchnorm_rewriter and
+// cudnn_batchnorm_runner.
+DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
+                                             int64 feature_index);
 }  // namespace gpu
 }  // namespace xla
 

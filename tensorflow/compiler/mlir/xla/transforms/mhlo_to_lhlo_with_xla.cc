@@ -782,6 +782,13 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
     op.alpha_realAttr(builder_.getF64FloatAttr(config.alpha_real()));
     op.alpha_imagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
     op.batch_sizeAttr(builder_.getI64IntegerAttr(config.batch_size()));
+    // Pass the metadata from hlo to mlir
+    const xla::OpMetadata metadata = custom_call->metadata();
+    std::string op_name = metadata.op_name();
+    std::string op_type = metadata.op_type();
+    op.op_nameAttr(builder_.getStringAttr(op_name));
+    op.op_typeAttr(builder_.getStringAttr(op_type));
+
     if (config.algorithm_case() ==
         xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
       op.algorithmAttr(builder_.getI64IntegerAttr(config.selected_algorithm()));
@@ -884,6 +891,13 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         &custom_call->precision_config(), &builder_));
     op.result_scaleAttr(
         builder_.getF64FloatAttr(backend_config.conv_result_scale()));
+    // Pass the metadata from hlo to mlir
+    const xla::OpMetadata metadata = custom_call->metadata();
+    std::string op_name = metadata.op_name();
+    std::string op_type = metadata.op_type();
+    op.op_nameAttr(builder_.getStringAttr(op_name));
+    op.op_typeAttr(builder_.getStringAttr(op_type));
+
     auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
         builder_.getI64IntegerAttr(backend_config.algorithm()),
         builder_.getBoolAttr(backend_config.tensor_ops_enabled()),
@@ -952,6 +966,21 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
 StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
     const HloCustomCallInstruction* custom_call) {
   const xla::int64 num_operands = custom_call->operand_count();
+  TF_ASSIGN_OR_RETURN(
+      auto const backend_config,
+      custom_call->backend_config<xla::gpu::CudnnBatchNormBackendConfig>());
+
+  auto set_bn_activation = [&, this](auto op) -> Status {
+    auto se_activation = static_cast<stream_executor::dnn::ActivationMode>(
+        backend_config.activation_mode());
+    TF_ASSIGN_OR_RETURN(mlir::lmhlo_gpu::Activation activation,
+                        GetLHLOActivation(se_activation));
+    StringAttr activation_attr = builder_.getStringAttr(
+        mlir::lmhlo_gpu::stringifyActivation(activation));
+    op.activation_modeAttr(activation_attr);
+    return Status::OK();
+  };
+
   auto set_batchnorm_attributes = [&](auto op) -> StatusOr<Operation*> {
     // The last 2 operands of a custom call for batch norm are the epsilon and
     // feature_index.
@@ -975,6 +1004,58 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
     TF_ASSIGN_OR_RETURN(auto fwd_training,
                         CreateOpWithoutAttrs<lmhlo_gpu::BatchNormTrainingOp>(
                             custom_call, num_operands - 2));
+    TF_RETURN_IF_ERROR(set_bn_activation(fwd_training));
+    int32_t num_arguments;
+    int32_t num_outputs;
+    switch (fwd_training.getOperands().size()) {
+      case 6: {
+        // Arguments:
+        // operand(0) -> operand; operand(1) -> scale; operand(2) -> offset;
+        // Outputs:
+        // operand(3) -> output; operand(4) ->batch_mean; operand(5) ->
+        // batch_stddev;
+        num_arguments = 3;
+        num_outputs = 3;
+        break;
+      }
+      case 8: {
+        // BN+Act (FusedBN):
+        //   Arguments:
+        //   operand(0) -> operand; operand(1) -> scale; operand(2) -> offset;
+        //   Outputs:
+        //   operand(3) -> output; operand(4) ->batch_mean; operand(5) ->
+        //   batch_stddev; operand(6) -> reserve space; operand(7) -> scratch
+        //   workspace;
+        num_arguments = 3;
+        num_outputs = 5;
+        break;
+      }
+      case 9: {
+        // BN+Add+Act(FusedBN):
+        // Arguments:
+        // operand(0) -> operand; operand(1) -> scale; operand(2) -> offset;
+        // operand(3) -> side_input ; Outputs: operand(4) -> output; operand(5)
+        // ->batch_mean; operand(6) -> batch_stddev; operand(7) -> reserve
+        // space; operand(8) -> scratch workspace;
+        num_arguments = 4;
+        num_outputs = 5;
+        break;
+      }
+      default: {
+        std::string op_str;
+        llvm::raw_string_ostream os(op_str);
+        fwd_training.print(os);
+        return xla::InternalError(
+            "Incorrect number of operands. Can be either 6, 8 or 9. Found %s "
+            "operands.",
+            os.str());
+      }
+    }
+
+    auto operand_segment_sizes =
+        DenseIntElementsAttr::get(VectorType::get({2}, builder_.getI32Type()),
+                                  {num_arguments, num_outputs});
+    fwd_training.operand_segment_sizesAttr(operand_segment_sizes);
     return set_batchnorm_attributes(fwd_training);
   }
 

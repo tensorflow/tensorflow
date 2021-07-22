@@ -62,6 +62,11 @@ class XlaCompilationDevice : public LocalDevice {
 
  private:
   std::unique_ptr<XlaCompilationAllocator> allocator_;
+  // GpuDeviceInfo is a struct defined in device_base.h that holds stream
+  // information amongst other things. The stream information can be extracted
+  // when needed from device when required. For example, the stream is queried
+  // via the XlaCompilation device in batch_norm_ops in tf2xla.
+  GpuDeviceInfo* gpu_device_info_ = nullptr;
 };
 
 }  // namespace tensorflow

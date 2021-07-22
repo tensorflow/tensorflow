@@ -72,6 +72,8 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kSort:
       case HloOpcode::kTuple:
       case HloOpcode::kReduceWindow:
+      case HloOpcode::kBatchNormGrad:
+      case HloOpcode::kBatchNormTraining:
         EXPECT_TRUE(HloOpcodeIsVariadic(opcode));
         break;
       default:

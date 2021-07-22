@@ -41,7 +41,7 @@ enum CustomCallSchedule {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 77
+// Next ID: 78
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -272,6 +272,10 @@ message HloInstructionProto {
 
   // If a convolution is dynamic, a dynamic padding type will be specified.
   xla.PaddingType padding_type = 75;
+
+  // Whether activation mode for kBatchNormTraining is relu.
+  // The kBatchNormTraining instr is actually  fused batchnorm+add+activation.
+  bool is_activation_relu = 77;
 }
 
 // Serialization of HloComputation.

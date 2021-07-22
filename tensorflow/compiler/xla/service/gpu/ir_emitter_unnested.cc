@@ -1172,6 +1172,13 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
 }
 
 namespace {
+static std::string ToString(mlir::Type ty) {
+  std::string str;
+  llvm::raw_string_ostream sstream(str);
+  ty.print(sstream);
+  sstream.flush();
+  return str;
+}
 // An MLIR value and its name as defined in the ODS spec.
 struct NamedValue {
   mlir::Value value;
@@ -1184,10 +1191,17 @@ struct NamedValue {
 // layout (which maps to them having the same memref type).
 Status VerifyBatchNormForThunkEmission(
     mlir::ArrayRef<NamedValue> statistics_operands,
-    mlir::ArrayRef<NamedValue> other_operands) {
+    mlir::ArrayRef<NamedValue> other_operands,
+    std::vector<NamedValue> optional_values) {
   for (const NamedValue& v : statistics_operands) {
     // Note: MLIR verification will ensure that the operands of the batchnorm
     // LHLO are valid memref types.
+    if (VLOG_IS_ON(2)) {
+      std::string op_str;
+      llvm::raw_string_ostream os(op_str);
+      v.value.getType().cast<mlir::MemRefType>().getElementType().print(os);
+      VLOG(2) << "statistics_operands value: " << v.name << " " << os.str();
+    }
     if (!v.value.getType().cast<mlir::MemRefType>().getElementType().isF32()) {
       return Unimplemented("Operand %s of batch norm should have F32 type",
                            v.name);
@@ -1206,7 +1220,24 @@ Status VerifyBatchNormForThunkEmission(
                            v.name, first_name);
     }
   }
+  if (!optional_values.empty()) {
+    for (auto v : optional_values) {
+      if (VLOG_IS_ON(2)) {
+        std::string op_str;
+        llvm::raw_string_ostream os(op_str);
+        v.value.getType().print(os);
+        VLOG(2) << "Optional value: " << v.name << " " << os.str();
+      }
 
+      if (!v.value.getType()
+               .cast<mlir::MemRefType>()
+               .getElementType()
+               .isUnsignedInteger(8)) {
+        return Unimplemented("Operand %s of batch norm should have U8 type",
+                             v.name);
+      }
+    }
+  }
   return Status::OK();
 }
 
@@ -1297,41 +1328,65 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
   // to match.
   if (auto bn_train =
           mlir::dyn_cast<mlir::lmhlo_gpu::BatchNormTrainingOp>(op)) {
+    std::vector<NamedValue> optional_values{};
+    if (bn_train.outputs().size() == 5) {
+      optional_values.push_back({bn_train.outputs()[3], "reserve_space"});
+      optional_values.push_back({bn_train.outputs()[4], "workspace"});
+    }
+
     TF_RETURN_IF_ERROR(VerifyBatchNormForThunkEmission(
         /*statistics_operands=*/
-        {{bn_train.scale(), "scale"},
-         {bn_train.offset(), "offset"},
-         {bn_train.batch_mean(), "batch_mean"},
-         {bn_train.batch_stddev(), "batch_stddev"}},
+        {{bn_train.arguments()[1], "scale"},
+         {bn_train.arguments()[2], "offset"},
+         {bn_train.outputs()[1], "batch_mean"},
+         {bn_train.outputs()[2], "batch_stddev"}},
         /*other_operands=*/
-        {{bn_train.operand(), "operand"}, {bn_train.output(), "output"}}));
-    TF_ASSIGN_OR_RETURN(auto operand, GetAllocationSlice(bn_train.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_train.scale()));
-    TF_ASSIGN_OR_RETURN(auto offset, GetAllocationSlice(bn_train.offset()));
+        {{bn_train.arguments()[0], "operand"},
+         {bn_train.outputs()[0], "output"}},
+        optional_values));
 
+    std::vector<BufferAllocation::Slice> operand_slices;
+
+    operand_slices.reserve(bn_train.arguments().size());
+    for (mlir::Value operand : bn_train.arguments()) {
+      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(operand));
+      operand_slices.push_back(slice);
+    }
     // BatchNormTraining returns a tuple of three elements: data, calculated
     // mean, and calculated 1/sqrt(variance + epsilon).
-    TF_ASSIGN_OR_RETURN(auto output_data,
-                        GetAllocationSlice(bn_train.output()));
-    TF_ASSIGN_OR_RETURN(auto output_mean,
-                        GetAllocationSlice(bn_train.batch_mean()));
-    TF_ASSIGN_OR_RETURN(auto output_inv_stddev,
-                        GetAllocationSlice(bn_train.batch_stddev()));
+    std::vector<BufferAllocation::Slice> output_slices;
 
+    output_slices.reserve(bn_train.outputs().size());
+    for (mlir::Value out : bn_train.outputs()) {
+      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(out));
+      output_slices.push_back(slice);
+    }
+
+    CudnnBatchNormForwardTrainingConfig config;
+    config.batchnorm_config =
+        get_batch_norm_config(bn_train, bn_train.outputs()[0]);
+    TF_ASSIGN_OR_RETURN(stream_executor::dnn::ActivationMode activation_mode,
+                        ConvertConvActivationMode(bn_train.activation_mode()));
+    if (!se::dnn::ActivationMode_IsValid(activation_mode)) {
+      return InternalError("Bad activation mode: %s",
+                           se::dnn::ActivationMode_Name(activation_mode));
+    }
+    config.activation_mode = activation_mode;
     AddThunkToThunkSequence(
         absl::make_unique<CudnnBatchNormForwardTrainingThunk>(
             GetThunkInfo(op),
-            /*config=*/get_batch_norm_config(bn_train, bn_train.output()),
-            /*operand=*/operand,
-            /*scale=*/scale,
-            /*offset=*/offset,
-            /*output_data=*/output_data,
-            /*output_mean=*/output_mean,
-            /*output_inv_stddev=*/output_inv_stddev));
+            /*config=*/config,
+            /*operand_slices=*/std::move(operand_slices),
+            /*output_slices=*/std::move(output_slices)));
     return Status::OK();
   }
 
   if (auto bn_grad = mlir::dyn_cast<mlir::lmhlo_gpu::BatchNormGradOp>(op)) {
+    std::vector<NamedValue> optional_values{};
+    if (bn_grad.reserve_space() && bn_grad.scratch()) {
+      optional_values.push_back({bn_grad.reserve_space(), "reserve_space"});
+      optional_values.push_back({bn_grad.scratch(), "workspace"});
+    }
     TF_RETURN_IF_ERROR(VerifyBatchNormForThunkEmission(
         /*statistics_operands=*/
         {{bn_grad.scale(), "scale"},
@@ -1342,26 +1397,52 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
         /*other_operands=*/
         {{bn_grad.operand(), "operand"},
          {bn_grad.grad_output(), "grad_output"},
-         {bn_grad.grad_operand(), "grad_operand"}}));
+         {bn_grad.grad_operand(), "grad_operand"}},
+        optional_values));
 
-    TF_ASSIGN_OR_RETURN(auto operand, GetAllocationSlice(bn_grad.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_grad.scale()));
-    TF_ASSIGN_OR_RETURN(auto mean, GetAllocationSlice(bn_grad.mean()));
-    TF_ASSIGN_OR_RETURN(auto inv_stddev, GetAllocationSlice(bn_grad.stddev()));
+    std::vector<BufferAllocation::Slice> operand_slices;
+
+    TF_ASSIGN_OR_RETURN(auto operand,
+                        GetAllocationSliceForMlir(bn_grad.operand()));
+    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSliceForMlir(bn_grad.scale()));
+    TF_ASSIGN_OR_RETURN(auto mean, GetAllocationSliceForMlir(bn_grad.mean()));
+    TF_ASSIGN_OR_RETURN(auto inv_stddev,
+                        GetAllocationSliceForMlir(bn_grad.stddev()));
     TF_ASSIGN_OR_RETURN(auto grad_output,
-                        GetAllocationSlice(bn_grad.grad_output()));
+                        GetAllocationSliceForMlir(bn_grad.grad_output()));
+
+    operand_slices.push_back(operand);
+    operand_slices.push_back(scale);
+    operand_slices.push_back(mean);
+    operand_slices.push_back(inv_stddev);
+    operand_slices.push_back(grad_output);
+    if (bn_grad.reserve_space()) {
+      TF_ASSIGN_OR_RETURN(auto reserve_space,
+                          GetAllocationSliceForMlir(bn_grad.reserve_space()));
+      operand_slices.push_back(reserve_space);
+    }
 
     // BatchNormGrad returns a tuple of three elements: grad_data, grad_scale,
     // grad_offset.
+    std::vector<BufferAllocation::Slice> output_slices;
+
     TF_ASSIGN_OR_RETURN(auto output_grad_data,
-                        GetAllocationSlice(bn_grad.grad_operand()));
+                        GetAllocationSliceForMlir(bn_grad.grad_operand()));
     TF_ASSIGN_OR_RETURN(auto output_grad_scale,
-                        GetAllocationSlice(bn_grad.grad_scale()));
+                        GetAllocationSliceForMlir(bn_grad.grad_scale()));
     TF_ASSIGN_OR_RETURN(auto output_grad_offset,
-                        GetAllocationSlice(bn_grad.grad_offset()));
+                        GetAllocationSliceForMlir(bn_grad.grad_offset()));
+    output_slices.push_back(output_grad_data);
+    output_slices.push_back(output_grad_scale);
+    output_slices.push_back(output_grad_offset);
+    if (bn_grad.scratch()) {
+      TF_ASSIGN_OR_RETURN(auto scratch,
+                          GetAllocationSliceForMlir(bn_grad.scratch()));
+      output_slices.push_back(scratch);
+    }
 
     CudnnBatchNormConfig config;
-    config.output_shape = GetShape(bn_grad.grad_output());
+    config.output_shape = TypeToShape(bn_grad.grad_output().getType());
     config.output_type = config.output_shape.element_type();
     config.epsilon = bn_grad.epsilon().convertToFloat();
     config.feature_index = bn_grad.feature_index();
@@ -1369,14 +1450,8 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
     AddThunkToThunkSequence(absl::make_unique<CudnnBatchNormBackwardThunk>(
         GetThunkInfo(op),
         /*config=*/get_batch_norm_config(bn_grad, bn_grad.grad_output()),
-        /*operand=*/operand,
-        /*scale=*/scale,
-        /*mean=*/mean,
-        /*inv_stddev=*/inv_stddev,
-        /*grad_output=*/grad_output,
-        /*output_grad_data=*/output_grad_data,
-        /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset));
+        /*operand_slices=*/std::move(operand_slices),
+        /*output_slices=*/std::move(output_slices)));
     return Status::OK();
   }
 
@@ -1390,7 +1465,8 @@ Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
                                          {bn_inference.stddev(), "stddev"}},
                                         /*other_operands=*/
                                         {{bn_inference.operand(), "operand"},
-                                         {bn_inference.output(), "output"}}));
+                                         {bn_inference.output(), "output"}},
+                                        {}));
 
     TF_ASSIGN_OR_RETURN(auto operand,
                         GetAllocationSlice(bn_inference.operand()));

@@ -58,9 +58,11 @@ def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad"> {
     Arg<LHLO_FpBuffer,      "", [MemRead]>:$mean,
     Arg<LHLO_FpBuffer,      "", [MemRead]>:$stddev,
     Arg<LHLO_FpBuffer, "", [MemRead]>:$grad_output,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$reserve_space,
     Arg<LHLO_FpBuffer, "", [MemWrite]>:$grad_operand,  // gradient of $operand.
     Arg<LHLO_FpBuffer,      "", [MemWrite]>:$grad_scale,
     Arg<LHLO_FpBuffer,      "", [MemWrite]>:$grad_offset,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$scratch,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
@@ -93,14 +95,12 @@ def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training"> {
   }];
 
   let arguments = (ins
-    Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$offset,
-    Arg<LHLO_FpBuffer, "", [MemWrite]>:$output,
-    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$batch_mean,
-    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$batch_stddev,
+    Arg<Variadic<LHLO_FpBuffer>,      "", [MemRead]>:$arguments,
+    Arg<Variadic<LHLO_Buffer>,      "", [MemWrite]>:$outputs,
     F32Attr:$epsilon,
-    I64Attr:$feature_index
+    I64Attr:$feature_index,
+    ActivationAttr:$activation_mode,
+    I32ElementsAttr:$operand_segment_sizes
   );
 }
 

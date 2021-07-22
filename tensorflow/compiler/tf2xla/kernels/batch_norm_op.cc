@@ -67,7 +67,10 @@ class FusedBatchNormOp : public XlaOpKernel {
     is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
   }
 
-  void Compile(XlaOpKernelContext* ctx) override { CompileImpl(ctx); }
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetUseReserveSpaceMetadata(false);
+    CompileImpl(ctx);
+  }
 
  protected:
   virtual void CompileImpl(XlaOpKernelContext* ctx) {
@@ -89,22 +92,106 @@ class FusedBatchNormOp : public XlaOpKernel {
     // operators. As a workaround, cast everything to the statistics type (which
     // may be more precise than the input type).
     input = xla::ConvertElementType(input, scale_type);
-
     if (is_training_) {
+      bool use_reserved_space = ctx->GetUseReserveSpaceMetadata();
+      size_t reserve_space_size = 0;
+      if (is_on_gpu_ && use_reserved_space) {
+        OpKernelContext* opkernel_ctx = ctx->op_kernel_context();
+        // The device is an XlaCompilation device which is a 'dummy' TensorFlow
+        // device that is only used to execute a
+        // subgraph of XLA compilation Ops to construct a compiled version
+        // of the subgraph's computation.
+        CHECK_NE(opkernel_ctx->device(), nullptr);
+        VLOG(2) << "XlaCompilation Device ptr " << opkernel_ctx->device();
+        // Stream (shared by the XlaDevice) is set during the construction of
+        // the above device that can be used here.
+        se::Stream* stream =
+            opkernel_ctx->device()->get_gpu_device_info_stream();
+        VLOG(2) << "Stream " << stream;
+        int64 batch_index =
+            GetTensorBatchDimIndex(input_shape.dims(), data_format_);
+        int64 batch_size = input_shape.dim_size(batch_index);
+        int64 feature_count = input_shape.dim_size(feature_index);
+
+        int num_spatial_dims =
+            GetTensorSpatialDims(input_shape.dims(), data_format_);
+
+        // Valid only for TPUs
+        CHECK_NE(data_format_, ::tensorflow::TensorFormat::FORMAT_HWNC);
+        CHECK_NE(data_format_, ::tensorflow::TensorFormat::FORMAT_HWCN);
+        // Batchnorm only cares about the location of the depth (aka "feature")
+        // dim.
+        // The other dims are all treated the same.  Thus we can
+        // rewrite/interpret [N,H,W,..,C] as [N,(H*W*..),1,C] and [N,C,H,W,..]
+        // as [N,C,(H*W*..),1]
+        int64 y_size = 1;
+        for (int i = 0; i < num_spatial_dims; i++) {
+          y_size *= input_shape.dim_size(
+              GetTensorSpatialDimIndex(input_shape.dims(), data_format_, i));
+        }
+
+        VLOG(1) << "Batch index: " << batch_index
+                << " Batch Size: " << batch_size
+                << " Feature index: " << feature_index
+                << " Feature count: " << feature_count
+                << " Num Dims: " << input_shape.dims()
+                << " y_size = " << y_size;
+
+        // Stream can be null here since DeviceMemory allocator can be null in
+        // XlaCompiler. In such case, correct reserved_space cannot be queried.
+        // This is not the optimum case but will be functionally correct.
+
+        if (stream) {
+          if (input_type == xla::PrimitiveType::F16) {
+            stream->ThenFindBatchNormalizationTrainingExReserveSpaceSize<
+                Eigen::half>(batch_size, feature_count, y_size,
+                             ::tensorflow::ToString(data_format_),
+                             &reserve_space_size, apply_relu_, add_side_input_);
+          } else if (input_type == xla::PrimitiveType::F32) {
+            stream->ThenFindBatchNormalizationTrainingExReserveSpaceSize<float>(
+                batch_size, feature_count, y_size,
+                ::tensorflow::ToString(data_format_), &reserve_space_size,
+                apply_relu_, add_side_input_);
+          } else {
+            errors::Unimplemented(
+                "Unimplemented data type for batchnorm input");
+          }
+        } else {
+          LOG(WARNING) << "Stream is nullptr. Hence reserve space not queried. "
+                          "When using cuDNN for batch normalization on GPUs, "
+                          "this may cause a performance regression. Trying "
+                          "running XLA without using cudnn for batchnorm.";
+        }
+        VLOG(1) << "Reserved space required: " << reserve_space_size
+                << " bytes";
+      }
+      xla::XlaOp side_input;
+      if (add_side_input_ && is_on_gpu_) {
+        side_input = ctx->Input(5);
+        side_input = xla::ConvertElementType(side_input, scale_type);
+        CHECK_EQ(apply_relu_, true)
+            << "Identity activation is not supported with non-empty side input";
+      }
+
       xla::XlaOp output = xla::BatchNormTraining(
-          input, ctx->Input(1), ctx->Input(2), epsilon_, feature_index);
+          input, ctx->Input(1), ctx->Input(2), side_input, epsilon_,
+          feature_index, reserve_space_size, use_reserved_space, apply_relu_);
 
       // In training mode, outputs the normalized value as well as the
       // calculated mean and variance. Optionally we add side input and apply
       // relu activation.
       xla::XlaOp converted =
           xla::ConvertElementType(xla::GetTupleElement(output, 0), input_type);
-      if (add_side_input_ && apply_relu_) {
-        ctx->SetOutput(0, xla::Relu(xla::Add(ctx->Input(5), converted)));
-      } else if (apply_relu_) {
-        ctx->SetOutput(0, xla::Relu(converted));
-      } else {
+      if (is_on_gpu_) {
         ctx->SetOutput(0, converted);
+      } else {
+        if (add_side_input_ && apply_relu_) {
+          ctx->SetOutput(0, xla::Relu(xla::Add(ctx->Input(5), converted)));
+        } else if (apply_relu_) {
+          ctx->SetOutput(0, xla::Relu(converted));
+        } else {
+          ctx->SetOutput(0, converted);
+        }
       }
 
       xla::XlaOp variance = xla::GetTupleElement(output, 2);
@@ -171,6 +258,7 @@ class FusedBatchNormOp : public XlaOpKernel {
       } else {
         ctx->SetOutput(4, variance);
       }
+      batch_norm_training_ = output;
     } else {
       xla::XlaOp output = xla::BatchNormInference(
           input, ctx->Input(1), ctx->Input(2), ctx->Input(3), ctx->Input(4),
@@ -193,14 +281,17 @@ class FusedBatchNormOp : public XlaOpKernel {
     }
   }
 
+ protected:
+  xla::XlaOp batch_norm_training_;
+  bool is_training_;
+  bool is_on_gpu_;
+
  private:
   float epsilon_;
   TensorFormat data_format_;
-  bool is_training_;
   float exponential_avg_factor_;
   bool add_side_input_;
   bool apply_relu_;
-  bool is_on_gpu_;
 };
 
 class FusedBatchNormOpV3 : public FusedBatchNormOp {
@@ -209,11 +300,19 @@ class FusedBatchNormOpV3 : public FusedBatchNormOp {
       : FusedBatchNormOp(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
+    // Use reserve space only applicable for gpu. Retaining the original
+    // behaviour for non-gpu backends.
+    ctx->SetUseReserveSpaceMetadata(is_on_gpu_);
     FusedBatchNormOp::CompileImpl(ctx);
     if (!ctx->status().ok()) {
       return;
     }
-    ctx->SetConstantOutput(5, Tensor());
+    // Reserve space only set for training on gpu.
+    if (is_on_gpu_ && is_training_) {
+      ctx->SetOutput(5, xla::GetTupleElement(batch_norm_training_, 3));
+    } else {
+      ctx->SetConstantOutput(5, Tensor());
+    }
   }
 };
 
@@ -223,11 +322,17 @@ class FusedBatchNormOpEx : public FusedBatchNormOp {
       : FusedBatchNormOp(ctx, /*is_batch_norm_ex=*/true) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetUseReserveSpaceMetadata(is_on_gpu_);
     FusedBatchNormOp::CompileImpl(ctx);
     if (!ctx->status().ok()) {
       return;
     }
-    ctx->SetConstantOutput(5, Tensor());
+    // Reserve space only set for training on gpu.
+    if (is_on_gpu_ && is_training_) {
+      ctx->SetOutput(5, xla::GetTupleElement(batch_norm_training_, 3));
+    } else {
+      ctx->SetConstantOutput(5, Tensor());
+    }
   }
 };
 
@@ -248,8 +353,12 @@ class FusedBatchNormGradOp : public XlaOpKernel {
         errors::InvalidArgument("Invalid data format: ", data_format_str));
     is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
   }
-
   void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetUseReserveSpaceMetadata(false);
+    CompileImpl(ctx);
+  }
+
+  virtual void CompileImpl(XlaOpKernelContext* ctx) {
     xla::XlaBuilder* const b = ctx->builder();
     DataType input_dtype = ctx->input_type(0);
     DataType scale_dtype = ctx->input_type(2);
@@ -288,11 +397,13 @@ class FusedBatchNormGradOp : public XlaOpKernel {
         xla::XlaOp epsilon = xla::ScalarLike(var, epsilon_);
         var = xla::Sub(one / (var * var), epsilon);
       }
-
+      xla::XlaOp reserve_space;
+      if (ctx->GetUseReserveSpaceMetadata()) {
+        reserve_space = ctx->Input(5);
+      }
       xla::XlaOp output =
           xla::BatchNormGrad(activations, scale, mean, var, grad_backprop,
-                             epsilon_, feature_index);
-
+                             reserve_space, epsilon_, feature_index);
       x_backprop = xla::GetTupleElement(output, 0);
       scale_backprop = xla::GetTupleElement(output, 1);
       offset_backprop = xla::GetTupleElement(output, 2);
@@ -341,16 +452,32 @@ class FusedBatchNormGradOp : public XlaOpKernel {
     ctx->SetConstantOutput(4, Tensor());
   }
 
+ protected:
+  bool is_on_gpu_;
+
  private:
   TensorFormat data_format_;
   float epsilon_;
   bool is_training_;
-  bool is_on_gpu_;
+};
+
+class FusedBatchNormGradOpV3 : public FusedBatchNormGradOp {
+ public:
+  explicit FusedBatchNormGradOpV3(OpKernelConstruction* ctx)
+      : FusedBatchNormGradOp(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetUseReserveSpaceMetadata(is_on_gpu_);
+    FusedBatchNormGradOp::CompileImpl(ctx);
+    if (!ctx->status().ok()) {
+      return;
+    }
+  }
 };
 
 REGISTER_XLA_OP(Name("FusedBatchNormGrad"), FusedBatchNormGradOp);
 REGISTER_XLA_OP(Name("FusedBatchNormGradV2"), FusedBatchNormGradOp);
-REGISTER_XLA_OP(Name("FusedBatchNormGradV3"), FusedBatchNormGradOp);
+REGISTER_XLA_OP(Name("FusedBatchNormGradV3"), FusedBatchNormGradOpV3);
 
 }  // namespace
 }  // namespace tensorflow

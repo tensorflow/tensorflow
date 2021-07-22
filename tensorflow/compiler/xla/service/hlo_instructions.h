@@ -45,9 +45,10 @@ class HloBatchNormInstruction : public HloInstruction {
                                    HloInstruction* scale, float epsilon,
                                    int64 feature_index);
 
- private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
+
+ private:
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
@@ -61,17 +62,33 @@ class HloBatchNormInstruction : public HloInstruction {
 
 class HloBatchNormTrainingInstruction : public HloBatchNormInstruction {
  public:
-  explicit HloBatchNormTrainingInstruction(const Shape& shape,
-                                           HloInstruction* operand,
-                                           HloInstruction* scale,
-                                           HloInstruction* offset,
-                                           float epsilon, int64 feature_index);
+  bool is_activation_relu() const { return is_activation_relu_; }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+  explicit HloBatchNormTrainingInstruction(
+      const Shape& shape, HloInstruction* operand_0, HloInstruction* scale,
+      absl::Span<HloInstruction* const> other_operands, float epsilon,
+      int64 feature_index, bool is_activation_relu);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
+  // bool that indicates whether the activation is relu. If false, the
+  // activation is identity.
+  bool is_activation_relu_;
 };
 
 class HloBatchNormInferenceInstruction : public HloBatchNormInstruction {
@@ -91,9 +108,9 @@ class HloBatchNormInferenceInstruction : public HloBatchNormInstruction {
 class HloBatchNormGradInstruction : public HloBatchNormInstruction {
  public:
   explicit HloBatchNormGradInstruction(
-      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
-      HloInstruction* mean, HloInstruction* variance,
-      HloInstruction* grad_output, float epsilon, int64 feature_index);
+      const Shape& shape, HloInstruction* operand_0, HloInstruction* scale,
+      absl::Span<HloInstruction* const> other_operands, float epsilon,
+      int64 feature_index);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.

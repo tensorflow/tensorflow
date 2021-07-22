@@ -2083,23 +2083,28 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      optional<bool> is_activation_relu;
+      attrs["is_activation_relu"] = {/*required=*/false, AttrTy::kBool,
+                                     &is_activation_relu};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      if (!maybe_infer_shape(
-              [&] {
-                return ShapeInference::InferBatchNormTrainingShape(
-                    operands[0]->shape(), operands[1]->shape(),
-                    operands[2]->shape(), *feature_index);
-              },
-              &shape)) {
-        return false;
-      }
+      // Cannot find reserve space requirements here. Hence, relying on
+      // ParseShape() to parse shape.
+      /*       if (!maybe_infer_shape(
+                    [&] {
+                      return ShapeInference::InferBatchNormTrainingShape(
+                          operands[0]->shape(), operands[1]->shape(),
+                          operands[2]->shape(), *feature_index);
+                    },
+                    &shape)) {
+              return false;
+            } */
       instruction =
           builder->AddInstruction(HloInstruction::CreateBatchNormTraining(
               shape, /*operand=*/operands[0], /*scale=*/operands[1],
-              /*offset=*/operands[2], *epsilon, *feature_index));
+              absl::MakeSpan(operands).subspan(2), *epsilon, *feature_index,
+              *is_activation_relu));
       break;
     }
     case HloOpcode::kBatchNormInference: {
@@ -2135,8 +2140,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64> feature_index;
       attrs["feature_index"] = {/*required=*/true, AttrTy::kInt64,
                                 &feature_index};
-      if (!ParseOperands(&operands, /*expected_size=*/5) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
       if (!maybe_infer_shape(
@@ -2151,8 +2155,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateBatchNormGrad(
           shape, /*operand=*/operands[0], /*scale=*/operands[1],
-          /*mean=*/operands[2], /*variance=*/operands[3],
-          /*grad_output=*/operands[4], *epsilon, *feature_index));
+          absl::MakeSpan(operands).subspan(2), *epsilon, *feature_index));
       break;
     }
     case HloOpcode::kPad: {

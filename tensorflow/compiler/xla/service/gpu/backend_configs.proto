@@ -66,3 +66,11 @@ message BitcastBackendConfig {
   LayoutProto source_layout = 1;
   LayoutProto result_layout = 2;
 }
+
+// Backend config for the BatchNormForwardTraining operation running through
+// cuDNN.
+message CudnnBatchNormBackendConfig {
+  // The requested activation (e.g. relu) after the batchnorm. It is with type
+  // stream_executor::dnn::ActivationMode.
+  int64 activation_mode = 1;
+}
