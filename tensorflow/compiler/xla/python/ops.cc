@@ -424,6 +424,7 @@ void BuildOpsSubmodule(py::module* m) {
   UNARY_OP(Neg);
   UNARY_OP(Sqrt);
   UNARY_OP(Rsqrt);
+  UNARY_OP(Cbrt);
   UNARY_OP(Square);
   UNARY_OP(Reciprocal);
   UNARY_OP(Erfc);
