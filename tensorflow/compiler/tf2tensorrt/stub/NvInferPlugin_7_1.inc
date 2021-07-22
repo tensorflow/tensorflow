@@ -77,6 +77,14 @@ nvinfer1::IPluginV2* createClipPlugin(const char* layerName, float clipMin,
   return func_ptr(layerName, clipMin, clipMax);
 }
 
+nvinfer1::IPluginV2* createBatchedNMSPlugin(
+    nvinfer1::plugin::NMSParameters param) {
+  using FuncPtr = nvinfer1::IPluginV2 * ( *)(nvinfer1::plugin::NMSParameters);
+  static auto func_ptr = LoadSymbol<FuncPtr>("createBatchedNMSPlugin");
+  if (!func_ptr) LogFatalSymbolNotFound("createBatchedNMSPlugin");
+  return func_ptr(param);
+}
+
 bool initLibNvInferPlugins(void* logger, const char* libNamespace) {
   using FuncPtr = bool ( *)(void *, const char *);
   static auto func_ptr = LoadSymbol<FuncPtr>("initLibNvInferPlugins");

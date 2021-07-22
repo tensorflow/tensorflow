@@ -67,8 +67,7 @@ namespace tensorrt {
 // TensorRT modes for testing. We define the following three modes:
 // 1. Implicit batch mode: The tensors have static (known) input shape and the
 //    the batch dimension (first dim) is removed from the TRT tensor shape. In
-//    a loose notation: trt_shape = tf_shape[1:]. This is the standard mode of
-//    a TensorRT network definition  before TensorRT 6.
+//    a loose notation: trt_shape = tf_shape[1:].
 // 2. Explicit batch mode: static (known) input shape, but the batch dimension
 //    is part of the trt tensor shape. (trt_shape = tf_shape)
 // 3. Dynamic shape mode allows unknown input shapes, and requires explicit
@@ -110,14 +109,9 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Matcher;
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 constexpr std::array<TrtTestMode, 3> ValidTrtModes = {
     TrtTestMode::kImplicitBatch, TrtTestMode::kExplicitBatch,
     TrtTestMode::kDynamicShape};
-#else
-constexpr std::array<TrtTestMode, 1> ValidTrtModes = {
-    TrtTestMode::kImplicitBatch};
-#endif
 
 // TODO(laigd): put this into some test utils file.
 void ExpectStatus(Status status, error::Code code = error::OK,
@@ -1050,7 +1044,7 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   EXPECT_EQ(infer_2->getDynamicRangeMin(), -5.0f);
   EXPECT_EQ(infer_3->getDynamicRangeMin(), -5.0f);
   EXPECT_EQ(not_infer->getDynamicRangeMin(), -100.0f);
-#elif IS_TRT_VERSION_GE(5, 0, 0, 0)
+#else
   EXPECT_EQ(input->getDynamicRange(), 5.0f);
   EXPECT_EQ(infer_1->getDynamicRange(), 5.0f);
   EXPECT_EQ(infer_2->getDynamicRange(), 5.0f);
@@ -2037,10 +2031,8 @@ void TestConvertConst(OpConverterTest* test) {
   {
     Tensor t = test::AsScalar<InputCType>(12);
     std::vector<int> expected_dims{1};
-    if (IS_TRT_VERSION_GE(6, 0, 0, 0)) {
-      // Scalars are represented as rank 0 tensors in TRT6 or later
-      expected_dims.clear();
-    }
+    // Scalars are represented as rank 0 tensors.
+    expected_dims.clear();
     reset_and_test(t, false, expected_dims, {12});
     reset_and_test(t, true, expected_dims, {12});
   }
@@ -5159,7 +5151,6 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
   }
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 // Get the NodeDef for Pack.
 NodeDef GetConv3DNodeDef(std::vector<int> strides = {1, 1, 1, 1, 1},
                          string padding = "SAME", string data_format = "NCDHW",
@@ -5530,7 +5521,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertConv3D) {
     TestConv3D(this, p);
   }
 }
-#endif
 
 template <typename T>
 NodeDef CreatePoolOp(DataType tf_type, std::vector<int> ksize,
@@ -5580,11 +5570,7 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
     }
   };
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   std::vector<int> test_nDims{2, 3};
-#else
-  std::vector<int> test_nDims{2};
-#endif
 
   for (int nDim : test_nDims) {
     // Input is weights, should fail.
@@ -6215,11 +6201,7 @@ auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   return concat.operation.node()->def();
 };
 
-#if IS_TRT_VERSION_GE(7, 0, 0, 0)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertConcat) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertConcat) {
-#endif
   {
     // Axis is a tensor, should fail.
     Reset();
@@ -6530,9 +6512,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
 
   TestConvertSplit<DT_FLOAT>(this);
   TestConvertSplit<DT_HALF>(this);
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
   TestConvertSplit<DT_INT32>(this);
-#endif
 }
 
 // Get the NodeDef for Unpack (Unstack in TF API).
@@ -6583,11 +6563,7 @@ void TestConvertUnpack(ParameterizedOpConverterTestBase* test,
 }
 
 // TODO: Reactivate when INT32 Segfault fixed
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
-#endif
   // We need to skip error testing for Dynamic Shape mode, as it is impossible
   // to convert Unpack in Dynamic Shape Mode.
   if (trt_mode_ != TrtTestMode::kDynamicShape) {
@@ -6729,11 +6705,7 @@ NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
   return pack.operation.node()->def();
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
-#else
-TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
-#endif
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
     std::vector<std::vector<int>> partial_input_shapes;
@@ -7088,12 +7060,6 @@ void TestConvertDepthSpaceShuffle(
     const std::vector<DepthSpaceShuffleTestParams>& params) {
   Status status = Status::OK();
 
-#if !IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (test->get_trt_mode() == TrtTestMode::kDynamicShape) {
-    status = errors::InvalidArgument("Dynamic input requires TRT6");
-  }
-#endif
-
   {
     // Input is a weight, should fail.
     test->Reset();
@@ -7262,7 +7228,6 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSpaceToDepth) {
   TestConvertDepthSpaceShuffle<ops::SpaceToDepth>(this, params);
 }
 
-#if IS_TRT_VERSION_GE(5, 1, 2, 0)
 TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
   Scope s = Scope::NewRootScope();
   auto t = ops::Placeholder(s.WithOpName("t"), tf_type_);
@@ -7373,7 +7338,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
                     /*matcher=*/ElementsAreArray(p.expected_output));
   }
 }
-#endif  // IS_TRT_VERSION_GE(5, 1, 2, 0)
 
 // Get the NodeDef for SquaredDifference.
 NodeDef GetSquaredDifferenceNodeDef(DataType dtype) {
@@ -7451,7 +7415,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
   }
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 template <typename OpType>
 NodeDef MakeResizeNodeDef(DataType dtype, bool align_corners) {
   Scope s = Scope::NewRootScope();
@@ -7574,7 +7537,6 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertResize) {
     TestConvertResize<ops::ResizeBilinear>(this, p);
   }
 }
-#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
 NodeDef MakePadNodeDef(std::string name, DataType dtype) {
   Scope s = Scope::NewRootScope();
