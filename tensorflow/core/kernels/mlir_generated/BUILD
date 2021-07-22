@@ -1040,11 +1040,6 @@ gpu_kernel_library(
             "i16",
             "i32",
             "i64",
-            # TODO(b/172804967): Enable once fixed.
-            # "ui8",
-            # "ui16",
-            # "ui32",
-            # "ui64",
         ],
         unroll_factors = "4",
     )
@@ -1053,9 +1048,25 @@ gpu_kernel_library(
         "bitwise_or",
         "bitwise_xor",
         "left_shift",
-        "right_shift",
     ]
 ]
+
+gpu_kernel_library(
+    name = "gpu_right_shift_kernels",
+    op = "right_shift",
+    tile_size = "256",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    unroll_factors = "4",
+)
 
 gpu_kernel_library(
     name = "gpu_atan2_kernels",

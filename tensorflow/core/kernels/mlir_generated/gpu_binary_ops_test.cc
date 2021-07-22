@@ -517,17 +517,33 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     test::DefaultInputLessThanBitwidth<int8>(), baseline_left_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/UInt8, uint8, uint8, test::DefaultInput<uint8>(),
+    test::DefaultInputLessThanBitwidth<uint8>(), baseline_left_shift,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     LeftShift, /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
     test::DefaultInputLessThanBitwidth<int16>(), baseline_left_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/UInt16, uint16, uint16,
+    test::DefaultInput<uint16>(), test::DefaultInputLessThanBitwidth<uint16>(),
+    baseline_left_shift, test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     LeftShift, /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>(),
     test::DefaultInputLessThanBitwidth<int32>(), baseline_left_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/UInt32, uint32, uint32,
+    test::DefaultInput<uint32>(), test::DefaultInputLessThanBitwidth<uint32>(),
+    baseline_left_shift, test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     LeftShift, /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputLessThanBitwidth<int64>(), baseline_left_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/UInt64, uint64, uint64,
+    test::DefaultInput<uint64>(), test::DefaultInputLessThanBitwidth<uint64>(),
+    baseline_left_shift, test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Less`.
 
@@ -972,20 +988,36 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     test::DefaultInputLessThanBitwidth<int8>(), baseline_right_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift, /*test_name=*/UInt8, uint8, uint8, test::DefaultInput<uint8>(),
+    test::DefaultInputLessThanBitwidth<uint8>(), baseline_right_shift,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     RightShift,
     /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
     test::DefaultInputLessThanBitwidth<int16>(), baseline_right_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift, /*test_name=*/UInt16, uint16, uint16,
+    test::DefaultInput<uint16>(), test::DefaultInputLessThanBitwidth<uint16>(),
+    baseline_right_shift, test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     RightShift,
     /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>(),
     test::DefaultInputLessThanBitwidth<int32>(), baseline_right_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift, /*test_name=*/UInt32, uint32, uint32,
+    test::DefaultInput<uint32>(), test::DefaultInputLessThanBitwidth<uint32>(),
+    baseline_right_shift, test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     RightShift,
     /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
     test::DefaultInputLessThanBitwidth<int64>(), baseline_right_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift, /*test_name=*/UInt64, uint64, uint64,
+    test::DefaultInput<uint64>(), test::DefaultInputLessThanBitwidth<uint64>(),
+    baseline_right_shift, test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.SquaredDifference`.
 
