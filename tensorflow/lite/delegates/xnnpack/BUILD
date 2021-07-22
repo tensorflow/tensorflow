@@ -908,9 +908,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "notap",  # b/194300204
-    ],
     deps = [
         ":quantized_add_tester",
         ":test_main",
@@ -1046,9 +1043,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "notap",  # b/194300204
-    ],
     deps = [
         ":quantized_add_tester",
         ":test_main",

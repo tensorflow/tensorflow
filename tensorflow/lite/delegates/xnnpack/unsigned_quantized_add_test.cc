@@ -995,6 +995,13 @@ TEST(UnsignedQuantizedAdd, ReluActivation) {
                                       std::numeric_limits<uint8_t>::min(),
                                       std::numeric_limits<uint8_t>::max()),
                                   std::ref(rng));
+  // Avoid degenerate situation when
+  // output_min == output_max == std::numeric_limits<uint8_t>::max()
+  auto output_zero_point_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(
+                    std::numeric_limits<uint8_t>::min(),
+                    std::numeric_limits<uint8_t>::max() - 1),
+                std::ref(rng));
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
@@ -1006,7 +1013,7 @@ TEST(UnsignedQuantizedAdd, ReluActivation) {
       .Unsigned(true)
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(output_zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .ReluActivation()
@@ -1024,6 +1031,13 @@ TEST(UnsignedQuantizedAdd, Relu6Activation) {
                                       std::numeric_limits<uint8_t>::min(),
                                       std::numeric_limits<uint8_t>::max()),
                                   std::ref(rng));
+  // Avoid degenerate situation when
+  // output_min == output_max == std::numeric_limits<uint8_t>::max()
+  auto output_zero_point_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(
+                    std::numeric_limits<uint8_t>::min(),
+                    std::numeric_limits<uint8_t>::max() - 1),
+                std::ref(rng));
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
@@ -1035,7 +1049,7 @@ TEST(UnsignedQuantizedAdd, Relu6Activation) {
       .Unsigned(true)
       .Input1ZeroPoint(zero_point_rng())
       .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(output_zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Relu6Activation()
