@@ -381,12 +381,16 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
 
 void GpuCudaMallocAsyncAllocator::SetStream(void* stream) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  if (cuda_stream_ != nullptr) {
+    LOG(FATAL) <<  // Crash OK.
+        "Trying to set the stream twice. This isn't supported. ";
+  }
+
   uint64_t pool_size_64 = 0;
   if (auto status = cuMemPoolGetAttribute(
           pool_, CU_MEMPOOL_ATTR_RELEASE_THRESHOLD, &pool_size_64)) {
     LOG(FATAL) <<  // Crash OK.
         "Failed to get CUDA pool attribute: " << GetCudaErrorMessage(status);
-
   }
   cuda_stream_ = *(reinterpret_cast<CUstream*>(stream));
   int64 prealloc_size = 0;
