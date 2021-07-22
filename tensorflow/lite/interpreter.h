@@ -88,7 +88,7 @@ class InterpreterWrapper;  // Class for friend declarations.
 /// for (int i = 0; i < input_size; i++) {
 ///   input[i] = ...;
 //  }
-/// interpreter.Invoke();
+/// interpreter->Invoke();
 /// </code></pre>
 ///
 /// Note: For nearly all practical use cases, one should not directly construct
