@@ -4359,14 +4359,17 @@ class Graph(object):
           raise ValueError("'%s' is not a valid scope name" % name)
     old_stack = self._name_stack
     if not name:  # Both for name=None and name="" we re-set to empty scope.
-      new_stack = None
+      new_stack = ""
+      returned_scope = ""
     elif name[-1] == "/":
       new_stack = name_from_scope_name(name)
+      returned_scope = name
     else:
       new_stack = self.unique_name(name)
+      returned_scope = new_stack + "/"
     self._name_stack = new_stack
     try:
-      yield "" if new_stack is None else new_stack + "/"
+      yield returned_scope
     finally:
       self._name_stack = old_stack
 

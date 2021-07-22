@@ -7,6 +7,11 @@
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+* TF Core:
+    *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
+        Previously, when called within `name_scope("")` or `name_scope(None)`
+        contexts, it returned None; now it returns the empty string.
+
 ## Known Caveats
 
 *<CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
