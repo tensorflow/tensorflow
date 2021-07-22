@@ -34,7 +34,9 @@ class TfTransposeTest(googletest.TestCase):
         return %1 : tensor<?x?xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+    # TODO(ezhulenev): Make it work with default executable.
+    compiled = cpurt.compile(mlir_function, 'test',
+                             tf_cpurt.Specialization.ALWAYS)
 
     d0 = np.random.randint(1, 10)
     d1 = np.random.randint(1, 10)
@@ -58,7 +60,9 @@ class TfTransposeTest(googletest.TestCase):
         return %3 : tensor<?x?x?xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+    # TODO(ezhulenev): Make it work with default executable.
+    compiled = cpurt.compile(mlir_function, 'test',
+                             tf_cpurt.Specialization.ALWAYS)
 
     d0 = np.random.randint(1, 10)
     d1 = np.random.randint(1, 10)

@@ -66,15 +66,15 @@ TfCpurtExecutor::TfCpurtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
-                                                 const std::string& entrypoint,
-                                                 bool disable_specializations) {
+TfCpurtExecutor::Handle TfCpurtExecutor::Compile(
+    const std::string& mlir_module, const std::string& entrypoint,
+    Specialization specialization) {
   CompilationOptions opts;
   // Create an async task for each worker thread.
   opts.num_worker_threads = 4;
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
   opts.register_pass_pipeline = CreateTfCpuRtPipeline;
-  opts.disable_specializations = disable_specializations;
+  opts.specialization = specialization;
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =
@@ -305,10 +305,16 @@ std::vector<py::array> TfCpurtExecutor::Execute(
 }  // namespace tensorflow
 
 PYBIND11_MODULE(_tf_cpurt_executor, m) {
+  py::enum_<tensorflow::TfCpurtExecutor::Specialization>(m, "Specialization")
+      .value("ENABLED", tensorflow::TfCpurtExecutor::Specialization::kEnabled)
+      .value("DISABLED", tensorflow::TfCpurtExecutor::Specialization::kDisabled)
+      .value("ALWAYS", tensorflow::TfCpurtExecutor::Specialization::kAlways);
+
   py::class_<tensorflow::TfCpurtExecutor>(m, "TfCpurtExecutor")
       .def(py::init<>())
       .def("compile", &tensorflow::TfCpurtExecutor::Compile,
            py::arg("mlir_module"), py::arg("entrypoint"),
-           py::arg("disable_specializations") = false)
+           py::arg("specialization") =
+               tensorflow::TfCpurtExecutor::Specialization::kEnabled)
       .def("execute", &tensorflow::TfCpurtExecutor::Execute);
 }

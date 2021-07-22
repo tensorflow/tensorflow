@@ -40,7 +40,8 @@ cpurt = tf_cpurt.TfCpurtExecutor()
 
 
 def test_log1p(fn, rank):
-  compiled = cpurt.compile(fn(), "log1p")
+  # TODO(ezhulenev): Make it work with default executable.  
+  compiled = cpurt.compile(fn(), "log1p", tf_cpurt.Specialization.ALWAYS)
 
   for _ in range(100):
     shape = np.random.randint(0, 10, size=(rank))
