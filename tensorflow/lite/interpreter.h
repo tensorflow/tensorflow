@@ -722,6 +722,9 @@ class Interpreter {
     return -1;
   }
 
+  // Applies TFLite default delegates.
+  TfLiteStatus ApplyLazyDelegateProviders();
+
   // Overrides execution plan. This bounds checks indices sent in.
   // Note: Only used during initialization.
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
