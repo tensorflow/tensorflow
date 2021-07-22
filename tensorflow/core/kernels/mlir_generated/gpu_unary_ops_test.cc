@@ -532,13 +532,25 @@ T baseline_invert(T x) {
 GENERATE_DEFAULT_TEST(Invert, DT_INT8, DT_INT8, baseline_invert,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+GENERATE_DEFAULT_TEST(Invert, DT_UINT8, DT_UINT8, baseline_invert,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
 GENERATE_DEFAULT_TEST(Invert, DT_INT16, DT_INT16, baseline_invert,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Invert, DT_UINT16, DT_UINT16, baseline_invert,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST(Invert, DT_INT32, DT_INT32, baseline_invert,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+GENERATE_DEFAULT_TEST(Invert, DT_UINT32, DT_UINT32, baseline_invert,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
 GENERATE_DEFAULT_TEST(Invert, DT_INT64, DT_INT64, baseline_invert,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Invert, DT_UINT64, DT_UINT64, baseline_invert,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.IsFinite`.

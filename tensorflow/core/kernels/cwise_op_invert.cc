@@ -31,10 +31,6 @@ REGISTER4(UnaryOp, CPU, "Invert", functor::invert, uint8, uint16, uint32,
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER8(UnaryOp, GPU, "Invert", functor::invert, int8, int16, int32, int64,
           uint8, uint16, uint32, uint64);
-#else
-// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
-REGISTER4(UnaryOp, GPU, "Invert", functor::invert, uint8, uint16, uint32,
-          uint64);
 #endif
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

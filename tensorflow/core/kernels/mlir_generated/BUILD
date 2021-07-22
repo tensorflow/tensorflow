@@ -787,19 +787,6 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_invert_kernels",
-    op = "invert",
-    tile_size = "256",
-    types = [
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-    ],
-    unroll_factors = "4",
-)
-
-gpu_kernel_library(
     name = "gpu_logical_not_kernels",
     op = "logical_not",
     tile_size = "256",
@@ -1047,6 +1034,7 @@ gpu_kernel_library(
         "bitwise_and",
         "bitwise_or",
         "bitwise_xor",
+        "invert",
         "left_shift",
     ]
 ]
@@ -1054,7 +1042,7 @@ gpu_kernel_library(
 gpu_kernel_library(
     name = "gpu_right_shift_kernels",
     op = "right_shift",
-    tile_size = "256",
+    tile_size = "1024",
     types = [
         "i8",
         "i16",
