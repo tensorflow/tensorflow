@@ -608,15 +608,28 @@ void EagerContext::ListDevices(
 }
 
 Status EagerContext::AddDevices(std::vector<std::unique_ptr<Device>> devices) {
-  if (!devices.empty() && devices[0]->device_type() != "CPU") {
-    return errors::InvalidArgument(
-        "Device: ", devices[0]->device_type(), " is not allowed to be added ",
-        "after the context is initialized. Currently allowed device: CPU. ",
-        "May update this API to allow adding more types of devices.");
+  std::vector<std::unique_ptr<Device>> local_devices, remote_devices;
+  while (!devices.empty()) {
+    if (devices.front()->IsLocal()) {
+      local_devices.push_back(std::move(devices.front()));
+    } else {
+      remote_devices.push_back(std::move(devices.front()));
+    }
+    devices.erase(devices.begin());
   }
   TF_RETURN_IF_ERROR(
       reinterpret_cast<DynamicDeviceMgr*>(local_device_manager_.Get())
-          ->AddDevices(std::move(devices)));
+          ->AddDevices(std::move(local_devices)));
+
+  if (!remote_devices.empty()) {
+    if (!remote_device_mgr()) {
+      remote_device_manager_.Reset(
+          std::make_unique<tensorflow::DynamicDeviceMgr>());
+    }
+    TF_RETURN_IF_ERROR(
+        reinterpret_cast<DynamicDeviceMgr*>(remote_device_manager_.Get())
+            ->AddDevices(std::move(remote_devices)));
+  }
 
   // Add the devices to pflr's device set.
   pflr_->InitializeDeviceAndFlr();
@@ -1111,7 +1124,7 @@ Status EagerContext::StoreCollectiveOpsServer(
     }
     local_device_manager_.Reset(device_mgr);
     if (rendezvous_ != nullptr) rendezvous_->Unref();
-    rendezvous_ = new IntraProcessRendezvous(local_device_manager_.Get());
+    rendezvous_ = CreateRendezvous(-1);
   }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
@@ -1225,6 +1238,12 @@ void EagerContext::FilterDevicesForRemoteWorkers(
       }
     }
   }
+}
+
+void EagerContext::SetWorkerEnv(WorkerEnv* worker_env,
+                                std::shared_ptr<WorkerSession> worker_session) {
+  worker_env_ = worker_env;
+  worker_session_ = worker_session;
 }
 
 Status EagerContext::InitializeRemoteMaster(

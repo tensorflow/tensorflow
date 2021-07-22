@@ -470,6 +470,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   ImmediateExecutionDistributedManager* GetDistributedManager() override {
     return distributed_manager_.get();
   }
+
+  // May only be used during multi-client setup so that a RemoteRendezvous
+  // can be initialized instead of defaulting to the IntraProcessRendezvous.
+  void SetWorkerEnv(WorkerEnv* worker_env,
+                    std::shared_ptr<WorkerSession> worker_session);
 #endif  // IS_MOBILE_PLATFORM
 
   // Closes remote eager contexts, waits for all RPCs to finish, and
