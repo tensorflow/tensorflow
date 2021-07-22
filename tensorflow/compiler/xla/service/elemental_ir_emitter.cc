@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -1906,31 +1907,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
-    const llvm_ir::IrArray::Index& target_index) {
+    const llvm_ir::IrArray::Index& source_index) {
   const int64 concat_dim = hlo->dimensions(0);
-  auto source_index = target_index;
-
   llvm::BasicBlock* init_block = b_->GetInsertBlock();
 
-  // A terminator should be present iff we're emitting code
-  // into the middle (as opposed to the end) of a basic block.
-  CHECK_EQ(b_->GetInsertPoint() == init_block->end(),
-           init_block->getTerminator() == nullptr);
-
   llvm::BasicBlock* exit_block;
-  if (b_->GetInsertPoint() == init_block->end()) {
-    exit_block = llvm_ir::CreateBasicBlock(
-        /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
-  } else {
+  if (b_->GetInsertPoint() != init_block->end()) {
+    // Inserting into the middle.
+    CHECK(init_block->getTerminator());
     exit_block =
         init_block->splitBasicBlock(b_->GetInsertPoint(), IrName(hlo, "merge"));
     init_block->getTerminator()->eraseFromParent();
+  } else {
+    // Inserting at the end.
+    CHECK(!init_block->getTerminator());
+    exit_block = llvm_ir::CreateBasicBlock(
+        /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
   }
 
   llvm_ir::SetToFirstInsertPoint(exit_block, b_);
-  llvm::PHINode* output =
-      PHI(llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(), module_),
-          hlo->operands().size());
+  llvm::PHINode* output = b_->CreatePHI(
+      llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(), module_),
+      hlo->operands().size());
   auto prior_insert_point = b_->GetInsertPoint();
 
   b_->SetInsertPoint(init_block);
@@ -1940,7 +1938,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
   // for each operand.
   absl::flat_hash_map<const HloInstruction*, int64> to_unique_operand_id;
   std::vector<int64> operand_usage_count;
-  for (const auto* operand : hlo->operands()) {
+  for (const HloInstruction* operand : hlo->operands()) {
     if (to_unique_operand_id.contains(operand)) {
       ++operand_usage_count[to_unique_operand_id[operand]];
     } else {
@@ -1957,7 +1955,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
       to_unique_operand_id.size(), nullptr);
   std::vector<llvm::PHINode*> source_index_phis(to_unique_operand_id.size(),
                                                 nullptr);
-  for (const auto* operand : hlo->operands()) {
+  for (const HloInstruction* operand : hlo->operands()) {
     int64 operand_id = to_unique_operand_id[operand];
     if (emit_operand_blocks[operand_id] != nullptr) {
       continue;
@@ -1968,10 +1966,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     auto saved_insert_point = b_->GetInsertPoint();
     llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
     source_index_phis[operand_id] =
-        PHI(source_index.GetType(), operand_usage_count[operand_id]);
+        b_->CreatePHI(source_index.GetType(), operand_usage_count[operand_id]);
     std::vector<llvm::Value*> operand_multi_index = source_index.multidim();
-    operand_multi_index[concat_dim] =
-        NSWSub(operand_multi_index[concat_dim], source_index_phis[operand_id]);
+    operand_multi_index[concat_dim] = b_->CreateNSWSub(
+        operand_multi_index[concat_dim], source_index_phis[operand_id]);
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
@@ -1979,33 +1977,67 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
     llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
                                           source_index.GetType());
+
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));
     output->addIncoming(value, b_->GetInsertBlock());
     b_->SetInsertPoint(init_block, saved_insert_point);
   }
 
-  int64 concat_dim_size = 0;
-  for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
-       ++operand_idx) {
-    const HloInstruction* operand = hlo->operand(operand_idx);
-    auto false_block = llvm_ir::CreateBasicBlock(
-        exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
-    int64 operand_id = to_unique_operand_id[operand];
-    source_index_phis[operand_id]->addIncoming(
-        source_index.GetConstantWithIndexType(concat_dim_size),
-        b_->GetInsertBlock());
-    concat_dim_size += operand->shape().dimensions(concat_dim);
-    CondBr(ICmpULT(source_index[concat_dim],
-                   source_index.GetConstantWithIndexType(concat_dim_size)),
-           emit_operand_blocks[operand_id], false_block);
+  // We use bisection to select the input operand.
+  int64 current_offset = 0;
 
-    // Subtract the size of the concat dimension of the current operand
-    // from the source index.
-    b_->SetInsertPoint(false_block);
+  // Offset for every operand.
+  std::vector<std::pair<int64, const HloInstruction*>> cases;
+
+  cases.reserve(hlo->operand_count());
+  for (const HloInstruction* operand : hlo->operands()) {
+    cases.emplace_back(current_offset, operand);
+    current_offset += operand->shape().dimensions(concat_dim);
   }
+  CHECK_EQ(current_offset, hlo->shape().dimensions(concat_dim));
 
-  Unreachable();
+  std::function<llvm::BasicBlock*(
+      absl::Span<const std::pair<int64, const HloInstruction*>> operands)>
+      emit_tree = [&](absl::Span<const std::pair<int64, const HloInstruction*>>
+                          operands) {
+        llvm::IRBuilder<>::InsertPointGuard guard(*b_);
+        size_t mid = operands.size() / 2;
+        const std::pair<int64, const HloInstruction*>& pivot = operands[mid];
+        llvm::BasicBlock* block = llvm_ir::CreateBasicBlock(
+            exit_block, absl::StrCat("concatenate.pivot.", pivot.first, "."),
+            b_);
+        b_->SetInsertPoint(block);
+
+        // If there's only one element we're done. The range is contiguous so we
+        // can just jump to the block for it.
+        if (operands.size() == 1) {
+          const std::pair<int64, const HloInstruction*>& operand =
+              operands.back();
+          int64 operand_id = to_unique_operand_id[operand.second];
+
+          source_index_phis[operand_id]->addIncoming(
+              source_index.GetConstantWithIndexType(operand.first),
+              b_->GetInsertBlock());
+          b_->CreateBr(emit_operand_blocks[operand_id]);
+          return block;
+        }
+
+        // Take the middle element and recurse.
+        llvm::Constant* pivot_const = llvm::ConstantInt::get(
+            source_index[concat_dim]->getType(), pivot.first);
+        llvm::Value* comp =
+            b_->CreateICmpULT(source_index[concat_dim], pivot_const);
+
+        llvm::BasicBlock* left_block = emit_tree(operands.subspan(0, mid));
+        llvm::BasicBlock* right_block = emit_tree(operands.subspan(mid));
+
+        b_->CreateCondBr(comp, left_block, right_block);
+        return block;
+      };
+
+  Br(emit_tree(cases));
+
   b_->SetInsertPoint(exit_block, prior_insert_point);
   return output;
 }
