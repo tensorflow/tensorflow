@@ -503,9 +503,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # b/190188732
-    ],
     deps = [
         ":quantized_depthwise_conv_2d_tester",
         ":test_main",
@@ -944,9 +941,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # b/190188732
-    ],
     deps = [
         ":quantized_depthwise_conv_2d_tester",
         ":test_main",
