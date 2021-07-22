@@ -527,6 +527,10 @@ cc_library(
         "include",
         "lib/Bindings/Python",
     ],
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     textual_hdrs = glob([
         "lib/Bindings/Python/*.h",
         "include/mlir-c/Bindings/Python/*.h",
@@ -553,6 +557,10 @@ cc_library(
     features = [
         # Cannot use header_modules (parse_headers feature fails).
         "-use_header_modules",
+    ],
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
     ],
     deps = [
         ":CAPIAsync",
@@ -589,6 +597,10 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":MLIRBindingsPythonCore",
         ":MLIRBindingsPythonHeadersAndDeps",
@@ -603,6 +615,10 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":CAPIConversion",
         ":MLIRBindingsPythonHeadersAndDeps",
@@ -619,6 +635,10 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":CAPITransforms",
         ":MLIRBindingsPythonHeadersAndDeps",
@@ -635,6 +655,10 @@ cc_binary(
     features = PYBIND11_FEATURES,
     linkshared = 1,
     linkstatic = 0,
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":CAPILinalg",
         ":MLIRBindingsPythonHeadersAndDeps",
@@ -5141,6 +5165,10 @@ cc_library(
     srcs = ["lib/ExecutionEngine/CudaRuntimeWrappers.cpp"],
     # Prevent needing EnableABIBreakingChecks symbol from LLVMSupport.
     copts = ["-DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1"],
+    tags = [
+        "manual",  # External dependency
+        "nobuildkite",  # TODO(gcmn): Add support for this target
+    ],
     deps = [
         ":LLVMSupportHeaders",
         ":mlir_c_runner_utils",
@@ -5153,6 +5181,9 @@ cc_library(
     name = "VulkanRuntime",
     srcs = ["tools/mlir-vulkan-runner/VulkanRuntime.cpp"],
     hdrs = ["tools/mlir-vulkan-runner/VulkanRuntime.h"],
+    tags = [
+        "manual",  # External dependency
+    ],
     deps = [
         ":IR",
         ":Pass",
@@ -5170,6 +5201,9 @@ cc_binary(
     name = "tools/libvulkan-runtime-wrappers.so",
     srcs = ["tools/mlir-vulkan-runner/vulkan-runtime-wrappers.cpp"],
     linkshared = True,
+    tags = [
+        "manual",  # External dependency
+    ],
     deps = [
         ":VulkanRuntime",
         "@llvm-project//llvm:Support",
