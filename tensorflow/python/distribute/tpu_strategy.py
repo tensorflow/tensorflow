@@ -68,6 +68,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
+
 _XLA_OP_BY_OP_INPUTS_LIMIT = 200
 
 
@@ -1164,6 +1165,19 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         self._container_strategy(), _real_mirrored_creator,
         distribute_utils.TPU_VARIABLE_CLASS_MAPPING,
         distribute_utils.TPU_VARIABLE_POLICY_MAPPING, **kwargs)
+
+  def _resource_creator_scope(self):
+
+    def lookup_creator(next_creator, *args, **kwargs):
+      host_to_table = collections.OrderedDict()
+      for host_device in self._device_input_worker_devices.keys():
+        with ops.device(host_device):
+          host_to_table[host_device] = next_creator(*args, **kwargs)
+
+      return values.PerWorkerResource(self._container_strategy(), host_to_table)
+
+    # TODO(b/194362531): Define creator(s) for other resources.
+    return ops.resource_creator_scope("StaticHashTable", lookup_creator)
 
   def _gather_to_implementation(self, value, destinations, axis, options):
     if not isinstance(value, values.DistributedValues):
