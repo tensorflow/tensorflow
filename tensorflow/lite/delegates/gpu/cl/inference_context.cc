@@ -789,11 +789,16 @@ uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
     total_memory += t.second.GetMemorySizeInBytes();
   }
   for (const auto& b : shared_buffers_) {
-    total_memory += b.GetMemorySizeInBytes();
+    // Sub-buffers do not allocate memory. Count the size of the parent buffer
+    // object instead.
+    if (!b.IsSubBuffer()) {
+      total_memory += b.GetMemorySizeInBytes();
+    }
   }
   for (const auto& t : variable_tensors_) {
     total_memory += t.second.GetMemorySizeInBytes();
   }
+  total_memory += shared_buffers_parent_.GetMemorySizeInBytes();
 
   return total_memory;
 }
