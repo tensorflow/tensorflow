@@ -1283,6 +1283,11 @@ def function(func=None,
   `tf.function` constructs a `tf.types.experimental.GenericFunction` that
   executes a TensorFlow graph (`tf.Graph`) created by trace-compiling the
   TensorFlow operations in `func`.
+  
+  See [Introduction to Graphs]
+  (https://www.tensorflow.org/guide/intro_to_graphs)
+  for the benefits and trade-offs regarding executing a function as a
+  graph.
 
   Example usage:
 
