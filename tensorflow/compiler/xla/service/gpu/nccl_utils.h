@@ -48,13 +48,16 @@ namespace xla {
 namespace gpu {
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind);
-StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type);
+StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+    PrimitiveType element_type);
 
 bool IsGlobalNcclConfig();
 bool IsNcclLaunchModeParallel();
 
-Status ToStatus(ncclResult_t s, const char* file, int64 line, const char* expr);
-Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr);
+Status ToStatus(ncclResult_t s, const char* file, int64_t line,
+                const char* expr);
+Status ToStatus(cudaError_t s, const char* file, int64_t line,
+                const char* expr);
 
 // Macros to return or warn on CUDA/NCCL errors.  (The same macro works for both
 // NCCL and CUDA errors.)

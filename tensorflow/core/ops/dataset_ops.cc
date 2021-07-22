@@ -958,7 +958,7 @@ REGISTER_OP("MapDefun")
             output_shapes.size(), " vs. ", c->num_outputs(), ")");
       }
 
-      int64 dim_zero = -1;
+      int64_t dim_zero = -1;
       for (size_t i = 0; i < t_args.size(); ++i) {
         if (c->Rank(c->input(i)) == 0) {
           return errors::InvalidArgument(

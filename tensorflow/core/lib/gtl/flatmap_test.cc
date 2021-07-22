@@ -30,7 +30,7 @@ namespace {
 typedef FlatMap<int64, int32> NumMap;
 
 // If map has an entry for k, return the corresponding value, else return def.
-int32 Get(const NumMap& map, int64 k, int32 def = -1) {
+int32 Get(const NumMap& map, int64_t k, int32 def = -1) {
   auto iter = map.find(k);
   if (iter == map.end()) {
     EXPECT_EQ(map.count(k), 0);
@@ -55,8 +55,8 @@ NumMapContents Contents(const NumMap& map) {
 }
 
 // Fill entries with keys [start,limit).
-void Fill(NumMap* map, int64 start, int64 limit) {
-  for (int64 i = start; i < limit; i++) {
+void Fill(NumMap* map, int64_t start, int64_t limit) {
+  for (int64_t i = start; i < limit; i++) {
     map->insert({i, i * 100});
   }
 }
@@ -465,7 +465,7 @@ TEST(FlatMap, Prefetch) {
 struct NA {
   int64 value;
   NA() : value(-1) {}
-  explicit NA(int64 v) : value(v) {}
+  explicit NA(int64_t v) : value(v) {}
   NA(const NA& x) : value(x.value) {}
   bool operator==(const NA& x) const { return value == x.value; }
 };
@@ -613,7 +613,7 @@ TEST(FlatMap, ConstructDestruct) {
 struct CustomCmpKey {
   int64 a;
   int64 b;
-  CustomCmpKey(int64 v1, int64 v2) : a(v1), b(v2) {}
+  CustomCmpKey(int64_t v1, int64_t v2) : a(v1), b(v2) {}
   bool operator==(const CustomCmpKey& x) const { return a == x.a && b == x.b; }
 };
 struct HashA {

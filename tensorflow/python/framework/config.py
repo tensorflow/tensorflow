@@ -808,6 +808,10 @@ def set_logical_device_configuration(device, logical_devices):
   Specifying a list of `tf.config.LogicalDeviceConfiguration` objects allows
   multiple devices to be created on the same `tf.config.PhysicalDevice`.
 
+  Logical device configurations can be modified by calling this function as
+  long as the runtime is uninitialized. After the runtime is initialized
+  calling this function raises a RuntimeError.
+
   The following example splits the CPU into 2 logical devices:
 
   >>> physical_devices = tf.config.list_physical_devices('CPU')

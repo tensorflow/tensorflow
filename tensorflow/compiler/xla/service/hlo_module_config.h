@@ -293,7 +293,7 @@ class HloModuleConfig {
 
   bool alias_passthrough_params_ = false;
 
-  bool content_aware_computation_sorting_ = false;
+  bool content_aware_computation_sorting_ = true;
 
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;

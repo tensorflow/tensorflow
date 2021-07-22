@@ -109,6 +109,7 @@ Status ReadElementsFromCheckpoint(IteratorContext* ctx,
   int64 num_elements;
   TF_RETURN_IF_ERROR(
       reader->ReadScalar(key_prefix, kNumElements, &num_elements));
+  DCHECK(elements->empty());
   elements->reserve(num_elements);
   for (int i = 0; i < num_elements; ++i) {
     std::string element_prefix = absl::StrCat(key_prefix, "::", i);

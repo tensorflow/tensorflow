@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -378,7 +379,11 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   TF_RETURN_IF_ERROR(module_linker(module, gpu_version, hlo_module_config,
                                    device_bitcode_dir_path));
 
-  IrDumpingPassManager module_passes(module->getModuleIdentifier(), "", false);
+  bool dump_ir = hlo_module_config.debug_options().xla_gpu_dump_llvmir();
+  std::string outputs_dir;
+  tensorflow::io::GetTestUndeclaredOutputsDir(&outputs_dir);
+  IrDumpingPassManager module_passes(module->getModuleIdentifier(), outputs_dir,
+                                     dump_ir);
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
   llvm::TargetLibraryInfoWrapperPass* tliwp =

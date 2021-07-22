@@ -89,6 +89,8 @@ class MMAPAllocation : public Allocation {
   int mmap_fd_ = -1;  // mmap file descriptor
   const void* mmapped_buffer_;
   size_t buffer_size_bytes_ = 0;
+  // Used when the address to mmap is not page-aligned.
+  size_t offset_in_buffer_ = 0;
 
  private:
   // Assumes ownership of the provided `owned_fd` instance.

@@ -137,7 +137,7 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
 
   PopulateEntry(key, main_entry, std::move(tpu_program_group));
 
-  for (int64 i = 0; i < main_entry->proto_key.size(); ++i) {
+  for (int64_t i = 0; i < main_entry->proto_key.size(); ++i) {
     auto entry_inserted = entries_by_proto_key_.insert(
         std::pair<std::string, std::pair<CompiledSubgraph*, int>>(
             main_entry->proto_key[i], std::make_pair(main_entry, i)));

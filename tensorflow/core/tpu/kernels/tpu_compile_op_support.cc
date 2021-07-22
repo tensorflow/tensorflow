@@ -162,11 +162,11 @@ ShapeTree<HloSharding> GetSubtree(
 }
 
 Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
-                        int64 device) {
+                        int64_t device) {
   if (shape.IsTuple()) {
     ShapeTree<HloSharding> tuple_shape_tree = sharding.GetAsShapeTree(shape);
     std::vector<Shape> arg_shapes;
-    for (int64 i = 0; i < xla::ShapeUtil::TupleElementCount(shape); ++i) {
+    for (int64_t i = 0; i < xla::ShapeUtil::TupleElementCount(shape); ++i) {
       Shape element_shape = xla::ShapeUtil::GetTupleElementShape(shape, i);
       HloSharding element_sharding = tuple_shape_tree.element({i});
       if (element_shape.IsTuple()) {
@@ -188,7 +188,7 @@ Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
   std::vector<int64> offset = sharding.TileOffsetForDevice(shape, device);
   std::vector<int64> limit = sharding.TileLimitForDevice(shape, device);
   dimensions.resize(limit.size());
-  for (int64 i = 0; i < limit.size(); ++i) {
+  for (int64_t i = 0; i < limit.size(); ++i) {
     dimensions[i] = limit[i] - offset[i];
   }
   if (shape.has_layout()) {
@@ -221,7 +221,8 @@ Status AddVariableUpdatesToCores(
           int pos = compilation_result.outputs.size() + resource_update_pos;
           xla::Shape shape = xla::ShapeUtil::GetTupleElementShape(
               compilation_result.xla_output_shape, pos);
-          auto add_to_core = [&](int64 core, const xla::Shape& per_core_shape) {
+          auto add_to_core = [&](int64_t core,
+                                 const xla::Shape& per_core_shape) {
             (*per_core_output_shapes)[core].push_back(per_core_shape);
             (*may_modify_variables)[core] =
                 (*may_modify_variables)[core] || update.modified;
@@ -232,14 +233,15 @@ Status AddVariableUpdatesToCores(
             auto sharding_or =
                 xla::HloSharding::FromProto(proto_arg.sharding());
             TF_RET_CHECK(sharding_or.ok());
-            for (int64 core : proto_arg.sharding().tile_assignment_devices()) {
+            for (int64_t core :
+                 proto_arg.sharding().tile_assignment_devices()) {
               xla::Shape per_core_shape =
                   GetPerDeviceShape(shape, sharding_or.ValueOrDie(), core);
               add_to_core(core, per_core_shape);
             }
           } else {
             TF_RET_CHECK(sharding.type() == xla::OpSharding::REPLICATED);
-            for (int64 core = 0; core < metadata.num_cores_per_replica();
+            for (int64_t core = 0; core < metadata.num_cores_per_replica();
                  ++core) {
               add_to_core(core, shape);
             }
@@ -258,7 +260,8 @@ Status AddVariableUpdatesToCores(
         }
       } else {
         TF_RET_CHECK(sharding.type() == xla::OpSharding::REPLICATED);
-        for (int64 core = 0; core < metadata.num_cores_per_replica(); ++core) {
+        for (int64_t core = 0; core < metadata.num_cores_per_replica();
+             ++core) {
           (*per_core_variable_indices)[core].push_back(
               std::pair<int, bool>(arg_core_mapping[i].indices[core], updated));
         }
@@ -290,7 +293,7 @@ Status ComputeOutputShapesForEachCore(
     } else if (retval.sharding().type() == xla::OpSharding::OTHER) {
       auto sharding_or = xla::HloSharding::FromProto(retval.sharding());
       TF_RET_CHECK(sharding_or.ok());
-      for (int64 core : retval.sharding().tile_assignment_devices()) {
+      for (int64_t core : retval.sharding().tile_assignment_devices()) {
         xla::Shape per_core_shape =
             GetPerDeviceShape(shape, sharding_or.ValueOrDie(), core);
         add_shape_to_core(core, std::move(per_core_shape));

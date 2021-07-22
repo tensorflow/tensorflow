@@ -39,7 +39,7 @@ class LaunchDimensions {
   LaunchDimensions()
       : block_counts_({1, 1, 1}), thread_counts_per_block_({1, 1, 1}) {}
 
-  LaunchDimensions(int64 block_x_count, int64 thread_x_count_per_block)
+  LaunchDimensions(int64_t block_x_count, int64_t thread_x_count_per_block)
       : block_counts_({block_x_count, 1, 1}),
         thread_counts_per_block_({thread_x_count_per_block, 1, 1}) {}
 

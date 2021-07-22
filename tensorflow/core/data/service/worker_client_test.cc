@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -63,18 +64,21 @@ class WorkerClientTest : public ::testing::Test {
 
   // Creates a dataset and returns the dataset ID.
   StatusOr<int64> RegisterDataset(const int64 range) {
-    TF_ASSIGN_OR_RETURN(DatasetDef dataset_def, RangeSquareDataset(range));
+    const auto dataset_def = RangeSquareDataset(range);
     int64 dataset_id = 0;
-    TF_RETURN_IF_ERROR(
-        dispatcher_client_->RegisterDataset(dataset_def, dataset_id));
+    absl::optional<std::string> element_spec;
+    TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
+        dataset_def, element_spec, dataset_id));
     return dataset_id;
   }
 
   // Creates a job and returns the job client ID.
   StatusOr<int64> CreateJob(const int64 dataset_id) {
+    ProcessingModeDef processing_mode;
+    processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
     int64 job_client_id = 0;
     TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateJob(
-        dataset_id, ProcessingMode::PARALLEL_EPOCHS, /*job_key=*/absl::nullopt,
+        dataset_id, processing_mode, /*job_key=*/absl::nullopt,
         /*num_consumers=*/absl::nullopt, job_client_id));
     return job_client_id;
   }

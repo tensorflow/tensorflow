@@ -793,7 +793,7 @@ TEST(TensorBundleTest, StringTensors) {
 class VariantObject {
  public:
   VariantObject() {}
-  VariantObject(const string& metadata, int64 value)
+  VariantObject(const string& metadata, int64_t value)
       : metadata_(metadata), value_(value) {}
 
   string TypeName() const { return "TEST VariantObject"; }

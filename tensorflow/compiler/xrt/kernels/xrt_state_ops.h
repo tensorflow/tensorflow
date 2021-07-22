@@ -106,7 +106,7 @@ class XRTStateHelpers {
         // We haven't dereferenced this handle yet.
         TF_RET_CHECK(
             TensorShapeUtils::IsScalar(input_tensor_list[input_index].shape()));
-        int64 key = input_tensor_list[input_index].scalar<int64>()();
+        int64_t key = input_tensor_list[input_index].scalar<int64>()();
         TF_ASSIGN_OR_RETURN(input.allocation,
                             XRTMemoryManager::Get(rm)->Lookup(key));
         input.release_allocation_after_use = release_this_input;
@@ -378,7 +378,7 @@ class XRTSubTupleOp : public OpKernel {
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(handle_tensor.shape()),
         errors::Internal("computation input should be an int64 scalar"));
-    int64 allocation_handle = handle_tensor.scalar<int64>()();
+    int64_t allocation_handle = handle_tensor.scalar<int64>()();
 
     const Tensor& subtuple_info = ctx->input(1);
     OP_REQUIRES(
@@ -500,7 +500,7 @@ class XRTReadLiteralOp : public OpKernel {
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(handle_tensor.shape()),
         errors::Internal("computation input should be an int64 scalar"));
-    int64 allocation_handle = handle_tensor.scalar<int64>()();
+    int64_t allocation_handle = handle_tensor.scalar<int64>()();
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
@@ -553,7 +553,7 @@ class XRTReadToTensorOp : public OpKernel {
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(handle_tensor.shape()),
         errors::Internal("computation input should be an int64 scalar"));
-    int64 allocation_handle = handle_tensor.scalar<int64>()();
+    int64_t allocation_handle = handle_tensor.scalar<int64>()();
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
@@ -635,7 +635,7 @@ class XRTWriteLiteralOp : public OpKernel {
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(handle_tensor.shape()),
         errors::Internal("computation input should be an int64 scalar"));
-    int64 allocation_handle = handle_tensor.scalar<int64>()();
+    int64_t allocation_handle = handle_tensor.scalar<int64>()();
 
     const Tensor& literal_info = ctx->input(1);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(literal_info.shape()),
@@ -688,8 +688,8 @@ class XRTReleaseAllocationOp : public OpKernel {
     RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
     const Tensor& allocation_handle = ctx->input(0);
     auto flat_keys = allocation_handle.flat<int64>();
-    for (int64 i = 0; i < flat_keys.size(); ++i) {
-      int64 key = flat_keys(i);
+    for (int64_t i = 0; i < flat_keys.size(); ++i) {
+      int64_t key = flat_keys(i);
       OP_REQUIRES_OK(ctx, memory_manager->Release(key));
       VLOG(2) << "Released allocation handle " << key;
     }
@@ -759,8 +759,8 @@ class XRTMemoryInfoOp : public OpKernel {
       TF_ASSIGN_OR_RETURN(
           se::StreamExecutor * stream_executor,
           device_ref.backend()->stream_executor(device_ref.device_ordinal()));
-      int64 mem_free = -1;
-      int64 mem_total = -1;
+      int64_t mem_free = -1;
+      int64_t mem_total = -1;
       if (!stream_executor->DeviceMemoryUsage(&mem_free, &mem_total)) {
         VLOG(2) << "Device " << ctx->device()->name()
                 << " does not expose memory information";

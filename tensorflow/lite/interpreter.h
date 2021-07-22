@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -88,7 +89,7 @@ class InterpreterWrapper;  // Class for friend declarations.
 /// for (int i = 0; i < input_size; i++) {
 ///   input[i] = ...;
 //  }
-/// interpreter.Invoke();
+/// interpreter->Invoke();
 /// </code></pre>
 ///
 /// Note: For nearly all practical use cases, one should not directly construct
@@ -254,11 +255,18 @@ class Interpreter {
     return primary_subgraph().tensor(tensor_index);
   }
 
-  /// Get a pointer to an operation and registration data structure if in
-  /// bounds.
+  /// Returns a pointer to an operation and registration data structure if in
+  /// bounds from the primary subgraph(subgraph_[0]).
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
     return primary_subgraph().node_and_registration(node_index);
+  }
+
+  /// Returns a pointer to an operation and registration data structure if in
+  /// bounds.
+  const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
+      int subgraph_index, int node_index) const {
+    return subgraph(subgraph_index)->node_and_registration(node_index);
   }
 
   /// Perform a checked cast to the appropriate tensor type (mutable pointer
@@ -419,7 +427,6 @@ class Interpreter {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
-  // WARNING: Experimental interface, subject to change
   // Change the dimensionality of a given tensor. This is only acceptable for
   // tensor indices that are inputs or variables. Only unknown dimensions can be
   // resized with this function. Unknown dimensions are indicated as `-1` in the
@@ -684,19 +691,6 @@ class Interpreter {
 #endif  // DOXYGEN_SKIP
 
  private:
-  // Structure representing SignatureDef inputs/outputs.
-  struct SignatureDef {
-    // Maps name in signature def as key to index of the tensor in the model.
-    std::map<std::string, uint32_t> inputs;
-    // Maps name in signature def as key to index of the tensor in the model.
-    std::map<std::string, uint32_t> outputs;
-    // The method name for this signature.
-    std::string method_name;
-    // The key of this SignatureDef in the SavedModel signature def map.
-    std::string signature_def_key;
-    // The subgraph index of the signature in the model.
-    uint32_t subgraph_index;
-  };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
@@ -728,6 +722,9 @@ class Interpreter {
     return -1;
   }
 
+  // Applies TFLite default delegates.
+  TfLiteStatus ApplyLazyDelegateProviders();
+
   // Overrides execution plan. This bounds checks indices sent in.
   // Note: Only used during initialization.
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
@@ -746,7 +743,7 @@ class Interpreter {
   bool IsCancelled();
 
   // Sets the list of signature defs in the model.
-  void SetSignatureDef(std::vector<SignatureDef> signature_defs) {
+  void SetSignatureDef(std::vector<internal::SignatureDef> signature_defs) {
     signature_defs_ = std::move(signature_defs);
   }
 
@@ -812,7 +809,7 @@ class Interpreter {
 
   // List of signature def mapping inputs/output to tensor ids.
   // We just keep track of tensor index.
-  std::vector<SignatureDef> signature_defs_;
+  std::vector<internal::SignatureDef> signature_defs_;
 };
 
 }  // namespace tflite

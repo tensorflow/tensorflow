@@ -28,7 +28,7 @@ class ScheduleAwareCollectiveOpsCSE : public HloModulePass {
   //   the path) to consider CSE.
   // for_replicas: specifies if this pass is for cross-replica or
   //   cross-partition collectives.
-  explicit ScheduleAwareCollectiveOpsCSE(int64 distance_threshold,
+  explicit ScheduleAwareCollectiveOpsCSE(int64_t distance_threshold,
                                          bool for_replicas)
       : distance_threshold_(distance_threshold), for_replicas_(for_replicas) {}
 

@@ -265,6 +265,9 @@ class PjRtClient {
     // Returns the number of buffers managed by this object.
     virtual size_t buffer_count() const = 0;
 
+    // Returns the destination device of the transfers.
+    virtual PjRtDevice* device() const = 0;
+
     // Returns buffer_index, which can be passed to downstream consumers
     // immediately and will become available once transfers complete. May not
     // be called more than once for a given buffer_index.

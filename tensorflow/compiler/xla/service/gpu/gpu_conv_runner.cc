@@ -52,7 +52,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
   int64 GetMemoryLimitInBytes() override { return scratch_.size(); }
 
   se::port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
-      int64 byte_size) override {
+      int64_t byte_size) override {
     if (allocated_) {
       return se::port::InternalError(
           "Can't allocate twice from a ScratchBufAllocator.");

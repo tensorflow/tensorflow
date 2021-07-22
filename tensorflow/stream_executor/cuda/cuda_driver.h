@@ -43,7 +43,7 @@ static std::string ToString(CUresult result) {
 // unique id is positive, and ids are not repeated within the process.
 class GpuContext {
  public:
-  GpuContext(CUcontext context, int64 id) : context_(context), id_(id) {}
+  GpuContext(CUcontext context, int64_t id) : context_(context), id_(id) {}
 
   CUcontext context() const { return context_; }
   int64 id() const { return id_; }
@@ -141,7 +141,7 @@ class CreatedContexts {
 
   // Lock that guards access-to/mutation-of the live set.
   static absl::Mutex mu_;
-  static int64 next_id_;
+  static int64_t next_id_;
 };
 }  // namespace gpu
 

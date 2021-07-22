@@ -181,6 +181,8 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             Shape new_shape = i->users()[0]->shape();
             TF_RETURN_IF_ERROR(i->parent()->ReplaceWithNewInstruction(
                 i, i->CloneWithNewOperands(new_shape, {})));
+            clone_changed = true;
+            changed = true;
           } else if (!i->users().empty() &&
                      // If 0 operands, we can't lift the bitcast.  It
                      // must be handled manually as kConstant and

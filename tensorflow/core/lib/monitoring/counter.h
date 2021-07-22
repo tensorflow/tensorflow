@@ -24,11 +24,57 @@ limitations under the License.
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
-#define TENSORFLOW_INCLUDED_FROM_COUNTER_H  // prevent accidental use of
-                                            // mobile_counter.h
-#include "tensorflow/core/lib/monitoring/mobile_counter.h"
-#undef TENSORFLOW_INCLUDED_FROM_COUNTER_H
-#else
+
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
+
+namespace tensorflow {
+namespace monitoring {
+
+// CounterCell which has a null implementation.
+class CounterCell {
+ public:
+  CounterCell() {}
+  ~CounterCell() {}
+
+  void IncrementBy(int64 step) {}
+  int64 value() const { return 0; }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(CounterCell);
+};
+
+// Counter which has a null implementation.
+template <int NumLabels>
+class Counter {
+ public:
+  ~Counter() {}
+
+  template <typename... MetricDefArgs>
+  static Counter* New(MetricDefArgs&&... metric_def_args) {
+    return new Counter<NumLabels>();
+  }
+
+  template <typename... Labels>
+  CounterCell* GetCell(const Labels&... labels) {
+    return &default_counter_cell_;
+  }
+
+  Status GetStatus() { return Status::OK(); }
+
+ private:
+  Counter() {}
+
+  CounterCell default_counter_cell_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(Counter);
+};
+
+}  // namespace monitoring
+}  // namespace tensorflow
+
+#else  // IS_MOBILE_PLATFORM
 
 #include <array>
 #include <atomic>

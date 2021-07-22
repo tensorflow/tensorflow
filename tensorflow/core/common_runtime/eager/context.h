@@ -106,7 +106,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   void Release() override { Unref(); }
 
-  AbstractTensorInterface* CreateInt64Scalar(int64 value) override;
+  AbstractTensorInterface* CreateInt64Scalar(int64_t value) override;
   AbstractTensorInterface* CreateUint64Scalar(uint64 value) override;
   AbstractTensorInterface* CreateInt32Scalar(int32 value) override;
   AbstractTensorInterface* CreateFloatScalar(float value) override;
@@ -291,15 +291,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   //
   // The caller of the returned function owns a reference to the resulting
   // Rendezvous.
-  std::function<Rendezvous*(int64)> RendezvousCreator() {
+  std::function<Rendezvous*(int64_t)> RendezvousCreator() {
     if (reuse_rendezvous_for_functions_) {
-      return [this](int64 step_id) {
+      return [this](int64_t step_id) {
         mutex_lock l(global_rendezvous_mu_);
         global_rendezvous_for_functions_->Ref();
         return global_rendezvous_for_functions_.get();
       };
     } else {
-      return [this](int64 step_id) { return CreateRendezvous(step_id); };
+      return [this](int64_t step_id) { return CreateRendezvous(step_id); };
     }
   }
 
@@ -513,7 +513,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void InitPrioritizedDeviceTypeList();
 
  private:
-  Rendezvous* CreateRendezvous(int64 step_id) const {
+  Rendezvous* CreateRendezvous(int64_t step_id) const {
     if (rendezvous_creator_ != nullptr) {
       return rendezvous_creator_(step_id);
     }

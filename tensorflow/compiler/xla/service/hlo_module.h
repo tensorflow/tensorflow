@@ -102,7 +102,8 @@ class HloModule {
   // computations to replace. We could speed it up by keeping track of users of
   // computations.
   void ReplaceComputations(
-      const std::unordered_map<HloComputation*, HloComputation*>& replacements);
+      const absl::flat_hash_map<HloComputation*, HloComputation*>&
+          replacements);
 
   const string& name() const { return name_; }
   void set_name(string name) { name_ = std::move(name); }

@@ -60,7 +60,7 @@ class DeviceMgr {
   // Check if the current device manager contains device with the given
   // incarnation ID. Looking up by incarnation IDs because they are randomly
   // generated and not intentionally reused (unlike device pointers).
-  virtual bool ContainsDevice(int64 device_incarnation) const = 0;
+  virtual bool ContainsDevice(int64_t device_incarnation) const = 0;
 
   // Clears given containers of all devices if 'container' is
   // non-empty. Otherwise, clears default containers of all devices.
@@ -92,7 +92,7 @@ class StaticDeviceMgr : public DeviceMgr {
   string DebugString() const override;
   string DeviceMappingString() const override;
   Status LookupDevice(StringPiece name, Device** device) const override;
-  bool ContainsDevice(int64 device_incarnation) const override;
+  bool ContainsDevice(int64_t device_incarnation) const override;
   void ClearContainers(gtl::ArraySlice<string> containers) const override;
   int NumDeviceType(const string& type) const override;
   Device* HostCPU() const override;
@@ -132,7 +132,7 @@ class DynamicDeviceMgr : public DeviceMgr {
   string DebugString() const override;
   string DeviceMappingString() const override;
   Status LookupDevice(StringPiece name, Device** device) const override;
-  bool ContainsDevice(int64 device_incarnation) const override;
+  bool ContainsDevice(int64_t device_incarnation) const override;
   void ClearContainers(gtl::ArraySlice<string> containers) const override;
   int NumDeviceType(const string& type) const override;
   Device* HostCPU() const override;
@@ -162,7 +162,7 @@ class DynamicDeviceMgr : public DeviceMgr {
   std::unordered_map<string, int> device_type_counts_
       TF_GUARDED_BY(devices_mu_);
 
-  mutable Device* cpu_device_ TF_GUARDED_BY(devices_mu_);
+  mutable std::atomic<Device*> cpu_device_;  // memoize `HostCPU` result
 
   class DeviceCircularBuffer {
    public:

@@ -35,7 +35,7 @@ namespace cl {
 class Buffer : public GPUObject {
  public:
   Buffer() {}  // just for using Buffer as a class members
-  Buffer(cl_mem buffer, size_t size_in_bytes);
+  Buffer(cl_mem buffer, size_t size_in_bytes, bool is_sub_buffer = false);
 
   // Move only
   Buffer(Buffer&& buffer);
@@ -49,6 +49,8 @@ class Buffer : public GPUObject {
   uint64_t GetMemorySizeInBytes() const { return size_; }
 
   cl_mem GetMemoryPtr() const { return buffer_; }
+
+  bool IsSubBuffer() const { return is_sub_buffer_; }
 
   // Writes data to a buffer. Data should point to a region that
   // has exact size in bytes as size_in_bytes(constructor parameter).
@@ -70,6 +72,7 @@ class Buffer : public GPUObject {
 
   cl_mem buffer_ = nullptr;
   size_t size_;
+  bool is_sub_buffer_ = false;
 };
 
 absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,
@@ -80,6 +83,11 @@ absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, const void* data,
 
 absl::Status CreateReadWriteBuffer(size_t size_in_bytes, CLContext* context,
                                    Buffer* result);
+
+absl::Status CreateReadWriteSubBuffer(const Buffer& parent,
+                                      size_t origin_in_bytes,
+                                      size_t size_in_bytes, CLContext* context,
+                                      Buffer* result);
 
 template <typename T>
 absl::Status Buffer::WriteData(CLCommandQueue* queue,

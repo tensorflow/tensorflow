@@ -15,6 +15,10 @@ py_library(
     name = "parallel_device",
     srcs = ["parallel_device.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tensorflow_numerics/extensions:__pkg__",
+    ],
     deps = [
         ":saving",
         "//tensorflow/python:_pywrap_parallel_device",

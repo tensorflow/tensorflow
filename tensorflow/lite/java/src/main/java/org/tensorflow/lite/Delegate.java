@@ -18,8 +18,6 @@ package org.tensorflow.lite;
 /**
  * Wrapper for a native TensorFlow Lite Delegate.
  *
- * <p>WARNING: This is an experimental interface that is subject to change.
- *
  * <p>If a delegate implementation holds additional resources or memory that should be explicitly
  * freed, then best practice is to add a {@code close()} method to the implementation and have the
  * client call that explicitly when the delegate instance is no longer in use. While this approach
@@ -31,7 +29,7 @@ public interface Delegate {
    * Returns a native handle to the TensorFlow Lite delegate implementation.
    *
    * <p>Note: The Java {@link Delegate} maintains ownership of the native delegate instance, and
-   * must ensure its existence for the duration of usage with any {@link Interpreter}.
+   * must ensure its existence for the duration of usage with any {@link InterpreterApi} instance.
    *
    * @return The native delegate handle. In C/C++, this should be a pointer to
    *     'TfLiteOpaqueDelegate'.

@@ -3233,9 +3233,7 @@ class Graph(object):
 
   @property
   def _c_graph(self):
-    if self._scoped_c_graph:
-      return self._scoped_c_graph.graph
-    return None
+    return self._scoped_c_graph.graph
 
   @property
   def version(self):

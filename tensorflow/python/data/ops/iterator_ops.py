@@ -39,6 +39,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -63,8 +64,23 @@ GET_NEXT_CALL_WARNING_MESSAGE = (
     "`next_element` as the input to some computation that is invoked inside "
     "the loop.")
 
+# NOTE(jsimsa): Threshold used as a heuristic to check for infinite loop during
+# tf.function tracing.
+GET_NEXT_CALL_ERROR_THRESHOLD = 32
+
+GET_NEXT_CALL_ERROR_MESSAGE = (
+    "An unusually high number of `tf.data.Iterator.get_next()` calls was "
+    "detected. This suggests that the `for elem in dataset: ...` idiom is used "
+    "within tf.function with AutoGraph disabled. This idiom is only supported "
+    "when AutoGraph is enabled.")
+
 # Collection of all IteratorResources in the `Graph`.
 GLOBAL_ITERATORS = "iterators"
+
+
+autograph_ctx = lazy_loader.LazyLoader(
+    "autograph_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
 
 
 def _device_stack_is_empty():
@@ -695,6 +711,8 @@ class OwnedIterator(IteratorBase):
         raise ValueError(error_message)
       self._create_iterator(dataset)
 
+    self._get_next_call_count = 0
+
   def _create_iterator(self, dataset):
     # pylint: disable=protected-access
     dataset = dataset._apply_debug_options()
@@ -729,6 +747,13 @@ class OwnedIterator(IteratorBase):
     return self.__next__()
 
   def _next_internal(self):
+    autograph_status = autograph_ctx.control_status_ctx().status
+    autograph_disabled = autograph_status == autograph_ctx.Status.DISABLED
+    if not context.executing_eagerly() and autograph_disabled:
+      self._get_next_call_count += 1
+      if self._get_next_call_count > GET_NEXT_CALL_ERROR_THRESHOLD:
+        raise ValueError(GET_NEXT_CALL_ERROR_MESSAGE)
+
     if not context.executing_eagerly():
       # TODO(b/169442955): Investigate the need for this colocation constraint.
       with ops.colocate_with(self._iterator_resource):

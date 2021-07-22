@@ -24,6 +24,7 @@ limitations under the License.
 #include <climits>
 #include <complex>
 #include <cstdint>
+#include <utility>
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -139,6 +140,26 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   return rewriter.createOrFold<TF::CastOp>(
       loc, UnrankedTensorType::get(new_ele_type), val,
       rewriter.getBoolAttr(false));
+}
+
+// Get shape of an operand or result, support both dynamic and static shape.
+Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
+  auto shaped_type = input.getType().cast<ShapedType>();
+  if (shaped_type.hasStaticShape()) {
+    auto static_shape = shaped_type.getShape();
+    auto static_shape_type =
+        RankedTensorType::get(static_shape.size(), rewriter.getIntegerType(64));
+    auto static_shape_attr =
+        mlir::DenseIntElementsAttr::get(static_shape_type, static_shape);
+    return rewriter.create<TF::ConstOp>(loc, static_shape_attr).output();
+  }
+
+  // If the shape is not static, create a new ShapeOp.
+  BoolAttr false_attr = rewriter.getBoolAttr(false);
+  return rewriter
+      .create<TF::ShapeOp>(loc, input,
+                           /*use_32bit=*/false_attr)
+      .output();
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
@@ -641,16 +662,64 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
  public:
   using OpRewritePattern<SourceOp>::OpRewritePattern;
 
+  LogicalResult rewriteOpWithDynamicInput(Operation* op,
+                                          PatternRewriter& rewriter) const {
+    auto lhs = op->getOperand(0);
+    auto rhs = op->getOperand(1);
+    auto out = op->getResult(0);
+
+    // Calculates symbolic broadcast shape that is only used in types.
+    SmallVector<int64_t, 4> symbolic_broadcast_shape;
+    if (!OpTrait::util::getBroadcastedShape(
+            lhs.getType().cast<ShapedType>().getShape(),
+            rhs.getType().cast<ShapedType>().getShape(),
+            symbolic_broadcast_shape)) {
+      return failure();
+    }
+
+    // Calculates the broadcast shape using BroadcastArgs op.
+    Value lhs_shape = GetShape(lhs, op->getLoc(), rewriter);
+    Value rhs_shape = GetShape(rhs, op->getLoc(), rewriter);
+    auto broadcast_shape =
+        rewriter
+            .create<TF::BroadcastArgsOp>(
+                op->getLoc(),
+                RankedTensorType::get(symbolic_broadcast_shape.size(),
+                                      rewriter.getIntegerType(64)),
+                lhs_shape, rhs_shape)
+            .r0();
+
+    // Broadcasts inputs using BroadcastTo op.
+    auto broadcast_type = RankedTensorType::get(
+        symbolic_broadcast_shape, getElementTypeOrSelf(lhs.getType()));
+    auto broadcasted_lhs =
+        rewriter
+            .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
+                                       broadcast_shape)
+            .output();
+    auto broadcasted_rhs =
+        rewriter
+            .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
+                                       broadcast_shape)
+            .output();
+
+    // Recreate an op with the above BroadcastTo op results.
+    RankedTensorType result_type = RankedTensorType::get(
+        symbolic_broadcast_shape, getElementTypeOrSelf(out.getType()));
+    rewriter.replaceOpWithNewOp<SourceOp>(op, result_type, broadcasted_lhs,
+                                          broadcasted_rhs);
+    return success();
+  }
+
   LogicalResult matchAndRewrite(SourceOp src_op,
                                 PatternRewriter& rewriter) const override {
     Operation* op = static_cast<Operation*>(src_op);
     auto lhs = op->getOperand(0);
     auto rhs = op->getOperand(1);
 
-    // Should have static shapes to calculate the broadcasted shape.
     if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
         !rhs.getType().cast<ShapedType>().hasStaticShape()) {
-      return failure();
+      return rewriteOpWithDynamicInput(op, rewriter);
     }
 
     auto lhs_shape = lhs.getType().cast<ShapedType>().getShape();
@@ -707,6 +776,71 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
  public:
   using OpRewritePattern<TF::SelectV2Op>::OpRewritePattern;
 
+  LogicalResult rewriteOpWithDynamicInput(Operation* op,
+                                          PatternRewriter& rewriter) const {
+    auto cond = op->getOperand(0);
+    auto lhs = op->getOperand(1);
+    auto rhs = op->getOperand(2);
+    auto out = op->getResult(0);
+
+    // Calculates symbolic broadcast shape that is only used in types.
+    SmallVector<int64_t, 4> symbolic_broadcast_lhs_rhs_shape;
+    if (!OpTrait::util::getBroadcastedShape(
+            lhs.getType().cast<ShapedType>().getShape(),
+            rhs.getType().cast<ShapedType>().getShape(),
+            symbolic_broadcast_lhs_rhs_shape)) {
+      return failure();
+    }
+    SmallVector<int64_t, 4> symbolic_broadcast_shape;
+    if (!OpTrait::util::getBroadcastedShape(
+            cond.getType().cast<ShapedType>().getShape(),
+            symbolic_broadcast_lhs_rhs_shape, symbolic_broadcast_shape)) {
+      return failure();
+    }
+
+    // Calculates the broadcast shape using BroadcastArgs op.
+    Value cond_shape = GetShape(cond, op->getLoc(), rewriter);
+    Value lhs_shape = GetShape(lhs, op->getLoc(), rewriter);
+    Value rhs_shape = GetShape(rhs, op->getLoc(), rewriter);
+    auto broadcast_shape_value =
+        rewriter
+            .create<TF::BroadcastArgsOp>(op->getLoc(), lhs_shape.getType(),
+                                         lhs_shape, rhs_shape)
+            .r0();
+    broadcast_shape_value =
+        rewriter
+            .create<TF::BroadcastArgsOp>(op->getLoc(), lhs_shape.getType(),
+                                         broadcast_shape_value, cond_shape)
+            .r0();
+
+    // Broadcasting inputs using BroadcastTo op.
+    auto broadcast_type = RankedTensorType::get(
+        symbolic_broadcast_shape, getElementTypeOrSelf(out.getType()));
+    auto broadcasted_cond =
+        rewriter
+            .create<TF::BroadcastToOp>(
+                op->getLoc(),
+                RankedTensorType::get(symbolic_broadcast_shape,
+                                      rewriter.getIntegerType(1)),
+                cond, broadcast_shape_value)
+            .output();
+    auto broadcasted_lhs =
+        rewriter
+            .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
+                                       broadcast_shape_value)
+            .output();
+    auto broadcasted_rhs =
+        rewriter
+            .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
+                                       broadcast_shape_value)
+            .output();
+
+    // Recreate an op with the above BroadcastTo op results.
+    rewriter.replaceOpWithNewOp<TF::SelectV2Op>(
+        op, broadcast_type, broadcasted_cond, broadcasted_lhs, broadcasted_rhs);
+    return success();
+  }
+
   LogicalResult matchAndRewrite(TF::SelectV2Op src_op,
                                 PatternRewriter& rewriter) const override {
     Operation* op = static_cast<Operation*>(src_op);
@@ -718,7 +852,7 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
     if (!lhs.getType().cast<ShapedType>().hasStaticShape() ||
         !rhs.getType().cast<ShapedType>().hasStaticShape() ||
         !cond.getType().cast<ShapedType>().hasStaticShape()) {
-      return failure();
+      return rewriteOpWithDynamicInput(op, rewriter);
     }
 
     auto lhs_shape = lhs.getType().cast<ShapedType>().getShape();

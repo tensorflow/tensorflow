@@ -81,19 +81,18 @@ OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
   return op_metrics;
 }
 
-double IdleTimeRatio(const OpMetricsDb& metrics_db) {
-  return 1.0 -
-         SafeDivide(metrics_db.total_op_time_ps(), metrics_db.total_time_ps());
+double IdleTimeRatio(const OpMetricsDb& db) {
+  return 1.0 - SafeDivide(db.total_op_time_ps(), db.total_time_ps());
 }
 
-uint64 IdleTimePs(const OpMetricsDb& metrics_db) {
-  if (metrics_db.total_time_ps() <= metrics_db.total_op_time_ps()) return 0;
-  return metrics_db.total_time_ps() - metrics_db.total_op_time_ps();
+uint64 IdleTimePs(const OpMetricsDb& db) {
+  DCHECK_GE(db.total_time_ps(), db.total_op_time_ps());
+  return db.total_time_ps() - db.total_op_time_ps();
 }
 
-void AddIdleOp(OpMetricsDb* db) {
-  uint64 idle_time_ps = IdleTimePs(*db);
-  OpMetrics* metrics = db->add_metrics_db();
+void AddIdleOp(OpMetricsDb& db) {
+  uint64 idle_time_ps = IdleTimePs(db);
+  OpMetrics* metrics = db.add_metrics_db();
   metrics->set_name(std::string(kIdle));
   metrics->set_category(std::string(kIdle));
   metrics->set_occurrences(0);
@@ -129,5 +128,6 @@ OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
 
   return tf_op_metrics_db;
 }
+
 }  // namespace profiler
 }  // namespace tensorflow

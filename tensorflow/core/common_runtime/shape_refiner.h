@@ -47,8 +47,8 @@ class ExtendedInferenceContext {
     }
   }
 
-  DataType input_type(int64 idx) const { return input_types_[idx]; }
-  DataType output_type(int64 idx) const { return output_types_[idx]; }
+  DataType input_type(int64_t idx) const { return input_types_[idx]; }
+  DataType output_type(int64_t idx) const { return output_types_[idx]; }
 
   shape_inference::InferenceContext* get_context() {
     return inference_context_.get();

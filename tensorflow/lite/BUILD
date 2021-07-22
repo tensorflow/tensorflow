@@ -34,6 +34,13 @@ config_setting(
 )
 
 config_setting(
+    name = "tflite_use_simple_memory_planner",
+    values = {
+        "copt": "-DTFLITE_USE_SIMPLE_MEMORY_PLANNER",
+    },
+)
+
+config_setting(
     name = "mips",
     values = {
         "cpu": "mips",
@@ -133,6 +140,35 @@ cc_test(
     deps = [
         ":arena_planner",
         ":graph_info",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "simple_planner",
+    srcs = ["simple_planner.cc"],
+    hdrs = ["simple_planner.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    deps = [
+        ":graph_info",
+        ":memory_planner",
+        ":simple_memory_arena",
+        ":util",
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_test(
+    name = "simple_planner_test",
+    size = "small",
+    srcs = ["simple_planner_test.cc"],
+    deps = [
+        ":graph_info",
+        ":simple_planner",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
@@ -313,6 +349,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -352,6 +389,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
     ],
@@ -420,6 +458,7 @@ cc_library(
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/schema:schema_fbs",
@@ -459,7 +498,6 @@ cc_library(
     ],
     deps = [
         ":allocation",
-        ":arena_planner",
         ":builtin_ops",
         ":cc_api_stable",
         ":external_cpu_backend_context",
@@ -473,15 +511,23 @@ cc_library(
         ":string",
         ":type_to_tflitetype",
         ":util",
+        "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers//:runtime_cc",
-        "@ruy//ruy:denormal",
-    ],
+    ] + select({
+        ":tflite_use_simple_memory_planner": [
+            ":simple_planner",
+        ],
+        "//conditions:default": [
+            ":arena_planner",
+        ],
+    }),
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
@@ -682,6 +728,7 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",

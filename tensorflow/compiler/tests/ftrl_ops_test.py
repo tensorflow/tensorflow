@@ -24,7 +24,6 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import resources
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import training_ops
 
@@ -55,7 +54,9 @@ class ResourceApplyFtrlTest(xla_test.XLATestCase):
         v_var = resource_variable_ops.ResourceVariable(var, dtype=dtype)
         v_accum = resource_variable_ops.ResourceVariable(accum, dtype=dtype)
         v_linear = resource_variable_ops.ResourceVariable(linear, dtype=dtype)
-        resources.initialize_resources([v_var, v_accum, v_linear]).run()
+        session.run(v_var.create)
+        session.run(v_accum.create)
+        session.run(v_linear.create)
         assert not (use_v2 and multiply_linear_by_lr)
         if use_v2:
           session.run(training_ops.resource_apply_ftrl_v2(

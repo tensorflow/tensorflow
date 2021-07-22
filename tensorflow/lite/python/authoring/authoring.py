@@ -119,9 +119,10 @@ class _Compatible:
           file=sys.stderr)
 
     if not self._verified:
-      concrete_func = self._get_func().get_concrete_function(*args, **kwargs)
+      model = self._get_func()
+      concrete_func = model.get_concrete_function(*args, **kwargs)
       converter = lite.TFLiteConverterV2.from_concrete_functions(
-          [concrete_func])
+          [concrete_func], model)
       # Set provided converter parameters
       if self._converter_target_spec is not None:
         converter.target_spec = self._converter_target_spec

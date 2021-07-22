@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/core/shims/c/common.h"
 #include "tensorflow/lite/core/shims/cc/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_util.h"
 
 using tflite::jni::ThrowException;
@@ -40,15 +41,30 @@ static const char* kStringClassPath = "java/lang/String";
 // invalidate all TfLiteTensor* handles during inference or allocation.
 class TensorHandle {
  public:
-  TensorHandle(Interpreter* interpreter, int tensor_index)
-      : interpreter_(interpreter), tensor_index_(tensor_index) {}
+  TensorHandle(Interpreter* interpreter, int tensor_index, int subgraph_index)
+      : interpreter_(interpreter),
+        tensor_index_(tensor_index),
+        subgraph_index_(subgraph_index) {}
 
-  TfLiteTensor* tensor() const { return interpreter_->tensor(tensor_index_); }
+  TfLiteTensor* tensor() const {
+#if !TFLITE_DISABLE_SELECT_JAVA_APIS
+    return interpreter_->subgraph(subgraph_index_)->tensor(tensor_index_);
+#else
+    if (subgraph_index_ != 0) {
+      TFLITE_LOG(tflite::TFLITE_LOG_ERROR,
+                 "Not supported: accessing tensor from non-primary subgraphs");
+      return nullptr;
+    }
+    return interpreter_->tensor(tensor_index_);
+#endif
+  }
   int index() const { return tensor_index_; }
+  int subgraph() const { return subgraph_index_; }
 
  private:
   Interpreter* const interpreter_;
   const int tensor_index_;
+  const int subgraph_index_;
 };
 
 TfLiteTensor* GetTensorFromHandle(JNIEnv* env, jlong handle) {
@@ -67,6 +83,15 @@ int GetTensorIndexFromHandle(JNIEnv* env, jlong handle) {
     return -1;
   }
   return reinterpret_cast<TensorHandle*>(handle)->index();
+}
+
+int GetSubgraphIndexFromHandle(JNIEnv* env, jlong handle) {
+  if (handle == 0) {
+    ThrowException(env, tflite::jni::kIllegalArgumentException,
+                   "Internal error: Invalid handle to TfLiteTensor.");
+    return -1;
+  }
+  return reinterpret_cast<TensorHandle*>(handle)->subgraph();
 }
 
 size_t ElementByteSize(TfLiteType data_type) {
@@ -413,9 +438,11 @@ void WriteScalarString(JNIEnv* env, jobject src, TfLiteTensor* tensor) {
 extern "C" {
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_Tensor_create(
-    JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index) {
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index,
+    jint subgraph_index) {
   Interpreter* interpreter = reinterpret_cast<Interpreter*>(interpreter_handle);
-  return reinterpret_cast<jlong>(new TensorHandle(interpreter, tensor_index));
+  return reinterpret_cast<jlong>(
+      new TensorHandle(interpreter, tensor_index, subgraph_index));
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_lite_Tensor_delete(JNIEnv* env,
@@ -616,6 +643,12 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
                                                              jclass clazz,
                                                              jlong handle) {
   return GetTensorIndexFromHandle(env, handle);
+}
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_subgraph(JNIEnv* env,
+                                                                jclass clazz,
+                                                                jlong handle) {
+  return GetSubgraphIndexFromHandle(env, handle);
 }
 
 JNIEXPORT jfloat JNICALL Java_org_tensorflow_lite_Tensor_quantizationScale(

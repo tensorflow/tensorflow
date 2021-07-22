@@ -128,8 +128,6 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, OHWI* shape);
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, BHWC* shape);
 
-absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation);
-
 // If there is fused activation present, then there will be another node created
 // that will have identical output as the given node. New operation node will
 // depend on the given node output.

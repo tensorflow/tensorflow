@@ -116,7 +116,7 @@ string SliceDebugString(const TensorShape& shape, const int64 flat) {
   }
 
   // Unflatten index
-  int64 left = flat;
+  int64_t left = flat;
   string result;
   for (int i = 0; i < dims; i++) {
     strings::StrAppend(&result, i ? "," : "[", left / strides[i]);

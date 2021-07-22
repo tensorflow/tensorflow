@@ -74,19 +74,11 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<Operation*> EmitDnnBatchNorm(
       const xla::HloCustomCallInstruction* custom_call);
 
-  xla::StatusOr<lmhlo::ReduceOp> EmitReduceOp(const xla::HloInstruction* instr);
   xla::StatusOr<memref::GetGlobalOp> EmitConstant(
-      const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::CompareOp> EmitCompareOp(
       const xla::HloInstruction* instr);
 
   xla::StatusOr<lmhlo::InfeedOp> EmitInfeedOp(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(
-      const xla::HloInstruction* instr);
-  xla::StatusOr<lmhlo::MapOp> EmitMapOp(const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::ReducePrecisionOp> EmitReducePrecisionOp(
       const xla::HloInstruction* instr);
 
   xla::StatusOr<lmhlo::AllToAllOp> EmitAllToAllOp(
@@ -104,33 +96,6 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<lmhlo::CollectivePermuteOp> EmitCollectivePermuteOp(
       const xla::HloInstruction* instr);
 
-  xla::StatusOr<lmhlo::BroadcastInDimOp> EmitBroadcastOp(
-      const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::ConcatenateOp> EmitConcatenateOp(
-      const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::IotaOp> EmitIotaOp(const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::ReverseOp> EmitReverseOp(
-      const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::TransposeOp> EmitTransposeOp(
-      const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::PadOp> EmitPadOp(const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::ReduceWindowOp> EmitReduceWindowOp(
-      const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::SliceOp> EmitSliceOp(const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::GatherOp> EmitGatherOp(const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::DynamicSliceOp> EmitDynamicSliceOp(
-      const xla::HloInstruction* instr);
-
-  xla::StatusOr<lmhlo::DotOp> EmitDotOp(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::RngGetAndUpdateStateOp> EmitRngGetAndUpdateStateOp(
       const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::FftOp> EmitFftOp(const xla::HloInstruction* instr);
@@ -182,6 +147,13 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   template <typename OpType>
   OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,
                               ValueRange operands);
+
+  xla::StatusOr<mlir::Operation*> CreateOpInFusion(
+      const xla::HloInstruction* instr, ValueRange buffer_operands,
+      size_t num_arguments, size_t num_results);
+
+  xla::StatusOr<mlir::Operation*> CreateOpInFusion(
+      const xla::HloInstruction* instr);
 
   template <typename T>
   DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {

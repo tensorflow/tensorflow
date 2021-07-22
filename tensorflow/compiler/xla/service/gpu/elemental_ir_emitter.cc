@@ -91,7 +91,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
   switch (output_type) {
     case F16:
       cast_result_to_fp16 = true;
-      for (int64 i = 0; i < operands.size(); ++i) {
+      for (int64_t i = 0; i < operands.size(); ++i) {
         if (input_types[i] == F16) {
           converted_operands[i] =
               FPCast(converted_operands[i], b()->getFloatTy());

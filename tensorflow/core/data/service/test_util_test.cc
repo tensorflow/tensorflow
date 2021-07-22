@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -51,8 +52,7 @@ StatusOr<std::vector<std::vector<Tensor>>> GetIteratorOutput(
 }
 
 TEST(TestUtilTest, RangeSquareDataset) {
-  TF_ASSERT_OK_AND_ASSIGN(const DatasetDef dataset_def,
-                          RangeSquareDataset(/*range=*/10));
+  const auto dataset_def = RangeSquareDataset(/*range=*/10);
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> dataset;
   TF_ASSERT_OK(
@@ -69,8 +69,7 @@ TEST(TestUtilTest, RangeSquareDataset) {
 }
 
 TEST(TestUtilTest, EmptyDataset) {
-  TF_ASSERT_OK_AND_ASSIGN(const DatasetDef dataset_def,
-                          RangeSquareDataset(/*range=*/0));
+  const auto dataset_def = RangeSquareDataset(/*range=*/0);
   standalone::Dataset::Params params;
   std::unique_ptr<standalone::Dataset> dataset;
   TF_ASSERT_OK(

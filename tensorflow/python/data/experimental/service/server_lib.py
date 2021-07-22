@@ -32,7 +32,7 @@ from tensorflow.python.util.tf_export import tf_export
 class DispatcherConfig(
     collections.namedtuple("DispatcherConfig", [
         "port", "protocol", "work_dir", "fault_tolerant_mode",
-        "job_gc_check_interval_ms", "job_gc_timeout_ms"
+        "worker_addresses", "job_gc_check_interval_ms", "job_gc_timeout_ms"
     ])):
   """Configuration class for tf.data service dispatchers.
 
@@ -49,6 +49,10 @@ class DispatcherConfig(
       registered datasets and created jobs, is synchronously written to the
       journal before responding to RPCs. If `True`, `work_dir` must also be
       specified.
+    worker_addresses: If the job uses auto-sharding, it needs to specify a fixed
+      list of worker addresses that will register with the dispatcher. The
+      worker addresses should be in the format `"host"` or `"host:port"`, where
+      `"port"` is an integer, named port, or `%port%` to match any port.
     job_gc_check_interval_ms: How often the dispatcher should scan through to
       delete old and unused jobs, in milliseconds. If not set, the runtime will
       select a reasonable default. A higher value will reduce load on the
@@ -68,6 +72,7 @@ class DispatcherConfig(
               protocol=None,
               work_dir=None,
               fault_tolerant_mode=False,
+              worker_addresses=None,
               job_gc_check_interval_ms=None,
               job_gc_timeout_ms=None):
     if protocol is None:
@@ -78,8 +83,8 @@ class DispatcherConfig(
       job_gc_timeout_ms = 5 * 60 * 1000  # 5 minutes.
     return super(DispatcherConfig,
                  cls).__new__(cls, port, protocol, work_dir,
-                              fault_tolerant_mode, job_gc_check_interval_ms,
-                              job_gc_timeout_ms)
+                              fault_tolerant_mode, worker_addresses,
+                              job_gc_check_interval_ms, job_gc_timeout_ms)
 
 
 @tf_export("data.experimental.service.DispatchServer", v1=[])
@@ -142,6 +147,7 @@ class DispatchServer(object):
         protocol=config.protocol,
         work_dir=config.work_dir,
         fault_tolerant_mode=config.fault_tolerant_mode,
+        worker_addresses=config.worker_addresses,
         job_gc_check_interval_ms=config.job_gc_check_interval_ms,
         job_gc_timeout_ms=config.job_gc_timeout_ms)
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(

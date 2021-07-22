@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 template <typename T>
-static void TopK(tensorflow::int64 batch_size, tensorflow::int64 input_size,
-                 tensorflow::int64 k, const T* values, T* out_values,
+static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
+                 const T* values, T* out_values,
                  tensorflow::int32* out_indices) {
   // 'values' is managed by the JIT code, so msan can't tell they are
   // initialized.
@@ -33,7 +33,7 @@ static void TopK(tensorflow::int64 batch_size, tensorflow::int64 input_size,
                                     input_size * batch_size * sizeof(T));
 
   std::vector<tensorflow::int32> temp_indices(input_size);
-  for (tensorflow::int64 batch = 0; batch != batch_size; ++batch) {
+  for (int64_t batch = 0; batch != batch_size; ++batch) {
     std::iota(temp_indices.begin(), temp_indices.end(), 0);
 
     const T* values_batch = values + batch * input_size;
@@ -62,15 +62,14 @@ static void TopK(tensorflow::int64 batch_size, tensorflow::int64 input_size,
     T* out_values_batch = out_values + batch * k;
     tensorflow::int32* out_indices_batch = out_indices + batch * k;
     std::copy(temp_indices.begin(), kth_element, out_indices_batch);
-    for (tensorflow::int64 i = 0; i < k; i++) {
+    for (int64_t i = 0; i < k; i++) {
       out_values_batch[i] = values_batch[temp_indices[i]];
     }
   }
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TopKF32(
-    tensorflow::int64 batch_size, tensorflow::int64 input_size,
-    tensorflow::int64 k, const float* values, float* out_values,
-    tensorflow::int32* out_indices) {
+    int64_t batch_size, int64_t input_size, int64_t k, const float* values,
+    float* out_values, tensorflow::int32* out_indices) {
   TopK(batch_size, input_size, k, values, out_values, out_indices);
 }

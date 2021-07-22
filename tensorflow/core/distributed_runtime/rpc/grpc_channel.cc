@@ -84,7 +84,7 @@ Status ValidateHostPortPair(const string& host_port) {
           args->SetString(name_value[0], value);
         }
       } else {
-        int64 value;
+        int64_t value;
         if (strings::safe_strto64(name_value[1], &value)) {
           args->SetInt(name_value[0], value);
         } else {

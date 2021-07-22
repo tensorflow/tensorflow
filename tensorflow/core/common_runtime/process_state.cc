@@ -91,14 +91,14 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
             : nullptr;
     if (use_bfc_allocator) {
       // TODO(reedwm): evaluate whether 64GB by default is the best choice.
-      int64 cpu_mem_limit_in_mb = -1;
+      int64_t cpu_mem_limit_in_mb = -1;
       Status status = ReadInt64FromEnvVar("TF_CPU_BFC_MEM_LIMIT_IN_MB",
                                           1LL << 16 /*64GB max by default*/,
                                           &cpu_mem_limit_in_mb);
       if (!status.ok()) {
         LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
       }
-      int64 cpu_mem_limit = cpu_mem_limit_in_mb * (1LL << 20);
+      int64_t cpu_mem_limit = cpu_mem_limit_in_mb * (1LL << 20);
       DCHECK(sub_allocator);
       allocator =
           new BFCAllocator(sub_allocator, cpu_mem_limit, /*allow_growth=*/true,

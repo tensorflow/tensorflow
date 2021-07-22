@@ -141,7 +141,7 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
 // wraps the index in a i64 llvm::Value.
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
                                    llvm::IRBuilder<>* b);
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64_t index,
                                    llvm::IRBuilder<>* b);
 
 // Returns the LLVM type which represents the given XLA primitive type.
@@ -259,7 +259,7 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
                                        uint64_t dereferenceable_bytes);
 
 // Tells LLVM `inst >= lower && inst < upper`. Returns `inst` for convenience.
-llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
+llvm::Instruction* AddRangeMetadata(int64_t lower, int64_t upper,
                                     llvm::Instruction* inst);
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);

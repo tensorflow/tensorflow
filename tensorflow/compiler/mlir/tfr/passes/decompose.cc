@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -75,11 +77,28 @@ namespace TFR {
 
 namespace {
 
+// Quantize the float value based on given scale and zero point attributes.
+Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
+                   OpBuilder builder) {
+  double scale = scale_attr.cast<FloatAttr>().getValueAsDouble();
+  int64_t zp = zp_attr.cast<IntegerAttr>().getInt();
+
+  int quantized = static_cast<int>(std::round(value / scale) + zp);
+  return builder.getI32IntegerAttr(quantized);
+}
+
 // Decompose the TF ops with the registered composition library.
-struct DecomposeTFOpsPass
+class DecomposeTFOpsPass
     : public PassWrapper<DecomposeTFOpsPass, FunctionPass> {
+ public:
   explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
-      : external_tfr_module(external_tfr_module) {}
+      : external_tfr_module_(external_tfr_module) {}
+
+  StringRef getArgument() const final { return "tfr-decompose"; }
+
+  StringRef getDescription() const final {
+    return "Decompose TF ops with the registered composition library.";
+  }
 
   void runOnFunction() override;
 
@@ -95,13 +114,16 @@ struct DecomposeTFOpsPass
   LogicalResult InlineTFRFuncCalls();
 
   // Optional external symbol table to look up the TFR function.
-  llvm::Optional<ModuleOp> external_tfr_module;
+  llvm::Optional<ModuleOp> external_tfr_module_;
 };
+
+#include "tensorflow/compiler/mlir/tfr/passes/generated_decompose.inc"
 
 void DecomposeTFOpsPass::ApplyCanonicalization() {
   FuncOp func = getFunction();
   OwningRewritePatternList patterns(&getContext());
 
+  populateWithGenerated(patterns);
   populateCanonicalizationPatterns(func, patterns);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
@@ -109,8 +131,8 @@ void DecomposeTFOpsPass::ApplyCanonicalization() {
 
 LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
   FuncOp func = getFunction();
-  SymbolTable table(external_tfr_module.hasValue()
-                        ? *external_tfr_module
+  SymbolTable table(external_tfr_module_.hasValue()
+                        ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
   OpBuilder builder(func);
   bool changed = false;
@@ -242,8 +264,8 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The Inliner will automatically use the registered dialect inliner.
   InlinerInterface inliner(&getContext());
   FuncOp func = getFunction();
-  SymbolTable table(external_tfr_module.hasValue()
-                        ? *external_tfr_module
+  SymbolTable table(external_tfr_module_.hasValue()
+                        ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
   // The inliner only inlines the TFR call op.
@@ -320,8 +342,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(
 }
 
 static PassRegistration<DecomposeTFOpsPass> pass(
-    "tfr-decompose",
-    "Decompose TF ops with the registered composition library.",
     [] { return CreateDecomposeTFOpsPass(); });
 
 }  // namespace TFR

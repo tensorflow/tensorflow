@@ -74,7 +74,7 @@ tpu_py_test(
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
-    disable_tfrt = True,  # TFRT does not support estimator
+    disable_v2 = True,  # TODO(b/193351923): Re-enable v2 after fix the hanging issue.
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",
@@ -460,6 +460,14 @@ pytype_library(
 pytype_library(
     name = "tpu_strategy_util",
     srcs = ["tpu_strategy_util.py"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
+        "//learning/serving:__subpackages__",
+        "//research/graph:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//third_party/py/tensorflow_numerics/extensions:__pkg__",
+    ],
     deps = [
         ":tpu_lib",
         "//tensorflow/python:dtypes",

@@ -1218,20 +1218,7 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicUpdateSlice(
 }
 
 Status DynamicDimensionInferenceVisitor::HandleReverse(HloInstruction* hlo) {
-  return ForEachOperandDynamicDimension(
-      hlo,
-      [&](HloInstruction* /*operand*/, ShapeIndex /*index*/, int64 dimension,
-          int64 /*operand_index*/, HloInstruction* dynamic_size) {
-        if (absl::c_linear_search(hlo->dimensions(), dimension)) {
-          return Unimplemented(
-              "Dynamic dimension propagation on reversed dimension is not "
-              "supported %s",
-              hlo->ToString());
-        }
-        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
-
-        return Status::OK();
-      });
+  return PassThroughDynamicDimension(hlo);
 }
 
 Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
@@ -1785,21 +1772,31 @@ Status DynamicDimensionInference::ForwardDynamicSize(HloInstruction* inst,
 }
 
 bool DynamicDimensionInference::HasDynamicDimension(
-    HloInstruction* inst) const {
+    HloInstruction* inst, ShapeIndexView index) const {
   bool has_dynamic_dim = false;
-  ShapeUtil::ForEachSubshape(
-      inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (subshape.IsTuple()) {
-          return;
-        }
-        for (int64 i = 0; i < subshape.dimensions_size(); ++i) {
-          HloInstruction* operand_dynamic_size = GetDynamicSize(inst, index, i);
-          if (operand_dynamic_size != nullptr) {
-            has_dynamic_dim = true;
-          }
-        }
-      });
+  ShapeUtil::ForEachSubshape(inst->shape(), [&](const Shape& subshape,
+                                                const ShapeIndex& subindex) {
+    if (subshape.IsTuple()) {
+      return;
+    }
+    if (!ShapeIndexView(subindex).StartsWith(index)) {
+      return;
+    }
+    for (int64 i = 0; i < subshape.dimensions_size(); ++i) {
+      HloInstruction* operand_dynamic_size = GetDynamicSize(inst, subindex, i);
+      if (operand_dynamic_size != nullptr) {
+        has_dynamic_dim = true;
+      }
+    }
+  });
   return has_dynamic_dim;
+}
+
+Status DynamicDimensionInference::Update(HloInstruction* inst) {
+  DynamicParameterBinding parameter_binding;
+  DynamicDimensionInferenceVisitor visitor(parameter_binding, this,
+                                           custom_call_handler_);
+  return inst->Visit(&visitor);
 }
 
 HloInstruction* DynamicDimensionInference::GetDynamicSize(

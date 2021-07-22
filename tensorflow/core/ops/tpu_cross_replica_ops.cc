@@ -37,7 +37,7 @@ REGISTER_OP("AllToAll")
         return Status::OK();
       }
 
-      int64 rank = c->Rank(input);
+      int64_t rank = c->Rank(input);
       int concat_dimension;
       int split_dimension;
       int split_count;

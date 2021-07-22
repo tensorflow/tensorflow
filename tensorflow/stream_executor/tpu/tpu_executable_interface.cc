@@ -105,12 +105,12 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
   ExecutionOutput result(std::move(device_shape), allocator, device_ordinal);
   // Iterate through and allocate a buffer for each shape index, checking for
   // possible input buffer reuse.
-  int64 reused_buffer_bytes = 0;
-  int64 total_result_buffer_bytes = 0;
+  int64_t reused_buffer_bytes = 0;
+  int64_t total_result_buffer_bytes = 0;
   for (auto& pair : result.MutableResult()->buffers()) {
     const ShapeIndex& result_index = pair.first;
     se::DeviceMemoryBase& result_buffer = pair.second;
-    int64 allocation_bytes = ShapeSize(ShapeUtil::GetSubshape(
+    int64_t allocation_bytes = ShapeSize(ShapeUtil::GetSubshape(
         result.Result().on_device_shape(), result_index));
     total_result_buffer_bytes += allocation_bytes;
 

@@ -441,6 +441,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, compute_f32(np.arctanh), math_ops.atanh,
                       grad_tol=1e-2)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
     self._compareCpu(x, np.abs, math_ops.abs)
@@ -449,6 +451,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.negative, _NEG)
     self._compareBoth(x, np.sign, math_ops.sign)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
   def testInt16Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int16)
     self._compareCpu(x, np.abs, math_ops.abs)

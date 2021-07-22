@@ -15,9 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/pattern_utils.h"
 
+#include <algorithm>
+
+#include "absl/container/flat_hash_set.h"
+
 namespace tensorflow {
 namespace grappler {
 namespace utils {
+
+inline const bool IsCommutativeOp(const string& op) {
+  // TODO(intel-tf): Add more ops to this list if needed.
+  static const auto* commutative_ops =
+      new absl::flat_hash_set<string>({"Add", "AddV2", "Mul"});
+  return commutative_ops->contains(op);
+}
+
+// op1 is an op name in the pattern and it could be wildcard `*` or some
+// registered op in tensorflow. op2 is an op name in the computation graph and
+// is always one of the registered ops in tensorflow.
+inline bool IsSame(string op1, string op2) { return op1 == "*" || op1 == op2; }
 
 // A subgraph pattern syntax implicitly defines a DAG having a single root. We
 // traverse the syntax DAG in DFS manner. This function finds a match for
@@ -75,17 +91,48 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
   // Go for matching child subpattern.
   if (!pattern.children.empty()) {
     // Currently only direction toward inputs is implemented.
-    auto node_view_children = node_view->GetRegularFanins();
-    if (node_view_children.size() != pattern.children.size()) {
+    auto graph_children = node_view->GetRegularFanins();
+    int num_children = graph_children.size();
+    if (num_children != pattern.children.size()) {
       return false;
     } else {
-      for (int i = 0; i < pattern.children.size(); ++i) {
-        auto child_node_index = node_view_children[i].node_index();
+      // A pattern is a graph that we would like to match with a subgraph of
+      // a tensorflow computation graph. We travese both pattern-graph and the
+      // given graph in DFS manner and try to find one-to-one mapping between
+      // the nodes. However, commutative binary ops (e.g., Add, AddV2, Mul
+      // etc.) in the computation graph can have their inputs in different order
+      // than the pattern syntax graph. To allow such input permutation in a
+      // limited manner, we employ a heuristic of looking one level ahead in
+      // both graphs, whether visiting the right child of pattern is likely to
+      // match left child of the given graph. In that case, we simply swap the
+      // left subtree with right subtree of pattern syntax graph and continue
+      // matching children of pattern with the children of given computation
+      // graph. Note, we do not change anything in the computation graph during
+      // pattern matching, only the pattern graph is changed. By looking ahead
+      // one step in case of commutative ops, we keep the time comlexity of
+      // pattern matching linear. Since it is only a heuristic and we look only
+      // one step ahead it is not guranteed that all possible permutations will
+      // be matched. For example, when both the input ops to the commutative op
+      // are same, we cannot anticipate which of the permutation is likely to
+      // match unless we look two level down the graphs.
+      std::vector<int> pattern_child_indices(num_children);
+      std::iota(pattern_child_indices.begin(), pattern_child_indices.end(), 0);
+      string op_name = pattern.op;
+      if (IsCommutativeOp(op_name) && num_children == 2) {
+        MutableNodeView* graph_child0_node_view =
+            graph_view_->GetNode(graph_children[0].node_index());
+        if (!IsSame(pattern.children[0].op, graph_child0_node_view->GetOp()) &&
+            IsSame(pattern.children[1].op, graph_child0_node_view->GetOp()))
+          std::swap(pattern_child_indices[0], pattern_child_indices[1]);
+      }
+      for (int i = 0; i < num_children; ++i) {
+        auto child_node_index = graph_children[i].node_index();
         // TODO (mdfaijul): Is it guaranted that GetNode will reuturn non null
         // pointer.
         MutableNodeView* child_node_view =
             graph_view_->GetNode(child_node_index);
-        const OpTypePattern& child_pattern = pattern.children[i];
+        const OpTypePattern& child_pattern =
+            pattern.children[pattern_child_indices[i]];
         match->children.push_back(NodeViewMatch());
         NodeViewMatch* child_match = &(match->children.back());
         if (!DoesOpTypePatternMatch(child_pattern, child_node_view,
@@ -109,18 +156,20 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::GetMatchedNodes(
   if (DoesOpTypePatternMatch(pattern, node_view, match_.get())) {
     if (!HasRemoveNodeExternalDependents()) {
       found_match = true;
-      matched_nodes_map->swap(this->node_label_to_index_);
-      remove_node_indices->swap(this->remove_node_indices_);
+      *matched_nodes_map = this->node_label_to_index_;
+      *remove_node_indices = this->remove_node_indices_;
     }
   } else {
     found_match = false;
-    // Clear all bookkeeping data
-    match_->Clear();
-    match_.reset(nullptr);
-    node_label_to_index_.clear();
-    matched_node_indices_.clear();
-    remove_node_indices_.clear();
   }
+
+  // Clear all bookkeeping data
+  match_->Clear();
+  match_.reset(nullptr);
+  matched_node_indices_.clear();
+  node_label_to_index_.clear();
+  remove_node_indices_.clear();
+
   return found_match;
 }
 

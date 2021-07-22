@@ -33,7 +33,7 @@ public class InterpreterFactory {
    *     model.
    */
   public InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
-    return new Interpreter(modelFile, new Interpreter.Options(options));
+    return new InterpreterImpl(modelFile, new InterpreterImpl.Options(options));
   }
 
   /**
@@ -49,6 +49,6 @@ public class InterpreterFactory {
    *     direct {@code ByteBuffer} of nativeOrder.
    */
   public InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
-    return new Interpreter(byteBuffer, new Interpreter.Options(options));
+    return new InterpreterImpl(byteBuffer, new InterpreterImpl.Options(options));
   }
 }

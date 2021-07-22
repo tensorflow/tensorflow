@@ -200,6 +200,8 @@ enum StatType {
   kBytesAccessed,
   kSelectedGroupIds,
   kSourceInfo,
+  kModelName,
+  kModelVersion,
   // Performance counter related.
   kRawValue,
   kScaledValue,

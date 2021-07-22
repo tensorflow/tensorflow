@@ -23,12 +23,12 @@ limitations under the License.
 namespace tensorflow {
 
 SimplePropagatorState::SimplePropagatorState(
-    const ImmutableExecutorState& immutable_state, int64 step_id, bool vlog)
+    const ImmutableExecutorState& immutable_state, int64_t step_id, bool vlog)
     : SimplePropagatorState(immutable_state, step_id,
                             immutable_state.get_root_frame_info(), vlog) {}
 
 SimplePropagatorState::SimplePropagatorState(
-    const ImmutableExecutorState& immutable_state, int64 step_id,
+    const ImmutableExecutorState& immutable_state, int64_t step_id,
     const ImmutableExecutorState::FrameInfo& finfo, bool vlog)
     : immutable_state_(immutable_state),
       step_id_(step_id),

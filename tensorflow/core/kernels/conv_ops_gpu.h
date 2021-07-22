@@ -144,23 +144,6 @@ class ConvParameters {
         device_id_);
   }
 
-  // The purpose of this function is to disable winograd nonfused conv algorithm
-  // for certain input parameters so as to avoid a bug in cuDNNv5 and cuDNNv6.
-  template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgo(
-      se::StreamExecutor* stream_exec) const {
-    auto* dnn_support = stream_exec->AsDnn();
-    if (!dnn_support) {
-      return false;
-    }
-    // Skip this check for cuDNN 7 and newer.
-    auto version = dnn_support->GetVersion();
-    if (version.ok() && version.ValueOrDie().major_version() >= 7) {
-      return true;
-    }
-    return ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
-  }
-
  protected:
   using ParameterDataType =
       std::tuple<int64, int64, SpatialArray, TensorFormat, int64, SpatialArray,
@@ -175,24 +158,9 @@ class ConvParameters {
   uint64 hash_code_;
 
  private:
-  friend struct ConvParametersPeer;  // For testing purposes.
-
   static const SpatialArray& CheckSpatialArraySize(const SpatialArray& array) {
     CHECK_LE(array.size(), 3);  // Catch corruptions related to b/124313574.
     return array;
-  }
-
-  template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() const {
-    int64 total_size = 16 * std::ceil(batch_ / 16.0) *
-                       std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
-                       sizeof(T);
-    int64 threshold = 1LL << 31;
-    if (total_size >= threshold) {
-      return false;
-    } else {
-      return true;
-    }
   }
 
   int64 batch_;

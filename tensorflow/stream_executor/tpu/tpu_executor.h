@@ -66,7 +66,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   Status Init(int device_ordinal,
               ::stream_executor::DeviceOptions device_options) override;
 
-  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
+  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override;
 
   Status AllocateEvent(Event* event) override;
 
@@ -171,8 +171,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   // to TpuExecutorInterface.
   StatusOr<std::unique_ptr<
       tensorflow::tpu::TpuExecutorInterface::TemporaryDeviceMemory>>
-  CreateTemporaryDeviceMemory(int64 memory_space, int64 byte_offset,
-                              int64 size) override {
+  CreateTemporaryDeviceMemory(int64_t memory_space, int64_t byte_offset,
+                              int64_t size) override {
     LOG(FATAL) << "Unimplemented.";
   }
 

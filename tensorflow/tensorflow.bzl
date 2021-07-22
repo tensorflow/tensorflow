@@ -378,7 +378,7 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DENABLE_MKL", "-DENABLE_ONEDNN_OPENMP"]) +
+        if_mkldnn_aarch64_acl(["-DENABLE_MKL", "-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
@@ -3014,3 +3014,10 @@ tf_gen_options_header = rule(
         dependencies (if 'F' is undefined, '#if F()' results in an error).
     """,
 )
+
+# These flags are used selectively to disable benign ptxas warnings for some
+# build targets.  On clang "-Xcuda-ptxas --disable-warnings" is sufficient, but
+# that does not work on some versions of GCC.  So for now this is empty in the
+# open source build.
+def tf_disable_ptxas_warning_flags():
+    return []

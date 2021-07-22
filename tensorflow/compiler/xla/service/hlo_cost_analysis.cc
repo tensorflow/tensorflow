@@ -741,7 +741,15 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
+Status HloCostAnalysis::HandleAllGather(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAllGatherStart(const HloInstruction* hlo) {
+  return HandleAllGather(hlo);
+}
+
+Status HloCostAnalysis::HandleAllGatherDone(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow//compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -43,7 +42,6 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerXlaPasses();
   mlir::mhlo::registerLegalizeTfPasses();
   mlir::tf_test::registerTensorFlowTestPasses();
-  mlir::registerAllTransformPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

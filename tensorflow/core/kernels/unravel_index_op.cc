@@ -53,6 +53,14 @@ class UnravelIndexOp : public OpKernel {
                                 dims_tensor.shape().DebugString(), "\""));
 
     auto dims = dims_tensor.vec<Tidx>();
+    // Make sure dims does not contain a zero
+    for (int i = 0; i < dims.size(); i++) {
+      OP_REQUIRES(
+          ctx, dims(i) != 0,
+          errors::InvalidArgument("Input dims cannot contain a dim of zero, "
+                                  "but dims contains zero at index ",
+                                  i));
+    }
 
     // Chek to make sure indices is not out of boundary
     Eigen::Tensor<Tidx, 0, Eigen::RowMajor> dims_prod_eigen = dims.prod();

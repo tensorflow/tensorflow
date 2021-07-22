@@ -30,10 +30,10 @@ namespace tensorflow {
 // The InfeedEnqueue op is used to deliver data to the device infeed queue.
 class TpuInfeedEnqueueOp : public TpuTransferAsyncOpKernel {
  public:
-  explicit TpuInfeedEnqueueOp(OpKernelConstruction* ctx);
-  Status DoWork(OpKernelContext* ctx,
-                xla::TpuTransferManagerInterface* transfer_manager,
-                stream_executor::StreamExecutor* stream_executor) override;
+  explicit TpuInfeedEnqueueOp(
+      OpKernelConstruction* ctx,
+      std::unique_ptr<TpuTransferOpInterface> transfer_op);
+  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   TensorShape shape_;
@@ -49,10 +49,10 @@ class TpuInfeedEnqueueOp : public TpuTransferAsyncOpKernel {
 // the device infeed queue as an XLA tuple.
 class TpuInfeedEnqueueTupleOp : public TpuTransferAsyncOpKernel {
  public:
-  explicit TpuInfeedEnqueueTupleOp(OpKernelConstruction* ctx);
-  Status DoWork(OpKernelContext* ctx,
-                xla::TpuTransferManagerInterface* transfer_manager,
-                stream_executor::StreamExecutor* stream_executor) override;
+  explicit TpuInfeedEnqueueTupleOp(
+      OpKernelConstruction* ctx,
+      std::unique_ptr<TpuTransferOpInterface> transfer_op);
+  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
   std::vector<TensorShape> shapes_;
@@ -64,6 +64,23 @@ class TpuInfeedEnqueueTupleOp : public TpuTransferAsyncOpKernel {
   TpuInfeedEnqueueTupleOp& operator=(const TpuInfeedEnqueueTupleOp&) = delete;
 };
 
+// The InfeedEnqueuePrelinearizedBufferOp op is used to transfer prelinearized
+// buffers to the device infeed queue.
+class InfeedEnqueuePrelinearizedBufferOp : public TpuTransferAsyncOpKernel {
+ public:
+  explicit InfeedEnqueuePrelinearizedBufferOp(
+      OpKernelConstruction* ctx,
+      std::unique_ptr<TpuTransferOpInterface> transfer_op);
+
+  Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
+
+ private:
+  // InfeedEnqueuePrelinearizedBufferOp is neither copyable nor movable.
+  InfeedEnqueuePrelinearizedBufferOp(
+      const InfeedEnqueuePrelinearizedBufferOp&) = delete;
+  InfeedEnqueuePrelinearizedBufferOp& operator=(
+      const InfeedEnqueuePrelinearizedBufferOp&) = delete;
+};
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_INFEED_OPS_H_

@@ -53,9 +53,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-constexpr int64 XlaCompilationCache::kDefaultCompilationThreshold;
-constexpr int64 XlaCompilationCache::AsyncCompilationState::kNumCompilerThreads;
-constexpr int64
+constexpr int64_t XlaCompilationCache::kDefaultCompilationThreshold;
+constexpr int64_t
+    XlaCompilationCache::AsyncCompilationState::kNumCompilerThreads;
+constexpr int64_t
     XlaCompilationCache::AsyncCompilationState::kMaxNumOngoingCompilations;
 
 XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
@@ -215,9 +216,10 @@ Status XlaCompilationCache::Compile(
                      out_compilation_result, out_executable);
 }
 
-static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
-  const int64 kCompileThreshold = 10;
-  const int64 kMinExecutionsPerCompile = 50;
+static bool ShouldBeMegamorphic(int64_t compile_count,
+                                int64_t execution_count) {
+  const int64_t kCompileThreshold = 10;
+  const int64_t kMinExecutionsPerCompile = 50;
 
   // This heuristic is trying to capture the following property: have we sunk a
   // certain minimum amount of compile time into the cluster that didn't quite
@@ -240,7 +242,7 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
 
   // Create dummy _Arg nodes. Link these to `node` and also via a control
   // dependency edge to the _SOURCE node.
-  for (int64 i = 0, end = args.size(); i < end; ++i) {
+  for (int64_t i = 0, end = args.size(); i < end; ++i) {
     Node* node;
     string arg_name = absl::StrCat("_arg", i);
     Status status =
@@ -256,7 +258,7 @@ StatusOr<std::unique_ptr<Graph>> CreateGraph(
   }
 
   // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64 i = 0, end = result_types.size(); i < end; ++i) {
+  for (int64_t i = 0, end = result_types.size(); i < end; ++i) {
     Node* node;
     string retval_name = absl::StrCat("_retval", i);
     Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
@@ -552,7 +554,7 @@ Status XlaCompilationCache::CompileImpl(
   // TODO(phawkins): this locking will need to be restructured when we implement
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
-  int64 current_request_count = ++entry->request_count;
+  int64_t current_request_count = ++entry->request_count;
   VLOG(2) << "Compilation cache entry hit: "
           << static_cast<int>(entry->compile_state)
           << " signature: " << human_signature << " with request count "

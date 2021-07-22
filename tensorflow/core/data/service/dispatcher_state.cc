@@ -26,11 +26,18 @@ limitations under the License.
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
 
-DispatcherState::DispatcherState() {}
+DispatcherState::DispatcherState()
+    : worker_index_resolver_(std::vector<std::string>{}) {}
+
+DispatcherState::DispatcherState(
+    const experimental::DispatcherConfig& dispatcher_config)
+    : worker_index_resolver_(dispatcher_config.worker_addresses()) {}
 
 Status DispatcherState::Apply(const Update& update) {
   switch (update.update_type_case()) {
@@ -70,6 +77,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kFinishTask:
       FinishTask(update.finish_task());
       break;
+    case Update::kSetElementSpec:
+      SetElementSpec(update.set_element_spec());
+      break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
   }
@@ -97,6 +107,7 @@ void DispatcherState::RegisterWorker(
       std::make_shared<Worker>(address, register_worker.transfer_address());
   tasks_by_worker_[address] =
       absl::flat_hash_map<int64, std::shared_ptr<Task>>();
+  worker_index_resolver_.AddWorker(address);
 }
 
 void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
@@ -111,10 +122,9 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
       CreateJobUpdate::kNumConsumers) {
     num_consumers = create_job.num_consumers();
   }
-  auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
-                                   ProcessingMode(create_job.processing_mode()),
-                                   create_job.num_split_providers(),
-                                   named_job_key, num_consumers);
+  auto job = std::make_shared<Job>(
+      job_id, create_job.dataset_id(), create_job.processing_mode_def(),
+      create_job.num_split_providers(), named_job_key, num_consumers);
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -259,6 +269,24 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   jobs_[task->job->job_id]->finished = all_finished;
 }
 
+void DispatcherState::SetElementSpec(
+    const SetElementSpecUpdate& set_element_spec) {
+  int64 dataset_id = set_element_spec.dataset_id();
+  std::string element_spec = set_element_spec.element_spec();
+  DCHECK(!id_element_spec_info_.contains(dataset_id));
+  id_element_spec_info_[dataset_id] = element_spec;
+}
+
+Status DispatcherState::GetElementSpec(int64 dataset_id,
+                                       std::string& element_spec) const {
+  auto it = id_element_spec_info_.find(dataset_id);
+  if (it == id_element_spec_info_.end()) {
+    return errors::NotFound("Element_spec with key ", dataset_id, " not found");
+  }
+  element_spec = it->second;
+  return Status::OK();
+}
+
 int64 DispatcherState::NextAvailableDatasetId() const {
   return next_available_dataset_id_;
 }
@@ -394,6 +422,15 @@ Status DispatcherState::TasksForWorker(
 
 int64 DispatcherState::NextAvailableTaskId() const {
   return next_available_task_id_;
+}
+
+Status DispatcherState::ValidateWorker(absl::string_view worker_address) const {
+  return worker_index_resolver_.ValidateWorker(worker_address);
+}
+
+StatusOr<int64> DispatcherState::GetWorkerIndex(
+    absl::string_view worker_address) const {
+  return worker_index_resolver_.GetWorkerIndex(worker_address);
 }
 
 }  // namespace data

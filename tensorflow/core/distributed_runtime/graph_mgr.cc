@@ -125,7 +125,7 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 Status GraphMgr::InitItem(
     const string& handle, const GraphDef& gdef, WorkerSession* session,
     const GraphOptions& graph_options, const DebugOptions& debug_options,
-    const ConfigProto& config_proto, int64 collective_graph_key,
+    const ConfigProto& config_proto, int64_t collective_graph_key,
     DistributedFunctionLibraryRuntime* cluster_flr, Item* item) {
   item->session = handle;
   item->collective_graph_key = collective_graph_key;
@@ -295,7 +295,7 @@ Status GraphMgr::InitItem(
 Status GraphMgr::Register(
     const string& handle, const GraphDef& gdef, WorkerSession* session,
     const GraphOptions& graph_options, const DebugOptions& debug_options,
-    const ConfigProto& config_proto, int64 collective_graph_key,
+    const ConfigProto& config_proto, int64_t collective_graph_key,
     DistributedFunctionLibraryRuntime* cluster_flr, string* graph_handle) {
   Item* item = new Item;
   Status s = InitItem(handle, gdef, session, graph_options, debug_options,
@@ -509,10 +509,10 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 }
 
 void GraphMgr::StartParallelExecutors(
-    const string& handle, int64 step_id, Item* item, Rendezvous* rendezvous,
+    const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
     CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
     CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-    WorkerSession* session, int64 start_time_usecs, StatusCallback done) {
+    WorkerSession* session, int64_t start_time_usecs, StatusCallback done) {
   const int num_units = item->units.size();
   CHECK_GE(num_units, 1);
   ScopedStepContainer* step_container = new ScopedStepContainer(

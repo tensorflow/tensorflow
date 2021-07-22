@@ -27,10 +27,7 @@ DEFINE_BINARY3(xlogy, Eigen::half, float, double);
 #endif
 #endif
 
-// TODO(ROCm): enable complex64 / complex128 after compiler fix.
-#if GOOGLE_CUDA
 DEFINE_BINARY2(xlogy, complex64, complex128);
-#endif
 
 }  // namespace functor
 }  // namespace tensorflow

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -32,6 +34,11 @@ namespace {
 bool IsNotInsideTfEntryFunction(Operation* op) {
   auto func = op->getParentOfType<FuncOp>();
   return !func->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName);
+}
+
+template <typename OpTy>
+bool HasInitializedOpKernelContextOperand(OpTy op) {
+  return op.ctx() != nullptr;
 }
 
 // The pass rewrites the function marked with `tf_entry` attribute.
@@ -66,6 +73,10 @@ class EmbedTFFrameworkPass
     });
     target.addDynamicallyLegalOp<AssertOp, memref::AllocOp, memref::DeallocOp>(
         IsNotInsideTfEntryFunction);
+    target.addDynamicallyLegalOp<JITExecuteOp>(
+        &HasInitializedOpKernelContextOperand<JITExecuteOp>);
+    target.addDynamicallyLegalOp<JITCompileFromStrOp>(
+        &HasInitializedOpKernelContextOperand<JITCompileFromStrOp>);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();

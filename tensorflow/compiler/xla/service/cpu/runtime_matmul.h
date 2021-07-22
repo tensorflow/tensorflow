@@ -30,39 +30,41 @@ extern "C" {
 // rhs is k x n, and out is m x n.
 extern void __xla_cpu_runtime_EigenMatMulF16(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    Eigen::half* out, Eigen::half* lhs, Eigen::half* rhs, tensorflow::int64 m,
-    tensorflow::int64 n, tensorflow::int64 k, tensorflow::int32 transpose_lhs,
+    Eigen::half* out, Eigen::half* lhs, Eigen::half* rhs, int64_t m, int64_t n,
+    int64_t k, tensorflow::int32 transpose_lhs,
     tensorflow::int32 transpose_rhs);
 
 extern void __xla_cpu_runtime_EigenMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
-    float* lhs, float* rhs, tensorflow::int64 m, tensorflow::int64 n,
-    tensorflow::int64 k, tensorflow::int32 transpose_lhs,
-    tensorflow::int32 transpose_rhs);
+    float* lhs, float* rhs, int64_t m, int64_t n, int64_t k,
+    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs);
 
 extern void __xla_cpu_runtime_EigenMatMulF64(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, double* out,
-    double* lhs, double* rhs, tensorflow::int64 m, tensorflow::int64 n,
-    tensorflow::int64 k, tensorflow::int32 transpose_lhs,
-    tensorflow::int32 transpose_rhs);
+    double* lhs, double* rhs, int64_t m, int64_t n, int64_t k,
+    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs);
 
-extern void __xla_cpu_runtime_EigenMatMulC64(
-    const void* run_options_ptr, std::complex<float>* out,
-    std::complex<float>* lhs, std::complex<float>* rhs, tensorflow::int64 m,
-    tensorflow::int64 n, tensorflow::int64 k, tensorflow::int32 transpose_lhs,
-    tensorflow::int32 transpose_rhs);
+extern void __xla_cpu_runtime_EigenMatMulC64(const void* run_options_ptr,
+                                             std::complex<float>* out,
+                                             std::complex<float>* lhs,
+                                             std::complex<float>* rhs,
+                                             int64_t m, int64_t n, int64_t k,
+                                             tensorflow::int32 transpose_lhs,
+                                             tensorflow::int32 transpose_rhs);
 
-extern void __xla_cpu_runtime_EigenMatMulC128(
-    const void* run_options_ptr, std::complex<double>* out,
-    std::complex<double>* lhs, std::complex<double>* rhs, tensorflow::int64 m,
-    tensorflow::int64 n, tensorflow::int64 k, tensorflow::int32 transpose_lhs,
-    tensorflow::int32 transpose_rhs);
+extern void __xla_cpu_runtime_EigenMatMulC128(const void* run_options_ptr,
+                                              std::complex<double>* out,
+                                              std::complex<double>* lhs,
+                                              std::complex<double>* rhs,
+                                              int64_t m, int64_t n, int64_t k,
+                                              tensorflow::int32 transpose_lhs,
+                                              tensorflow::int32 transpose_rhs);
 
 extern void __xla_cpu_runtime_EigenMatMulS32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
     tensorflow::int32* out, tensorflow::int32* lhs, tensorflow::int32* rhs,
-    tensorflow::int64 m, tensorflow::int64 n, tensorflow::int64 k,
-    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs);
+    int64_t m, int64_t n, int64_t k, tensorflow::int32 transpose_lhs,
+    tensorflow::int32 transpose_rhs);
 
 }  // extern "C"
 

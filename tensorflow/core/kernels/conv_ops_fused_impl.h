@@ -368,7 +368,8 @@ Status FindBestConvolveAlgorithm(
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& bias_desc,
     const se::dnn::BatchDescriptor& output_desc,
-    const se::dnn::ConvolutionDescriptor& conv_desc, double conv_input_scale,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    const se::dnn::ActivationMode activation_mode, double conv_input_scale,
     double side_input_scale, const ConvLaunch launch, OpKernelContext* context,
     se::Stream* stream, se::DeviceMemory<T> output_ptr, const LogFunc& log,
     se::dnn::AlgorithmConfig* algorithm_config) {
@@ -388,7 +389,7 @@ Status FindBestConvolveAlgorithm(
                  se::dnn::ConvolutionKind::FORWARD,
                  se::dnn::ToDataType<T>::value, conv_input_scale,
                  side_input_scale, stream, input_desc, filter_desc, bias_desc,
-                 output_desc, conv_desc, &plans)
+                 output_desc, conv_desc, activation_mode, &plans)
              .ok()) {
       return errors::Unknown(
           "Failed to get convolution plans. This is probably because cuDNN "
@@ -401,9 +402,7 @@ Status FindBestConvolveAlgorithm(
           plan->getWorkspaceSize()));
     }
   } else {
-    if (!stream->parent()->GetConvolveAlgorithms(
-            params.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
-            &algorithms)) {
+    if (!stream->parent()->GetConvolveAlgorithms(&algorithms)) {
       return errors::Unknown(
           "Failed to get convolution algorithm. This is probably because cuDNN "
           "failed to initialize, so try looking to see if a warning log "
@@ -753,8 +752,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     if (cudnn_use_autotune) {
       auto status = FindBestConvolveAlgorithm<T>(
           conv_parameters, input_desc, filter_desc, bias_desc, output_desc,
-          conv_desc, kConvInputScale, kSideInputScale, launch, context, stream,
-          output_ptr,
+          conv_desc, dnn_activation_mode, kConvInputScale, kSideInputScale,
+          launch, context, stream, output_ptr,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
             LogFusedConvForwardAutotuneResults(
                 se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,

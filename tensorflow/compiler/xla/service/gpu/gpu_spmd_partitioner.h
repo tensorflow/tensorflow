@@ -28,7 +28,7 @@ namespace gpu {
 class GpuSpmdPartitioningVisitor : public spmd::SpmdPartitioningVisitor {
  public:
   GpuSpmdPartitioningVisitor(
-      HloComputation* computation, int64 num_partitions, int64 num_replicas,
+      HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
       int64* next_channel_id, spmd::SpmdLogger* logger,
       spmd::SpmdPartitionerOptions options, spmd::SpmdPartitioner* partitioner)
@@ -41,13 +41,13 @@ class GpuSpmdPartitioningVisitor : public spmd::SpmdPartitioningVisitor {
 
 class GpuSpmdPartitioner : public spmd::SpmdPartitioner {
  public:
-  GpuSpmdPartitioner(int64 num_partitions, int64 num_replicas)
+  GpuSpmdPartitioner(int64_t num_partitions, int64_t num_replicas)
       : spmd::SpmdPartitioner(num_partitions, num_replicas,
                               GetSpmdPartitionerOptions()) {}
 
  protected:
   std::unique_ptr<spmd::SpmdPartitioningVisitor> CreateVisitor(
-      HloComputation* computation, int64 num_partitions, int64 num_replicas,
+      HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
       int64* next_channel_id, spmd::SpmdLogger* logger,
       spmd::SpmdPartitionerOptions options) override;

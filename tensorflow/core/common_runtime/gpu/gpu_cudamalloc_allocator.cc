@@ -49,6 +49,8 @@ void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
                << "\n Error string: " << error_string;
     return nullptr;
   }
+  VLOG(10) << "AllocateRaw " << Name() << "  " << num_bytes << " "
+           << reinterpret_cast<void*>(rv);
   return reinterpret_cast<void*>(rv);
 #else
   return nullptr;
@@ -74,6 +76,7 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
                << "\n Error name: " << error_name
                << "\n Error string: " << error_string;
   }
+  VLOG(10) << Name() << " Freed ptr: " << ptr;
 #endif  // GOOGLE_CUDA
 }
 

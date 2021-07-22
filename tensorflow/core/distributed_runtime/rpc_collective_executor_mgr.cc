@@ -47,7 +47,7 @@ RpcCollectiveExecutorMgr::~RpcCollectiveExecutorMgr() {
   }
 }
 
-CollectiveExecutor* RpcCollectiveExecutorMgr::Create(int64 step_id) {
+CollectiveExecutor* RpcCollectiveExecutorMgr::Create(int64_t step_id) {
   CollectiveRemoteAccessDistributed* rma =
       new CollectiveRemoteAccessDistributed(dev_mgr_, dev_resolver_.get(),
                                             work_queue_, worker_cache_, step_id,
@@ -60,7 +60,7 @@ namespace {
 static const int64 kStepIdMask = (((1uLL << 56) - 1) | (1uLL << 56));
 
 int64 NewRandomStepId() {
-  int64 step_id = random::New64();
+  int64_t step_id = random::New64();
   // Leave MS 8 bits clear for future use.
   step_id &= kStepIdMask;
   return step_id;
@@ -68,7 +68,7 @@ int64 NewRandomStepId() {
 }  // namespace
 
 void RpcCollectiveExecutorMgr::RefreshStepIdSequenceAsync(
-    int64 graph_key, const StatusCallback& done) {
+    int64_t graph_key, const StatusCallback& done) {
   if (group_leader_.empty()) {
     mutex_lock l(sequence_mu_);
     GraphKeySequence* gks = nullptr;
@@ -110,7 +110,7 @@ void RpcCollectiveExecutorMgr::GetStepSequenceAsync(
     done(errors::Internal("GetStepSequenceAsync called at non-group-leader"));
   } else {
     mutex_lock l(sequence_mu_);
-    for (int64 graph_key : request->graph_key()) {
+    for (int64_t graph_key : request->graph_key()) {
       auto it = sequence_table_.find(graph_key);
       GraphKeySequence* gks = nullptr;
       if (it == sequence_table_.end()) {
@@ -145,7 +145,7 @@ Status RpcCollectiveExecutorMgr::UpdateStepSequences(
   return Status::OK();
 }
 
-int64 RpcCollectiveExecutorMgr::NextStepId(int64 graph_key) {
+int64 RpcCollectiveExecutorMgr::NextStepId(int64_t graph_key) {
   mutex_lock l(sequence_mu_);
   auto it = sequence_table_.find(graph_key);
   if (it != sequence_table_.end()) {
@@ -154,7 +154,8 @@ int64 RpcCollectiveExecutorMgr::NextStepId(int64 graph_key) {
   return CollectiveExecutor::kInvalidId;
 }
 
-void RpcCollectiveExecutorMgr::RetireStepId(int64 graph_key, int64 step_id) {
+void RpcCollectiveExecutorMgr::RetireStepId(int64_t graph_key,
+                                            int64_t step_id) {
   mutex_lock l(sequence_mu_);
   auto it = sequence_table_.find(graph_key);
   if (it != sequence_table_.end()) {

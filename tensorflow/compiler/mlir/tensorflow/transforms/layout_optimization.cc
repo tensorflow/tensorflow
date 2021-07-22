@@ -75,6 +75,10 @@ class LayoutAssignmentPass
 
   LayoutAssignmentPass(const LayoutAssignmentPass& pass) {}
 
+  StringRef getArgument() const final { return "tf-layout-assignment"; }
+
+  StringRef getDescription() const final { return "Layout assignment pass"; }
+
   void runOnFunction() final;
 
  private:
@@ -98,6 +102,9 @@ class MoveTransposesPass
     fold_transpose_in_ops_ = fold_transpose_in_ops;
   }
   MoveTransposesPass(const MoveTransposesPass& pass) {}
+
+  StringRef getArgument() const final { return "tf-move-transposes"; }
+  StringRef getDescription() const final { return "Move transposes pass"; }
 
   void runOnFunction() final;
 
@@ -502,10 +509,8 @@ void CreateLayoutOptimizationPipeline(
       Direction::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
-static PassRegistration<LayoutAssignmentPass> layout_assignment(
-    "tf-layout-assignment", "Layout assignment pass");
-static PassRegistration<MoveTransposesPass> move_transposes(
-    "tf-move-transposes", "Move transposes pass");
+static PassRegistration<LayoutAssignmentPass> layout_assignment;
+static PassRegistration<MoveTransposesPass> move_transposes;
 
 static mlir::PassPipelineRegistration<LayoutOptimizationPipelineOptions>
     pipeline("tf-layout-optimization",

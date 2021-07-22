@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -125,11 +126,16 @@ Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::RegisterDataset(const DatasetDef& dataset,
-                                                    int64& dataset_id) {
+Status DataServiceDispatcherClient::RegisterDataset(
+    const DatasetDef& dataset, const absl::optional<std::string>& element_spec,
+    int64& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
+  if (element_spec.has_value()) {
+    req.set_element_spec(element_spec.value());
+  }
+
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
   grpc::Status status = stub_->GetOrRegisterDataset(&client_ctx, req, &resp);
@@ -141,13 +147,13 @@ Status DataServiceDispatcherClient::RegisterDataset(const DatasetDef& dataset,
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
-    int64 dataset_id, ProcessingMode processing_mode,
+    int64 dataset_id, const ProcessingModeDef& processing_mode,
     const absl::optional<JobKey>& job_key, absl::optional<int64> num_consumers,
     int64& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
-  req.set_processing_mode(ProcessingModeDef(processing_mode));
+  *req.mutable_processing_mode_def() = processing_mode;
   if (job_key.has_value()) {
     *req.mutable_job_key() = job_key.value();
   }
@@ -226,6 +232,22 @@ Status DataServiceDispatcherClient::GetWorkers(
   for (auto& worker : resp.workers()) {
     workers.push_back(worker);
   }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetElementSpec(int64 dataset_id,
+                                                   std::string& element_spec) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+
+  GetElementSpecRequest req;
+  req.set_dataset_id(dataset_id);
+  GetElementSpecResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status s = stub_->GetElementSpec(&ctx, req, &resp);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get element_spec", s);
+  }
+  element_spec = resp.element_spec();
   return Status::OK();
 }
 

@@ -20,39 +20,30 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
 
 namespace {
-constexpr const char kParallelEpochs[] = "parallel_epochs";
-constexpr const char kDistributedEpoch[] = "distributed_epoch";
 constexpr const char kAuto[] = "AUTO";
 constexpr const char kAny[] = "ANY";
 constexpr const char kLocal[] = "LOCAL";
 }  // namespace
 
-Status ParseProcessingMode(const std::string& s, ProcessingMode& mode) {
-  if (s == kParallelEpochs) {
-    mode = ProcessingMode::PARALLEL_EPOCHS;
-  } else if (s == kDistributedEpoch) {
-    mode = ProcessingMode::DISTRIBUTED_EPOCH;
-  } else {
-    return errors::InvalidArgument("Unrecognized processing mode: ", s);
-  }
-  return Status::OK();
+bool IsNoShard(const ProcessingModeDef& processing_mode) {
+  return processing_mode.sharding_policy() == ProcessingModeDef::OFF;
 }
 
-std::string ProcessingModeToString(ProcessingMode mode) {
-  switch (mode) {
-    case ProcessingMode::PARALLEL_EPOCHS:
-      return kParallelEpochs;
-    case ProcessingMode::DISTRIBUTED_EPOCH:
-      return kDistributedEpoch;
-    default:
-      DCHECK(false);
-      return "Unknown";
-  }
+bool IsDynamicShard(const ProcessingModeDef& processing_mode) {
+  return processing_mode.sharding_policy() == ProcessingModeDef::DYNAMIC;
+}
+
+bool IsStaticShard(const ProcessingModeDef& processing_mode) {
+  return processing_mode.sharding_policy() == ProcessingModeDef::FILE ||
+         processing_mode.sharding_policy() == ProcessingModeDef::DATA ||
+         processing_mode.sharding_policy() == ProcessingModeDef::FILE_OR_DATA ||
+         processing_mode.sharding_policy() == ProcessingModeDef::HINT;
 }
 
 StatusOr<TargetWorkers> ParseTargetWorkers(absl::string_view s) {

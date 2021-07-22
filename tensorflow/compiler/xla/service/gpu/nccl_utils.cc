@@ -47,6 +47,8 @@ ncclRedOp_t ToNcclReduction(ReductionKind kind) {
   }
 }
 
+namespace {
+
 StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
   switch (element_type) {
     case S8:
@@ -65,8 +67,10 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
     case F16:
       return ncclFloat16;
     case F32:
+    case C64:
       return ncclFloat32;
     case F64:
+    case C128:
       return ncclFloat64;
 #if defined(__CUDA_BF16_TYPES_EXIST__)
     case BF16:
@@ -76,6 +80,15 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type) {
       return tensorflow::errors::InvalidArgument(absl::StrFormat(
           "Unsupported data type: %s", PrimitiveType_Name(element_type)));
   }
+}
+
+}  // namespace
+
+StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+    PrimitiveType element_type) {
+  TF_ASSIGN_OR_RETURN(ncclDataType_t dtype, ToNcclDataType(element_type));
+  bool is_complex = primitive_util::IsComplexType(element_type);
+  return std::make_pair(dtype, is_complex ? 2 : 1);
 }
 
 bool IsGlobalNcclConfig() {
@@ -89,7 +102,7 @@ bool IsNcclLaunchModeParallel() {
   return is_launch_mode_parallel;
 }
 
-Status ToStatus(ncclResult_t s, const char* file, int64 line,
+Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {
     return Status::OK();
@@ -99,7 +112,8 @@ Status ToStatus(ncclResult_t s, const char* file, int64 line,
                       ncclGetErrorString(s)));
 }
 
-Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr) {
+Status ToStatus(cudaError_t s, const char* file, int64_t line,
+                const char* expr) {
   if (s == cudaSuccess) {
     return Status::OK();
   }
@@ -222,7 +236,7 @@ struct NcclCliqueParticipantData : public ParticipantData {
   // For running in StreamExecutor. To be deprecated after transitioning to
   // TFRT.
   NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
-                            int64 device_ordinal, se::Stream* stream)
+                            int64_t device_ordinal, se::Stream* stream)
       : ParticipantData(rendezvous_key),
         device_ordinal(device_ordinal),
         stream(stream) {}

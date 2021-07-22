@@ -413,7 +413,7 @@ static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
 static TF_Tensor* EmptyTensor(TF_DataType dtype,
                               const tensorflow::TensorShape& shape) {
   static char empty;
-  tensorflow::int64 nelems = 1;
+  int64_t nelems = 1;
   std::vector<tensorflow::int64> dims;
   for (int i = 0; i < shape.dims(); ++i) {
     dims.push_back(shape.dim_size(i));
@@ -782,7 +782,7 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Output output, int64_t* dims,
   // -1 for unknown values.
   for (int i = 0; i < num_dims; ++i) {
     auto dim = ic->Dim(shape, i);
-    tensorflow::int64 value = -1;
+    int64_t value = -1;
     if (ic->ValueKnown(dim)) {
       value = ic->Value(dim);
     }
@@ -794,9 +794,9 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Output output, int64_t* dims,
 
 extern "C" {
 
-static TF_OperationDescription* TF_NewOperationLocked(TF_Graph* graph,
-                                                      const char* op_type,
-                                                      const char* oper_name)
+TF_OperationDescription* TF_NewOperationLocked(TF_Graph* graph,
+                                               const char* op_type,
+                                               const char* oper_name)
     TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
   return new TF_OperationDescription(graph, op_type, oper_name);
 }
@@ -1053,8 +1053,8 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
   status->status = Status::OK();
 }
 
-static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
-                                              TF_Status* status)
+TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
+                                       TF_Status* status)
     TF_EXCLUSIVE_LOCKS_REQUIRED(desc->graph->mu) {
   Node* ret = nullptr;
 
@@ -1424,7 +1424,7 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
       values[i] = static_cast<c_type>(attr->list().list_field(i));           \
     }                                                                        \
   }
-DEFINE_GETATTR(TF_OperationGetAttrInt, int64_t, tensorflow::int64, i);
+DEFINE_GETATTR(TF_OperationGetAttrInt, int64_t, int64_t, i);
 DEFINE_GETATTR(TF_OperationGetAttrFloat, float, float, f);
 DEFINE_GETATTR(TF_OperationGetAttrBool, unsigned char, bool, b);
 DEFINE_GETATTR(TF_OperationGetAttrType, TF_DataType, DataType, type);

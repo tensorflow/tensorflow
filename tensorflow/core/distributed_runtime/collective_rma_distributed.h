@@ -29,7 +29,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
   CollectiveRemoteAccessDistributed(
       const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
       std::shared_ptr<UnboundedWorkQueue> work_queue,
-      WorkerCacheInterface* worker_cache, int64 step_id, string task_name)
+      WorkerCacheInterface* worker_cache, int64_t step_id, string task_name)
       : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
         worker_cache_(worker_cache),
         work_queue_(std::move(work_queue)),
@@ -46,7 +46,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
                     CancellationManager* cancellation_manager,
                     const StatusCallback& done) override;
 
-  void CheckPeerHealth(const string& peer_task, int64 timeout_in_ms,
+  void CheckPeerHealth(const string& peer_task, int64_t timeout_in_ms,
                        const StatusCallback& done) override;
 
   void StartAbort(const Status& s) override;

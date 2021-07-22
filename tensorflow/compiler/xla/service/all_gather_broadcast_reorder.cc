@@ -127,38 +127,37 @@ StatusOr<bool> AllGatherBroadcastReorder::Run(HloModule *module) {
         //       bc = f32[5, 4, 8, 128] broadcast(x) dimensions={3, 0}
         //       ag = f32[5, 12, 8, 128] all-gather(bc) all_gather_dimension={1}
         // to:
-        //       ag = f32[128*3, 5] all-gather(x) all_gather_dimension={0}
-        //       rs0 = f32[3,128,5] reshape(ag)
-        //       bc = f32[5, 3, 4, 8, 128] broadcast(rs0) dimensions={1, 4, 0}
+        //       rs0 = f32[1, 128, 5] reshape(x)
+        //       ag = f32[3, 128, 5] all-gather(rs0) all_gather_dimension={0}
+        //       bc = f32[5, 3, 4, 8, 128] broadcast(ag) dimensions={1, 4, 0}
         //       rs1 = f32[5, 12, 8, 128] reshape(bc)
 
         VLOG(2) << "All-gather along uniform dimension";
         HloInstruction *x = bcast->mutable_operand(0);
 
+        // Reshape to add a leading '1' dimension.
+        std::vector<int64_t> shape_dims{1};
+        absl::Span<const int64_t> x_dims = x->shape().dimensions();
+        shape_dims.insert(shape_dims.end(), x_dims.begin(), x_dims.end());
+        Shape shape =
+            ShapeUtil::MakeShape(x->shape().element_type(), shape_dims);
+
+        HloInstruction *rs0 = computation->AddInstruction(
+            HloInstruction::CreateReshape(shape, x));
+
         // Number of participants in the all-gather.
         const int64_t ag_factor = ag->shape().dimensions(ag_dim) /
                                   ag->operand(0)->shape().dimensions(ag_dim);
 
-        Shape new_ag_shape = x->shape();
-        new_ag_shape.set_dimensions(0, new_ag_shape.dimensions(0) * ag_factor);
+        shape.set_dimensions(0, ag_factor);
+
         auto *new_ag =
             Cast<HloAllGatherInstruction>(computation->AddInstruction(
-                ag->CloneWithNewOperands(new_ag_shape, {x})));
+                ag->CloneWithNewOperands(shape, {rs0})));
         if (ag->channel_id()) {
           new_ag->set_channel_id(next_channel_id++);
         }
         new_ag->set_all_gather_dimension(0);
-
-        // Reshape all-gather to [ag_factor, shape(x)].
-        std::vector<int64_t> rs0_shape_dims;
-        rs0_shape_dims.push_back(ag_factor);
-        rs0_shape_dims.insert(rs0_shape_dims.end(),
-                              x->shape().dimensions().begin(),
-                              x->shape().dimensions().end());
-        Shape rs0_shape =
-            ShapeUtil::MakeShape(x->shape().element_type(), rs0_shape_dims);
-        HloInstruction *rs0 = computation->AddInstruction(
-            HloInstruction::CreateReshape(rs0_shape, new_ag));
 
         // Now issue a broadcast which matches the existing all-gather shape,
         // except the all-gather dim is split into [ag_factor,
@@ -189,7 +188,7 @@ StatusOr<bool> AllGatherBroadcastReorder::Run(HloModule *module) {
           bcast_dims.push_back(d + (d > ag_dim));
         }
         HloInstruction *bcast = computation->AddInstruction(
-            HloInstruction::CreateBroadcast(bcast_shape, rs0, bcast_dims));
+            HloInstruction::CreateBroadcast(bcast_shape, new_ag, bcast_dims));
 
         // Finally, "flatten" the [ag_factor, ag_dim_size/ag_factor] to just
         // ag_dim_size by issusing a final reshape.

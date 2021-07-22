@@ -28,7 +28,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -536,6 +538,157 @@ class ShardedVariableMixin(trackable.Trackable):
       v.assign_sub(
           array_ops.slice(delta, self._var_offsets[i], v.shape.as_list()))
     return self
+
+  def _decompose_indices(self, indices):
+    """Decompose a global 1D indices into a list of per-variable indices."""
+    if indices.shape.rank != 1:
+      raise ValueError(
+          'ShardedVariable: indices must be 1D Tensor for sparse operations, '
+          'got: %d' % indices.shape.rank)
+
+    base = self._shape[0] // len(self._variables)
+    extra = self._shape[0] % len(self._variables)
+
+    # Assert that sharding conforms to "div" sharding
+    expect_first_dim = [base] * len(self._variables)
+    for i in range(extra):
+      expect_first_dim[i] = expect_first_dim[i] + 1
+    actual_first_dim = [v.shape.as_list()[0] for v in self._variables]
+    if expect_first_dim != actual_first_dim:
+      raise NotImplementedError(
+          'scater_xxx ops are not supported in ShardedVariale that does not '
+          'conform to "div" sharding')
+
+    # For index that falls into the partition that has extra 1, assignment is
+    # `index // (base + 1)` (no less than `(indices - extra) // base`)
+    # For index that falls into the partition that doesn't has extra 1,
+    # assignment is `(indices - extra) // base` (no less than
+    # `indices // (base + 1)`)
+    #
+    # Example:
+    #   base = 10, extra = 2, partitions: [0, 11), [11, 22), [22, 32)
+    #   index = 10 -> partition_assigment = 0
+    #   index = 22 -> partition_assiment = 2
+    partition_assignments = math_ops.maximum(indices // (base + 1),
+                                             (indices - extra) // base)
+    local_indices = array_ops.where(partition_assignments < extra,
+                                    indices % (base + 1),
+                                    (indices - extra) % base)
+    # For whatever reason `dynamic_partition` only supports int32
+    partition_assignments = math_ops.cast(partition_assignments, dtypes.int32)
+    per_var_indices = data_flow_ops.dynamic_partition(local_indices,
+                                                      partition_assignments,
+                                                      len(self._variables))
+
+    return per_var_indices, partition_assignments
+
+  def _decompose_indexed_slices(self, indexed_slices):
+    """Decompose a global `IndexedSlices` into a list of per-variable ones."""
+    per_var_indices, partition_assignments = self._decompose_indices(
+        indexed_slices.indices)
+    per_var_values = data_flow_ops.dynamic_partition(indexed_slices.values,
+                                                     partition_assignments,
+                                                     len(self._variables))
+
+    return [
+        ops.IndexedSlices(values=per_var_values[i], indices=per_var_indices[i])
+        for i in range(len(self._variables))
+    ]
+
+  # ==================== scatter ops implementations ======================== #
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_add."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_add(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_div."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_div(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_max."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_max(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_min."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_min(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_mul."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_mul(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_sub."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_sub(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.scatter_update."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.scatter_update(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Implements tf.Variable.batch_scatter_update."""
+    per_var_sparse_delta = self._decompose_indexed_slices(sparse_delta)
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      v.batch_scatter_update(per_var_sparse_delta[i], name=new_name)
+    return self
+
+  # ================== scatter ops implementations END ====================== #
+
+  def sparse_read(self, indices, name=None):
+    """Implements tf.Variable.sparse_read."""
+    per_var_indices, _ = self._decompose_indices(indices)
+    result = []
+    for i, v in enumerate(self._variables):
+      new_name = None
+      if name is not None:
+        new_name = '{}/part_{}'.format(name, i)
+      result.append(v.sparse_read(per_var_indices[i], name=new_name))
+    return array_ops.concat(result, axis=0)
 
   def _gather_saveables_for_checkpoint(self):
     """Return a `Saveable` for each shard. See `Trackable`."""

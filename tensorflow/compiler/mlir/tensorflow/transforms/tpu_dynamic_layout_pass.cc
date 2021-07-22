@@ -84,6 +84,13 @@ struct TPUDynamicLayoutPass
   void runOnFunction(
       FuncOp func,
       const TF::ResourceAliasAnalysis::Info& resource_alias_analysis);
+
+  StringRef getArgument() const final { return "tf-tpu-dynamic-layout-pass"; }
+
+  StringRef getDescription() const final {
+    return "Adds ops that allow TPU program inputs to have layouts determined "
+           "at JIT compile time.";
+  }
 };
 
 // Checks if the input producer op is supported in this transform. Right now, we
@@ -310,10 +317,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass() {
   return std::make_unique<TPUDynamicLayoutPass>();
 }
 
-static PassRegistration<TPUDynamicLayoutPass> pass(
-    "tf-tpu-dynamic-layout-pass",
-    "Adds ops that allow TPU program inputs to have layouts determined at JIT "
-    "compile time.");
+static PassRegistration<TPUDynamicLayoutPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

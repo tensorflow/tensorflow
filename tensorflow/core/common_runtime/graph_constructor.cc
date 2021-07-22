@@ -1267,7 +1267,7 @@ Status GraphConstructor::Convert() {
   if (processed < node_def_count()) {
     LOG(WARNING) << "IN " << __func__ << " " << (node_def_count() - processed)
                  << " NODES IN A CYCLE";
-    for (int64 i = 0; i < node_def_count(); i++) {
+    for (int64_t i = 0; i < node_def_count(); i++) {
       if (pending_count_[i] != 0) {
         LOG(WARNING) << "PENDING: " << SummarizeNodeDef(get_node_def(i))
                      << " WITH PENDING COUNT = " << pending_count_[i];

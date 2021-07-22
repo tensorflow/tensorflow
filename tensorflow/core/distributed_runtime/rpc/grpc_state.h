@@ -85,8 +85,8 @@ class RPCState : public GrpcClientCQTag {
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
            const ::grpc::string& method, const Request& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
-           thread::ThreadPool* threadpool, bool fail_fast, int64 timeout_in_ms,
-           int32 max_retries, const string* target)
+           thread::ThreadPool* threadpool, bool fail_fast,
+           int64_t timeout_in_ms, int32 max_retries, const string* target)
       : call_opts_(call_opts),
         threadpool_(threadpool),
         done_(std::move(done)),
@@ -166,7 +166,7 @@ class RPCState : public GrpcClientCQTag {
               << " of " << max_retries_;
 
       ComputeRetryBackoffMs(/*min_backoff_ms=*/1, /*max_backoff_ms=*/10000);
-      int64 backoff_us = retry_backoff_ms_ * 1000;
+      int64_t backoff_us = retry_backoff_ms_ * 1000;
       Env::Default()->SchedClosureAfter(/*micros=*/backoff_us,
                                         [this]() { StartCall(); });
     } else {

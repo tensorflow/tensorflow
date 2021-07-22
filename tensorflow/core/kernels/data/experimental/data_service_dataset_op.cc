@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -95,7 +97,7 @@ constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int op_version, int64 dataset_id,
-          ProcessingMode processing_mode, const std::string& address,
+          const ProcessingModeDef& processing_mode, const std::string& address,
           const std::string& protocol,
           const std::string& data_transfer_protocol,
           const std::string& job_name, absl::optional<int64> consumer_index,
@@ -177,7 +179,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     inputs.push_back(dataset_id);
 
     Node* processing_mode;
-    tstring processing_mode_str = ProcessingModeToString(processing_mode_);
+    tstring processing_mode_str = processing_mode_.SerializeAsString();
     TF_RETURN_IF_ERROR(b->AddScalar(processing_mode_str, &processing_mode));
     inputs.push_back(processing_mode);
 
@@ -433,6 +435,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return errors::InvalidArgument(
             "Coordinated reads require non-local workers, but `target_workers` "
             "is `local`.");
+      }
+      if (IsStaticShard(dataset()->processing_mode_) &&
+          dataset()->target_workers_ != TargetWorkers::LOCAL) {
+        return errors::InvalidArgument(
+            "Static sharding requires reading from local workers, but "
+            "`target_workers` is ",
+            TargetWorkersToString(dataset()->target_workers_));
       }
       return Status::OK();
     }
@@ -997,7 +1006,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   const int op_version_;
   const int64 dataset_id_;
-  const ProcessingMode processing_mode_;
+  const ProcessingModeDef processing_mode_;
   const tstring address_;
   const tstring protocol_;
   const tstring data_transfer_protocol_;
@@ -1064,9 +1073,11 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   tstring processing_mode_str;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kProcessingMode, &processing_mode_str));
-  ProcessingMode processing_mode;
-  OP_REQUIRES_OK(ctx,
-                 ParseProcessingMode(processing_mode_str, processing_mode));
+  ProcessingModeDef processing_mode;
+  OP_REQUIRES(ctx, processing_mode.ParseFromString(processing_mode_str),
+              errors::InvalidArgument(absl::Substitute(
+                  "Failed to parse ProcessingModeDef from string: $0",
+                  std::string(processing_mode_str))));
 
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));

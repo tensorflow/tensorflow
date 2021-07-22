@@ -1092,14 +1092,14 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     return Status::OK();
   }
 
-  int64 dimension_val;
+  int64_t dimension_val;
   if (dim_t->dtype() == DT_INT32) {
     dimension_val = dim_t->scalar<int32>()();
   } else {
     dimension_val = dim_t->scalar<int64>()();
   }
 
-  int64 axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
+  int64_t axis = dimension_val < 0 ? dimension_val + input_rank : dimension_val;
   if (axis < 0 || axis >= input_rank) {
     return errors::InvalidArgument(
         "Dimension (", dimension_val, ") must be in the range [", -input_rank,
@@ -1556,7 +1556,7 @@ REGISTER_OP("LinSpace")
         return Status::OK();
       }
 
-      int64 num;
+      int64_t num;
       if (num_t->dtype() == DT_INT32) {
         num = num_t->scalar<int32>()();
       } else {
@@ -1660,7 +1660,7 @@ REGISTER_OP("HistogramFixedWidth")
       // If nbins is available, set the shape from nbins.
       const Tensor* nbins_input = c->input_tensor(2);
       if (nbins_input != nullptr) {
-        int64 nbins;
+        int64_t nbins;
         TF_RETURN_IF_ERROR(c->GetScalarFromTensor(nbins_input, &nbins));
         // nbins has to be positive.
         if (nbins <= 0) {
@@ -1723,7 +1723,7 @@ REGISTER_OP("DenseBincount")
         return Status::OK();
       }
 
-      int64 size_val;
+      int64_t size_val;
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
@@ -1764,7 +1764,7 @@ REGISTER_OP("SparseBincount")
         return Status::OK();
       }
 
-      int64 size_val;
+      int64_t size_val;
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {

@@ -532,13 +532,25 @@ T baseline_invert(T x) {
 GENERATE_DEFAULT_TEST(Invert, DT_INT8, DT_INT8, baseline_invert,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+GENERATE_DEFAULT_TEST(Invert, DT_UINT8, DT_UINT8, baseline_invert,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
 GENERATE_DEFAULT_TEST(Invert, DT_INT16, DT_INT16, baseline_invert,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Invert, DT_UINT16, DT_UINT16, baseline_invert,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST(Invert, DT_INT32, DT_INT32, baseline_invert,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
+GENERATE_DEFAULT_TEST(Invert, DT_UINT32, DT_UINT32, baseline_invert,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
 GENERATE_DEFAULT_TEST(Invert, DT_INT64, DT_INT64, baseline_invert,
+                      test::OpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Invert, DT_UINT64, DT_UINT64, baseline_invert,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.IsFinite`.
@@ -937,6 +949,23 @@ GENERATE_DEFAULT_TEST(Softplus, DT_FLOAT, DT_FLOAT, baseline_softplus,
                       test::OpsTestConfig())
 
 GENERATE_DEFAULT_TEST(Softplus, DT_DOUBLE, DT_DOUBLE, baseline_softplus,
+                      test::OpsTestConfig())
+
+/// Test `tf.Softsign`.
+
+// Reference implementation
+template <typename T>
+T baseline_softsign(T x) {
+  return x / (std::abs(x) + 1);
+}
+
+GENERATE_DEFAULT_TEST_2(Softsign, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_softsign, test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Softsign, DT_FLOAT, DT_FLOAT, baseline_softsign,
+                      test::OpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Softsign, DT_DOUBLE, DT_DOUBLE, baseline_softsign,
                       test::OpsTestConfig())
 
 /// Test `tf.Sqrt`.

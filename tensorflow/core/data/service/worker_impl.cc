@@ -22,9 +22,11 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -223,19 +226,26 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   }
   task = absl::make_unique<Task>(task_def);
   VLOG(3) << "Began processing for task " << task_def.task_id()
-          << " with processing mode " << task_def.processing_mode();
+          << " with processing mode "
+          << task_def.processing_mode_def().DebugString();
   return Status::OK();
 }
 
 Status DataServiceWorkerImpl::EnsureTaskInitialized(
     DataServiceWorkerImpl::Task& task) {
+  if (task.task_def.worker_address() != worker_address_) {
+    return errors::Internal(absl::Substitute(
+        "Dispatcher's worker address $0 does not match worker's address $1.",
+        task.task_def.worker_address(), worker_address_));
+  }
+
   mutex_lock l(task.mu);
   if (task.initialized) {
     return Status::OK();
   }
   TF_ASSIGN_OR_RETURN(DatasetDef dataset_def, GetDatasetDef(task.task_def));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Dataset> dataset,
-                      MakeDataset(dataset_def));
+                      MakeDataset(dataset_def, task.task_def));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<standalone::Iterator> iterator,
                       MakeDatasetIterator(*dataset, task.task_def));
   auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
@@ -271,10 +281,16 @@ StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
 }
 
 StatusOr<std::unique_ptr<standalone::Dataset>>
-DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def) const {
+DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
+                                   const TaskDef& task_def) const {
+  AutoShardRewriter auto_shard_rewriter(task_def);
+  // `ApplyAutoShardRewrite` does nothing if auto-sharding is disabled.
+  TF_ASSIGN_OR_RETURN(
+      GraphDef rewritten_graph,
+      auto_shard_rewriter.ApplyAutoShardRewrite(dataset_def.graph()));
   std::unique_ptr<standalone::Dataset> dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-      standalone::Dataset::Params(), dataset_def.graph(), &dataset));
+      standalone::Dataset::Params(), rewritten_graph, &dataset));
   return dataset;
 }
 
@@ -282,27 +298,27 @@ StatusOr<std::unique_ptr<standalone::Iterator>>
 DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
                                            const TaskDef& task_def) const {
   std::unique_ptr<standalone::Iterator> iterator;
-  switch (task_def.processing_mode()) {
-    case DISTRIBUTED_EPOCH: {
-      std::vector<std::unique_ptr<SplitProvider>> split_providers;
-      split_providers.reserve(task_def.num_split_providers());
-      for (int i = 0; i < task_def.num_split_providers(); ++i) {
-        split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
-            config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
-            i, config_.dispatcher_timeout_ms()));
-      }
-      TF_RETURN_IF_ERROR(
-          dataset.MakeIterator(std::move(split_providers), &iterator));
-      break;
-    }
-    case PARALLEL_EPOCHS:
-      TF_RETURN_IF_ERROR(dataset.MakeIterator(&iterator));
-      break;
-    default:
-      return errors::InvalidArgument("Unrecognized processing mode: ",
-                                     task_def.processing_mode());
+  if (IsNoShard(task_def.processing_mode_def()) ||
+      IsStaticShard(task_def.processing_mode_def())) {
+    TF_RETURN_IF_ERROR(dataset.MakeIterator(&iterator));
+    return iterator;
   }
-  return iterator;
+
+  if (IsDynamicShard(task_def.processing_mode_def())) {
+    std::vector<std::unique_ptr<SplitProvider>> split_providers;
+    split_providers.reserve(task_def.num_split_providers());
+    for (int i = 0; i < task_def.num_split_providers(); ++i) {
+      split_providers.push_back(absl::make_unique<DataServiceSplitProvider>(
+          config_.dispatcher_address(), config_.protocol(), task_def.job_id(),
+          i, config_.dispatcher_timeout_ms()));
+    }
+    TF_RETURN_IF_ERROR(
+        dataset.MakeIterator(std::move(split_providers), &iterator));
+    return iterator;
+  }
+
+  return errors::InvalidArgument("Unrecognized processing mode: ",
+                                 task_def.processing_mode_def().DebugString());
 }
 
 void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {

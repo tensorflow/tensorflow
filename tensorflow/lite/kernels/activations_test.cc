@@ -2512,12 +2512,7 @@ TEST_P(PReluOpTest, PReluInt8SameShapes) {
       -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
       -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
   });
-  m.SetAlpha<int8_t>({
-      0.0f, 0.5f, -0.5f,  // Row 1, Column 1
-      0.0f, 0.5f, -0.5f,  // Row 1, Column 2
-      0.0f, 0.5f, -0.5f,  // Row 2, Column 1
-      0.0f, 0.5f, -0.5f,  // Row 2, Column 2
-  });
+  m.SetAlpha<int8_t>({0.0f, 0.5f, -0.5f});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(

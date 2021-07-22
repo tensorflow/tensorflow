@@ -585,7 +585,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/lite/tools:visualize",
+        "//tensorflow/lite/tools:visualize_lib",
     ],
 )
 
@@ -595,6 +595,7 @@ py_test(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
+        "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     python_version = "PY3",
     deps = [

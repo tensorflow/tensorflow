@@ -167,7 +167,7 @@ class GpuExecutable : public Executable {
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       const BufferAllocation& allocation,
       se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
-      int64 arg_idx);
+      int64_t arg_idx);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because

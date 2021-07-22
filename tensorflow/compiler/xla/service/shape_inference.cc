@@ -2044,6 +2044,31 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return ShapeUtil::MakeTupleShape(output_shapes);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferAllGatherStartShape(
+    absl::Span<const Shape* const> operand_shapes, int64 all_gather_dimension,
+    int64 shard_count) {
+  TF_ASSIGN_OR_RETURN(
+      Shape ag_shape,
+      InferAllGatherShape(operand_shapes, all_gather_dimension, shard_count));
+  Shape input_shape;
+  std::vector<Shape> op_shapes;
+  op_shapes.reserve(operand_shapes.size());
+  for (const Shape* shp : operand_shapes) {
+    op_shapes.push_back(*shp);
+  }
+  if (op_shapes.size() == 1) {
+    input_shape = op_shapes[0];
+  } else {
+    input_shape = ShapeUtil::MakeTupleShape(op_shapes);
+  }
+  return ShapeUtil::MakeTupleShape({input_shape, ag_shape});
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferAllGatherDoneShape(
+    const Shape& all_gather_start_shape) {
+  return ShapeUtil::GetTupleElementShape(all_gather_start_shape, 1);
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
     absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {

@@ -43,6 +43,12 @@ struct FreezeAssetsPass
     this->saved_model_dir = saved_model_dir;
   }
 
+  StringRef getArgument() const final { return "tf-saved-model-freeze-assets"; }
+
+  StringRef getDescription() const final {
+    return "Freeze tf_saved_model.asset's in func bodies.";
+  }
+
   void runOnOperation() override;
 
  private:
@@ -111,9 +117,7 @@ void FreezeAssetsPass::runOnOperation() {
 }  // namespace
 
 // For "opt" to pick up this pass.
-static PassRegistration<FreezeAssetsPass> freeze_assets_pass(
-    "tf-saved-model-freeze-assets",
-    "Freeze tf_saved_model.asset's in func bodies.");
+static PassRegistration<FreezeAssetsPass> freeze_assets_pass;
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeAssetsPass(
     std::string saved_model_dir) {

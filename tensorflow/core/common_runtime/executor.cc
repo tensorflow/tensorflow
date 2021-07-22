@@ -83,7 +83,7 @@ static const Tensor* const kEmptyTensor = new Tensor;
 namespace nodestats {
 inline int64 NowInNsec() { return EnvTime::NowNanos(); }
 
-void SetScheduled(NodeExecStatsInterface* stats, int64 micros) {
+void SetScheduled(NodeExecStatsInterface* stats, int64_t micros) {
   if (!stats) return;
   stats->SetScheduled(micros * EnvTime::kMicrosToNanos);
 }
@@ -287,7 +287,7 @@ class ExecutorState {
   struct AsyncState;
 
   // Process a ready node in current thread.
-  void Process(TaggedNode node, int64 scheduled_nsec);
+  void Process(TaggedNode node, int64_t scheduled_nsec);
 
   Status ProcessSync(const NodeItem& item, OpKernelContext::Params* params,
                      EntryVector* outputs, NodeExecStatsInterface* stats);
@@ -665,7 +665,7 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
-                                                 int64 scheduled_nsec) {
+                                                 int64_t scheduled_nsec) {
   profiler::TraceMeConsumer activity(
       // From TraceMeProducer in DirectSession::RunInternal,
       // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
@@ -1150,7 +1150,7 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
     TaggedNodeSeq* ready, TaggedNodeReadyQueue* inline_ready) {
   DCHECK(!ready->empty());
 
-  int64 scheduled_nsec = 0;
+  int64_t scheduled_nsec = 0;
   if (stats_collector_) {
     scheduled_nsec = nodestats::NowInNsec();
   }
@@ -1236,7 +1236,7 @@ void ExecutorState<PropagatorStateType>::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
-  int64 step_id = step_id_;
+  int64_t step_id = step_id_;
   CHECK(done_cb != nullptr);
   Device* device = immutable_state_.params().device;
 

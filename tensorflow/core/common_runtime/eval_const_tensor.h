@@ -61,7 +61,7 @@ Status EvaluateConstantTensor(
     const OpRegistryInterface& ops, int32 graph_def_version, bool* evaluated,
     Tensor* result, GraphRunner* graph_runner = nullptr,
     std::unordered_map<string, Tensor>* cached_values = nullptr,
-    int64 max_cached_value_size = 1024,
+    int64_t max_cached_value_size = 1024,
     bool disable_constant_propagation = false,
     shape_inference::InferenceContext* outer_context = nullptr);
 

@@ -399,6 +399,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_view",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

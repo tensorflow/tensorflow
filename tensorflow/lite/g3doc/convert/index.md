@@ -131,7 +131,8 @@ model = Squared()
 concrete_func = model.__call__.get_concrete_function()
 
 # Convert the model
-converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
+converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func],
+                                                            model)
 tflite_model = converter.convert()
 
 # Save the model.

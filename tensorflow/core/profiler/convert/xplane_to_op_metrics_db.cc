@@ -133,7 +133,8 @@ void ProcessTfActivities(std::vector<TfActivity>* tf_activities,
   for (const auto& tf_activity : *tf_activities) {
     ProcessOneTfActivity(tf_activity, &tf_op_stack, tf_metrics_db_data);
   }
-  tf_metrics_db_data->tf_metrics_db.set_total_time_ps(
+  SetTotalTimePs(
+      tf_metrics_db_data->tf_metrics_db,
       tf_activities->back().timestamp_ps - tf_activities->front().timestamp_ps);
 }
 
@@ -192,7 +193,7 @@ TfMetricsDbData ConvertHostThreadsXLineToTfMetricsDbData(
 }
 
 void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst) {
-  AddIdleOp(&src.tf_metrics_db);
+  AddIdleOp(src.tf_metrics_db);
   dst->Combine(src.tf_metrics_db);
   src.tf_metrics_db.Clear();
 }
@@ -248,9 +249,9 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
           /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });
   });
-  result.set_total_time_ps(
-      last_op_offset_ps ? last_op_offset_ps - first_op_offset_ps : 0);
-  AddIdleOp(&result);
+  SetTotalTimePs(
+      result, last_op_offset_ps ? last_op_offset_ps - first_op_offset_ps : 0);
+  AddIdleOp(result);
   return result;
 }
 

@@ -25,12 +25,12 @@ namespace tensorflow {
 namespace {
 Status WaitForNotification(CallOptions* call_options,
                            const int64 default_timeout_in_ms, Notification* n) {
-  int64 timeout_in_ms = call_options->GetTimeout();
+  int64_t timeout_in_ms = call_options->GetTimeout();
   if (timeout_in_ms == 0) {
     timeout_in_ms = default_timeout_in_ms;
   }
   if (timeout_in_ms > 0) {
-    int64 timeout_in_us = timeout_in_ms * 1000;
+    int64_t timeout_in_us = timeout_in_ms * 1000;
     bool notified = WaitForNotificationWithTimeout(n, timeout_in_us);
     if (!notified) {
       call_options->StartCancel();
@@ -221,7 +221,7 @@ LocalMasterRegistry* local_master_registry() {
 
 /* static */
 void LocalMaster::Register(const string& target, Master* master,
-                           int64 default_timeout_in_ms) {
+                           int64_t default_timeout_in_ms) {
   mutex_lock l(*get_local_master_registry_lock());
   local_master_registry()->insert(
       {target, MasterInfo(master, default_timeout_in_ms)});

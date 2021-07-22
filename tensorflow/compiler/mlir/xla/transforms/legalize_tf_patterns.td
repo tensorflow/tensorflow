@@ -24,6 +24,7 @@ include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 def SignedIntTensor : TensorOf<[I1, I8, I16, I32, I64]>;
+def UnsignedIntTensor : TensorOf<[UI8, UI16, UI32, UI64]>;
 
 // IEEE compliant floating point tensors.
 def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
@@ -95,8 +96,11 @@ def LowerRightShiftSigned :
        (BinBroadcastDimensions $l, $r)),
       [(SignedIntTensor $r)]>;
 
-// TODO(hinsu): Lower unsigned types to HLO_ShiftRightLogical once the HLO op
-// supports unsigned integers.
+def LowerRightShiftUnsigned :
+  Pat<(TF_RightShiftOp AnyTensor:$l, AnyTensor:$r),
+      (HLOClient_BroadcastShiftRightLogicalOp $l, $r,
+       (BinBroadcastDimensions $l, $r)),
+      [(UnsignedIntTensor $r)]>;
 
 // Performs a substitution of FloorDiv, pseudo code below:
 //
@@ -518,13 +522,10 @@ def : Pat<(TF_ReluGradOp AnyTensor:$gradients, AnyTensor:$features),
 
 /// Converts a TF::SoftsignOp to HLO.
 /// Softsign(features) = features / (1 + abs(features))
-def : Pat<(TF_SoftsignOp AnyRankedTensor:$input),
+def : Pat<(TF_SoftsignOp AnyTensor:$input),
           (HLO_DivOp
             $input,
-            (HLOClient_BroadcastAddOp:$add
-              (HLO_ConstOp:$one (GetScalarOfType<1> $input)), (HLO_AbsOp $input),
-              (BinBroadcastDimensions $one, $input)
-            )
+            (HLO_AddOp (HLO_ConstantLike<"1"> $input), (HLO_AbsOp $input))
           )
          >;
 

@@ -57,7 +57,7 @@ class SingleMachine : public Cluster {
                         RunMetadata* run_metadata);
   Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
                         const std::vector<string>& fetch,
-                        RunMetadata* run_metadata, int64 timeout_s);
+                        RunMetadata* run_metadata, int64_t timeout_s);
   Status ResetSession();
   Status CloseSession(bool use_timeout);
   Status ShutdownSession();

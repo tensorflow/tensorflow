@@ -913,6 +913,14 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if not is_tensorrt_enabled():
       return
 
+    # This test will not work anymore with TRT >= 8. TensorRT does not
+    # preallocate anymore the max_workspace_size_bytes, but rather allocates as
+    # it needs up to this value.
+    # TODO: update the unittest to make this TRTEngine creation fail with TRT8.
+    ver = get_linked_tensorrt_version()
+    if ver[0] >= 8:
+      return
+
     np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
     # Create a model and save it.
@@ -933,9 +941,12 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         errors.AbortedError,
         r"User disallowed engine native segment execution"):
-      converter.build(input_fn=_InputFn)
+      try:
+        converter.build(input_fn=_InputFn)
+      finally:
+        # Always reset the environment variable.
+        os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
 
-    os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
     converter.build(input_fn=_InputFn)
 
   @test_util.run_v2_only

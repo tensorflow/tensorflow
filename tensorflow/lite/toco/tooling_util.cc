@@ -1905,7 +1905,7 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
       if (!output_array.has_shape() || !weights_array.has_shape()) {
         return false;
       }
-      int64 cols = 1;
+      int64_t cols = 1;
       for (int i = 0; i < output_array.shape().dimensions_count() - 1; i++) {
         cols *= output_array.shape().dims(i);
       }
@@ -2024,9 +2024,9 @@ bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
 }
 
 bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
-  int64 total = 0;
+  int64_t total = 0;
   for (const auto& op : model.operators) {
-    int64 num_ops;
+    int64_t num_ops;
     if (!EstimateArithmeticOpsCount(model, *op, &num_ops)) {
       return false;
     }
@@ -2036,7 +2036,7 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
   return true;
 }
 
-std::string FormattedNumber(int64 x) {
+std::string FormattedNumber(int64_t x) {
   const int64 million = 1000000;
   const int64 billion = 1000000000;
   if (x < 10000) {

@@ -118,7 +118,7 @@ xla::Shape TpuOpExecutable::HostShapeToDeviceShape(
 int64 TpuOpExecutable::ShapeSize(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
-  int64 size = tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
+  int64_t size = tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
   ApiConverter::Free(&c_shape);
   return size;
 }

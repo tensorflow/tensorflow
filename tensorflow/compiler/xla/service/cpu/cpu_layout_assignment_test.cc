@@ -51,7 +51,7 @@ class CpuLayoutAssignmentTest : public HloTestBase {
   void AssignLayouts(HloModule* module,
                      ComputationLayout* entry_computation_layout) {
     cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
-        [](int64 shape_size) {
+        [](int64_t shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         });
     cpu::CpuLayoutAssignment layout_assignment(
@@ -326,7 +326,7 @@ static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
       fused_add->operand(1 - dot_operand_idx_in_add)->parameter_number());
 
   cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
-      [](int64 shape_size) {
+      [](int64_t shape_size) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
   cpu::CpuLayoutAssignment layout_assignment(

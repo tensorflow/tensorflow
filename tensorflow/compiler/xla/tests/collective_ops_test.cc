@@ -144,11 +144,11 @@ class CollectiveOpsTest : public HloTestBase {
 
 // Returns the non-empty subsets of {0, 1, ..., n}.  For example,
 // PowerSetOfIota(3) = {{0}, {1}, {2}, {0,1}, {0,2}, {1,2}, {0,1,2}}.
-std::vector<std::vector<int64>> PowerSetOfIota(int64 n) {
+std::vector<std::vector<int64>> PowerSetOfIota(int64_t n) {
   std::vector<std::vector<int64>> power_set;
-  for (int64 i = 1; i < (1 << n); ++i) {
+  for (int64_t i = 1; i < (1 << n); ++i) {
     power_set.emplace_back();
-    for (int64 j = 0; j < n; ++j) {
+    for (int64_t j = 0; j < n; ++j) {
       if (i & (1 << j)) {
         power_set.back().push_back(j);
       }
@@ -161,7 +161,7 @@ std::vector<std::vector<int64>> PowerSetOfIota(int64 n) {
 DeviceAssignment MakeDeviceAssn(std::vector<int64> devices) {
   DeviceAssignment assn(/*replica_count=*/devices.size(),
                         /*computation_count=*/1);
-  for (int64 i = 0; i < devices.size(); ++i) {
+  for (int64_t i = 0; i < devices.size(); ++i) {
     assn(i, 0) = devices[i];
   }
   return assn;
@@ -230,6 +230,20 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_half) {
 XLA_TEST_F(CollectiveOpsTest,
            DISABLED_ON_CPU(AllReduceTwoReplicasOneOperand_bfloat16)) {
   TestAllOpsForReduce<bfloat16>();
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_sum_complex64)) {
+  TestTwoReplicasOneOperand<complex64>(
+      "add",
+      /*input_value=*/LiteralUtil::CreateR1<complex64>({{1, 2}, {3, 4}}),
+      /*expected_value=*/LiteralUtil::CreateR1<complex64>({{2, 4}, {6, 8}}));
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_sum_complex128)) {
+  TestTwoReplicasOneOperand<complex128>(
+      "add",
+      /*input_value=*/LiteralUtil::CreateR1<complex128>({{1, 2}, {3, 4}}),
+      /*expected_value=*/LiteralUtil::CreateR1<complex128>({{2, 4}, {6, 8}}));
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
@@ -383,7 +397,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
     e.opts.arguments.push_back(&input_literal);
   }
 
-  auto run_executable = [&](int64 i) {
+  auto run_executable = [&](int64_t i) {
     auto& e = executables[i];
     TF_ASSERT_OK(
         test_runner_
@@ -446,7 +460,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   tensorflow::BlockingCounter done(kNumThreads * kRunsPerThread);
   tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), TestName(),
                                       kNumThreads);
-  for (int64 i = 0; i < kNumThreads * kRunsPerThread; ++i) {
+  for (int64_t i = 0; i < kNumThreads * kRunsPerThread; ++i) {
     pool.Schedule([&] {
       TF_ASSERT_OK(
           test_runner_.ExecuteReplicated(executable.get(), opts, &device_assn)
@@ -1079,7 +1093,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatter) {
   const char* const kModuleStr = R"(
   HloModule test
   add {
@@ -1115,7 +1129,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter)) {
   LiteralTestUtil::ExpectR1Equal<uint32>({19, 21, 23, 25}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatter_Dim1)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   const char* const kModuleStr = R"(
   HloModule test
   add {

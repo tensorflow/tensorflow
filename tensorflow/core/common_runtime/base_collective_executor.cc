@@ -52,10 +52,10 @@ bool IsCancelled(CancellationManager* cancel_mgr) {
 }  // namespace
 
 /*static*/
-int64 CollectiveAdapter::AlignedChunkElts(int64 elt_bytes, int64 total_elts,
-                                          int64 num_chunks) {
+int64 CollectiveAdapter::AlignedChunkElts(int64_t elt_bytes, int64_t total_elts,
+                                          int64_t num_chunks) {
   DCHECK_GT(num_chunks, 0);
-  int64 base_chunk_elts = (total_elts + (num_chunks - 1)) / num_chunks;
+  int64_t base_chunk_elts = (total_elts + (num_chunks - 1)) / num_chunks;
   if (EIGEN_MAX_ALIGN_BYTES == 0) return base_chunk_elts;
   if (EIGEN_MAX_ALIGN_BYTES <= elt_bytes) {
     // Tolerate weird small values of EIGEN_MAX_ALIGN_BYTES
@@ -69,8 +69,8 @@ int64 CollectiveAdapter::AlignedChunkElts(int64 elt_bytes, int64 total_elts,
       << " EIGEN_MAX_ALIGN_BYTES=" << EIGEN_MAX_ALIGN_BYTES
       << " elt_bytes=" << elt_bytes;
   // Round bytes per chunk up to the next multiple of EIGEN_MAX_ALIGN_BYTES.
-  int64 chunk_bytes = base_chunk_elts * elt_bytes;
-  int64 diff =
+  int64_t chunk_bytes = base_chunk_elts * elt_bytes;
+  int64_t diff =
       (chunk_bytes < EIGEN_MAX_ALIGN_BYTES)
           ? (EIGEN_MAX_ALIGN_BYTES - chunk_bytes)
           : (EIGEN_MAX_ALIGN_BYTES - (chunk_bytes % EIGEN_MAX_ALIGN_BYTES));
@@ -89,8 +89,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
  public:
   // Takes ownership of output and prepares to properly alias its chunks.
   // Ownership is taken because the shape may temporarily change.
-  CollectiveAdapterImpl(Tensor* output, int64 num_chunks, Allocator* allocator,
-                        bool align_chunks)
+  CollectiveAdapterImpl(Tensor* output, int64_t num_chunks,
+                        Allocator* allocator, bool align_chunks)
       : output_(std::move(*output)),
         dt_(output_.dtype()),
         old_shape_(output_.shape()),
@@ -140,8 +140,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   // Returns a new Tensor that aliases the required chunk.
   Tensor ChunkAlias(int i) override {
-    int64 start = chunk_elts_ * i;
-    int64 num_elts = ChunkElts(i);
+    int64_t start = chunk_elts_ * i;
+    int64_t num_elts = ChunkElts(i);
     // If this chunk is empty the prior chunk might also be short
     // so always take an empty slice from the front of the tensor
     // to avoid an illegal offset check failure somewhere.
@@ -165,7 +165,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
   }
 
   string TBounds(const Tensor& t) const override {
-    int64 base_addr = reinterpret_cast<int64>(DMAHelper::base(&t));
+    int64_t base_addr = reinterpret_cast<int64>(DMAHelper::base(&t));
     return strings::StrCat("(", base_addr, ", ", (base_addr + t.TotalBytes()),
                            ")");
   }
@@ -304,6 +304,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   const Tensor* input = (col_params->instance.type == REDUCTION_COLLECTIVE ||
                          col_params->instance.type == GATHER_COLLECTIVE ||
                          col_params->instance.type == PERMUTE_COLLECTIVE ||
+                         col_params->instance.type == ALL_TO_ALL_COLLECTIVE ||
                          (col_params->instance.type == BROADCAST_COLLECTIVE &&
                           col_params->is_source))
                             ? &ctx->input(0)
