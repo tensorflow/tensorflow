@@ -1203,6 +1203,14 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
       input_tensors: List of input tensors.
       output_tensors: List of output tensors.
     """
+    if len(self._funcs) == 0:  # pylint: disable=g-explicit-length-test
+      raise ValueError("No ConcreteFunction is specified.")
+
+    if len(self._funcs) > 1:
+      raise ValueError("This converter can only convert a single "
+                       "ConcreteFunction. Converting multiple functions is "
+                       "under development.")
+
     func = self._funcs[0]
 
     if not self.experimental_lower_to_saved_model:
@@ -1337,7 +1345,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     tflite_model = converter.convert()
 
     # Converting ConcreteFunctions to a TensorFlow Lite model.
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
     tflite_model = converter.convert()
     ```
   """

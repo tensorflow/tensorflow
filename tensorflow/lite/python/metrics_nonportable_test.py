@@ -197,12 +197,13 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
 
     root.f = func
     to_save = root.f.get_concrete_function()
-    return (to_save, calibration_gen)
+    return (root, to_save, calibration_gen)
 
   def test_conversion_from_frozen_graph_v2(self):
-    func, calibration_gen = self._getIntegerQuantizeModel()
+    model, func, calibration_gen = self._getIntegerQuantizeModel()
 
-    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func],
+                                                                         model)
     mock_metrics = mock.create_autospec(
         metrics.TFLiteConverterMetrics, instance=True)
     quantized_converter._tflite_metrics = mock_metrics

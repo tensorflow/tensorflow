@@ -148,7 +148,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
 
     # Check if the decorator works with get_concrete_function method.
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [func.get_concrete_function()])
+        [func.get_concrete_function()], func)
     converter.convert()
 
   def test_decorated_class_method_type(self):
@@ -170,7 +170,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
 
     # Check if the decorator works with get_concrete_function method.
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [m.eval.get_concrete_function()])
+        [m.eval.get_concrete_function()], m)
     converter.convert()
 
   def test_simple_cosh_multiple(self):

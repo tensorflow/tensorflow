@@ -72,7 +72,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
       return x + tf.cos(x)
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [func.get_concrete_function()])
+        [func.get_concrete_function()], func)
     fb_model = converter.convert()
     txt = analyzer.ModelAnalyzer.analyze(
         model_content=fb_model, result_format='txt')
@@ -88,7 +88,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
       return x + tf.cos(x)
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [func.get_concrete_function()])
+        [func.get_concrete_function()], func)
     fb_model = converter.convert()
     mlir = analyzer.ModelAnalyzer.analyze(
         model_content=fb_model, result_format='mlir')
@@ -108,7 +108,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
       return x + tf.cos(x)
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [func.get_concrete_function()])
+        [func.get_concrete_function()], func)
     fb_model = converter.convert()
     html = analyzer.ModelAnalyzer.analyze(
         model_content=fb_model, result_format='html')
