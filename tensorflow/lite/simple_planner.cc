@@ -194,12 +194,10 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
         if (allocs_[i].size != 0) {
           allocs_[i].free();
         }
-        allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
-        allocated = true;
+        allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
       } else if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
                  allocs_[i].size == 0) {
-        allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
-        allocated = true;
+        allocated = allocs_[i].alloc(tensor.bytes, alloc_node_[i]);
       }
     }
     if (allocated) {
