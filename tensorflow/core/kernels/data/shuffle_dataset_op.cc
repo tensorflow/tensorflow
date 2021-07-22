@@ -165,7 +165,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(FillBuffer(ctx));
       if (num_elements_ == 0) {
-        DCHECK_EQ(input_impl_, nullptr);
+        DCHECK(input_impl_ == nullptr);
         *end_of_sequence = true;
         return Status::OK();
       }
