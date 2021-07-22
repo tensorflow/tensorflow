@@ -2101,12 +2101,20 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
 
   std::string name = mlir::GetNameFromLoc(select_and_scatter_op.getLoc());
 
+  // IrEmitterUnnested implements kSelectAndScatter as a SequentialThunk
+  // consisting of two thunks, an initializer KernelThunk that initializes
+  // the output and another KernelThunk that accumulates the scattered
+  // elements.
   ThunkSequence thunks;
   thunks.emplace_back();
   TF_ASSIGN_OR_RETURN(thunks.back(), BuildInitializerThunk(
                                          op, select_and_scatter_op.init_value(),
                                          select_and_scatter_op.out()));
 
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      CalculateLaunchDimensions(source_shape,
+                                ir_emitter_context_->gpu_device_info()));
   std::vector<llvm_ir::IrArray> ir_arrays;
   thunks.emplace_back();
   // Init value is not needed in IR emission.
@@ -2116,6 +2124,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
                                         select_and_scatter_op.source(),
                                         select_and_scatter_op.out()},
                                        Thunk::ThunkInfo(), &ir_arrays));
+  SetThunkLaunchDimensions(launch_dimensions, thunks.back().get(),
+                           ir_emitter_context_->llvm_module());
 
   CHECK_EQ(ir_arrays.size(), 3);
   const IrArray& operand_array = ir_arrays[0];
@@ -2124,11 +2134,6 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
 
   auto select_and_scatter_thunk =
       absl::make_unique<SequentialThunk>(GetThunkInfo(op), std::move(thunks));
-
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      CalculateLaunchDimensions(source_shape,
-                                ir_emitter_context_->gpu_device_info()));
 
   llvm::Type* index_type = GetIndexTypeForKernel(
       select_and_scatter_op, launch_dimensions.launch_bound(), &b_);
@@ -2306,14 +2311,6 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
         *scatter_computation, output_value_address, source_value_address);
   };
 
-  SetThunkLaunchDimensions(
-      launch_dimensions,
-      // IrEmitterUnnested implements kSelectAndScatter as a SequentialThunk
-      // consisting of two thunks, an initializer KernelThunk that initializes
-      // the output and another KernelThunk that accumulates the scattered
-      // elements.
-      select_and_scatter_thunk->thunks().back().get(),
-      ir_emitter_context_->llvm_module());
   AddThunkToThunkSequence(std::move(select_and_scatter_thunk));
   return ParallelLoopEmitter(loop_body_emitter, source_shape, launch_dimensions,
                              &b_)
