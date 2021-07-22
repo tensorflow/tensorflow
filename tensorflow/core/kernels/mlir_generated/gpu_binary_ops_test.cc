@@ -380,6 +380,8 @@ GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Bool, bool, bool, baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int8, int8, bool, baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/UInt8, uint8, bool, baseline_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int16, int16, bool, baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int64, int64, bool, baseline_equal,
@@ -390,6 +392,14 @@ GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/C64, std::complex<float>, bool,
 GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/C128, std::complex<double>, bool,
                        baseline_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+
+TEST_F(BinaryOpsTest, EqualUint8SpecialCases) {
+  TestEqualShapes<uint8, uint8, bool, bool>(
+      "Equal", /*shape=*/{20},
+      test::InputAsVector<uint8>({255, 1, 0, 0, 1, 255, 0, 255}),
+      test::InputAsVector<uint8>({1, 255, 0, 1, 0, 0, 255, 255}),
+      baseline_equal, test::OpsTestConfig().ExpectStrictlyEqual());
+}
 
 /// Test `tf.FloorDiv`.
 
@@ -755,6 +765,9 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Bool, bool, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int8, int8, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/UInt8, uint8, bool,
+                       baseline_not_equal,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int16, int16, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
@@ -767,6 +780,14 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/C64, std::complex<float>, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/C128, std::complex<double>, bool,
                        baseline_not_equal,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+
+TEST_F(BinaryOpsTest, NotEqualUint8SpecialCases) {
+  TestEqualShapes<uint8, uint8, bool, bool>(
+      "NotEqual", /*shape=*/{20},
+      test::InputAsVector<uint8>({255, 1, 0, 0, 1, 255, 0, 255}),
+      test::InputAsVector<uint8>({1, 255, 0, 1, 0, 0, 255, 255}),
+      baseline_not_equal, test::OpsTestConfig().ExpectStrictlyEqual());
+}
 
 /// Test `tf.Polygamma`.
 
