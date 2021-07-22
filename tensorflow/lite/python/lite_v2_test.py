@@ -156,10 +156,31 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Try converting multiple functions.
     converter = lite.TFLiteConverterV2.from_concrete_functions(
         [add_func, sub_func], root)
-    with self.assertRaises(ValueError) as error:
-      _ = converter.convert()
-    self.assertIn('can only convert a single ConcreteFunction',
-                  str(error.exception))
+    tflite_model = converter.convert()
+
+    # Check signatures are valid from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 2)
+    self.assertEqual(list(signature_defs.keys()), ['add', 'sub'])
+    self.assertEqual(len(signature_defs.values()), 2)
+    self.assertEqual(list(signature_defs['add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['add']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['add']['outputs']), ['output_0'])
+    self.assertEqual(list(signature_defs['sub'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['sub']['inputs'], ['x'])
+    self.assertEqual(list(signature_defs['sub']['outputs']), ['output_0'])
+
+    # Verify the Signature runner executions.
+    add_signature_runner = interpreter.get_signature_runner('add')
+    add_output = add_signature_runner(x=input_data)
+    self.assertEqual(add_output['output_0'], 3)
+
+    sub_signature_runner = interpreter.get_signature_runner('sub')
+    sub_output = sub_signature_runner(x=input_data)
+    self.assertEqual(sub_output['output_0'], -2)
 
   def _getIntegerQuantizeModel(self):
     np.random.seed(0)
