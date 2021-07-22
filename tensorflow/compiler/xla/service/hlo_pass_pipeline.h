@@ -58,7 +58,6 @@ class HloPassPipeline : public HloPassInterface {
     CHECK(!run_called_) << "AddPass cannot be called after Run";
     auto pass = new T(std::forward<Args>(args)...);
     passes_.push_back(std::unique_ptr<T>(pass));
-    pass_run_counts_since_change_.push_back(0);
     return *pass;
   }
 
@@ -85,8 +84,6 @@ class HloPassPipeline : public HloPassInterface {
   StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override;
 
   bool IsPassPipeline() override { return true; }
-
-  void ResetPassPipeline() override;
 
   // Return size of passes_.
   int PassesSize() { return passes_.size(); }
@@ -137,8 +134,6 @@ class HloPassPipeline : public HloPassInterface {
 
   const string name_;
   std::vector<std::unique_ptr<HloPassInterface>> passes_;
-  // How many times has the pass run without chaning.
-  std::vector<int64> pass_run_counts_since_change_;
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;
 
