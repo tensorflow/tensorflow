@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -74,7 +75,8 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
   // absent or no matching job is found, creates a new job. The resulting job
   // id is stored in `job_client_id`.
-  Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
+  Status GetOrCreateJob(int64 dataset_id,
+                        const ProcessingModeDef& processing_mode,
                         const absl::optional<JobKey>& job_key,
                         absl::optional<int64> num_consumers,
                         int64& job_client_id);

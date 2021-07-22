@@ -50,15 +50,19 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
-
 namespace {
+
+using ::tensorflow::protobuf::util::MessageDifferencer;
+
 // The name of the journal directory inside the dispatcher's working directory.
 // This name is load-bearing; do not change.
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
@@ -126,7 +130,7 @@ void PrepareGraph(GraphDef* graph) {
 
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const experimental::DispatcherConfig& config)
-    : config_(config), env_(Env::Default()) {
+    : config_(config), env_(Env::Default()), state_(config_) {
   if (config_.work_dir().empty()) {
     dataset_store_ = absl::make_unique<MemoryDatasetStore>();
   } else {
@@ -184,7 +188,7 @@ Status DataServiceDispatcherImpl::Start() {
     }
   }
   for (const auto& job : state_.ListJobs()) {
-    if (job->processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+    if (IsDynamicShard(job->processing_mode)) {
       TF_RETURN_IF_ERROR(
           RestoreSplitProviders(*job, split_providers_[job->job_id]));
     }
@@ -281,6 +285,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
       return s;
     }
     VLOG(1) << "Registering new worker at address " << worker_address;
+    TF_RETURN_IF_ERROR(state_.ValidateWorker(worker_address));
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
     update.mutable_register_worker()->set_transfer_address(
@@ -493,8 +498,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     key.emplace(request->job_key().job_name(),
                 request->job_key().job_name_index());
   }
-  ProcessingMode requested_processing_mode =
-      ProcessingMode(request->processing_mode());
+  ProcessingModeDef requested_processing_mode = request->processing_mode_def();
   std::shared_ptr<const Job> job;
   std::vector<std::shared_ptr<const Task>> tasks;
   {
@@ -600,39 +604,35 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
 
 // Validates that the job matches the given processing_mode and dataset_id.
 Status DataServiceDispatcherImpl::ValidateMatchingJob(
-    std::shared_ptr<const Job> job, ProcessingMode processing_mode,
+    std::shared_ptr<const Job> job, const ProcessingModeDef& processing_mode,
     int64 dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   DCHECK(job->named_job_key.has_value());
   std::string job_name = job->named_job_key->name;
-  if (job->processing_mode != processing_mode) {
-    std::string requested = ProcessingModeToString(processing_mode);
-    std::string actual = ProcessingModeToString(job->processing_mode);
+
+  if (!MessageDifferencer::Equals(job->processing_mode, processing_mode)) {
     return errors::FailedPrecondition(
         "Tried to create a job with name ", job_name, " and processing_mode <",
-        requested,
+        processing_mode.ShortDebugString(),
         "> but there is already an existing job with that name using "
         "processing mode <",
-        actual, ">");
+        job->processing_mode.ShortDebugString(), ">");
   }
   return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::CreateJob(
-    int64 dataset_id, ProcessingMode processing_mode,
+    int64 dataset_id, const ProcessingModeDef& processing_mode,
     absl::optional<NamedJobKey> named_job_key,
     absl::optional<int64> num_consumers, std::shared_ptr<const Job>& job)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  switch (processing_mode) {
-    case ProcessingMode::PARALLEL_EPOCHS:
-    case ProcessingMode::DISTRIBUTED_EPOCH:
-      break;
-    default:
-      return errors::Internal(
-          absl::StrCat("ProcessingMode ", processing_mode, " not recognized"));
+  if (!IsNoShard(processing_mode) && !IsDynamicShard(processing_mode) &&
+      !IsStaticShard(processing_mode)) {
+    return errors::Internal(absl::StrCat(
+        "ProcessingMode ", processing_mode.DebugString(), " not recognized"));
   }
   int64 job_id = state_.NextAvailableJobId();
   int64 num_split_providers = 0;
-  if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+  if (IsDynamicShard(processing_mode)) {
     TF_RETURN_IF_ERROR(
         MakeSplitProviders(dataset_id, split_providers_[job_id]));
     num_split_providers = split_providers_[job_id].size();
@@ -641,7 +641,7 @@ Status DataServiceDispatcherImpl::CreateJob(
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
   create_job->set_dataset_id(dataset_id);
-  create_job->set_processing_mode(ProcessingModeDef(processing_mode));
+  *create_job->mutable_processing_mode_def() = processing_mode;
   create_job->set_num_split_providers(num_split_providers);
   if (named_job_key.has_value()) {
     NamedJobKeyDef* key = create_job->mutable_named_job_key();
@@ -900,7 +900,13 @@ Status DataServiceDispatcherImpl::PopulateTaskDef(
   task_def->set_job_id(task->job->job_id);
   task_def->set_worker_address(task->worker_address);
   task_def->set_task_id(task->task_id);
-  task_def->set_processing_mode(ProcessingModeDef(task->job->processing_mode));
+  *task_def->mutable_processing_mode_def() = task->job->processing_mode;
+  if (IsStaticShard(task->job->processing_mode)) {
+    task_def->set_num_workers(config_.worker_addresses_size());
+    TF_ASSIGN_OR_RETURN(int64 worker_index,
+                        state_.GetWorkerIndex(task->worker_address));
+    task_def->set_worker_index(worker_index);
+  }
   if (task->job->distributed_epoch_state.has_value()) {
     task_def->set_num_split_providers(
         task->job->distributed_epoch_state.value().indices.size());

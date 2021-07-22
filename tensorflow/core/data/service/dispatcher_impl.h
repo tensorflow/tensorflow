@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -191,7 +192,7 @@ class DataServiceDispatcherImpl {
       TF_LOCKS_EXCLUDED(mu_);
   // Creates a job and stores it in `job`. This method updates the
   // dispatcher state with the new job, but does not assign tasks to workers.
-  Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
+  Status CreateJob(int64 dataset_id, const ProcessingModeDef& processing_mode,
                    absl::optional<DispatcherState::NamedJobKey> named_job_key,
                    absl::optional<int64> num_consumers,
                    std::shared_ptr<const DispatcherState::Job>& job)
@@ -252,8 +253,8 @@ class DataServiceDispatcherImpl {
   // Validates that an existing job matches the given processing_mode and
   // dataset_id, returning an error status describing any difference.
   Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
-                             ProcessingMode processing_mode, int64 dataset_id)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                             const ProcessingModeDef& processing_mode,
+                             int64 dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Fills out a TaskDef with information about a task.
   Status PopulateTaskDef(std::shared_ptr<const DispatcherState::Task> task,
                          TaskDef* task_def) const

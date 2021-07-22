@@ -25,11 +25,14 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -61,6 +64,8 @@ namespace data {
 class DispatcherState {
  public:
   DispatcherState();
+  explicit DispatcherState(
+      const experimental::DispatcherConfig& dispatcher_config);
   DispatcherState(const DispatcherState&) = delete;
   DispatcherState& operator=(const DispatcherState&) = delete;
 
@@ -133,7 +138,8 @@ class DispatcherState {
 
   // A job for processing a dataset.
   struct Job {
-    explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
+    explicit Job(int64 job_id, int64 dataset_id,
+                 const ProcessingModeDef& processing_mode,
                  int64 num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
                  absl::optional<int64> num_consumers)
@@ -142,7 +148,7 @@ class DispatcherState {
           processing_mode(processing_mode),
           named_job_key(named_job_key),
           num_consumers(num_consumers) {
-      if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+      if (IsDynamicShard(processing_mode)) {
         distributed_epoch_state = DistributedEpochState(num_split_providers);
       }
     }
@@ -159,7 +165,7 @@ class DispatcherState {
 
     const int64 job_id;
     const int64 dataset_id;
-    const ProcessingMode processing_mode;
+    const ProcessingModeDef processing_mode;
     const absl::optional<NamedJobKey> named_job_key;
     absl::optional<DistributedEpochState> distributed_epoch_state;
     absl::optional<int64> num_consumers;
@@ -237,6 +243,15 @@ class DispatcherState {
   Status TasksForWorker(const absl::string_view worker_address,
                         std::vector<std::shared_ptr<const Task>>& tasks) const;
 
+  // If the dispatcher config explicitly specifies a list of workers, validates
+  // `worker_address` is in the list.
+  Status ValidateWorker(absl::string_view worker_address) const;
+
+  // If the dispatcher config specifies worker addresses, `GetWorkerIndex`
+  // returns the worker index according to the list. This is useful for
+  // deterministically sharding a dataset among a fixed set of workers.
+  StatusOr<int64> GetWorkerIndex(absl::string_view worker_address) const;
+
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void RegisterWorker(const RegisterWorkerUpdate& register_worker);
@@ -263,6 +278,10 @@ class DispatcherState {
 
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
+
+  // Assigns an index to each worker according to worker addresses list
+  // specified in the dispatcher config.
+  WorkerIndexResolver worker_index_resolver_;
 
   int64 next_available_job_id_ = 2000;
   // Jobs, keyed by job ids.

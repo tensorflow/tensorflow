@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -146,13 +147,13 @@ Status DataServiceDispatcherClient::RegisterDataset(
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
-    int64 dataset_id, ProcessingMode processing_mode,
+    int64 dataset_id, const ProcessingModeDef& processing_mode,
     const absl::optional<JobKey>& job_key, absl::optional<int64> num_consumers,
     int64& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
-  req.set_processing_mode(ProcessingModeDef(processing_mode));
+  *req.mutable_processing_mode_def() = processing_mode;
   if (job_key.has_value()) {
     *req.mutable_job_key() = job_key.value();
   }
