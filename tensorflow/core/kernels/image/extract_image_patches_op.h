@@ -32,21 +32,16 @@ struct ExtractImagePatchesForward {
                   typename TTypes<T, 4>::Tensor output) {
     // Need to swap row/col when calling Eigen, because our data is in
     // NHWC format while Eigen assumes NWHC format.
-    const int64_t N = std::max(input.size(), output.size());
-    if (N <= std::numeric_limits<Index32>::max()) {
-      auto output_32bit = To32Bit(output);
-      output_32bit.device(d) =
-          To32Bit(input)
-              .extract_image_patches(patch_cols, patch_rows, stride_cols,
-                                     stride_rows, rate_cols, rate_rows, padding)
-              .reshape(output_32bit.dimensions());
-    } else {
-      output.device(d) =
-          input
-              .extract_image_patches(patch_cols, patch_rows, stride_cols,
-                                     stride_rows, rate_cols, rate_rows, padding)
-              .reshape(output.dimensions());
-    }
+    MaybeWith32BitIndexing<Device>(
+        [&](auto input32, auto output32) {
+          output32.device(d) =
+              input32
+                  .extract_image_patches(patch_cols, patch_rows, stride_cols,
+                                         stride_rows, rate_cols, rate_rows,
+                                         padding)
+                  .reshape(output32.dimensions());
+        },
+        input, output);
   }
 };
 

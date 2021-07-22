@@ -181,7 +181,11 @@ FIX_MEAN_IDENTITY(double)
 
 template <typename Device, typename OUT_T, typename Reducer>
 void FillIdentityEigenImpl(const Device& d, OUT_T out, const Reducer& reducer) {
-  out.device(d) = out.constant(Identity<Reducer>::identity(reducer));
+  MaybeWith32BitIndexing<Device>(
+      [&](auto out32) {
+        out32.device(d) = out32.constant(Identity<Reducer>::identity(reducer));
+      },
+      out);
 }
 
 template <typename Device, typename Reducer>

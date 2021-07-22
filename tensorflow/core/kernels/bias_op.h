@@ -30,21 +30,17 @@ struct Bias {
   void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor input,
                   typename TTypes<T>::ConstVec bias,
                   typename TTypes<T, Dims>::Tensor output) {
-    if (input.size() >= INT_MAX) {
-      const Eigen::Index bias_size = bias.dimension(0);
-      const Eigen::Index rest_size = input.size() / bias_size;
-      Eigen::DSizes<Eigen::Index, 1> one_d(input.size());
-      Eigen::DSizes<Eigen::Index, 1> bcast(rest_size);
-      output.reshape(one_d).device(d) =
-          input.reshape(one_d) + bias.broadcast(bcast);
-    } else {
-      const int bias_size = bias.dimension(0);
-      const int rest_size = input.size() / bias_size;
-      Eigen::DSizes<int, 1> one_d(input.size());
-      Eigen::DSizes<int, 1> bcast(rest_size);
-      To32Bit(output).reshape(one_d).device(d) =
-          To32Bit(input).reshape(one_d) + To32Bit(bias).broadcast(bcast);
-    }
+    const Eigen::Index bias_size = bias.dimension(0);
+    const Eigen::Index rest_size = input.size() / bias_size;
+    Eigen::DSizes<Eigen::Index, 1> one_d(input.size());
+    Eigen::DSizes<Eigen::Index, 1> bcast(rest_size);
+    MaybeWith32BitIndexing<Device>(
+        [&](auto input32, auto bias32, auto output32, const auto& one_d32,
+            const auto& bcast32) {
+          output32.reshape(one_d32).device(d) =
+              input32.reshape(one_d32) + bias32.broadcast(bcast32);
+        },
+        input, bias, output, one_d, bcast);
   }
 };
 

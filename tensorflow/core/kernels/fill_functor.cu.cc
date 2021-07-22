@@ -72,7 +72,8 @@ struct FillFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out,
                   typename TTypes<T>::ConstScalar in) {
     Eigen::internal::scalar_const_op<T> f(in.data());
-    To32Bit(out).device(d) = To32Bit(out).nullaryExpr(f);
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32) { out32.device(d) = out32.nullaryExpr(f); }, out);
   }
 };
 
@@ -85,7 +86,8 @@ TF_CALL_bool(DEFINE_FILL_GPU);
 template <typename T>
 struct SetZeroFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
-    To32Bit(out).device(d) = To32Bit(out).constant(T(0));
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32) { out32.device(d) = out32.constant(T(0)); }, out);
   }
 };
 
@@ -105,7 +107,8 @@ TF_CALL_variant(DEFINE_SETZERO_GPU);
 template <typename T>
 struct SetOneFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
-    To32Bit(out).device(d) = To32Bit(out).constant(T(1));
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32) { out32.device(d) = out32.constant(T(1)); }, out);
   }
 };
 
@@ -118,8 +121,11 @@ TF_CALL_bool(DEFINE_SETONE_GPU);
 template <typename T>
 struct SetNanFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
-    To32Bit(out).device(d) =
-        To32Bit(out).constant(Eigen::NumTraits<T>::quiet_NaN());
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32) {
+          out32.device(d) = out32.constant(Eigen::NumTraits<T>::quiet_NaN());
+        },
+        out);
   }
 };
 
