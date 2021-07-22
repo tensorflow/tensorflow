@@ -3964,6 +3964,7 @@ const char kList[] = "L";
 const char kListEnd[] = "l";
 const char kTuple[] = "U";
 const char kTupleEnd[] = "u";
+const char kDIter[] = "I";
 const char kDict[] = "D";
 const char kRaw[] = "R";
 const char kShape[] = "s";
@@ -4086,15 +4087,17 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
-                                          bool include_tensor_ranks_only,
-                                          EncodeResult* result);
+tensorflow::Status TFE_Py_EncodeArgHelperInternal(
+    PyObject* arg, bool include_tensor_ranks_only, std::vector<int>& res_vec,
+    absl::flat_hash_map<int, int>& res_map, int& cur_res, EncodeResult* result);
 
 // This function doesn't set the type of sequence before
 tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
                                          const char* end_type,
                                          bool include_tensor_ranks_only,
-                                         EncodeResult* result) {
+                                         std::vector<int>& res_vec,
+                                         absl::flat_hash_map<int, int>& res_map,
+                                         int& cur_res, EncodeResult* result) {
   tensorflow::Safe_PyObjectPtr arg_seq(
       PySequence_Fast(arg, "unable to create seq from list/tuple"));
 
@@ -4106,8 +4109,8 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
     if (item == Py_None) {
       absl::StrAppend(&result->str, kNone);
     } else {
-      TF_RETURN_IF_ERROR(
-          TFE_Py_EncodeArgHelper(item, include_tensor_ranks_only, result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
+          item, include_tensor_ranks_only, res_vec, res_map, cur_res, result));
     }
   }
   absl::StrAppend(&result->str, end_type);
@@ -4115,19 +4118,72 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
-                                          bool include_tensor_ranks_only,
-                                          EncodeResult* result) {
+void UpdateResourceCount(int res_id, std::vector<int>& res_vec,
+                         absl::flat_hash_map<int, int>& res_map, int& cur_res) {
+  const auto& it = res_map.find(res_id);
+  if (it == res_map.end()) {
+    res_map[res_id] = cur_res;
+    res_vec.push_back(cur_res);
+    ++cur_res;
+  } else {
+    res_vec.push_back(it->second);
+  }
+}
+
+tensorflow::Status TFE_Py_EncodeArgHelperInternal(
+    PyObject* arg, bool include_tensor_ranks_only, std::vector<int>& res_vec,
+    absl::flat_hash_map<int, int>& res_map, int& cur_res,
+    EncodeResult* result) {
   if (tensorflow::swig::IsTensor(arg)) {
     absl::StrAppend(&result->str, kTensor);
     TF_RETURN_IF_ERROR(
         TFE_Py_EncodeTensor(arg, include_tensor_ranks_only, result));
+  } else if (tensorflow::swig::IsOwnedIterator(arg)) {
+    // TODO(jiaweix): distinguish other resource types
+    // Similar to IsCompositeTensor below, plus resource id
+    PyObject* type_spec(PyObject_GetAttrString(arg, "_type_spec"));
+    if (type_spec == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "Error while reading OwnedIterator._type_spec.");
+    }
+    result->objects.push_back(type_spec);
+
+    // Add resource tracking
+    tensorflow::Safe_PyObjectPtr itr_res(
+        PyObject_GetAttrString(arg, "_iterator_resource"));
+    if (itr_res == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "Error while reading Dataset iterator resource.");
+    }
+    // OwnedIterator does not always have a unique resource id,
+    // because a Dataset object is not required for OwnedIterator.__init__.
+    // As a result we check whether '_iterator_resource' is a Tensor.
+    if (tensorflow::swig::IsTensor(itr_res.get())) {
+      absl::StrAppend(&result->str, kDIter);
+      tensorflow::Safe_PyObjectPtr p_res_id(
+          PyObject_GetAttrString(itr_res.get(), "_id"));
+      if (p_res_id == nullptr) {
+        return tensorflow::errors::InvalidArgument(
+            "Error while reading Dataset iterator resouce id.");
+      }
+      int res_id = PyLong_AsSize_t(p_res_id.get());
+      if (res_id < 0) {
+        return tensorflow::errors::InvalidArgument("PyLong_AsSize_t failure");
+      }
+      UpdateResourceCount(res_id, res_vec, res_map, cur_res);
+    } else {
+      // If '_iterator_resource' is not a Tensor, there is no resource id.
+      // Instead we treat it the same way as a CompositeTensor
+      absl::StrAppend(&result->str, kCompositeTensor);
+    }
   } else if (PyList_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
-        arg, kList, kListEnd, include_tensor_ranks_only, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, kListEnd,
+                                             include_tensor_ranks_only, res_vec,
+                                             res_map, cur_res, result));
   } else if (tensorflow::swig::IsTuple(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
-        arg, kTuple, kTupleEnd, include_tensor_ranks_only, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, kTupleEnd,
+                                             include_tensor_ranks_only, res_vec,
+                                             res_map, cur_res, result));
   } else if (tensorflow::swig::IsMapping(arg)) {
     tensorflow::Safe_PyObjectPtr keys(tensorflow::swig::MappingKeys(arg));
     if (PyList_Sort(keys.get()) == -1) {
@@ -4139,11 +4195,12 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
 
     for (int i = 0; i < len; i++) {
       PyObject* key = PyList_GetItem(keys.get(), i);
-      TF_RETURN_IF_ERROR(
-          TFE_Py_EncodeArgHelper(key, include_tensor_ranks_only, result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
+          key, include_tensor_ranks_only, res_vec, res_map, cur_res, result));
       tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(arg, key));
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
-          value.get(), include_tensor_ranks_only, result));
+      TF_RETURN_IF_ERROR(
+          TFE_Py_EncodeArgHelperInternal(value.get(), include_tensor_ranks_only,
+                                         res_vec, res_map, cur_res, result));
     }
   } else if (tensorflow::swig::IsCompositeTensor(arg)) {
     absl::StrAppend(&result->str, kCompositeTensor);
@@ -4171,8 +4228,9 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
       tensorflow::Safe_PyObjectPtr name(
           PyObject_GetAttrString(item.get(), "name"));
       tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(arg, name.get()));
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
-          attr_arg.get(), include_tensor_ranks_only, result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
+          attr_arg.get(), include_tensor_ranks_only, res_vec, res_map, cur_res,
+          result));
     }
     absl::StrAppend(&result->str, kAttrsEnd);
   } else {
@@ -4190,6 +4248,29 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
   }
 
   return tensorflow::Status::OK();
+}
+
+tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
+                                          bool include_tensor_ranks_only,
+                                          EncodeResult* result) {
+  std::vector<int> res_vec;
+  absl::flat_hash_map<int, int> res_map;
+  int cur_res = 0;
+  auto status = TFE_Py_EncodeArgHelperInternal(
+      arg, include_tensor_ranks_only, res_vec, res_map, cur_res, result);
+
+  // Add 'encoding' of resources
+  std::string str_resource_encoding = "";
+  for (auto&& i : res_vec) {
+    str_resource_encoding.append(std::to_string(i));
+    str_resource_encoding.append("_");
+  }
+  if (!str_resource_encoding.empty()) {
+    result->objects.push_back(
+        PyUnicode_FromString(str_resource_encoding.c_str()));
+  }
+
+  return status;
 }
 
 }  // namespace
@@ -4357,8 +4438,8 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
   if (!thread_local_data) {
     thread_local_data.reset(new EagerContextThreadLocalData());
 
-    Safe_PyObjectPtr is_eager(PyObject_CallFunctionObjArgs(
-        defaults->second.is_eager.get(), nullptr));
+    Safe_PyObjectPtr is_eager(
+        PyObject_CallFunctionObjArgs(defaults->second.is_eager.get(), nullptr));
     if (!is_eager) return nullptr;
     thread_local_data->is_eager = PyObject_IsTrue(is_eager.get());
 
