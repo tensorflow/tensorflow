@@ -21,6 +21,7 @@ from tensorflow.python.data.experimental.kernel_tests.service import test_base a
 from tensorflow.python.data.experimental.kernel_tests.service.multi_process_cluster import MultiProcessCluster
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -500,6 +501,20 @@ class AutoShardTest(data_service_test_base.TestBase,
         "other workers are already running at the configured host"):
       _ = _make_service_cluster(
           num_workers=5, local_shard_index=1, worker_addresses=worker_addresses)
+
+  def testUnsupportedAutoShardPolicy(self):
+    supported_policies = [
+        AutoShardPolicy.OFF, AutoShardPolicy.AUTO, AutoShardPolicy.FILE,
+        AutoShardPolicy.DATA, AutoShardPolicy.HINT
+    ]
+    for policy in AutoShardPolicy:
+      self.assertIn(
+          policy, supported_policies,
+          f"Auto-shard policy {policy!r} is out of sync with "
+          "`tf.data.experimental.service.ShardingPolicy`. Please add it to "
+          "`tf.data.experimental.service.ShardingPolicy`, "
+          "`tensorflow.data.ProcessingModeDef.ShardingPolicy`, and "
+          "`tensorflow::data::IsStaticShard`.")
 
 
 if __name__ == "__main__":
