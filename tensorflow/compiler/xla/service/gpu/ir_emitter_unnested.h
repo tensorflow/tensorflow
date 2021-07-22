@@ -427,15 +427,17 @@ class IrEmitterUnnested : public IrEmitter {
   // for the hlo instruction.
   StatusOr<bool> CheckAndEmitHloWithTile021(mlir::Operation* op);
 
-  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
-  // sets the corresponding launch dimensions. This is a helper to support
-  // the implementation of CheckAndEmitHloWithTile021.
+  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm.
+  // This is a helper to support the implementation of
+  // CheckAndEmitHloWithTile021.
   void EmitHlo021Tile(mlir::Operation* op, Thunk* kernel_thunk,
                       const MlirEmitterContext& context,
                       absl::Span<const llvm_ir::IrArray> operand_arrays,
                       absl::Span<const llvm_ir::IrArray> output_arrays,
                       absl::Span<const int64> reduced_output_dims,
-                      absl::Span<const int64> tiled_param_ids);
+                      absl::Span<const int64> tiled_param_ids,
+                      const KernelMappingScheme& mapping_scheme,
+                      const LaunchDimensions& launch_dimensions);
 
   struct TilingKernelInfo {
     // Tiling bounds.

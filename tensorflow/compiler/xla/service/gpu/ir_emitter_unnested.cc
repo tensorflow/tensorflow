@@ -4376,20 +4376,10 @@ void IrEmitterUnnested::EmitHlo021Tile(
     absl::Span<const llvm_ir::IrArray> operand_arrays,
     absl::Span<const llvm_ir::IrArray> output_arrays,
     absl::Span<const int64> reduced_output_dims,
-    absl::Span<const int64> tiled_param_ids) {
-  constexpr int kNumRows = 4;
-
+    absl::Span<const int64> tiled_param_ids,
+    const KernelMappingScheme& mapping_scheme,
+    const LaunchDimensions& launch_dimensions) {
   std::string name = mlir::GetNameFromLoc(op->getLoc());
-
-  KernelMappingScheme mapping_scheme(reduced_output_dims,
-                                     /*tile_sizes=*/{1, kWarpSize, kWarpSize},
-                                     /*num_threads_y=*/kNumRows,
-                                     /*num_threads_x=*/kWarpSize,
-                                     /*indexing_order=*/kLinearIndexingX,
-                                     /*vector_size=*/1,
-                                     /*is_row_contiguous=*/false);
-  LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
-                                     mapping_scheme.GetThreadsPerBlock());
 
   llvm::Type* index_type =
       GetIndexTypeForKernel(op, launch_dimensions.launch_bound(), &b_);
@@ -4501,8 +4491,6 @@ void IrEmitterUnnested::EmitHlo021Tile(
       };
 
   EmitTilingKernel(mapping_scheme, index_type, tile_generator);
-  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk,
-                           ir_emitter_context_->llvm_module());
 }
 
 namespace {
@@ -4706,14 +4694,27 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
     return false;
   }
 
+  constexpr int kNumRows = 4;
+  KernelMappingScheme mapping_scheme(*reduced_dims_021,
+                                     /*tile_sizes=*/{1, kWarpSize, kWarpSize},
+                                     /*num_threads_y=*/kNumRows,
+                                     /*num_threads_x=*/kWarpSize,
+                                     /*indexing_order=*/kLinearIndexingX,
+                                     /*vector_size=*/1,
+                                     /*is_row_contiguous=*/false);
+  LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
+                                     mapping_scheme.GetThreadsPerBlock());
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk,
                       BuildKernelThunk(op, GetThunkInfo(op), &ir_arrays));
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
+
   EmitHlo021Tile(
       op, kernel_thunk.get(), context,
       absl::MakeSpan(ir_arrays).subspan(0, context.operand_shapes.size()),
       absl::MakeSpan(ir_arrays).subspan(context.operand_shapes.size()),
-      *reduced_dims_021, params_012);
+      *reduced_dims_021, params_012, mapping_scheme, launch_dimensions);
   AddThunkToThunkSequence(std::move(kernel_thunk));
   return true;
 }
