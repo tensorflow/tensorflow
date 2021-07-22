@@ -35,7 +35,8 @@ inline void RegisterTPUDialects(mlir::DialectRegistry *registry) {}
 inline void AddTPUTargetDialectAndPatterns(
     mlir::ConversionTarget *target, mlir::OwningRewritePatternList *patterns,
     mlir::MLIRContext *context, CoreRTConverter *corert_converter,
-    bool use_core_selector, bool tpu_lower_to_fallback) {}
+    bool use_core_selector, bool tpu_lower_to_fallback,
+    bool transfer_result_to_host) {}
 
 // Rewrites specific TF TPU ops to equivalent TF ops in a module.
 inline mlir::LogicalResult RunTPUBackwardCompatConversion(
