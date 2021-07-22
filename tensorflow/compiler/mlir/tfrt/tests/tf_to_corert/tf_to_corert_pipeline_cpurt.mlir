@@ -42,6 +42,44 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // CHECK:      }
 
 // -----
+// Two identical clusters consisting of a single operation. Check that outlined
+// clusters are deduplicated and we compile only once.
+
+module attributes {tf.versions = {producer = 462 : i32}} {
+  // CHECK:     func @_tfrt_fallback_init
+  // CHECK:       tf_cpurt.fallback.compile @kernel::@compute
+  // CHECK-NOT:   tf_cpurt.fallback.compile
+
+  // CHECK: func @call
+  func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
+      attributes { tf.entry_function = {control_outputs = "",
+                                        inputs = "input_0",
+                                        outputs = "output_0"}} {
+    // CHECK: tf_cpurt.fallback.execute @kernel::@compute
+    // CHECK: tfrt_fallback_async.executeop {{.*}} "tf.Sqrt"
+    // CHECK: tf_cpurt.fallback.execute @kernel::@compute
+    %0 = tf_executor.graph {
+      %outs0, %control0 = tf_executor.island wraps "tf.Relu"(%arg0)
+                            {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+      %outs1, %control1 = tf_executor.island wraps "tf.Sqrt"(%outs0)
+                            {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+      %outs2, %control2 = tf_executor.island wraps "tf.Relu"(%outs1)
+                            {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+      tf_executor.fetch %outs2: tensor<?x?xf32>
+    }
+    return %0 : tensor<?x?xf32>
+  }
+}
+
+// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      func @compute(
+// CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
+// CHECK-SAME: ) -> tensor<?x?xf32> {
+// CHECK:        %[[RELU:.*]] = "tf.Relu"(%[[ARG0]])
+// CHECK:        return %[[RELU]]
+// CHECK:      }
+
+// -----
 // Constants sunk into the outlined compiled functions.
 
 module attributes {tf.versions = {producer = 462 : i32}} {

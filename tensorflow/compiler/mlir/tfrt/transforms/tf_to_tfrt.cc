@@ -41,7 +41,9 @@ limitations under the License.
 #include "tfrt/distributed_runtime/opdefs/kernels.h"
 #include "tfrt/distributed_runtime/opdefs/types.h"
 #include "tfrt/test_kernels/opdefs/test_kernels.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -1738,11 +1740,18 @@ class TfToTfrtConversionPass
     // Pre-compile all JIT compiled kernels found in the module.
     llvm::SmallVector<Value> compiled;
 
+    // A set SymbolRef attributes referencing compiled kernels.
+    llvm::DenseSet<mlir::Attribute> kernels;
+
     // Compile all kernels in parallell.
     module.walk([&](tf_cpurt::FallbackExecuteOp execute) {
+      // Do not compiled the same kernel multiple times.
+      if (kernels.contains(execute.kernel())) return;
+
       auto compile = builder.create<tf_cpurt::FallbackCompileOp>(
           execute.getLoc(), chain_type, execute.kernel(), execute.device());
       compiled.push_back(compile.getResult());
+      kernels.insert(compile.kernel());
     });
 
     // Wait for the compilation completion before returning from init function.
@@ -1875,6 +1884,11 @@ class OutlineCpuRtClustersPass
   // cluster operation with a cpurt.call operation.
   LogicalResult OutlineClusterOp(tf_device::ClusterOp cluster,
                                  SymbolTable *symbol_table);
+
+  // Mapping from the outlined module string representation to the module itself
+  // and an entrypoint function. Used to deduplicate identical modules during
+  // the `tf_device.cluster` outlining.
+  llvm::StringMap<std::pair<ModuleOp, FuncOp>> outlined_;
 };
 
 OutlineCpuRtClustersPass::CompiledModule
@@ -1887,7 +1901,6 @@ OutlineCpuRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // TODO(ezhulenev): Give better names to module and function.
   auto compiled_module = ModuleOp::create(loc, {"kernel"});
   compiled_module->setAttr("tfrt.compiled", UnitAttr::get(ctx));
-  symbol_table->insert(compiled_module);
 
   SymbolTable compiled_module_symbol_table(compiled_module);
 
@@ -1916,12 +1929,38 @@ OutlineCpuRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
       compiled_func_block->end(), cluster_body, cluster_body.begin(),
       cluster_body.end());
 
-  // Replace `tf_device.return` terminator with `std.return` in function body.
+  // Replace `tf_device.return` terminator with `return` in the function body.
   auto device_return =
       cast<tf_device::ReturnOp>(compiled_func_block->getTerminator());
   OpBuilder builder(device_return.getOperation());
   builder.create<ReturnOp>(device_return.getLoc(), device_return.getOperands());
   device_return.erase();
+
+  // TODO(ezhulenev): MLIR doesn't define operation equivalence upstream yet,
+  // replace module printing with a more principled solution when available.
+  // Operations in the cluster can be in different order, however define the
+  // identical Tensorflow programs, with current approach we'll not be able
+  // to detect duplicates like this.
+
+  // Serialize prepared module to string.
+  std::string serialized;
+  llvm::raw_string_ostream os(serialized);
+  compiled_module.print(os);
+
+  // Try to find if identical module was already outlined.
+  auto it = outlined_.find(serialized);
+
+  // Return identical module that was already outlined earlier.
+  if (it != outlined_.end()) {
+    compiled_module.erase();  // erase identical module
+    return {it->second.first, it->second.second, live_ins};
+  }
+
+  // Insert compiled module into the symbol table and assign it a unique name.
+  symbol_table->insert(compiled_module);
+
+  // Cache unique module.
+  outlined_.insert({std::move(serialized), {compiled_module, compiled_func}});
 
   return {compiled_module, compiled_func, live_ins};
 }

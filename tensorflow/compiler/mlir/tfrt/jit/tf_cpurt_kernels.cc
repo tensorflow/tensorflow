@@ -127,8 +127,13 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
   JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
 
-  // TODO(ezhulenev): Compute cache key based on the content of MLIR module.
-  intptr_t key = exec_ctx.location().data;
+  // TODO(ezhulenev): CompilationUnitAttribute in addition to an `id` should
+  // provide a hash (or something like sha-256 fingerprint) of its content for
+  // cache lookup. Currently we rely on the fact that the SavedModel never
+  // unloads a Bef file, and there is a 1-to-1 relationship between the
+  // ResourceContext and the SavedModel, so the `id` is guaranteed to be a
+  // unique key for the cache lookup.
+  intptr_t key = kernel.id();
 
   // Maybe return JitExecutable from the cache.
   if (auto cached = jit_executable_cache->Find(key)) return cached;
