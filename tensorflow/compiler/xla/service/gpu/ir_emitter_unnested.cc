@@ -5119,11 +5119,6 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
                                      "doesn't set the input layout of "
                                   << MlirToString(first_reduce);
 
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<KernelThunk> kernel_thunk,
-      BuildKernelThunk(unnested_hlo, Thunk::ThunkInfo(), &ir_arrays));
-
   HloComputation* fused_computation = nullptr;
   TF_ASSIGN_OR_RETURN(fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.region(),
@@ -5135,6 +5130,29 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
 
   VLOG(2) << StrCat("Generate in ", instr_index_groups.size(), " groups for ",
                     MlirToString(unnested_hlo));
+
+  ReductionCodegenInfo reduction_info =
+      ComputeReductionCodegenInfo(unnested_hlo, first_reduce, layout_analysis);
+  const KernelMappingScheme& mapping_scheme =
+      reduction_info.GetKernelMappingScheme();
+  // block_y_count is set to instr_index_groups.size(), so that each reduction
+  // group can be run in parallel by a different BlockIdy.
+  LaunchDimensions launch_dimensions(
+      {/*x=*/mapping_scheme.GetNumberOfBlocks(),
+       /*y=*/static_cast<int64>(instr_index_groups.size()),
+       /*z=*/1},
+      {/*x=*/mapping_scheme.GetThreadsPerBlock(), /*y=*/1, /*z=*/1});
+  VLOG(3) << "Launch dimensions of "
+          << mlir::GetNameFromLoc(unnested_hlo->getLoc())
+          << ": number of blocks: " << mapping_scheme.GetNumberOfBlocks()
+          << " - threads per block: " << mapping_scheme.GetThreadsPerBlock();
+
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<KernelThunk> kernel_thunk,
+      BuildKernelThunk(unnested_hlo, Thunk::ThunkInfo(), &ir_arrays));
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
 
   absl::optional<GpuElementalIrEmitter> elemental_emitter;
   absl::optional<FusedIrEmitter> optional_fused_emitter;
@@ -5189,23 +5207,6 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
         b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i));
     ksl.If(StrCat("reduce-group-", i), guarding_cond, emit_reduction_func);
   }
-  ReductionCodegenInfo reduction_info =
-      ComputeReductionCodegenInfo(unnested_hlo, first_reduce, layout_analysis);
-  const KernelMappingScheme& mapping_scheme =
-      reduction_info.GetKernelMappingScheme();
-  // block_y_count is set to instr_index_groups.size(), so that each reduction
-  // group can be run in parallel by a different BlockIdy.
-  LaunchDimensions launch_dimensions(
-      {/*x=*/mapping_scheme.GetNumberOfBlocks(),
-       /*y=*/static_cast<int64>(instr_index_groups.size()),
-       /*z=*/1},
-      {/*x=*/mapping_scheme.GetThreadsPerBlock(), /*y=*/1, /*z=*/1});
-  VLOG(3) << "Launch dimensions of "
-          << mlir::GetNameFromLoc(unnested_hlo->getLoc())
-          << ": number of blocks: " << mapping_scheme.GetNumberOfBlocks()
-          << " - threads per block: " << mapping_scheme.GetThreadsPerBlock();
-  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                           ir_emitter_context_->llvm_module());
 
   thunks.push_back(std::move(kernel_thunk));
   std::unique_ptr<SequentialThunk> sequential_thunk =
