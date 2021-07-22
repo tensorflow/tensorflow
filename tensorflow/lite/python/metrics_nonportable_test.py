@@ -518,7 +518,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
       return tf.add(a, b, name='add')
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
-        [model.get_concrete_function()])
+        [model.get_concrete_function()], model)
     self.convert_and_check_location_info(
         converter,
         converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
