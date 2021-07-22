@@ -118,13 +118,9 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
       return this;
     }
 
-    /**
-     * Adds a {@link Delegate} to be applied during interpreter creation.
-     *
-     * <p>WARNING: This is an experimental interface that is subject to change.
-     */
+    @Override
     public Options addDelegate(Delegate delegate) {
-      delegates.add(delegate);
+      super.addDelegate(delegate);
       return this;
     }
 
