@@ -144,7 +144,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::FakeQuantWithMinMaxVarsGradientOp>(),
     TypeID::get<TF::FloorDivOp>(),
     TypeID::get<TF::FloorModOp>(),
-    TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GreaterOp>(),
     TypeID::get<TF::HSVToRGBOp>(),
     TypeID::get<TF::IFFT2DOp>(),

@@ -1670,11 +1670,6 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
     // the last dim of indices of GatherNdOp must be fixed shaped
     if (num_index_dims == ShapedType::kDynamicSize) return failure();
 
-    // TODO(disc): Remove this constraint once fold and canonicalization is
-    // implemented.
-    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape())
-      return failure();
-
     SmallVector<int64_t, 4> slice_sizes;
     slice_sizes.reserve(params_rank);
     for (int64_t i = 0; i < params_rank; ++i) {
@@ -1736,9 +1731,17 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
         /*start_index_map=*/GetI64ElementsAttr(start_index_map, &rewriter),
         /*index_vector_dim=*/rewriter.getI64IntegerAttr(index_vector_dim),
         rewriter.getContext());
-    rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
-        op, op.getType(), op.params(), op.indices(), slice_sizes_value,
-        dims_attr);
+    // TODO(disc): Remove this if-statement once fold and canonicalization is
+    // implemented.
+    if (params_ty.hasStaticShape() && indices_ty.hasStaticShape()) {
+      rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
+          op, op.getType(), op.params(), op.indices(), dims_attr,
+          GetI64ElementsAttr(slice_sizes, &rewriter));
+    } else {
+      rewriter.replaceOpWithNewOp<mhlo::DynamicGatherOp>(
+          op, op.getType(), op.params(), op.indices(), slice_sizes_value,
+          dims_attr);
+    }
     return success();
   }
 };

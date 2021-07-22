@@ -4181,6 +4181,21 @@ func @gatherNd_dynamic(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?x6x2xi32>) -> te
   return %0 : tensor<?x6x?xi32>
 }
 
+// CHECK-LABEL: func @gatherNd_static
+func @gatherNd_static(%arg0: tensor<2x4x128xf32>, %arg1: tensor<2x1xi32>) -> tensor<2x4x128xf32> {
+  // CHECK:      "mhlo.gather"({{.*}}) {
+  // CHECK-SAME:   dimension_numbers = {
+  // CHECK-SAME:     collapsed_slice_dims = dense<0> : tensor<1xi64>
+  // CHECK-SAME:     index_vector_dim = 1 : i64
+  // CHECK-SAME:     offset_dims = dense<[1, 2]> : tensor<2xi64>
+  // CHECK-SAME:     start_index_map = dense<0> : tensor<1xi64>}
+  // CHECK-SAME:   indices_are_sorted = false
+  // CHECK-SAME:   slice_sizes = dense<[1, 4, 128]> : tensor<3xi64>
+  // CHECK-SAME: (tensor<2x4x128xf32>, tensor<2x1xi32>) -> tensor<2x4x128xf32>
+  %0 =  "tf.GatherNd"(%arg0, %arg1) {Tindices = i32, Tparams = i32, device = ""} : (tensor<2x4x128xf32>, tensor<2x1xi32>) -> tensor<2x4x128xf32>
+  return %0 : tensor<2x4x128xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // tf.GatherV2 legalization
 //===----------------------------------------------------------------------===//
