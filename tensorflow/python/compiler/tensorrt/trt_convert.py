@@ -1054,8 +1054,10 @@ class TrtGraphConverterV2(object):
       The optimized GraphDef.
     """
     grappler_session_config = config_pb2.ConfigProto()
+    # Always set `allow_build_at_runtime` for offline TensorRT engine building.
     custom_rewriter_config = _get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params,
+        conversion_params=self._conversion_params._replace(
+            allow_build_at_runtime=True),
         is_dynamic_op=True,
         max_batch_size=None,
         disable_non_trt_optimizers=self._test_only_disable_non_trt_optimizers,
@@ -1297,7 +1299,7 @@ class TrtGraphConverterV2(object):
     if not self._conversion_params.allow_build_at_runtime:
 
       def _reset_allow_build_at_runtime(node):
-        node.attr["allow_build_at_runtime"].b = False
+        node.attr["_allow_build_at_runtime"].b = False
 
       self._for_each_trt_node(self._converted_graph_def,
                               _reset_allow_build_at_runtime)

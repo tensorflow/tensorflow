@@ -377,14 +377,16 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       input_saved_model_signature_key=_SAVED_MODEL_SIGNATURE_KEY,
       max_workspace_size_bytes=10 << 20,  # Use a smaller workspace.
       precision_mode=trt_convert.TrtPrecisionMode.FP32,
-      maximum_cached_engines=2):
+      maximum_cached_engines=2,
+      allow_build_at_runtime=True):
     return trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_signature_key=input_saved_model_signature_key,
         conversion_params=trt_convert.DEFAULT_TRT_CONVERSION_PARAMS._replace(
             max_workspace_size_bytes=max_workspace_size_bytes,
             precision_mode=precision_mode,
-            maximum_cached_engines=maximum_cached_engines))
+            maximum_cached_engines=maximum_cached_engines,
+            allow_build_at_runtime=allow_build_at_runtime))
 
   def _CheckTrtOps(self, concrete_func, check_fn=None):
     graph_def = concrete_func.graph.as_graph_def()
@@ -912,6 +914,62 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
 
     converter.build(input_fn=_InputFn)
+
+  @parameterized.parameters((True, True), (True, False), (False, True),
+                            (False, False))
+  @test_util.run_v2_only
+  def testTrtGraphConverter_AllowBuildAtRuntime(self, build_offline,
+                                                allow_build_at_runtime):
+    if not is_tensorrt_enabled():
+      return
+
+    # Create a model and save it.
+    input_saved_model_dir = self.mkdtemp()
+    root = self._GetModelForV2()
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
+
+    np_input1 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+    np_input2 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
+
+    def _InputFn():
+      yield np_input1, np_input2
+
+    # Run TRT conversion and request an unreasonably large workspace.
+    converter = self._CreateConverterV2(
+        input_saved_model_dir, allow_build_at_runtime=allow_build_at_runtime)
+    converter.convert()
+    if build_offline:
+      converter.build(input_fn=_InputFn)
+    # Output saved model dir.
+    output_saved_model_dir = self.mkdtemp()
+    converter.save(output_saved_model_dir)
+
+    saved_model_loaded = load.load(
+        output_saved_model_dir, tags=[tag_constants.SERVING])
+    graph_func = saved_model_loaded.signatures[_SAVED_MODEL_SIGNATURE_KEY]
+    # Checks the TrtEngineOp(s) have the correct attribute(s).
+    def _CheckFn(node):
+      self.assertEqual(node.attr["_allow_build_at_runtime"].b,
+                       allow_build_at_runtime)
+
+    self._CheckTrtOps(graph_func, _CheckFn)
+    # If the engine was not build offline and the user set not to build at
+    # runtime and not to run native segments. Then, it will report an error.
+    if not build_offline and not allow_build_at_runtime:
+      with self.assertRaisesRegex(
+          errors.AbortedError,
+          r"User disallowed engine native segment execution"):
+        try:
+          os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "False"
+          graph_func(inp1=np_input1, inp2=np_input2)
+        finally:
+          os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
+    else:
+      output = graph_func(inp1=np_input1, inp2=np_input2)["output_0"]
+      self.assertEqual(output.shape, (4, 1, 1))
+      self.assertAllClose(
+          np.asarray([5.0, 5.0, 5.0, 5.0]).reshape([4, 1, 1]), output)
 
   @test_util.run_v2_only
   def testBackwardCompatibility(self):
