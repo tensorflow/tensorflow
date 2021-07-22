@@ -1696,40 +1696,9 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   MlirEmitterContext context;
   context.SetOperation(fusion);
 
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  Thunk* kernel_thunk;
-  {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk_ptr,
-                        BuildKernelThunk(fusion, GetThunkInfo(op), &ir_arrays));
-    kernel_thunk = kernel_thunk_ptr.get();
-    thunk_sequence_.emplace_back(std::move(kernel_thunk_ptr));
-  }
-
-  auto operand_arrays =
-      absl::MakeSpan(ir_arrays).subspan(0, context.operand_shapes.size());
-  auto output_element_arrays = absl::MakeSpan(ir_arrays).subspan(
-      context.operand_shapes.size(), context.output_shapes.size());
-
   TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.region(),
                                                           /*is_fusion=*/true));
-
-  GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
-                                          GetNestedComputer());
-  FusedIrEmitter fused_emitter(&elemental_emitter);
-
-  for (int i = 0; i < context.operand_shapes.size(); i++) {
-    auto* builder = &b_;
-    auto ir_array = operand_arrays[i];
-    fused_emitter.BindGenerator(
-        fused_computation->parameter_instruction(i),
-        [builder, ir_array](llvm_ir::IrArray::Index index) {
-          return ir_array.EmitReadArrayElement(index, builder);
-        });
-  }
-  TF_ASSIGN_OR_RETURN(
-      auto element_generator,
-      fused_emitter.GetGenerator(fused_computation->root_instruction()));
 
   int unroll_factor;
   if (!MayPreventVectorization(fusion)) {
@@ -1782,8 +1751,40 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
                           launch_config));
+
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  Thunk* kernel_thunk;
+  {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk_ptr,
+                        BuildKernelThunk(fusion, GetThunkInfo(op), &ir_arrays));
+    kernel_thunk = kernel_thunk_ptr.get();
+    thunk_sequence_.emplace_back(std::move(kernel_thunk_ptr));
+  }
   SetThunkLaunchDimensions(launch_dimensions, kernel_thunk,
                            ir_emitter_context_->llvm_module());
+
+  auto operand_arrays =
+      absl::MakeSpan(ir_arrays).subspan(0, context.operand_shapes.size());
+  auto output_element_arrays = absl::MakeSpan(ir_arrays).subspan(
+      context.operand_shapes.size(), context.output_shapes.size());
+
+  GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
+                                          GetNestedComputer());
+  FusedIrEmitter fused_emitter(&elemental_emitter);
+
+  for (int i = 0; i < context.operand_shapes.size(); i++) {
+    auto* builder = &b_;
+    auto ir_array = operand_arrays[i];
+    fused_emitter.BindGenerator(
+        fused_computation->parameter_instruction(i),
+        [builder, ir_array](llvm_ir::IrArray::Index index) {
+          return ir_array.EmitReadArrayElement(index, builder);
+        });
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto element_generator,
+      fused_emitter.GetGenerator(fused_computation->root_instruction()));
+
   llvm::Type* index_type =
       GetIndexTypeForKernel(fusion, launch_dimensions.launch_bound(), &b_);
 
