@@ -39,6 +39,7 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/util/rocm_solvers.h"
 #endif
+#endif
 
 namespace tensorflow {
 
