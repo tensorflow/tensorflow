@@ -861,21 +861,30 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       LOG_AND_RETURN_IF_ERROR(errors::Internal(
           "Currently, TF eager runtime only supports GrpcServer."));
     }
+    auto worker_cache =
+        grpc_server->worker_env()->session_mgr->LegacySession()->worker_cache();
     const auto& config = server_def.default_session_config();
-    if (!config.experimental().coordination_service().empty()) {
-      auto worker_cache = grpc_server->worker_env()
-                              ->session_mgr->LegacySession()
-                              ->worker_cache();
-      std::unique_ptr<CoordinationClientCache> cache;
-      LOG_AND_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&cache));
-      coordination_service_ =
-          CoordinationServiceInterface::EnableCoordinationService(
-              config.experimental().coordination_service(),
-              grpc_server->worker_env(), server_def, std::move(cache),
-              [this](Status s) {
-                context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
-              });
-      LOG_AND_RETURN_IF_ERROR(coordination_service_->Start());
+    const bool enable_coordination =
+        !config.experimental().coordination_service().empty();
+    if (enable_coordination) {
+      // For coordination leader: start the service instance
+      const std::string& leader =
+          config.experimental().collective_group_leader();
+      DeviceNameUtils::ParsedName parsed;
+      DeviceNameUtils::ParseFullName(leader, &parsed);
+      if (parsed.job == server_def.job_name() &&
+          parsed.task == server_def.task_index()) {
+        std::unique_ptr<CoordinationClientCache> service_cache;
+        LOG_AND_RETURN_IF_ERROR(
+            worker_cache->GetCoordinationClientCache(&service_cache));
+        coordination_service_ =
+            CoordinationServiceInterface::EnableCoordinationService(
+                config.experimental().coordination_service(),
+                grpc_server->worker_env(), server_def,
+                std::move(service_cache));
+      }
+      LOG_AND_RETURN_IF_ERROR(grpc_server->SetCoordinationServiceAgentInstance(
+          coordination_service_agent_.get()));
     }
     LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
     if (server_def.default_session_config()
@@ -890,6 +899,20 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
           grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
               session_name, &worker_session));
       context_->SetWorkerEnv(grpc_server->worker_env(), worker_session);
+    }
+
+    if (enable_coordination) {
+      // Coordination agent: initialize, connect, wait for all tasks
+      std::unique_ptr<CoordinationClientCache> agent_cache;
+      LOG_AND_RETURN_IF_ERROR(
+          worker_cache->GetCoordinationClientCache(&agent_cache));
+      LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
+          grpc_server->worker_env(), server_def, std::move(agent_cache),
+          [this](Status s) {
+            context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
+          }));
+      LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
+      LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->WaitForAllTasks());
     }
 
     LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(

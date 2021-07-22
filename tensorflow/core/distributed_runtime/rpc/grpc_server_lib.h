@@ -113,6 +113,9 @@ class GrpcServer : public ServerInterface {
       const tensorflow::uint64 context_id, tensorflow::EagerContext* context);
   // Update the set of workers that can be reached by the GRPC server
   Status UpdateServerDef(const ServerDef& server_def);
+  // Pass coordination service agent instance to server's RPC handler
+  virtual Status SetCoordinationServiceAgentInstance(
+      CoordinationServiceAgent* agent);
 
  protected:
   virtual Status GetHostAndPort(const ServerDef& server_def, string* host_name,
@@ -142,6 +145,10 @@ class GrpcServer : public ServerInterface {
   virtual std::map<std::string, AsyncServiceInterface*> ExtraServices(
       ::grpc::ServerBuilder*) {
     return {};
+  }
+
+  virtual std::map<std::string, AsyncServiceInterface*> GetExtraServices() {
+    return extra_services_;
   }
 
   // Parses a WorkerCacheFactoryOptions into a GrpcChannelSpec.
