@@ -17,6 +17,11 @@
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+*   TF1 -> TF2 Migration
+    * Introduced the `tf.compat.v1.keras.utils.track_tf1_style_variables`
+      decorator, which enables using large classes of tf1-style variable_scope,
+      `get_variable`, and `compat.v1.layer`-based components from within TF2
+      models running with TF2 behavior enabled.
 
 *  `tf.data`:
     *   tf.data service now supports auto-sharding. Users specify the sharding
