@@ -1853,9 +1853,20 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     // emit it in a separate kernel. Treat it like a loop fusion, writing to
     // the output buffer.
     {
+      auto unroll_factor =
+          ComputeMaxUnrollFactor(fusion_op, hlo_module_config_);
+      const Shape& element_shape = root->shape();
+      TF_ASSIGN_OR_RETURN(
+          LaunchDimensions launch_dimensions,
+          CalculateLaunchDimensions(element_shape,
+                                    ir_emitter_context_->gpu_device_info(),
+                                    {unroll_factor, /*few_waves=*/false}));
+
       std::vector<llvm_ir::IrArray> ir_arrays;
       TF_ASSIGN_OR_RETURN(auto operand_thunk,
                           BuildKernelThunk(op, Thunk::ThunkInfo(), &ir_arrays));
+      SetThunkLaunchDimensions(launch_dimensions, operand_thunk.get(),
+                               ir_emitter_context_->llvm_module());
       thunks.push_back(std::move(operand_thunk));
 
       GpuElementalIrEmitter operand_elemental_emitter(
@@ -1874,16 +1885,6 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       TF_ASSIGN_OR_RETURN(auto generator,
                           operand_fused_emitter.GetGenerator(root->operand(0)));
 
-      auto unroll_factor =
-          ComputeMaxUnrollFactor(fusion_op, hlo_module_config_);
-      const Shape& element_shape = root->shape();
-      TF_ASSIGN_OR_RETURN(
-          LaunchDimensions launch_dimensions,
-          CalculateLaunchDimensions(element_shape,
-                                    ir_emitter_context_->gpu_device_info(),
-                                    {unroll_factor, /*few_waves=*/false}));
-      SetThunkLaunchDimensions(launch_dimensions, thunks.back().get(),
-                               ir_emitter_context_->llvm_module());
       TF_RETURN_IF_ERROR(
           ParallelLoopEmitter(generator, ir_arrays.back(), launch_dimensions,
                               &b_, {unroll_factor})
@@ -1968,36 +1969,32 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     // touching the un-updated elements.
     CHECK_EQ(1, GetHloOutputs(op).size());
 
-    // Set up kernel thunk and fused ir emitter.
-    std::vector<llvm_ir::IrArray> ir_arrays;
-    TF_ASSIGN_OR_RETURN(
-        auto fusion_thunk,
-        BuildKernelThunk(fusion_op, GetThunkInfo(op), &ir_arrays));
-
     TF_ASSIGN_OR_RETURN(
         const HloComputation* fused_computation,
         GetOrCreateSubComputationFromRegion(&fusion_op.region(),
                                             /*is_fusion=*/true));
 
-    GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
-                                            ir_emitter_context_->llvm_module(),
-                                            &b_, GetNestedComputer());
-
     // Shape of the dynamic-update-slice's "update" operand.
     Shape update_shape =
         fused_computation->root_instruction()->operand(1)->shape();
-
-    // Array to write into.  Because this is an in-place operation, this is the
-    // same as operand 0's array.
-    const IrArray& output_array = ir_arrays.back();
 
     TF_ASSIGN_OR_RETURN(
         LaunchDimensions launch_dimensions,
         CalculateLaunchDimensions(update_shape,
                                   ir_emitter_context_->gpu_device_info()));
+
+    // Set up kernel thunk and fused ir emitter.
+    std::vector<llvm_ir::IrArray> ir_arrays;
+    TF_ASSIGN_OR_RETURN(
+        auto fusion_thunk,
+        BuildKernelThunk(fusion_op, GetThunkInfo(op), &ir_arrays));
     SetThunkLaunchDimensions(launch_dimensions, fusion_thunk.get(),
                              ir_emitter_context_->llvm_module());
     AddThunkToThunkSequence(std::move(fusion_thunk));
+
+    GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
+                                            ir_emitter_context_->llvm_module(),
+                                            &b_, GetNestedComputer());
 
     FusedIrEmitter fused_emitter(&elemental_emitter);
 
@@ -2010,6 +2007,10 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
                                                      fused_operand->name());
           });
     }
+
+    // Array to write into.  Because this is an in-place operation, this is the
+    // same as operand 0's array.
+    const IrArray& output_array = ir_arrays.back();
 
     return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
         fused_computation, output_array, &fused_emitter, launch_dimensions,
