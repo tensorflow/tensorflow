@@ -190,7 +190,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ShapedType lhs_type = operands[0].getType().dyn_cast<ShapedType>();
@@ -225,7 +225,7 @@ void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
 }
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   Type element_type = IntegerType::get(context, 1);
@@ -360,7 +360,7 @@ static LogicalResult Verify(MinimumBroadcastShapesOp op) {
 }
 
 LogicalResult ConstantLikeOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ConstantLikeOp::Adaptor op(operands, attributes);
@@ -403,7 +403,7 @@ void ConstantLikeOp::getCanonicalizationPatterns(
 }
 
 LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueRange operands,
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr, RegionRange,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BroadcastSelectOp::Adaptor op(operands);

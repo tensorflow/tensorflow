@@ -2474,7 +2474,7 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult RngNormalOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   return rngInferReturnTypeComponents(context, location, operands, attributes,
@@ -2486,7 +2486,7 @@ LogicalResult RngNormalOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 
 LogicalResult RngUniformOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   return rngInferReturnTypeComponents(context, location, operands, attributes,
@@ -2568,7 +2568,7 @@ LogicalResult SelectOp::inferReturnTypes(
 }
 
 LogicalResult SelectOp::inferReturnTypeComponents(
-    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
+    mlir::MLIRContext*, llvm::Optional<mlir::Location>, ValueShapeRange,
     mlir::DictionaryAttr, mlir::RegionRange,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
   // TODO(b/168772852)
@@ -3859,7 +3859,7 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
 }
 
 LogicalResult CompareOp::inferReturnTypeComponents(
-    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
+    mlir::MLIRContext*, llvm::Optional<mlir::Location>, ValueShapeRange,
     mlir::DictionaryAttr, mlir::RegionRange,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
   // TODO(b/168772852)
