@@ -22,6 +22,11 @@ namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
 
+extern "C" MLIR_RUNNERUTILS_EXPORT void _mlir_ciface_tf_launch_kernel(
+    void* ctx, void* module_blob, char* kernel_name, intptr_t gridX,
+    intptr_t gridY, intptr_t gridZ, intptr_t blockX, intptr_t blockY,
+    intptr_t blockZ, void** params);
+
 extern "C" MLIR_RUNNERUTILS_EXPORT void* _mlir_ciface_tf_alloc(
     void* op_kernel_ctx, size_t num_elements, size_t element_size,
     int32_t output_index, int32_t num_candidates,
