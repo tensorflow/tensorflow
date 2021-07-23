@@ -1260,8 +1260,17 @@ Status Converter::RenameAndMarkOutputTensors(
 #if IS_TRT_VERSION_GE(7, 2, 3, 4)
 enum class Tactic : int64_t { kINVALID_TACTIC = int64_t(0xD15EA5EDD15EA5ED) };
 
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+static constexpr int32_t kLAYER_IMPL_BASE = 0x80000000;
+#else
+static constexpr int32_t kLAYER_IMPL_BASE = 0x00000000;
+#endif
+
 enum class LayerImpl : int64_t {
-  kSHUFFLE = 16,
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+  kSHUFFLE = kLAYER_IMPL_BASE + 14
+#else
+  kSHUFFLE = kLAYER_IMPL_BASE + 16
 };
 
 // An algorithm selector to support debugging and work around known TensorRT
