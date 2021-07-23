@@ -5999,8 +5999,13 @@ def disable_eager_execution():
   """Disables eager execution.
 
   This function can only be called before any Graphs, Ops, or Tensors have been
-  created. It can be used at the beginning of the program for complex migration
-  projects from TensorFlow 1.x to 2.x.
+  created.
+
+  @compatibility(TF2)
+  This function is not necessary if you are using TF2. Eager execution is
+  enabled by default. If you want to use Graph mode please consider
+  [tf.function](https://www.tensorflow.org/api_docs/python/tf/function).
+  @end_compatibility
   """
   _api_usage_gauge.get_cell().set(False)
   logging.vlog(1, "Disabling eager execution")
