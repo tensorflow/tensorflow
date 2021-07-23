@@ -685,10 +685,17 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   int unroll_factor = 1;
   std::string ir_name = mlir::GetNameFromLoc(pad_to_static.getLoc());
 
+  const Shape& input_shape = GetShape(pad_to_static.args().front());
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      CalculateLaunchDimensions(
+                          input_shape, ir_emitter_context_->gpu_device_info(),
+                          {unroll_factor}));
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
       auto kernel_thunk,
       BuildKernelThunk(pad_to_static, GetThunkInfo(op), &ir_arrays));
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
 
   const llvm_ir::IrArray source_array = ir_arrays[0];
   const llvm_ir::IrArray output_array = ir_arrays[1];
@@ -698,8 +705,6 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   // pseudo code for PadToStatic on a 2d array
   //   int* source_array = input[0];
   //   int* dest_array = output[0];
-  const Shape& data_shape = GetShape(pad_to_static.output().front());
-  const Shape& input_shape = GetShape(pad_to_static.args().front());
   llvm::Value* source_buffer = source_array.GetBasePointer();
   llvm::Value* raw_buffer =
       b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
@@ -786,12 +791,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
     return Status::OK();
   };
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          input_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor}));
-  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                           ir_emitter_context_->llvm_module());
+  const Shape& data_shape = GetShape(pad_to_static.output().front());
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
                           {unroll_factor})
@@ -810,12 +810,18 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   int unroll_factor = 1;
   std::string ir_name = mlir::GetNameFromLoc(slice_to_dynamic.getLoc());
 
+  const Shape& input_shape = GetShape(slice_to_dynamic.args().front());
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      CalculateLaunchDimensions(
+                          input_shape, ir_emitter_context_->gpu_device_info(),
+                          {unroll_factor}));
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
       auto kernel_thunk,
       BuildKernelThunk(slice_to_dynamic, GetThunkInfo(op), &ir_arrays));
+  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                           ir_emitter_context_->llvm_module());
 
-  const Shape& input_shape = GetShape(slice_to_dynamic.args().front());
   TF_RET_CHECK(slice_to_dynamic.output().size() == 1);
   const Shape& data_shape = GetShape(slice_to_dynamic.output().front());
 
@@ -906,13 +912,6 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
         &b_);
     return Status::OK();
   };
-
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          input_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor}));
-  SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
-                           ir_emitter_context_->llvm_module());
 
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
