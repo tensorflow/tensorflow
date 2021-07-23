@@ -558,14 +558,12 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
+        ":tf_xplane_visitor",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_visitor",
-        "//tensorflow/core:platform_base",
-        "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 
