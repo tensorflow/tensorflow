@@ -77,6 +77,7 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
+// LINT.IfChange
 bool IsOpAllowedTf2XlaFallback(Operation* op) {
   // Allowlisted TensorFlow ops are known to have well behaved tf2xla kernels
   // building valid MLIR using MlirHloBuilder.
@@ -279,10 +280,12 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   if (!abstractOp) return false;
   return ops->count(abstractOp->typeID);
 }
+// LINT.ThenChange(:Tf2XlaPreferred)
 
 /// List of ops that should use XlaOpKernel legalization only in the case of
 /// prefer_tf2xla. All other ops not in this list should use MLIR legalization
 /// only or not be legalized by the new bridge.
+// LINT.IfChange(Tf2XlaPreferred)
 bool IsOpAllowedTf2XlaPreferred(Operation* op) {
   // Use a pointer for the static set, so the set is not destructed upon thread
   // end, which would not be thread safe.
@@ -322,6 +325,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::FusedBatchNormGradV3Op>(),
     TypeID::get<TF::FusedBatchNormV2Op>(),
     TypeID::get<TF::FusedBatchNormV3Op>(),
+    TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GatherV2Op>(),
     TypeID::get<TF::IdentityOp>(),
     TypeID::get<TF::IdentityNOp>(),
@@ -359,6 +363,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::RsqrtGradOp>(),
     TypeID::get<TF::ScatterNdOp>(),
     TypeID::get<TF::ShapeOp>(),
+    TypeID::get<TF::SinhOp>(),
     TypeID::get<TF::SizeOp>(),
     TypeID::get<TF::SliceOp>(),
     TypeID::get<TF::SoftmaxCrossEntropyWithLogitsOp>(),
@@ -393,6 +398,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
   if (!abstractOp) return false;
   return ops->count(abstractOp->typeID);
 }
+// LINT.ThenChange()
 
 bool IsOpAllowedForTesting(Operation* op) {
   // clang-format off
