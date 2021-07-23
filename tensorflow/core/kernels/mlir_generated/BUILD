@@ -141,6 +141,9 @@ tf_kernel_library(
         "gpu_op_tan.cc",
         "gpu_op_tanh.cc",
     ]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
@@ -1615,6 +1618,7 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_rint_kernels",
+    jit_types = ["f16"],
     op = "rint",
     tile_size = "1024",
     types = [

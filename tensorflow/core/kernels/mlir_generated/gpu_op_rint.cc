@@ -18,6 +18,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+// This kernel is jitted. Leave as experimental until we want to test jitted
+// kernels in more cases.
+#if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Rint, DT_HALF);
+#endif
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Rint, DT_FLOAT);
 GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Rint, DT_DOUBLE);
 

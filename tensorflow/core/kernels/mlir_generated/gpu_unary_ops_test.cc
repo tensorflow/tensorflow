@@ -830,43 +830,49 @@ GENERATE_DEFAULT_TEST_2(Relu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
 
 /// Test `tf.Rint`.
 
-GENERATE_DEFAULT_TEST(Rint, DT_FLOAT, DT_FLOAT, std::rint,
+template <typename T>
+T baseline_rint(T x) {
+  T y = std::rint(x);
+  return y == T(0) ? T(0) : y;
+}
+
+#if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+GENERATE_DEFAULT_TEST_2(Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_rint,
+                        test::OpsTestConfig().ExpectStrictlyEqual())
+#endif
+
+GENERATE_DEFAULT_TEST(Rint, DT_FLOAT, DT_FLOAT, baseline_rint,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Rint, DT_DOUBLE, DT_DOUBLE,
     test::InputAsVector<double>({-1.7, -1.5, -0.2, -0.0, 0.0, 0.2, 0.5000001,
                                  1.5, 1.7, 2.0}),
-    std::rint, test::OpsTestConfig().ExpectStrictlyEqual())
+    baseline_rint, test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Round`.
 
 /// `tf.Round` is the same as `std::rint` and different from `std::round`. It
 /// rounds to the nearest even integer, not towards zero.
 
-template <typename T>
-T baseline_round(T x) {
-  T y = std::rint(x);
-  return y == T(0) ? T(0) : y;
-}
-
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Round, DT_DOUBLE, DT_DOUBLE,
     test::InputAsVector<double>({-1.7, -1.5, -0.2, -0.0, 0.0, 0.2, 0.5000001,
                                  1.5, 1.7, 2.0}),
-    baseline_round, test::OpsTestConfig().ExpectStrictlyEqual())
+    baseline_rint, test::OpsTestConfig().ExpectStrictlyEqual())
 
-GENERATE_DEFAULT_TEST(Round, DT_FLOAT, DT_FLOAT, baseline_round,
+GENERATE_DEFAULT_TEST(Round, DT_FLOAT, DT_FLOAT, baseline_rint,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_2(Round, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
-                        baseline_round,
+                        baseline_rint,
                         test::OpsTestConfig().ExpectStrictlyEqual())
 
-GENERATE_DEFAULT_TEST(Round, DT_INT32, DT_INT32, baseline_round,
+GENERATE_DEFAULT_TEST(Round, DT_INT32, DT_INT32, baseline_rint,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
-GENERATE_DEFAULT_TEST(Round, DT_INT64, DT_INT64, baseline_round,
+GENERATE_DEFAULT_TEST(Round, DT_INT64, DT_INT64, baseline_rint,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Rsqrt`.
