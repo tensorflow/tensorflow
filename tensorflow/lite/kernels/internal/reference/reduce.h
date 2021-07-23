@@ -54,8 +54,7 @@ inline bool Reduce(const In* input_data, const int* input_dims,
                    const int* output_dims, const int input_num_dims,
                    const int output_num_dims, const int* axis,
                    const int num_axis, int* input_iter,
-                   const std::function<Out(Out current, In in)>& reducer,
-                   Out* output_data) {
+                   Out reducer(Out current, const In in), Out* output_data) {
   // Reset input iterator.
   for (int idx = 0; idx < input_num_dims; ++idx) {
     input_iter[idx] = 0;
