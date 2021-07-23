@@ -127,9 +127,9 @@ class NativeInterpreterWrapper implements AutoCloseable {
     ownedDelegates.clear();
   }
 
-  /** Runs model inference based on SignatureDef provided through {@code methodName}. */
+  /** Runs model inference based on SignatureDef provided through {@code signatureKey}. */
   public void runSignature(
-      Map<String, Object> inputs, Map<String, Object> outputs, String methodName) {
+      Map<String, Object> inputs, Map<String, Object> outputs, String signatureKey) {
     inferenceDurationNanoseconds = -1;
     if (inputs == null || inputs.isEmpty()) {
       throw new IllegalArgumentException("Input error: Inputs should not be null or empty.");
@@ -138,7 +138,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
       throw new IllegalArgumentException("Input error: Outputs should not be null.");
     }
 
-    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, methodName);
+    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, signatureKey);
     if (subgraphIndex == 0) {
       // Run the primary subgraph and update the cached tensor objects.
       initTensorIndexesMaps();
@@ -147,12 +147,12 @@ class NativeInterpreterWrapper implements AutoCloseable {
       Map<Integer, Object> outputsWithOutputIndex = new TreeMap<>();
       for (Map.Entry<String, Object> input : inputs.entrySet()) {
         int tensorIndex =
-            getInputTensorIndexFromSignature(interpreterHandle, input.getKey(), methodName);
+            getInputTensorIndexFromSignature(interpreterHandle, input.getKey(), signatureKey);
         inputsWithInputIndex.put(tensorToInputsIndexes.get(tensorIndex), input.getValue());
       }
       for (Map.Entry<String, Object> output : outputs.entrySet()) {
         int tensorIndex =
-            getOutputTensorIndexFromSignature(interpreterHandle, output.getKey(), methodName);
+            getOutputTensorIndexFromSignature(interpreterHandle, output.getKey(), signatureKey);
         outputsWithOutputIndex.put(tensorToOutputsIndexes.get(tensorIndex), output.getValue());
       }
       Object[] inputsList = new Object[inputs.size()];
@@ -165,7 +165,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
 
     for (Map.Entry<String, Object> input : inputs.entrySet()) {
-      Tensor tensor = getInputTensor(input.getKey(), methodName);
+      Tensor tensor = getInputTensor(input.getKey(), signatureKey);
       int[] newShape = tensor.getInputShapeIfDifferent(input.getValue());
       if (newShape != null) {
         resizeInput(interpreterHandle, errorHandle, tensor.index(), newShape, false, subgraphIndex);
@@ -175,7 +175,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     allocateTensorsIfNeeded(subgraphIndex);
 
     for (Map.Entry<String, Object> input : inputs.entrySet()) {
-      getInputTensor(input.getKey(), methodName).setTo(input.getValue());
+      getInputTensor(input.getKey(), signatureKey).setTo(input.getValue());
     }
 
     long inferenceStartNanos = System.nanoTime();
@@ -185,7 +185,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     for (Map.Entry<String, Object> output : outputs.entrySet()) {
       // Null output placeholders are allowed and ignored.
       if (output.getValue() != null) {
-        getOutputTensor(output.getKey(), methodName).copyTo(output.getValue());
+        getOutputTensor(output.getKey(), signatureKey).copyTo(output.getValue());
       }
     }
 
@@ -389,25 +389,26 @@ class NativeInterpreterWrapper implements AutoCloseable {
    *
    * @throws IllegalArgumentException if the input name is invalid.
    */
-  Tensor getInputTensor(String inputName, String methodName) {
+  Tensor getInputTensor(String inputName, String signatureKey) {
     if (inputName == null) {
       throw new IllegalArgumentException("Invalid input tensor name provided (null)");
     }
-    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, methodName);
+    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, signatureKey);
     if (subgraphIndex == -1) {
-      throw new IllegalArgumentException("Invalid input method name provided: " + methodName);
+      throw new IllegalArgumentException("Invalid input method name provided: " + signatureKey);
     }
     if (subgraphIndex > 0) {
-      int tensorIndex = getInputTensorIndexFromSignature(interpreterHandle, inputName, methodName);
+      int tensorIndex =
+          getInputTensorIndexFromSignature(interpreterHandle, inputName, signatureKey);
       return Tensor.fromSubgraphAndIndex(interpreterHandle, subgraphIndex, tensorIndex);
     }
 
     initTensorIndexesMaps();
-    int tensorIndex = getInputTensorIndexFromSignature(interpreterHandle, inputName, methodName);
+    int tensorIndex = getInputTensorIndexFromSignature(interpreterHandle, inputName, signatureKey);
     if (!tensorToInputsIndexes.containsKey(tensorIndex)) {
       throw new IllegalArgumentException(
           String.format(
-              "Invalid input tensor name (%s) for signature (%s).", inputName, methodName));
+              "Invalid input tensor name (%s) for signature (%s).", inputName, signatureKey));
     }
     return getInputTensor(tensorToInputsIndexes.get(tensorIndex));
   }
@@ -417,15 +418,19 @@ class NativeInterpreterWrapper implements AutoCloseable {
     return getSignatureDefNames(interpreterHandle);
   }
 
-  /** Gets the list of SignatureDefs inputs for method {@code methodName} */
-  String[] getSignatureInputs(String methodName) {
-    return getSignatureInputs(interpreterHandle, methodName);
+  /** Gets the list of SignatureDefs inputs for method {@code signatureKey} */
+  String[] getSignatureInputs(String signatureKey) {
+    return getSignatureInputs(interpreterHandle, signatureKey);
   }
 
-  /** Gets the list of SignatureDefs outputs for method {@code methodName} */
-  String[] getSignatureOutputs(String methodName) {
-    return getSignatureOutputs(interpreterHandle, methodName);
+  private static native String[] getSignatureInputs(long interpreterHandle, String signatureKey);
+
+  /** Gets the list of SignatureDefs outputs for method {@code signatureKey} */
+  String[] getSignatureOutputs(String signatureKey) {
+    return getSignatureOutputs(interpreterHandle, signatureKey);
   }
+
+  private static native String[] getSignatureOutputs(long interpreterHandle, String signatureKey);
 
   /** Gets the number of output tensors. */
   int getOutputTensorCount() {
@@ -455,26 +460,27 @@ class NativeInterpreterWrapper implements AutoCloseable {
    *
    * @throws IllegalArgumentException if the output name is invalid.
    */
-  Tensor getOutputTensor(String outputName, String methodName) {
+  Tensor getOutputTensor(String outputName, String signatureKey) {
     if (outputName == null) {
       throw new IllegalArgumentException("Invalid output tensor name provided (null)");
     }
-    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, methodName);
+    int subgraphIndex = getSubgraphIndexFromSignature(interpreterHandle, signatureKey);
     if (subgraphIndex == -1) {
-      throw new IllegalArgumentException("Invalid input method name provided: " + methodName);
+      throw new IllegalArgumentException("Invalid input method name provided: " + signatureKey);
     }
     if (subgraphIndex > 0) {
       int tensorIndex =
-          getOutputTensorIndexFromSignature(interpreterHandle, outputName, methodName);
+          getOutputTensorIndexFromSignature(interpreterHandle, outputName, signatureKey);
       return Tensor.fromSubgraphAndIndex(interpreterHandle, subgraphIndex, tensorIndex);
     }
 
     initTensorIndexesMaps();
-    int tensorIndex = getOutputTensorIndexFromSignature(interpreterHandle, outputName, methodName);
+    int tensorIndex =
+        getOutputTensorIndexFromSignature(interpreterHandle, outputName, signatureKey);
     if (!tensorToOutputsIndexes.containsKey(tensorIndex)) {
       throw new IllegalArgumentException(
           String.format(
-              "Invalid output tensor name (%s) for signature (%s).", outputName, methodName));
+              "Invalid output tensor name (%s) for signature (%s).", outputName, signatureKey));
     }
     return getOutputTensor(tensorToOutputsIndexes.get(tensorIndex));
   }
@@ -603,10 +609,6 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native String[] getSignatureDefNames(long interpreterHandle);
 
-  private static native String[] getSignatureInputs(long interpreterHandle, String methodName);
-
-  private static native String[] getSignatureOutputs(long interpreterHandle, String methodName);
-
   private static native void setCancelled(
       long interpreterHandle, long cancellationFlagHandle, boolean value);
 
@@ -615,15 +617,15 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private static native boolean hasUnresolvedFlexOp(long interpreterHandle);
 
   private static native int getSubgraphIndexFromSignature(
-      long interpreterHandle, String methodName);
+      long interpreterHandle, String signatureKey);
 
   private static native int getInputTensorIndex(long interpreterHandle, int inputIdx);
 
   private static native int getInputTensorIndexFromSignature(
-      long interpreterHandle, String signatureInputName, String methodName);
+      long interpreterHandle, String signatureInputName, String signatureKey);
 
   private static native int getOutputTensorIndexFromSignature(
-      long interpreterHandle, String signatureInputName, String methodName);
+      long interpreterHandle, String signatureInputName, String signatureKey);
 
   private static native int getOutputTensorIndex(long interpreterHandle, int outputIdx);
 

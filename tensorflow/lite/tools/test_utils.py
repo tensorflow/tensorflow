@@ -196,7 +196,6 @@ def build_mock_flatbuffer_model():
   builder.PrependUOffsetTRelative(subgraph_offset)
   subgraphs_offset = builder.EndVector(1)
 
-  signature_method = builder.CreateString('my_method')
   signature_key = builder.CreateString('my_key')
   input_tensor_string = builder.CreateString('input_tensor')
   output_tensor_string = builder.CreateString('output_tensor')
@@ -221,8 +220,7 @@ def build_mock_flatbuffer_model():
   signature_outputs_offset = builder.EndVector(1)
 
   schema_fb.SignatureDefStart(builder)
-  schema_fb.SignatureDefAddKey(builder, signature_key)
-  schema_fb.SignatureDefAddMethodName(builder, signature_method)
+  schema_fb.SignatureDefAddSignatureKey(builder, signature_key)
   schema_fb.SignatureDefAddInputs(builder, signature_inputs_offset)
   schema_fb.SignatureDefAddOutputs(builder, signature_outputs_offset)
   signature_offset = schema_fb.SignatureDefEnd(builder)

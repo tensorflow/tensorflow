@@ -466,10 +466,8 @@ struct SignatureDefData {
   std::map<std::string, std::string> inputs;
   // Outputs defined in the signature def mapped to tensor names.
   std::map<std::string, std::string> outputs;
-  // Method name exported by the signature def.
-  std::string method_name;
-  // SignatureDef key.
-  std::string signature_def_key;
+  // Signature key.
+  std::string signature_key;
   // Subgraph index.
   uint32_t subgraph_index;
 };
@@ -1676,8 +1674,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
     result[0].outputs[sig_def_outputs[i]] = unique_name;
   }
   if (auto name_attr = exported_name[0].dyn_cast_or_null<StringAttr>())
-    result[0].method_name = name_attr.getValue().str();
-  result[0].signature_def_key = saved_model_tag;
+    result[0].signature_key = name_attr.getValue().str();
   result[0].subgraph_index = subgraph_index;
   return result;
 }
@@ -1710,15 +1707,12 @@ Translator::CreateSignatureDefs(
     auto outputs = GetList(subgraph_index, signature_def_data.outputs);
     auto inputs_buf = builder_.CreateVector(inputs);
     auto outputs_buf = builder_.CreateVector(outputs);
-    auto method_name_buf =
-        builder_.CreateString(signature_def_data.method_name);
-    auto signature_def_key_buf =
-        builder_.CreateString(signature_def_data.signature_def_key);
+    auto signature_key_buf =
+        builder_.CreateString(signature_def_data.signature_key);
     tflite::SignatureDefBuilder sig_def_builder(builder_);
     sig_def_builder.add_inputs(inputs_buf);
     sig_def_builder.add_outputs(outputs_buf);
-    sig_def_builder.add_method_name(method_name_buf);
-    sig_def_builder.add_key(signature_def_key_buf);
+    sig_def_builder.add_signature_key(signature_key_buf);
     sig_def_builder.add_subgraph_index(signature_def_data.subgraph_index);
     signature_defs_buffer.push_back(sig_def_builder.Finish());
     ++subgraph_index;

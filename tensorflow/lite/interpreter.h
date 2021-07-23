@@ -298,22 +298,21 @@ class Interpreter {
   /// in the model.
   /// Note, pointers returned have lifetime same as the Interpreter object.
   std::vector<const std::string*> signature_def_names() const {
-    std::vector<const std::string*> method_names;
-    method_names.reserve(signature_defs_.size());
+    std::vector<const std::string*> signature_keys;
+    signature_keys.reserve(signature_defs_.size());
     for (const auto& sig_def : signature_defs_) {
-      method_names.emplace_back(&sig_def.method_name);
+      signature_keys.emplace_back(&sig_def.signature_key);
     }
-    return method_names;
+    return signature_keys;
   }
 
   /// WARNING: Experimental interface, subject to change
   // Return the subgraph index that corresponds to a SignatureDef, defined by
-  // 'signature_method_name'.
+  // 'signature_key'.
   // If invalid name passed, -1 will be returned.
-  int GetSubgraphIndexFromSignatureDefName(
-      const char* signature_method_name) const {
+  int GetSubgraphIndexFromSignature(const char* signature_key) const {
     for (const auto& signature : signature_defs_) {
-      if (signature.method_name == signature_method_name) {
+      if (signature.signature_key == signature_key) {
         return signature.subgraph_index;
       }
     }
@@ -322,12 +321,12 @@ class Interpreter {
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the mapping of inputs to tensor index in the signature
-  /// specified through 'method_name'.
+  /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
   const std::map<std::string, uint32_t>& signature_inputs(
-      const char* method_name) const {
+      const char* signature_key) const {
     for (const auto& sig_def : signature_defs_) {
-      if (sig_def.method_name == method_name) return sig_def.inputs;
+      if (sig_def.signature_key == signature_key) return sig_def.inputs;
     }
     static const std::map<std::string, uint32_t>* default_empty_list =
         new std::map<std::string, uint32_t>();
@@ -336,12 +335,12 @@ class Interpreter {
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the mapping of outputs to tensor index in the signature
-  /// specified through 'method_name'.
+  /// specified through 'signature_key'.
   /// If invalid name passed, an empty list will be returned.
   const std::map<std::string, uint32_t>& signature_outputs(
-      const char* method_name) const {
+      const char* signature_key) const {
     for (const auto& sig_def : signature_defs_) {
-      if (sig_def.method_name == method_name) return sig_def.outputs;
+      if (sig_def.signature_key == signature_key) return sig_def.outputs;
     }
     static const std::map<std::string, uint32_t>* default_empty_list =
         new std::map<std::string, uint32_t>();
@@ -350,24 +349,23 @@ class Interpreter {
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the input tensor identified by 'signature_input_name' in the
-  /// signature identified by 'signature_method_name'.
+  /// signature identified by 'signature_key'.
   /// Returns nullptr if not found.
-  TfLiteTensor* input_tensor_by_signature_name(
-      const char* signature_input_name, const char* signature_method_name) {
+  TfLiteTensor* input_tensor_by_signature_name(const char* signature_input_name,
+                                               const char* signature_key) {
     const int tensor_index = GetTensorIndexFromSignatureDefName(
-        signature_input_name, signature_method_name, /*is_input=*/true);
+        signature_input_name, signature_key, /*is_input=*/true);
     return tensor_index == -1 ? nullptr : tensor(tensor_index);
   }
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the output tensor identified by 'signature_output_name' in the
-  /// signature identified by 'signature_method_name'.
+  /// signature identified by 'signature_key'.
   /// Returns nullptr if not found.
   const TfLiteTensor* output_tensor_by_signature_name(
-      const char* signature_output_name,
-      const char* signature_method_name) const {
+      const char* signature_output_name, const char* signature_key) const {
     const int tensor_index = GetTensorIndexFromSignatureDefName(
-        signature_output_name, signature_method_name, /*is_input=*/false);
+        signature_output_name, signature_key, /*is_input=*/false);
     return tensor_index == -1 ? nullptr : tensor(tensor_index);
   }
 
@@ -703,17 +701,17 @@ class Interpreter {
                                  TfLiteExternalContext* ctx);
 
   // Helper method that return the tensor index that corresponds to
-  // a name in a SignatureDef. Defined by 'signature_method_name', and
+  // a name in a SignatureDef. Defined by 'signature_key', and
   // 'signature_tensor_name'.
   // If 'is_input' is true then the tensor is checked in input tensors,
   // otherwise it will be checked in output tensors.
   // Returns -1 if the tensor is not found.
   int GetTensorIndexFromSignatureDefName(const char* signature_tensor_name,
-                                         const char* signature_method_name,
+                                         const char* signature_key,
                                          bool is_input) const {
     // Iterate directly and don't use other methods to avoid extra allocation.
     for (const auto& signature : signature_defs_) {
-      if (signature.method_name != signature_method_name) continue;
+      if (signature.signature_key != signature_key) continue;
       auto& signature_list = (is_input ? signature.inputs : signature.outputs);
       auto tensor_iter = signature_list.find(signature_tensor_name);
       if (tensor_iter == signature_list.end()) return -1;

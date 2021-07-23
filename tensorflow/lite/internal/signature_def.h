@@ -27,10 +27,8 @@ struct SignatureDef {
   std::map<std::string, uint32_t> inputs;
   // Maps name in signature def as key to index of the tensor in the model.
   std::map<std::string, uint32_t> outputs;
-  // The method name for this signature.
-  std::string method_name;
   // The key of this SignatureDef in the SavedModel signature def map.
-  std::string signature_def_key;
+  std::string signature_key;
   // The subgraph index of the signature in the model.
   uint32_t subgraph_index;
 };

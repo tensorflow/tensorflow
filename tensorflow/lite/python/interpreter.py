@@ -205,7 +205,7 @@ class SignatureRunner(object):
     self._inputs = self._signature_def['inputs']
 
     self._subgraph_index = (
-        self._interpreter_wrapper.GetSubgraphIndexFromSignatureDefName(
+        self._interpreter_wrapper.GetSubgraphIndexFromSignature(
             self._signature_def_name))
 
   def __call__(self, **kwargs):
@@ -703,13 +703,13 @@ class Interpreter(object):
     """
     return self._interpreter.GetSignatureDefs()
 
-  def _set_input_tensor(self, input_name, value, method_name=None):
+  def _set_input_tensor(self, input_name, value, signature_key=None):
     """Sets the value of the input tensor.
 
     Input tensor is identified by `input_name` in the SignatureDef identified
-    by `method_name`.
+    by `signature_key`.
     If the model has a single SignatureDef then you can pass None as
-    `method_name`.
+    `signature_key`.
 
     Note this copies data in `value`.
 
@@ -722,31 +722,31 @@ class Interpreter(object):
     #   'add': {'inputs': {'x': 1, 'y': 0}, 'outputs': {'output_0': 4}}
     # }
     interpreter._set_input_tensor(input_name='x', value=input_data,
-    method_name='add_fn')
+    signature_key='add_fn')
     ```
 
     Args:
       input_name: Name of the output tensor in the SignatureDef.
       value: Value of tensor to set as a numpy array.
-      method_name: The exported method name for the SignatureDef, it can be None
+      signature_key: The signature key for the SignatureDef, it can be None
         if and only if the model has a single SignatureDef. Default value is
         None.
 
     Raises:
       ValueError: If the interpreter could not set the tensor. Or
-      if `method_name` is None and model doesn't have a single
+      if `signature_key` is None and model doesn't have a single
       Signature.
     """
-    if method_name is None:
+    if signature_key is None:
       if len(self._signature_defs) != 1:
         raise ValueError(
-            'SignatureDef method_name is None and model has {0} Signatures. '
+            'SignatureDef signature_key is None and model has {0} Signatures. '
             'None is only allowed when the model has 1 SignatureDef'.format(
                 len(self._signature_defs)))
       else:
-        method_name = next(iter(self._signature_defs))
+        signature_key = next(iter(self._signature_defs))
     self._interpreter.SetInputTensorFromSignatureDefName(
-        input_name, method_name, value)
+        input_name, signature_key, value)
 
   def get_signature_runner(self, method_name=None):
     """Gets callable for inference of specific SignatureDef.

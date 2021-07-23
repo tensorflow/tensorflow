@@ -135,8 +135,7 @@
 // CHECK-NEXT:      name: "result",
 // CHECK-NEXT:      tensor_index: 3
 // CHECK-NEXT:    } ],
-// CHECK-NEXT:    method_name: "add",
-// CHECK-NEXT:    key: ""
+// CHECK-NEXT:    signature_key: "add"
 // CHECK-NEXT:  }, {
 // CHECK-NEXT:    inputs: [ {
 // CHECK-NEXT:      name: "input1",
@@ -148,8 +147,7 @@
 // CHECK-NEXT:      name: "result",
 // CHECK-NEXT:      tensor_index: 2
 // CHECK-NEXT:    } ],
-// CHECK-NEXT:    method_name: "sub",
-// CHECK-NEXT:    key: "",
+// CHECK-NEXT:    signature_key: "sub",
 // CHECK-NEXT:    subgraph_index: 1
 // CHECK-NEXT:  } ]
 // CHECK-NEXT: }

@@ -1422,7 +1422,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testSignatureDefsWithDefaultValue(self):
     """Test converting SignatureDef is correct and uses SignatureDef API.
 
-    This test uses None as method_name to test default behavior.
+    This test uses None as signature_key to test default behavior.
     """
     root = self._getMultiFunctionModel()
     input_data_0 = tf.constant(1., shape=[1])

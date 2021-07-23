@@ -178,19 +178,20 @@ bool ValidateSubgraphIndex(JNIEnv* env, Interpreter* interpreter,
 // from either inputs or outputs.
 // Returns -1 if invalid names are passed.
 int GetTensorIndexForSignature(JNIEnv* env, jstring signature_tensor_name,
-                               jstring method_name, Interpreter* interpreter,
+                               jstring signature_key, Interpreter* interpreter,
                                bool is_input) {
   // Fetch name strings.
-  const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
+  const char* signature_key_ptr =
+      env->GetStringUTFChars(signature_key, nullptr);
   const char* signature_input_name_ptr =
       env->GetStringUTFChars(signature_tensor_name, nullptr);
   // Lookup if the input is valid.
   const auto& signature_list =
-      (is_input ? interpreter->signature_inputs(method_name_ptr)
-                : interpreter->signature_outputs(method_name_ptr));
+      (is_input ? interpreter->signature_inputs(signature_key_ptr)
+                : interpreter->signature_outputs(signature_key_ptr));
   const auto& tensor = signature_list.find(signature_input_name_ptr);
   // Release the memory before returning.
-  env->ReleaseStringUTFChars(method_name, method_name_ptr);
+  env->ReleaseStringUTFChars(signature_key, signature_key_ptr);
   env->ReleaseStringUTFChars(signature_tensor_name, signature_input_name_ptr);
   return tensor == signature_list.end() ? -1 : tensor->second;
 }
@@ -342,7 +343,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureDefNames(
 
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureInputs(
-    JNIEnv* env, jclass clazz, jlong handle, jstring method_name) {
+    JNIEnv* env, jclass clazz, jlong handle, jstring signature_key) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   ThrowException(env, tflite::jni::kUnsupportedOperationException,
                  "Not supported: getSignatureInputs");
@@ -350,18 +351,19 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureInputs(
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
-  const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
+  const char* signature_key_ptr =
+      env->GetStringUTFChars(signature_key, nullptr);
   const jobjectArray signature_inputs = GetSignatureInputsOutputsList(
-      interpreter->signature_inputs(method_name_ptr), env);
+      interpreter->signature_inputs(signature_key_ptr), env);
   // Release the memory before returning.
-  env->ReleaseStringUTFChars(method_name, method_name_ptr);
+  env->ReleaseStringUTFChars(signature_key, signature_key_ptr);
   return signature_inputs;
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureOutputs(
-    JNIEnv* env, jclass clazz, jlong handle, jstring method_name) {
+    JNIEnv* env, jclass clazz, jlong handle, jstring signature_key) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   ThrowException(env, tflite::jni::kUnsupportedOperationException,
                  "Not supported: getSignatureOutputs");
@@ -369,18 +371,19 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureOutputs(
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
-  const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
+  const char* signature_key_ptr =
+      env->GetStringUTFChars(signature_key, nullptr);
   const jobjectArray signature_outputs = GetSignatureInputsOutputsList(
-      interpreter->signature_outputs(method_name_ptr), env);
+      interpreter->signature_outputs(signature_key_ptr), env);
   // Release the memory before returning.
-  env->ReleaseStringUTFChars(method_name, method_name_ptr);
+  env->ReleaseStringUTFChars(signature_key, signature_key_ptr);
   return signature_outputs;
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getSubgraphIndexFromSignature(
-    JNIEnv* env, jclass clazz, jlong handle, jstring method_name) {
+    JNIEnv* env, jclass clazz, jlong handle, jstring signature_key) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   ThrowException(env, tflite::jni::kUnsupportedOperationException,
                  "Not supported: getSubgraphIndexFromSignature");
@@ -388,12 +391,13 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSubgraphIndexFromSignature(
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return -1;
-  const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
+  const char* signature_key_ptr =
+      env->GetStringUTFChars(signature_key, nullptr);
 
   int32_t subgraph_idx =
-      interpreter->GetSubgraphIndexFromSignatureDefName(method_name_ptr);
+      interpreter->GetSubgraphIndexFromSignature(signature_key_ptr);
   // Release the memory before returning.
-  env->ReleaseStringUTFChars(method_name, method_name_ptr);
+  env->ReleaseStringUTFChars(signature_key, signature_key_ptr);
   return subgraph_idx;
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
@@ -401,7 +405,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSubgraphIndexFromSignature(
 JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndexFromSignature(
     JNIEnv* env, jclass clazz, jlong handle, jstring signature_input_name,
-    jstring method_name) {
+    jstring signature_key) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   ThrowException(env, tflite::jni::kUnsupportedOperationException,
                  "Not supported: getInputTensorIndexFromSignature");
@@ -409,7 +413,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndexFromSignatu
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return -1;
-  return GetTensorIndexForSignature(env, signature_input_name, method_name,
+  return GetTensorIndexForSignature(env, signature_input_name, signature_key,
                                     interpreter, /*is_input=*/true);
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
@@ -417,7 +421,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndexFromSignatu
 JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndexFromSignature(
     JNIEnv* env, jclass clazz, jlong handle, jstring signature_output_name,
-    jstring method_name) {
+    jstring signature_key) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   ThrowException(env, tflite::jni::kUnsupportedOperationException,
                  "Not supported: getOutputTensorIndexFromSignature");
@@ -425,7 +429,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndexFromSignat
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return -1;
-  return GetTensorIndexForSignature(env, signature_output_name, method_name,
+  return GetTensorIndexForSignature(env, signature_output_name, signature_key,
                                     interpreter, /*is_input=*/false);
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
