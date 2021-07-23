@@ -72,8 +72,9 @@ inline bool IsDatasetOp(const TfOp& tf_op) {
 }
 
 // Returns true if the given name is a TensorFlow Infeed Enqueue Op.
+// See: tensorflow/core/tpu/kernels/infeed_ops.h
 inline bool IsInfeedEnqueueOp(absl::string_view tf_op_type) {
-  return tf_op_type == "InfeedEnqueue" || tf_op_type == "InfeedEnqueueTuple";
+  return absl::StartsWith(tf_op_type, "InfeedEnqueue");
 }
 
 // Returns true if the given op is for outside compilation.
