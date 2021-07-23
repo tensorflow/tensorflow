@@ -4337,7 +4337,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
     SE_ASSIGN_OR_RETURN(
         std::unique_ptr<cudnn_frontend::OperationGraph> op_graph,
         GetCudnnFusedOperationGraph(
-            dnn::ConvolutionKind::FORWARD, accumulator_type, conv_input_scale,
+            dnn::ConvolutionKind::FORWARD, element_type, conv_input_scale,
             side_input_scale, stream, conv_input_descriptor, filter_descriptor,
             bias_descriptor, output_descriptor, convolution_descriptor,
             activation_mode, cudnn));
