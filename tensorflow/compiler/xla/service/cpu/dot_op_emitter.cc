@@ -1031,6 +1031,20 @@ DotImplementationStrategy GetDotImplementationStrategy(
     return DotImplementationStrategy::kTiledLlvmIrGemv;
   }
 
+  // MatMul smaller than 3x3 should use naive nested loop.
+  if ((dot_info.lhs_shape.dimensions_size() <= 1 ||
+       (dot_info.lhs_shape.dimensions_size() == 2 &&
+        (dot_info.lhs_shape.dimensions(0) <= 3 ||
+         dot_info.lhs_shape.dimensions(1) <= 3))) &&
+      (dot_info.rhs_shape.dimensions_size() <= 1 ||
+       (dot_info.rhs_shape.dimensions_size() == 2 &&
+        (dot_info.rhs_shape.dimensions(0) <= 3 ||
+         dot_info.rhs_shape.dimensions(1) <= 3))) &&
+      (primitive_util::IsFloatingPointType(element_type) ||
+       primitive_util::IsIntegralType(element_type))) {
+    return DotImplementationStrategy::kNaiveLlvmIr;
+  }
+
   if (IsAlignedGemm(dot_info, target_machine_features)) {
     if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
       return DotImplementationStrategy::kTiledLlvmIrGemm;
