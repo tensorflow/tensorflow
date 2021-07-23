@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/eager/core_runtime/op_handler_registry.h"
 #include "tensorflow/core/tpu/virtual_device.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
@@ -43,8 +44,7 @@ TfrtContext::TfrtContext(
 
   // Default cpu device name is "/job:localhost/replica:0/task:0/device:CPU:0".
   const std::string& host_cpu_name = eager_context_->HostCPU()->name();
-  tensorflow::DeviceNameUtils::ParseFullName(host_cpu_name,
-                                             &cpu_device_parsed_name_);
+
   auto diag_handler = [](const DecodedDiagnostic& diag) {
     LOG(ERROR) << diag.message;
   };
@@ -86,6 +86,11 @@ TfrtContext::TfrtContext(
 
   // Set the global host context singleton.
   tensorflow::tfrt_global::GlobalHostContext::Set(corert_->GetHostContext());
+}
+
+const tensorflow::DeviceNameUtils::ParsedName& TfrtContext::HostCPUParsedName()
+    const {
+  return eager_context_->HostCPU()->parsed_name();
 }
 
 TfrtContext::~TfrtContext() {}
