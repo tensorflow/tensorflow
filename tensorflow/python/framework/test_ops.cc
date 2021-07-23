@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -716,4 +717,31 @@ class DTypeWithDefaultOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DtypeWithDefaultOp").Device(DEVICE_CPU),
                         DTypeWithDefaultOp);
+
+// An op that returns True if TensorFloat-32 execution is enabled. Useful for
+// testing that enabling/disabling TensorFloat-32 works correctly, even when
+// the test does not run with a GPU that supports TensorFloat-32.
+REGISTER_OP("IsTensorFloat32Enabled")
+    .Output("enabled: bool")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+class IsTensorFloat32Enabled : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("enabled", TensorShape({}), &output));
+    output->scalar<bool>()() = tensor_float_32_execution_enabled();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("IsTensorFloat32Enabled").Device(DEVICE_CPU).HostMemory("enabled"),
+    IsTensorFloat32Enabled);
+REGISTER_KERNEL_BUILDER(
+    Name("IsTensorFloat32Enabled").Device(DEVICE_GPU).HostMemory("enabled"),
+    IsTensorFloat32Enabled);
 }  // end namespace tensorflow

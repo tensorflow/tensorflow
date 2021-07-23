@@ -1602,7 +1602,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
+    ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
     alwayslink = 1,
 )
 
