@@ -802,12 +802,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(output_details[1]['dtype'], expected_ceil_dtype)
 
   @parameterized.named_parameters(
-      ('_BlocklistedNone', None, None),
-      ('_BlocklistedOps', {'CONV_2D'}, None),
-      ('_BlocklistedNodes', None, {'Identity'}))
+      ('_BlocklistedNoneWithLowering', None, None, True),
+      ('_BlocklistedNoneWithoutLowering', None, None, False),
+      ('_BlocklistedOpsWithLowering', {'CONV_2D'}, None, True),
+      ('_BlocklistedOpsWithoutLowering', {'CONV_2D'}, None, False),
+      ('_BlocklistedNodesWithLowering', None, {'PartitionedCall:0'}, True),
+      ('_BlocklistedNodesWithoutLowering', None, {'Identity'}, False))
   @test_util.run_v2_only
-  def testNewQuantizerBlocklistingArgs(self, blocklisted_ops,
-                                       blocklisted_nodes):
+  def testNewQuantizerBlocklistingArgs(self, blocklisted_ops, blocklisted_nodes,
+                                       lower_to_saved_model):
     """Test the model quantized by the new converter and blocklisted options."""
     root, func, calibration_gen = self._getIntegerQuantizeModel()
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func],
@@ -819,9 +822,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.experimental_new_quantizer = True
     quantized_converter._experimental_calibrate_only = True
-    if blocklisted_nodes:
-      # TODO(b/191205988): Explicitly disable saved model lowering.
-      quantized_converter.experimental_lower_to_saved_model = False
+    quantized_converter.experimental_lower_to_saved_model = lower_to_saved_model
     calibrated = quantized_converter.convert()
     quantized_tflite_model = mlir_quantize(calibrated,
                                            blocklisted_ops=blocklisted_ops,
