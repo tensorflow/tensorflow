@@ -48,7 +48,10 @@ std::unique_ptr<FunctionPass> CreateBufferReusePass();
 
 // Pass to rewrite all TF operations to JIT invocations through the TF
 // framework.
-std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass();
+std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
+    llvm::ArrayRef<int64_t> tile_sizes = {},
+    llvm::ArrayRef<int64_t> unroll_factors = {}, int64_t max_supported_rank = 5,
+    bool cpu_codegen = false);
 
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(

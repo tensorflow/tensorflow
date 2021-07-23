@@ -215,7 +215,8 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
   applyTensorflowAndCLOptions(pm);
 
   pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateTFToJITInvocationPass());
+      mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
+          tile_sizes, unroll_factors, max_supported_rank, cpu_codegen));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());

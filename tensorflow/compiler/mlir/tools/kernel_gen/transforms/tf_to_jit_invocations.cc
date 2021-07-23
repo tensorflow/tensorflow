@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
@@ -52,6 +53,13 @@ bool IsTFOperation(Operation *op) {
          op->getDialect() ==
              op->getContext()->getLoadedDialect<TF::TensorFlowDialect>();
 }
+
+struct ModuleParameters {
+  llvm::ArrayRef<int64_t> tile_sizes;
+  llvm::ArrayRef<int64_t> unroll_factors;
+  int64_t max_supported_rank;
+  bool cpu_codegen;
+};
 
 struct TFToJITInvocationsPattern : public RewritePattern {
   explicit TFToJITInvocationsPattern(MLIRContext *ctx)
@@ -140,6 +148,16 @@ struct PackJITCompileOpPattern
     : public OpRewritePattern<tf_framework::JITCompileOp> {
   using OpRewritePattern<tf_framework::JITCompileOp>::OpRewritePattern;
 
+  explicit PackJITCompileOpPattern(MLIRContext *ctx,
+                                   llvm::ArrayRef<int64_t> tile_sizes,
+                                   llvm::ArrayRef<int64_t> unroll_factors,
+                                   int64_t max_supported_rank, bool cpu_codegen)
+      : OpRewritePattern<tf_framework::JITCompileOp>(ctx),
+        tile_sizes(tile_sizes),
+        unroll_factors(unroll_factors),
+        max_supported_rank(max_supported_rank),
+        cpu_codegen(cpu_codegen) {}
+
   LogicalResult matchAndRewrite(tf_framework::JITCompileOp op,
                                 PatternRewriter &rewriter) const override {
     Block *body = op.getBody();
@@ -160,6 +178,15 @@ struct PackJITCompileOpPattern
                           tmp_module_builder.getUnitAttr());
     jit_function->setAttr(kEmitCInterfaceAttrName,
                           tmp_module_builder.getUnitAttr());
+    jit_function->setAttr("tile_sizes",
+                          tmp_module_builder.getI64ArrayAttr(tile_sizes));
+    jit_function->setAttr("unroll_factors",
+                          tmp_module_builder.getI64ArrayAttr(unroll_factors));
+    jit_function->setAttr(
+        "max_supported_rank",
+        tmp_module_builder.getI64IntegerAttr(max_supported_rank));
+    jit_function->setAttr("cpu_codegen",
+                          tmp_module_builder.getBoolAttr(cpu_codegen));
     jit_function.getBody().takeBody(op.getBodyRegion());
     tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
     tmp_module_builder.create<ReturnOp>(loc, yield_op.result());
@@ -176,6 +203,12 @@ struct PackJITCompileOpPattern
 
     return success();
   }
+
+ private:
+  llvm::ArrayRef<int64_t> tile_sizes;
+  llvm::ArrayRef<int64_t> unroll_factors;
+  int64_t max_supported_rank;
+  bool cpu_codegen;
 };
 
 #define GEN_PASS_CLASSES
@@ -186,11 +219,21 @@ struct TFToJITInvocationPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   }
+  explicit TFToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
+                                 llvm::ArrayRef<int64_t> unroll_factors,
+                                 int64_t max_supported_rank, bool cpu_codegen) {
+    tile_sizes_ = tile_sizes;
+    unroll_factors_ = unroll_factors;
+    max_supported_rank_ = max_supported_rank;
+    cpu_codegen_ = cpu_codegen;
+  }
 
   void runOnFunction() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    PopulateTFToJITInvocationPatterns(ctx, &patterns);
+    PopulateTFToJITInvocationPatterns(ctx, &patterns, tile_sizes_,
+                                      unroll_factors_, max_supported_rank_,
+                                      cpu_codegen_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
       return signalPassFailure();
@@ -201,16 +244,25 @@ struct TFToJITInvocationPass
 }  // namespace
 
 void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
-                                       RewritePatternSet *patterns) {
+                                       RewritePatternSet *patterns,
+                                       llvm::ArrayRef<int64_t> tile_sizes,
+                                       llvm::ArrayRef<int64_t> unroll_factors,
+                                       int64_t max_supported_rank,
+                                       bool cpu_codegen) {
   // clang-format off
   patterns->insert<
-      PackJITCompileOpPattern,
       TFToJITInvocationsPattern>(ctx);
+  patterns->insert<
+      PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors,
+                               max_supported_rank, cpu_codegen);
   // clang-format on
 }
 
-std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass() {
-  return std::make_unique<TFToJITInvocationPass>();
+std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
+    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
+    int64_t max_supported_rank, bool cpu_codegen) {
+  return std::make_unique<TFToJITInvocationPass>(
+      tile_sizes, unroll_factors, max_supported_rank, cpu_codegen);
 }
 
 }  // namespace transforms
