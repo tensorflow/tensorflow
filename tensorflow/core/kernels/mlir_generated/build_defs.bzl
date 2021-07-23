@@ -163,6 +163,7 @@ def _gen_kernel_bin_impl(ctx):
             "--output=%s" % gpu_bin.path,
             "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
             "--cpu_codegen=%s" % ctx.attr.cpu_codegen,
+            "--jit=%s" % ctx.attr.jit,
         ],
         mnemonic = "compile",
     )
