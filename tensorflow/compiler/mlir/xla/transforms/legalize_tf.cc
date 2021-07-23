@@ -7346,8 +7346,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // TF2XLA fallback pattern doesn't support these op as MLIR hlo builder
     // doesn't override the necessary builder methods. These ops have simple
     // lowering pattern so this should be safe.
-    TypeID::get<TF::OutfeedEnqueueTupleOp>(),
     TypeID::get<TF::CrossReplicaSumOp>(),
+    TypeID::get<TF::InfeedDequeueTupleOp>(),
+    TypeID::get<TF::OutfeedEnqueueTupleOp>(),
     TypeID::get<TF::XlaShardingOp>(),
   };
   // clang-format on

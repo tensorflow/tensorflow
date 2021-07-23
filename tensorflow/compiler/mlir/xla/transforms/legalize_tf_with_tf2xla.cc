@@ -329,7 +329,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::GatherV2Op>(),
     TypeID::get<TF::IdentityOp>(),
     TypeID::get<TF::IdentityNOp>(),
-    TypeID::get<TF::InfeedDequeueTupleOp>(),
     TypeID::get<TF::InplaceUpdateOp>(),
     TypeID::get<TF::InvertPermutationOp>(),
     TypeID::get<TF::IRFFTOp>(),
