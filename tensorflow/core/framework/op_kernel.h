@@ -78,6 +78,7 @@ class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
 class StepStatsCollectorInterface;
+class CoordinationServiceAgent;
 
 class OpKernel {
  public:
@@ -666,6 +667,9 @@ class OpKernelContext {
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
     bool* outputs_required_array = nullptr;
+
+    // For access to distributed coordination service.
+    CoordinationServiceAgent* coordination_service_agent;
   };
 
   // params must outlive the OpKernelContext.
@@ -1135,6 +1139,11 @@ class OpKernelContext {
   // Per-step container for use by white-listed internal ops.
   ScopedStepContainer* step_container() const {
     return params_->step_container;
+  }
+
+  // Access to distributed coordination service.
+  CoordinationServiceAgent* coordination_service_agent() const {
+    return params_->coordination_service_agent;
   }
 
   // Helper routines for the OP_REQUIRES macros

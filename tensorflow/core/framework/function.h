@@ -814,6 +814,7 @@ class FunctionLibraryRuntime {
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 

@@ -99,6 +99,7 @@ class Executor {
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
     int64 start_time_usecs = 0;
 
     // If true, calls Sync() on the device.
