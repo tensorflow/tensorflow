@@ -909,26 +909,38 @@ gpu_kernel_library(
     ]
 ]
 
-[
-    gpu_kernel_library(
-        name = "gpu_" + op + "_kernels",
-        op = op,
-        tile_size = "1024",
-        types = [
-            "f16",
-            "f32",
-            "f64",
-            "i64",
-            "c64",
-            "c128",
-        ],
-        unroll_factors = "4",
-    )
-    for op in [
-        "add_v2",
-        "sub",
-    ]
-]
+gpu_kernel_library(
+    name = "gpu_add_v2_kernels",
+    op = "add_v2",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_sub_kernels",
+    op = "sub",
+    tile_size = "1024",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    unroll_factors = "4",
+)
 
 gpu_kernel_library(
     name = "gpu_complex_kernels",

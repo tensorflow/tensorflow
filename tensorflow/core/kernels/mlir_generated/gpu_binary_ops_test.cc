@@ -51,6 +51,8 @@ GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Double, double, double, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Int64, int64, int64, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Add, /*test_name=*/UInt8, uint8, uint8, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Add, /*test_name=*/Complex64, std::complex<float>,
                        std::complex<float>, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
@@ -69,6 +71,23 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Double, double, double,
                        baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64, int64, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/UInt8, uint8, uint8, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/UInt16, uint16, uint16,
+                       baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/UInt32, uint32, uint32,
+                       baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/UInt64, uint64, uint64,
+                       baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_add,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Atan2`.
