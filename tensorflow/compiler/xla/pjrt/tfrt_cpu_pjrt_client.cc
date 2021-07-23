@@ -1281,10 +1281,6 @@ CreateBufferTable(
     const BufferAllocation& allocation = assignment.GetAllocation(i);
     buffers[i] = MemoryForAllocation(allocation, arguments);
   }
-
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment.GetUniqueTopLevelOutputSlice());
-  VLOG(3) << "result index: " << result_slice.index();
   return std::move(buffers);
 }
 
