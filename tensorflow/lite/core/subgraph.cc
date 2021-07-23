@@ -24,6 +24,7 @@ limitations under the License.
 #include <cstring>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -228,6 +229,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
   context_.profiler = nullptr;
   context_.GetTensor = nullptr;
   context_.GetEvalTensor = nullptr;
+  context_.GetModelMetadata = GetModelMetadata;
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
@@ -505,6 +507,30 @@ void Subgraph::FreeDelegatePartitioningData() {
   partitioning_preview_cache_.clear();
 }
 
+TfLiteStatus Subgraph::GetModelMetadata(const char* name, const char** ptr,
+                                        size_t* bytes) {
+  TF_LITE_ENSURE(&context_, ptr != nullptr);
+  TF_LITE_ENSURE(&context_, bytes != nullptr);
+  *ptr = nullptr;
+  *bytes = 0;
+  if (!metadata_) return kTfLiteError;
+  const std::string name_str = name;
+  auto itr = metadata_->find(name_str);
+  if (itr != metadata_->end()) {
+    *ptr = itr->second.c_str();
+    *bytes = itr->second.size();
+    return kTfLiteOk;
+  }
+  return kTfLiteError;
+}
+
+TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
+                                        const char* name, const char** ptr,
+                                        size_t* bytes) {
+  return static_cast<Subgraph*>(context->impl_)
+      ->GetModelMetadata(name, ptr, bytes);
+}
+
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
     const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegateParams** partition_params_array, int* num_partitions) {
@@ -565,6 +591,13 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
   TF_LITE_ENSURE_OK(&context_, CheckTensorIndices("variables", variables.data(),
                                                   variables.size()));
   variables_ = std::move(variables);
+  return kTfLiteOk;
+}
+
+TfLiteStatus Subgraph::SetMetadata(
+    const std::map<std::string, std::string>* metadata) {
+  metadata_ = metadata;
+  // TODO(b/188185962): Set context_.allow_fp32_relax_to_fp16 based on metadata.
   return kTfLiteOk;
 }
 

@@ -749,6 +749,10 @@ class Interpreter {
   // InterpreterBuilder before allocating any tensors.
   TfLiteStatus PreserveAllTensorsExperimental();
 
+  // Sets model metadata as a mapping of name (key) and buffer (value) strings.
+  // Used by InterpreterBuilder, should be called after setting up subgraphs.
+  TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -808,6 +812,10 @@ class Interpreter {
   // List of signature def mapping inputs/output to tensor ids.
   // We just keep track of tensor index.
   std::vector<internal::SignatureDef> signature_defs_;
+
+  // Model metadata stored as mapping of name (key) to buffer (value).
+  // Data is mapped from the Metadata in TFLite flatbuffer model.
+  std::map<std::string, std::string> metadata_;
 };
 
 }  // namespace tflite

@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -356,6 +357,16 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
                              status, i);
         return kTfLiteError;
     }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::SetMetadata(
+    const std::map<std::string, std::string>& metadata) {
+  metadata_ = metadata;
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(&metadata_));
   }
   return kTfLiteOk;
 }
