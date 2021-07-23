@@ -299,10 +299,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "verifier_internal",
+    hdrs = ["cc/tools/verifier_internal.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite/java/src/main/native:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/lite/tools:verifier_internal",
+    ],
+)
+
 build_test(
     name = "verifier_build_test",
     targets = [
         ":verifier",
+        ":verifier_internal",
     ],
 )
 
