@@ -1384,13 +1384,14 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
           algoChoices[i]->getAlgorithmVariant().getImplementation();
       nvinfer1::TensorFormat format =
           algoChoices[i]->getAlgorithmIOInfo(0).getTensorFormat();
+      nvinfer1::DataType datatype =
+          algoChoices[i]->getAlgorithmIOInfo(0).getDataType();
 
       // Reject shuffle node when input format is 32-wide channel vectorized
       // row major FP32 format
       if (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) && (
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
-          format == nvinfer1::TensorFormat::kLINEAR ||
-          format == nvinfer1::TensorFormat::kHWC
+          format == nvinfer1::TensorFormat::kLINEAR && datatype == nvinfer1::DataType::kINT8
 #else
           format == nvinfer1::TensorFormat::kCHW32
 #endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
