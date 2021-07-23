@@ -3405,6 +3405,7 @@ op {
     has_minimum: true
     minimum: 1
   }
+  is_distributed_communication: true
 }
 op {
   name: "BatchCholesky"
@@ -3660,6 +3661,7 @@ op {
       b: false
     }
   }
+  is_distributed_communication: true
 }
 op {
   name: "BatchIFFT"
