@@ -40,7 +40,7 @@ void dump_tensors(std::stringstream& out_stream,
     }
     if (i != tensors->Length() - 1) {
       if (verbose) {
-        out_stream << "and ";
+        out_stream << " and ";
       } else {
         out_stream << ", ";
       }
@@ -170,7 +170,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
                  << "\n";
     }
   }
-  if (model_is_gpu_compatibile) {
+  if (check_gpu_compatibility && model_is_gpu_compatibile) {
     out_stream
         << "\nYour model looks compatibile with GPU delegate"
         << " with TFLite runtime version " << TF_VERSION_STRING
