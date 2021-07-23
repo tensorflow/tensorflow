@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace kernel_gen {
@@ -482,12 +483,8 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module) {
 
 }  // namespace
 
-StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
-    mlir::MLIRContext& context, llvm::StringRef tf_code,
-    llvm::ArrayRef<std::string> architectures,
-    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
-    bool print_llvmir, bool enable_ftz, bool cpu_codegen, bool jit_compile) {
+StatusOr<mlir::OwningModuleRef> SetupContextAndParseModule(
+    mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
@@ -496,6 +493,20 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   mlir::registerROCDLDialectTranslation(registry);
   context.appendDialectRegistry(registry);
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
+  if (!module)
+    return tensorflow::Status(tensorflow::error::Code::INVALID_ARGUMENT,
+                              "invalid kernel IR");
+  return module;
+}
+
+StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
+    mlir::MLIRContext& context, llvm::StringRef tf_code,
+    llvm::ArrayRef<std::string> architectures,
+    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
+    int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
+    bool print_llvmir, bool enable_ftz, bool cpu_codegen, bool jit_compile) {
+  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+                      SetupContextAndParseModule(context, tf_code));
 
   if (jit_compile) {
     TF_RETURN_IF_ERROR(LowerTFToJITInvocation(module.get(), tile_sizes,
