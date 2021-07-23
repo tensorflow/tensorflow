@@ -1,7 +1,11 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
-    "get_compatible_with_cloud",
     "tf_cc_binary",
 )
 load(
@@ -153,6 +157,7 @@ cc_library(
     name = "tf_framework_c_interface",
     srcs = ["tf_framework_c_interface.cc"],
     hdrs = ["tf_framework_c_interface.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:framework",
