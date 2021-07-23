@@ -1271,6 +1271,7 @@ enum class LayerImpl : int64_t {
   kSHUFFLE = kLAYER_IMPL_BASE + 14
 #else
   kSHUFFLE = kLAYER_IMPL_BASE + 16
+#endif
 };
 
 // An algorithm selector to support debugging and work around known TensorRT
