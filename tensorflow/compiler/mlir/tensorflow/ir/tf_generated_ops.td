@@ -3762,6 +3762,8 @@ def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape, 
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_DummyMemoryCacheOp : TF_Op<"DummyMemoryCache", []> {
@@ -9324,6 +9326,8 @@ Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or 
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_MultiDeviceIteratorOp : TF_Op<"MultiDeviceIterator", []> {
