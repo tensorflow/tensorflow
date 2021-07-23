@@ -503,6 +503,11 @@ tf_cuda_cc_test(
     name = "gpu_unary_ops_test",
     size = "small",
     srcs = ["gpu_unary_ops_test.cc"],
+    extra_copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
