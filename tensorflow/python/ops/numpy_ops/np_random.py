@@ -107,7 +107,7 @@ def rand(*size):
 
 
 @np_utils.np_doc('random.randint')
-def randint(low, high=None, size=None, dtype=onp.int):  # pylint: disable=missing-function-docstring
+def randint(low, high=None, size=None, dtype=onp.int64):  # pylint: disable=missing-function-docstring
   low = int(low)
   if high is None:
     high = low

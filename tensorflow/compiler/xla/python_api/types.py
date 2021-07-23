@@ -116,7 +116,7 @@ MAP_XLA_TYPE_TO_RECORD = {
     xla_data_pb2.PRED:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.PRED,
-            numpy_dtype=_np.bool,
+            numpy_dtype=_np.bool_,
             literal_field_name='preds',
             literal_field_type=bool)
 }

@@ -1164,12 +1164,12 @@ class CountNonzeroReductionTest(test.TestCase):
   def testStringReduce1D(self):
     # Create a 1D array of strings
     x = np.asarray(["", "", "a", "", "", "b"])
-    self._compare(x, None, keepdims=False, zero=np.str(""))
-    self._compare(x, [], keepdims=False, zero=np.str(""))
-    self._compare(x, [0], keepdims=False, zero=np.str(""))
-    self._compare(x, None, keepdims=True, zero=np.str(""))
-    self._compare(x, [], keepdims=True, zero=np.str(""))
-    self._compare(x, [0], keepdims=True, zero=np.str(""))
+    self._compare(x, None, keepdims=False, zero=np.str_(""))
+    self._compare(x, [], keepdims=False, zero=np.str_(""))
+    self._compare(x, [0], keepdims=False, zero=np.str_(""))
+    self._compare(x, None, keepdims=True, zero=np.str_(""))
+    self._compare(x, [], keepdims=True, zero=np.str_(""))
+    self._compare(x, [0], keepdims=True, zero=np.str_(""))
 
   @test_util.run_deprecated_v1
   def testStringReduce2D(self):
@@ -1177,15 +1177,15 @@ class CountNonzeroReductionTest(test.TestCase):
     x = np.asarray([["", "", "a", "", "", "b"],
                     ["", "c", "", "d", "", ""],
                     ["e", "", "f", "", "", ""]])
-    self._compare(x, None, keepdims=False, zero=np.str(""))
-    self._compare(x, [], keepdims=False, zero=np.str(""))
-    self._compare(x, [0], keepdims=False, zero=np.str(""))
-    self._compare(x, [1], keepdims=False, zero=np.str(""))
-    self._compare(x, [0, 1], keepdims=False, zero=np.str(""))
-    self._compare(x, None, keepdims=True, zero=np.str(""))
-    self._compare(x, [], keepdims=True, zero=np.str(""))
-    self._compare(x, [0], keepdims=True, zero=np.str(""))
-    self._compare(x, [0, 1], keepdims=True, zero=np.str(""))
+    self._compare(x, None, keepdims=False, zero=np.str_(""))
+    self._compare(x, [], keepdims=False, zero=np.str_(""))
+    self._compare(x, [0], keepdims=False, zero=np.str_(""))
+    self._compare(x, [1], keepdims=False, zero=np.str_(""))
+    self._compare(x, [0, 1], keepdims=False, zero=np.str_(""))
+    self._compare(x, None, keepdims=True, zero=np.str_(""))
+    self._compare(x, [], keepdims=True, zero=np.str_(""))
+    self._compare(x, [0], keepdims=True, zero=np.str_(""))
+    self._compare(x, [0, 1], keepdims=True, zero=np.str_(""))
 
 
 if __name__ == "__main__":

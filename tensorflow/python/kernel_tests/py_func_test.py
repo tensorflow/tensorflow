@@ -241,7 +241,7 @@ class PyFuncTest(PyFuncTestBase):
   def testObjectArraysAreConvertedToBytes(self):
 
     def read_object_array():
-      return np.array([b" there", u" ya"], dtype=np.object)
+      return np.array([b" there", u" ya"], dtype=np.object_)
 
     def read_and_return_strings(x, y):
       return x + y
