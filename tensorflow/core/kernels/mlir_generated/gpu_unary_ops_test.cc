@@ -172,25 +172,64 @@ DstT baseline_cast(SrcT x) {
                             .InputAttribute("SrcT")              \
                             .OutputAttribute("DstT"))
 
-#define TEST_CAST_TO(from_type)          \
-  TEST_CAST_FROM_TO(from_type, DT_BOOL)  \
-  TEST_CAST_FROM_TO(from_type, DT_INT8)  \
-  TEST_CAST_FROM_TO(from_type, DT_INT16) \
-  TEST_CAST_FROM_TO(from_type, DT_INT32) \
-  TEST_CAST_FROM_TO(from_type, DT_INT64) \
-  TEST_CAST_FROM_TO(from_type, DT_FLOAT) \
+// Casting from floating point types to unsigned integers has undefined behavior
+// for negative values <= -1.0
+#define TEST_NON_NEGATIVE_VALUES_CAST_FROM_TO(from_type, to_type)       \
+  GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(                     \
+      Cast, from_type, to_type,                                         \
+      test::DefaultInputGreaterOrEqualToZero<NativeT>(), baseline_cast, \
+      test::OpsTestConfig()                                             \
+          .AddTout()                                                    \
+          .NoBufferReuse()                                              \
+          .ExpectStrictlyEqual()                                        \
+          .InputAttribute("SrcT")                                       \
+          .OutputAttribute("DstT"))
+
+#define TEST_CAST_TO_NO_UNSIGNED(from_type) \
+  TEST_CAST_FROM_TO(from_type, DT_BOOL)     \
+  TEST_CAST_FROM_TO(from_type, DT_INT8)     \
+  TEST_CAST_FROM_TO(from_type, DT_INT16)    \
+  TEST_CAST_FROM_TO(from_type, DT_INT32)    \
+  TEST_CAST_FROM_TO(from_type, DT_INT64)    \
+  TEST_CAST_FROM_TO(from_type, DT_FLOAT)    \
   TEST_CAST_FROM_TO(from_type, DT_DOUBLE)
+
+#define TEST_CAST_TO_UNSIGNED(from_type)  \
+  TEST_CAST_FROM_TO(from_type, DT_UINT8)  \
+  TEST_CAST_FROM_TO(from_type, DT_UINT16) \
+  TEST_CAST_FROM_TO(from_type, DT_UINT32) \
+  TEST_CAST_FROM_TO(from_type, DT_UINT64)
+
+#define TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED(from_type)  \
+  TEST_NON_NEGATIVE_VALUES_CAST_FROM_TO(from_type, DT_UINT8)  \
+  TEST_NON_NEGATIVE_VALUES_CAST_FROM_TO(from_type, DT_UINT16) \
+  TEST_NON_NEGATIVE_VALUES_CAST_FROM_TO(from_type, DT_UINT32) \
+  TEST_NON_NEGATIVE_VALUES_CAST_FROM_TO(from_type, DT_UINT64)
+
+#define TEST_CAST_TO(from_type) \
+  TEST_CAST_TO_NO_UNSIGNED(from_type) TEST_CAST_TO_UNSIGNED(from_type)
 
 TEST_CAST_TO(DT_BOOL)
 TEST_CAST_TO(DT_INT8)
 TEST_CAST_TO(DT_INT16)
 TEST_CAST_TO(DT_INT32)
 TEST_CAST_TO(DT_INT64)
-TEST_CAST_TO(DT_HALF)
-TEST_CAST_TO(DT_FLOAT)
-TEST_CAST_TO(DT_DOUBLE)
+TEST_CAST_TO(DT_UINT8)
+TEST_CAST_TO(DT_UINT16)
+TEST_CAST_TO(DT_UINT32)
+TEST_CAST_TO(DT_UINT64)
+TEST_CAST_TO_NO_UNSIGNED(DT_HALF)
+TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED(DT_HALF)
+TEST_CAST_TO_NO_UNSIGNED(DT_FLOAT)
+TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED(DT_FLOAT)
+TEST_CAST_TO_NO_UNSIGNED(DT_DOUBLE)
+TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED(DT_DOUBLE)
 
 #undef TEST_CAST_FROM_TO
+#undef TEST_NON_NEGATIVE_VALUES_CAST_FROM_TO
+#undef TEST_CAST_TO_NO_UNSIGNED
+#undef TEST_CAST_TO_UNSIGNED
+#undef TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED
 #undef TEST_CAST_TO
 
 /// Test `tf.Ceil`.

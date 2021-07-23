@@ -847,6 +847,20 @@ func @convert_i1_to_f32(%input: tensor<2x2xi1>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @convert_ui8_to_f32
+func @convert_ui8_to_f32(%input: tensor<2x2xui8>) -> tensor<2x2xf32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xui8>) -> tensor<2x2xf32>
+  return %result : tensor<2x2xf32>
+}
+// CHECK: unrealized_conversion_cast %arg0 : tensor<2x2xui8> to tensor<2x2xi8>
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i8, %{{.*}}: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = uitofp %[[OPERAND_IN]] : i8 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @convert_i1_to_i32
 func @convert_i1_to_i32(%input: tensor<2x2xi1>) -> tensor<2x2xi32> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xi1>) -> tensor<2x2xi32>
@@ -873,6 +887,20 @@ func @convert_i32_to_f32(%input: tensor<2x2xi32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @convert_ui32_to_f32
+func @convert_ui32_to_f32(%input: tensor<2x2xui32>) -> tensor<2x2xf32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xui32>) -> tensor<2x2xf32>
+  return %result : tensor<2x2xf32>
+}
+// CHECK: unrealized_conversion_cast %arg0 : tensor<2x2xui32> to tensor<2x2xi32>
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = uitofp %[[OPERAND_IN]] : i32 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @convert_i16_to_i32
 func @convert_i16_to_i32(%input: tensor<2x2xi16>) -> tensor<2x2xi32> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xi16>) -> tensor<2x2xi32>
@@ -882,6 +910,20 @@ func @convert_i16_to_i32(%input: tensor<2x2xi16>) -> tensor<2x2xi32> {
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %{{.*}}: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = sexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @convert_ui16_to_i32
+func @convert_ui16_to_i32(%input: tensor<2x2xui16>) -> tensor<2x2xi32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xui16>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK: unrealized_conversion_cast %arg0 : tensor<2x2xui16> to tensor<2x2xi16>
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %{{.*}}: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i16 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -930,6 +972,21 @@ func @convert_i32_to_i1(%input: tensor<2x2xi32>) -> tensor<2x2xi1> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xi1>
   return %result : tensor<2x2xi1>
 }
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: i1):
+// CHECK-NEXT:   %[[ZERO:.*]] = constant 0 : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpi ne, %[[OPERAND_IN]], %[[ZERO]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @convert_ui32_to_i1
+func @convert_ui32_to_i1(%input: tensor<2x2xui32>) -> tensor<2x2xi1> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xui32>) -> tensor<2x2xi1>
+  return %result : tensor<2x2xi1>
+}
+// CHECK: unrealized_conversion_cast %arg0 : tensor<2x2xui32> to tensor<2x2xi32>
 // CHECK: linalg.init_tensor
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: i1):
