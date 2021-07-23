@@ -1346,7 +1346,7 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
       // Making sure that the requested TRT algorithm ID doesn't go above
       // the max value accepted.
       forced_algorithm_id = std::min(forced_algorithm_id.value(),
-                                     static_cast<int64_t>(nbChoices));
+                                     static_cast<int64_t>(nbChoices) - 1);
 
       VLOG(1) << "Forcing TRT algorithm selection to: ID = "
               << forced_algorithm_id.value();
@@ -1391,7 +1391,8 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
       // row major FP32 format
       if (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) && (
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
-          format == nvinfer1::TensorFormat::kLINEAR && datatype == nvinfer1::DataType::kINT8
+          format == nvinfer1::TensorFormat::kLINEAR &&
+          datatype == nvinfer1::DataType::kINT8
 #else
           format == nvinfer1::TensorFormat::kCHW32
 #endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
