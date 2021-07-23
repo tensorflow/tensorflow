@@ -1284,10 +1284,9 @@ def function(func=None,
   executes a TensorFlow graph (`tf.Graph`) created by trace-compiling the
   TensorFlow operations in `func`.
   
-  See [Introduction to Graphs]
-  (https://www.tensorflow.org/guide/intro_to_graphs)
-  for the benefits and trade-offs regarding executing a function as a
-  graph.
+  See [Better Performance with tf.function]
+  (https://www.tensorflow.org/guide/function) for tips on performance and
+  known limitations.
 
   Example usage:
 
@@ -1558,7 +1557,7 @@ def function(func=None,
     autograph: Whether autograph should be applied on `func` before tracing a
       graph. Data-dependent control flow requires `autograph=True`. For more
       information, see the [tf.function and AutoGraph guide](
-      https://www.tensorflow.org/guide/function).
+      https://www.tensorflow.org/guide/function#autograph_transformations).
     jit_compile: If `True`, compiles the function using
       [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,
       such as fusion, and attempts to emit more efficient code. This may
