@@ -1247,6 +1247,8 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
                                                        input_tiling.end());
     key.input_layout_is_tiling = true;
   }
+  key.output_tiling.resize(output_tiling.tiling.size());
+  absl::c_copy(output_tiling.tiling, key.output_tiling.begin());
   key.num_threads = num_threads;
   return cache_.GetOrCreateIfAbsent(
       key,
