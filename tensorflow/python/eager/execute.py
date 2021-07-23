@@ -63,7 +63,7 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
       message = e.message + " name: " + name
     else:
       message = e.message
-    six.raise_from(core._status_to_exception(e.code, message), None)
+    raise core._status_to_exception(e.code, message) from None
   except TypeError as e:
     keras_symbolic_tensors = [
         x for x in inputs if ops._is_keras_symbolic_tensor(x)
@@ -119,7 +119,7 @@ def execute_with_cancellation(op_name,
       message = e.message + " name: " + name
     else:
       message = e.message
-    six.raise_from(core._status_to_exception(e.code, message), None)
+    raise core._status_to_exception(e.code, message) from None
   except TypeError as e:
     keras_symbolic_tensors = [
         x for x in inputs if ops._is_keras_symbolic_tensor(x)

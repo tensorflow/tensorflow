@@ -101,6 +101,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -1357,6 +1358,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
     clazz_object: class to override for.  Either `Tensor` or `SparseTensor`.
   """
 
+  @traceback_utils.filter_traceback
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
       try:

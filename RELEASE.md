@@ -24,8 +24,22 @@
 
 ## Major Features and Improvements
 
-*<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* Improvements to the TensorFlow debugging experience:
+  * Previously, TensorFlow error stack traces involved many internal frames,
+    which could be challenging to read through,
+    while not being actionable for end users.
+    As of TF 2.7, TensorFlow filters internal frames in most errors that it
+    raises, to keep stack traces short, readable, and focused on what's
+    actionable for end users (their own code).
+
+    This behavior can be disabled by calling
+    `tf.debugging.disable_traceback_filtering()`, and can be re-enabled via
+    `tf.debugging.enable_traceback_filtering()`. If you are debugging a
+    TensorFlow-internal issue (e.g. to prepare a TensorFlow PR), make sure
+    to disable traceback filtering.
+
+    Note that this feature is only available with Python 3.7 or higher.
+
 *   TF1 -> TF2 Migration
     * Introduced the `tf.compat.v1.keras.utils.track_tf1_style_variables`
       decorator, which enables using large classes of tf1-style variable_scope,
