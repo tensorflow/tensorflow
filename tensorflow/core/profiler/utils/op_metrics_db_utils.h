@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -87,6 +88,10 @@ void AddIdleOp(OpMetricsDb& db);
 inline bool IsIdleOp(const OpMetrics& metrics) {
   return metrics.category() == kIdle;
 }
+
+// Returns the ratio of time spent sending data from the host to the device
+// relative to the total time the host was active.
+absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
 
 // Converts from the device op metrics to Tf-op metrics.
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(

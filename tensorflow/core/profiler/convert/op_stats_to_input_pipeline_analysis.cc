@@ -18,6 +18,7 @@ limitations under the License.
 #include <math.h>
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/util/stats_calculator.h"
@@ -355,16 +357,13 @@ InputOpDetails ConvertOpMetricsToInputOpDetails(const OpMetrics& op_metrics,
 double RatioOfHostToDeviceTimeToStepTime(
     const OpMetricsDb& host_tf_metrics_db,
     const InputPipelineAnalysisResult& input_pipeline_analysis) {
-  if (host_tf_metrics_db.total_host_infeed_enq_start_timestamp_ps_diff() > 0) {
-    // For TPU execution that uses infeed.
-    //    We use total_host_infeed_enq_start_timestamp_ps_diff_ to approximate
-    //    the total host step time.
-    return std::min(
-        1.0, SafeDivide(host_tf_metrics_db.total_host_infeed_enq_duration_ps(),
-                        host_tf_metrics_db
-                            .total_host_infeed_enq_start_timestamp_ps_diff()));
+  // For TPU execution that uses infeed.
+  absl::optional<double> host_infeed_enqueue_ratio =
+      HostInfeedEnqueueRatio(host_tf_metrics_db);
+  if (host_infeed_enqueue_ratio.has_value()) {
+    return host_infeed_enqueue_ratio.value();
   }
-  // For GPU and TPU execution that doesn't use infeed.
+  // For GPU and TPU execution that do not use infeed.
   double avg_step_time_ms =
       input_pipeline_analysis.step_time_summary().average();
   if (avg_step_time_ms > 0) {
@@ -374,8 +373,7 @@ double RatioOfHostToDeviceTimeToStepTime(
             &generic_breakdown)) {
       double avg_host_to_device_time_ms =
           generic_breakdown.host_to_device_ms_summary().average();
-      return std::min(1.0,
-                      SafeDivide(avg_host_to_device_time_ms, avg_step_time_ms));
+      return SafeDivide(avg_host_to_device_time_ms, avg_step_time_ms);
     }
   }
   return 0.0;
@@ -498,8 +496,8 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
       aggregated_input_op_times_us[InputOpCategory::kAdvancedFileRead] +
       aggregated_input_op_times_us[InputOpCategory::kPreprocessing];
 
-  double ratio = RatioOfHostToDeviceTimeToStepTime(host_tf_metrics_db, *result);
-  DCHECK_LE(ratio, 1.0);
+  double ratio = std::min(
+      1.0, RatioOfHostToDeviceTimeToStepTime(host_tf_metrics_db, *result));
   DCHECK_GE(ratio, 0.0);
   double non_enqueue_time_us = (ratio != 0.0)
                                    ? (enqueue_time_us * (1.0 - ratio) / ratio)

@@ -102,19 +102,8 @@ void ProcessOneTfActivity(const TfActivity& activity,
         parent_info->children_duration_ps += tf_op_span.duration_ps();
       }
       if (IsInfeedEnqueueOp(activity.tf_op.type)) {
-        if (tf_metrics_data->last_infeed_enq_duration_ps > 0) {
-          DCHECK(tf_metrics_data->last_infeed_enq_start_timestamp_ps <=
-                 info->start_timestamp_ps);
-          uint64 start_timestamps_ps_diff =
-              info->start_timestamp_ps -
-              tf_metrics_data->last_infeed_enq_start_timestamp_ps;
-          tf_metrics_data->tf_metrics_db_builder.UpdateHostInfeedEnqInfo(
-              tf_metrics_data->last_infeed_enq_duration_ps,
-              start_timestamps_ps_diff);
-        }
-        tf_metrics_data->last_infeed_enq_start_timestamp_ps =
-            info->start_timestamp_ps;
-        tf_metrics_data->last_infeed_enq_duration_ps = tf_op_span.duration_ps();
+        tf_metrics_data->tf_metrics_db_builder.EnterHostInfeedEnqueue(
+            tf_op_span);
       }
       break;
     }

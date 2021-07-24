@@ -55,13 +55,21 @@ void HostOpMetricsDbBuilder::EnterOp(absl::string_view name,
   db()->set_total_op_time_ps(db()->total_op_time_ps() + self_time_ps);
 }
 
-void HostOpMetricsDbBuilder::UpdateHostInfeedEnqInfo(
-    uint64 duration_ps, uint64 start_timestamp_ps_diff) {
-  db()->set_total_host_infeed_enq_duration_ps(
-      db()->total_host_infeed_enq_duration_ps() + duration_ps);
-  db()->set_total_host_infeed_enq_start_timestamp_ps_diff(
-      db()->total_host_infeed_enq_start_timestamp_ps_diff() +
-      start_timestamp_ps_diff);
+void HostOpMetricsDbBuilder::EnterHostInfeedEnqueue(
+    Timespan host_infeed_enqueue) {
+  if (!last_host_infeed_enqueue_.Empty()) {
+    // Expect non-overlapping InfeedEnqueue timespans sorted by time.
+    DCHECK_GE(host_infeed_enqueue.end_ps(),
+              last_host_infeed_enqueue_.begin_ps());
+    db()->set_total_host_infeed_enq_duration_ps(
+        db()->total_host_infeed_enq_duration_ps() +
+        last_host_infeed_enqueue_.duration_ps());
+    db()->set_total_host_infeed_enq_start_timestamp_ps_diff(
+        db()->total_host_infeed_enq_start_timestamp_ps_diff() +
+        (host_infeed_enqueue.begin_ps() -
+         last_host_infeed_enqueue_.begin_ps()));
+  }
+  last_host_infeed_enqueue_ = host_infeed_enqueue;
 }
 
 void DeviceOpMetricsDbBuilder::EnterOp(

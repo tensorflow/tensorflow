@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -98,6 +99,16 @@ void AddIdleOp(OpMetricsDb& db) {
   metrics->set_occurrences(0);
   metrics->set_time_ps(idle_time_ps);
   metrics->set_self_time_ps(idle_time_ps);
+}
+
+absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {
+  if (db.total_host_infeed_enq_start_timestamp_ps_diff() > 0) {
+    // We use total_host_infeed_enq_start_timestamp_ps_diff to approximate the
+    // total host time.
+    return SafeDivide(db.total_host_infeed_enq_duration_ps(),
+                      db.total_host_infeed_enq_start_timestamp_ps_diff());
+  }
+  return absl::nullopt;
 }
 
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
