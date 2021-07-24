@@ -154,7 +154,6 @@ func @quantized_tensor(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615
 // CHECK: "tfr.cast"(%[[arg0:.*]]) : (tensor<1x10x!quant.uniform<i8:f32, 0.0038396485615521669:-128>>) -> !tfr.tensor
 // CHECK: "tfr.cast"(%[[result:.*]]) : (!tfr.tensor) -> tensor<1x10x!quant.uniform<i8:f32, 3.906250e-03:-128>>
 }
-
 // CHECK-LABEL: decompose_quant_act_range
 func @decompose_quant_act_range() -> !tfr.tensor_list {
   %scale = constant 0.1 : f32
@@ -202,4 +201,71 @@ func @decompose_quant_act_range_invalid() -> (!tfr.tensor, !tfr.tensor) {
 // CHECK: %[[elu_attr:.*]] = tfr.constant "ELU" -> !tfr.attr
 // CHECK: %[[min:.*]], %[[max:.*]] = tfr.quant_act_range(%[[elu_attr]]
 // CHECK: return %[[min]], %[[max]]
+}
+
+// CHECK-LABEL: decompose_quant_scale_factor
+func @decompose_quant_scale_factor() -> (!tfr.tensor, !tfr.tensor) {
+  %output_scale = constant 0.1 : f32
+  %input_scale = constant 0.25 : f32
+  %filter_scale = constant 0.4 : f32
+  %input_scale_tensor = "tfr.constant_tensor"(%input_scale) : (f32) -> !tfr.tensor
+  %filter_scale_tensor = "tfr.constant_tensor"(%filter_scale) : (f32) -> !tfr.tensor
+  %list = "tfr.build_list"(%input_scale_tensor, %filter_scale_tensor) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+  %out = "tfr.quant_scale_factor"(%output_scale, %list) : (f32, !tfr.tensor_list) -> !tfr.tensor
+  %perchannel_scale = constant dense<[0.4, 4.0]> : tensor<2xf32>
+  %perchannel_scale_tensor = "tfr.cast"(%perchannel_scale) : (tensor<2xf32>) -> !tfr.tensor
+  %list2 = "tfr.build_list"(%input_scale_tensor, %perchannel_scale_tensor) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+  %perchannel = "tfr.quant_scale_factor"(%output_scale, %list2) : (f32, !tfr.tensor_list) -> !tfr.tensor
+  return %out, %perchannel : !tfr.tensor, !tfr.tensor
+// CHECK: %[[scale_factors:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 1.000000e+01]> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK: %[[scale_factor:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK: %[[cast:.*]] = "tfr.cast"(%[[scale_factor]]) : (tensor<f32>) -> !tfr.tensor
+// CHECK: %[[cast_perchannel:.*]] = "tfr.cast"(%[[scale_factors]]) : (tensor<2xf32>) -> !tfr.tensor
+// CHECK: return %[[cast]], %[[cast_perchannel]] : !tfr.tensor, !tfr.tensor
+}
+
+// CHECK-LABEL: decompose_quant_scale_factor_invalid
+func @decompose_quant_scale_factor_invalid() -> !tfr.tensor {
+  %output_scale = constant 0.1 : f32
+  %input_scale = constant 0.25 : f32
+  %filter_scale = constant 0.4 : f32
+  %input_scale_tensor = "tfr.constant_tensor"(%input_scale) : (f32) -> !tfr.tensor
+  %filter_scale_tensor = "tfr.constant_tensor"(%filter_scale) : (f32) -> !tfr.tensor
+  %list = "tfr.build_list"(%input_scale_tensor, %filter_scale_tensor, %input_scale_tensor) : (!tfr.tensor, !tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+  %out = "tfr.quant_scale_factor"(%output_scale, %list) : (f32, !tfr.tensor_list) -> !tfr.tensor
+  return %out : !tfr.tensor
+// CHECK: %[[cst_0:.*]] = constant 1.000000e-01 : f32
+// CHECK: %[[cst_1:.*]] = "tf.Const"() {value = dense<2.500000e-01> : tensor<f32>} : () -> tensor<f32>
+// CHECK: %[[cst_2:.*]] = "tf.Const"() {value = dense<4.000000e-01> : tensor<f32>} : () -> tensor<f32>
+// CHECK: %[[tfrcast0:.*]] = "tfr.cast"(%[[cst_1]]) : (tensor<f32>) -> !tfr.tensor
+// CHECK: %[[tfrcast1:.*]] = "tfr.cast"(%[[cst_2]]) : (tensor<f32>) -> !tfr.tensor
+// CHECK: %[[list:.*]] = "tfr.build_list"(%[[tfrcast0]], %[[tfrcast1]], %[[tfrcast0]]) : (!tfr.tensor, !tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+// CHECK: %[[qsf:.*]] = tfr.quant_scale_factor(%[[cst_0]], %[[list]]) : (f32, !tfr.tensor_list) -> !tfr.tensor
+// CHECK: return %[[qsf]] : !tfr.tensor
+}
+
+// CHECK-LABEL: decompose_quant_rescale
+func @decompose_quant_rescale(%arg0: tensor<2xi32>) -> !tfr.tensor {
+  %zp = constant 67 : i64
+  %cst = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+  %scale_factor = "tfr.cast"(%cst) : (tensor<f32>) -> !tfr.tensor
+  %input = "tfr.cast"(%arg0) : (tensor<2xi32>) -> !tfr.tensor
+  %rescaled = "tfr.quant_rescale"(%input, %scale_factor, %zp) : (!tfr.tensor, !tfr.tensor, i64) -> !tfr.tensor
+  return %rescaled : !tfr.tensor
+
+// CHECK: %[[scale_cst:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK: %false = constant false
+// CHECK: %[[zp_cst:.*]] = "tf.Const"() {value = dense<67> : tensor<i64>} : () -> tensor<i64>
+// CHECK: %[[zp:.*]] = "tfr.cast"(%[[zp_cst]]) : (tensor<i64>) -> !tfr.tensor
+// CHECK: %[[scale:.*]] = "tfr.cast"(%[[scale_cst]]) : (tensor<f32>) -> !tfr.tensor
+// CHECK: %[[input:.*]] = "tfr.cast"(%arg0) : (tensor<2xi32>) -> !tfr.tensor
+// CHECK: %[[f32:.*]] = tfr.constant f32 -> !tfr.attr
+// CHECK: %[[i32:.*]] = tfr.constant i32 -> !tfr.attr
+// CHECK: %[[cast:.*]] = tfr.call @tf__cast(%[[input]], %[[f32]], %false) : (!tfr.tensor, !tfr.attr, i1) -> !tfr.tensor
+// CHECK: %[[rescaled:.*]] = tfr.call @tf__mul(%[[cast]], %[[scale]]) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor
+// CHECK: %[[rounded:.*]] = tfr.call @tf__round(%[[rescaled]]) : (!tfr.tensor) -> !tfr.tensor
+// CHECK: %[[zp_cast:.*]] = tfr.call @tf__cast(%[[zp]], %[[f32]], %false) : (!tfr.tensor, !tfr.attr, i1) -> !tfr.tensor
+// CHECK: %[[recentered:.*]] = tfr.call @tf__add(%[[rounded]], %[[zp_cast]]) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor
+// CHECK: %[[cast_i32:.*]] = tfr.call @tf__cast(%[[recentered]], %[[i32]], %false) : (!tfr.tensor, !tfr.attr, i1) -> !tfr.tensor
+// CHECK: return %[[cast_i32]] : !tfr.tensor
 }
