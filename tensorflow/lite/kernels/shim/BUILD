@@ -121,6 +121,7 @@ cc_test(
         ":test_util",
         ":tflite_tensor_view",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -183,6 +184,7 @@ cc_library(
 cc_library(
     name = "status_macros",
     hdrs = ["status_macros.h"],
+    visibility = ["//visibility:public"],
     deps = ["@com_google_absl//absl/status"],
 )
 
