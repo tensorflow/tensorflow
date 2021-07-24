@@ -1283,7 +1283,7 @@ def function(func=None,
   `tf.function` constructs a `tf.types.experimental.GenericFunction` that
   executes a TensorFlow graph (`tf.Graph`) created by trace-compiling the
   TensorFlow operations in `func`.
-  
+
   See [Better Performance with tf.function]
   (https://www.tensorflow.org/guide/function) for tips on performance and
   known limitations.
