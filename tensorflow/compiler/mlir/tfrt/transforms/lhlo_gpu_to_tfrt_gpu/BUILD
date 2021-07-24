@@ -43,6 +43,7 @@ cc_library(
     hdrs = [
         "PassDetail.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":TfrtGpuPassIncGen",
         "@llvm-project//mlir:GPUDialect",
@@ -60,6 +61,7 @@ cc_library(
         "gpu_passes.cc",
     ],
     hdrs = ["gpu_passes.h"],
+    compatible_with = get_compatible_with_cloud(),
     tags = [
         "gpu",
         "no_oss",
