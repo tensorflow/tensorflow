@@ -217,6 +217,19 @@ jobjectArray GetSignatureInputsOutputsList(
 }
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 
+// Verifies whether the model is a flatbuffer file.
+class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
+ public:
+  bool Verify(const char* data, int length,
+              tflite::ErrorReporter* reporter) override {
+    if (!VerifyModel(data, length)) {
+      reporter->Report("The model is not a valid Flatbuffer file");
+      return false;
+    }
+    return true;
+  }
+};
+
 }  // namespace
 
 extern "C" {
@@ -636,19 +649,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createErrorReporter(
       new BufferErrorReporter(env, static_cast<int>(size));
   return reinterpret_cast<jlong>(error_reporter);
 }
-
-// Verifies whether the model is a flatbuffer file.
-class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
- public:
-  bool Verify(const char* data, int length,
-              tflite::ErrorReporter* reporter) override {
-    if (!VerifyModel(data, length)) {
-      reporter->Report("The model is not a valid Flatbuffer file");
-      return false;
-    }
-    return true;
-  }
-};
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
