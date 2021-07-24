@@ -52,9 +52,6 @@ class HloPassFix : public Pass {
   StatusOr<bool> Run(HloModule* module) override {
     RunState run_state(module);
     TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state));
-    if (Pass::IsPassPipeline()) {
-      Pass::ResetPassPipeline();
-    }
     return !run_state.changed.empty();
   }
 

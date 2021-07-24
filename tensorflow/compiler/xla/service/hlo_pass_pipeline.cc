@@ -16,9 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 
 #include <functional>
-#include <string>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
@@ -122,10 +120,6 @@ void SetInstructionMetadata(HloModuleGroup& module_group) {
 
 }  // namespace
 
-void HloPassPipeline::ResetPassPipeline() {
-  absl::c_fill(pass_run_counts_since_change_, 0);
-}
-
 template <typename HloT>
 Status HloPassPipeline::RunInvariantCheckers(
     HloT* hlo, absl::string_view after_pass_name) {
@@ -172,14 +166,10 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   bool changed = false;
   for (int i = 0; i < passes.size(); i++) {
     HloPassInterface* pass = passes[i];
-    if (pass_run_counts_since_change_[i] > 3) {
-      VLOG(1) << "  Skipping HLO pass " << passes[i]->name();
-      continue;
-    }
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass->name()));
     std::string pass_name = std::string(pass->name());
     VLOG(1) << "  HLO pass " << pass_name;
-    VLOG(3) << "  Module hash " << hlo->Hash();
+    VLOG(2) << "  Module hash " << hlo->Hash();
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
     }
@@ -196,13 +186,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     RecordPassEndMetadata(*hlo, pass_name, pass_changed);
     changed |= pass_changed;
     if (pass_changed) {
-    VLOG(1) << name() << ":" << pass->name() << " -> "
-                 << pass_run_counts_since_change_[i];
-      if (pass_run_counts_since_change_[i] <= 3) {
-        pass_run_counts_since_change_[i] = 0;
-      }
-    } else {
-      ++pass_run_counts_since_change_[i];
+      VLOG(3) << "  Pass caused changes " << pass->name();
     }
     TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
     if (!pass->IsPassPipeline()) {
