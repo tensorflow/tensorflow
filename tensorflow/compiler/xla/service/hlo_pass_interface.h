@@ -92,6 +92,8 @@ class HloPassInterface {
   virtual StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) = 0;
 
   virtual bool IsPassPipeline() { return false; }
+
+  virtual void ResetPassPipeline() {}
 };
 
 // Base class for passes which are module-scoped.
