@@ -233,7 +233,7 @@ def setup_python(environ_cp):
       default_python_lib_path = python_lib_paths[0]
       python_lib_path = get_input(
           'Please input the desired Python library path to use.  '
-          'Default is [{}]\n'.format(python_lib_paths[0]))
+          'Default is [{}]: '.format(python_lib_paths[0]))
       if not python_lib_path:
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
