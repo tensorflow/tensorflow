@@ -108,7 +108,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
   int64 parameter_number_ = 0;
 };
 
-void ComputeBoundary(const HloInstruction* root, int64 limit,
+void ComputeBoundary(const HloInstruction* root, int64_t limit,
                      absl::flat_hash_set<const HloInstruction*>* boundary) {
   std::deque<const HloInstruction*> worklist;
   absl::flat_hash_map<const HloInstruction*, int64> visited;
@@ -117,7 +117,7 @@ void ComputeBoundary(const HloInstruction* root, int64 limit,
   while (!worklist.empty()) {
     auto hlo = worklist.front();
     worklist.pop_front();
-    int64 hops = visited[hlo];
+    int64_t hops = visited[hlo];
     if (hops > limit) {
       boundary->insert(hlo);
       continue;
@@ -135,7 +135,7 @@ void ComputeBoundary(const HloInstruction* root, int64 limit,
 }  // namespace
 
 std::unique_ptr<HloModule> ExtractModule(HloInstruction* instruction,
-                                         int64 height) {
+                                         int64_t height) {
   absl::flat_hash_set<const HloInstruction*> boundary;
   if (height != -1) {
     ComputeBoundary(instruction, height, &boundary);

@@ -70,7 +70,7 @@ Status DecodeImageShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
   DimensionHandle channels_dim;
-  int32 channels;
+  int32_t channels;
   TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
   if (channels == 0) {
     channels_dim = c->UnknownDim();
@@ -89,7 +89,7 @@ Status DecodeImageShapeFn(InferenceContext* c) {
 
 Status DecodeImageV2ShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  int32 channels;
+  int32_t channels;
   bool expand_animations;
   DimensionHandle channels_dim;
 
@@ -487,7 +487,7 @@ REGISTER_OP("DecodeAndCropJpeg")
       DimensionHandle h = c->UnknownDim();
       DimensionHandle w = c->UnknownDim();
 
-      int32 channels;
+      int32_t channels;
       TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
       if (channels != 0) {
         if (channels < 0) {

@@ -39,11 +39,11 @@ class Array3D : public Array<T> {
   Array3D() : Array<T>(std::vector<int64>{0, 0, 0}) {}
 
   // Creates an array of dimensions n1 x n2 x n3, uninitialized values.
-  Array3D(const int64 n1, const int64 n2, const int64 n3)
+  Array3D(const int64_t n1, const int64_t n2, const int64_t n3)
       : Array<T>(std::vector<int64>{n1, n2, n3}) {}
 
   // Creates an array of dimensions n1 x n2 x n3, initialized to value.
-  Array3D(const int64 n1, const int64 n2, const int64 n3, const T value)
+  Array3D(const int64_t n1, const int64_t n2, const int64_t n3, const T value)
       : Array<T>(std::vector<int64>{n1, n2, n3}, value) {}
 
   // Creates an array from the given nested initializer list. The outer

@@ -221,18 +221,18 @@ class StepSequenceInterface {
 
   // Refresh the local per-graph_key step_id sequence from collective
   // group leader, if applicable.
-  virtual void RefreshStepIdSequenceAsync(int64 graph_key,
+  virtual void RefreshStepIdSequenceAsync(int64_t graph_key,
                                           const StatusCallback& done) = 0;
 
   // Returns the step_id that should be used for initiating a new execution
   // on the specified graph. May return the same step_id multiple times if
   // RetireStepId or RefreshStepIdReservation is not called.
-  virtual int64 NextStepId(int64 graph_key) = 0;
+  virtual int64 NextStepId(int64_t graph_key) = 0;
 
   // Reports that execution of the given step has completed successfully.
   // Should be called immediately after a step completes with OK status,
   // prior to calling NextStepId().  If the step fails, don't call.
-  virtual void RetireStepId(int64 graph_key, int64 step_id) = 0;
+  virtual void RetireStepId(int64_t graph_key, int64_t step_id) = 0;
 };
 
 class NcclCommunicatorInterface;
@@ -245,11 +245,11 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
 
   // Returns the step-specific CollectiveExecutor, creating if one does not
   // already exist.  The caller assumes ownership of one Ref on the object.
-  virtual CollectiveExecutor* FindOrCreate(int64 step_id) = 0;
+  virtual CollectiveExecutor* FindOrCreate(int64_t step_id) = 0;
 
   // If there is a CollectiveExecutor for step_id, remove it from the
   // table.
-  virtual void Cleanup(int64 step_id) = 0;
+  virtual void Cleanup(int64_t step_id) = 0;
 
   virtual ParamResolverInterface* GetParamResolver() const = 0;
 
@@ -288,7 +288,7 @@ class CollectiveRemoteAccess {
   // Checks the health of a collective peer. It probes the peer to see if it is
   // alive. Note that if a peer has restarted, it's considered a different one,
   // so CheckPeerHealth fails.
-  virtual void CheckPeerHealth(const string& peer_task, int64 timeout_in_ms,
+  virtual void CheckPeerHealth(const string& peer_task, int64_t timeout_in_ms,
                                const StatusCallback& done) = 0;
 
   virtual BufRendezvous* buf_rendezvous() = 0;
@@ -340,7 +340,7 @@ class CollectiveExecutor : public core::RefCounted {
   virtual void UnblockDependencies(const CollectiveParams& col_params) {}
 
   // Used to designate an invalid group or instance key.
-  static int64 kInvalidId;
+  static int64_t kInvalidId;
 
   // Lexically scoped handle for Ref.
   class Handle {
@@ -386,7 +386,7 @@ struct CollectiveContext {
                     const DeviceMgr* dev_mgr, OpKernelContext* ctx,
                     OpKernelContext::Params* op_params,
                     const CollectiveParams* col_params, const string& exec_key,
-                    int64 step_id, const Tensor* input, Tensor* output);
+                    int64_t step_id, const Tensor* input, Tensor* output);
 };
 
 class NcclCommunicatorInterface {

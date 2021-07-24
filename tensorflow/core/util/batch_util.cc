@@ -172,7 +172,7 @@ void HandleSliceToElement<Eigen::half>(Tensor* parent, Eigen::half* src,
 // Copies element into the index^th slice of parent (in the 0th dimension).
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(*parent, element, index));
-  const int64 num_values = element.NumElements();
+  const int64_t num_values = element.NumElements();
 #define HANDLE_TYPE(T)                                              \
   case DataTypeToEnum<T>::value: {                                  \
     T* src = element.base<T>();                                     \
@@ -194,7 +194,7 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index) {
 Status CopySliceToElement(const Tensor& parent, Tensor* element,
                           int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(parent, *element, index));
-  const int64 num_values = element->NumElements();
+  const int64_t num_values = element->NumElements();
 
 #define HANDLE_TYPE(T)                                      \
   case DataTypeToEnum<T>::value: {                          \
@@ -237,8 +237,8 @@ Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
         dst->shape().DebugString());
   }
 
-  const int64 src_dim0 = src.dim_size(0);
-  const int64 dst_dim0 = dst->dim_size(0);
+  const int64_t src_dim0 = src.dim_size(0);
+  const int64_t dst_dim0 = dst->dim_size(0);
   int64_t src_chip_size = 1;
   int64_t dst_chip_size = 1;
   for (int i = 1; i < src.dims(); ++i) {
@@ -292,7 +292,7 @@ Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
 // This is particularly important for DT_STRING tensors.
 Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(*parent, *element, index));
-  const int64 num_values = element->NumElements();
+  const int64_t num_values = element->NumElements();
 
 #define HANDLE_TYPE(T)                                      \
   case DataTypeToEnum<T>::value: {                          \

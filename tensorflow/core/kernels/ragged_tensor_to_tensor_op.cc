@@ -437,12 +437,14 @@ void copy_array(VALUE_TYPE* dst, const VALUE_TYPE* src, INDEX_TYPE size) {
 }
 
 template <>
-void copy_array<tstring, int64>(tstring* dst, const tstring* src, int64 size) {
+void copy_array<tstring, int64>(tstring* dst, const tstring* src,
+                                int64_t size) {
   slow_copy_array(dst, src, size);
 }
 
 template <>
-void copy_array<tstring, int32>(tstring* dst, const tstring* src, int32 size) {
+void copy_array<tstring, int32>(tstring* dst, const tstring* src,
+                                int32_t size) {
   slow_copy_array(dst, src, size);
 }
 
@@ -451,13 +453,13 @@ void copy_array<tstring, int32>(tstring* dst, const tstring* src, int32 size) {
 // is not TriviallyCopyable
 template <>
 void copy_array<Eigen::half, int64>(Eigen::half* dst, const Eigen::half* src,
-                                    int64 size) {
+                                    int64_t size) {
   slow_copy_array(dst, src, size);
 }
 
 template <>
 void copy_array<Eigen::half, int32>(Eigen::half* dst, const Eigen::half* src,
-                                    int32 size) {
+                                    int32_t size) {
   slow_copy_array(dst, src, size);
 }
 

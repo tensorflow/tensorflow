@@ -147,7 +147,7 @@ std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
   return result;
 }
 
-const XLine* FindLineWithId(const XPlane& plane, int64 id) {
+const XLine* FindLineWithId(const XPlane& plane, int64_t id) {
   int i =
       Find(plane.lines(), [id](const XLine* line) { return line->id() == id; });
   return (i != -1) ? &plane.lines(i) : nullptr;
@@ -244,7 +244,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   });
   src.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
-    int64 time_offset_ps = 0LL;
+    int64_t time_offset_ps = 0LL;
     if (dst_line.NumEvents() == 0) {
       // Since we RemoveEmptyLines above, this could only mean that current
       // line only exist in src plane.
@@ -300,7 +300,7 @@ void MergePlanes(const std::vector<const XPlane*>& src_planes,
 }
 
 uint64 GetStartTimestampNs(const XPlane& plane) {
-  int64 plane_timestamp = 0;
+  int64_t plane_timestamp = 0;
   for (const auto& line : plane.lines()) {
     plane_timestamp = std::min<int64>(plane_timestamp, line.timestamp_ns());
   }

@@ -28,7 +28,7 @@ xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
   const std::vector<string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
   for (const string& platform_device_id_str : visible_devices) {
-    int32 platform_device_id;
+    int32_t platform_device_id;
     if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
       return errors::InvalidArgument(
           "Could not parse entry in 'visible_device_list': '",

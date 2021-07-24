@@ -43,7 +43,7 @@ SnappyInputStream::~SnappyInputStream() {
   }
 }
 
-Status SnappyInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
+Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   result->clear();
   result->resize_uninitialized(bytes_to_read);
 
@@ -69,7 +69,8 @@ Status SnappyInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status SnappyInputStream::ReadNBytes(int64 bytes_to_read, absl::Cord* result) {
+Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
+                                     absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;
   TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));

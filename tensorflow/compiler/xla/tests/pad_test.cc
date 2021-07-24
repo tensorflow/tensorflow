@@ -340,8 +340,8 @@ XLA_TEST_P(PadTestFloat, Large2DPad) {
 XLA_TEST_P(PadTestFloat, AllTypes2DPad) {
   XlaBuilder b(TestName());
 
-  constexpr int64 in_rows = 35;
-  constexpr int64 in_cols = 35;
+  constexpr int64_t in_rows = 35;
+  constexpr int64_t in_cols = 35;
   auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(0.0f);
   auto input = AddParam(*operand, &b);
@@ -362,11 +362,11 @@ XLA_TEST_P(PadTestFloat, AllTypes2DPad) {
 XLA_TEST_P(PadTestFloat, High2DPad) {
   XlaBuilder b(TestName());
 
-  constexpr int64 in_rows = 129;
-  constexpr int64 in_cols = 129;
-  constexpr int64 low_padding = 0;
+  constexpr int64_t in_rows = 129;
+  constexpr int64_t in_cols = 129;
+  constexpr int64_t low_padding = 0;
   int64 high_padding[2] = {5, 7};
-  constexpr int64 interior_padding = 0;
+  constexpr int64_t interior_padding = 0;
   auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
   auto input = AddParam(*operand, &b);
@@ -389,11 +389,11 @@ XLA_TEST_P(PadTestFloat, High2DPad) {
 XLA_TEST_P(PadTestFloat, NegativePadding2D) {
   XlaBuilder b(TestName());
 
-  constexpr int64 in_rows = 129;
-  constexpr int64 in_cols = 129;
+  constexpr int64_t in_rows = 129;
+  constexpr int64_t in_cols = 129;
   int64 low_padding[2] = {-1, -2};
   int64 high_padding[2] = {-3, 4};
-  constexpr int64 interior_padding = 0;
+  constexpr int64_t interior_padding = 0;
   auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
   auto input = AddParam(*operand, &b);
@@ -417,8 +417,8 @@ XLA_TEST_P(PadTestFloat, NegativePadding2D) {
 XLA_TEST_P(PadTestFloat, NegativeAndInteriorPadding2D) {
   XlaBuilder b(TestName());
 
-  constexpr int64 in_rows = 8;
-  constexpr int64 in_cols = 11;
+  constexpr int64_t in_rows = 8;
+  constexpr int64_t in_cols = 11;
   int64 low_padding[2] = {4, -1};
   int64 high_padding[2] = {-2, -4};
   int64 interior_padding[2] = {1, 2};

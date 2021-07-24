@@ -124,8 +124,8 @@ Status RecordReader::GetMetadata(Metadata* md) {
   if (!cached_metadata_) {
     TF_RETURN_IF_ERROR(input_stream_->Reset());
 
-    int64 data_size = 0;
-    int64 entries = 0;
+    int64_t data_size = 0;
+    int64_t entries = 0;
 
     // Within the loop, we always increment offset positively, so this
     // loop should be guaranteed to either return after reaching EOF
@@ -168,8 +168,8 @@ Status RecordReader::GetMetadata(Metadata* md) {
 }
 
 Status RecordReader::PositionInputStream(uint64 offset) {
-  int64 curr_pos = input_stream_->Tell();
-  int64 desired_pos = static_cast<int64>(offset);
+  int64_t curr_pos = input_stream_->Tell();
+  int64_t desired_pos = static_cast<int64>(offset);
   if (curr_pos > desired_pos || curr_pos < 0 /* EOF */ ||
       (curr_pos == desired_pos && last_read_failed_)) {
     last_read_failed_ = false;

@@ -57,8 +57,8 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
 
   absl::flat_hash_map<int64, int64> old_to_new_tuple_idx;
-  for (int64 new_idx = 0; new_idx < new_to_old_tuple_idx.size(); ++new_idx) {
-    int64 old_idx = new_to_old_tuple_idx[new_idx];
+  for (int64_t new_idx = 0; new_idx < new_to_old_tuple_idx.size(); ++new_idx) {
+    int64_t old_idx = new_to_old_tuple_idx[new_idx];
     old_to_new_tuple_idx[old_idx] = new_idx;
     VLOG(2) << "Remapping tuple index " << old_idx << " to " << new_idx;
   }
@@ -66,7 +66,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   // Compute the shape of the while op after we remove the dead indices.
   std::vector<Shape> new_while_tuple_elem_shapes;
   new_while_tuple_elem_shapes.reserve(new_to_old_tuple_idx.size());
-  for (int64 old_idx : new_to_old_tuple_idx) {
+  for (int64_t old_idx : new_to_old_tuple_idx) {
     new_while_tuple_elem_shapes.push_back(
         while_init->shape().tuple_shapes(old_idx));
   }
@@ -95,7 +95,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
       CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement)
           << user->ToString(print_no_metadata);
 
-      int64 old_idx = user->tuple_index();
+      int64_t old_idx = user->tuple_index();
       auto new_idx_iter = old_to_new_tuple_idx.find(old_idx);
       if (new_idx_iter != old_to_new_tuple_idx.end()) {
         // This is a GTE of an index that survives.  Replace it.
@@ -133,7 +133,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
       while_body_replacements = make_while_computation_replacements(while_body);
   std::vector<HloInstruction*> new_while_body_root_elems;
   new_while_body_root_elems.reserve(new_to_old_tuple_idx.size());
-  for (int64 old_idx : new_to_old_tuple_idx) {
+  for (int64_t old_idx : new_to_old_tuple_idx) {
     new_while_body_root_elems.push_back(
         while_body_root->mutable_operand(old_idx));
   }
@@ -148,7 +148,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   // definitely tuple-shaped, but it's not necessarily a tuple op.)
   std::vector<HloInstruction*> new_while_init_elems;
   new_while_init_elems.reserve(new_to_old_tuple_idx.size());
-  for (int64 old_idx : new_to_old_tuple_idx) {
+  for (int64_t old_idx : new_to_old_tuple_idx) {
     new_while_init_elems.push_back(
         computation->AddInstruction(HloInstruction::CreateGetTupleElement(
             while_init->shape().tuple_shapes(old_idx), while_init, old_idx)));
@@ -181,11 +181,11 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   // The tuple simplifier will then simplify this if possible, removing
   // new_tuple and while_init.
   std::vector<HloInstruction*> new_tuple_elems;
-  const int64 tuple_size = ShapeUtil::TupleElementCount(while_init->shape());
-  for (int64 old_idx = 0; old_idx < tuple_size; ++old_idx) {
+  const int64_t tuple_size = ShapeUtil::TupleElementCount(while_init->shape());
+  for (int64_t old_idx = 0; old_idx < tuple_size; ++old_idx) {
     auto new_tuple_idx_it = old_to_new_tuple_idx.find(old_idx);
     if (new_tuple_idx_it != old_to_new_tuple_idx.end()) {
-      int64 gte_idx = new_tuple_idx_it->second;
+      int64_t gte_idx = new_tuple_idx_it->second;
       new_tuple_elems.push_back(
           computation->AddInstruction(HloInstruction::CreateGetTupleElement(
               new_while_op->shape().tuple_shapes(gte_idx), new_while_op,
@@ -254,7 +254,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     }
   }
 
-  const int64 tuple_size = ShapeUtil::TupleElementCount(while_init->shape());
+  const int64_t tuple_size = ShapeUtil::TupleElementCount(while_init->shape());
   if (tuple_size == 0) {
     VLOG(2) << "Can't remove elements from while loop's tuple -- it's already "
                "empty.";
@@ -292,13 +292,13 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
   absl::flat_hash_set<int64> used_indices_after_loop;
   if (while_op == while_op->parent()->root_instruction()) {
-    for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
+    for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
       used_indices_after_loop.insert(i);
     }
   }
   for (auto user : while_op->users()) {
     if (user->opcode() != HloOpcode::kGetTupleElement) {
-      for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
+      for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
         used_indices_after_loop.insert(i);
       }
       break;
@@ -308,7 +308,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // If a tuple element is used after the loop but not passed unmodified from
   // the while body's param0 through to the while body's root, count that
   // element as "used", since removing that element would be observable.
-  for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
+  for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
     if (used_tuple_indices.contains(i) ||
         !used_indices_after_loop.contains(i)) {
       continue;
@@ -348,7 +348,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 // duplicates by replacing them with tuple_index, followed by a call to
 // RemoveDeadTupleIndices.
 static StatusOr<HloInstruction*> TryRemoveRepeatedWhileTupleIndicesHelper(
-    HloInstruction* while_op, const int64 tuple_index,
+    HloInstruction* while_op, const int64_t tuple_index,
     absl::flat_hash_set<int64>& duplicates) {
   HloComputation* while_cond = while_op->while_condition();
   HloComputation* while_body = while_op->while_body();
@@ -455,7 +455,7 @@ static StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
     }
 
     // Look from index_to_investigate onwards to see if it is repeated.
-    for (int64 i = index_to_investigate + 1;
+    for (int64_t i = index_to_investigate + 1;
          i < while_shape.tuple_shapes_size(); ++i) {
       auto* init_elem = while_init->operand(i);
       auto* body_elem = while_body_root->operand(i);
@@ -523,7 +523,7 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 
   absl::flat_hash_set<int64> constant_tuple_indices;
   const auto& while_shape = while_init->shape();
-  for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+  for (int64_t i = 0; i < while_shape.tuple_shapes_size(); ++i) {
     auto* init_elem = while_init->operand(i);
     auto* body_elem = while_body_root->operand(i);
     if (init_elem->opcode() == HloOpcode::kConstant &&
@@ -540,7 +540,7 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   // OK, we found some constant elements of the while parameter!  Eliminate
   // them.
   std::vector<Shape> new_while_shape_elems;
-  for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+  for (int64_t i = 0; i < while_shape.tuple_shapes_size(); ++i) {
     if (!constant_tuple_indices.count(i)) {
       new_while_shape_elems.push_back(while_shape.tuple_shapes(i));
     }
@@ -561,7 +561,7 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
     CHECK(ShapeUtil::Compatible(instr->shape(), while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
-    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < while_shape.tuple_shapes_size(); ++i) {
       if (!constant_tuple_indices.count(i)) {
         tuple_elems.push_back(
             add_new_instr(HloInstruction::CreateGetTupleElement(
@@ -575,8 +575,8 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
     CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
-    int64 j = 0;
-    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+    int64_t j = 0;
+    for (int64_t i = 0; i < while_shape.tuple_shapes_size(); ++i) {
       if (constant_tuple_indices.count(i)) {
         tuple_elems.push_back(while_init->mutable_operand(i));
       } else {
@@ -817,7 +817,7 @@ static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
   // elements from `instrs` so that it only contains instructions we have not
   // yet processed.
   std::vector<HloInstruction*> elems;
-  for (int64 i = 0; i < desired_shape.tuple_shapes_size(); ++i) {
+  for (int64_t i = 0; i < desired_shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = desired_shape.tuple_shapes(i);
     if (!subshape.IsTuple()) {
       elems.push_back(instrs[0]);
@@ -826,7 +826,7 @@ static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
     }
 
     // Count the number of leaf nodes underneath desired_shape[i].
-    int64 num_leaves = 0;
+    int64_t num_leaves = 0;
     ShapeUtil::ForEachSubshape(
         subshape, [&](const Shape& s, const ShapeIndex& /*index*/) {
           if (!s.IsTuple()) {
@@ -855,7 +855,7 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
     return {instr};
   }
   std::vector<HloInstruction*> elems;
-  for (int64 i = 0; i < shape.tuple_shapes_size(); ++i) {
+  for (int64_t i = 0; i < shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = shape.tuple_shapes(i);
     new_instrs->push_back(
         HloInstruction::CreateGetTupleElement(subshape, instr, i));
@@ -909,7 +909,7 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   auto nested = [&](HloInstruction* instr) {
     std::vector<HloInstruction*> gtes;
     const Shape& flat_shape = instr->shape();
-    for (int64 i = 0; i < flat_shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < flat_shape.tuple_shapes_size(); ++i) {
       gtes.push_back(add_new_instr(HloInstruction::CreateGetTupleElement(
           flat_shape.tuple_shapes(i), instr, i)));
     }
@@ -1016,7 +1016,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   absl::optional<int64> trip_counter;
   // Maps the tuple index of each induction variable to its constant increment.
   absl::flat_hash_map<int64, const HloConstantInstruction*> induction_vars;
-  for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
+  for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
     HloInstruction* constant;
     if (!Match(while_body_root->mutable_operand(i),
                m::AddAnyOrder(m::GetTupleElement(m::Parameter(), i),
@@ -1071,7 +1071,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
     return add_new_instr(HloInstruction::CreateBinary(shape, opcode, lhs, rhs));
   };
 
-  auto add_gte = [&](HloInstruction* src, int64 idx) {
+  auto add_gte = [&](HloInstruction* src, int64_t idx) {
     return add_new_instr(HloInstruction::CreateGetTupleElement(
         src->shape().tuple_shapes(idx), src, idx));
   };
@@ -1094,7 +1094,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   auto convert_to_old_form = [&](HloInstruction* instr) {
     CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
     std::vector<HloInstruction*> tuple_elems;
-    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < while_shape.tuple_shapes_size(); ++i) {
       const auto& elem_shape = while_shape.tuple_shapes(i);
       if (!induction_vars.count(i)) {
         tuple_elems.push_back(add_gte(instr, i));
@@ -1120,7 +1120,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
     // In the new form, induction variables come from `init`, everything else
     // (including the trip counter if it's not one we created ourselves) comes
     // from the `root` tuple unmodified.
-    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < while_shape.tuple_shapes_size(); ++i) {
       tuple_elems.push_back(
           add_gte((induction_vars.count(i) ? loop_body_param : old_root), i));
     }
@@ -1145,7 +1145,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
       return init;
     }
     std::vector<HloInstruction*> tuple_elems;
-    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < while_shape.tuple_shapes_size(); ++i) {
       tuple_elems.push_back(add_gte(init, i));
     }
     tuple_elems.push_back(add_new_instr(

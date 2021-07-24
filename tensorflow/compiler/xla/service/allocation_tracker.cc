@@ -65,7 +65,7 @@ StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
           << "tag: \"" << tag << "\" with " << replicated_buffers.size()
           << " shaped_buffers.";
 
-  int64 handle = next_handle_++;
+  int64_t handle = next_handle_++;
   for (auto& shaped_buffer : replicated_buffers) {
     std::vector<ShapeIndex> shape_indices;
     ShapeUtil::ForEachSubshape(

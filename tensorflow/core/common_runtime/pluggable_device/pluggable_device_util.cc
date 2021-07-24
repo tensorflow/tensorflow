@@ -133,7 +133,7 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
   // available.
   send_device_to_device_stream->ThenWaitFor(send_stream);
 
-  const int64 total_bytes = input->TotalBytes();
+  const int64_t total_bytes = input->TotalBytes();
   if (total_bytes > 0) {
     void* src_ptr = GetBase(input);
     DeviceMemoryBase device_src_ptr(src_ptr, total_bytes);
@@ -195,7 +195,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
   // Wait for the sender's main stream to make sure that the data are available.
   send_device_to_host_stream->ThenWaitFor(send_stream);
 
-  const int64 total_bytes = device_tensor->TotalBytes();
+  const int64_t total_bytes = device_tensor->TotalBytes();
   if (total_bytes > 0) {
     void* src_ptr = GetBase(device_tensor);
     DeviceMemoryBase device_src_ptr(src_ptr, total_bytes);
@@ -244,7 +244,7 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
   if (sync_dst_compute) {
     recv_host_to_device_stream->ThenWaitFor(recv_stream);
   }
-  const int64 total_bytes = cpu_tensor->TotalBytes();
+  const int64_t total_bytes = cpu_tensor->TotalBytes();
   // Note that 0-size tensors have no backing buffer.
   if (total_bytes > 0) {
     void* src_ptr = GetBase(cpu_tensor);
@@ -303,7 +303,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToSameDevice(
     return;
   }
 
-  const int64 total_bytes = src_device_tensor->TotalBytes();
+  const int64_t total_bytes = src_device_tensor->TotalBytes();
   if (total_bytes > 0) {
     void* src_ptr = GetBase(src_device_tensor);
     DeviceMemoryBase device_src_ptr(src_ptr, total_bytes);

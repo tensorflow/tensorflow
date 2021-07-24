@@ -272,7 +272,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device, const string& name,
       const bool outputs_on_op_device,
-      std::function<Rendezvous*(const int64)> rendezvous_creator,
+      std::function<Rendezvous*(const int64_t)> rendezvous_creator,
       std::function<int64()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
@@ -361,7 +361,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   DataTypeVector output_dtypes_;
   string name_;
 
-  std::function<Rendezvous*(const int64)> rendezvous_creator_;
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator_;
   std::function<int64()> get_op_id_;
 };
 

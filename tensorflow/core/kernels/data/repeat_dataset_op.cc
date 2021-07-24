@@ -38,11 +38,11 @@ constexpr char kFiniteRepeat[] = "FiniteRepeat";
 constexpr char kCurIteration[] = "i";
 constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kUninitialized[] = "uninitialized";
-constexpr int64 kKnownRatio = 1;
+constexpr int64_t kKnownRatio = 1;
 
 class RepeatDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
+  Dataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
     input_->Ref();
   }
@@ -75,7 +75,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (count_ < 0) {
       if (n == 0) {
         return 0;
@@ -306,7 +306,7 @@ void RepeatDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                   DatasetBase** output) {
   // Create a new RepeatDatasetOp::Dataset, insert it in the step-local
   // container, and return it as the output.
-  int64 count;
+  int64_t count;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
   *output = new Dataset(ctx, count, input);
 }

@@ -29,7 +29,7 @@ namespace xla {
 // max_brute_force_iters may be returned if we can pattern-match the loop
 // condition.
 absl::optional<int64> ComputeWhileLoopTripCount(
-    HloInstruction *while_op, int64 max_brute_force_iters = 128);
+    HloInstruction *while_op, int64_t max_brute_force_iters = 128);
 
 // Returns an upper bound on the trip count of the loop if it's statically
 // known, nullopt otherwise.

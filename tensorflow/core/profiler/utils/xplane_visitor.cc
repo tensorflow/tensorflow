@@ -105,7 +105,7 @@ void XPlaneVisitor::BuildEventTypeMap(
 }
 
 const XEventMetadata* XPlaneVisitor::GetEventMetadata(
-    int64 event_metadata_id) const {
+    int64_t event_metadata_id) const {
   const auto& event_metadata_by_id = plane_->event_metadata();
   const auto it = event_metadata_by_id.find(event_metadata_id);
   if (it != event_metadata_by_id.end()) return &it->second;
@@ -113,7 +113,7 @@ const XEventMetadata* XPlaneVisitor::GetEventMetadata(
 }
 
 absl::optional<int64> XPlaneVisitor::GetEventType(
-    int64 event_metadata_id) const {
+    int64_t event_metadata_id) const {
   const auto it = event_type_by_id_.find(event_metadata_id);
   if (it != event_type_by_id_.end()) return it->second;
   return absl::nullopt;
@@ -137,21 +137,22 @@ void XPlaneVisitor::BuildStatTypeMap(
 }
 
 const XStatMetadata* XPlaneVisitor::GetStatMetadata(
-    int64 stat_metadata_id) const {
+    int64_t stat_metadata_id) const {
   const auto& stat_metadata_by_id = plane_->stat_metadata();
   const auto it = stat_metadata_by_id.find(stat_metadata_id);
   if (it != stat_metadata_by_id.end()) return &it->second;
   return &XStatMetadata::default_instance();
 }
 
-absl::optional<int64> XPlaneVisitor::GetStatType(int64 stat_metadata_id) const {
+absl::optional<int64> XPlaneVisitor::GetStatType(
+    int64_t stat_metadata_id) const {
   const auto it = stat_type_by_id_.find(stat_metadata_id);
   if (it != stat_type_by_id_.end()) return it->second;
   return absl::nullopt;
 }
 
 const XStatMetadata* XPlaneVisitor::GetStatMetadataByType(
-    int64 stat_type) const {
+    int64_t stat_type) const {
   const auto it = stat_metadata_by_type_.find(stat_type);
   if (it != stat_metadata_by_type_.end()) return it->second;
   return nullptr;

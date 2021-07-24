@@ -234,13 +234,13 @@ struct TransformFuncContext {
   // Gets a single occurrence of a parameter as a 32-bit integer, falling back
   // to a default if it isn't present and returning an error if it isn't
   // convertible to a number.
-  Status GetOneInt32Parameter(const string& name, int32 default_value,
+  Status GetOneInt32Parameter(const string& name, int32_t default_value,
                               int32* result) const;
 
   // Gets a single occurrence of a parameter as a 64-bit integer, falling back
   // to a default if it isn't present and returning an error if it isn't
   // convertible to a number.
-  Status GetOneInt64Parameter(const string& name, int64 default_value,
+  Status GetOneInt64Parameter(const string& name, int64_t default_value,
                               int64* result) const;
 
   // Gets a single occurrence of a parameter as a floating point number, falling

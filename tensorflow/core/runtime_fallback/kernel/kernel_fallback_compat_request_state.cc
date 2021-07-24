@@ -64,7 +64,7 @@ static CancellationManager* GetDefaultCancellationManager() {
 }
 
 KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
-    const tensorflow::DeviceMgr* device_manager, int64 step_id,
+    const tensorflow::DeviceMgr* device_manager, int64_t step_id,
     tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container,
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle,
     core::RefCountPtr<Rendezvous> rendezvous, OpKernelRunnerTable* runner_table,
@@ -104,7 +104,7 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
 }
 
 KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
-    const tensorflow::DeviceMgr* device_manager, int64 step_id,
+    const tensorflow::DeviceMgr* device_manager, int64_t step_id,
     OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
     const absl::optional<tfrt::ModelMetadata>& model_metadata,

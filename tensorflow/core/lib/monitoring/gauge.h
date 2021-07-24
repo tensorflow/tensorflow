@@ -140,11 +140,11 @@ class GaugeCell {
 template <>
 class GaugeCell<int64> {
  public:
-  explicit GaugeCell(int64 value) : value_(value) {}
+  explicit GaugeCell(int64_t value) : value_(value) {}
   ~GaugeCell() {}
 
   // Atomically sets the value.
-  void Set(int64 value);
+  void Set(int64_t value);
 
   // Retrieves the current value.
   int64 value() const;
@@ -272,7 +272,7 @@ T GaugeCell<T>::value() const {
   return value_;
 }
 
-inline void GaugeCell<int64>::Set(int64 value) { value_ = value; }
+inline void GaugeCell<int64>::Set(int64_t value) { value_ = value; }
 
 inline int64 GaugeCell<int64>::value() const { return value_; }
 

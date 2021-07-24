@@ -110,7 +110,7 @@ class SelfAdjointEigTest : public ClientLibraryTestBase {
 
 XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
   Shape shape = builder->GetShape(m1).ValueOrDie();
-  int64 size = ShapeUtil::ElementsIn(shape);
+  int64_t size = ShapeUtil::ElementsIn(shape);
   return ReduceAll(Abs(m1 - m2), ConstantR0WithType(builder, F32, 0),
                    CreateScalarAddComputation(F32, builder)) /
          ConstantR0WithType(builder, F32, std::max<int64>(1, size));
@@ -274,7 +274,7 @@ class RandomEighTest : public ClientLibraryTestBase,
 
 XLA_TEST_P(RandomEighTest, Random) {
   XlaBuilder builder(TestName());
-  int64 size = GetParam();
+  int64_t size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
   XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_val, 0, "a", &builder, &a);
@@ -303,7 +303,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(0, 1, 2, 3, 8, 16, 32, 77, 129, 203, 256, 257, 493, 511,
                       512),
     [](const ::testing::TestParamInfo<EighTestCase>& info) {
-      const int64 size = info.param;
+      const int64_t size = info.param;
       return absl::StrCat(size);
     });
 #endif  // XLA_TEST_BACKEND_CPU

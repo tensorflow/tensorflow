@@ -1107,7 +1107,7 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
   if (id_field == nullptr) {
     return -1;
   }
-  tensorflow::int64 id = MakeInt(id_field);
+  int64_t id = MakeInt(id_field);
   Py_DECREF(id_field);
   return id;
 }
@@ -1144,11 +1144,10 @@ DataType PyTensor_DataType(PyObject* tensor) {
 
 class PyTapeTensor {
  public:
-  PyTapeTensor(tensorflow::int64 id, tensorflow::DataType dtype,
+  PyTapeTensor(int64_t id, tensorflow::DataType dtype,
                const tensorflow::TensorShape& shape)
       : id_(id), dtype_(dtype), shape_(shape) {}
-  PyTapeTensor(tensorflow::int64 id, tensorflow::DataType dtype,
-               PyObject* shape)
+  PyTapeTensor(int64_t id, tensorflow::DataType dtype, PyObject* shape)
       : id_(id), dtype_(dtype), shape_(shape) {
     Py_INCREF(absl::get<1>(shape_));
   }
@@ -1250,7 +1249,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       // The caller detects whether a python exception has been raised.
       return -1;
     }
-    tensorflow::int64 r = MakeInt(result);
+    int64_t r = MakeInt(result);
     Py_DECREF(result);
     return r;
   }
@@ -1483,7 +1482,7 @@ class VariableWatcher {
     if (handle == nullptr) {
       return -1;
     }
-    tensorflow::int64 id = FastTensorId(handle.get());
+    int64_t id = FastTensorId(handle.get());
 
     tensorflow::mutex_lock l(watched_variables_mu_);
     auto insert_result = watched_variables_.emplace(id, v);
@@ -1516,7 +1515,7 @@ class VariableWatcher {
     tensorflow::int64 id;
     PyObject* variable;
 
-    IdAndVariable(tensorflow::int64 id, PyObject* variable)
+    IdAndVariable(int64_t id, PyObject* variable)
         : id(id), variable(variable) {}
   };
   struct CompareById {
@@ -1548,7 +1547,7 @@ class GradientTape
   }
 
   void WatchVariable(PyObject* v) {
-    tensorflow::int64 id = variable_watcher_.WatchVariable(v);
+    int64_t id = variable_watcher_.WatchVariable(v);
 
     if (!PyErr_Occurred()) {
       this->Watch(id);
@@ -1926,7 +1925,7 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
 #else
     if (PyLong_Check(item) || PyInt_Check(item)) {
 #endif
-      tensorflow::int64 id = MakeInt(item);
+      int64_t id = MakeInt(item);
       tensor_ids.push_back(id);
     } else {
       tensor_ids.push_back(-1);
@@ -2067,7 +2066,7 @@ void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
   if (!CouldBackprop()) {
     return;
   }
-  tensorflow::int64 tensor_id = FastTensorId(tensor);
+  int64_t tensor_id = FastTensorId(tensor);
   if (PyErr_Occurred()) {
     return;
   }
@@ -2104,7 +2103,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     tensorflow::ImmediateExecutionTensorHandle* handle =
         tensorflow::unwrap(EagerTensor_Handle(tensor));
-    tensorflow::int64 id = PyEagerTensor_ID(tensor);
+    int64_t id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
         static_cast<tensorflow::DataType>(handle->DataType());
     if (DTypeNeedsHandleData(dtype)) {
@@ -2116,7 +2115,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
     tensorflow::Status status = handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size;
+        int64_t dim_size;
         status = handle->Dim(i, &dim_size);
         if (!status.ok()) break;
         tensor_shape.AddDim(dim_size);
@@ -2130,7 +2129,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
       return PyTapeTensor(id, dtype, tensor_shape);
     }
   }
-  tensorflow::int64 id = FastTensorId(tensor);
+  int64_t id = FastTensorId(tensor);
   if (PyErr_Occurred()) {
     return PyTapeTensor(id, static_cast<tensorflow::DataType>(0),
                         tensorflow::TensorShape({}));
@@ -2278,7 +2277,7 @@ std::vector<tensorflow::DataType> MakeTensorDtypeList(PyObject* tensors) {
 
 PyObject* ForwardAccumulatorDeleteGradient(PyObject* tensor_id,
                                            PyObject* weak_tensor_ref) {
-  tensorflow::int64 parsed_tensor_id = MakeInt(tensor_id);
+  int64_t parsed_tensor_id = MakeInt(tensor_id);
   for (TFE_Py_ForwardAccumulator* accumulator : *GetAccumulatorSet()) {
     accumulator->accumulator->DeleteGradient(parsed_tensor_id);
   }
@@ -2292,8 +2291,7 @@ static PyMethodDef forward_accumulator_delete_gradient_method_def = {
     "ForwardAccumulatorDeleteGradient", ForwardAccumulatorDeleteGradient,
     METH_O, "ForwardAccumulatorDeleteGradient"};
 
-void RegisterForwardAccumulatorCleanup(PyObject* tensor,
-                                       tensorflow::int64 tensor_id) {
+void RegisterForwardAccumulatorCleanup(PyObject* tensor, int64_t tensor_id) {
   tensorflow::Safe_PyObjectPtr callback(
       PyCFunction_New(&forward_accumulator_delete_gradient_method_def,
                       PyLong_FromLong(tensor_id)));
@@ -2376,7 +2374,7 @@ bool TapeSetRecordForwardprop(
           PySequence_Fast_ITEMS(jvp_index_seq.get());
       for (Py_ssize_t jvp_index = 0; jvp_index < num_jvps; ++jvp_index) {
         PyObject* tuple = jvp_index_seq_array[jvp_index];
-        tensorflow::int64 primal_tensor_id =
+        int64_t primal_tensor_id =
             output_info[MakeInt(PyTuple_GetItem(tuple, 0))].GetID();
         (*it)->accumulator->Watch(
             primal_tensor_id,
@@ -2711,7 +2709,7 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
   Py_RETURN_NONE;
 }
 
-void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
+void TFE_Py_TapeSetDeleteTrace(int64_t tensor_id) {
   for (TFE_Py_Tape* tape : *GetTapeSet()) {
     tape->tape->DeleteTrace(tensor_id);
   }
@@ -2767,7 +2765,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   std::unordered_map<tensorflow::int64, PyTapeTensor>
       source_tensors_that_are_targets;
   for (int i = 0; i < len; ++i) {
-    tensorflow::int64 target_id = target_vec[i];
+    int64_t target_id = target_vec[i];
     if (sources_set.find(target_id) != sources_set.end()) {
       auto tensor = seq_array[i];
       source_tensors_that_are_targets.insert(
@@ -2881,7 +2879,7 @@ void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator) {
 
 void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
                                     PyObject* tangent) {
-  tensorflow::int64 tensor_id = FastTensorId(tensor);
+  int64_t tensor_id = FastTensorId(tensor);
   reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)
       ->accumulator->Watch(tensor_id, tangent);
   RegisterForwardAccumulatorCleanup(tensor, tensor_id);
@@ -2958,7 +2956,7 @@ PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
     if (saving_jvps) {
       for (int input_index = 0; input_index < augmented_input_ids.size();
            ++input_index) {
-        tensorflow::int64 existing_input = augmented_input_ids[input_index];
+        int64_t existing_input = augmented_input_ids[input_index];
         PyObject* jvp = (*it)->accumulator->FetchJVP(existing_input);
         if (jvp != nullptr) {
           new_tensors.push_back(jvp);
@@ -4020,7 +4018,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
       absl::StrAppend(&result->str, num_dims);
     } else {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size;
+        int64_t dim_size;
         status = handle->Dim(i, &dim_size);
         if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);

@@ -71,7 +71,7 @@ class AdjustHueOpBase : public OpKernel {
                                 {0}, 0, input.shape(), &output));
 
     if (input.NumElements() > 0) {
-      const int64 channel_count = input.NumElements() / channels;
+      const int64_t channel_count = input.NumElements() / channels;
       ComputeOptions options;
       options.input = &input;
       options.delta = &delta;
@@ -206,7 +206,7 @@ class AdjustHueOp<CPUDevice, float> : public AdjustHueOpBase {
     const Tensor* input = options.input;
     const Tensor* delta = options.delta;
     Tensor* output = options.output;
-    const int64 channel_count = options.channel_count;
+    const int64_t channel_count = options.channel_count;
     static const int kChannelSize = 3;
     auto input_data = input->shaped<float, 2>({channel_count, kChannelSize});
     const float delta_h = delta->scalar<float>()();
@@ -216,8 +216,8 @@ class AdjustHueOp<CPUDevice, float> : public AdjustHueOpBase {
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, channel_count,
           kCostPerChannel,
-          [&input_data, &output_data, delta_h](int64 start_channel,
-                                               int64 end_channel) {
+          [&input_data, &output_data, delta_h](int64_t start_channel,
+                                               int64_t end_channel) {
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
             for (int i = start_channel; i < end_channel; i++) {
@@ -261,7 +261,7 @@ class AdjustHueOp<GPUDevice, T> : public AdjustHueOpBase {
     const Tensor* input = options.input;
     const Tensor* delta = options.delta;
     Tensor* output = options.output;
-    const int64 number_of_elements = input->NumElements();
+    const int64_t number_of_elements = input->NumElements();
     GPUDevice device = context->eigen_gpu_device();
     const auto stream = device.stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));

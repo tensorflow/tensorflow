@@ -57,7 +57,7 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
     OP_REQUIRES(c, index_t.dims() == 0,
                 errors::InvalidArgument("index should be a scalar, but saw: ",
                                         index_t.DebugString()));
-    int32 index = index_t.scalar<int32>()();
+    int32_t index = index_t.scalar<int32>()();
     OP_REQUIRES(c, index >= 0 && index < csr_sparse_matrix->batch_size(),
                 errors::InvalidArgument("index (", index, ") not in [0, ",
                                         csr_sparse_matrix->batch_size(), ")"));

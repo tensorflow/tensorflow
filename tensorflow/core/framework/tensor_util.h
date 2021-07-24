@@ -311,12 +311,12 @@ CreateTensorProto(const std::vector<Type>& values,
 // most the size of the original tensor proto divided by min_compression_ratio.
 //
 // Returns true if the tensor was compressed.
-bool CompressTensorProtoInPlace(int64 min_num_elements,
+bool CompressTensorProtoInPlace(int64_t min_num_elements,
                                 float min_compression_ratio,
                                 TensorProto* tensor);
 
 inline bool CompressTensorProtoInPlace(TensorProto* tensor) {
-  static const int64 kDefaultMinNumElements = 64;
+  static const int64_t kDefaultMinNumElements = 64;
   static const float kDefaultMinCompressionRatio = 2.0f;
   return CompressTensorProtoInPlace(kDefaultMinNumElements,
                                     kDefaultMinCompressionRatio, tensor);

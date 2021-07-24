@@ -390,7 +390,7 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
 }
 
 int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
-  int64 allocated_bytes = 0;
+  int64_t allocated_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
     if (tensor.dtype() == DT_VARIANT &&
@@ -404,7 +404,7 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
 }
 
 int64 GetTotalBytes(const std::vector<Tensor>& element) {
-  int64 total_bytes = 0;
+  int64_t total_bytes = 0;
   DatasetBase* dataset;
   for (auto& tensor : element) {
     if (tensor.dtype() == DT_VARIANT &&
@@ -796,7 +796,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
   if (model && model->collect_resource_usage() && node_) {
-    int64 now_nanos = EnvTime::NowNanos();
+    int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
       output->record_stop(now_nanos);
@@ -809,7 +809,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     RecordElement(ctx, out_tensors);
   }
   if (model && model->collect_resource_usage() && node_) {
-    int64 now_nanos = EnvTime::NowNanos();
+    int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
     if (output) {
@@ -835,7 +835,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
   if (model && model->collect_resource_usage() && node_) {
-    int64 now_nanos = EnvTime::NowNanos();
+    int64_t now_nanos = EnvTime::NowNanos();
     auto output = node_->output();
     if (output) {
       output->record_stop(now_nanos);
@@ -844,7 +844,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
   }
   Status s = SkipInternal(ctx, num_to_skip, end_of_sequence, num_skipped);
   if (model && model->collect_resource_usage() && node_) {
-    int64 now_nanos = EnvTime::NowNanos();
+    int64_t now_nanos = EnvTime::NowNanos();
     node_->record_stop(now_nanos);
     auto output = node_->output();
     if (output) {

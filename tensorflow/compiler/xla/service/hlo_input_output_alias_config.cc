@@ -26,7 +26,7 @@ bool HloInputOutputAliasConfig::OutputHasAlias(
 }
 
 Status HloInputOutputAliasConfig::SetUpAlias(
-    const ShapeIndex& output_index, int64 param_number,
+    const ShapeIndex& output_index, int64_t param_number,
     const ShapeIndex& param_index,
     HloInputOutputAliasConfig::AliasKind must_alias) {
   TF_RET_CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
@@ -57,11 +57,11 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
       [&](const ShapeIndex& index, const absl::optional<Alias>& data) {
         if (data) {
           HloInputOutputAliasProto::AliasEntryProto entry;
-          for (int64 i : index) {
+          for (int64_t i : index) {
             entry.add_output_shape_index(i);
           }
           entry.set_parameter_number(data->parameter_number);
-          for (int64 i : data->parameter_index) {
+          for (int64_t i : data->parameter_index) {
             entry.add_parameter_shape_index(i);
           }
           if (data->must_alias()) {
@@ -82,7 +82,7 @@ StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
        proto.entries()) {
     ShapeIndex output_index(entry.output_shape_index().begin(),
                             entry.output_shape_index().end());
-    int64 param_number = entry.parameter_number();
+    int64_t param_number = entry.parameter_number();
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
     AliasKind kind = entry.kind() == Kind::MAY_ALIAS ? kMayAlias : kMustAlias;
@@ -122,7 +122,7 @@ string HloInputOutputAliasConfig::ToShortString() const {
 }
 
 bool HloInputOutputAliasConfig::ParameterMustAlias(
-    int64 param_number, const ShapeIndex& param_index) const {
+    int64_t param_number, const ShapeIndex& param_index) const {
   bool result = false;
   alias_.ForEachElement(
       [&](const xla::ShapeIndex&, absl::optional<Alias> alias) {
@@ -135,7 +135,7 @@ bool HloInputOutputAliasConfig::ParameterMustAlias(
 }
 
 absl::optional<ShapeIndex> HloInputOutputAliasConfig::GetAliasedOutput(
-    int64 param_number, const ShapeIndex& param_index) const {
+    int64_t param_number, const ShapeIndex& param_index) const {
   absl::optional<ShapeIndex> output;
   alias_.ForEachElement(
       [&](const xla::ShapeIndex& output_index, absl::optional<Alias> alias) {
@@ -180,7 +180,7 @@ Status HloInputOutputAliasConfig::Verify(
     std::function<int64(const Shape&)> size_func) const {
   std::vector<ShapeTree<bool>> param_has_seen;
   const HloComputation* entry = module.entry_computation();
-  for (int64 i = 0; i < entry->num_parameters(); ++i) {
+  for (int64_t i = 0; i < entry->num_parameters(); ++i) {
     HloInstruction* param = entry->parameter_instruction(i);
     param_has_seen.emplace_back(param->shape());
   }

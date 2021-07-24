@@ -166,7 +166,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int32 ByteSwapInt32ForBigEndian(int32 x) {
+  inline int32 ByteSwapInt32ForBigEndian(int32_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_32(x);
     } else {
@@ -175,7 +175,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int16 ByteSwapInt16ForBigEndian(int16 x) {
+  inline int16 ByteSwapInt16ForBigEndian(int16_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_16(x);
     } else {
@@ -334,7 +334,7 @@ class DecodeImageV2Op : public OpKernel {
     //   bits to spare as well.
     const int width = static_cast<int>(decode.width);
     const int height = static_cast<int>(decode.height);
-    const int64 total_size =
+    const int64_t total_size =
         static_cast<int64>(width) * static_cast<int64>(height);
     if (width != static_cast<int64>(decode.width) || width <= 0 ||
         width >= (1LL << 27) || height != static_cast<int64>(decode.height) ||
@@ -544,18 +544,18 @@ class DecodeImageV2Op : public OpKernel {
                                         input.size(), " bytes"));
 
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
-    int32 header_size_ = internal::SubtleMustCopy(
+    int32_t header_size_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 10)));
-    const int32 header_size = ByteSwapInt32ForBigEndian(header_size_);
-    int32 width_ = internal::SubtleMustCopy(
+    const int32_t header_size = ByteSwapInt32ForBigEndian(header_size_);
+    int32_t width_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 18)));
-    const int32 width = ByteSwapInt32ForBigEndian(width_);
-    int32 height_ = internal::SubtleMustCopy(
+    const int32_t width = ByteSwapInt32ForBigEndian(width_);
+    int32_t height_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 22)));
-    const int32 height = ByteSwapInt32ForBigEndian(height_);
-    int16 bpp_ = internal::SubtleMustCopy(
+    const int32_t height = ByteSwapInt32ForBigEndian(height_);
+    int16_t bpp_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int16*>(img_bytes + 28)));
-    const int16 bpp = ByteSwapInt16ForBigEndian(bpp_);
+    const int16_t bpp = ByteSwapInt16ForBigEndian(bpp_);
 
     // `channels_` is desired number of channels. `img_channels` is number of
     // channels inherent in the image.
@@ -583,7 +583,7 @@ class DecodeImageV2Op : public OpKernel {
         errors::InvalidArgument(
             "Total possible pixel bytes must be less than 2^30"));
 
-    const int32 abs_height = abs(height);
+    const int32_t abs_height = abs(height);
 
     // there may be padding bytes when the width is not a multiple of 4 bytes
     const int row_size = (img_channels * width + 3) / 4 * 4;
@@ -598,12 +598,12 @@ class DecodeImageV2Op : public OpKernel {
             "they differ by ",
             size_diff));
 
-    const int64 last_pixel_offset = static_cast<int64>(header_size) +
-                                    (abs_height - 1) * row_size +
-                                    (width - 1) * img_channels;
+    const int64_t last_pixel_offset = static_cast<int64>(header_size) +
+                                      (abs_height - 1) * row_size +
+                                      (width - 1) * img_channels;
 
     // [expected file size] = [last pixel offset] + [last pixel size=channels]
-    const int64 expected_file_size = last_pixel_offset + img_channels;
+    const int64_t expected_file_size = last_pixel_offset + img_channels;
 
     OP_REQUIRES(
         context, (expected_file_size <= input.size()),

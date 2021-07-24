@@ -36,9 +36,9 @@ namespace profiler {
 namespace {
 
 TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 0;
-  constexpr int64 kCorrelationId = 100;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
@@ -80,9 +80,9 @@ TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
 }
 
 TEST(GroupEventsTest, GroupGpuTraceTest) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 0;
-  constexpr int64 kCorrelationId = 100;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
@@ -123,9 +123,9 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
 }
 
 TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
-  constexpr int64 kStepId = 0;
-  constexpr int64 kIterNum = 10;
-  constexpr int64 kCorrelationId = 100;
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kIterNum = 10;
+  constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
@@ -173,10 +173,10 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
 // group_id is initialized to the first TF loop's first iter_num (10) and then
 // monotonically increased.
 TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
-  constexpr int64 kFirstStepId = 0;
-  constexpr int64 kSecondStepId = 1;
-  constexpr int64 kFirstIterNumStart = 10;
-  constexpr int64 kSecondIterNumStart = 0;
+  constexpr int64_t kFirstStepId = 0;
+  constexpr int64_t kSecondStepId = 1;
+  constexpr int64_t kFirstIterNumStart = 10;
+  constexpr int64_t kSecondIterNumStart = 0;
 
   XSpace space;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
@@ -222,9 +222,9 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
 }
 
 TEST(GroupEventsTest, GroupFunctionalOp) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 0;
-  constexpr int64 kFunctionStepId = 1;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kFunctionStepId = 1;
 
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);
@@ -268,7 +268,7 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
 }
 
 TEST(GroupEventsTest, EagerOpTest) {
-  constexpr int64 kCorrelationId = 100;
+  constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);
@@ -313,9 +313,9 @@ TEST(GroupEventsTest, EagerOpTest) {
 }
 
 TEST(GroupEventsTest, FunctionOpTest) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 0;
-  constexpr int64 kCorrelationId = 100;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);
@@ -365,9 +365,9 @@ TEST(GroupEventsTest, FunctionOpTest) {
 }
 
 TEST(GroupEventsTest, SemanticArgTest) {
-  constexpr int64 kIsRoot = 1;
-  constexpr int64 kStepNum = 100;
-  constexpr int64 kContextType = 123;
+  constexpr int64_t kIsRoot = 1;
+  constexpr int64_t kStepNum = 100;
+  constexpr int64_t kContextType = 123;
   constexpr uint64 kContextId = 456;
 
   XSpace raw_space;
@@ -405,9 +405,9 @@ TEST(GroupEventsTest, SemanticArgTest) {
 }
 
 TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
-  constexpr int64 kIsRoot = 1;
-  constexpr int64 kStepNum = 100;
-  constexpr int64 kContextType = 123;
+  constexpr int64_t kIsRoot = 1;
+  constexpr int64_t kStepNum = 100;
+  constexpr int64_t kContextType = 123;
   constexpr uint64 kProducerId = 456;
   constexpr uint64 kConsumerId = 789;
 
@@ -450,9 +450,9 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
 }
 
 TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
-  constexpr int64 kIsRoot = 1;
-  constexpr int64 kStepNum = 100;
-  constexpr int64 kContextType = 123;
+  constexpr int64_t kIsRoot = 1;
+  constexpr int64_t kStepNum = 100;
+  constexpr int64_t kContextType = 123;
   constexpr uint64 kProducerId = UINT64_MAX;
   constexpr uint64 kConsumerId = UINT64_MAX - 1;
 
@@ -495,8 +495,8 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
 }
 
 TEST(GroupEventsTest, AsyncEventTest) {
-  constexpr int64 kIsRoot = 1;
-  constexpr int64 kIsAsync = 1;
+  constexpr int64_t kIsRoot = 1;
+  constexpr int64_t kIsAsync = 1;
   constexpr absl::string_view kParent = "parent";
   constexpr absl::string_view kAsync = "async";
   constexpr absl::string_view kChild = "child";
@@ -591,11 +591,11 @@ TEST(GroupEventsTest, WorkerTest) {
 
 TEST(GroupEventsTest, BatchingSessionTest) {
   constexpr absl::string_view kSchedule = "Schedule";
-  constexpr int64 kBatchContextType =
+  constexpr int64_t kBatchContextType =
       static_cast<int64>(ContextType::kSharedBatchScheduler);
-  constexpr int64 kBatchContextId = 123;
-  constexpr int64 kBatchingSessionRunRootLevel = 1;
-  constexpr int64 kProcessBatchRootLevel = 2;
+  constexpr int64_t kBatchContextId = 123;
+  constexpr int64_t kBatchingSessionRunRootLevel = 1;
+  constexpr int64_t kProcessBatchRootLevel = 2;
 
   XSpace raw_space;
   XPlane* raw_plane = raw_space.add_planes();

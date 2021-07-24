@@ -34,7 +34,7 @@ bool IsInitializationOp(const Node* node) {
 }  // namespace
 
 ImmutableExecutorState::~ImmutableExecutorState() {
-  for (int32 i = 0; i < gview_.num_nodes(); i++) {
+  for (int32_t i = 0; i < gview_.num_nodes(); i++) {
     NodeItem* item = gview_.node(i);
     if (item != nullptr) {
       params_.delete_kernel(item->kernel);
@@ -50,7 +50,7 @@ void GetMaxPendingCounts(const Node* n, size_t* max_pending,
   if (IsMerge(n)) {
     // merge waits all control inputs so we initialize the pending
     // count to be the number of control edges.
-    int32 num_control_edges = 0;
+    int32_t num_control_edges = 0;
     for (const Edge* edge : n->in_edges()) {
       if (edge->IsControlEdge()) {
         num_control_edges++;
@@ -221,7 +221,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     // Record information about whether each output of the op is used.
     std::unique_ptr<bool[]> outputs_required(new bool[n->num_outputs()]);
     std::fill(&outputs_required[0], &outputs_required[n->num_outputs()], false);
-    int32 unused_outputs = n->num_outputs();
+    int32_t unused_outputs = n->num_outputs();
     for (const Edge* e : n->out_edges()) {
       if (IsSink(e->dst())) continue;
       if (e->src_output() >= 0) {

@@ -438,7 +438,7 @@ Status ConvertEdgeShapesToTensorShapes(
   // keys in tpu_input_shapes may be stale.
   for (const auto& iter : named_input_shapes) {
     VLOG(2) << iter.first << ", rank: " << iter.second.size();
-    const int64 rank = iter.second.size();
+    const int64_t rank = iter.second.size();
     std::vector<int64> dims(rank);
     for (int64_t d = 0; d < rank; ++d) {
       VLOG(2) << " dim[" << d << "]: " << iter.second.at(d);

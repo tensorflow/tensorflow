@@ -56,7 +56,7 @@ class XRTMemoryManager : public ResourceBase {
 
     // Looks up the tuple handle within the memory manager, and pins it to the
     // device (if not already pinned).
-    Status LookupAndPin(xla::Backend* backend, int64 handle,
+    Status LookupAndPin(xla::Backend* backend, int64_t handle,
                         se::DeviceMemoryAllocator* allocator);
 
     const std::vector<RefPtr<XRTTupleAllocation>>& PinnedTuples() const {
@@ -81,9 +81,9 @@ class XRTMemoryManager : public ResourceBase {
 
   // Looks up an handle returned by the Register() API and returns the
   // XRTTupleAllocation behind it.
-  xla::StatusOr<RefPtr<XRTTupleAllocation>> Lookup(int64 handle);
+  xla::StatusOr<RefPtr<XRTTupleAllocation>> Lookup(int64_t handle);
 
-  Status Lookup(int64 handle, RefPtr<XRTTupleAllocation>* tuple) {
+  Status Lookup(int64_t handle, RefPtr<XRTTupleAllocation>* tuple) {
     TF_ASSIGN_OR_RETURN(*tuple, Lookup(handle));
     return Status::OK();
   }
@@ -91,7 +91,7 @@ class XRTMemoryManager : public ResourceBase {
   // Releases an handle by dropping the references count held on the
   // XRTTupleAllocation by the XRTMemoryManager. Existing XRTTupleAllocation
   // references will continue to be valid.
-  Status Release(int64 handle);
+  Status Release(int64_t handle);
 
   // Tries to compact all the memory allocations on a given device. This is
   // currently done by swapping-out all the existing allocation, and swapping

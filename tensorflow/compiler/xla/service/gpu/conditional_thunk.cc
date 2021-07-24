@@ -48,7 +48,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
   // Copy the predicate value from device.
-  int32 branch_index = -1;
+  int32_t branch_index = -1;
   bool pred = false;
   se::DeviceMemoryBase branch_index_address =
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_index_);

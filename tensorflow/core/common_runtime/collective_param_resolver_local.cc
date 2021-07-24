@@ -297,9 +297,9 @@ bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
 
   // gpu id -> local rank
   gtl::FlatMap<int32, int32> gpu_ranks;
-  for (int32 rank = 0;
+  for (int32_t rank = 0;
        rank < static_cast<int32>(split_gpu_ring_order_str.size()); ++rank) {
-    int32 tmp;
+    int32_t tmp;
     if (strings::safe_strto32(split_gpu_ring_order_str[rank], &tmp)) {
       gpu_ranks[tmp] = rank;
     } else {

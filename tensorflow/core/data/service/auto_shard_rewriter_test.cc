@@ -54,9 +54,9 @@ using ::testing::MatchResultListener;
 using ::testing::PolymorphicMatcher;
 using ::testing::SizeIs;
 
-constexpr int64 kShardHint = -1;
+constexpr int64_t kShardHint = -1;
 
-DatasetDef RangeDatasetWithShardHint(const int64 range) {
+DatasetDef RangeDatasetWithShardHint(const int64_t range) {
   DatasetDef dataset_def;
   *dataset_def.mutable_graph() = GDef(
       {NDef("start", "Const", /*inputs=*/{},

@@ -48,12 +48,12 @@ class StatsAggregator {
   // element of `values` will be treated as a separate sample in the histogram.
   virtual void AddToHistogram(const string& name,
                               gtl::ArraySlice<double> values,
-                              int64 global_step) = 0;
+                              int64_t global_step) = 0;
 
   // TODO(shivaniagrawal): consistency in double and float usage.
   // Add the given `value` as Scalar with the given `name`.
   virtual void AddScalar(const string& name, float value,
-                         int64 global_step) = 0;
+                         int64_t global_step) = 0;
 
   // Stores a protocol buffer representation of the aggregator state in the
   // given `out_summary`.
@@ -64,7 +64,7 @@ class StatsAggregator {
 
   // Increment the `label` cell of metrics mapped with `name` by given `value`.
   virtual void IncrementCounter(const string& name, const string& label,
-                                int64 val) = 0;
+                                int64_t val) = 0;
 };
 
 // A `StatsAggregatorResource` wraps a sharable `StatsAggregator` as a resource

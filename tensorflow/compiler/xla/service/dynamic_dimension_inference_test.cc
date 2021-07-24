@@ -950,7 +950,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {
   batch_dim->set_base_dilation(1);
 
   // Second and third dimension are reduced.
-  for (int64 i = 0; i < 2; ++i) {
+  for (int64_t i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();
     dim->set_size(2);
     dim->set_stride(2);
@@ -1000,7 +1000,7 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
   batch_dim->set_base_dilation(1);
 
   // Second and third dimension are reduced.
-  for (int64 i = 0; i < 2; ++i) {
+  for (int64_t i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();
     dim->set_size(2);
     dim->set_stride(2);

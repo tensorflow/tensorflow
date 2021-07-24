@@ -147,8 +147,8 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
     ASSERT_EQ(1, dump_files_found);
 
     // Remove temporary dump directory and file.
-    int64 undeleted_files = 0;
-    int64 undeleted_dirs = 0;
+    int64_t undeleted_files = 0;
+    int64_t undeleted_dirs = 0;
     ASSERT_TRUE(env_->DeleteRecursively(dump_roots[i], &undeleted_files,
                                         &undeleted_dirs)
                     .ok());

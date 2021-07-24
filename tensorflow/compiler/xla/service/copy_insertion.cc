@@ -341,7 +341,7 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
 // will remove the unnecessary copies.
 Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
                                     HloInstruction* in_place_op,
-                                    int64 operand_number) {
+                                    int64_t operand_number) {
   VLOG(2) << "Adding copies for in-place operation " << in_place_op->name();
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
@@ -503,7 +503,7 @@ class LiveRangeRegions {
     return computation_vector_.size();
   }
   bool empty() const { return size() == 0; }
-  const HloComputation* Computation(int64 index) const {
+  const HloComputation* Computation(int64_t index) const {
     return computation_vector_[index];
   }
   bool contains(const HloInstruction* instr) const {
@@ -756,7 +756,7 @@ class ComputeRelativeLocation {
   Relation Compute(const LiveRangeRegions& range1,
                    const LiveRangeRegions& range2) {
     Relation dir_src_dest;
-    for (int64 index = 0; index < range1.size(); index++) {
+    for (int64_t index = 0; index < range1.size(); index++) {
       auto* computation1 = range1.Computation(index);
       for (const auto& computation_entry2 : range2) {
         auto* computation2 = computation_entry2.first;
@@ -1926,7 +1926,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
 }
 
 static int64 GetNumExistingCopies(const HloModule* module) {
-  int64 num_existing_copies = 0;
+  int64_t num_existing_copies = 0;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kCopy) {
@@ -1956,9 +1956,9 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
-  int64 num_existing_copies = GetNumExistingCopies(module);
+  int64_t num_existing_copies = GetNumExistingCopies(module);
   bool changed = true;
-  int64 num_iterations = -1;
+  int64_t num_iterations = -1;
   while (changed) {
     CHECK_LE(++num_iterations, num_existing_copies);
     changed = false;
@@ -2041,7 +2041,7 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(dce.Run(module).status());
 
   if (VLOG_IS_ON(1)) {
-    int64 num_total_copies = 0;
+    int64_t num_total_copies = 0;
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->opcode() == HloOpcode::kCopy) {

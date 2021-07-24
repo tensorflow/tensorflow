@@ -138,7 +138,7 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
                       params.GetGlobalDeviceId());
   TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
                       params.device_assn->LogicalIdForDevice(global_device_id));
-  const int64 current_id =
+  const int64_t current_id =
       config_.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;

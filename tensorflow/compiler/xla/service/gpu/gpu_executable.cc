@@ -180,7 +180,7 @@ Status GpuExecutable::ExecuteThunks(
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk.get());
+    int32_t stream_no = thunk_schedule_->StreamNumberForThunk(thunk.get());
     se::Stream* stream =
         (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
 

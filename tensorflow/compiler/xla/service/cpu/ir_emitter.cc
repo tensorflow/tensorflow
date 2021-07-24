@@ -454,9 +454,9 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
         "size range",
         length);
   }
-  int32 length_32 = static_cast<int32>(length);
+  int32_t length_32 = static_cast<int32>(length);
 
-  int32 shape_length;
+  int32_t shape_length;
   TF_ASSIGN_OR_RETURN(
       llvm::Value * shape_ptr,
       llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, &b_));
@@ -668,7 +668,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   const auto init_value = select_and_scatter->operand(2);
   const Window& window = select_and_scatter->window();
   PrimitiveType operand_element_type = operand->shape().element_type();
-  const int64 rank = operand->shape().rank();
+  const int64_t rank = operand->shape().rank();
   CHECK_EQ(rank, source->shape().rank());
   CHECK_EQ(rank, window.dimensions_size());
 
@@ -1135,7 +1135,7 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   }
 
   std::string replica_groups = ReplicaGroupsToString(crs->replica_groups());
-  int32 replica_groups_size = replica_groups.size();
+  int32_t replica_groups_size = replica_groups.size();
   llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
 
   bool is_tuple = crs->operand_count() > 1;
@@ -1169,7 +1169,7 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   llvm::Value* output_buffers =
       EncodeArrayFunctionArguments(output_buffer_ptrs, "output_buffers", &b_);
 
-  int32 shape_length;
+  int32_t shape_length;
   TF_ASSIGN_OR_RETURN(llvm::Value * shape_ptr,
                       llvm_ir::EncodeSelfDescribingShapeConstant(
                           crs->shape(), &shape_length, &b_));
@@ -1216,7 +1216,7 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   std::string replica_groups =
       ReplicaGroupsToString(instruction->replica_groups());
-  int32 replica_groups_size = replica_groups.size();
+  int32_t replica_groups_size = replica_groups.size();
   llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
 
   int64_t buffer_size = -1;
@@ -1855,7 +1855,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   }
 
   const Layout& layout = operand->shape().layout();
-  const int64 num_dims = operand->shape().dimensions_size();
+  const int64_t num_dims = operand->shape().dimensions_size();
 
   // The slice lowering finds maximal contiguous blocks of memory that can be
   // copied from the source to the target. This is done by looking at the
@@ -1892,18 +1892,18 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
       [&inner_dims](int64_t dim) { return inner_dims.contains(dim); },
       operand->shape());
 
-  const int64 primitive_elements_per_logical_element =
+  const int64_t primitive_elements_per_logical_element =
       ShapeUtil::ElementsIn(logical_element_shape);
 
   // memcpy_dim is the innermost (in terms of layout) dimension for which the
   // slice does *not* just copy all the elements along the dimension.
-  const int64 memcpy_dim = LayoutUtil::Minor(layout, inner_dims.size());
+  const int64_t memcpy_dim = LayoutUtil::Minor(layout, inner_dims.size());
 
   const bool memcpy_is_contiguous = slice->slice_strides(memcpy_dim) == 1;
   // The number of logical elements that can be copied in a single call
   // to memcpy. We can only copy 1 element at a time if there is a non-trivial
   // stride.
-  const int64 memcpy_logical_elements =
+  const int64_t memcpy_logical_elements =
       memcpy_is_contiguous
           ? slice->slice_limits(memcpy_dim) - slice->slice_starts(memcpy_dim)
           : 1;
@@ -1922,7 +1922,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   llvm_ir::IrArray target_array = GetIrArrayFor(slice);
 
-  const int64 num_outer_loops = outer_dims.size();
+  const int64_t num_outer_loops = outer_dims.size();
   llvm_ir::ForLoopNest loops(IrName(slice), &b_);
   std::vector<llvm::Value*> target_multi_index =
       loops.AddLoopsForShapeOnDimensions(slice->shape(), outer_dims, "slice");
@@ -1950,7 +1950,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   llvm::Value* memcpy_source =
       source_array.EmitArrayElementAddress(source_index, &b_, "slice.source");
 
-  const int64 memcpy_elements =
+  const int64_t memcpy_elements =
       primitive_elements_per_logical_element * memcpy_logical_elements;
 
   EmitTransferElements(memcpy_dest, memcpy_source, memcpy_elements,
@@ -1958,7 +1958,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
                        source_array);
 
   if (VLOG_IS_ON(2)) {
-    const int64 memcpy_bytes =
+    const int64_t memcpy_bytes =
         ShapeUtil::ByteSizeOf(logical_element_shape) * memcpy_elements;
     VLOG(2) << "  emitted copy of " << memcpy_bytes << " bytes inside "
             << num_outer_loops << " loops";
@@ -2150,13 +2150,13 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   std::vector<llvm::Value*> dynamic_dims;
-  int32 raw_data_size =
+  int32_t raw_data_size =
       ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(hlo->shape()));
   llvm::Value* dest_buffer = GetEmittedValueFor(hlo);
   llvm::Value* raw_buffer =
       b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
   for (int64_t i = 1; i < hlo->operand_count(); ++i) {
-    const int64 dim_index = i - 1;
+    const int64_t dim_index = i - 1;
     llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(i));
     llvm::LoadInst* dyn_dim_size = b_.CreateLoad(source_buffer, "dyn_dim_size");
 
@@ -2221,7 +2221,7 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
                         assignment_.GetUniqueSlice(hlo, {i}));
     llvm::Value* dest_dim_size_address =
         EmitBufferPointer(dim_size_slice, data_shape);
-    const int64 dim_index = i - 1;
+    const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
         b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
     llvm::Value* dyn_dim_size = b_.CreateLoad(
@@ -2262,7 +2262,7 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
 Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   const HloInstruction* input = hlo->operand(0);
-  const int64 k = hlo->shape().tuple_shapes(0).dimensions().back();
+  const int64_t k = hlo->shape().tuple_shapes(0).dimensions().back();
   const bool has_batch = hlo->shape().tuple_shapes(0).dimensions_size() == 2;
   TF_RET_CHECK(input->shape().element_type() == F32);
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(

@@ -98,8 +98,8 @@ class NodeDefBuilder {
   NodeDefBuilder& Attr(StringPiece name, AttrValue&& value);
   NodeDefBuilder& Attr(StringPiece name, StringPiece value);
   NodeDefBuilder& Attr(StringPiece name, const char* value);
-  NodeDefBuilder& Attr(StringPiece name, int32 value);
-  NodeDefBuilder& Attr(StringPiece name, int64 value);
+  NodeDefBuilder& Attr(StringPiece name, int32_t value);
+  NodeDefBuilder& Attr(StringPiece name, int64_t value);
   NodeDefBuilder& Attr(StringPiece name, float value);
   NodeDefBuilder& Attr(StringPiece name, double value);
   NodeDefBuilder& Attr(StringPiece name, bool value);

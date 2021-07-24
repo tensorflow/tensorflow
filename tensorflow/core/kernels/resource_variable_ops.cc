@@ -179,7 +179,7 @@ void ReadVariablesOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, LookupResources(ctx, handles, &variables));
 
   std::vector<string> uninitialized_vars;
-  for (int64 i = 0; i < variables.size(); i++) {
+  for (int64_t i = 0; i < variables.size(); i++) {
     if (variables[i] == nullptr) {
       uninitialized_vars.push_back(handles[i]->name());
     }
@@ -503,7 +503,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
     const auto elements_in = value.flat<Variant>();
     auto elements_out = variable->tensor()->flat<Variant>();
-    for (int64 i = 0; i < elements_in.size(); ++i) {
+    for (int64_t i = 0; i < elements_in.size(); ++i) {
       elements_out(i) = elements_in(i);
     }
   }
@@ -662,7 +662,7 @@ class ResourceGatherOp : public OpKernel {
         errors::InvalidArgument("params must be at least 1 dimensional"));
 
     // Check that we have enough index space
-    const int64 N = indices.NumElements();
+    const int64_t N = indices.NumElements();
     OP_REQUIRES(
         c, params.dim_size(0) <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.shape[0] too large for ",
@@ -709,11 +709,11 @@ class ResourceGatherOp : public OpKernel {
         op_indices = &tmp_indices;
       }
 
-      int64 gather_dim_size = 1;
+      int64_t gather_dim_size = 1;
       for (int idx = 0; idx <= batch_dims_; ++idx) {
         gather_dim_size *= params.dim_size(idx);
       }
-      int64 inner_size = 1;
+      int64_t inner_size = 1;
       for (int i = batch_dims_ + 1; i < params.dims(); ++i) {
         inner_size *= params.dim_size(i);
       }
@@ -722,7 +722,7 @@ class ResourceGatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 3>({1, N, out->NumElements() / N});
 
       functor::GatherFunctor<Device, T, Index> functor;
-      int64 bad_i = functor(c, params_flat, indices_flat, out_flat);
+      int64_t bad_i = functor(c, params_flat, indices_flat, out_flat);
 
       OP_REQUIRES(
           c, bad_i < 0,
@@ -738,17 +738,17 @@ class ResourceGatherOp : public OpKernel {
   // If indexing into a params dimension of size 4, then the indices will become
   // [0, 1, 2, 4, 5, 6]
   void AddBatchOffsets(Tensor* indices, const Tensor& params) {
-    int64 batch_size = 1;  // The size of all batch dimensions.
+    int64_t batch_size = 1;  // The size of all batch dimensions.
     for (int idx = 0; idx < batch_dims_; ++idx) {
       batch_size *= params.dim_size(idx);
     }
 
     auto indices_flat = indices->flat<Index>();
-    int64 const index_inner_size = indices->NumElements() / batch_size;
-    int64 const batch_offset = params.dim_size(batch_dims_);
-    for (int64 batch_idx = 0, dest_idx = 0; batch_idx < batch_size;
+    int64_t const index_inner_size = indices->NumElements() / batch_size;
+    int64_t const batch_offset = params.dim_size(batch_dims_);
+    for (int64_t batch_idx = 0, dest_idx = 0; batch_idx < batch_size;
          ++batch_idx) {
-      for (int64 idx = 0; idx < index_inner_size; ++idx) {
+      for (int64_t idx = 0; idx < index_inner_size; ++idx) {
         indices_flat(dest_idx++) += batch_offset * batch_idx;
       }
     }
@@ -912,7 +912,7 @@ class ResourceScatterUpdateOp : public OpKernel {
                     ", params.shape ", params->shape().DebugString()));
 
     // Check that we have enough index space
-    const int64 N_big = indices.NumElements();
+    const int64_t N_big = indices.NumElements();
     OP_REQUIRES(
         c, N_big <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("indices has too many elements for ",
@@ -942,7 +942,7 @@ class ResourceScatterUpdateOp : public OpKernel {
                         " = ", indices_flat(bad_i), " is not in [0, ",
                         params->dim_size(0), ")"));
       } else {
-        int64 num_updates = updates.NumElements();
+        int64_t num_updates = updates.NumElements();
         OP_REQUIRES(c, num_updates % N == 0,
                     errors::InvalidArgument(
                         "shape of indices (", indices.shape().DebugString(),

@@ -310,8 +310,9 @@ class PjRtClient {
     // but before the buffers are made available to their consumers. 'data' must
     // remain in scope until on_done is called.
     virtual Status TransferRawDataToSubBuffer(
-        int buffer_index, const void* data, int64 offset, int64 transfer_size,
-        bool is_last_transfer, std::function<void()> on_done) = 0;
+        int buffer_index, const void* data, int64_t offset,
+        int64_t transfer_size, bool is_last_transfer,
+        std::function<void()> on_done) = 0;
 
     // Indicates that a client error occurred and the transfers will never
     // complete. Puts all buffers in an error state. For the stream executor
@@ -519,7 +520,7 @@ class PjRtBuffer {
   // is called if and only if CopyRawToHost returns OK. on_ready will be called
   // with a non-OK status if the buffer asynchronously transitions to an error
   // state.
-  virtual Status CopyRawToHost(void* dst, int64 offset, int64 transfer_size,
+  virtual Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
                                std::function<void(Status)> on_ready) = 0;
 
   // Drops the buffer's reference to its associated device memory, leaving the

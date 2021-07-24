@@ -117,7 +117,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
     return response;
   }
 
-  StatusOr<GetOrCreateJobResponse> CreateJob(const int64 dataset_id) {
+  StatusOr<GetOrCreateJobResponse> CreateJob(const int64_t dataset_id) {
     GetOrCreateJobRequest request;
     GetOrCreateJobResponse response;
     request.set_dataset_id(dataset_id);
@@ -129,7 +129,8 @@ class GrpcWorkerImplTest : public ::testing::Test {
     return response;
   }
 
-  StatusOr<ClientHeartbeatResponse> ClientHeartbeat(const int64 job_client_id) {
+  StatusOr<ClientHeartbeatResponse> ClientHeartbeat(
+      const int64_t job_client_id) {
     ClientHeartbeatRequest request;
     ClientHeartbeatResponse response;
     request.set_job_client_id(job_client_id);
@@ -139,7 +140,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
     return response;
   }
 
-  StatusOr<GetElementResponse> GetElement(const int64 task_id) {
+  StatusOr<GetElementResponse> GetElement(const int64_t task_id) {
     GetElementRequest request;
     GetElementResponse response;
     request.set_task_id(task_id);

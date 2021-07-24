@@ -83,9 +83,9 @@ void RemoveFunctionFromUsedList(llvm::Module* module, llvm::Function* fn) {
 void RewriteCalls(
     llvm::Module* module, const char* fn_name,
     std::function<llvm::Value*(llvm::IRBuilder<>* b, llvm::Value* input,
-                               int32 vector_width)>
+                               int32_t vector_width)>
         fn_body_generator,
-    int32 vector_width, llvm::FastMathFlags fast_math_flags) {
+    int32_t vector_width, llvm::FastMathFlags fast_math_flags) {
   llvm::Function* fn = module->getFunction(fn_name);
   if (fn == nullptr) {
     // If the function declaration is not present in the module, there can't be
@@ -155,12 +155,12 @@ void RewriteCalls(
 }
 
 llvm::Value* GenerateVF32Tanh(llvm::IRBuilder<>* b, llvm::Value* input,
-                              int32 /*vector_width*/) {
+                              int32_t /*vector_width*/) {
   return llvm_ir::EmitFastTanh(b, input);
 }
 
 llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
-                             int32 vector_width) {
+                             int32_t vector_width) {
   VectorSupportLibrary vsl(F32, vector_width, b, "exp_f32");
 
   // This implements the same polynomial approximation as implemented in Cephes.
@@ -268,12 +268,12 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   llvm::Value* n_i32 = b->CreateFPToSI(
       n, llvm::VectorType::get(b->getInt32Ty(), vector_width, false));
 
-  auto splat_i32 = [&](int32 v) {
+  auto splat_i32 = [&](int32_t v) {
     return b->CreateVectorSplat(vector_width, b->getInt32(v));
   };
 
   // Creates the value 2^n' if -126 <= n' <= 127 and 0 if n' = -127.
-  const int32 kF32SignificandBits = 23;
+  const int32_t kF32SignificandBits = 23;
   llvm::Value* exp_bias = splat_i32(0x7f);
   llvm::Value* pow2 =
       b->CreateBitCast(b->CreateShl(b->CreateAdd(n_i32, exp_bias),
@@ -285,7 +285,7 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
 }
 
 llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
-                             int32 vector_width) {
+                             int32_t vector_width) {
   VectorSupportLibrary vsl(F32, vector_width, b, "log_f32");
 
   const llvm::APFloat half = GetIeeeF32(0.5);

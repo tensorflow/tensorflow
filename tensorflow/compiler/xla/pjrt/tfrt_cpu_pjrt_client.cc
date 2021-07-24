@@ -1259,7 +1259,7 @@ static std::shared_ptr<MaybeOwningCpuMemory> MemoryForAllocation(
   }
 
   // Output and temporary buffer.
-  int64 buffer_size = allocation.size();
+  int64_t buffer_size = allocation.size();
   auto out = MaybeOwningCpuMemory::AllocateShared(buffer_size);
 
   // Since the output buffer and all the temporary buffers were written into

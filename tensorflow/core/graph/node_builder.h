@@ -49,14 +49,14 @@ class NodeBuilder {
   // ArraySlice.
   struct NodeOut {
     // For referencing an existing Node.
-    NodeOut(Node* n, int32 i = 0);
+    NodeOut(Node* n, int32_t i = 0);
     NodeOut(OutputTensor t);
 
     // For referencing Nodes not in the graph being built. It is
     // useful when preparing a graph for ExtendSession or creating a
     // back edge to a node that hasn't been added to the graph yet,
     // but will be.
-    NodeOut(StringPiece name, int32 i, DataType t);
+    NodeOut(StringPiece name, int32_t i, DataType t);
 
     // Default constructor for std::vector<NodeOut>.
     NodeOut();

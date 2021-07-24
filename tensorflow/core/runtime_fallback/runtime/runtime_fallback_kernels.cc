@@ -146,7 +146,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
 
   SmallVector<ssize_t, 4> dims;
   for (auto i = 0; i < rank; ++i) {
-    int64 dim;
+    int64_t dim;
     status = th->Dim(i, &dim);
     if (!status.ok())
       return tfrt::MakeErrorAsyncValueRef(

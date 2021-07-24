@@ -276,7 +276,7 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
 }
 
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const int64 b) {
+                                               const int64_t b) {
   auto x = tensorflow::FingerprintCat64(a.low64, b);
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
@@ -1052,7 +1052,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
-    const int64 op_id = ctx.RemoteMgr()->NextOpId();
+    const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     remote_func_params =
         EagerRemoteFunctionParams{op_id, /*step_id=*/absl::nullopt};
 #endif  // !IS_MOBILE_PLATFORM

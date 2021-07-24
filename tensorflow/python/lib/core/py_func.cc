@@ -86,7 +86,7 @@ bool IsCPUDevice(const Device* d) {
 // Givens the 'call', prepares the token and inputs as a python tuple
 // that is appropriate for calling the trampoline.
 Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
-  int64 n = call->ins.size();
+  int64_t n = call->ins.size();
   PyObject* lst = PyList_New(n);
   CHECK(lst);
   // TFE_TensorHandle assumes that CPU is identified by nullptr.
@@ -97,7 +97,7 @@ Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
   if (call->device != nullptr && !IsCPUDevice(call->device))
     device_name = call->device->name().c_str();
 
-  for (int64 i = 0; i < n; ++i) {
+  for (int64_t i = 0; i < n; ++i) {
     PyObject* arg = nullptr;
     if (call->eager) {
       Tensor t = call->ins[i];

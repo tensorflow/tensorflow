@@ -76,7 +76,7 @@ double binomial_inversion(double count, double prob,
 
   Uniform uniform;
   typename Uniform::ResultType uniform_result;
-  int16 uniform_remaining = 0;
+  int16_t uniform_remaining = 0;
 
   while (true) {
     UNIFORM(u);
@@ -128,7 +128,7 @@ inline double btrs(double count, double prob, random::PhiloxRandom* gen) {
 
   Uniform uniform;
   typename Uniform::ResultType uniform_result;
-  int16 uniform_remaining = 0;
+  int16_t uniform_remaining = 0;
 
   while (true) {
     UNIFORM(u);
@@ -172,8 +172,8 @@ namespace functor {
 
 template <typename T, typename U>
 struct RandomBinomialFunctor<CPUDevice, T, U> {
-  void operator()(OpKernelContext* ctx, const CPUDevice& d, int64 num_batches,
-                  int64 samples_per_batch, int64 num_elements,
+  void operator()(OpKernelContext* ctx, const CPUDevice& d, int64_t num_batches,
+                  int64_t samples_per_batch, int64_t num_elements,
                   const BCast& bcast, typename TTypes<T>::ConstFlat counts,
                   typename TTypes<T>::ConstFlat probs,
                   const random::PhiloxRandom& gen,
@@ -184,7 +184,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
     // the sample shape and [H1, ... Hm] for the batch shape of the samples.
     // We have B1 * ... * Bk samples per batch member we need.
     auto DoWork = [num_batches, samples_per_batch, &bcast, &counts, &probs,
-                   &gen, &output](int64 start_output, int64 limit_output) {
+                   &gen, &output](int64_t start_output, int64_t limit_output) {
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
       Eigen::array<T, 4> z;
@@ -196,10 +196,10 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
 
       // We partition work across batches (count, prob) and then across samples
       // per batch member, to avoid extra work.
-      for (int64 output_idx = start_output; output_idx < limit_output;
+      for (int64_t output_idx = start_output; output_idx < limit_output;
            // output_idx is incremented with the inner loops below.
       ) {
-        int64 batch_idx = output_idx / samples_per_batch;
+        int64_t batch_idx = output_idx / samples_per_batch;
         U* const output_batch_offset = output_flat + batch_idx;
         // Generate batch counts from BCast, as it has the right indices to loop
         // over.
@@ -216,13 +216,13 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
         // Determine the method to use.
         double dcount = static_cast<double>(count);
         if (dcount <= 0.0 || prob <= T(0.0)) {
-          for (int64 sample_idx = output_idx % samples_per_batch;
+          for (int64_t sample_idx = output_idx % samples_per_batch;
                sample_idx < samples_per_batch && output_idx < limit_output;
                ++sample_idx, ++output_idx) {
             output_batch_offset[sample_idx * num_batches] = static_cast<U>(0.0);
           }
         } else if (prob >= T(1.0)) {
-          for (int64 sample_idx = output_idx % samples_per_batch;
+          for (int64_t sample_idx = output_idx % samples_per_batch;
                sample_idx < samples_per_batch && output_idx < limit_output;
                ++sample_idx, ++output_idx) {
             output_batch_offset[sample_idx * num_batches] =
@@ -231,7 +231,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
         } else if (prob <= T(0.5)) {
           double dp = static_cast<double>(prob);
           if (count * prob >= T(10)) {
-            for (int64 sample_idx = output_idx % samples_per_batch;
+            for (int64_t sample_idx = output_idx % samples_per_batch;
                  sample_idx < samples_per_batch && output_idx < limit_output;
                  ++sample_idx, ++output_idx) {
               random::PhiloxRandom gen_copy = gen;
@@ -240,7 +240,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
                   static_cast<U>(btrs(dcount, dp, &gen_copy));
             }
           } else {
-            for (int64 sample_idx = output_idx % samples_per_batch;
+            for (int64_t sample_idx = output_idx % samples_per_batch;
                  sample_idx < samples_per_batch && output_idx < limit_output;
                  ++sample_idx, ++output_idx) {
               random::PhiloxRandom gen_copy = gen;
@@ -257,7 +257,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
           T q = T(1) - prob;
           double dq = static_cast<double>(q);
           if (count * q >= T(10)) {
-            for (int64 sample_idx = output_idx % samples_per_batch;
+            for (int64_t sample_idx = output_idx % samples_per_batch;
                  sample_idx < samples_per_batch && output_idx < limit_output;
                  ++sample_idx, ++output_idx) {
               random::PhiloxRandom gen_copy = gen;
@@ -266,7 +266,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
                   static_cast<U>(dcount - btrs(dcount, dq, &gen_copy));
             }
           } else {
-            for (int64 sample_idx = output_idx % samples_per_batch;
+            for (int64_t sample_idx = output_idx % samples_per_batch;
                  sample_idx < samples_per_batch && output_idx < limit_output;
                  ++sample_idx, ++output_idx) {
               random::PhiloxRandom gen_copy = gen;
@@ -283,7 +283,7 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
           // TODO(srvasude): What should happen if prob is NaN but the output
           // type is an integer (which doesn't have a sentinel for NaN)?  Fail
           // the whole batch sample?  Return a specialized sentinel like -1?
-          for (int64 sample_idx = output_idx % samples_per_batch;
+          for (int64_t sample_idx = output_idx % samples_per_batch;
                sample_idx < samples_per_batch && output_idx < limit_output;
                ++sample_idx, ++output_idx) {
             output_batch_offset[sample_idx * num_batches] = static_cast<U>(NAN);
@@ -327,7 +327,7 @@ namespace {
 template <typename Device, typename T, typename U>
 class RandomBinomialOp : public OpKernel {
   // Reshape batches so each batch is this size if possible.
-  static constexpr int32 kDesiredBatchSize = 100;
+  static constexpr int32_t kDesiredBatchSize = 100;
 
  public:
   explicit RandomBinomialOp(OpKernelConstruction* context)
@@ -378,17 +378,17 @@ class RandomBinomialOp : public OpKernel {
                                         alg_tensor.shape().DebugString()));
     Algorithm alg = Algorithm(alg_tensor.flat<int64>()(0));
 
-    int64 samples_per_batch = 1;
-    const int64 num_sample_dims =
+    int64_t samples_per_batch = 1;
+    const int64_t num_sample_dims =
         (shape_tensor.dim_size(0) - bcast.output_shape().size());
-    for (int64 i = 0; i < num_sample_dims; ++i) {
+    for (int64_t i = 0; i < num_sample_dims; ++i) {
       samples_per_batch *= shape_tensor.flat<int32>()(i);
     }
-    int64 num_batches = 1;
-    for (int64 i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
+    int64_t num_batches = 1;
+    for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
       num_batches *= shape_tensor.flat<int32>()(i);
     }
-    const int64 num_elements = num_batches * samples_per_batch;
+    const int64_t num_elements = num_batches * samples_per_batch;
 
     Tensor* samples_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &samples_tensor));
@@ -440,7 +440,7 @@ class RandomBinomialOp : public OpKernel {
 template <typename Device, typename T, typename U>
 class StatelessRandomBinomialOp : public OpKernel {
   // Reshape batches so each batch is this size if possible.
-  static constexpr int32 kDesiredBatchSize = 100;
+  static constexpr int32_t kDesiredBatchSize = 100;
 
  public:
   explicit StatelessRandomBinomialOp(OpKernelConstruction* context)
@@ -490,17 +490,17 @@ class StatelessRandomBinomialOp : public OpKernel {
                     "Shape passed in must end with broadcasted shape."));
     // Now that we have a guarantee, we can get the additional dimensions added
     // by sampling.
-    int64 samples_per_batch = 1;
-    const int64 num_sample_dims =
+    int64_t samples_per_batch = 1;
+    const int64_t num_sample_dims =
         (shape_tensor.dim_size(0) - bcast.output_shape().size());
-    for (int64 i = 0; i < num_sample_dims; ++i) {
+    for (int64_t i = 0; i < num_sample_dims; ++i) {
       samples_per_batch *= shape_tensor.flat<int32>()(i);
     }
-    int64 num_batches = 1;
-    for (int64 i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
+    int64_t num_batches = 1;
+    for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
       num_batches *= shape_tensor.flat<int32>()(i);
     }
-    const int64 num_elements = num_batches * samples_per_batch;
+    const int64_t num_elements = num_batches * samples_per_batch;
 
     Tensor* samples_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &samples_tensor));

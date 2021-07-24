@@ -366,14 +366,14 @@ TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
 
 #if !defined(IS_MOBILE_PLATFORM)
 TensorHandle* TensorHandle::CreateUnshapedRemoteHandle(
-    int64_t op_id, int32 output_num, const string& remote_task,
+    int64_t op_id, int32_t output_num, const string& remote_task,
     tensorflow::DataType dtype, Device* d, EagerContext* ctx,
     const bool unknown_device) {
   return new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx,
                           unknown_device);
 }
 
-TensorHandle::TensorHandle(int64_t op_id, int32 output_num,
+TensorHandle::TensorHandle(int64_t op_id, int32_t output_num,
                            const string& remote_task,
                            tensorflow::DataType dtype, Device* d,
                            EagerContext* ctx, const bool unknown_device)
@@ -393,12 +393,12 @@ TensorHandle::TensorHandle(int64_t op_id, int32 output_num,
 }
 
 TensorHandle* TensorHandle::CreateLazyRemoteHandle(
-    int64_t op_id, int32 output_num, tensorflow::DataType dtype, Device* d,
+    int64_t op_id, int32_t output_num, tensorflow::DataType dtype, Device* d,
     const bool is_ready, EagerContext* ctx) {
   return new TensorHandle(op_id, output_num, dtype, d, is_ready, ctx);
 }
 
-TensorHandle::TensorHandle(int64_t op_id, int32 output_num,
+TensorHandle::TensorHandle(int64_t op_id, int32_t output_num,
                            tensorflow::DataType dtype, Device* d,
                            const bool is_ready, EagerContext* ctx)
     : ImmediateExecutionTensorHandle(kEager),

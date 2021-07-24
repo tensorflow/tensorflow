@@ -53,7 +53,7 @@ std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
 // Returns the plane with the given id or nullptr if not found.
-const XLine* FindLineWithId(const XPlane& plane, int64 id);
+const XLine* FindLineWithId(const XPlane& plane, int64_t id);
 
 XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 

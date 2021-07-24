@@ -390,7 +390,7 @@ class FoldOldBatchNormsTest : public ::testing::Test {
 
     Tensor shape_tensor(DT_INT32, TensorShape({}));
     // Concat at dim 3 if split; otherwise, concat at dim 2.
-    int32 concat_axis = split ? 3 : 2;
+    int32_t concat_axis = split ? 3 : 2;
     test::FillValues<int32>(&shape_tensor, {concat_axis});
     Output shape_op =
         Const(root.WithOpName("shape_op"), Input::Initializer(shape_tensor));

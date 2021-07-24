@@ -533,7 +533,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
             xla::XlaOp leading_dim_size = xla::GetDimensionSize(input, 0);
             dynamic_dims.push_back(leading_dim_size);
           } else {
-            int32 dim_size = shape.dimensions(0);
+            int32_t dim_size = shape.dimensions(0);
             dynamic_dims.push_back(
                 xla::ConstantR0<int32>(ctx->builder(), dim_size));
           }
@@ -542,12 +542,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           // loop, TensorlistSetItem will properly set the element shape's
           // dynamic dimension.
           for (int64_t dim = 1; dim < shape.dimensions_size(); ++dim) {
-            int32 dim_size = shape.dimensions(dim);
+            int32_t dim_size = shape.dimensions(dim);
             if (shape.is_dynamic_dimension(dim)) {
               dim_size = 0;
             }
             dynamic_dims.push_back(
-                xla::ConstantR0<int32>(ctx->builder(), dim_size));
+                xla::ConstantR0<int32_t>(ctx->builder(), dim_size));
           }
           list_dynamic_dims.push_back(dynamic_dims);
         }

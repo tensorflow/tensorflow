@@ -165,8 +165,8 @@ int64 IndexToLinearIndex(absl::Span<int64 const> shape,
                          absl::Span<int64 const> indices) {
   CHECK_LE(tiling.size(), shape.size());
   CHECK_EQ(shape.size(), indices.size());
-  int64 stride = 1;
-  int64 offset = 0;
+  int64_t stride = 1;
+  int64_t offset = 0;
 
   auto index_it = indices.rbegin();
   auto tile_it = tiling.rbegin();
@@ -198,7 +198,7 @@ std::vector<T> TileArray(const Array<T>& in, absl::Span<int64_t const> tiling) {
   }
   std::vector<int64> indices(in.num_dimensions(), 0);
   do {
-    int64 i = IndexToLinearIndex(in.dimensions(), tiling, indices);
+    int64_t i = IndexToLinearIndex(in.dimensions(), tiling, indices);
     out.at(i) = in(indices);
   } while (BumpIndices(in.dimensions(), absl::MakeSpan(indices)));
   return out;

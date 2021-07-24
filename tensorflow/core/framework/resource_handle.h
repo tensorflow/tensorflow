@@ -185,12 +185,12 @@ class ResourceHandle {
 std::string ProtoDebugString(const ResourceHandle& handle);
 
 // Encodes a list of ResourceHandle protos in the given StringListEncoder.
-void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
+void EncodeResourceHandleList(const ResourceHandle* p, int64_t n,
                               std::unique_ptr<port::StringListEncoder> e);
 
 // Decodes a list of ResourceHandle protos from the given StringListDecoder.
 bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
-                              ResourceHandle* ps, int64 n);
+                              ResourceHandle* ps, int64_t n);
 
 }  // namespace tensorflow
 

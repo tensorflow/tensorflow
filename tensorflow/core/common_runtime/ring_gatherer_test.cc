@@ -81,10 +81,10 @@ class RingGathererTest : public ::testing::Test {
                int fail_after) {
     Init(num_workers, num_devices, dtype, TensorShape({tensor_len}),
          device_type, num_subdivs, fail_after);
-    int32 output_len = tensor_len * num_workers * num_devices;
+    int32_t output_len = tensor_len * num_workers * num_devices;
     std::vector<T> expected(output_len, 0.0);
     for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
-      int32 instance_offset = di * tensor_len;
+      int32_t instance_offset = di * tensor_len;
       instances_[di]->InitTensor(
           [instance_offset, &expected, dtype, di](Tensor* t) {
             for (size_t i = 0; i < t->NumElements(); ++i) {

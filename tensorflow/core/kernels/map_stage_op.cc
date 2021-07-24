@@ -494,8 +494,8 @@ Status GetStagingMap(OpKernelContext* ctx, const NodeDef& ndef,
   // Lambda for creating the Staging Area
   auto create_fn = [&ndef](StagingMap<Ordered>** ret) -> Status {
     DataTypeVector dtypes;
-    int64 capacity;
-    int64 memory_limit;
+    int64_t capacity;
+    int64_t memory_limit;
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "dtypes", &dtypes));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));

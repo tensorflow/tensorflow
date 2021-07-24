@@ -101,7 +101,7 @@ class LocalMaster : public MasterInterface {
 
   // See `LocalMaster::Lookup` for the factory function that creates
   // objects of this type.
-  LocalMaster(Master* master_impl, const int64 default_timeout_in_ms);
+  LocalMaster(Master* master_impl, const int64_t default_timeout_in_ms);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalMaster);
 };

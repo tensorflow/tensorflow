@@ -38,7 +38,7 @@ int64 DataSizeOfShape(const Shape& shape) {
     return ShapeUtil::ByteSizeOf(shape);
   }
 
-  int64 total_size = 0;
+  int64_t total_size = 0;
   for (const Shape& s : shape.tuple_shapes()) {
     total_size += DataSizeOfShape(s);
   }

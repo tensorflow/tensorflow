@@ -1280,15 +1280,15 @@ Status ConstantFolding::CreateNodeDef(const string& name,
       case DT_UINT64:
         POPULATE_TENSOR_PROTO(tensor, t, uint64, uint64);
       case DT_INT32:
-        POPULATE_TENSOR_PROTO(tensor, t, int32, int);
+        POPULATE_TENSOR_PROTO(tensor, t, int32_t, int);
       case DT_UINT32:
         POPULATE_TENSOR_PROTO(tensor, t, uint32, uint32);
       case DT_INT16:
-        POPULATE_TENSOR_PROTO(tensor, t, int16, int);
+        POPULATE_TENSOR_PROTO(tensor, t, int16_t, int);
       case DT_UINT16:
         POPULATE_TENSOR_PROTO(tensor, t, uint16, int);
       case DT_INT8:
-        POPULATE_TENSOR_PROTO(tensor, t, int8, int);
+        POPULATE_TENSOR_PROTO(tensor, t, int8_t, int);
       case DT_UINT8:
         POPULATE_TENSOR_PROTO(tensor, t, uint8, int);
       case DT_BOOL:
@@ -1722,7 +1722,7 @@ bool ConstantFolding::IsSimplifiableReshape(
   if (outputs[0]->dtype() == DT_INT32) {
     std::vector<int32> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {
-      int32 dim = outputs[0]->flat<int32>()(i);
+      int32_t dim = outputs[0]->flat<int32>()(i);
       shp.push_back(dim);
     }
     TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));

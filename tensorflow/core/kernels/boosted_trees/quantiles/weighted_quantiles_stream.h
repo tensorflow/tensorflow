@@ -69,7 +69,7 @@ class WeightedQuantilesStream {
   using Summary = WeightedQuantilesSummary<ValueType, WeightType, CompareFn>;
   using SummaryEntry = typename Summary::SummaryEntry;
 
-  explicit WeightedQuantilesStream(double eps, int64 max_elements)
+  explicit WeightedQuantilesStream(double eps, int64_t max_elements)
       : eps_(eps), buffer_(1LL, 2LL), finalized_(false) {
     // See the class documentation. An epsilon value of zero could cause
     // performance issues.
@@ -146,7 +146,7 @@ class WeightedQuantilesStream {
   // Generates requested number of quantiles after finalizing stream.
   // The returned quantiles can be queried using std::lower_bound to get
   // the bucket for a given value.
-  std::vector<ValueType> GenerateQuantiles(int64 num_quantiles) const {
+  std::vector<ValueType> GenerateQuantiles(int64_t num_quantiles) const {
     // Validate state.
     QCHECK(finalized_)
         << "Finalize() must be called before generating quantiles.";
@@ -161,7 +161,7 @@ class WeightedQuantilesStream {
   // Boundaries are preferable over quantiles when the caller is less
   // interested in the actual quantiles distribution and more interested in
   // getting a representative sample of boundary values.
-  std::vector<ValueType> GenerateBoundaries(int64 num_boundaries) const {
+  std::vector<ValueType> GenerateBoundaries(int64_t num_boundaries) const {
     // Validate state.
     QCHECK(finalized_)
         << "Finalize() must be called before generating boundaries.";
@@ -172,7 +172,7 @@ class WeightedQuantilesStream {
   // If the passed level is negative, the approximation error for the entire
   // summary is returned. Note that after Finalize is called, only the overall
   // error is available.
-  WeightType ApproximationError(int64 level = -1) const {
+  WeightType ApproximationError(int64_t level = -1) const {
     if (finalized_) {
       QCHECK(level <= 0) << "Only overall error is available after Finalize()";
       return local_summary_.ApproximationError();
@@ -207,7 +207,7 @@ class WeightedQuantilesStream {
   // and an upper bound on the number of elements, computes the optimal
   // number of levels and block size and returns them in the tuple.
   static std::tuple<int64, int64> GetQuantileSpecs(double eps,
-                                                   int64 max_elements);
+                                                   int64_t max_elements);
 
   // Serializes the internal state of the stream.
   std::vector<Summary> SerializeInternalSummaries() const {
@@ -293,9 +293,9 @@ class WeightedQuantilesStream {
 template <typename ValueType, typename WeightType, typename CompareFn>
 inline std::tuple<int64, int64>
 WeightedQuantilesStream<ValueType, WeightType, CompareFn>::GetQuantileSpecs(
-    double eps, int64 max_elements) {
-  int64 max_level = 1LL;
-  int64 block_size = 2LL;
+    double eps, int64_t max_elements) {
+  int64_t max_level = 1LL;
+  int64_t block_size = 2LL;
   QCHECK(eps >= 0 && eps < 1);
   QCHECK_GT(max_elements, 0);
 

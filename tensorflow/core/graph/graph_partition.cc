@@ -195,7 +195,7 @@ void SetSendRecvAttrs(const PartitionOptions& opts, const Edge* edge,
 
 NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
                  GraphDef* gdef, const Edge* edge,
-                 NodeDefBuilder::NodeOut send_from, int64 start_time,
+                 NodeDefBuilder::NodeOut send_from, int64_t start_time,
                  Status* status) {
   const DataType dtype = send_from.data_type;
   const DataType cast_dtype = opts.should_cast ? opts.should_cast(edge) : dtype;
@@ -350,8 +350,8 @@ NodeDef* AddDummyConst(const PartitionOptions& opts, GraphDef* gdef,
 
 // A dummy node for scheduling.
 NodeDef* AddControlTrigger(const PartitionOptions& opts, GraphDef* gdef,
-                           const string& assigned_device_name, int64 epoch,
-                           int64 starttime, Status* status) {
+                           const string& assigned_device_name, int64_t epoch,
+                           int64_t starttime, Status* status) {
   NodeDef* result = gdef->add_node();
   *status = NodeDefBuilder(opts.new_name(strings::StrCat("synch_", epoch)),
                            "ControlTrigger")
@@ -782,7 +782,8 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
 }
 
 struct PriorityTopoSortNode {
-  PriorityTopoSortNode(const NodeDef* n, int64 st) : node(n), start_time(st) {}
+  PriorityTopoSortNode(const NodeDef* n, int64_t st)
+      : node(n), start_time(st) {}
 
   const NodeDef* node;
   int64 start_time;
@@ -817,7 +818,7 @@ Status TopologicalSortNodesWithTimePriority(
       q;
   std::unordered_map<const NodeDef*, int64> node_to_start_time;
   auto enqueue = [&q, &node_to_start_time](const NodeDef* node) {
-    const int64 start_time = node_to_start_time[node];
+    const int64_t start_time = node_to_start_time[node];
     q.emplace(node, start_time);
   };
 
@@ -830,7 +831,7 @@ Status TopologicalSortNodesWithTimePriority(
       node_to_output_nodes[string(ParseTensorName(ndef->input(i)).first)]
           .push_back(ndef);
     }
-    int64 start_time;
+    int64_t start_time;
     TF_RETURN_IF_ERROR(GetNodeAttr(*ndef, "_start_time", &start_time));
     node_to_start_time[ndef] = start_time;
     inputs_needed[ndef] = ndef->input_size();
@@ -902,8 +903,8 @@ Status AddControlEdges(const PartitionOptions& opts,
     // Add a dummy node for every epoch, and add a control edge from the
     // "last" node in the preceding epoch to the dummy node.
     string device_name = gdef->node(0).device();
-    int64 makespan = start_times.back().second;
-    int64 resolution = (makespan / num_epochs) + 1;
+    int64_t makespan = start_times.back().second;
+    int64_t resolution = (makespan / num_epochs) + 1;
 
     int i = 0;
     int j = 0;
@@ -930,7 +931,7 @@ Status AddControlEdges(const PartitionOptions& opts,
     for (int n = 0; n < gdef->node_size(); ++n) {
       NodeDef* ndef = gdef->mutable_node(n);
       if (ndef->op() == "_Recv") {
-        const int64 start_time = node_to_start_time[ndef];
+        const int64_t start_time = node_to_start_time[ndef];
         const int recv_epoch = start_time / resolution;
         if (recv_epoch >= prefetch) {
           NodeDef* dummy = dummys[recv_epoch - prefetch];
@@ -955,7 +956,7 @@ void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
     // No known send_device. The runtime will detect it later.
     return;
   }
-  int64 incarnation = PartitionOptions::kIllegalIncarnation;
+  int64_t incarnation = PartitionOptions::kIllegalIncarnation;
   if (!TryGetNodeAttr(*ndef, "send_device_incarnation", &incarnation) ||
       (incarnation == PartitionOptions::kIllegalIncarnation)) {
     incarnation = opts.get_incarnation(send_device);
@@ -1008,8 +1009,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
   std::vector<NodeDef*> ref_recvs;
   std::vector<string> ref_control_inputs;
 
-  int32 num_data = 0;
-  int32 num_control = 0;
+  int32_t num_data = 0;
+  int32_t num_control = 0;
   for (const Node* dst : g->op_nodes()) {
     dstp = opts.node_to_loc(dst);
     GraphDef* dst_graph = &(*partitions)[dstp];
@@ -1019,7 +1020,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     dst_def->set_device(dst->assigned_device_name());
     dst_def->clear_input();  // Inputs are filled below
     if (opts.need_to_record_start_times) {
-      int64 start_time;
+      int64_t start_time;
       status = GetNodeAttr(*dst_def, "_start_time", &start_time);
       if (errors::IsNotFound(status)) {
         start_time = opts.start_times[dst->id()].value();
@@ -1037,8 +1038,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     ref_recvs.clear();
     ref_control_inputs.clear();
     const Edge* control_flow_edge = nullptr;
-    int32 num_control_flow_edges = 0;
-    int32 num_input_edges = 0;
+    int32_t num_control_flow_edges = 0;
+    int32_t num_input_edges = 0;
     for (const Edge* edge : dst->in_edges()) {
       if (edge->IsControlEdge()) {
         if (IsMerge(edge->src()) && IsControlLoop(edge->src())) {
@@ -1080,8 +1081,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         continue;
       }
 
-      int64 send_start_time = 0;
-      int64 recv_start_time = 0;
+      int64_t send_start_time = 0;
+      int64_t recv_start_time = 0;
       if (opts.scheduling_for_recvs) {
         status = GetNodeAttr(src->attrs(), "_start_time", &send_start_time);
         if (errors::IsNotFound(status) && opts.need_to_record_start_times) {

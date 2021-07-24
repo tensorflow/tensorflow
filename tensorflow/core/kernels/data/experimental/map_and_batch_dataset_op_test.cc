@@ -25,7 +25,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
   template <typename T>
   MapAndBatchDatasetParams(
       T input_dataset_params, std::vector<Tensor> other_arguments,
-      int64 batch_size, int64 num_parallel_calls, bool drop_remainder,
+      int64_t batch_size, int64_t num_parallel_calls, bool drop_remainder,
       FunctionDefHelper::AttrValueWrapper func,
       std::vector<FunctionDef> func_lib, DataTypeVector type_arguments,
       bool preserve_cardinality, DataTypeVector output_dtypes,

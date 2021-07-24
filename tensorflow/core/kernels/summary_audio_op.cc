@@ -55,8 +55,8 @@ class SummaryAudioOp : public OpKernel {
                 errors::InvalidArgument("sample_rate must be > 0"));
 
     const int batch_size = tensor.dim_size(0);
-    const int64 length_frames = tensor.dim_size(1);
-    const int64 num_channels =
+    const int64_t length_frames = tensor.dim_size(1);
+    const int64_t num_channels =
         tensor.dims() == 2 ? 1 : tensor.dim_size(tensor.dims() - 1);
 
     Summary s;

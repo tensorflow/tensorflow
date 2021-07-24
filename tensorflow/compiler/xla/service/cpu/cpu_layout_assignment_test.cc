@@ -260,7 +260,7 @@ struct DotOutputFusionLayoutAssignmentResult {
 
 static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
     HloModule* module, const string& test_name, int m, int k, int n,
-    const int64 dot_operand_idx_in_add) {
+    const int64_t dot_operand_idx_in_add) {
   DotOutputFusionLayoutAssignmentResult result;
 
   CHECK(dot_operand_idx_in_add == 0 || dot_operand_idx_in_add == 1);

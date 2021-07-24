@@ -113,7 +113,7 @@ void SigNode::ComputeTopoHash(int distance) {
     return;
   }
 
-  const int64 topo_hash_size = topo_hash_.size();
+  const int64_t topo_hash_size = topo_hash_.size();
   CHECK(topo_hash_size == distance);
 
   int prev = distance - 1;
@@ -155,7 +155,7 @@ void SigNode::ComputeTopoHash(int distance) {
 
 size_t SigNode::GetTopoHash(int distance) const {
   CHECK(!topo_hash_.empty());
-  const int64 topo_hash_size = topo_hash_.size();
+  const int64_t topo_hash_size = topo_hash_.size();
   if (distance >= topo_hash_size) {
     CHECK(hash_is_final_);
     return topo_hash_.back();

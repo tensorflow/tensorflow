@@ -453,7 +453,7 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   const int original_size = sig->size();
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "repeats" times.
-    int64 repeats = -1;
+    int64_t repeats = -1;
     TF_RETURN_IF_ERROR(
         GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
     // We can't handle outputs that are larger than int32 sizes.
@@ -879,8 +879,8 @@ void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def) {
   }
 ADD_NODE_ATTR(StringPiece)
 ADD_NODE_ATTR(const char*)
-ADD_NODE_ATTR(int32)
-ADD_NODE_ATTR(int64)
+ADD_NODE_ATTR(int32_t)
+ADD_NODE_ATTR(int64_t)
 ADD_NODE_ATTR(float)
 ADD_NODE_ATTR(double)
 ADD_NODE_ATTR(bool)

@@ -367,9 +367,9 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
   if (dims_ == 1) {
     // Fast path for sparse vectors.
-    const int64 out_length = out->shape().dim_size(0);
+    const int64_t out_length = out->shape().dim_size(0);
     for (int n = 0; n < vals_t.dimension(0); ++n) {
-      const int64 index = internal::SubtleMustCopy(ix_ptr[n]);
+      const int64_t index = internal::SubtleMustCopy(ix_ptr[n]);
       if (!FastBoundsCheck(index, out_length)) return false;
       out_t(index) = vals_t(n);
     }
@@ -377,11 +377,11 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
   } else if (dims_ == 2) {
     // Fast path for sparse matrices.
     const auto& out_shape = out->shape();
-    const int64 out_rows = out_shape.dim_size(0);
-    const int64 out_cols = out_shape.dim_size(1);
+    const int64_t out_rows = out_shape.dim_size(0);
+    const int64_t out_cols = out_shape.dim_size(1);
     for (int n = 0; n < vals_t.dimension(0); ++n) {
-      const int64 row_index = internal::SubtleMustCopy(ix_ptr[n * 2]);
-      const int64 col_index = internal::SubtleMustCopy(ix_ptr[n * 2 + 1]);
+      const int64_t row_index = internal::SubtleMustCopy(ix_ptr[n * 2]);
+      const int64_t col_index = internal::SubtleMustCopy(ix_ptr[n * 2 + 1]);
       if (!(FastBoundsCheck(row_index, out_rows) &&
             FastBoundsCheck(col_index, out_cols))) {
         return false;
@@ -402,9 +402,9 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
     for (int n = 0; n < vals_t.dimension(0); ++n) {
       bool invalid_dims = false;
-      int64 ix = 0;
+      int64_t ix = 0;
       for (int d = 0; d < dims_; ++d) {
-        const int64 ix_n_d = internal::SubtleMustCopy(ix_ptr[n * dims_ + d]);
+        const int64_t ix_n_d = internal::SubtleMustCopy(ix_ptr[n * dims_ + d]);
         if (!FastBoundsCheck(ix_n_d, out_shape[d])) {
           invalid_dims = true;
         }
@@ -469,7 +469,7 @@ inline SparseTensor SparseTensor::Concat(
   typename TTypes<T>::Vec vals_t = output_vals.vec<T>();
 
   Eigen::DenseIndex offset = 0;
-  int64 shape_offset = 0;
+  int64_t shape_offset = 0;
   for (const SparseTensor& st : tensors) {
     const int st_num_entries = st.num_entries();
 
@@ -554,7 +554,7 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
     const int slice_dim = values_inserted_in_slice[slice_index]++;
     output_values_t[slice_index](slice_dim) = input_values_t(i);
     for (int j = 0; j < num_dim; ++j) {
-      const int64 original_dim = input_indices_t(i, j);
+      const int64_t original_dim = input_indices_t(i, j);
       output_indices_t[slice_index](slice_dim, j) =
           (j == split_dim)
               ? GetDimensionInSlice(original_dim, split_size, residual)
@@ -587,9 +587,9 @@ inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
     // Determine the size of the result; if the selected slice goes beyond the
     // input boundary, the result will correspond to the size of the overlap
     // between the input and the selected slice.
-    const int64 input_size = output_shape.dim_size(dim);
-    const int64 start_index = start[dim];
-    const int64 slice_size = size[dim];
+    const int64_t input_size = output_shape.dim_size(dim);
+    const int64_t start_index = start[dim];
+    const int64_t slice_size = size[dim];
     if (start_index + slice_size < input_size) {
       // The entire selection is within input boundaries.
       output_shape.set_dim(dim, slice_size);

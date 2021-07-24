@@ -95,9 +95,9 @@ struct ParallelMatMulKernel {
     const auto& x_batch_indices = bcast.x_batch_indices();
     const auto& y_batch_indices = bcast.y_batch_indices();
     // TODO(rmlarsen): Consider launching these contractions asynchronously.
-    for (int64 i = 0; i < batch_size; ++i) {
-      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+    for (int64_t i = 0; i < batch_size; ++i) {
+      const int64_t x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64_t y_batch_index = should_bcast ? y_batch_indices[i] : i;
 
       auto x = Tx.template chip<0>(x_batch_index);
       auto z = Tz.template chip<0>(i);
@@ -139,9 +139,9 @@ struct ParallelMatMulKernel<Scalar, false> {
       const auto& x_batch_indices = bcast.x_batch_indices();
       const auto& y_batch_indices = bcast.y_batch_indices();
       // TODO(rmlarsen): Consider launching these contractions asynchronously.
-      for (int64 i = 0; i < batch_size; ++i) {
-        const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-        const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+      for (int64_t i = 0; i < batch_size; ++i) {
+        const int64_t x_batch_index = should_bcast ? x_batch_indices[i] : i;
+        const int64_t y_batch_index = should_bcast ? y_batch_indices[i] : i;
         auto x = Tx.template chip<0>(x_batch_index);
         auto y = Ty.template chip<0>(y_batch_index);
         auto z = Tz.template chip<0>(i);
@@ -181,9 +181,9 @@ struct SequentialMatMulKernel {
     const bool should_bcast = bcast.IsBroadcastingRequired();
     const auto& x_batch_indices = bcast.x_batch_indices();
     const auto& y_batch_indices = bcast.y_batch_indices();
-    for (int64 i = start; i < limit; ++i) {
-      const int64 x_batch_index = should_bcast ? x_batch_indices[i] : i;
-      const int64 y_batch_index = should_bcast ? y_batch_indices[i] : i;
+    for (int64_t i = start; i < limit; ++i) {
+      const int64_t x_batch_index = should_bcast ? x_batch_indices[i] : i;
+      const int64_t y_batch_index = should_bcast ? y_batch_indices[i] : i;
       auto x = ConstTensorSliceToEigenMatrix(in_x, x_batch_index);
       auto y = ConstTensorSliceToEigenMatrix(in_y, y_batch_index);
       auto z = TensorSliceToEigenMatrix(out, i);
@@ -233,14 +233,14 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
     bool conjugate_result = false;
 
     // Number of matrix multiplies i.e. size of the batch.
-    const int64 batch_size = bcast.output_batch_size();
-    const int64 cost_per_unit =
+    const int64_t batch_size = bcast.output_batch_size();
+    const int64_t cost_per_unit =
         in_x.dim_size(1) * in_x.dim_size(2) * out->dim_size(2);
-    const int64 small_dim = std::min(
+    const int64_t small_dim = std::min(
         std::min(in_x.dim_size(1), in_x.dim_size(2)), out->dim_size(2));
     // NOTE(nikhilsarda): This heuristic is optimal in benchmarks as of
     // Jan 21, 2020.
-    const int64 kMaxCostOuterParallelism = 128 * 128;  // heuristic.
+    const int64_t kMaxCostOuterParallelism = 128 * 128;  // heuristic.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     // TODO(rmlarsen): Reconsider the heuristics now that we have asynchronous
     // evaluation in Eigen Tensor.
@@ -295,7 +295,7 @@ class BlasScratchAllocator : public se::ScratchAllocator {
   int64 GetMemoryLimitInBytes() override { return -1; }
 
   se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
-      int64 byte_size) override {
+      int64_t byte_size) override {
     Tensor temporary_memory;
 
     Status allocation_status(context_->allocate_temp(
@@ -330,7 +330,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     const uint64 m = in_x.dim_size(adj_x || trans_x ? 2 : 1);
     const uint64 k = in_x.dim_size(adj_x || trans_x ? 1 : 2);
     const uint64 n = in_y.dim_size(adj_y || trans_y ? 1 : 2);
-    const int64 batch_size = bcast.output_batch_size();
+    const int64_t batch_size = bcast.output_batch_size();
     auto blas_transpose_a = trans[adj_x ? 2 : (trans_x ? 1 : 0)];
     auto blas_transpose_b = trans[adj_y ? 2 : (trans_y ? 1 : 0)];
 
@@ -373,7 +373,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
       b_ptrs.push_back(&b_device_memory.back());
       c_ptrs.push_back(&c_device_memory.back());
     } else if (!bcast.IsBroadcastingRequired()) {
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
@@ -384,13 +384,13 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     } else {
       const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
       const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
-      for (int64 i = 0; i < bcast.x_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
       }
-      for (int64 i = 0; i < bcast.y_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
       }
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
         a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
         b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);
@@ -527,7 +527,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
       b_ptrs.push_back(&b_device_memory.back());
       c_ptrs.push_back(&c_device_memory.back());
     } else if (!bcast.IsBroadcastingRequired()) {
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
@@ -538,13 +538,13 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
     } else {
       const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
       const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
-      for (int64 i = 0; i < bcast.x_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr + i * m * k));
       }
-      for (int64 i = 0; i < bcast.y_batch_size(); ++i) {
+      for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr + i * k * n));
       }
-      for (int64 i = 0; i < batch_size; ++i) {
+      for (int64_t i = 0; i < batch_size; ++i) {
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr + i * m * n));
         a_ptrs.push_back(&a_device_memory[a_batch_indices[i]]);
         b_ptrs.push_back(&b_device_memory[b_batch_indices[i]]);

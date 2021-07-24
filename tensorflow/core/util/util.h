@@ -54,7 +54,7 @@ std::string PrintMemory(const char* ptr, size_t n);
 // Given a flattened index into a tensor, computes a string s so that
 // StrAppend("tensor", s) is a Python indexing expression.  E.g.,
 // "tensor", "tensor[i]", "tensor[i, j]", etc.
-std::string SliceDebugString(const TensorShape& shape, const int64 flat);
+std::string SliceDebugString(const TensorShape& shape, const int64_t flat);
 
 // Check if MKL is enabled in runtime
 bool IsMKLEnabled();

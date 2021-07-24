@@ -291,7 +291,7 @@ class PprofProfileImpl : public PprofProfile {
     Status s = Env::Default()->NewWritableFile(filename, &file);
     if (!s.ok()) return s;
 
-    int32 buf_size = 1024 * 1024;
+    int32_t buf_size = 1024 * 1024;
     io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
         file.get(), buf_size, buf_size, io::ZlibCompressionOptions::GZIP());
     s = zlib_output_buffer->Init();

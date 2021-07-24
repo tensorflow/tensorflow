@@ -76,7 +76,7 @@ class OneHotOp : public OpKernel {
     const int axis = (axis_ == -1) ? indices_dims : axis_;
 
     // The one-hot dimension.
-    const int32 depth_v = depth.scalar<int32>()();
+    const int32_t depth_v = depth.scalar<int32>()();
     OP_REQUIRES(
         ctx, depth_v >= 0,
         errors::InvalidArgument("depth must be non-negative, got: ", depth_v));
@@ -100,11 +100,11 @@ class OneHotOp : public OpKernel {
       // prefix_dim_size == # of elements before the axis
       // depth_v == # of elements per axis
       // suffix_dim_size == # of elements after the axis
-      int64 prefix_dim_size = 1;
+      int64_t prefix_dim_size = 1;
       for (int i = 0; i < axis; ++i) {
         prefix_dim_size *= indices_shape.dim_size(i);
       }
-      int64 suffix_dim_size = indices_shape.num_elements() / prefix_dim_size;
+      int64_t suffix_dim_size = indices_shape.num_elements() / prefix_dim_size;
 
       // Split indices into matrix of size prefix_dim_size x suffix_dim_size
       auto indices_t =

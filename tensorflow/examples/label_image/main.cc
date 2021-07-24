@@ -284,8 +284,8 @@ int main(int argc, char* argv[]) {
       "tensorflow/examples/label_image/data/inception_v3_2016_08_28_frozen.pb";
   string labels =
       "tensorflow/examples/label_image/data/imagenet_slim_labels.txt";
-  int32 input_width = 299;
-  int32 input_height = 299;
+  int32_t input_width = 299;
+  int32_t input_height = 299;
   float input_mean = 0;
   float input_std = 255;
   string input_layer = "input";

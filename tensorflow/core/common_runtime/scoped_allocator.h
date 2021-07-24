@@ -27,7 +27,7 @@ class ScopedAllocatorInstance;
 // Manages a single backing tensor and a collection of aliases.
 class ScopedAllocator {
  public:
-  static constexpr int32 kInvalidId = 0;
+  static constexpr int32_t kInvalidId = 0;
   static constexpr size_t kMaxAlignment = 64;
 
   // A subrange of the TensorBuffer associated with this object that
@@ -39,14 +39,14 @@ class ScopedAllocator {
     size_t bytes_allocated;
   };
   // Field index that refers to backing tensor, not any aliased field.
-  static constexpr int32 kBackingIndex = -1;
+  static constexpr int32_t kBackingIndex = -1;
 
   // backing_tensor is expected to be newly allocated by a ScopedAllocatorOp
   // instance.  It must be large enough to back all of the specified
   // (offset, byte) ranges of the fields.
-  ScopedAllocator(const Tensor& backing_tensor, int32 scope_id,
+  ScopedAllocator(const Tensor& backing_tensor, int32_t scope_id,
                   const std::string& name, const gtl::ArraySlice<Field> fields,
-                  int32 expected_call_count,
+                  int32_t expected_call_count,
                   ScopedAllocatorContainer* container);
 
   // Automatically deletes when last use expires, or when
@@ -66,7 +66,8 @@ class ScopedAllocator {
   friend class ScopedAllocatorInstance;
   // Only ScopedAllocatorInstances can call AllocateRaw and DeallocateRaw on a
   // ScopedAllocator
-  void* AllocateRaw(int32 field_index, size_t num_bytes) TF_LOCKS_EXCLUDED(mu_);
+  void* AllocateRaw(int32_t field_index, size_t num_bytes)
+      TF_LOCKS_EXCLUDED(mu_);
   void DeallocateRaw(void* p) TF_LOCKS_EXCLUDED(mu_);
   Tensor backing_tensor_;
   TensorBuffer* tbuf_;
@@ -87,7 +88,7 @@ class ScopedAllocator {
 // discarded immediately after a single use.
 class ScopedAllocatorInstance : public Allocator {
  public:
-  explicit ScopedAllocatorInstance(ScopedAllocator* sa, int32 field_index);
+  explicit ScopedAllocatorInstance(ScopedAllocator* sa, int32_t field_index);
 
  private:
   ~ScopedAllocatorInstance() override {

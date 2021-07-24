@@ -834,7 +834,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   // calculate the location where metadata needs to be inserted
   //   int* dyn_dim0_size = dest_array + meta_data_offset;
   //   int* dyn_dim1_size = dest_array + meta_data_offset + sizeof(int);
-  int32 raw_data_size = ShapeUtil::ByteSizeOf(data_shape);
+  int32_t raw_data_size = ShapeUtil::ByteSizeOf(data_shape);
 
   // pseudo code for sliceToDynamic on a 2d array
   //   int* source_array = input[0];

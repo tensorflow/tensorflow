@@ -525,7 +525,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
     const HloInstruction* instruction = buffer.instruction();
 
     // Force the operands' layout to the output layout.
-    for (int64 operand_no = 0; operand_no < instruction->operand_count();
+    for (int64_t operand_no = 0; operand_no < instruction->operand_count();
          ++operand_no) {
       const HloInstruction* operand = instruction->operand(operand_no);
       if (instruction->shape().rank() != operand->shape().rank()) {

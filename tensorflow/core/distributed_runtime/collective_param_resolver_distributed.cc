@@ -69,7 +69,7 @@ class CompleteInstanceCall : public CancellableCall {
     req_.set_group_size(group.group_size);
     req_.set_instance_key(instance.instance_key);
     req_.set_device_type(group.device_type.type_string());
-    for (int32 offset : instance.impl_details.subdiv_offsets) {
+    for (int32_t offset : instance.impl_details.subdiv_offsets) {
       req_.add_subdiv_offset(offset);
     }
     req_.set_device(device_name);
@@ -191,7 +191,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   cp->instance.data_type = request->data_type();
   cp->instance.shape = TensorShape(request->shape());
   cp->is_source = request->is_source();
-  for (int32 offset : request->subdiv_offset()) {
+  for (int32_t offset : request->subdiv_offset()) {
     cp->instance.impl_details.subdiv_offsets.push_back(offset);
   }
   StatusCallback done_and_cleanup = [cp, done](const Status& s) {
@@ -219,7 +219,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
 }
 
 CollectiveParamResolverDistributed::GroupRec*
-CollectiveParamResolverDistributed::GetCachedGroup(int32 group_key) {
+CollectiveParamResolverDistributed::GetCachedGroup(int32_t group_key) {
   mutex_lock l(group_mu_);
   auto it = group_table_.find(group_key);
   if (it == group_table_.end()) {
@@ -328,8 +328,8 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
   }
 }
 
-bool CollectiveParamResolverDistributed::InstanceIsCached(int32 group_key,
-                                                          int32 instance_key) {
+bool CollectiveParamResolverDistributed::InstanceIsCached(
+    int32_t group_key, int32_t instance_key) {
   mutex_lock l(instance_mu_);
   auto group_it = instance_table_.find(group_key);
   if (group_it == instance_table_.end()) {
@@ -342,7 +342,7 @@ bool CollectiveParamResolverDistributed::InstanceIsCached(int32 group_key,
 Status CollectiveParamResolverDistributed::UpdateInstanceCache(
     const GroupRec* gr, CollectiveParams* cp,
     const CompleteInstanceResponse& resp) {
-  int32 source_rank = resp.source_rank();
+  int32_t source_rank = resp.source_rank();
   bool created_irec;
   InstanceRec* ir = GetOrCreateInstanceRec(gr, cp, &created_irec);
   mutex_lock l(ir->mu);

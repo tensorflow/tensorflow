@@ -32,7 +32,7 @@ namespace cpu {
 // obvious.
 
 inline llvm::APFloat GetIeeeF32(float f) { return llvm::APFloat(f); }
-inline llvm::APFloat GetIeeeF32FromBitwiseRep(int32 bitwise_value) {
+inline llvm::APFloat GetIeeeF32FromBitwiseRep(int32_t bitwise_value) {
   return llvm::APFloat(llvm::APFloat::IEEEsingle(),
                        llvm::APInt(/*numBits=*/32, /*val=*/bitwise_value));
 }

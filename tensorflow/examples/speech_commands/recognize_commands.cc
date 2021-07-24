@@ -18,9 +18,10 @@ limitations under the License.
 namespace tensorflow {
 
 RecognizeCommands::RecognizeCommands(const std::vector<string>& labels,
-                                     int32 average_window_duration_ms,
+                                     int32_t average_window_duration_ms,
                                      float detection_threshold,
-                                     int32 suppression_ms, int32 minimum_count)
+                                     int32_t suppression_ms,
+                                     int32_t minimum_count)
     : labels_(labels),
       average_window_duration_ms_(average_window_duration_ms),
       detection_threshold_(detection_threshold),
@@ -32,7 +33,7 @@ RecognizeCommands::RecognizeCommands(const std::vector<string>& labels,
 }
 
 Status RecognizeCommands::ProcessLatestResults(const Tensor& latest_results,
-                                               const int64 current_time_ms,
+                                               const int64_t current_time_ms,
                                                string* found_command,
                                                float* score,
                                                bool* is_new_command) {
@@ -55,16 +56,16 @@ Status RecognizeCommands::ProcessLatestResults(const Tensor& latest_results,
   previous_results_.push_back({current_time_ms, latest_results});
 
   // Prune any earlier results that are too old for the averaging window.
-  const int64 time_limit = current_time_ms - average_window_duration_ms_;
+  const int64_t time_limit = current_time_ms - average_window_duration_ms_;
   while (previous_results_.front().first < time_limit) {
     previous_results_.pop_front();
   }
 
   // If there are too few results, assume the result will be unreliable and
   // bail.
-  const int64 how_many_results = previous_results_.size();
-  const int64 earliest_time = previous_results_.front().first;
-  const int64 samples_duration = current_time_ms - earliest_time;
+  const int64_t how_many_results = previous_results_.size();
+  const int64_t earliest_time = previous_results_.front().first;
+  const int64_t samples_duration = current_time_ms - earliest_time;
   if ((how_many_results < minimum_count_) ||
       (samples_duration < (average_window_duration_ms_ / 4))) {
     *found_command = previous_top_label_;
@@ -102,7 +103,7 @@ Status RecognizeCommands::ProcessLatestResults(const Tensor& latest_results,
   const float current_top_score = sorted_average_scores[0].second;
   // If we've recently had another label trigger, assume one that occurs too
   // soon afterwards is a bad result.
-  int64 time_since_last_top;
+  int64_t time_since_last_top;
   if ((previous_top_label_ == "_silence_") ||
       (previous_top_label_time_ == std::numeric_limits<int64>::min())) {
     time_since_last_top = std::numeric_limits<int64>::max();

@@ -41,7 +41,7 @@ class MemoryCache {
   void Reset();
 
   // Returns the element at the given index.
-  const std::vector<Tensor>& at(int64 index);
+  const std::vector<Tensor>& at(int64_t index);
 
   // Returns the size of the cache.
   size_t size();

@@ -88,13 +88,13 @@ struct CachedInterpolation {
 
 template <typename Scaler>
 inline void compute_interpolation_weights(const Scaler scaler,
-                                          const int64 out_size,
-                                          const int64 in_size,
+                                          const int64_t out_size,
+                                          const int64_t in_size,
                                           const float scale,
                                           CachedInterpolation* interpolation) {
   interpolation[out_size].lower = 0;
   interpolation[out_size].upper = 0;
-  for (int64 i = out_size - 1; i >= 0; --i) {
+  for (int64_t i = out_size - 1; i >= 0; --i) {
     const float in = scaler(i, scale);
     const float in_f = std::floor(in);
     interpolation[i].lower =
@@ -135,11 +135,11 @@ template <typename T>
 void ResizeLineChannels(const T* const ys_input_lower_ptr,
                         const T* const ys_input_upper_ptr,
                         const CachedInterpolation* const xs,
-                        const float ys_lerp, const int64 out_width,
+                        const float ys_lerp, const int64_t out_width,
                         float* out_y, const int channels) {
-  for (int64 x = 0; x < out_width; ++x) {
-    const int64 xs_lower = xs[x].lower;
-    const int64 xs_upper = xs[x].upper;
+  for (int64_t x = 0; x < out_width; ++x) {
+    const int64_t xs_lower = xs[x].lower;
+    const int64_t xs_upper = xs[x].upper;
     const float xs_lerp = xs[x].lerp;
 
     for (int c = 0; c < channels; ++c) {
@@ -174,15 +174,15 @@ template <typename T>
 void ResizeLine3ChannelsVector(const T* const ys_input_lower_ptr,
                                const T* const ys_input_upper_ptr,
                                const CachedInterpolation* const xs,
-                               const float ys_lerp, const int64 out_width,
+                               const float ys_lerp, const int64_t out_width,
                                float* out_y) {
   const __m128 ys_lerp_v = _mm_set1_ps(ys_lerp);
   // All pixels but the last one can overflow, vectorize the inside of the
   // row.
-  int64 x = 0;
+  int64_t x = 0;
   for (x = 0; x < out_width - 1; ++x) {
-    const int64 xs_lower = xs[x].lower;
-    const int64 xs_upper = xs[x].upper;
+    const int64_t xs_lower = xs[x].lower;
+    const int64_t xs_upper = xs[x].upper;
     const __m128 xs_lerp_v = _mm_set1_ps(xs[x].lerp);
 
     const __m128 top_left_v = load_3xfloat_v(ys_input_lower_ptr + xs_lower);
@@ -204,22 +204,22 @@ void ResizeLine3ChannelsVector(const T* const ys_input_lower_ptr,
 template <typename T>
 void resize_image(
     typename TTypes<T, 4>::ConstTensor images, const int batch_size,
-    const int64 in_height, const int64 in_width, const int64 out_height,
-    const int64 out_width, const int channels,
+    const int64_t in_height, const int64_t in_width, const int64_t out_height,
+    const int64_t out_width, const int channels,
     const std::vector<CachedInterpolation>& xs,
     const std::vector<CachedInterpolation>& ys,
     typename TTypes<float, 4>::Tensor output) TF_ATTRIBUTE_NOINLINE;
 template <typename T>
 void resize_image(typename TTypes<T, 4>::ConstTensor images,
-                  const int batch_size, const int64 in_height,
-                  const int64 in_width, const int64 out_height,
-                  const int64 out_width, const int channels,
+                  const int batch_size, const int64_t in_height,
+                  const int64_t in_width, const int64_t out_height,
+                  const int64_t out_width, const int channels,
                   const std::vector<CachedInterpolation>& xs_vec,
                   const std::vector<CachedInterpolation>& ys,
                   typename TTypes<float, 4>::Tensor output) {
-  const int64 in_row_size = in_width * channels;
-  const int64 in_batch_num_values = in_height * in_row_size;
-  const int64 out_row_size = out_width * channels;
+  const int64_t in_row_size = in_width * channels;
+  const int64_t in_batch_num_values = in_height * in_row_size;
+  const int64_t out_row_size = out_width * channels;
 
   const T* input_b_ptr = images.data();
   const CachedInterpolation* xs = xs_vec.data();
@@ -227,7 +227,7 @@ void resize_image(typename TTypes<T, 4>::ConstTensor images,
   if (channels == 3) {
     float* output_y_ptr = output.data();
     for (int b = 0; b < batch_size; ++b) {
-      for (int64 y = 0; y < out_height; ++y) {
+      for (int64_t y = 0; y < out_height; ++y) {
         const T* ys_input_lower_ptr = input_b_ptr + ys[y].lower * in_row_size;
         const T* ys_input_upper_ptr = input_b_ptr + ys[y].upper * in_row_size;
 #ifdef __SSE4_1__
@@ -244,7 +244,7 @@ void resize_image(typename TTypes<T, 4>::ConstTensor images,
   } else {
     float* output_y_ptr = output.data();
     for (int b = 0; b < batch_size; ++b) {
-      for (int64 y = 0; y < out_height; ++y) {
+      for (int64_t y = 0; y < out_height; ++y) {
         const T* ys_input_lower_ptr = input_b_ptr + ys[y].lower * in_row_size;
         const T* ys_input_upper_ptr = input_b_ptr + ys[y].upper * in_row_size;
 
@@ -289,12 +289,12 @@ struct ResizeBilinear<CPUDevice, T> {
                   bool half_pixel_centers,
                   typename TTypes<float, 4>::Tensor output) {
     const int batch_size = images.dimension(0);
-    const int64 in_height = images.dimension(1);
-    const int64 in_width = images.dimension(2);
+    const int64_t in_height = images.dimension(1);
+    const int64_t in_width = images.dimension(2);
     const int channels = images.dimension(3);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const int64_t out_height = output.dimension(1);
+    const int64_t out_width = output.dimension(2);
 
     // Handle no-op resizes efficiently.
     if (out_height == in_height && out_width == in_width) {

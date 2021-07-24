@@ -75,7 +75,7 @@ template <typename Tindices>
 std::vector<Tindices> GetStartIndicesOfEachDenseRow(
     const typename TTypes<Tindices>::ConstMatrix& indices_mat,
     bool* contains_empty_rows) {
-  int64 start_sparse_index_of_cur_dense_row = 0;
+  int64_t start_sparse_index_of_cur_dense_row = 0;
   std::vector<Tindices> segment_indices;
   const Tindices num_entries_in_sparse_tensor = indices_mat.dimension(0);
   const Tindices num_dense_rows_in_sparse_tensor =

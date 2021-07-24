@@ -914,7 +914,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     bool has_collective_v2 = false;
     for (Node* node : optimized_graph->nodes()) {
       if (node->IsCollective()) {
-        int32 instance_key;
+        int32_t instance_key;
         TF_RETURN_IF_ERROR(
             GetNodeAttr(node->attrs(), "instance_key", &instance_key));
         instance_key_set.emplace(instance_key);
@@ -928,7 +928,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
                 ndef.op() == "CollectiveBcastSend" ||
                 ndef.op() == "CollectiveBcastRecv" ||
                 ndef.op() == "CollectiveGather") {
-              int32 instance_key;
+              int32_t instance_key;
               TF_RETURN_IF_ERROR(
                   GetNodeAttr(ndef, "instance_key", &instance_key));
               instance_key_set.emplace(instance_key);
@@ -941,7 +941,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     }
     if (!instance_key_set.empty()) {
       uint64 hash = 0x8774aa605c729c72ULL;
-      for (int32 instance_key : instance_key_set) {
+      for (int32_t instance_key : instance_key_set) {
         hash = Hash64Combine(instance_key, hash);
       }
       collective_graph_key = hash;

@@ -123,7 +123,7 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
   *done = false;
 
   int64_t total_size = 0;
-  for (const int64 size : sizes) {
+  for (const int64_t size : sizes) {
     total_size += size;
   }
   if (total_size > input.shape().dim_size(0)) {
@@ -141,7 +141,7 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
   // Special case 1: input is aligned.
   if (IsInnerDimsSizeAligned<T>(input.shape())) {
     int64_t position = 0;
-    for (const int64 size : sizes) {
+    for (const int64_t size : sizes) {
       outputs->emplace_back(input.Slice(position, position + size));
       position += size;
     }
@@ -165,7 +165,7 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
       input.shaped<T, 2>({input.shape().dim_size(0), suffix_dim_size});
 
   int64_t position = 0;
-  for (const int64 size : sizes) {
+  for (const int64_t size : sizes) {
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, size);
     Tensor output;

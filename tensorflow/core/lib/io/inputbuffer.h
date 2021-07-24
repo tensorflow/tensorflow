@@ -52,12 +52,12 @@ class InputBuffer {
   // If successful, returns OK.  If we there are not enough bytes to
   // read before the end of the file, we return an OUT_OF_RANGE error.
   // Otherwise, we return some other non-OK status.
-  Status ReadNBytes(int64 bytes_to_read, std::string* result);
+  Status ReadNBytes(int64_t bytes_to_read, std::string* result);
 
   // An overload that writes to char*.  Caller must ensure result[0,
   // bytes_to_read) is valid to be overwritten.  Returns OK iff "*bytes_read ==
   // bytes_to_read".
-  Status ReadNBytes(int64 bytes_to_read, char* result, size_t* bytes_read);
+  Status ReadNBytes(int64_t bytes_to_read, char* result, size_t* bytes_read);
 
   // Reads a single varint32.
   Status ReadVarint32(uint32* result);
@@ -66,17 +66,17 @@ class InputBuffer {
   Status ReadVarint64(uint64* result);
 
   // Like ReadNBytes() without returning the bytes read.
-  Status SkipNBytes(int64 bytes_to_skip);
+  Status SkipNBytes(int64_t bytes_to_skip);
 
   // Seek to this offset within the file.
   //
   // If we seek to somewhere within our pre-buffered data, we will re-use what
   // data we can.  Otherwise, Seek() throws out the current buffer and the next
   // read will trigger a File::Read().
-  Status Seek(int64 position);
+  Status Seek(int64_t position);
 
   // Provides a hint about future reads, which may improve their performance.
-  Status Hint(int64 bytes_to_read);
+  Status Hint(int64_t bytes_to_read);
 
   // Returns the position in the file.
   int64 Tell() const { return file_pos_ - (limit_ - pos_); }

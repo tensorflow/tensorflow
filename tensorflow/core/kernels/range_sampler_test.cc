@@ -47,7 +47,7 @@ class RangeSamplerTest : public ::testing::Test {
     random::SimplePhilox rnd(&philox);
     sampler_->SampleBatch(&rnd, false, absl::MakeSpan(a));
     for (int i = 0; i < num_samples; i++) {
-      int64 val = a[i];
+      int64_t val = a[i];
       ASSERT_GE(val, 0);
       ASSERT_LT(val, range);
       h[val]++;
@@ -71,7 +71,7 @@ class RangeSamplerTest : public ::testing::Test {
     for (int i = 0; i < 10; i++) {
       a[i] = i;
     }
-    for (int64 i = 1; i < 10; i++) {
+    for (int64_t i = 1; i < 10; i++) {
       sampler_->Update(ArraySlice<int64>(a + i, 10 - i));
     }
   }

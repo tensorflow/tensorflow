@@ -45,7 +45,7 @@ StatusOr<bool> DynamicIndexSplitter::Run(HloModule* module) {
       }
       auto parent = dynamic_op->parent();
       bool is_update = dynamic_op->opcode() == HloOpcode::kDynamicUpdateSlice;
-      int64 num_indices = dynamic_op->operand(0)->shape().rank();
+      int64_t num_indices = dynamic_op->operand(0)->shape().rank();
 
       if (num_indices == 0) {
         // If the operand rank is 0, directly replace R0 DS/DUS with the
@@ -61,8 +61,9 @@ StatusOr<bool> DynamicIndexSplitter::Run(HloModule* module) {
         continue;
       }
 
-      int64 index_operand_number = Cast<HloDynamicIndexInstruction>(dynamic_op)
-                                       ->first_index_operand_number();
+      int64_t index_operand_number =
+          Cast<HloDynamicIndexInstruction>(dynamic_op)
+              ->first_index_operand_number();
       auto index_operand = dynamic_op->mutable_operand(index_operand_number);
       if (ShapeUtil::IsScalar(index_operand->shape())) {
         // This DS/DUS already uses scalar indices.
@@ -71,7 +72,7 @@ StatusOr<bool> DynamicIndexSplitter::Run(HloModule* module) {
       TF_RET_CHECK(index_operand->shape().rank() == 1);
       auto index_element_type = index_operand->shape().element_type();
       std::vector<HloInstruction*> index_array;
-      for (int64 dim = 0; dim < num_indices; ++dim) {
+      for (int64_t dim = 0; dim < num_indices; ++dim) {
         auto slice = parent->AddInstruction(HloInstruction::CreateSlice(
             ShapeUtil::MakeShape(index_element_type, {1}), index_operand, {dim},
             {dim + 1}, {1}));

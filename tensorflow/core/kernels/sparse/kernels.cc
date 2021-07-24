@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace functor {
 
 Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
-    const int64 batch_size, const int num_rows,
+    const int64_t batch_size, const int num_rows,
     TTypes<int64>::ConstMatrix indices, TTypes<int32>::Vec batch_ptr,
     TTypes<int32>::Vec csr_row_ptr, TTypes<int32>::Vec csr_col_ind) {
   // Validate inputs.
@@ -43,7 +43,7 @@ Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
         csr_row_ptr.size(), " vs. ", batch_size * (num_rows + 1));
   }
 
-  const int64 total_nnz = indices.dimension(0);
+  const int64_t total_nnz = indices.dimension(0);
   const int rank = indices.dimension(1);
   if (rank == 2 && batch_size != 1) {
     return errors::InvalidArgument(

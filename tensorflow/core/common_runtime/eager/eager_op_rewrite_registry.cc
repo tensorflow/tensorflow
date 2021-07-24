@@ -22,7 +22,7 @@ EagerOpRewriteRegistry* EagerOpRewriteRegistry::Global() {
   return global_rewrite_registry;
 }
 
-void EagerOpRewriteRegistry::Register(Phase phase, int32 ordinal,
+void EagerOpRewriteRegistry::Register(Phase phase, int32_t ordinal,
                                       std::unique_ptr<EagerOpRewrite> pass) {
   auto it_rewrites = rewrites_[phase].cbegin();
   for (; it_rewrites != rewrites_[phase].cend(); ++it_rewrites) {

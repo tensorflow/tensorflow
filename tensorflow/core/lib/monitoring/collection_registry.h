@@ -296,7 +296,7 @@ template <typename Value>
 void CollectValue(Value value, Point* point);
 
 template <>
-inline void CollectValue(int64 value, Point* const point) {
+inline void CollectValue(int64_t value, Point* const point) {
   point->value_type = ValueType::kInt64;
   point->int64_value = value;
 }

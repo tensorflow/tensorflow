@@ -41,7 +41,7 @@ constexpr char kNextIndex[] = "next_index";
 
 class ShardDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 num_shards, int64 index,
+  Dataset(OpKernelContext* ctx, int64_t num_shards, int64_t index,
           bool require_non_empty, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)),
         num_shards_(num_shards),
@@ -78,7 +78,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -250,8 +250,8 @@ ShardDatasetOp::ShardDatasetOp(OpKernelConstruction* ctx)
 
 void ShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
-  int64 index = 0;
-  int64 num_shards = 0;
+  int64_t index = 0;
+  int64_t num_shards = 0;
 
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kNumShards, &num_shards));
   OP_REQUIRES(

@@ -42,8 +42,8 @@ TEST(Array2dTest, FillCtor) {
   EXPECT_EQ(fullof7.n1(), 2);
   EXPECT_EQ(fullof7.n2(), 3);
 
-  for (int64 n1 = 0; n1 < fullof7.n1(); ++n1) {
-    for (int64 n2 = 0; n2 < fullof7.n2(); ++n2) {
+  for (int64_t n1 = 0; n1 < fullof7.n1(); ++n1) {
+    for (int64_t n2 = 0; n2 < fullof7.n2(); ++n2) {
       EXPECT_EQ(fullof7(n1, n2), 7);
     }
   }
@@ -111,15 +111,15 @@ TEST(Array2dTest, IndexingReadWriteBool) {
 
 TEST(Array2dTest, Fill) {
   Array2D<int> fullof7(2, 3, 7);
-  for (int64 n1 = 0; n1 < fullof7.n1(); ++n1) {
-    for (int64 n2 = 0; n2 < fullof7.n2(); ++n2) {
+  for (int64_t n1 = 0; n1 < fullof7.n1(); ++n1) {
+    for (int64_t n2 = 0; n2 < fullof7.n2(); ++n2) {
       EXPECT_EQ(fullof7(n1, n2), 7);
     }
   }
 
   fullof7.Fill(11);
-  for (int64 n1 = 0; n1 < fullof7.n1(); ++n1) {
-    for (int64 n2 = 0; n2 < fullof7.n2(); ++n2) {
+  for (int64_t n1 = 0; n1 < fullof7.n1(); ++n1) {
+    for (int64_t n2 = 0; n2 < fullof7.n2(); ++n2) {
       EXPECT_EQ(fullof7(n1, n2), 11);
     }
   }

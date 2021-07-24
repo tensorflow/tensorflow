@@ -152,9 +152,9 @@ string RoundTripFpToString(double value) {
   return result;
 }
 
-PaddingConfig MakeNoPaddingConfig(int64 rank) {
+PaddingConfig MakeNoPaddingConfig(int64_t rank) {
   PaddingConfig padding_config;
-  for (int64 dnum = 0; dnum < rank; ++dnum) {
+  for (int64_t dnum = 0; dnum < rank; ++dnum) {
     auto dimension = padding_config.add_dimensions();
     dimension->set_edge_padding_low(0);
     dimension->set_edge_padding_high(0);
@@ -252,12 +252,12 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
   absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
   if (absl::c_equal(a, b)) {
     bounds.reserve(a.size() + 1);
-    for (int64 i = 0; i <= a.size(); ++i) {
+    for (int64_t i = 0; i <= a.size(); ++i) {
       bounds.emplace_back(i, i);
     }
     return bounds;
   }
-  int64 i = 0, j = 0, prior_i = -1, prior_j = -1;
+  int64_t i = 0, j = 0, prior_i = -1, prior_j = -1;
   while (i < a.size() && j < b.size() && a[i] == b[j]) {
     std::tie(prior_i, prior_j) = std::make_pair(i, j);
     bounds.emplace_back(i, j);
@@ -282,7 +282,7 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     return bounds;
   }
 
-  for (int64 partial_size_a = 1, partial_size_b = 1;;) {
+  for (int64_t partial_size_a = 1, partial_size_b = 1;;) {
     if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
       std::tie(prior_i, prior_j) = std::make_pair(i, j);
       bounds.emplace_back(i, j);
@@ -323,26 +323,26 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
     absl::Span<const int64> to_sizes) {
   ConvertedDimensionNumbers dimensions;
   auto common_factors = CommonFactors(from_sizes, to_sizes);
-  for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+  for (int64_t i = 0; i < common_factors.size() - 1; ++i) {
     bool any_present = false;
     bool all_present = true;
-    for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+    for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
          ++d) {
       const bool present = absl::c_linear_search(from_dimensions, d);
       any_present |= present;
       all_present &= present;
     }
     if (all_present) {
-      for (int64 d = common_factors[i].second; d < common_factors[i + 1].second;
-           ++d) {
+      for (int64_t d = common_factors[i].second;
+           d < common_factors[i + 1].second; ++d) {
         dimensions.to_dimensions.push_back(d);
       }
-      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+      for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
            ++d) {
         dimensions.transformed_from_dimensions.push_back(d);
       }
     } else if (any_present) {
-      for (int64 d = common_factors[i].first; d < common_factors[i + 1].first;
+      for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
            ++d) {
         if (absl::c_linear_search(from_dimensions, d)) {
           dimensions.untransformed_from_dimensions.push_back(d);

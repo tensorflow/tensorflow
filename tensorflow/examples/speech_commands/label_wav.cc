@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
   string labels = "";
   string input_name = "wav_data";
   string output_name = "labels_softmax";
-  int32 how_many_labels = 3;
+  int32_t how_many_labels = 3;
   std::vector<Flag> flag_list = {
       Flag("wav", &wav, "audio file to be identified"),
       Flag("graph", &graph, "model to be executed"),

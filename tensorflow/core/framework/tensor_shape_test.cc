@@ -263,7 +263,7 @@ class TensorShapeOld {
 
   /// \brief Add a dimension to the end ("inner-most").
   /// REQUIRES: `size >= 0`
-  void AddDim(int64 size);
+  void AddDim(int64_t size);
 
   /// Appends all the dimensions from `shape`.
   void AppendShape(const TensorShapeOld& shape);
@@ -271,12 +271,12 @@ class TensorShapeOld {
   /// \brief Insert a dimension somewhere in the `TensorShape`.
   /// REQUIRES: `0 <= d <= dims()`
   /// REQUIRES: `size >= 0`
-  void InsertDim(int d, int64 size);
+  void InsertDim(int d, int64_t size);
 
   /// \brief Modifies the size of the dimension `d` to be `size`
   /// REQUIRES: `0 <= d < dims()`
   /// REQUIRES: `size >= 0`
-  void set_dim(int d, int64 size);
+  void set_dim(int d, int64_t size);
 
   /// \brief Removes dimension `d` from the `TensorShape`.
   /// REQUIRES: `0 <= d < dims()`
@@ -345,7 +345,7 @@ class TensorShapeOld {
 };
 
 struct TensorShapeDimOld {
-  explicit TensorShapeDimOld(int64 s) : size(s) {}
+  explicit TensorShapeDimOld(int64_t s) : size(s) {}
   int64 size;
 };
 
@@ -372,10 +372,10 @@ class TensorShapeIterOld {
 };
 
 // An upper limit of the total number of elements in a tensor.
-static const int64 kMaxElements = (1LL << 40);
+static const int64_t kMaxElements = (1LL << 40);
 
 bool TensorShapeOld::IsValid(const TensorShapeProto& proto) {
-  int64 num_elements = 1;
+  int64_t num_elements = 1;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) return false;
     num_elements *= d.size();
@@ -385,7 +385,7 @@ bool TensorShapeOld::IsValid(const TensorShapeProto& proto) {
 }
 
 Status TensorShapeOld::IsValidShape(const TensorShapeProto& proto) {
-  int64 num_elements = 1;
+  int64_t num_elements = 1;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) {
       return errors::InvalidArgument("Shape ", DebugString(proto),
@@ -425,7 +425,7 @@ void TensorShapeOld::Clear() {
   num_elements_ = 1;
 }
 
-void TensorShapeOld::AddDim(int64 size) {
+void TensorShapeOld::AddDim(int64_t size) {
   CHECK_GE(size, 0);
   dim_sizes_.push_back(size);
   num_elements_ *= size;
@@ -437,7 +437,7 @@ void TensorShapeOld::AppendShape(const TensorShapeOld& shape) {
   for (auto d : shape) AddDim(d.size);
 }
 
-void TensorShapeOld::InsertDim(int d, int64 size) {
+void TensorShapeOld::InsertDim(int d, int64_t size) {
   CHECK_GE(d, 0);
   CHECK_LE(d, dims());
   CHECK_GE(size, 0);
@@ -447,7 +447,7 @@ void TensorShapeOld::InsertDim(int d, int64 size) {
   CHECK_LE(num_elements_, kMaxElements);
 }
 
-void TensorShapeOld::set_dim(int d, int64 size) {
+void TensorShapeOld::set_dim(int d, int64_t size) {
   CHECK_GE(d, 0);
   CHECK_LT(d, dims());
   CHECK_GE(size, 0);
@@ -518,8 +518,8 @@ string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
 // End of old implementation
 // ------------------------------------------------------------------------
 
-static int64 SkewedSize(random::SimplePhilox* gen, int64 current_elements) {
-  int64 result = 0;
+static int64 SkewedSize(random::SimplePhilox* gen, int64_t current_elements) {
+  int64_t result = 0;
   do {
     if (current_elements < 100) {
       result = gen->Uniform(100000);
@@ -561,10 +561,10 @@ TEST(TensorShapeTest, Randomized) {
     moved = std::move(copy);
     EXPECT_EQ(s, moved);
 
-    int64 ne = sold.num_elements();
+    int64_t ne = sold.num_elements();
     int r = gen.Uniform(100);
     if (r < 10) {
-      int64 sz = SkewedSize(&gen, sold.num_elements());
+      int64_t sz = SkewedSize(&gen, sold.num_elements());
       s.AddDim(sz);
       sold.AddDim(sz);
     } else if (r < 15) {
@@ -576,15 +576,15 @@ TEST(TensorShapeTest, Randomized) {
       sold.RemoveDim(dim);
     } else if (r < 50 && ne > 0 && ne < 100000000) {
       int dim = gen.Uniform(s.dims() + 1);
-      int64 sz = SkewedSize(&gen, sold.num_elements());
+      int64_t sz = SkewedSize(&gen, sold.num_elements());
       s.InsertDim(dim, sz);
       sold.InsertDim(dim, sz);
     } else {
       std::vector<int64> sizes;
       const int N = (gen.Uniform(4) == 0) ? gen.Uniform(10) : gen.Uniform(3);
-      int64 num_elements = 1;
+      int64_t num_elements = 1;
       for (int i = 0; i < N; i++) {
-        int64 sz = SkewedSize(&gen, num_elements);
+        int64_t sz = SkewedSize(&gen, num_elements);
         sizes.push_back(sz);
         num_elements *= std::max<int64>(1, sz);
       }
@@ -598,8 +598,8 @@ TEST(TensorShapeTest, Randomized) {
 TEST(TensorShapeTest, Large) {
   // We used to cap shapes at 2**40 elements.  Ensure the
   // bound is now higher.
-  int64 one = 1;
-  int64 max = std::numeric_limits<int64>::max();
+  int64_t one = 1;
+  int64_t max = std::numeric_limits<int64>::max();
   EXPECT_EQ(TensorShape({max}).num_elements(), max);
   EXPECT_EQ(TensorShape({1, max}).num_elements(), max);
   EXPECT_EQ(TensorShape({max, 1}).num_elements(), max);
@@ -610,7 +610,7 @@ TEST(TensorShapeTest, Large) {
 }
 
 TEST(TensorShapeTest, Overflow) {
-  int64 one = 1;
+  int64_t one = 1;
   std::vector<std::vector<int64>> overflows = {
       {1 << 30, 1 << 30, 1 << 30},
       {1 << 5, (one << 60) + 1},

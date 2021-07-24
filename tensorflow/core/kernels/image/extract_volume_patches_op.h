@@ -31,7 +31,7 @@ struct ExtractVolumePatchesForward {
                   /* int rate_planes, int rate_rows, int rate_cols, */
                   const Eigen::PaddingType& padding,
                   typename TTypes<T, 5>::Tensor output) {
-    const int64 N = std::max(input.size(), output.size());
+    const int64_t N = std::max(input.size(), output.size());
     if (N <= std::numeric_limits<Index32>::max()) {
       auto output_32bit = To32Bit(output);
       output_32bit.device(d) =

@@ -64,7 +64,7 @@ std::string RunDirectory(const std::string& hash_directory,
 
 // Returns the name of the "shard" directory for the given base path and shard
 // ID.
-std::string ShardDirectory(const std::string& run_directory, int64 shard_id);
+std::string ShardDirectory(const std::string& run_directory, int64_t shard_id);
 
 // Returns the checkpoint file name for the given directory and checkpoint ID.
 std::string GetCheckpointFileName(const std::string& shard_directory,
@@ -215,7 +215,7 @@ class Reader {
                                   const string& compression_type, int version,
                                   const DataTypeVector& dtypes,
                                   const std::vector<PartialTensorShape>& shapes,
-                                  const int64 start_index,
+                                  const int64_t start_index,
                                   DatasetBase** output);
 
   // Reads a vector of Tensors from the snapshot file.
@@ -223,7 +223,7 @@ class Reader {
 
   // Skips `num_records`. Equivalent to calling `ReadTensors` `num_records`
   // times then discarding the results.
-  virtual Status SkipRecords(int64 num_records);
+  virtual Status SkipRecords(int64_t num_records);
 
   virtual ~Reader() {}
 
@@ -263,10 +263,10 @@ class CustomReader : public Reader {
   // The reader input buffer size is deliberately large because the input reader
   // will throw an error if the compressed block length cannot fit in the input
   // buffer.
-  static constexpr const int64 kSnappyReaderInputBufferSizeBytes =
+  static constexpr const int64_t kSnappyReaderInputBufferSizeBytes =
       1 << 30;  // 1 GiB
   // TODO(b/148804377): Set this in a smarter fashion.
-  static constexpr const int64 kSnappyReaderOutputBufferSizeBytes =
+  static constexpr const int64_t kSnappyReaderOutputBufferSizeBytes =
       32 << 20;  // 32 MiB
   static constexpr const size_t kHeaderSize = sizeof(uint64);
 
@@ -350,9 +350,9 @@ struct ElementOrEOF {
 // writer = nullptr;  // This will block until writes are flushed.
 class AsyncWriter {
  public:
-  explicit AsyncWriter(Env* env, int64 file_index,
+  explicit AsyncWriter(Env* env, int64_t file_index,
                        const std::string& shard_directory, uint64 checkpoint_id,
-                       const std::string& compression, int64 version,
+                       const std::string& compression, int64_t version,
                        const DataTypeVector& output_types,
                        std::function<void(Status)> done);
 
@@ -369,7 +369,7 @@ class AsyncWriter {
   bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status WriterThread(Env* env, const std::string& shard_directory,
                       uint64 checkpoint_id, const std::string& compression,
-                      int64 version, DataTypeVector output_types);
+                      int64_t version, DataTypeVector output_types);
 
   mutex mu_;
   std::deque<ElementOrEOF> deque_ TF_GUARDED_BY(mu_);

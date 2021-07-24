@@ -3006,7 +3006,7 @@ TEST_F(ConstantFoldingTest, LargeConstantNoSizeIncrease) {
   // kMaxConstantSize that can be folded because the resulting size does not
   // increase.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-  const int64 large_constant_size = kMaxConstantSize + 1;
+  const int64_t large_constant_size = kMaxConstantSize + 1;
   Output a = ops::Variable(scope.WithOpName("a"), {1, 1}, DT_FLOAT);
   Output b_const =
       ops::Const(scope.WithOpName("b_const"), 3.14f, {1, large_constant_size});

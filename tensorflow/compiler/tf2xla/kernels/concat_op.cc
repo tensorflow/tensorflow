@@ -60,7 +60,7 @@ class ConcatBaseOp : public XlaOpKernel {
     const int input_dims = shapes[0].dims();
     const TensorShape& input_shape = shapes[0];
 
-    int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
+    int32_t axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
     OP_REQUIRES(ctx, 0 <= axis && axis < input_dims,
                 errors::InvalidArgument(
                     "ConcatOp : Expected concatenating dimensions in the range "
@@ -152,7 +152,7 @@ class ConcatOffsetOp : public XlaOpKernel {
     //  [0, 0, 0, 0]
     //  [0, 2, 0, 0]
     //  [0, 5, 0, 0]
-    const int32 N = ctx->num_inputs() - 1;
+    const int32_t N = ctx->num_inputs() - 1;
     const TensorShape inp0_shape = ctx->InputShape(1);
     std::vector<int64> inp0_dims;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &inp0_dims));
@@ -162,11 +162,11 @@ class ConcatOffsetOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &cdim));
 
     VLOG(1) << "ConcatOffset " << cdim << "," << inp0_rank;
-    int32 axis = cdim < 0 ? cdim + inp0_rank : cdim;
+    int32_t axis = cdim < 0 ? cdim + inp0_rank : cdim;
     OP_REQUIRES(ctx, FastBoundsCheck(axis, inp0_rank),
                 errors::InvalidArgument("Concat dim is out of range: ", axis,
                                         " vs. ", inp0_rank));
-    int32 offset = 0;
+    int32_t offset = 0;
     for (int i = 0; i < N; ++i) {
       const TensorShape inp_shape = ctx->InputShape(1 + i);
       OP_REQUIRES(ctx, inp0_rank == inp_shape.num_elements(),
@@ -183,8 +183,8 @@ class ConcatOffsetOp : public XlaOpKernel {
           out_vec(j) = offset;
           offset += inp_dims[j];
         } else {
-          const int32 inp0_element = inp0_dims[j];
-          const int32 inp_element = inp_dims[j];
+          const int32_t inp0_element = inp0_dims[j];
+          const int32_t inp_element = inp_dims[j];
           OP_REQUIRES(ctx, inp0_element == inp_element,
                       errors::InvalidArgument(
                           "All dimensions except ", axis, " must match. Input ",

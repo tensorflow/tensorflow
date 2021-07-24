@@ -159,7 +159,7 @@ class ExecutorImpl : public Executor {
       is_expensive_.resize(gview.num_nodes());
       cost_estimates_ =
           absl::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
-      for (int32 i = 0; i < gview.num_nodes(); ++i) {
+      for (int32_t i = 0; i < gview.num_nodes(); ++i) {
         if (gview.node(i)) {
           is_expensive_[i] =
               gview.node(i)->kernel && gview.node(i)->kernel->IsExpensive();

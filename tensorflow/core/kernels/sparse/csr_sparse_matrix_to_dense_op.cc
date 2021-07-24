@@ -70,8 +70,8 @@ class CSRSparseMatrixToDenseCPUOp : public OpKernel {
                                         "but dense_shape has size ", rank));
 
     auto dense_shape = dense_shape_t.vec<int64>();
-    const int64 num_rows = dense_shape((rank == 2) ? 0 : 1);
-    const int64 num_cols = dense_shape((rank == 2) ? 1 : 2);
+    const int64_t num_rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t num_cols = dense_shape((rank == 2) ? 1 : 2);
 
     auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
     auto row_ptr = csr_sparse_matrix->row_pointers().vec<int32>();
@@ -95,15 +95,15 @@ class CSRSparseMatrixToDenseCPUOp : public OpKernel {
     auto shard = [&](int64_t batch_begin, int64_t batch_end) {
       for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
            ++batch_idx) {
-        const int64 csr_batch_offset = batch_ptrs(batch_idx);
-        const int64 dense_batch_offset = batch_idx * num_rows * num_cols;
+        const int64_t csr_batch_offset = batch_ptrs(batch_idx);
+        const int64_t dense_batch_offset = batch_idx * num_rows * num_cols;
 
         for (int row_idx = 0; row_idx < num_rows; ++row_idx) {
-          const int64 row_offset = batch_idx * (num_rows + 1) + row_idx;
-          const int64 col_begin = row_ptr(row_offset);
-          const int64 col_end = row_ptr(row_offset + 1);
+          const int64_t row_offset = batch_idx * (num_rows + 1) + row_idx;
+          const int64_t col_begin = row_ptr(row_offset);
+          const int64_t col_end = row_ptr(row_offset + 1);
           for (int64_t i = col_begin; i < col_end; ++i) {
-            const int64 col_idx = col_ind(csr_batch_offset + i);
+            const int64_t col_idx = col_ind(csr_batch_offset + i);
             dense_ptr[dense_batch_offset + (row_idx * num_cols) + col_idx] =
                 values(csr_batch_offset + i);
           }
@@ -143,10 +143,10 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
                                         "but dense_shape has size ", rank));
 
     const int batch_size = csr_sparse_matrix->batch_size();
-    const int64 total_nnz = csr_sparse_matrix->total_nnz();
+    const int64_t total_nnz = csr_sparse_matrix->total_nnz();
 
     auto dense_shape = dense_shape_t.vec<int64>();
-    const int64 rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 
     Tensor indices_t;
     OP_REQUIRES_OK(c, c->allocate_temp(DT_INT64, TensorShape({total_nnz, rank}),

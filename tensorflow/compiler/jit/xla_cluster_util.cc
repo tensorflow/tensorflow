@@ -46,9 +46,9 @@ namespace {
 // create a cycle.
 string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
                      int dst) {
-  int32 max_path_size = graph.num_node_ids() + 1;
+  int32_t max_path_size = graph.num_node_ids() + 1;
   std::vector<int32> path(max_path_size);
-  int32 path_size = cycles->FindPath(dst, src, max_path_size, path.data());
+  int32_t path_size = cycles->FindPath(dst, src, max_path_size, path.data());
   if (path_size == 0) {
     return "";
   }
@@ -68,7 +68,7 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
   absl::StrAppend(&description, "Edge from ", node_name(src), " to ",
                   node_name(dst), " would create a cycle.\n");
   path.resize(path_size);
-  for (int32 node_id : path) {
+  for (int32_t node_id : path) {
     string ascii_art;
     if (node_id == dst) {
       ascii_art = "+-> ";

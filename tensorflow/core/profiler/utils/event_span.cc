@@ -189,7 +189,7 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
   return ClassifyDeviceCompute(event_name, tensor_shapes);
 }
 
-EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id,
+EventType ClassifyCpuEvent(absl::string_view event_name, int64_t correlation_id,
                            bool has_device) {
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD") ||
       absl::StrContains(event_name, "Infeed"))
@@ -283,7 +283,7 @@ std::string PrintStepEvents(const StepEvents& step_events) {
 
 void CombineStepEvents(const StepEvents& src, StepEvents* dst) {
   for (const auto& step_details : src) {
-    int64 step_id = step_details.first;
+    int64_t step_id = step_details.first;
     const StepDetails& src_details = step_details.second;
     StepDetails* dst_details = &(*dst)[step_id];
     CombineStepDetails(src_details, dst_details);
@@ -298,7 +298,7 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
   if (event_boundaries.empty()) return result;
   result.reserve(event_boundaries.size());
   PriorityTracker priority_tracker;
-  for (int64 i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
+  for (int64_t i = 0, end = (event_boundaries.size() - 1); i < end; i++) {
     EventType highest_priority = priority_tracker.Update(event_boundaries[i]);
     result.push_back({highest_priority, Timespan::FromEndPoints(
                                             event_boundaries[i].time_ps,
@@ -460,8 +460,8 @@ bool operator==(const StepEvents& a, const StepEvents& b) {
 
 PrecisionStats ComputePrecisionStats(
     const StepEvents& nonoverlapped_step_events) {
-  int64 compute_32bit_ps = 0;
-  int64 compute_16bit_ps = 0;
+  int64_t compute_32bit_ps = 0;
+  int64_t compute_16bit_ps = 0;
   for (const auto& id_details : nonoverlapped_step_events) {
     for (const auto& event : id_details.second.Events()) {
       switch (event.type) {

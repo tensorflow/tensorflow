@@ -61,10 +61,10 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
       }
 
       // Remove dead tuple elements.
-      const int64 tuple_element_count =
+      const int64_t tuple_element_count =
           ShapeUtil::TupleElementCount(xla_while->shape());
       bool modified_while_body_comp = false;
-      for (int64 i = 0; i < tuple_element_count; ++i) {
+      for (int64_t i = 0; i < tuple_element_count; ++i) {
         if (liveness->IsLive(xla_while, {i})) {
           continue;
         }

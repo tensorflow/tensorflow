@@ -204,8 +204,8 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
   OpMetricsDb result;
   DeviceOpMetricsDbBuilder device_op_metrics_db_builder(&result);
 
-  int64 first_op_offset_ps = kint64max;
-  int64 last_op_offset_ps = 0;
+  int64_t first_op_offset_ps = kint64max;
+  int64_t last_op_offset_ps = 0;
 
   TfOpRoofLineCostEstimator op_level_cost_estimator;
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);

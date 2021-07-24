@@ -140,7 +140,7 @@ AbstractTensorInterface* EagerContext::CreateUint64Scalar(uint64 value) {
   return new TensorInterface(Tensor(value));
 }
 
-AbstractTensorInterface* EagerContext::CreateInt32Scalar(int32 value) {
+AbstractTensorInterface* EagerContext::CreateInt32Scalar(int32_t value) {
   return new TensorInterface(Tensor(value));
 }
 
@@ -194,7 +194,7 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr) {
   Rendezvous::Factory rendezvous_factory{
-      [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
+      [this](const int64_t step_id, const DeviceMgr*, Rendezvous** r) {
         *r = CreateRendezvous(step_id);
         return Status::OK();
       }};
@@ -1470,7 +1470,7 @@ Status EagerContext::InitializeRemoteWorker(
     DynamicDeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
     uint64 context_view_id,
-    std::function<Rendezvous*(const int64)> rendezvous_creator,
+    std::function<Rendezvous*(const int64_t)> rendezvous_creator,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr,

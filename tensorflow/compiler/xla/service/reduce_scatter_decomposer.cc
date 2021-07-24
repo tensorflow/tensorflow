@@ -36,7 +36,7 @@ namespace xla {
 
 StatusOr<bool> ReduceScatterDecomposer::Run(HloModule *module) {
   bool changed = false;
-  int64 next_channel_id = hlo_query::NextChannelId(*module);
+  int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   for (HloComputation *computation : module->MakeNonfusionComputations()) {
     for (HloInstruction *instruction :

@@ -86,7 +86,7 @@ void TestCeilOfRatioUnsigned(uint64 kMax) {
 }
 
 template <typename SignedInteger>
-void TestCeilOfRatioSigned(int64 kMin, int64 kMax) {
+void TestCeilOfRatioSigned(int64_t kMin, int64_t kMax) {
   const int kNumTests = 30;
   const int64 kTestData[kNumTests][kNumTestArguments] = {
       // Numerator  | Denominator | Expected floor of ratio | Expected ceil of
@@ -166,11 +166,11 @@ static Integer CeilOrFloorOfRatioArithmetic(Integer numerator,
   }
 }
 
-void TestThatCeilOfRatioDenomMinusOneIsIncorrect(int64 numerator,
-                                                 int64 denominator,
-                                                 int64 expected_error) {
-  const int64 correct_result = MathUtil::CeilOfRatio(numerator, denominator);
-  const int64 result_by_denom_minus_one =
+void TestThatCeilOfRatioDenomMinusOneIsIncorrect(int64_t numerator,
+                                                 int64_t denominator,
+                                                 int64_t expected_error) {
+  const int64_t correct_result = MathUtil::CeilOfRatio(numerator, denominator);
+  const int64_t result_by_denom_minus_one =
       CeilOfRatioDenomMinusOne(numerator, denominator);
   EXPECT_EQ(result_by_denom_minus_one + expected_error, correct_result)
       << "numerator = " << numerator << " denominator = " << denominator

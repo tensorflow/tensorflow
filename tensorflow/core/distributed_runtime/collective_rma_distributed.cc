@@ -85,7 +85,7 @@ Status PopulateTensorFromResponse(const RecvBufResponse& response,
   // copied into request.buf_ptr.
   if (!has_transport_options) return Status::OK();
 
-  const int64 total_bytes = cpu_tensor->TotalBytes();
+  const int64_t total_bytes = cpu_tensor->TotalBytes();
   int64_t num_bytes = 0;
   RecvBufRespExtra extra;
   response.transport_options().UnpackTo(&extra);

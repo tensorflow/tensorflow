@@ -485,8 +485,8 @@ Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
         "got: ", strides.size());
   }
 
-  int32 stride_rows = strides[1];
-  int32 stride_cols = strides[2];
+  int32_t stride_rows = strides[1];
+  int32_t stride_cols = strides[2];
 
   DimensionHandle batch_size_dim = c->Dim(padded, 0);
   DimensionHandle in_rows_dim = c->Dim(padded, 1);
@@ -1002,11 +1002,11 @@ REGISTER_OP("Dilation2D")
             rates.size());
       }
 
-      int32 stride_rows = strides[1];
-      int32 stride_cols = strides[2];
+      int32_t stride_rows = strides[1];
+      int32_t stride_cols = strides[2];
 
-      int32 rate_rows = rates[1];
-      int32 rate_cols = rates[2];
+      int32_t rate_rows = rates[1];
+      int32_t rate_cols = rates[2];
 
       DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
       DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
@@ -1299,7 +1299,7 @@ Status TopKShapeFn(InferenceContext* c) {
   if (c->num_inputs() >= 2) {
     TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &k_dim));
   } else {
-    int32 k;
+    int32_t k;
     TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
     if (k < 0) {
       return errors::InvalidArgument("Need k >= 0, got ", k);

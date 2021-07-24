@@ -97,7 +97,7 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
 
 namespace {
 
-void SetRunEnvironment(const XSpace& space, int32 accelerator_count,
+void SetRunEnvironment(const XSpace& space, int32_t accelerator_count,
                        RunEnvironment* env) {
   // Currently, we only support profiling one host and one program.
   env->set_host_count(1);

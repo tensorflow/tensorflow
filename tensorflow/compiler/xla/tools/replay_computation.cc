@@ -162,7 +162,7 @@ absl::optional<Shape> GetXfeedShape(bool is_infeed,
     }
   };
 
-  auto find_instruction_from_id_or_die = [&](int64 id) {
+  auto find_instruction_from_id_or_die = [&](int64_t id) {
     for (const auto& comp : module.computations()) {
       for (const auto& instruction : comp.instructions()) {
         if (instruction.id() == id) {
@@ -462,7 +462,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
         std::min<size_t>(std::max(kThreadLimits, snapshots.size()), 1),
         /*low_latency_hint=*/false);
     executables.resize(snapshots.size());
-    for (int64 i = 0; i < snapshots.size(); ++i) {
+    for (int64_t i = 0; i < snapshots.size(); ++i) {
       thread_pool.Schedule([&snapshots, &executables, client, i, &opts] {
         executables[i] = CompileExecutable(snapshots[i], client, opts);
       });
@@ -470,7 +470,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
   }
   LOG(INFO) << "Done compiling; now running the modules.";
 
-  for (int64 i = 0; i < executables.size(); ++i) {
+  for (int64_t i = 0; i < executables.size(); ++i) {
     if (!executables[i].ok()) {
       LOG(ERROR) << "Compilation failed: " << executables[i].status() << ": "
                  << snapshots[i].ShortDebugString();

@@ -40,10 +40,10 @@ class Array2D : public Array<T> {
  public:
   Array2D() : Array<T>(std::vector<int64>{0, 0}) {}
 
-  Array2D(const int64 n1, const int64 n2)
+  Array2D(const int64_t n1, const int64_t n2)
       : Array<T>(std::vector<int64>{n1, n2}) {}
 
-  Array2D(const int64 n1, const int64 n2, const T value)
+  Array2D(const int64_t n1, const int64_t n2, const T value)
       : Array<T>({n1, n2}, value) {}
 
   // Creates an array from the given nested initializer list. The outer
@@ -77,8 +77,8 @@ class Array2D : public Array<T> {
   //
   // This makes it easy to see distinct row/column values in the array.
   void FillUnique(T start_value = 0) {
-    for (int64 i0 = 0; i0 < n1(); ++i0) {
-      for (int64 i1 = 0; i1 < n2(); ++i1) {
+    for (int64_t i0 = 0; i0 < n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < n2(); ++i1) {
         (*this)(i0, i1) =
             ((i0 << tensorflow::Log2Ceiling64(n2())) | i1) + start_value;
       }
@@ -86,9 +86,9 @@ class Array2D : public Array<T> {
   }
 
   // Applies f to all cells in this array, in row-major order.
-  void Each(std::function<void(int64, int64, T*)> f) {
-    for (int64 i0 = 0; i0 < n1(); ++i0) {
-      for (int64 i1 = 0; i1 < n2(); ++i1) {
+  void Each(std::function<void(int64_t, int64_t, T*)> f) {
+    for (int64_t i0 = 0; i0 < n1(); ++i0) {
+      for (int64_t i1 = 0; i1 < n2(); ++i1) {
         f(i0, i1, &(*this)(i0, i1));
       }
     }
@@ -99,15 +99,15 @@ class Array2D : public Array<T> {
 // with dimensions n1 x n2.
 template <typename NativeT = float>
 std::unique_ptr<Array2D<NativeT>> MakeLinspaceArray2D(double from, double to,
-                                                      int64 n1, int64 n2) {
+                                                      int64_t n1, int64_t n2) {
   auto array = absl::make_unique<Array2D<NativeT>>(n1, n2);
-  int64 count = n1 * n2;
+  int64_t count = n1 * n2;
   NativeT step =
       static_cast<NativeT>((count > 1) ? (to - from) / (count - 1) : 0);
-  auto set = [&array, n2](int64 index, NativeT value) {
+  auto set = [&array, n2](int64_t index, NativeT value) {
     (*array)(index / n2, index % n2) = value;
   };
-  for (int64 i = 0; i < count - 1; ++i) {
+  for (int64_t i = 0; i < count - 1; ++i) {
     set(i, (static_cast<NativeT>(from) +
             static_cast<NativeT>(i) * static_cast<NativeT>(step)));
   }

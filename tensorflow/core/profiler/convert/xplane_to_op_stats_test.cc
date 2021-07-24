@@ -94,8 +94,8 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
 }
 
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 0;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 0;
 
   XSpace space;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
@@ -124,9 +124,9 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
 }
 
 TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 0;
-  constexpr int64 kCorrelationId = 100;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 0;
+  constexpr int64_t kCorrelationId = 100;
 
   XSpace space;
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
@@ -192,8 +192,8 @@ TEST(ConvertXPlaneToOpStats, Hostnames) {
 }
 
 void BuildXSpaceForTest(XSpace& xspace, absl::string_view hostname) {
-  constexpr int64 kStepNum = 123;
-  constexpr int64 kStepId = 456;
+  constexpr int64_t kStepNum = 123;
+  constexpr int64_t kStepId = 456;
   // Create a host only XSpace for test.
   XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&xspace));
   host_plane_builder.ReserveLines(2);

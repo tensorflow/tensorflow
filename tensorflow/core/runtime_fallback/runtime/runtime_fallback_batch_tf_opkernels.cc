@@ -47,7 +47,7 @@ Status GetTfrtExecutionContext(OpKernelContext* c,
   // ExecutionContext's address is passed in as an I64 input.
   const Tensor* tensor;
   TF_RETURN_IF_ERROR(c->input("tfrt_exec_ctx", &tensor));
-  int64 exec_ctx_intptr = *reinterpret_cast<const int64*>(tensor->data());
+  int64_t exec_ctx_intptr = *reinterpret_cast<const int64*>(tensor->data());
   *exec_ctx = absl::bit_cast<const tfrt::ExecutionContext*>(exec_ctx_intptr);
   return Status::OK();
 }
@@ -70,8 +70,9 @@ llvm::Expected<tensorflow::Tensor> ConvertTFRTTensorToTFTensor(
 
 class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
  public:
-  static Status Create(int32 num_batch_threads, int32 max_batch_size,
-                       int32 batch_timeout_micros, int32 max_enqueued_batches,
+  static Status Create(int32_t num_batch_threads, int32_t max_batch_size,
+                       int32_t batch_timeout_micros,
+                       int32_t max_enqueued_batches,
                        ArrayRef<int32_t> allowed_batch_sizes,
                        RCReference<const tfrt::Function> bef_func,
                        bool enable_large_batch_splitting,
@@ -163,7 +164,7 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
 
     // BEF function's address is passed in as an I64 attribute.
     {
-      int64 bef_func_intptr;
+      int64_t bef_func_intptr;
       OP_REQUIRES_OK(c, c->GetAttr("tfrt_bef_func", &bef_func_intptr));
       bef_func_ =
           tfrt::FormRef(absl::bit_cast<const tfrt::Function*>(bef_func_intptr));
@@ -220,9 +221,9 @@ class BatchFunctionFallbackKernel : public AsyncOpKernel {
     if (allowed_batch_sizes_.empty()) {
       return Status::OK();
     }
-    int32 last_size = 0;
+    int32_t last_size = 0;
     for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
-      const int32 size = allowed_batch_sizes_.at(i);
+      const int32_t size = allowed_batch_sizes_.at(i);
       if (i > 0 && size <= last_size) {
         return errors::InvalidArgument(
             "allowed_batch_sizes entries must be monotonically increasing");

@@ -1752,7 +1752,7 @@ TEST_F(AlgebraicSimplifierTest, ReduceWindowIsReduceAndReshape) {
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {1, 2, 3, 4}), "param"));
   Window window;
-  for (int64 i = 0; i < 4; ++i) {
+  for (int64_t i = 0; i < 4; ++i) {
     WindowDimension* dim = window.add_dimensions();
     // Makes 1x2x3x1 window.
     dim->set_size((i % 3) + 1);
@@ -1797,7 +1797,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {3, 0}), "op"));
   Window window;
-  for (int64 i = 0; i < 2; ++i) {
+  for (int64_t i = 0; i < 2; ++i) {
     WindowDimension* dim = window.add_dimensions();
     dim->set_size(1);
     dim->set_padding_low(1);
@@ -3215,7 +3215,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x2_6x1x1x2) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
-  const int64 iota_dim =
+  const int64_t iota_dim =
       Cast<HloIotaInstruction>(computation->root_instruction())
           ->iota_dimension();
   EXPECT_THAT(iota_dim, ::testing::AnyOf(1, 2, 3));
@@ -3456,8 +3456,8 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopReshape) {
 
 TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
   HloComputation::Builder builder(TestName());
-  const int64 dim0 = 2;
-  const int64 dim1 = 3;
+  const int64_t dim0 = 2;
+  const int64_t dim1 = 3;
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {dim0, dim1}), "param"));
@@ -3479,8 +3479,8 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
 
 TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
   HloComputation::Builder builder(TestName());
-  const int64 dim0 = 11;
-  const int64 dim1 = 12;
+  const int64_t dim0 = 11;
+  const int64_t dim1 = 12;
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {dim0, dim1}), "param"));
@@ -3513,8 +3513,8 @@ TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
 
 TEST_F(AlgebraicSimplifierTest, SliceOfBroadcastToBroadcast) {
   HloComputation::Builder builder(TestName());
-  const int64 dim0 = 11;
-  const int64 dim1 = 12;
+  const int64_t dim0 = 11;
+  const int64_t dim1 = 12;
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {dim0}), "param"));
@@ -3540,9 +3540,9 @@ TEST_F(AlgebraicSimplifierTest, SliceOfBroadcastToBroadcast) {
 
 TEST_F(AlgebraicSimplifierTest, SliceOfReshapeToReshapeOfSlice) {
   HloComputation::Builder builder(TestName());
-  const int64 dim0 = 11;
-  const int64 dim1 = 12;
-  const int64 dim2 = 13;
+  const int64_t dim0 = 11;
+  const int64_t dim1 = 12;
+  const int64_t dim2 = 13;
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {dim0 * dim1, dim2}), "param"));
@@ -4404,7 +4404,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 
   // Create the reduce-window.
   Window window;
-  for (int64 i = 0; i < pad->shape().rank(); ++i) {
+  for (int64_t i = 0; i < pad->shape().rank(); ++i) {
     auto* dim = window.add_dimensions();
     dim->set_size(1);
     dim->set_padding_low(10);
@@ -4490,7 +4490,7 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
 
   // Create the reduce-window.
   Window window;
-  for (int64 i = 0; i < pad->shape().rank(); ++i) {
+  for (int64_t i = 0; i < pad->shape().rank(); ++i) {
     auto* dim = window.add_dimensions();
     dim->set_size(1);
     dim->set_padding_low(10);
@@ -5097,13 +5097,13 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
 
   // a and b are parallel bounds we can either turn into a B F S0 S1 or
   // `B S0 S1 F` kind of pattern.
-  auto decorate_spatials = [&param](absl::Span<const int64> spatials, int64 a,
-                                    int64 b) {
+  auto decorate_spatials = [&param](absl::Span<const int64> spatials, int64_t a,
+                                    int64_t b) {
     std::vector<int64> result;
     if (param.prepend_a) {
       result.push_back(a);
     }
-    for (int64 s : spatials) {
+    for (int64_t s : spatials) {
       result.push_back(s);
     }
     if (!param.prepend_a) {
@@ -5354,9 +5354,9 @@ TEST_P(DotOfConcatSimplificationTest, ConstantLHS) {
 
   ASSERT_GE(spec.k, 3);
 
-  int64 k0 = spec.k / 3;
-  int64 k1 = spec.k / 3;
-  int64 k2 = spec.k - k0 - k1;
+  int64_t k0 = spec.k / 3;
+  int64_t k1 = spec.k / 3;
+  int64_t k2 = spec.k - k0 - k1;
 
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.k});
   auto* lhs = builder.AddInstruction(
@@ -5414,10 +5414,10 @@ TEST_P(DotOfConcatSimplificationTest, ConstantRHS) {
 
   ASSERT_GE(spec.k, 4);
 
-  int64 k0 = spec.k / 4;
-  int64 k1 = spec.k / 4;
-  int64 k2 = spec.k / 4;
-  int64 k3 = spec.k - k0 - k1 - k2;
+  int64_t k0 = spec.k / 4;
+  int64_t k1 = spec.k / 4;
+  int64_t k2 = spec.k / 4;
+  int64_t k3 = spec.k - k0 - k1 - k2;
 
   Shape lhs0_shape = ShapeUtil::MakeShape(F32, {spec.m, k0});
   Shape lhs1_shape = ShapeUtil::MakeShape(F32, {spec.m, k1});
@@ -5648,31 +5648,31 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
 
   // For negative tests, increase k of the dynamic slice argument to prevent the
   // optimization (constants ctA, ctB must have equal contracting dimensions).
-  int64 k_increase = spec.neg ? 5 : 0;
-  int64 lhs_rows = (spec.lcd == 0) ? (spec.k + k_increase) : spec.m;
-  int64 lhs_cols = (spec.lcd == 0) ? spec.m : (spec.k + k_increase);
+  int64_t k_increase = spec.neg ? 5 : 0;
+  int64_t lhs_rows = (spec.lcd == 0) ? (spec.k + k_increase) : spec.m;
+  int64_t lhs_cols = (spec.lcd == 0) ? spec.m : (spec.k + k_increase);
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {lhs_rows, lhs_cols});
   auto* lhs = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
           /*from=*/10.0, /*to=*/10000.0, /*rows=*/lhs_rows,
           /*cols=*/lhs_cols)));
 
-  int32 start_row = (spec.lcd == 0) ? 0 : spec.s;
-  int32 start_col = (spec.lcd == 0) ? spec.s : 0;
+  int32_t start_row = (spec.lcd == 0) ? 0 : spec.s;
+  int32_t start_col = (spec.lcd == 0) ? spec.s : 0;
   std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<int32>(start_row))),
       builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<int32>(start_col)))};
-  int64 slice_row_size = (spec.lcd == 0) ? spec.k : 1;
-  int64 slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
+  int64_t slice_row_size = (spec.lcd == 0) ? spec.k : 1;
+  int64_t slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
   std::vector<int64> slice_sizes = {slice_row_size, slice_col_size};
   Shape ds_shape = ShapeUtil::MakeShape(F32, slice_sizes);
   auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
       ds_shape, lhs, start_indices, slice_sizes));
 
-  int64 rhs_rows = (spec.rcd == 0) ? spec.k : spec.n;
-  int64 rhs_cols = (spec.rcd == 0) ? spec.n : spec.k;
+  int64_t rhs_rows = (spec.rcd == 0) ? spec.k : spec.n;
+  int64_t rhs_cols = (spec.rcd == 0) ? spec.n : spec.k;
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {rhs_rows, rhs_cols});
   auto* rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
@@ -5683,8 +5683,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   dot_dnums.add_lhs_contracting_dimensions(spec.lcd);
   dot_dnums.add_rhs_contracting_dimensions(spec.rcd);
 
-  int64 dot_row_size = 1;
-  int64 dot_col_size = spec.n;
+  int64_t dot_row_size = 1;
+  int64_t dot_col_size = spec.n;
   Shape dot_shape = ShapeUtil::MakeShape(F32, {dot_row_size, dot_col_size});
   builder.AddInstruction(HloInstruction::CreateDot(
       dot_shape, ds, rhs, dot_dnums, DefaultPrecisionConfig(2)));
@@ -5719,8 +5719,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
 
   ASSERT_LE(spec.s, spec.n);
 
-  int64 lhs_rows = (spec.lcd == 0) ? spec.k : spec.m;
-  int64 lhs_cols = (spec.lcd == 0) ? spec.m : spec.k;
+  int64_t lhs_rows = (spec.lcd == 0) ? spec.k : spec.m;
+  int64_t lhs_cols = (spec.lcd == 0) ? spec.m : spec.k;
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {lhs_rows, lhs_cols});
   auto* lhs = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
@@ -5729,24 +5729,24 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
 
   // For negative tests increase k of the dynamic slice argument to prevent the
   // optimization
-  int64 k_increase = spec.neg ? 5 : 0;
-  int64 rhs_rows = (spec.rcd == 0) ? (spec.k + k_increase) : spec.n;
-  int64 rhs_cols = (spec.rcd == 0) ? spec.n : (spec.k + k_increase);
+  int64_t k_increase = spec.neg ? 5 : 0;
+  int64_t rhs_rows = (spec.rcd == 0) ? (spec.k + k_increase) : spec.n;
+  int64_t rhs_cols = (spec.rcd == 0) ? spec.n : (spec.k + k_increase);
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {rhs_rows, rhs_cols});
   auto* rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
           /*from=*/10.0, /*to=*/10000.0, /*rows=*/rhs_rows,
           /*cols=*/rhs_cols)));
 
-  int32 start_row = (spec.rcd == 0) ? 0 : spec.s;
-  int32 start_col = (spec.rcd == 0) ? spec.s : 0;
+  int32_t start_row = (spec.rcd == 0) ? 0 : spec.s;
+  int32_t start_col = (spec.rcd == 0) ? spec.s : 0;
   std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<int32>(start_row))),
       builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<int32>(start_col)))};
-  int64 slice_row_size = (spec.rcd == 0) ? spec.k : 1;
-  int64 slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
+  int64_t slice_row_size = (spec.rcd == 0) ? spec.k : 1;
+  int64_t slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
   std::vector<int64> slice_sizes = {slice_row_size, slice_col_size};
   Shape ds_shape = ShapeUtil::MakeShape(F32, slice_sizes);
   auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -5756,8 +5756,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   dot_dnums.add_lhs_contracting_dimensions(spec.lcd);
   dot_dnums.add_rhs_contracting_dimensions(spec.rcd);
 
-  int64 dot_row_size = spec.m;
-  int64 dot_col_size = 1;
+  int64_t dot_row_size = spec.m;
+  int64_t dot_col_size = 1;
   Shape dot_shape = ShapeUtil::MakeShape(F32, {dot_row_size, dot_col_size});
   builder.AddInstruction(HloInstruction::CreateDot(
       dot_shape, lhs, ds, dot_dnums, DefaultPrecisionConfig(2)));

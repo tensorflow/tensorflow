@@ -153,7 +153,7 @@ class MultipleNodes : public ::testing::TestWithParam<std::tuple<bool, int64>> {
 
 TEST_P(MultipleNodes, AutotuneBufferSizesTest) {
   const bool legacy_autotune = std::get<0>(GetParam());
-  const int64 initial_buffer_size = std::get<1>(GetParam());
+  const int64_t initial_buffer_size = std::get<1>(GetParam());
 
   GrapplerItem item;
   MutableGraphView graph(&item.graph);

@@ -168,7 +168,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
         /*parent=*/nullptr, /*session_metadata=*/nullptr,
         Rendezvous::Factory{
-            [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);
               return Status::OK();
             }}));
@@ -631,7 +631,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
   Tensor y;
   {
     // Simple case: instantiating with no state_handle.
-    for (int32 expected : {6, 4}) {
+    for (int32_t expected : {6, 4}) {
       TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
@@ -644,7 +644,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     TF_CHECK_OK(
         Instantiate(flr0_, "RandomUniformWrapper", {}, &handle_non_isolated));
     EXPECT_EQ(handle, handle_non_isolated);
-    for (int32 expected : {0, 1}) {
+    for (int32_t expected : {0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
@@ -659,7 +659,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
                             &handle_isolated));
     EXPECT_NE(handle, handle_isolated);
-    for (int32 expected : {6, 4, 0, 1}) {
+    for (int32_t expected : {6, 4, 0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
@@ -674,7 +674,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
     TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
                             &handle_isolated));
     EXPECT_NE(handle, handle_isolated);
-    for (int32 expected : {6, 4, 0, 1}) {
+    for (int32_t expected : {6, 4, 0, 1}) {
       TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
       test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
     }
@@ -691,7 +691,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
       TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
                               &handle_isolated));
       EXPECT_NE(handle, handle_isolated);
-      for (int32 expected : {6, 4, 0, 1}) {
+      for (int32_t expected : {6, 4, 0, 1}) {
         TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
         test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
       }

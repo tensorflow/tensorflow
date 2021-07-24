@@ -690,7 +690,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
-  int64 size = ShapeUtil::ByteSizeOf(shape);
+  int64_t size = ShapeUtil::ByteSizeOf(shape);
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
@@ -1335,7 +1335,7 @@ StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {
 }
 
 Status PjRtStreamExecutorBuffer::CopyRawToHost(
-    void* dst, int64 offset, int64 transfer_size,
+    void* dst, int64_t offset, int64_t transfer_size,
     std::function<void(Status)> on_ready) {
   return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size,
                                          std::move(on_ready));

@@ -42,7 +42,7 @@ class IndexUtil {
   // the shape and its layout. The first index in the returned multidimensional
   // index is dimension 0.
   static std::vector<int64> LinearIndexToMultidimensionalIndex(
-      const Shape& shape, int64 linear_index);
+      const Shape& shape, int64_t linear_index);
 
   // Bumps a sequence of indices; e.g. {0,0,0,0} up by one index value; e.g. to
   // {0,0,0,1}. This is akin to std::next_permutation. If the index hits a limit
@@ -66,7 +66,7 @@ class IndexUtil {
   // Example:
   //  GetDimensionStride(F32[5,8,10,4]{3,2,1,0}, 1) ==
   //    sizeof(dimension(3)) * sizeof(dimension(2)) == 4 * 10
-  static int64 GetDimensionStride(const Shape& shape, int64 dimension);
+  static int64 GetDimensionStride(const Shape& shape, int64_t dimension);
 
   // Returns true iff the given multi-index is contained in the bounds for the
   // shape.

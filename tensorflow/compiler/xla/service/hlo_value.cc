@@ -114,7 +114,7 @@ namespace {
 // ShapeIndex in the given operand. Generally, instruction which pass through
 // values transparently without reading the value are not considered to use the
 // value.
-bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
+bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
                         const HloInstruction* user) {
   switch (user->opcode()) {
     case HloOpcode::kGetTupleElement:
@@ -178,7 +178,7 @@ void HloValue::SetPositionsAndComputeUses(
   // Build vector of HloUses for the value.
   for (const HloPosition& position : positions_) {
     for (HloInstruction* user : position.instruction->users()) {
-      for (int64 i = 0; i < user->operand_count(); ++i) {
+      for (int64_t i = 0; i < user->operand_count(); ++i) {
         if (user->operand(i) != position.instruction) {
           continue;
         }

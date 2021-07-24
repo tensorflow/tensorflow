@@ -391,7 +391,7 @@ class MatrixDiagPartOp : public XlaOpKernel {
     output_shape.RemoveLastDims(2);
     const int num_diags = upper_diag_index - lower_diag_index + 1;
     if (num_diags > 1) output_shape.AddDim(num_diags);
-    const int32 max_diag_len =
+    const int32_t max_diag_len =
         std::min(num_rows + std::min(upper_diag_index, int64{0}),
                  num_cols - std::max(lower_diag_index, int64{0}));
     output_shape.AddDim(max_diag_len);
@@ -506,7 +506,7 @@ class MatrixSetDiagOp : public XlaOpKernel {
     TensorShape expected_diag_shape = input_shape;
     expected_diag_shape.RemoveLastDims(2);
     if (num_diags > 1) expected_diag_shape.AddDim(num_diags);
-    const int32 max_diag_len =
+    const int32_t max_diag_len =
         std::min(num_rows + std::min(upper_diag_index, int64{0}),
                  num_cols - std::max(lower_diag_index, int64{0}));
     expected_diag_shape.AddDim(max_diag_len);

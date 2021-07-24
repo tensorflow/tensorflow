@@ -417,7 +417,7 @@ class XlaSplitNDBaseOp : public OpKernel {
       // Calculate paddings necessary for slice instead of padding input and
       // slicing subsequently to reduce temporary memory allocation.
       for (int dim = 0; dim < Rank; ++dim) {
-        const int64 dim_size = shape[dim];
+        const int64_t dim_size = shape[dim];
         if (slice_indices[dim] >= dim_size) {
           // Complete padding.
           slice_indices[dim] = dim_size;
@@ -699,7 +699,7 @@ class XlaConcatNDBaseOp : public OpKernel {
       TensorShape non_padded_slice_shape;
       // Calculate paddings necessary to strip from slice.
       for (int dim = 0; dim < Rank; ++dim) {
-        const int64 dim_size = output->shape().dim_size(dim);
+        const int64_t dim_size = output->shape().dim_size(dim);
         if (slice_indices[dim] >= dim_size) {
           // Complete padding.
           slice_indices[dim] = dim_size;

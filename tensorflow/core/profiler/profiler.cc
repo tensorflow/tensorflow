@@ -73,7 +73,7 @@ int Run(int argc, char** argv) {
   string FLAGS_run_meta_path = "";
   string FLAGS_op_log_path = "";
   string FLAGS_checkpoint_path = "";
-  int32 FLAGS_max_depth = 10;
+  int32_t FLAGS_max_depth = 10;
   int64_t FLAGS_min_bytes = 0;
   int64_t FLAGS_min_peak_bytes = 0;
   int64_t FLAGS_min_residual_bytes = 0;

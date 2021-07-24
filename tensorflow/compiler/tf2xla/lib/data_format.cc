@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64 dim) {
+StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64_t dim) {
   xla::XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
 
@@ -32,7 +32,7 @@ StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64 dim) {
 
   // Transpose the input so C is directly followed by VECT_C.
   std::vector<int64> permutation;
-  for (int64 i = 0; i != input_shape.rank() - 1; ++i) {
+  for (int64_t i = 0; i != input_shape.rank() - 1; ++i) {
     permutation.push_back(i);
     if (i == dim) {
       permutation.push_back(input_shape.rank() - 1);
@@ -47,7 +47,7 @@ StatusOr<xla::XlaOp> Contract(xla::XlaOp input, int64 dim) {
   return xla::Reshape(xla::Transpose(input, permutation), contracted_shape);
 }
 
-StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64 dim) {
+StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64_t dim) {
   xla::XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(xla::Shape input_shape, builder->GetShape(input));
 
@@ -66,7 +66,7 @@ StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64 dim) {
 
   // Move the newly created dimension to the end with a transpose.
   std::vector<int64> permutation;
-  for (int64 i = 0, end = expanded_shape.size(); i != end; ++i) {
+  for (int64_t i = 0, end = expanded_shape.size(); i != end; ++i) {
     permutation.push_back(i);
     if (i == dim) {
       ++i;

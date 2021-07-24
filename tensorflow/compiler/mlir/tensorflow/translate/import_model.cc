@@ -1218,7 +1218,7 @@ StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
   const int64_t kUnknownDim = -1;
 
   absl::InlinedVector<int64_t, 4> dimensions;
-  int32 rank = context->Rank(handle);
+  int32_t rank = context->Rank(handle);
   dimensions.reserve(rank);
   for (int i = 0; i < rank; ++i) {
     auto dim_handle = context->Dim(handle, i);

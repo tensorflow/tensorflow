@@ -134,13 +134,14 @@ class BatchResourceBase : public ResourceBase {
         allowed_batch_sizes_(std::move(allowed_batch_sizes)) {}
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
-      int32 num_batch_threads, int32 max_batch_size, int32 batch_timeout_micros,
-      int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
+      int32_t num_batch_threads, int32_t max_batch_size,
+      int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
       bool enable_large_batch_splitting);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
-      int32 max_batch_size, int32 batch_timeout_micros,
-      int32 max_enqueued_batches, bool enable_large_batch_splitting,
+      int32_t max_batch_size, int32_t batch_timeout_micros,
+      int32_t max_enqueued_batches, bool enable_large_batch_splitting,
       const std::vector<int32>& allowed_batch_sizes);
 
  private:

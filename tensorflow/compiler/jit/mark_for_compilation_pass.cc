@@ -636,7 +636,7 @@ StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
 template <typename FnTy>
 StatusOr<bool> MarkForCompilationPassImpl::ForEachEdgeInPostOrder(FnTy fn) {
   bool changed = false;
-  for (int32 node : cycles_graph_.AllNodesInPostOrder()) {
+  for (int32_t node : cycles_graph_.AllNodesInPostOrder()) {
     Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
     if (!cluster_from) {
       continue;

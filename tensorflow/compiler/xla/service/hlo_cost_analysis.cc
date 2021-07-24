@@ -56,7 +56,7 @@ Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // handle opaque types.
   float bytes_accessed = GetShapeSize(hlo->shape());
   SetOutputBytesAccessed(GetShapeSize(hlo->shape()));
-  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     const HloInstruction* operand = hlo->operand(i);
     bytes_accessed += GetShapeSize(operand->shape());
     SetOperandBytesAccessed(i, GetShapeSize(operand->shape()));
@@ -144,14 +144,14 @@ int64 HloCostAnalysis::GetShapeSize(const Shape& shape) const {
 
 int64 HloCostAnalysis::FusionParameterReadBytes(
     const HloInstruction* hlo) const {
-  int64 size = 0;
+  int64_t size = 0;
   bool seen_trivial_user = false;
   CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
                            hlo->opcode() == HloOpcode::kGetTupleElement));
   for (const HloInstruction* user : hlo->users()) {
     switch (user->opcode()) {
       case HloOpcode::kFusion: {
-        for (int64 idx : user->OperandIndices(hlo)) {
+        for (int64_t idx : user->OperandIndices(hlo)) {
           size += FusionParameterReadBytes(user->fused_parameter(idx));
         }
         break;
@@ -326,7 +326,7 @@ Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width = 1;
+  int64_t reduction_width = 1;
   for (auto dim : dnums.lhs_contracting_dimensions()) {
     reduction_width *= lhs_shape.dimensions(dim);
   }
@@ -338,7 +338,7 @@ Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
 
 Status HloCostAnalysis::HandleInfeed(const HloInstruction* infeed) {
   // Count nested infeed output tuples.
-  int64 size = 0;
+  int64_t size = 0;
   for (const auto& indexed_shape : ShapeUtil::GetLeafShapes(infeed->shape())) {
     size += GetShapeSize(indexed_shape.shape);
     SetOutputBytesAccessed(indexed_shape.index,
@@ -352,9 +352,9 @@ Status HloCostAnalysis::HandleInfeed(const HloInstruction* infeed) {
 Status HloCostAnalysis::HandleOutfeed(const HloInstruction* outfeed) {
   // Count nested outfeed operand tuples.
   current_properties_[kBytesAccessedKey] = 0;
-  for (int64 i = 0; i < outfeed->operand_count(); ++i) {
+  for (int64_t i = 0; i < outfeed->operand_count(); ++i) {
     const HloInstruction* operand = outfeed->operand(i);
-    int64 size = 0;
+    int64_t size = 0;
     for (const auto& indexed_shape :
          ShapeUtil::GetLeafShapes(operand->shape())) {
       size += GetShapeSize(indexed_shape.shape);
@@ -373,7 +373,7 @@ Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
                       ProcessSubcomputation(map->to_apply()));
 
   // Compute the cost of all elements for this Map operation.
-  const int64 element_count = ShapeUtil::ElementsIn(map->shape());
+  const int64_t element_count = ShapeUtil::ElementsIn(map->shape());
   for (const auto& property : sub_properties) {
     if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
       current_properties_[property.first] = property.second * element_count;
@@ -396,7 +396,7 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   auto output_shape = reduce->shape().IsArray()
                           ? reduce->shape()
                           : reduce->shape().tuple_shapes(0);
-  int64 reduction_count =
+  int64_t reduction_count =
       ShapeUtil::ElementsIn(arg->shape()) - ShapeUtil::ElementsIn(output_shape);
   for (const auto& property : sub_properties) {
     if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
@@ -416,16 +416,16 @@ Status HloCostAnalysis::HandleReduceWindow(
 
   // Compute the cost of all elements for this ReduceWindow operation. For each
   // output element there are window_size - 1 reductions to perform.
-  int64 window_element_count = 1;
+  int64_t window_element_count = 1;
   for (const auto& dimension : window.dimensions()) {
     window_element_count *= dimension.size();
   }
 
-  const int64 output_element_count =
+  const int64_t output_element_count =
       ShapeUtil::ElementsIn(reduce_window->shape().IsArray()
                                 ? reduce_window->shape()
                                 : reduce_window->shape().tuple_shapes(0));
-  const int64 reduction_count =
+  const int64_t reduction_count =
       (window_element_count - 1) * output_element_count;
   for (const auto& property : sub_properties) {
     if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
@@ -449,11 +449,12 @@ Status HloCostAnalysis::HandleSelectAndScatter(
   // 1 scatter computation to perform.
   const auto source = instruction->operand(1);
   const auto source_element_count = ShapeUtil::ElementsIn(source->shape());
-  int64 window_element_count = 1;
+  int64_t window_element_count = 1;
   for (const auto& dimension : instruction->window().dimensions()) {
     window_element_count *= dimension.size();
   }
-  const int64 select_count = source_element_count * (window_element_count - 1);
+  const int64_t select_count =
+      source_element_count * (window_element_count - 1);
   for (const auto& property : select_properties) {
     if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
       current_properties_[property.first] += property.second * select_count;
@@ -576,14 +577,14 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
 
   const auto& dnums = convolution->convolution_dimension_numbers();
 
-  const int64 input_batch_dim = dnums.input_batch_dimension();
-  const int64 input_feature_dim = dnums.input_feature_dimension();
-  const int64 output_feature_dim = dnums.output_feature_dimension();
-  const int64 input_feature =
+  const int64_t input_batch_dim = dnums.input_batch_dimension();
+  const int64_t input_feature_dim = dnums.input_feature_dimension();
+  const int64_t output_feature_dim = dnums.output_feature_dimension();
+  const int64_t input_feature =
       ShapeUtil::GetDimension(lhs_shape, input_feature_dim);
-  const int64 output_feature =
+  const int64_t output_feature =
       ShapeUtil::GetDimension(result_shape, output_feature_dim);
-  const int64 batch = ShapeUtil::GetDimension(lhs_shape, input_batch_dim);
+  const int64_t batch = ShapeUtil::GetDimension(lhs_shape, input_batch_dim);
 
   DimensionVector kernel_limits;
   DimensionVector output_limits;
@@ -594,24 +595,24 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
     output_limits.push_back(1);
     input_limits.push_back(1);
   } else {
-    for (int64 spatial_dimension = 0;
+    for (int64_t spatial_dimension = 0;
          spatial_dimension < window.dimensions_size(); ++spatial_dimension) {
       // Spatial dimension number for kernel (rhs).
-      const int64 kernel_spatial_dim =
+      const int64_t kernel_spatial_dim =
           dnums.kernel_spatial_dimensions(spatial_dimension);
-      const int64 kernel_limit = rhs_shape.dimensions(kernel_spatial_dim);
+      const int64_t kernel_limit = rhs_shape.dimensions(kernel_spatial_dim);
       kernel_limits.push_back(kernel_limit);
 
       // Spatial dimension number for output.
-      const int64 output_spatial_dim =
+      const int64_t output_spatial_dim =
           dnums.output_spatial_dimensions(spatial_dimension);
-      const int64 output_limit = result_shape.dimensions(output_spatial_dim);
+      const int64_t output_limit = result_shape.dimensions(output_spatial_dim);
       output_limits.push_back(output_limit);
 
       // Spatial dimension number for input (lhs).
-      const int64 input_spatial_dim =
+      const int64_t input_spatial_dim =
           dnums.input_spatial_dimensions(spatial_dimension);
-      const int64 input_limit = lhs_shape.dimensions(input_spatial_dim);
+      const int64_t input_limit = lhs_shape.dimensions(input_spatial_dim);
       input_limits.push_back(input_limit);
     }
   }
@@ -619,7 +620,7 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   DimensionVector valid_position_counts;
 
   // Loop over each spatial dimension.
-  for (int64 spatial_dimension = 0;
+  for (int64_t spatial_dimension = 0;
        spatial_dimension < window.dimensions_size(); ++spatial_dimension) {
     const auto& window_dim = window.dimensions(spatial_dimension);
     // These two conditions will create an N^2 iteration pattern with only N
@@ -646,22 +647,22 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
       continue;
     }
 
-    int64 valid_position_count = 0;
+    int64_t valid_position_count = 0;
     // Loop over each point in the kernel.
-    for (int64 kernel_idx = 0; kernel_idx < kernel_limits[spatial_dimension];
+    for (int64_t kernel_idx = 0; kernel_idx < kernel_limits[spatial_dimension];
          ++kernel_idx) {
       // Loop over each point in the output.
-      for (int64 output_idx = 0; output_idx < output_limits[spatial_dimension];
-           ++output_idx) {
+      for (int64_t output_idx = 0;
+           output_idx < output_limits[spatial_dimension]; ++output_idx) {
         // Calculate lhs (input) index without taking base dilation into
         // account.
-        const int64 undilated_index = output_idx * window_dim.stride() -
-                                      window_dim.padding_low() +
-                                      kernel_idx * window_dim.window_dilation();
+        const int64_t undilated_index =
+            output_idx * window_dim.stride() - window_dim.padding_low() +
+            kernel_idx * window_dim.window_dilation();
 
         // Calculate the actual lhs (input) index after dilation. Avoid the
         // division as an optimization.
-        const int64 lhs_spatial_index =
+        const int64_t lhs_spatial_index =
             window_dim.base_dilation() > 1
                 ? undilated_index / window_dim.base_dilation()
                 : undilated_index;
@@ -683,10 +684,10 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
     valid_position_counts.push_back(valid_position_count);
   }
 
-  const int64 fma_count = (input_feature / convolution->feature_group_count()) *
-                          output_feature *
-                          (batch / convolution->batch_group_count()) *
-                          Product(valid_position_counts);
+  const int64_t fma_count =
+      (input_feature / convolution->feature_group_count()) * output_feature *
+      (batch / convolution->batch_group_count()) *
+      Product(valid_position_counts);
   current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
 }
@@ -697,8 +698,8 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
           ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
           : fft->operand(0)->shape();
   constexpr int kFmaPerComplexMul = 4;
-  int64 log_factors = 1;
-  for (int64 dim : fft->fft_length()) {
+  int64_t log_factors = 1;
+  for (int64_t dim : fft->fft_length()) {
     log_factors *= tensorflow::Log2Floor(dim);
   }
   current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
@@ -719,7 +720,7 @@ Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
   const Shape& a_shape = hlo->operand(0)->shape();
   const Shape& b_shape = hlo->operand(1)->shape();
   // Estimate as batch * mn^2 / 2 flops.
-  int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  int64_t elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
   elems *= ShapeUtil::ElementsIn(b_shape);
   current_properties_[kFlopsKey] = kFmaFlops * elems;
   return Status::OK();
@@ -735,7 +736,7 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
 
   const Shape& a_shape = hlo->operand(0)->shape();
   // Estimate as batch * n^3 / 3 flops.
-  int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  int64_t elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
   elems *= ShapeUtil::ElementsIn(a_shape);
   current_properties_[kFlopsKey] = elems / 3;
   return Status::OK();
@@ -868,7 +869,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
         if (shape_index.empty()) {
           if (fusion->fused_expression_root()->opcode() ==
               HloOpcode::kDynamicUpdateSlice) {
-            int64 size = GetShapeSize(
+            int64_t size = GetShapeSize(
                 fusion->fused_expression_root()->operand(1)->shape());
             current_properties_[kBytesAccessedKey] += size;
             SetOutputBytesAccessed(shape_index, size);
@@ -879,10 +880,10 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
               fusion->fused_expression_root()
                       ->operand(shape_index[0])
                       ->opcode() == HloOpcode::kDynamicUpdateSlice) {
-            int64 size = GetShapeSize(fusion->fused_expression_root()
-                                          ->operand(shape_index[0])
-                                          ->operand(1)
-                                          ->shape());
+            int64_t size = GetShapeSize(fusion->fused_expression_root()
+                                            ->operand(shape_index[0])
+                                            ->operand(1)
+                                            ->shape());
             current_properties_[kBytesAccessedKey] += size;
             SetOutputBytesAccessed(shape_index, size);
             return;
@@ -922,9 +923,9 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
     propagate_output_size_to_parent(fusion->shape(), {});
   }
 
-  for (int64 i = 0; i < fusion->fused_parameters().size(); ++i) {
+  for (int64_t i = 0; i < fusion->fused_parameters().size(); ++i) {
     const HloInstruction* operand = fusion->fused_parameter(i);
-    int64 operand_size = 0;
+    int64_t operand_size = 0;
     if (!fusion->shape().IsTuple()) {
       operand_size = FusionParameterReadBytes(operand);
     } else {
@@ -933,7 +934,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
       for (const auto& indexed_shape :
            ShapeUtil::GetLeafShapes(operand->shape())) {
         const HloInstruction* gte = operand;
-        for (int64 index : indexed_shape.index) {
+        for (int64_t index : indexed_shape.index) {
           for (const HloInstruction* user : gte->users()) {
             if (user->opcode() == HloOpcode::kGetTupleElement &&
                 user->tuple_index() == index) {
@@ -942,7 +943,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
             }
           }
         }
-        int64 size = FusionParameterReadBytes(gte);
+        int64_t size = FusionParameterReadBytes(gte);
         operand_size += size;
         SetOperandBytesAccessed(i, indexed_shape.index, size);
       }
@@ -980,7 +981,7 @@ Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
 Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   // This assumes a comparison based N*log(N) algorithm. As for all ops, the
   // actual properties of the op depend on the backend implementation.
-  int64 elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
+  int64_t elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
   current_properties_[kFlopsKey] = elements * tensorflow::Log2Ceiling(elements);
   return Status::OK();
 }
@@ -1034,7 +1035,7 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
 Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
   // Gather doesn't read the whole input buffer, it's equivalent to a copy the
   // size of the output shape and a read of the gather indices.
-  int64 output_size = GetShapeSize(gather->shape());
+  int64_t output_size = GetShapeSize(gather->shape());
   current_properties_[kBytesAccessedKey] =
       output_size * 2 + GetShapeSize(gather->operand(1)->shape());
   SetOperandBytesAccessed(0, output_size);
@@ -1047,14 +1048,14 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
 Status HloCostAnalysis::HandleScatter(const HloInstruction* scatter) {
   // Scatter accesses the equivalent of 3 update shapes (input, output, and
   // updates), and the scatter indices.
-  int64 update_size = GetShapeSize(scatter->operand(2)->shape());
+  int64_t update_size = GetShapeSize(scatter->operand(2)->shape());
   current_properties_[kBytesAccessedKey] =
       update_size * 3 + GetShapeSize(scatter->operand(1)->shape());
   SetOperandBytesAccessed(0, update_size);
   SetOperandBytesAccessed(1, GetShapeSize(scatter->operand(1)->shape()));
   SetOperandBytesAccessed(2, update_size);
   SetOutputBytesAccessed(update_size);
-  const int64 element_count =
+  const int64_t element_count =
       ShapeUtil::ElementsIn(scatter->operand(2)->shape());
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(scatter->to_apply()));
@@ -1109,7 +1110,7 @@ int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
 }
 
 int64 HloCostAnalysis::operand_bytes_accessed(const HloInstruction& hlo,
-                                              int64 operand_num,
+                                              int64_t operand_num,
                                               ShapeIndex index) const {
   return GetPropertyForHlo(hlo, GetOperandBytesAccessedKey(operand_num, index),
                            hlo_properties_);
@@ -1127,7 +1128,7 @@ float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
 
 int64 HloCostAnalysis::GetBytesRead(const HloInstruction& hlo,
                                     absl::optional<int64> memory_space) const {
-  int64 bytes_read = 0;
+  int64_t bytes_read = 0;
   for (int operand_number = 0; operand_number < hlo.operand_count();
        ++operand_number) {
     for (const ShapeUtil::IndexedShape& indexed_shape :
@@ -1147,7 +1148,7 @@ int64 HloCostAnalysis::GetBytesRead(const HloInstruction& hlo,
 
 int64 HloCostAnalysis::GetBytesWritten(
     const HloInstruction& hlo, absl::optional<int64> memory_space) const {
-  int64 bytes_written = 0;
+  int64_t bytes_written = 0;
   for (const ShapeUtil::IndexedShape& indexed_shape :
        ShapeUtil::GetLeafShapes(hlo.shape())) {
     absl::optional<int64> index_memory_space;
@@ -1176,11 +1177,12 @@ std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis(
   return absl::WrapUnique(new HloCostAnalysis(shape_size, per_second_rates));
 }
 
-void HloCostAnalysis::SetOperandBytesAccessed(int64 operand_num, float value) {
+void HloCostAnalysis::SetOperandBytesAccessed(int64_t operand_num,
+                                              float value) {
   current_properties_[GetOperandBytesAccessedKey(operand_num).c_str()] = value;
 }
 
-void HloCostAnalysis::SetOperandBytesAccessed(int64 operand_num,
+void HloCostAnalysis::SetOperandBytesAccessed(int64_t operand_num,
                                               ShapeIndex index, float value) {
   current_properties_[GetOperandBytesAccessedKey(operand_num, index).c_str()] =
       value;
@@ -1195,7 +1197,7 @@ void HloCostAnalysis::SetOutputBytesAccessed(ShapeIndex index, float value) {
 }
 
 /*static*/ std::string HloCostAnalysis::GetOperandBytesAccessedKey(
-    int64 operand_num, ShapeIndex index) {
+    int64_t operand_num, ShapeIndex index) {
   return absl::StrCat(kBytesAccessedKey, " operand ", operand_num, " ",
                       index.ToString());
 }

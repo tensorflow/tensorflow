@@ -38,8 +38,8 @@ class RaggedGatherOpTest : public ::tensorflow::OpsTestBase {
       const gtl::ArraySlice<VALUE_TYPE> params_dense_values) {
     const auto& value_dtype = DataTypeToEnum<VALUE_TYPE>::v();
     const auto& index_dtype = DataTypeToEnum<INDEX_TYPE>::v();
-    int64 PARAMS_RAGGED_RANK = params_nested_splits.size();
-    int64 num_splits = PARAMS_RAGGED_RANK + indices_shape.dims() - 1;
+    int64_t PARAMS_RAGGED_RANK = params_nested_splits.size();
+    int64_t num_splits = PARAMS_RAGGED_RANK + indices_shape.dims() - 1;
     TF_ASSERT_OK(
         NodeDefBuilder("tested_op", "RaggedGather")
             .Input(FakeInput(PARAMS_RAGGED_RANK))  // params_nested_splits
@@ -52,7 +52,7 @@ class RaggedGatherOpTest : public ::tensorflow::OpsTestBase {
             .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
     for (const auto& splits : params_nested_splits) {
-      int64 splits_size = splits.size();
+      int64_t splits_size = splits.size();
       AddInputFromArray<int64>(TensorShape({splits_size}), splits);
     }
     AddInputFromArray<VALUE_TYPE>(params_dense_values_shape,

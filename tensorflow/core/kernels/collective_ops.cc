@@ -25,8 +25,8 @@ namespace tensorflow {
 
 namespace {
 
-static string CollectiveKey(OpKernelContext* ctx, int32 group_key,
-                            int32 instance_key) {
+static string CollectiveKey(OpKernelContext* ctx, int32_t group_key,
+                            int32_t instance_key) {
   return strings::StrCat(group_key, ":", instance_key, ":",
                          ctx->frame_iter().frame_id, ":",
                          ctx->frame_iter().iter_id);

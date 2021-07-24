@@ -57,7 +57,7 @@ TEST(TFRTOpKernelTest, TestGetIntAttr) {
 
   TFRTOpKernelConstruction ctx(attrsref);
 
-  int32 value;
+  int32_t value;
   TF_ASSERT_OK(ctx.GetAttr("foo", &value));
   ASSERT_EQ(value, -2);
 }

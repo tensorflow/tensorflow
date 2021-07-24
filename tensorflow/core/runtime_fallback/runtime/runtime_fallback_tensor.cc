@@ -154,7 +154,7 @@ CreateRuntimeFallbackTensorFromTfTensorHandle(OwnedTensorHandle owned_th,
 
   llvm::SmallVector<ssize_t, 4> dims;
   for (auto i = 0; i < rank; ++i) {
-    int64 dim;
+    int64_t dim;
     status = owned_th->Dim(i, &dim);
     if (!status.ok())
       return tfrt::MakeStringError(

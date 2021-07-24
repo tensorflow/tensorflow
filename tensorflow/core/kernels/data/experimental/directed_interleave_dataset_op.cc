@@ -99,7 +99,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     // As long as one of input dataset has infinite cardinality, the output
     // cardinality is infinite.
     for (const auto& input : data_inputs_) {
-      int64 n = input->Cardinality();
+      int64_t n = input->Cardinality();
       if (n == kInfiniteCardinality) {
         return n;
       }
@@ -191,7 +191,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
 
-        int64 selected_input = selector_result[0].scalar<int64>()();
+        int64_t selected_input = selector_result[0].scalar<int64>()();
         if (selected_input < 0 || selected_input >= data_input_impls_.size()) {
           return errors::InvalidArgument(
               "Selector index out of range: ", selected_input,

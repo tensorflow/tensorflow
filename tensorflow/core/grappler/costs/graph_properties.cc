@@ -52,7 +52,7 @@ using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 // A large value for UnknownDim from Const used as a dim value in shape.
 // Some ops treat "-1" specially, different from UnknownDim:
 // e.g., shape input to Reshape op.
-const int64 kUnknownDimFromConst = INT64_MAX;
+const int64_t kUnknownDimFromConst = INT64_MAX;
 
 // Skip const value instantiation if the number of elements in a const tensor
 // is greater than this threshold.
@@ -133,8 +133,8 @@ struct Processor<DimensionHandle> {
   // otherwise look for a symbolic shape. If there is no symbolic shape and no
   // known shape, the shape if fully unknown so return -1.
   Status Merge(DimensionHandle d1, DimensionHandle d2, int64* result) {
-    const int64 dim1 = InferenceContext::Value(d1);
-    const int64 dim2 = InferenceContext::Value(d2);
+    const int64_t dim1 = InferenceContext::Value(d1);
+    const int64_t dim2 = InferenceContext::Value(d2);
 
     if (dim1 >= 0 && dim2 >= 0) {
       CHECK_EQ(dim1, dim2);
@@ -375,7 +375,7 @@ std::vector<ShapeHandle> ReplaceUnknownDimFromConstWithUnknownDim(
     }
     bool just_copy = true;
     std::vector<DimensionHandle> dims;
-    for (int32 i = 0; i < ic->Rank(shape); ++i) {
+    for (int32_t i = 0; i < ic->Rank(shape); ++i) {
       DimensionHandle dim = ic->Dim(shape, i);
       if (ic->ValueKnown(dim) && ic->Value(dim) == kUnknownDimFromConst) {
         just_copy = false;
@@ -504,7 +504,7 @@ bool IsShapeFullyDefinedIntegerVectorOrScalar(
     return false;
   }
   // Also check whether any dim in tensor_as_shape is kUnknownDimFromConst.
-  for (int32 i = 0; i < ic->Rank(tensor_as_shape); ++i) {
+  for (int32_t i = 0; i < ic->Rank(tensor_as_shape); ++i) {
     DimensionHandle dim = ic->Dim(tensor_as_shape, i);
     if (ic->Value(dim) == kUnknownDimFromConst) {
       LOG(WARNING) << "IsShapeFullyDefinedIntegerVectorOrScalar(): "
@@ -1421,7 +1421,8 @@ class SymbolicShapeRefiner {
         if (c_output_tensors_as_shapes_size > i &&
             ic->FullyDefined(c->output_tensors_as_shapes[i])) {
           bool no_unknown_dim_from_const = true;
-          for (int32 j = 0; j < ic->Rank(c->output_tensors_as_shapes[i]); ++j) {
+          for (int32_t j = 0; j < ic->Rank(c->output_tensors_as_shapes[i]);
+               ++j) {
             const auto dim = ic->Dim(c->output_tensors_as_shapes[i], j);
             if (ic->ValueKnown(dim) && ic->Value(dim) == kUnknownDimFromConst) {
               no_unknown_dim_from_const = false;
@@ -1539,7 +1540,7 @@ class SymbolicShapeRefiner {
         // Note that input_tensors_as_shapes is scalar or vector.
         const ShapeHandle& shape_handle = ic->input_tensors_as_shapes()[i];
         const DataType& data_type = c->input_types[i];
-        int32 rank = ic->Rank(shape_handle);
+        int32_t rank = ic->Rank(shape_handle);
         if (rank < 1) {
           input_tensor_vector->at(i) = Tensor(data_type, {});
         } else {
@@ -1549,7 +1550,7 @@ class SymbolicShapeRefiner {
         if (data_type == DT_INT32) {
           auto flat = tensor->flat<int32>();
           for (int j = 0; j < rank; j++) {
-            int32 dim = ic->Value(ic->Dim(shape_handle, j));
+            int32_t dim = ic->Value(ic->Dim(shape_handle, j));
             flat(j) = dim;
           }
         } else {
@@ -1707,7 +1708,7 @@ class SymbolicShapeRefiner {
       } else if (IsRank(node)) {
         if (ic->RankKnown(ic->input(0))) {
           // Propagate rank value.
-          int32 rank = ic->Rank(ic->input(0));
+          int32_t rank = ic->Rank(ic->input(0));
           const_tensors_to_propagate_.push_back(
               MakeIntegerScalarTensorProto(DT_INT32, rank));
           c->output_tensor_protos.resize(1);
@@ -1950,7 +1951,7 @@ class SymbolicShapeRefiner {
   }
 
   TensorProto MakeIntegerScalarTensorProto(const DataType dtype,
-                                           const int64 val) {
+                                           const int64_t val) {
     TensorProto tensor_proto;
     tensor_proto.set_dtype(dtype);
     // Scalar TensorProto has an empty tensor_shape; no dim, no dim.size.
@@ -2365,12 +2366,12 @@ Status GraphProperties::PropagateShapes(
           << num_loops << " loops and " << resource_handles.size()
           << " resources" << std::endl;
 
-  const int64 max_loop_length = item_.graph.node_size();
-  const int64 max_rank = 4;
-  const int64 max_loop_iterations =
+  const int64_t max_loop_length = item_.graph.node_size();
+  const int64_t max_rank = 4;
+  const int64_t max_loop_iterations =
       max_rank * max_loop_length * std::max<int64>(1, num_loops * num_loops);
-  const int64 num_queues = resource_handles.size();
-  const int64 max_resource_iterations = num_queues * num_queues * max_rank;
+  const int64_t num_queues = resource_handles.size();
+  const int64_t max_resource_iterations = num_queues * num_queues * max_rank;
 
   int64_t num_resource_iterations = 0;
   do {

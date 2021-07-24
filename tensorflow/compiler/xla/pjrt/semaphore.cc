@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace xla {
 
-Semaphore::Semaphore(int64 capacity) : value_(capacity) {
+Semaphore::Semaphore(int64_t capacity) : value_(capacity) {
   CHECK_GE(capacity, 0);
 }
 
@@ -27,7 +27,7 @@ bool Semaphore::CanAcquire(CanAcquireArgs* args) {
   return args->semaphore->value_ >= args->amount;
 }
 
-void Semaphore::Acquire(int64 amount) {
+void Semaphore::Acquire(int64_t amount) {
   CHECK_GE(amount, 0);
 
   CanAcquireArgs args;
@@ -39,7 +39,7 @@ void Semaphore::Acquire(int64 amount) {
   mu_.Unlock();
 }
 
-void Semaphore::Release(int64 amount) {
+void Semaphore::Release(int64_t amount) {
   CHECK_GE(amount, 0);
   absl::MutexLock lock(&mu_);
   value_ += amount;
@@ -66,7 +66,7 @@ Semaphore::ScopedReservation& Semaphore::ScopedReservation::operator=(
   return *this;
 }
 
-Semaphore::ScopedReservation Semaphore::ScopedAcquire(int64 amount) {
+Semaphore::ScopedReservation Semaphore::ScopedAcquire(int64_t amount) {
   Acquire(amount);
   return ScopedReservation(this, amount);
 }

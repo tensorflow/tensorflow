@@ -60,10 +60,11 @@ class RaggedTensorToSparseOp : public OpKernel {
         MakeIndexSuffixes(rt_dense_values_in.shape());
 
     // Allocate the `sparse_indices` output tensor.
-    const int64 nvals =
+    const int64_t nvals =
         (rt_nested_splits.back()(rt_nested_splits.back().size() - 1) *
          index_suffixes.size());
-    const int64 indices_len = rt_nested_splits_len + rt_dense_values_in.dims();
+    const int64_t indices_len =
+        rt_nested_splits_len + rt_dense_values_in.dims();
     Tensor* sparse_indices_out = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape({nvals, indices_len}),
@@ -97,17 +98,17 @@ class RaggedTensorToSparseOp : public OpKernel {
 
       // Get length of the final-ragged-dimension slice.
       const auto& final_splits = rt_nested_splits[rt_nested_splits_len - 1];
-      int64 slice_len = final_splits(final_pos + 1) - final_splits(final_pos);
+      int64_t slice_len = final_splits(final_pos + 1) - final_splits(final_pos);
 
       // Add sparse_indices for this slice.
-      for (int64 i = 0; i < slice_len; ++i) {
+      for (int64_t i = 0; i < slice_len; ++i) {
         for (const auto& index_suffix : index_suffixes) {
           int dim = 0;
-          for (int64 index : index_prefix) {  // index_prefix
+          for (int64_t index : index_prefix) {  // index_prefix
             sparse_indices(next_index, dim++) = index;
           }
           sparse_indices(next_index, dim++) = i;  // index_middle
-          for (int64 index : index_suffix) {      // index_suffix
+          for (int64_t index : index_suffix) {    // index_suffix
             sparse_indices(next_index, dim++) = index;
           }
           DCHECK_EQ(dim, indices_len);
@@ -129,7 +130,7 @@ class RaggedTensorToSparseOp : public OpKernel {
     }
 
     // Output the `sparse_dense_shape` Tensor.
-    int64 ndims = rt_nested_splits_len + rt_dense_values_in.dims();
+    int64_t ndims = rt_nested_splits_len + rt_dense_values_in.dims();
     Tensor* sparse_dense_shape_out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(2, TensorShape({ndims}),
                                                      &sparse_dense_shape_out));
@@ -209,8 +210,8 @@ class RaggedTensorToSparseOp : public OpKernel {
   static bool IsCompleted(
       const std::vector<int64>& pos, int dim,
       const std::vector<ConstFlatSplits>& rt_nested_splits) {
-    int64 current_child = pos[dim + 1];
-    int64 limit_child = rt_nested_splits[dim](pos[dim] + 1);
+    int64_t current_child = pos[dim + 1];
+    int64_t limit_child = rt_nested_splits[dim](pos[dim] + 1);
     return current_child >= limit_child;
   }
 };

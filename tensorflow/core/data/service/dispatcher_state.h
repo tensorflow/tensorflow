@@ -74,7 +74,7 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    explicit Dataset(int64 dataset_id, int64 fingerprint)
+    explicit Dataset(int64_t dataset_id, int64_t fingerprint)
         : dataset_id(dataset_id), fingerprint(fingerprint) {}
 
     const int64 dataset_id;
@@ -94,7 +94,7 @@ class DispatcherState {
   // A key for identifying a named job. The key contains a user-specified name,
   // as well as an index describing which iteration of the job we are on.
   struct NamedJobKey {
-    explicit NamedJobKey(absl::string_view name, int64 index)
+    explicit NamedJobKey(absl::string_view name, int64_t index)
         : name(name), index(index) {}
 
     friend bool operator==(const NamedJobKey& lhs, const NamedJobKey& rhs) {
@@ -111,7 +111,7 @@ class DispatcherState {
   };
 
   struct DistributedEpochState {
-    explicit DistributedEpochState(int64 num_split_providers)
+    explicit DistributedEpochState(int64_t num_split_providers)
         : repetitions(num_split_providers), indices(num_split_providers) {}
 
     // The current repetition for each split provider.
@@ -123,7 +123,7 @@ class DispatcherState {
   struct Task;
 
   struct PendingTask {
-    explicit PendingTask(std::shared_ptr<Task> task, int64 target_round)
+    explicit PendingTask(std::shared_ptr<Task> task, int64_t target_round)
         : task(std::move(task)), target_round(target_round) {}
 
     std::shared_ptr<Task> task;
@@ -138,9 +138,9 @@ class DispatcherState {
 
   // A job for processing a dataset.
   struct Job {
-    explicit Job(int64 job_id, int64 dataset_id,
+    explicit Job(int64_t job_id, int64_t dataset_id,
                  const ProcessingModeDef& processing_mode,
-                 int64 num_split_providers,
+                 int64_t num_split_providers,
                  absl::optional<NamedJobKey> named_job_key,
                  absl::optional<int64> num_consumers)
         : job_id(job_id),
@@ -178,7 +178,7 @@ class DispatcherState {
   };
 
   struct Task {
-    explicit Task(int64 task_id, const std::shared_ptr<Job>& job,
+    explicit Task(int64_t task_id, const std::shared_ptr<Job>& job,
                   const std::string& worker_address,
                   const std::string& transfer_address)
         : task_id(task_id),
@@ -200,9 +200,10 @@ class DispatcherState {
   // Returns the next available dataset id.
   int64 NextAvailableDatasetId() const;
   // Gets the element_spec by searching for the dataset_id key.
-  Status GetElementSpec(int64 dataset_id, std::string& element_spec) const;
+  Status GetElementSpec(int64_t dataset_id, std::string& element_spec) const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
-  Status DatasetFromId(int64 id, std::shared_ptr<const Dataset>& dataset) const;
+  Status DatasetFromId(int64_t id,
+                       std::shared_ptr<const Dataset>& dataset) const;
   // Gets a dataset by fingerprint. Returns NOT_FOUND if there is no such
   // dataset.
   Status DatasetFromFingerprint(uint64 fingerprint,
@@ -219,13 +220,13 @@ class DispatcherState {
   // Returns a list of all jobs.
   std::vector<std::shared_ptr<const Job>> ListJobs();
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
-  Status JobFromId(int64 id, std::shared_ptr<const Job>& job) const;
+  Status JobFromId(int64_t id, std::shared_ptr<const Job>& job) const;
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.
   Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>& job) const;
 
   // Returns the job associated with the given job client id. Returns NOT_FOUND
   // if the job_client_id is unknown or has been released.
-  Status JobForJobClientId(int64 job_client_id,
+  Status JobForJobClientId(int64_t job_client_id,
                            std::shared_ptr<const Job>& job);
   // Returns the next available job client id.
   int64 NextAvailableJobClientId() const;
@@ -233,10 +234,10 @@ class DispatcherState {
   // Returns the next available task id.
   int64 NextAvailableTaskId() const;
   // Gets a task by id. Returns NOT_FOUND if there is no such task.
-  Status TaskFromId(int64 id, std::shared_ptr<const Task>& task) const;
+  Status TaskFromId(int64_t id, std::shared_ptr<const Task>& task) const;
   // Stores a list of all tasks for the given job to `tasks`. Returns NOT_FOUND
   // if there is no such job.
-  Status TasksForJob(int64 job_id,
+  Status TasksForJob(int64_t job_id,
                      std::vector<std::shared_ptr<const Task>>& tasks) const;
   // Stores a list of all tasks for the given worker to `tasks`. Returns
   // NOT_FOUND if there is no such worker.

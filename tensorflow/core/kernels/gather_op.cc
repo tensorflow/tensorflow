@@ -60,7 +60,7 @@ class GatherOp : public OpKernel {
 
     // GatherV2 added an axis argument. For backwards compatibility with Gather,
     // fall back to axis 0 if the op does not have an axis input.
-    int64 axis = 0;
+    int64_t axis = 0;
     bool axis_is_set = false;  // Indicates whether the axis argument was set.
     if (c->num_inputs() == 3) {
       axis_is_set = true;
@@ -78,7 +78,7 @@ class GatherOp : public OpKernel {
       }
     }
 
-    int64 min_params_dim = axis < 0 ? -axis : axis + 1;
+    int64_t min_params_dim = axis < 0 ? -axis : axis + 1;
     OP_REQUIRES(
         c, params.dims() >= min_params_dim,
         errors::InvalidArgument("Shape must be at least rank ", min_params_dim,
@@ -89,7 +89,7 @@ class GatherOp : public OpKernel {
     }
 
     // Modify only a local copy of batch_dims_.
-    int32 batch_dims = batch_dims_;
+    int32_t batch_dims = batch_dims_;
     if (batch_dims != 0) {
       OP_REQUIRES(c,
                   batch_dims >= -indices.dims() && batch_dims <= indices.dims(),
@@ -122,8 +122,8 @@ class GatherOp : public OpKernel {
     }
 
     // Check that we have enough index space
-    int64 gather_dim_size = params.dim_size(axis);
-    const int64 N = indices.NumElements();
+    int64_t gather_dim_size = params.dim_size(axis);
+    const int64_t N = indices.NumElements();
     OP_REQUIRES(
         c, gather_dim_size <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("params.shape[", axis, "] too large for ",
@@ -134,9 +134,9 @@ class GatherOp : public OpKernel {
     // The result shape is params.shape[:axis] + indices.shape[batch_dims:] +
     // params.shape[axis + 1:].
     TensorShape result_shape;
-    int64 batch_size = 1;
-    int64 outer_size = 1;
-    int64 inner_size = 1;
+    int64_t batch_size = 1;
+    int64_t outer_size = 1;
+    int64_t inner_size = 1;
 
     for (int i = 0; i < batch_dims; ++i) {
       result_shape.AddDim(params.dim_size(i));
@@ -159,7 +159,7 @@ class GatherOp : public OpKernel {
     if (N == 0) return;
     if (inner_size == 0) return;
 
-    int64 bad_i = -1;
+    int64_t bad_i = -1;
     auto indices_flat = indices.flat<Index>();
     if (batch_dims > 0) {
       auto params_flat = params.shaped<T, 4>(

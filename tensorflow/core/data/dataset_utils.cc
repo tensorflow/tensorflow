@@ -577,7 +577,7 @@ void StripDevicePlacement(FunctionDefLibrary* library) {
   }
 }
 
-Status CopyPartialBatch(int64 num_elements, const Tensor& value,
+Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
                         Tensor* output) {
   switch (value.dtype()) {
 #define HANDLE_TYPE(type)                                         \
@@ -599,9 +599,9 @@ Status CopyPartialBatch(int64 num_elements, const Tensor& value,
 }
 
 Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
-                 int64 batch_size, const string& iterator_prefix,
+                 int64_t batch_size, const string& iterator_prefix,
                  const string& batch_prefix, std::vector<Tensor>* batch) {
-  int64 output_size;
+  int64_t output_size;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix,
                strings::StrCat(batch_prefix, "_", kOutputSize)),
@@ -633,7 +633,7 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
   return Status::OK();
 }
 
-Status WriteBatch(int64 batch_size, int64 num_elements,
+Status WriteBatch(int64_t batch_size, int64_t num_elements,
                   const string& iterator_prefix, const string& batch_prefix,
                   IteratorStateWriter* writer, std::vector<Tensor>* batch) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -661,7 +661,7 @@ Status WriteBatch(int64 batch_size, int64 num_elements,
 
 Status ReadStatus(const string& iterator_prefix, const string& prefix,
                   IteratorStateReader* reader, Status* status) {
-  int64 code_int;
+  int64_t code_int;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       &code_int));
@@ -692,10 +692,10 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   return Status::OK();
 }
 
-Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
-                    const Status& status, IteratorContext* ctx,
-                    std::vector<Tensor>* output, bool* end_of_sequence,
-                    std::vector<Tensor>* batch) {
+Status ProcessBatch(int64_t batch_size, int64_t num_elements,
+                    bool drop_remainder, const Status& status,
+                    IteratorContext* ctx, std::vector<Tensor>* output,
+                    bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
     if (status.ok() || errors::IsOutOfRange(status)) {
       *end_of_sequence = true;
@@ -742,7 +742,7 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
       GetExperiments().contains("parallelize_batch_copy");
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
-  const int64 num_batch_elements = batch_elements.size();
+  const int64_t num_batch_elements = batch_elements.size();
   for (size_t component_index = 0; component_index < num_tuple_components;
        ++component_index) {
     const Tensor& first_element = batch_elements.at(0)[component_index];
@@ -785,9 +785,9 @@ Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
       BlockingCounter counter(num_batch_elements);
       const auto num_threads = ctx->runner_threadpool_size();
       const auto slice_size = num_batch_elements / num_threads;
-      int64 offset = 0;
+      int64_t offset = 0;
       for (size_t i = 0; i < num_threads; ++i) {
-        int64 length = slice_size;
+        int64_t length = slice_size;
         // When the number of threads does not divide the number of elements
         // evenly, the size of some slices is incremented to guarantee their
         // sizes add up to the total number of elements.
@@ -878,7 +878,7 @@ bool ShouldApplyOptimizations(
 
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
-                                         int64 rollout_pct) {
+                                         int64_t rollout_pct) {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   get_dataset_experiments()->insert(std::make_pair(experiment, rollout_pct));
 }

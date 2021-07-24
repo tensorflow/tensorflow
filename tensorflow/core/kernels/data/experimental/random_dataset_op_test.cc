@@ -30,7 +30,8 @@ constexpr int kCount = 10;
 // for a given seed/seed2 combo.
 // For compatibility with the test harness, return value is a vector of scalar
 // Tensors.
-std::vector<Tensor> GenerateExpectedData(int64 seed, int64 seed2, int count) {
+std::vector<Tensor> GenerateExpectedData(int64_t seed, int64_t seed2,
+                                         int count) {
   std::vector<Tensor> ret;
   auto parent_generator = random::PhiloxRandom(seed, seed2);
   auto generator =
@@ -44,7 +45,7 @@ std::vector<Tensor> GenerateExpectedData(int64 seed, int64 seed2, int count) {
 
 class RandomDatasetParams : public DatasetParams {
  public:
-  RandomDatasetParams(int64 seed, int64 seed2, DataTypeVector output_dtypes,
+  RandomDatasetParams(int64_t seed, int64_t seed2, DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
                       string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),

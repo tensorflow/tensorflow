@@ -202,7 +202,7 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("operand"), py::arg("update"), py::arg("start_indices"));
   ops.def(
       "Eigh",
-      [](XlaOp a, bool lower, int64 max_iter, float epsilon,
+      [](XlaOp a, bool lower, int64_t max_iter, float epsilon,
          bool sort_eigenvalues) -> std::pair<XlaOp, XlaOp> {
         auto eigh =
             SelfAdjointEig(a, lower, max_iter, epsilon, sort_eigenvalues);
@@ -222,10 +222,10 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
           py::arg("shape"), py::arg("config") = "");
   ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota),
+          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64_t)>(&Iota),
           py::arg("builder"), py::arg("shape"), py::arg("iota_dimension"));
   ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota),
+          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64_t)>(&Iota),
           py::arg("builder"), py::arg("type"), py::arg("size"));
   ops.def(
       "LU",
@@ -244,7 +244,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Pad", &Pad, py::arg("operand"), py::arg("padding_value"),
           py::arg("padding_config"));
   ops.def("Parameter",
-          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+          static_cast<XlaOp (*)(XlaBuilder*, int64_t, const Shape&,
                                 const std::string&, const std::vector<bool>&)>(
               &Parameter),
           py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
@@ -326,7 +326,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def(
       "Sort",
       [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
-         absl::optional<const XlaComputation*> comparator, int64 dimension,
+         absl::optional<const XlaComputation*> comparator, int64_t dimension,
          bool is_stable) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
@@ -349,7 +349,7 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("is_stable") = false);
   ops.def(
       "SVD",
-      [](XlaOp a, int64 max_iter,
+      [](XlaOp a, int64_t max_iter,
          float epsilon) -> std::tuple<XlaOp, XlaOp, XlaOp> {
         auto svd = SVD(a, max_iter, epsilon);
         return std::make_tuple(svd.u, svd.d, svd.v);

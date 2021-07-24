@@ -1196,7 +1196,7 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   EXPECT_EQ(handle2->Type(), TensorHandle::REMOTE);
   EXPECT_EQ(handle2->op_device()->name(), device2);
   int64_t op_id;
-  int32 output_num;
+  int32_t output_num;
   TF_ASSERT_OK(handle2->RemoteAddress(handle2->device(),
                                       /*wait_until_ready=*/true, &op_id,
                                       &output_num));

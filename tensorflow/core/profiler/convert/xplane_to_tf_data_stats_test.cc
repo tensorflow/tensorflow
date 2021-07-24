@@ -34,10 +34,10 @@ using ::testing::EqualsProto;
 // for _ in dataset:
 //   pass
 TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
-  constexpr int64 kPrefetchIteratorId = 123;
-  constexpr int64 kRangeIteratorId = 456;
-  constexpr int64 kFirstElementId = 100;
-  constexpr int64 kSecondElementId = 200;
+  constexpr int64_t kPrefetchIteratorId = 123;
+  constexpr int64_t kRangeIteratorId = 456;
+  constexpr int64_t kFirstElementId = 100;
+  constexpr int64_t kSecondElementId = 200;
 
   XPlane host_plane;
   XPlaneBuilder host_plane_builder(&host_plane);
@@ -180,9 +180,9 @@ TEST(XPlaneToTfDataStatsTest, HostInputPipeline) {
 }
 
 TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
-  constexpr int64 kPrefetchIteratorId = 123;
-  constexpr int64 kRangeIteratorId = 456;
-  constexpr int64 kElementId = 100;
+  constexpr int64_t kPrefetchIteratorId = 123;
+  constexpr int64_t kRangeIteratorId = 456;
+  constexpr int64_t kElementId = 100;
 
   XPlane host_plane;
   XPlaneBuilder host_plane_builder(&host_plane);
@@ -300,9 +300,9 @@ TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
 // for _ in dataset:
 //   pass
 TEST(XPlaneToTfDataStatsTest, MapAndBatch) {
-  constexpr int64 kMapAndBatchIteratorId = 123;
-  constexpr int64 kRangeIteratorId = 456;
-  constexpr int64 kElementId = 100;
+  constexpr int64_t kMapAndBatchIteratorId = 123;
+  constexpr int64_t kRangeIteratorId = 456;
+  constexpr int64_t kElementId = 100;
 
   XPlane host_plane;
   XPlaneBuilder host_plane_builder(&host_plane);

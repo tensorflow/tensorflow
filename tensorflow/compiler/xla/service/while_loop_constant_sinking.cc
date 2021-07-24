@@ -27,7 +27,7 @@ namespace xla {
 // constant while still keeping it trivially loop invariant.
 static Status ReplaceUsesWhileKeepingLoopInvariance(
     HloInstruction* old_instr, HloInstruction* new_instr,
-    HloInstruction* while_body_root, int64 tuple_index) {
+    HloInstruction* while_body_root, int64_t tuple_index) {
   CHECK_EQ(while_body_root->opcode(), HloOpcode::kTuple);
 
   std::vector<HloInstruction*> users;
@@ -35,7 +35,7 @@ static Status ReplaceUsesWhileKeepingLoopInvariance(
   absl::c_copy(old_instr->users(), std::back_inserter(users));
 
   for (auto* user : users) {
-    for (int64 i = 0, e = user->operand_count(); i < e; i++) {
+    for (int64_t i = 0, e = user->operand_count(); i < e; i++) {
       if (user->operand(i) == old_instr &&
           !(user == while_body_root && i == tuple_index)) {
         TF_RETURN_IF_ERROR(user->ReplaceOperandWith(i, new_instr));
@@ -65,7 +65,7 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
       WhileUtil::GetInvariantGTEsForWhileBody(*while_body);
 
   for (HloInstruction* invariant_body_gte : invariant_body_gtes) {
-    int64 index = invariant_body_gte->tuple_index();
+    int64_t index = invariant_body_gte->tuple_index();
     const HloInstruction& invariant_value = *init_value.operand(index);
 
     // Original value should be a constant.

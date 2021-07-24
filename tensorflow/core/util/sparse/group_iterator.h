@@ -33,7 +33,7 @@ class GroupIterable;  // Predeclare GroupIterable for Group.
 // provide access into the underlying SparseTensor.
 class Group {
  public:
-  Group(GroupIterable* iter, int64 loc, int64 next_loc)
+  Group(GroupIterable* iter, int64_t loc, int64_t next_loc)
       : iter_(iter), loc_(loc), next_loc_(next_loc) {}
 
   std::vector<int64> group() const;
@@ -88,7 +88,7 @@ class GroupIterable {
   class IteratorStep;
 
   IteratorStep begin() { return IteratorStep(this, 0); }
-  IteratorStep at(int64 loc) {
+  IteratorStep at(int64_t loc) {
     CHECK(loc >= 0 && loc <= ix_.dim_size(0))
         << "loc provided must lie between 0 and " << ix_.dim_size(0);
     return IteratorStep(this, loc);
@@ -96,7 +96,7 @@ class GroupIterable {
   IteratorStep end() { return IteratorStep(this, ix_.dim_size(0)); }
 
   template <typename TIX>
-  inline bool GroupMatches(const TIX& ix, int64 loc_a, int64 loc_b) const {
+  inline bool GroupMatches(const TIX& ix, int64_t loc_a, int64_t loc_b) const {
     for (int d : group_dims_) {
       if (ix(loc_a, d) != ix(loc_b, d)) {
         return false;
@@ -107,7 +107,7 @@ class GroupIterable {
 
   class IteratorStep {
    public:
-    IteratorStep(GroupIterable* iter, int64 loc)
+    IteratorStep(GroupIterable* iter, int64_t loc)
         : iter_(iter), loc_(loc), next_loc_(loc_) {
       UpdateEndOfGroup();
     }

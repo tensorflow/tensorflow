@@ -80,7 +80,7 @@ StatusOr<std::vector<XlaOp>> WhileLoopHelper(
 }
 
 StatusOr<std::vector<XlaOp>> ForEachIndex(
-    int64 num_iterations, PrimitiveType num_iterations_type,
+    int64_t num_iterations, PrimitiveType num_iterations_type,
     const ForEachIndexBodyFunction& body_function,
     absl::Span<const XlaOp> initial_values, absl::string_view name,
     XlaBuilder* builder) {

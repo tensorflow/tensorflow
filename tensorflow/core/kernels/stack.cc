@@ -162,7 +162,7 @@ StackOp::StackOp(OpKernelConstruction* context) : OpKernel(context) {
 }
 
 void StackOp::Compute(OpKernelContext* ctx) {
-  int32 size = std::numeric_limits<int32>::max();
+  int32_t size = std::numeric_limits<int32>::max();
   if (ctx->num_inputs() > 0) {
     const Tensor* tensor_size;
     OP_REQUIRES_OK(ctx, ctx->input("max_size", &tensor_size));
@@ -172,7 +172,7 @@ void StackOp::Compute(OpKernelContext* ctx) {
         errors::InvalidArgument("Stack size must be a scalar, but had shape: ",
                                 tensor_size->shape().DebugString()));
 
-    int32 size_value = tensor_size->scalar<int32>()();
+    int32_t size_value = tensor_size->scalar<int32>()();
     if (size_value >= 0) {
       size = size_value;
     }

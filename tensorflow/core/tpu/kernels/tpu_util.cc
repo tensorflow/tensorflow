@@ -67,7 +67,7 @@ Status ShapeTensorToTensorShape(const Tensor& tensor, TensorShape* shape) {
       !TensorShapeUtils::IsVector(tensor.shape())) {
     return errors::InvalidArgument("Shape tensor must be an int64 vector.");
   }
-  const int64 rank = tensor.NumElements();
+  const int64_t rank = tensor.NumElements();
   auto tensor_dims = tensor.flat<int64>();
   std::vector<int64> dims(rank);
   for (int64_t i = 0; i < rank; ++i) {

@@ -64,7 +64,7 @@ std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
                                       const std::vector<T>& data) {
   uint32 seed = 123;
   std::minstd_rand rng(seed);
-  int64 out_size = 1;
+  int64_t out_size = 1;
   for (int dim : dims) {
     out_size *= dim;
   }
@@ -384,11 +384,11 @@ TEST_F(QuantizedOpTest, QuantizeV2_32Bit) {
                            });
   // We expect there will be some fuzziness in the lower bits, since this is
   // converting from float.
-  const int64 epsilon = 1 << 8;
+  const int64_t epsilon = 1 << 8;
   const qint32* output_data = GetOutput(0)->flat<qint32>().data();
   const qint32* expected_data = expected.flat<qint32>().data();
   for (int i = 0; i < element_count; ++i) {
-    const int64 delta = output_data[i] - expected_data[i];
+    const int64_t delta = output_data[i] - expected_data[i];
     EXPECT_GT(epsilon, std::abs(delta))
         << "output_data[" << i << "]=" << output_data[i] << ", expected_data["
         << i << "]=" << expected_data[i] << ", delta=" << delta;

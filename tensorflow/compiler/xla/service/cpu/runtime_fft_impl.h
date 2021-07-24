@@ -242,7 +242,7 @@ void EigenFftWithRank(const EigenDevice& device, void* out, void* operand,
 
 template <typename EigenDevice>
 void EigenFftImpl(const EigenDevice& device, void* out, void* operand,
-                  FftType fft_type, bool double_precision, int32 fft_rank,
+                  FftType fft_type, bool double_precision, int32_t fft_rank,
                   int64_t input_batch, int64_t fft_length0, int64_t fft_length1,
                   int64_t fft_length2) {
   switch (fft_rank) {

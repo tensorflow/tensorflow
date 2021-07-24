@@ -66,7 +66,8 @@ CreateShardedConvForDotGeneralConvolution(
 // A parallel batch dimension in DotGeneral is represented as a spatial
 // dimension with window size B (batch dimension size), stride B - 1, and base
 // dilation B.
-bool ConvSpatialDimensionIsParallel(const WindowDimension& wd, int64 lhs_size);
+bool ConvSpatialDimensionIsParallel(const WindowDimension& wd,
+                                    int64_t lhs_size);
 
 // Returns a DotConvolutionDimsInfo from a kDot instruction, where all
 // the spatial_dim values are set to -1.

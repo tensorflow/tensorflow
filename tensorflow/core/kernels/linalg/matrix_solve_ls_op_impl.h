@@ -86,8 +86,8 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
     OP_REQUIRES(context, l2_regularizer >= 0,
                 errors::InvalidArgument("l2_regularizer must be >= 0."));
 
-    const int64 rows = matrix.rows();
-    const int64 cols = matrix.cols();
+    const int64_t rows = matrix.rows();
+    const int64_t cols = matrix.cols();
     if (rows == 0 || cols == 0 || rhs.rows() == 0 || rhs.cols() == 0) {
       // The result is the empty matrix.
       return;

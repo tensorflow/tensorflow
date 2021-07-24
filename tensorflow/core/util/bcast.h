@@ -31,7 +31,7 @@ namespace tensorflow {
 // (flattened) batch index of the input that must be used to compute the i'th
 // batch output.
 //
-inline void ComputeBatchIndices(const int64 output_batch_size,
+inline void ComputeBatchIndices(const int64_t output_batch_size,
                                 const gtl::InlinedVector<int64, 4>& reshape,
                                 const gtl::InlinedVector<int64, 4>& bcast,
                                 std::vector<int64>* out_indices) {
@@ -47,8 +47,8 @@ inline void ComputeBatchIndices(const int64 output_batch_size,
     // Replicate the already populated mapping an additional (dim - 1) times.
     // If we are broadcasting, just copy the existing mapping.
     // Otherwise, add another dimension from the input shape.
-    const int64 dim = std::max(reshape[i], bcast[i]);
-    const int64 incr = bcast[i] > 1 ? 0 : num_input_elements;
+    const int64_t dim = std::max(reshape[i], bcast[i]);
+    const int64_t incr = bcast[i] > 1 ? 0 : num_input_elements;
     for (int64_t k = 0; k < (dim - 1) * num_output_elements; ++k) {
       (*out_indices)[num_output_elements + k] = (*out_indices)[k] + incr;
     }
@@ -158,7 +158,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
     const int rank = x[0].size();
     output_.resize(rank);
     for (int i = 0; i < rank; i++) {
-      const int64 dim = x[0][i];
+      const int64_t dim = x[0][i];
       elements = mul_dims(elements, dim);
       output_[i] = dim;
     }

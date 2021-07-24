@@ -70,7 +70,7 @@ XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
 string XlaContext::DebugString() const { return "XLA JIT context"; }
 
 void XlaContext::SetRetval(int index, const XlaExpression& expression) {
-  const int64 retvals_size = retvals_.size();
+  const int64_t retvals_size = retvals_.size();
   if (retvals_size <= index) {
     retvals_.resize(index + 1);
   }

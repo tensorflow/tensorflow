@@ -84,7 +84,7 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
     delete reduction_context->release_output(0).tensor;
     reduction_op->Compute(reduction_context.get());
   }
-  int64 bytes_per_iter =
+  int64_t bytes_per_iter =
       static_cast<int64>(num_rows * num_cols * sizeof(float));
   state.SetBytesProcessed(bytes_per_iter * state.iterations());
 }

@@ -32,7 +32,7 @@ struct BuildGraphOptions {
   // TODO(mrry): Remove this when the distributed runtime supports Arg/Retval.
   bool use_function_convention = false;
 
-  static constexpr int64 kNoCollectiveGraphKey = 0;
+  static constexpr int64_t kNoCollectiveGraphKey = 0;
   int64 collective_graph_key = kNoCollectiveGraphKey;
 
   // If not `kNone`, order all CollectiveReduce operations statically and

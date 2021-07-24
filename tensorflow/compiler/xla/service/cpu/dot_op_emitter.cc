@@ -186,7 +186,7 @@ class DotOpEmitter {
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.
   int64 GetGemvTilingFactor() const {
-    const int64 kDefaultTilingFactor = 8;
+    const int64_t kDefaultTilingFactor = 8;
     return options::LlvmIrGemvTilingFactor(hlo_module_config_)
         .value_or(kDefaultTilingFactor);
   }

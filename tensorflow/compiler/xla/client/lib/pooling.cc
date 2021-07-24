@@ -116,9 +116,9 @@ XlaOp AvgPoolDivideByCount(XlaOp pooled, absl::Span<const int64> input_size,
     // If counts include padding, all windows have the same number of elements
     // contributing to each average. Divide by the window size everywhere to get
     // the average.
-    int64 window_size =
+    int64_t window_size =
         std::accumulate(window_dimensions.begin(), window_dimensions.end(), 1,
-                        [](int64 a, int64 b) { return a * b; });
+                        [](int64_t a, int64_t b) { return a * b; });
     auto divisor = ConstantR0WithType(pooled.builder(), dtype, window_size);
 
     return pooled / divisor;

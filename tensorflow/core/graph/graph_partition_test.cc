@@ -514,7 +514,7 @@ TEST_F(GraphPartitionTest, SetIncarnation) {
     const GraphDef& gdef = kv.second;
     for (const NodeDef& ndef : gdef.node()) {
       if (ndef.name() == "A" || ndef.name() == "B") {
-        int64 val;
+        int64_t val;
         TF_CHECK_OK(GetNodeAttr(ndef, "send_device_incarnation", &val));
         EXPECT_EQ(val, 100);  // Send device is "A".
       }

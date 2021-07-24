@@ -412,13 +412,13 @@ Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
 
 void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
-    int64 next_heartbeat_micros =
+    int64_t next_heartbeat_micros =
         Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
     {
       mutex_lock l(mu_);
       while (!cancelled_ &&
              Env::Default()->NowMicros() < next_heartbeat_micros) {
-        int64 time_to_wait_micros =
+        int64_t time_to_wait_micros =
             next_heartbeat_micros - Env::Default()->NowMicros();
         heartbeat_cv_.wait_for(l,
                                std::chrono::microseconds(time_to_wait_micros));
@@ -464,7 +464,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
       }
     }
     tasks_to_delete.reserve(task_ids_to_delete.size());
-    for (int64 task_id : task_ids_to_delete) {
+    for (int64_t task_id : task_ids_to_delete) {
       VLOG(3) << "Deleting task " << task_id
               << " at the request of the dispatcher";
       tasks_to_delete.push_back(std::move(tasks_[task_id]));

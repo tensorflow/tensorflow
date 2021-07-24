@@ -76,7 +76,7 @@ inline int16 FloatToInt16Sample(float data) {
                          kint16max);
 }
 
-inline float Int16SampleToFloat(int16 data) {
+inline float Int16SampleToFloat(int16_t data) {
   constexpr float kMultiplier = 1.0f / (1 << 15);
   return data * kMultiplier;
 }
@@ -201,7 +201,7 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
   // Write the audio.
   data += kHeaderSize;
   for (size_t i = 0; i < num_samples; ++i) {
-    int16 sample = FloatToInt16Sample(audio[i]);
+    int16_t sample = FloatToInt16Sample(audio[i]);
     core::EncodeFixed16(&data[i * kBytesPerSample],
                         static_cast<uint16>(sample));
   }
@@ -310,7 +310,7 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
                                          &unused_new_offset));
       float_values->resize(data_count);
       for (int i = 0; i < data_count; ++i) {
-        int16 single_channel_value = 0;
+        int16_t single_channel_value = 0;
         TF_RETURN_IF_ERROR(
             ReadValue<int16>(wav_string, &single_channel_value, &offset));
         (*float_values)[i] = Int16SampleToFloat(single_channel_value);

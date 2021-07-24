@@ -238,7 +238,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
               return errors::InvalidArgument(
                   "`key_func` must return a scalar int64.");
             }
-            const int64 key = key_func_output[0].scalar<int64>()();
+            const int64_t key = key_func_output[0].scalar<int64>()();
 
             if (states_.find(key) == states_.end()) {
               // Run the init function to create the initial state.
@@ -310,7 +310,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
               writer->WriteScalar(full_name("states_size"), states_.size()));
           int idx = 0;
           for (auto it = states_.begin(); it != states_.end(); ++idx, ++it) {
-            int64 key = it->first;
+            int64_t key = it->first;
             TF_RETURN_IF_ERROR(writer->WriteScalar(
                 full_name(strings::StrCat("states[", idx, "]->key")), key));
             if (!it->second.empty()) {
@@ -353,17 +353,17 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
 
         // Restoring states_.
         if (reader->Contains(full_name("states_size"))) {
-          int64 size;
+          int64_t size;
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("states_size"), &size));
           for (int idx = 0; idx < size; ++idx) {
-            int64 key;
+            int64_t key;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat("states[", idx, "]->key")), &key));
             std::vector<Tensor> state;
             if (reader->Contains(full_name(
                     strings::StrCat("states[", idx, "]->state_size")))) {
-              int64 state_size;
+              int64_t state_size;
               TF_RETURN_IF_ERROR(reader->ReadScalar(
                   full_name(strings::StrCat("states[", idx, "]->state_size")),
                   &state_size));
@@ -385,12 +385,12 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("keys_index"), &keys_index_));
           if (reader->Contains(full_name("keys_size"))) {
-            int64 size;
+            int64_t size;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(full_name("keys_size"), &size));
             keys_.resize(size);
             for (int idx = 0; idx < size; ++idx) {
-              int64 key;
+              int64_t key;
               TF_RETURN_IF_ERROR(reader->ReadScalar(
                   full_name(strings::StrCat("keys[", idx, "]")), &key));
               keys_[idx] = key;

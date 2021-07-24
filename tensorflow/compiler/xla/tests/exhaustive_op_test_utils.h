@@ -930,7 +930,7 @@ inline std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
   // We break up the 2^32-element space into small'ish chunks to keep peak
   // memory usage low.
   std::vector<std::pair<int64, int64>> result;
-  const int64 step = 1 << 25;
+  const int64_t step = 1 << 25;
   for (int64_t i = 0; i < (1l << 32); i += step) {
     result.push_back({i, i + step});
   }

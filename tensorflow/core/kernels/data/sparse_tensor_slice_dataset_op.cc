@@ -119,7 +119,7 @@ class Dataset : public DatasetBase {
         sparse::Group group = *iter_;
         const auto indices = group.indices();
         const auto values = group.values<T>();
-        const int64 num_entries = values.size();
+        const int64_t num_entries = values.size();
         next_non_empty_i_ = indices(0, 0);
 
         next_indices_ = Tensor(DT_INT64, {num_entries, rank - 1});
@@ -128,7 +128,7 @@ class Dataset : public DatasetBase {
         auto next_indices_t = next_indices_.matrix<int64>();
         auto next_values_t = next_values_.vec<T>();
 
-        for (int64 i = 0; i < num_entries; ++i) {
+        for (int64_t i = 0; i < num_entries; ++i) {
           for (int d = 1; d < rank; ++d) {
             next_indices_t(i, d - 1) = indices(i, d);
           }
@@ -186,7 +186,7 @@ class Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(Iterator::full_name("i"), &i_));
-      int64 iter_loc;
+      int64_t iter_loc;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(Iterator::full_name("iter_loc"), &iter_loc));
       iter_ = group_iterable_.at(iter_loc);
@@ -256,9 +256,9 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
     // if we can be sure that the sparse tensor was produced in an
     // appropriate order (e.g. by `tf.parse_example()` or a Dataset
     // that batches elements into rows of a SparseTensor).
-    int64 previous_batch_index = -1;
-    for (int64 i = 0; i < indices->dim_size(0); ++i) {
-      int64 next_batch_index = indices->matrix<int64>()(i, 0);
+    int64_t previous_batch_index = -1;
+    for (int64_t i = 0; i < indices->dim_size(0); ++i) {
+      int64_t next_batch_index = indices->matrix<int64>()(i, 0);
       OP_REQUIRES(
           ctx, next_batch_index >= previous_batch_index,
           errors::Unimplemented("The SparseTensor must be ordered in the batch "

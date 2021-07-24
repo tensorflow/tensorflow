@@ -206,7 +206,7 @@ class FunctionDefHelper {
     Node n = {{name}, "Const"};
     const DataType dtype = DataTypeToEnum<T>::value;
     n.attr.push_back({"dtype", dtype});
-    int64 num = vals.size();
+    int64_t num = vals.size();
     Tensor t(dtype, TensorShape({num}));
     for (size_t i = 0; i < vals.size(); ++i) {
       t.flat<T>()(i) = vals[i];
@@ -795,7 +795,7 @@ class FunctionLibraryRuntime {
   // RPC calls.
   struct Options {
     Options() {}
-    explicit Options(const int64 step_id) : step_id(step_id) {}
+    explicit Options(const int64_t step_id) : step_id(step_id) {}
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
     // non-negative step IDs (contiguous, starting from 0), and

@@ -137,8 +137,8 @@ class MultiOutputFusion : public HloModulePass {
     HloInstruction* instr2;
     int64 score;
     int64 timestamp;
-    ToBeFused(HloInstruction* instr1, HloInstruction* instr2, int64 score,
-              int64 timestamp)
+    ToBeFused(HloInstruction* instr1, HloInstruction* instr2, int64_t score,
+              int64_t timestamp)
         : instr1(instr1), instr2(instr2), score(score), timestamp(timestamp) {}
     bool operator<(const ToBeFused& rhs) const {
       return std::pair<int64, int64>(score, timestamp) <

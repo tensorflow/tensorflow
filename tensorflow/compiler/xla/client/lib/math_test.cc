@@ -184,7 +184,7 @@ XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfEdgeCases(); }
 //
 // TODO(jlebar): Expand this test to cover more ops.
 XLA_TEST_F(MathTest, RealFpOnlyOps) {
-  for (int64 i = PrimitiveType_MIN; i <= PrimitiveType_MAX; ++i) {
+  for (int64_t i = PrimitiveType_MIN; i <= PrimitiveType_MAX; ++i) {
     auto ty = static_cast<PrimitiveType>(i);
     SCOPED_TRACE(PrimitiveType_Name(ty));
     Shape shape;

@@ -28,7 +28,7 @@ namespace testing {
 // Returns a test dataset representing
 // tf.data.Dataset.range(range).map(lambda x: x*x). Useful for testing dataset
 // graph execution.
-DatasetDef RangeSquareDataset(int64 range);
+DatasetDef RangeSquareDataset(int64_t range);
 
 }  // namespace testing
 }  // namespace data

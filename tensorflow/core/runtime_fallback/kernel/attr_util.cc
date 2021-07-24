@@ -86,7 +86,7 @@ Status ParseValue(StringPiece input, std::vector<int32>* value) {
   std::vector<std::string> parts = str_util::Split(input, ",");
   value->reserve(parts.size());
   for (const auto& value_str : parts) {
-    int32 value_int;
+    int32_t value_int;
     bool parse_result = absl::SimpleAtoi(value_str, &value_int);
     if (!parse_result) {
       return errors::InvalidArgument("Could not parse list of integers from ",
@@ -113,7 +113,7 @@ Status AddOpAttr(const std::string& name, const std::string& attr_value,
     s = ParseValue(value, &val);
     opattrs->Set<bool>(name, val);
   } else if (type == "i32") {
-    int32 val;
+    int32_t val;
     s = ParseValue(value, &val);
     opattrs->Set<int32>(name, val);
   } else if (type == "string" || type == "padding") {

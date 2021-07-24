@@ -138,8 +138,8 @@ class ProjectiveGenerator {
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
   operator()(const array<DenseIndex, 4>& coords) const {
-    const int64 output_y = coords[1];
-    const int64 output_x = coords[2];
+    const int64_t output_y = coords[1];
+    const int64_t output_x = coords[2];
     const float* transform =
         transforms_.dimension(0) == 1
             ? transforms_.data()

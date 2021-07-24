@@ -336,7 +336,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   bool HasUniqueFusedUseOfOperandAt(HloInstruction* operand,
                                     const ShapeIndex& operand_index,
                                     HloInstruction* fusion,
-                                    const int64 use_operand_index) const;
+                                    const int64_t use_operand_index) const;
 
   // The module this analysis is performed on.
   const HloModule* module_;

@@ -48,9 +48,9 @@ namespace {
 // CalculatePostOrderSchedule traverses a module and assign a ordinal to each
 // instruction based the postorder dependency.
 int64 CalculatePostOrderScheduleHelper(
-    const HloComputation* comp, int64 start_ordinal,
+    const HloComputation* comp, int64_t start_ordinal,
     absl::flat_hash_map<HloInstruction*, int64>* ordinal_map) {
-  int64 ordinal = start_ordinal;
+  int64_t ordinal = start_ordinal;
   for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
     if (instruction->opcode() == HloOpcode::kCall ||
         instruction->opcode() == HloOpcode::kConditional) {
@@ -106,7 +106,7 @@ bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     visited.insert(current);
     for (const HloInstruction* user : current->users()) {
       // Found a user that is non-elementwise on current instruction.
-      for (const int64 use_index : user->OperandIndices(current)) {
+      for (const int64_t use_index : user->OperandIndices(current)) {
         if (!user->IsElementwiseOnOperand(use_index) &&
             user->opcode() != HloOpcode::kTuple) {
           return false;
@@ -178,10 +178,10 @@ absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
   absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
     return a->slice_starts().at(0) < b->slice_starts().at(0);
   });
-  int64 prev_limit = 0;
-  for (int64 i = 0; i < users.size(); ++i) {
+  int64_t prev_limit = 0;
+  for (int64_t i = 0; i < users.size(); ++i) {
     const HloInstruction* u = users[i];
-    int64 slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
+    int64_t slice_size = u->slice_limits().at(0) - u->slice_starts().at(0);
     if (u->slice_starts().at(0) != prev_limit ||
         slice_size != ShapeUtil::ElementsIn(concat.operand(i)->shape())) {
       return absl::optional<ConcatUsageInfo>();
@@ -194,7 +194,7 @@ absl::optional<ConcatUsageInfo> ConcatIsEffectivelyElementwise(
   // of the fusion candidates. Check that all concats and operand ids are the
   // same to know that the "transitive use closure" will be computed in the same
   // iteration space.
-  int64 operand_idx = concat.operand_index(&operand);
+  int64_t operand_idx = concat.operand_index(&operand);
   if (info.prev_concat != nullptr) {
     bool is_concat_identical = info.prev_concat->Identical(
         concat,
@@ -266,7 +266,7 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* param,
           continue;
         }
         default:
-          for (const int64 use_index : user->OperandIndices(current)) {
+          for (const int64_t use_index : user->OperandIndices(current)) {
             if (!user->IsElementwiseOnOperand(use_index)) {
               // Found a user that is non-elementwise on the current
               // instruction.
@@ -313,7 +313,7 @@ HloValue& HloDataflowAnalysis::GetValueDefinedAt(
 HloValue* HloDataflowAnalysis::NewHloValue(HloInstruction* instruction,
                                            const ShapeIndex& index,
                                            bool is_phi) {
-  const int64 value_id = next_value_id_++;
+  const int64_t value_id = next_value_id_++;
   auto emplaced = values_.emplace(
       std::piecewise_construct, std::forward_as_tuple(value_id),
       std::forward_as_tuple(value_id, instruction, index, is_phi));
@@ -588,7 +588,7 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
     const HloValueSet& operand_value_set = pair.second;
 
     ShapeIndex index = {0};
-    for (int64 i : operand_index) {
+    for (int64_t i : operand_index) {
       index.push_back(i);
     }
 
@@ -760,7 +760,7 @@ bool HloDataflowAnalysis::UpdateGetTupleElementValueSet(HloInstruction* gte) {
     // The corresponding ShapeIndex of the operand is simply the GTE ShapeIndex
     // with the tuple element number prefixed.
     ShapeIndex operand_index = {gte->tuple_index()};
-    for (int64 i : index) {
+    for (int64_t i : index) {
       operand_index.push_back(i);
     }
 
@@ -868,7 +868,7 @@ bool HloDataflowAnalysis::UpdateTupleSelectValueSet(HloInstruction* select) {
 bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
   CHECK_EQ(tuple->opcode(), HloOpcode::kTuple);
   bool changed = false;
-  for (int64 i = 0; i < tuple->operands().size(); ++i) {
+  for (int64_t i = 0; i < tuple->operands().size(); ++i) {
     // Copy the value set(s) of each operand into the respective position in the
     // kTuple instruction's value sets.
     for (auto& pair : GetInstructionValueSet(tuple->operand(i))) {
@@ -876,7 +876,7 @@ bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
       HloValueSet& operand_value_set = pair.second;
 
       ShapeIndex index = {i};
-      for (int64 op_index : operand_index) {
+      for (int64_t op_index : operand_index) {
         index.push_back(op_index);
       }
       HloValueSet& value_set = GetValueSet(tuple, index);
@@ -1188,7 +1188,7 @@ void HloDataflowAnalysis::Propagate() {
           const CallGraphNode& call_graph_node =
               call_graph_->GetNode(called_computation);
           if (call_graph_node.context() == CallContext::kSequential) {
-            for (int64 operand_number : user->OperandIndices(instruction)) {
+            for (int64_t operand_number : user->OperandIndices(instruction)) {
               add_to_worklist(
                   called_computation->parameter_instruction(operand_number));
             }
@@ -1599,7 +1599,7 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
   for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
     const HloInstruction* hlo_generating_output =
         instruction->fused_expression_root();
-    for (int64 i = 0; i < indexed_shape.index.size(); ++i) {
+    for (int64_t i = 0; i < indexed_shape.index.size(); ++i) {
       if (hlo_generating_output->opcode() == HloOpcode::kTuple) {
         hlo_generating_output =
             hlo_generating_output->operand(indexed_shape.index[i]);
@@ -1706,7 +1706,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       }
       auto* matched_add_operand = *add_operand_it;
       // Calculate operand index of 'add' operand which was not matched above.
-      const int64 other_add_operand_index =
+      const int64_t other_add_operand_index =
           matched_add_operand == add->operand(0) ? 1 : 0;
       // Returns true iff there is exactly one use of 'operand' at shape index
       // 'operand_index', and this singleton use is the fused root (at operand
@@ -1727,7 +1727,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
     // so here we just need to check that the use is at the right operand index.
     const auto operand_indices = user->OperandIndices(operand);
-    int64 operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
+    int64_t operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
     return operand_indices.size() == 1 && operand_indices[0] == operand_no;
   }
   if (user->opcode() == HloOpcode::kSort) {

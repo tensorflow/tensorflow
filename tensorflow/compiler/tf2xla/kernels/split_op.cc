@@ -34,7 +34,7 @@ class SplitOp : public XlaOpKernel {
   explicit SplitOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const int32 num_split = num_outputs();
+    const int32_t num_split = num_outputs();
     const TensorShape split_dim_shape = ctx->InputShape("split_dim");
     const TensorShape input_shape = ctx->InputShape(1);
 
@@ -45,8 +45,8 @@ class SplitOp : public XlaOpKernel {
     int64_t split_dim_orig;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &split_dim_orig));
 
-    int32 split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()
-                                         : split_dim_orig;
+    int32_t split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()
+                                           : split_dim_orig;
     OP_REQUIRES(ctx, 0 <= split_dim && split_dim < input_shape.dims(),
                 errors::InvalidArgument("-input rank(-", input_shape.dims(),
                                         ") <= split_dim < input rank (",
@@ -68,7 +68,7 @@ class SplitOp : public XlaOpKernel {
 
     // All the slices are the same size: this is the size along the
     // split dimension.
-    const int32 slice_size = input_shape.dim_size(split_dim) / num_split;
+    const int32_t slice_size = input_shape.dim_size(split_dim) / num_split;
 
     // The vectors we will use to define the slice. The entry for the
     // split dimensions varies for each output.
@@ -101,7 +101,7 @@ class SplitVOp : public XlaOpKernel {
   explicit SplitVOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const int32 num_split = num_outputs();
+    const int32_t num_split = num_outputs();
     const TensorShape input_shape = ctx->InputShape(0);
     const TensorShape index_shape = ctx->InputShape(2);
 

@@ -48,7 +48,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     }
     // Embed PID plus a unique counter as the leading portion of the filename
     // suffix to help prevent filename collisions between and within processes.
-    int32 pid = env_->GetProcessId();
+    int32_t pid = env_->GetProcessId();
     static std::atomic<int64> file_id_counter(0);
     // Precede filename_suffix with "." if it doesn't already start with one.
     string sep = absl::StartsWith(filename_suffix, ".") ? "" : ".";
@@ -77,7 +77,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     (void)Flush();  // Ignore errors.
   }
 
-  Status WriteTensor(int64 global_step, Tensor t, const string& tag,
+  Status WriteTensor(int64_t global_step, Tensor t, const string& tag,
                      const string& serialized_metadata) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
@@ -100,7 +100,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteScalar(int64 global_step, Tensor t, const string& tag) override {
+  Status WriteScalar(int64_t global_step, Tensor t,
+                     const string& tag) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
@@ -109,7 +110,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteHistogram(int64 global_step, Tensor t,
+  Status WriteHistogram(int64_t global_step, Tensor t,
                         const string& tag) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
@@ -119,7 +120,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteImage(int64 global_step, Tensor t, const string& tag,
+  Status WriteImage(int64_t global_step, Tensor t, const string& tag,
                     int max_images, Tensor bad_color) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
@@ -129,7 +130,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteAudio(int64 global_step, Tensor t, const string& tag,
+  Status WriteAudio(int64_t global_step, Tensor t, const string& tag,
                     int max_outputs, float sample_rate) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);
@@ -139,7 +140,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return WriteEvent(std::move(e));
   }
 
-  Status WriteGraph(int64 global_step,
+  Status WriteGraph(int64_t global_step,
                     std::unique_ptr<GraphDef> graph) override {
     std::unique_ptr<Event> e{new Event};
     e->set_step(global_step);

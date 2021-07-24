@@ -840,8 +840,8 @@ REGISTER_OP("Select")
 
       // rank of shape and data is known.
 
-      const int32 cond_rank = c->Rank(cond);
-      const int32 data_rank = c->Rank(data);
+      const int32_t cond_rank = c->Rank(cond);
+      const int32_t data_rank = c->Rank(data);
 
       if (cond_rank == 0) {
         // The rank of 'cond' is a scalar.
@@ -1072,7 +1072,7 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     return shape_inference::UnknownShape(c);
   }
 
-  const int32 input_rank = c->Rank(input_shape);
+  const int32_t input_rank = c->Rank(input_shape);
   if (input_rank <= 1) {
     // Reducing a scalar/vector must return a scalar.
     return shape_inference::ScalarShape(c);
@@ -1692,7 +1692,7 @@ REGISTER_OP("Bincount")
       }
 
       // Return `[size]` shape if size is known.
-      int32 size_val = size_tensor->scalar<int32>()();
+      int32_t size_val = size_tensor->scalar<int32>()();
       if (size_val < 0) {
         return errors::InvalidArgument("size (", size_val,
                                        ") must be non-negative");
@@ -2083,12 +2083,12 @@ REGISTER_OP("SobolSample")
       const Tensor* dim_t = c->input_tensor(0);
       const Tensor* num_results_t = c->input_tensor(1);
 
-      int32 dim = dim_t == nullptr ? InferenceContext::kUnknownDim
-                                   : dim_t->scalar<int32>()();
+      int32_t dim = dim_t == nullptr ? InferenceContext::kUnknownDim
+                                     : dim_t->scalar<int32>()();
 
-      int32 num_results = num_results_t == nullptr
-                              ? InferenceContext::kUnknownDim
-                              : num_results_t->scalar<int32>()();
+      int32_t num_results = num_results_t == nullptr
+                                ? InferenceContext::kUnknownDim
+                                : num_results_t->scalar<int32>()();
 
       c->set_output(0, c->Matrix(num_results, dim));
       return Status::OK();

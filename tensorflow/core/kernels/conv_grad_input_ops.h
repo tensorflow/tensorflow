@@ -134,8 +134,8 @@ struct LaunchConv2DBackpropInputOpImpl {
                  filter_shape, out_backprop.shape(), dilations, strides,
                  padding, explicit_paddings, data_format, &dims));
 
-    int64 padding_top = -1, padding_bottom = -1;
-    int64 padding_left = -1, padding_right = -1;
+    int64_t padding_top = -1, padding_bottom = -1;
+    int64_t padding_left = -1, padding_right = -1;
     if (padding == EXPLICIT) {
       GetExplicitPaddingForDim(explicit_paddings, data_format, 'H',
                                &padding_top, &padding_bottom);
@@ -143,7 +143,7 @@ struct LaunchConv2DBackpropInputOpImpl {
                                &padding_left, &padding_right);
     }
 
-    int64 expected_out_rows, expected_out_cols;
+    int64_t expected_out_rows, expected_out_cols;
     // The function is guaranteed to succeed because we checked the output and
     // padding was valid earlier.
     TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
@@ -159,7 +159,7 @@ struct LaunchConv2DBackpropInputOpImpl {
     DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
 
     if (std::is_same<Device, GPUDevice>::value) {
-      int64 size = 1;
+      int64_t size = 1;
 #define REQUIRES_32BIT(x)                                                   \
   size *= x;                                                                \
   OP_REQUIRES(ctx,                                                          \
@@ -584,8 +584,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
       }
     }
 #else
-    int64 pad_top, pad_bottom;
-    int64 pad_left, pad_right;
+    int64_t pad_top, pad_bottom;
+    int64_t pad_left, pad_right;
 #endif
     if (padding_ == Padding::EXPLICIT) {
       pad_top = explicit_paddings_[2];
@@ -727,7 +727,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                       &pad_right, &output_image_size, &filter_total_size,
                       &input_backprop_data, &col_buffer_data,
                       &out_backprop_data, &filter_data, &input_offset,
-                      &output_offset, &size_C](int64 start, int64 limit) {
+                      &output_offset, &size_C](int64_t start, int64_t limit) {
           for (int shard_id = start; shard_id < limit; ++shard_id) {
             T* im2col_buf = col_buffer_data + shard_id * size_C;
             T* input_data = input_backprop_data + shard_id * input_offset;

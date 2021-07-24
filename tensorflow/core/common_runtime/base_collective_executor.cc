@@ -446,7 +446,7 @@ Status BaseCollectiveExecutor::CreateCollective(
 
 bool BaseCollectiveExecutor::CheckDependencies(
     const CollectiveParams& col_params) {
-  for (int32 instance : col_params.instance.impl_details.dependencies) {
+  for (int32_t instance : col_params.instance.impl_details.dependencies) {
     auto find_iter = launched_.find(instance);
     if (find_iter == launched_.end() || find_iter->second != 0) {
       VLOG(1) << "Collective " << col_params.ToString()
@@ -472,7 +472,7 @@ void BaseCollectiveExecutor::UnblockDependencies(
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =
         col_params.group.task_names[col_params.default_rank];
-    const int32 num_devices =
+    const int32_t num_devices =
         col_params.group.num_devices_per_task.at(task_name);
     launched_[col_params.instance.instance_key] = num_devices;
   }

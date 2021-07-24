@@ -57,7 +57,7 @@ GetSimpleIndexTensor(int N, const int NDIM) {
 }
 
 TEST(SparseTensorTest, DimComparatorSorts) {
-  int64 N = 5;
+  int64_t N = 5;
   const int NDIM = 3;
   auto ix = GetSimpleIndexTensor(N, NDIM);
   TTypes<int64>::Matrix map(ix.data(), N, NDIM);
@@ -749,8 +749,8 @@ static void BM_SparseReorderFloat(::testing::benchmark::State& state) {
   int NDIM32 = state.range(1);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
-  const int64 NDIM = static_cast<int64>(NDIM32);
-  const int64 N = static_cast<int64>(N32);
+  const int64_t NDIM = static_cast<int64>(NDIM32);
+  const int64_t N = static_cast<int64>(N32);
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_FLOAT, TensorShape({N}));
   TensorShape shape;
@@ -769,7 +769,7 @@ static void BM_SparseReorderFloat(::testing::benchmark::State& state) {
 
   for (auto s : state) {
     state.PauseTiming();
-    for (int64 i = 0; i < N; ++i) {
+    for (int64_t i = 0; i < N; ++i) {
       for (int d = 0; d < NDIM32; ++d) {
         ix_t(i, d) = rnd.Rand64() % 1000;
       }
@@ -787,8 +787,8 @@ static void BM_SparseReorderString(::testing::benchmark::State& state) {
   int NDIM32 = state.range(1);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
-  const int64 NDIM = static_cast<int64>(NDIM32);
-  const int64 N = static_cast<int64>(N32);
+  const int64_t NDIM = static_cast<int64>(NDIM32);
+  const int64_t N = static_cast<int64>(N32);
   Tensor ix(DT_INT64, TensorShape({N, NDIM}));
   Tensor vals(DT_STRING, TensorShape({N}));
   TensorShape shape;
@@ -812,7 +812,7 @@ static void BM_SparseReorderString(::testing::benchmark::State& state) {
 
   for (auto s : state) {
     state.PauseTiming();
-    for (int64 i = 0; i < N; ++i) {
+    for (int64_t i = 0; i < N; ++i) {
       for (int d = 0; d < NDIM32; ++d) {
         ix_t(i, d) = rnd.Rand64() % 1000;
       }
