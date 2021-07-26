@@ -96,6 +96,25 @@ class ShardingPolicy(enum.IntEnum):
   FILE_OR_DATA = 4
   HINT = 5
 
+  def _to_proto(self):
+    """Converts the policy to ProcessingModeDef proto enum."""
+
+    if self == ShardingPolicy.OFF:
+      return data_service_pb2.ProcessingModeDef.OFF
+    if self == ShardingPolicy.DYNAMIC:
+      return data_service_pb2.ProcessingModeDef.DYNAMIC
+    if self == ShardingPolicy.FILE:
+      return data_service_pb2.ProcessingModeDef.FILE
+    if self == ShardingPolicy.DATA:
+      return data_service_pb2.ProcessingModeDef.DATA
+    if self == ShardingPolicy.FILE_OR_DATA:
+      return data_service_pb2.ProcessingModeDef.FILE_OR_DATA
+    if self == ShardingPolicy.HINT:
+      return data_service_pb2.ProcessingModeDef.HINT
+    raise ValueError(
+        f"Unable to convert sharding policy {self!r} to proto. Please verify "
+        "the policy mapping.")
+
 
 def _get_validated_sharding_policy(processing_mode):
   """Validates `processing_mode` and converts it to ShardingPolicy."""
@@ -117,10 +136,14 @@ def _get_validated_sharding_policy(processing_mode):
 
 
 def _serialize(processing_mode):
+  """Serializes `processing_mode`."""
+
   processing_mode = _get_validated_sharding_policy(processing_mode)
   if isinstance(processing_mode, ShardingPolicy):
+    # pylint: disable=protected-access
     processing_mode_def = data_service_pb2.ProcessingModeDef(
-        sharding_policy=processing_mode)
+        sharding_policy=_get_validated_sharding_policy(
+            processing_mode)._to_proto())
     return processing_mode_def.SerializeToString()
   if processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
     return processing_mode
