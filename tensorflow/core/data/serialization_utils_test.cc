@@ -135,7 +135,7 @@ TEST(SerializationUtilsTest, VariantTensorDataRoundtrip) {
   writer.GetData(&data);
 
   VariantTensorDataReader reader(data);
-  int64 val_int64;
+  int64_t val_int64;
   TF_ASSERT_OK(reader.ReadScalar(full_name("Int64"), &val_int64));
   EXPECT_EQ(val_int64, 24);
   Tensor val_tensor;
@@ -151,7 +151,7 @@ TEST(SerializationUtilsTest, VariantTensorDataNonExistentKey) {
   std::vector<const VariantTensorData*> reader_data;
   reader_data.push_back(&data);
   VariantTensorDataReader reader(reader_data);
-  int64 val_int64;
+  int64_t val_int64;
   tstring val_string;
   Tensor val_tensor;
   EXPECT_EQ(error::NOT_FOUND,
@@ -172,7 +172,7 @@ TEST(SerializationUtilsTest, VariantTensorDataRoundtripIteratorName) {
   writer.GetData(&data);
 
   VariantTensorDataReader reader(data);
-  int64 val_int64;
+  int64_t val_int64;
   TF_ASSERT_OK(reader.ReadScalar("Iterator", "Int64", &val_int64));
   EXPECT_EQ(val_int64, 24);
   Tensor val_tensor;
@@ -188,7 +188,7 @@ TEST(SerializationUtilsTest, VariantTensorDataNonExistentKeyIteratorName) {
   std::vector<const VariantTensorData*> reader_data;
   reader_data.push_back(&data);
   VariantTensorDataReader reader(reader_data);
-  int64 val_int64;
+  int64_t val_int64;
   tstring val_string;
   Tensor val_tensor;
   EXPECT_EQ(error::NOT_FOUND,

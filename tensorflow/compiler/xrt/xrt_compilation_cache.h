@@ -114,11 +114,12 @@ class XRTCompilationCache : public ResourceBase {
       const std::function<Status(std::unique_ptr<xla::LocalExecutable>*)>&
           compile_function);
 
-  Status Release(int64 uid);
+  Status Release(int64_t uid);
 
   // Looks up an executable corresponding to uid. On success a pointer to an
   // EntryRef holding the program is returned in entry.
-  Status Lookup(int64 uid, std::unique_ptr<XRTCompilationCacheEntryRef>* entry);
+  Status Lookup(int64_t uid,
+                std::unique_ptr<XRTCompilationCacheEntryRef>* entry);
 
   string DebugString() const override;
 
@@ -240,7 +241,7 @@ class XRTCompilationCache : public ResourceBase {
 // If max_number_of_entries is set to sero, the size of the cache will be
 // configured using the TF_XRT_COMPILATION_CACHE_SIZE environment variable.
 xla::StatusOr<RefPtr<XRTCompilationCache>> GetOrCreateCompilationCache(
-    ResourceMgr* rm, int64 max_number_of_entries);
+    ResourceMgr* rm, int64_t max_number_of_entries);
 
 }  // namespace tensorflow
 

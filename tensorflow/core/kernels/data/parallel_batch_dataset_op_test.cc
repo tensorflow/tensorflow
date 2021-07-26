@@ -26,8 +26,8 @@ constexpr int kOpVersion = 1;
 class ParallelBatchDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  ParallelBatchDatasetParams(T input_dataset_params, int64 batch_size,
-                             int64 num_parallel_calls, bool drop_remainder,
+  ParallelBatchDatasetParams(T input_dataset_params, int64_t batch_size,
+                             int64_t num_parallel_calls, bool drop_remainder,
                              DataTypeVector output_dtypes,
                              std::vector<PartialTensorShape> output_shapes,
                              const bool parallel_copy,

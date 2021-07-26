@@ -201,6 +201,16 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+template <typename T>
+TfLiteStatus CheckNonZero(TfLiteContext* context, const TfLiteTensor* tensor) {
+  const auto* data = GetTensorData<T>(tensor);
+  const size_t number_elements = tensor->bytes / sizeof(T);
+  for (size_t i = 0; i < number_elements; i++) {
+    TF_LITE_ENSURE(context, data[i] != 0);
+  }
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteDivParams*>(node->builtin_data);
@@ -216,23 +226,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  // TODO(b/193904910): This can written with C++ templates
-#define TF_LITE_CHECK_DIV_NON_ZERO(data_type)                       \
-  const auto* input2_data = GetTensorData<data_type>(input2);       \
-  const size_t input2_elements = input2->bytes / sizeof(data_type); \
-  for (size_t i = 0; i < input2_elements; i++) {                    \
-    TF_LITE_ENSURE(context, input2_data[i] != 0);                   \
-  }
 
   if (output->type == kTfLiteFloat32) {
     // Div by zero seems ok in this case, just like in TF case infinities are
     // returned. So we don't do a check at this point.
     EvalDiv<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteInt32) {
-    TF_LITE_CHECK_DIV_NON_ZERO(int32_t);
+    CheckNonZero<int32_t>(context, input2);
     EvalDiv<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8) {
-    TF_LITE_CHECK_DIV_NON_ZERO(uint8_t);
+    CheckNonZero<uint8_t>(context, input2);
     TF_LITE_ENSURE_OK(
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));
@@ -243,7 +246,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         output->type);
     return kTfLiteError;
   }
-#undef TF_LITE_CHECK_DIV_NON_ZERO
 
   return kTfLiteOk;
 }

@@ -55,18 +55,18 @@ std::vector<std::vector<int64>> InterestingShapes();
 ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
                                             DataType dtype,
                                             absl::Span<const int64> shape,
-                                            int8 value);
+                                            int8_t value);
 
 // Fills a numeric tensor's buffer with `value`.
 // dtype must be any integer dtype, float or double.
 void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
-                             int8 value);
+                             int8_t value);
 
 // Checks the underlying data is equal for the buffers for two numeric tensors.
 // Note: The caller must ensure to check that the dtypes and sizes of the
 // underlying buffers are the same before calling this.
 // dtype must be any integer dtype, float, or double.
-void CheckBufferDataIsEqual(DataType dtype, int64 num_elements, void* a,
+void CheckBufferDataIsEqual(DataType dtype, int64_t num_elements, void* a,
                             void* b);
 
 // Converts a TensorHandle to a Tensor, and dies if unsuccessful. This should

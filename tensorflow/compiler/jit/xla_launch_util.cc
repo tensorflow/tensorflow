@@ -635,7 +635,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
     variable_info_lookup.emplace(info.index(), &info);
   }
 
-  for (int64 input_num = 0; input_num < inputs.size(); ++input_num) {
+  for (int64_t input_num = 0; input_num < inputs.size(); ++input_num) {
     const Tensor* input = inputs[input_num];
 
     XlaCompiler::Argument& arg = out[input_num];

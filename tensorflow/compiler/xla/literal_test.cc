@@ -1529,8 +1529,8 @@ void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
   auto* minor_to_major =
       shape_proto->mutable_layout()->mutable_minor_to_major();
   minor_to_major->Resize(shape_proto->dimensions_size(), 0);
-  const int64 size = minor_to_major->size();
-  for (int64 i = 0; i < size; ++i) {
+  const int64_t size = minor_to_major->size();
+  for (int64_t i = 0; i < size; ++i) {
     minor_to_major->Set(i, size - 1 - i);
   }
 }

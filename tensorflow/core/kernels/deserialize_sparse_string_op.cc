@@ -110,7 +110,7 @@ class DeserializeSparseOp : public OpKernel {
                          serialized_sparse_t(i, 0), serialized_sparse_t(i, 1),
                          serialized_sparse_t(i, 2), dtype_, i, &output_indices,
                          &output_values, &output_shape));
-      int64 num_entries = output_indices.dim_size(0);
+      int64_t num_entries = output_indices.dim_size(0);
       int rank = output_indices.dim_size(1);
 
       // Now we expand each SparseTensors' indices and shape by
@@ -238,7 +238,7 @@ class DeserializeSparseOp : public OpKernel {
           ", 0] to represent an index matrix but received shape ",
           output_indices->shape().DebugString());
     }
-    int64 num_entries = output_indices->dim_size(0);
+    int64_t num_entries = output_indices->dim_size(0);
     int rank = output_indices->dim_size(1);
 
     // Deserialize and validate the values.

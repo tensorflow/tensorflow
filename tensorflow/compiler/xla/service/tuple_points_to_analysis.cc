@@ -223,7 +223,7 @@ Status TuplePointsToAnalysis::HandleGetTupleElement(
     HloInstruction* get_tuple_element) {
   // GetTupleElement forwards a pointer to a particular element of the tuple
   // operand.
-  int64 element_index = get_tuple_element->tuple_index();
+  int64_t element_index = get_tuple_element->tuple_index();
 
   PointsToSet& points_to_set = CreateEmptyPointsToSet(get_tuple_element);
   const PointsToSet& operand_points_to_set =
@@ -412,7 +412,7 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
 
   // A tuple contains references to all input operands and transitively any
   // references in those operands.
-  for (int64 i = 0; i < operands.size(); ++i) {
+  for (int64_t i = 0; i < operands.size(); ++i) {
     const PointsToSet& operand_points_to_set =
         *PerInst(operands[i])->points_to_set;
 
@@ -723,7 +723,7 @@ TuplePointsToAnalysis::GetAllUsesOfInstructionAtIndex(
                                     alias_user)) {
           continue;
         }
-        for (int64 op_idx : alias_user->OperandIndices(alias.instruction())) {
+        for (int64_t op_idx : alias_user->OperandIndices(alias.instruction())) {
           uses.emplace_back(alias_user, op_idx);
         }
       }
@@ -739,7 +739,7 @@ TuplePointsToAnalysis::GetAllUsesOfInstructionAtIndex(
 // REQUIRES: 'fusion' opcode is a kFusion instruction.
 bool TuplePointsToAnalysis::HasUniqueFusedUseOfOperandAt(
     HloInstruction* operand, const ShapeIndex& operand_index,
-    HloInstruction* fusion, const int64 use_operand_index) const {
+    HloInstruction* fusion, const int64_t use_operand_index) const {
   CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
   // Check that 'operand' is unique in the operand list of 'fusion'.
   if (fusion->OperandIndices(operand).size() > 1) {

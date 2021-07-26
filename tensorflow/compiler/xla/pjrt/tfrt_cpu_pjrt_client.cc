@@ -1259,7 +1259,7 @@ static std::shared_ptr<MaybeOwningCpuMemory> MemoryForAllocation(
   }
 
   // Output and temporary buffer.
-  int64 buffer_size = allocation.size();
+  int64_t buffer_size = allocation.size();
   auto out = MaybeOwningCpuMemory::AllocateShared(buffer_size);
 
   // Since the output buffer and all the temporary buffers were written into
@@ -1281,10 +1281,6 @@ CreateBufferTable(
     const BufferAllocation& allocation = assignment.GetAllocation(i);
     buffers[i] = MemoryForAllocation(allocation, arguments);
   }
-
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment.GetUniqueTopLevelOutputSlice());
-  VLOG(3) << "result index: " << result_slice.index();
   return std::move(buffers);
 }
 

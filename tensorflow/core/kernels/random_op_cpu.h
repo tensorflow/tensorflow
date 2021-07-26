@@ -62,7 +62,7 @@ struct FillPhiloxRandom {
   typedef typename Distribution::ResultElementType T;
   void operator()(OpKernelContext* ctx, const Device&, const uint64* key,
                   const uint64* counter, random::PhiloxRandom gen, T* data,
-                  int64 size, Distribution dist) {
+                  int64_t size, Distribution dist) {
     OP_REQUIRES(
         ctx, false,
         errors::Internal(
@@ -81,16 +81,16 @@ struct FillPhiloxRandomTask;
 template <class Distribution>
 struct FillPhiloxRandomTask<Distribution, false> {
   typedef typename Distribution::ResultElementType T;
-  static void Run(random::PhiloxRandom gen, T* data, int64 size,
-                  int64 start_group, int64 limit_group, Distribution dist) {
+  static void Run(random::PhiloxRandom gen, T* data, int64_t size,
+                  int64_t start_group, int64_t limit_group, Distribution dist) {
     const int kGroupSize = Distribution::kResultElementCount;
 
     gen.Skip(start_group);
-    int64 offset = start_group * kGroupSize;
+    int64_t offset = start_group * kGroupSize;
 
     // First fill all the full-size groups
-    int64 limit_group_full = std::min(limit_group, size / kGroupSize);
-    for (int64 index = start_group; index < limit_group_full; ++index) {
+    int64_t limit_group_full = std::min(limit_group, size / kGroupSize);
+    for (int64_t index = start_group; index < limit_group_full; ++index) {
       auto samples = dist(&gen);
       std::copy(&samples[0], &samples[0] + kGroupSize, data + offset);
       offset += kGroupSize;
@@ -98,7 +98,7 @@ struct FillPhiloxRandomTask<Distribution, false> {
 
     // If there are any remaining elements that need to be filled, process them
     if (limit_group_full < limit_group) {
-      int64 remaining_size = size - limit_group_full * kGroupSize;
+      int64_t remaining_size = size - limit_group_full * kGroupSize;
       auto samples = dist(&gen);
       std::copy(&samples[0], &samples[0] + remaining_size, data + offset);
     }
@@ -110,21 +110,21 @@ struct FillPhiloxRandomTask<Distribution, false> {
 template <class Distribution>
 struct FillPhiloxRandomTask<Distribution, true> {
   typedef typename Distribution::ResultElementType T;
-  static constexpr int64 kReservedSamplesPerOutput = 256;
+  static constexpr int64_t kReservedSamplesPerOutput = 256;
 
-  static void Run(random::PhiloxRandom base_gen, T* data, int64 size,
-                  int64 start_group, int64 limit_group, Distribution dist) {
+  static void Run(random::PhiloxRandom base_gen, T* data, int64_t size,
+                  int64_t start_group, int64_t limit_group, Distribution dist) {
     const int kGroupSize = Distribution::kResultElementCount;
 
     static const int kGeneratorSkipPerOutputGroup =
         kGroupSize * kReservedSamplesPerOutput /
         PhiloxRandom::kResultElementCount;
 
-    int64 offset = start_group * kGroupSize;
+    int64_t offset = start_group * kGroupSize;
 
     // First fill all the full-size groups
-    int64 limit_group_full = std::min(limit_group, size / kGroupSize);
-    int64 group_index;
+    int64_t limit_group_full = std::min(limit_group, size / kGroupSize);
+    int64_t group_index;
     for (group_index = start_group; group_index < limit_group_full;
          ++group_index) {
       // Reset the generator to the beginning of the output group region
@@ -145,7 +145,7 @@ struct FillPhiloxRandomTask<Distribution, true> {
       gen.Skip(group_index * kGeneratorSkipPerOutputGroup);
       SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
 
-      int64 remaining_size = size - limit_group_full * kGroupSize;
+      int64_t remaining_size = size - limit_group_full * kGroupSize;
       auto samples = dist(&single_samples);
       std::copy(&samples[0], &samples[0] + remaining_size, data + offset);
     }
@@ -158,13 +158,13 @@ template <class Distribution>
 void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
     OpKernelContext* ctx, const CPUDevice&, const uint64* key,
     const uint64* counter, random::PhiloxRandom gen,
-    typename Distribution::ResultElementType* data, int64 size,
+    typename Distribution::ResultElementType* data, int64_t size,
     Distribution dist) {
   const int kGroupSize = Distribution::kResultElementCount;
 
   auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
-  int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
+  int64_t total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
   const int kGroupCost =
       random::PhiloxRandom::kResultElementCount *
@@ -176,7 +176,7 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
 
   Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
         kGroupCost,
-        [&gen, data, size, dist](int64 start_group, int64 limit_group) {
+        [&gen, data, size, dist](int64_t start_group, int64_t limit_group) {
           FillPhiloxRandomTask<
               Distribution,
               Distribution::kVariableSamplesPerOutput>::Run(gen, data, size,

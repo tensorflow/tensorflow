@@ -51,8 +51,8 @@ static void TopK(int64_t batch_size, int64_t input_size, int64_t k,
                       [&](size_t i1, size_t i2) {
                         // Do the comparison in integers to enforce a total
                         // order of -NaN < -Inf < -0 < +0 < +Inf < +NaN.
-                        tensorflow::int32 v1 = convert_to_int(values_batch[i1]);
-                        tensorflow::int32 v2 = convert_to_int(values_batch[i2]);
+                        int32_t v1 = convert_to_int(values_batch[i1]);
+                        int32_t v2 = convert_to_int(values_batch[i2]);
                         if (v1 == v2) {
                           return i1 < i2;  // Stabilize sorting.
                         }

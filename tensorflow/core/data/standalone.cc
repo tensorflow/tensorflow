@@ -82,7 +82,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
-          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
             *r = new IntraProcessRendezvous(device_mgr);
             return Status::OK();
           }});

@@ -34,7 +34,7 @@ namespace tensorflow {
 
 class PaddingFIFOQueue : public FIFOQueue {
  public:
-  PaddingFIFOQueue(int32 capacity, const DataTypeVector& component_dtypes,
+  PaddingFIFOQueue(int32_t capacity, const DataTypeVector& component_dtypes,
                    const std::vector<PartialTensorShape>& component_shapes,
                    const string& name);
 

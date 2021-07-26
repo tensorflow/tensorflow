@@ -2,23 +2,63 @@
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
-# Breaking Changes
+## Breaking Changes
+
+* `tf.lite`:
+  * Rename fields `SignatureDef` table in schema to maximize the parity with
+    TF SavedModel's Signature concept.
 
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
-# Known Caveats
+* TF Core:
+    *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
+        Previously, when called within `name_scope("")` or `name_scope(None)`
+        contexts, it returned None; now it returns the empty string.
+
+## Known Caveats
 
 *<CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
 *<ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 *<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
-# Major Features and Improvements
+## Major Features and Improvements
 
-*<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* Improvements to the TensorFlow debugging experience:
+  * Previously, TensorFlow error stack traces involved many internal frames,
+    which could be challenging to read through,
+    while not being actionable for end users.
+    As of TF 2.7, TensorFlow filters internal frames in most errors that it
+    raises, to keep stack traces short, readable, and focused on what's
+    actionable for end users (their own code).
 
-# Bug Fixes and Other Changes
+    This behavior can be disabled by calling
+    `tf.debugging.disable_traceback_filtering()`, and can be re-enabled via
+    `tf.debugging.enable_traceback_filtering()`. If you are debugging a
+    TensorFlow-internal issue (e.g. to prepare a TensorFlow PR), make sure
+    to disable traceback filtering.
+
+    Note that this feature is only available with Python 3.7 or higher.
+
+*   TF1 -> TF2 Migration
+    * Introduced the `tf.compat.v1.keras.utils.track_tf1_style_variables`
+      decorator, which enables using large classes of tf1-style variable_scope,
+      `get_variable`, and `compat.v1.layer`-based components from within TF2
+      models running with TF2 behavior enabled.
+
+*  `tf.data`:
+    *   tf.data service now supports auto-sharding. Users specify the sharding
+        policy with `tf.data.experimental.service.ShardingPolicy` enum. It can
+        be one of OFF (equivalent to today's `"parallel_epochs"` mode), DYNAMIC
+        (equivalent to today's `"distributed_epoch"` mode), or one of the static
+        sharding policies: FILE, DATA, FILE_OR_DATA, or HINT (corresponding to
+        values of `tf.data.experimental.AutoShardPolicy`).
+
+        Static sharding (auto-sharding) requires the number of tf.data service
+        workers be fixed. Users need to specify the worker addresses in
+        `tensorflow.data.experimental.DispatcherConfig`.
+
+## Bug Fixes and Other Changes
 
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
@@ -26,7 +66,7 @@
 *   TF Core:
     *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
 
-# Thanks to our Contributors
+## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 

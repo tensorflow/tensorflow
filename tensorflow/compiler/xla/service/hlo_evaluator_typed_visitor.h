@@ -1089,7 +1089,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(
         result.Populate<ReturnT>([&](absl::Span<const int64> out_index) {
           std::vector<int64> from_index(out_index.begin(), out_index.end());
-          for (const int64 dim : reverse_dimensions) {
+          for (const int64_t dim : reverse_dimensions) {
             from_index[dim] = result_shape.dimensions(dim) - 1 - out_index[dim];
           }
           return operand_literal.Get<ReturnT>(from_index);
@@ -1115,7 +1115,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(ShapeUtil::SameElementType(lhs_shape, result_shape));
 
     const auto& dnums = conv->convolution_dimension_numbers();
-    const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
+    const int64_t num_spatial_dims = dnums.output_spatial_dimensions_size();
     CHECK_EQ(num_spatial_dims, dnums.input_spatial_dimensions_size());
     CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
     CHECK_GE(num_spatial_dims, 0);
@@ -1135,49 +1135,51 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto lhs_literal_data = lhs_literal.data<ReturnT>();
     auto rhs_literal_data = rhs_literal.data<ReturnT>();
 
-    const int64 feature_group_count = conv->feature_group_count();
-    const int64 batch_group_count = conv->batch_group_count();
+    const int64_t feature_group_count = conv->feature_group_count();
+    const int64_t batch_group_count = conv->batch_group_count();
 
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
                  rhs_literal_data, feature_group_count,
                  batch_group_count](const absl::Span<const int64> out_index) {
       // Dimension number applicable for input (lhs).
-      const int64 input_batch_dim = dnums.input_batch_dimension();
-      const int64 input_z_dim = dnums.input_feature_dimension();
+      const int64_t input_batch_dim = dnums.input_batch_dimension();
+      const int64_t input_z_dim = dnums.input_feature_dimension();
       // Dimension number applicable for kernel (rhs).
-      const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
-      const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+      const int64_t kernel_input_z_dim = dnums.kernel_input_feature_dimension();
+      const int64_t kernel_output_z_dim =
+          dnums.kernel_output_feature_dimension();
       // Dimension number applicable for output.
-      const int64 output_batch_dim = dnums.output_batch_dimension();
-      const int64 output_z_dim = dnums.output_feature_dimension();
+      const int64_t output_batch_dim = dnums.output_batch_dimension();
+      const int64_t output_z_dim = dnums.output_feature_dimension();
 
-      const int64 input_z_size =
+      const int64_t input_z_size =
           ShapeUtil::GetDimension(lhs_shape, input_z_dim);
 
-      const int64 input_batch_size =
+      const int64_t input_batch_size =
           ShapeUtil::GetDimension(lhs_shape, input_batch_dim);
 
-      const int64 batch_group_size = input_batch_size / batch_group_count;
+      const int64_t batch_group_size = input_batch_size / batch_group_count;
 
       // The size of an input feature group.
-      const int64 input_feature_group_size = input_z_size / feature_group_count;
+      const int64_t input_feature_group_size =
+          input_z_size / feature_group_count;
 
-      const int64 output_z_size =
+      const int64_t output_z_size =
           ShapeUtil::GetDimension(rhs_shape, kernel_output_z_dim);
       // The output feature dimension is a concatenation of convolution results
       // from the different groups.
-      const int64 output_feature_group_size =
+      const int64_t output_feature_group_size =
           output_z_size / feature_group_count;
 
       // Calculate the group index to which the current output index
       // belongs.
-      const int64 feature_group_index =
+      const int64_t feature_group_index =
           out_index[output_z_dim] / output_feature_group_size;
 
-      const int64 depthwise_multiplier =
+      const int64_t depthwise_multiplier =
           batch_group_count > 1 ? output_z_size / input_batch_size : 1;
-      const int64 batch_group_index =
+      const int64_t batch_group_index =
           out_index[output_z_dim] / depthwise_multiplier;
 
       ElementwiseT result_val = static_cast<ElementwiseT>(0);
@@ -1189,17 +1191,18 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       // locations and accumulates multiplications for a given output index.
       do {
         // Find corresponding spatial dimension index for input (lhs).
-        int64 lhs_linear_spatial_index = 0;
-        int64 rhs_linear_spatial_index = 0;
-        for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
+        int64_t lhs_linear_spatial_index = 0;
+        int64_t rhs_linear_spatial_index = 0;
+        for (int64_t ki = 0; ki < rhs_spatial_index.size(); ++ki) {
           // Spatial dimension number for input (lhs) and output.
-          const int64 input_spatial_dim = dnums.input_spatial_dimensions(ki);
-          const int64 output_spatial_dim = dnums.output_spatial_dimensions(ki);
+          const int64_t input_spatial_dim = dnums.input_spatial_dimensions(ki);
+          const int64_t output_spatial_dim =
+              dnums.output_spatial_dimensions(ki);
 
           // Calculate lhs (input) index without taking base dilation into
           // account.
           const auto& window_dim = window.dimensions(ki);
-          const int64 undilated_index =
+          const int64_t undilated_index =
               out_index[output_spatial_dim] * window_dim.stride() -
               window_dim.padding_low() +
               rhs_spatial_index[ki] * window_dim.window_dilation();
@@ -1212,7 +1215,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
           // Calculate the actual lhs (input) index after dilation.  As an
           // optimization, skip this integer divide if there's no dilation.
-          int64 lhs_spatial_index;
+          int64_t lhs_spatial_index;
           if (window_dim.base_dilation() > 1) {
             lhs_spatial_index = undilated_index / window_dim.base_dilation();
           } else {
@@ -1234,11 +1237,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               rhs_dim_multipliers[dnums.kernel_spatial_dimensions(ki)];
         }
 
-        for (int64 rhs_iz = 0; rhs_iz < input_feature_group_size; ++rhs_iz) {
-          const int64 iz =
+        for (int64_t rhs_iz = 0; rhs_iz < input_feature_group_size; ++rhs_iz) {
+          const int64_t iz =
               feature_group_index * input_feature_group_size + rhs_iz;
 
-          int64 lhs_linear_index = lhs_linear_spatial_index;
+          int64_t lhs_linear_index = lhs_linear_spatial_index;
           lhs_linear_index += out_index[output_batch_dim] *
                               lhs_dim_multipliers[input_batch_dim];
 
@@ -1253,7 +1256,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               lhs_dim_multipliers[input_batch_dim];
 
           lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
-          int64 rhs_linear_index = rhs_linear_spatial_index;
+          int64_t rhs_linear_index = rhs_linear_spatial_index;
 
           rhs_linear_index += out_index[output_z_dim] *
                               rhs_dim_multipliers[kernel_output_z_dim];
@@ -1291,7 +1294,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(rhs_shape.IsArray());
 
     const auto& dnums = conv->convolution_dimension_numbers();
-    const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
+    const int64_t num_spatial_dims = dnums.output_spatial_dimensions_size();
     CHECK_EQ(num_spatial_dims, dnums.input_spatial_dimensions_size());
     CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
     CHECK_GE(num_spatial_dims, 0);
@@ -1357,15 +1360,17 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const int64 lhs_rank = lhs->shape().rank();
-    const int64 rhs_rank = rhs->shape().rank();
+    const int64_t lhs_rank = lhs->shape().rank();
+    const int64_t rhs_rank = rhs->shape().rank();
 
     CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
     CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
 
     // There must be 1 and only 1 Contracting dimension for lhs and rhs.
-    const int64 lhs_contracting_dimension = dnums.lhs_contracting_dimensions(0);
-    const int64 rhs_contracting_dimension = dnums.rhs_contracting_dimensions(0);
+    const int64_t lhs_contracting_dimension =
+        dnums.lhs_contracting_dimensions(0);
+    const int64_t rhs_contracting_dimension =
+        dnums.rhs_contracting_dimensions(0);
     // Contracted dimension sizes must be the same.
     CHECK_EQ(lhs->shape().dimensions(lhs_contracting_dimension),
              rhs->shape().dimensions(rhs_contracting_dimension))
@@ -1385,7 +1390,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                           LayoutUtil::GetDefaultLayoutForR2())) {
       const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
       const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-      const int64 contracted_dimension_size =
+      const int64_t contracted_dimension_size =
           lhs->shape().dimensions(lhs_contracting_dimension);
       Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
                                  contracted_dimension_size);
@@ -1436,20 +1441,20 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // The first components in the output shape are the LHS and RHS batch
     // dimensions:
-    for (int64 i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
+    for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
       result_index_locations.push_back(
           {&lhs_index[dnums.lhs_batch_dimensions(i)],
            &rhs_index[dnums.rhs_batch_dimensions(i)]});
     }
 
     // Then we have the LHS and RHS non-contracting dimensions, if any:
-    for (int64 i = 0; i < lhs_rank; i++) {
+    for (int64_t i = 0; i < lhs_rank; i++) {
       if (!absl::c_linear_search(dnums.lhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
         result_index_locations.push_back({&lhs_index[i], nullptr});
       }
     }
-    for (int64 i = 0; i < rhs_rank; i++) {
+    for (int64_t i = 0; i < rhs_rank; i++) {
       if (!absl::c_linear_search(dnums.rhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
         result_index_locations.push_back({&rhs_index[i], nullptr});
@@ -1461,21 +1466,21 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     absl::InlinedVector<std::pair<int64*, int64*>, kInlineRank>
         accumulate_index_locations;
     accumulate_index_locations.reserve(dnums.lhs_contracting_dimensions_size());
-    for (int64 i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
-      const int64 lhs_dnum = dnums.lhs_contracting_dimensions(i);
-      const int64 rhs_dnum = dnums.rhs_contracting_dimensions(i);
+    for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
+      const int64_t lhs_dnum = dnums.lhs_contracting_dimensions(i);
+      const int64_t rhs_dnum = dnums.rhs_contracting_dimensions(i);
       accumulate_index_locations.push_back(
           {&lhs_index[lhs_dnum], &rhs_index[rhs_dnum]});
-      const int64 dim_size = lhs_literal.shape().dimensions(lhs_dnum);
+      const int64_t dim_size = lhs_literal.shape().dimensions(lhs_dnum);
       accumulate_index_sizes.push_back(dim_size);
     }
-    const int64 total_contraction_size = Product(accumulate_index_sizes);
+    const int64_t total_contraction_size = Product(accumulate_index_sizes);
     Literal result(dot->shape());
     TF_RETURN_IF_ERROR(
         result.Populate<ReturnT>([&](absl::Span<const int64> result_index) {
           ElementwiseT result_val = static_cast<ElementwiseT>(0);
 
-          for (int64 i = 0; i < result_index.size(); i++) {
+          for (int64_t i = 0; i < result_index.size(); i++) {
             *result_index_locations[i].first = result_index[i];
             if (result_index_locations[i].second) {
               *result_index_locations[i].second = result_index[i];
@@ -1485,8 +1490,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // Accumulates resulting product along the contracted dimension.
           absl::InlinedVector<int64, kInlineRank> accumulate_index(
               accumulate_index_sizes.size(), 0);
-          for (int64 k = 0; k < total_contraction_size; k++) {
-            for (int64 i = 0; i < accumulate_index_sizes.size(); ++i) {
+          for (int64_t k = 0; k < total_contraction_size; k++) {
+            for (int64_t i = 0; i < accumulate_index_sizes.size(); ++i) {
               *(accumulate_index_locations[i].first) = accumulate_index[i];
               *(accumulate_index_locations[i].second) = accumulate_index[i];
             }
@@ -1500,8 +1505,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             // empty, do not try to count down from -1 to 0 since it is and
             // infinite loop.
             if (!accumulate_index_sizes.empty()) {
-              for (int64 i = accumulate_index_sizes.size() - 1; i >= 0; --i) {
-                int64 value = ++accumulate_index[i];
+              for (int64_t i = accumulate_index_sizes.size() - 1; i >= 0; --i) {
+                int64_t value = ++accumulate_index[i];
                 if (value != accumulate_index_sizes[i]) {
                   break;
                 }
@@ -1883,7 +1888,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     const Literal& source_literal = parent_->GetEvaluatedLiteralFor(source);
 
-    int64 rank = operand_literal.shape().rank();
+    int64_t rank = operand_literal.shape().rank();
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     DimensionVector source_index(rank, 0);
@@ -1979,7 +1984,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     absl::InlinedVector<const Literal*, 2> input_literal_vec, init_literal_vec;
     auto input_arrays = reduce_window_instr->inputs();
     auto init_values = reduce_window_instr->init_values();
-    int64 num_args = input_arrays.size();
+    int64_t num_args = input_arrays.size();
     for (int i = 0; i < num_args; ++i) {
       const Literal& input_literal =
           parent_->GetEvaluatedLiteralFor(input_arrays[i]);
@@ -2048,7 +2053,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     Literal result(inferred_return_shape);
     if (inferred_return_shape.IsTuple()) {
       absl::InlinedVector<Literal, 1> results(num_args);
-      for (int64 i = 0; i < num_args; ++i) {
+      for (int64_t i = 0; i < num_args; ++i) {
         results[i] = Literal(inferred_return_shape.tuple_shapes(i));
       }
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
@@ -2079,7 +2084,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   // dimension if necessary.  Hands over the ownership of the newly created
   // literal (if there is one) to `reshaped_indices`.
   StatusOr<std::reference_wrapper<const Literal>> ReshapedScatterIndices(
-      int64 index_vector_dim, const Literal& indices,
+      int64_t index_vector_dim, const Literal& indices,
       Literal* reshaped_indices) {
     if (indices.shape().dimensions_size() != index_vector_dim) {
       return std::cref(indices);
@@ -2097,10 +2102,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   // to 0.
   ShapeUtil::IndexIterationSpace IterationSpaceForUpdateScatterIndices(
       const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
-    int64 updates_rank = updates_shape.dimensions_size();
+    int64_t updates_rank = updates_shape.dimensions_size();
     std::vector<int64> index_base(updates_rank, 0);
     std::vector<int64> index_count(updates_rank, 1);
-    for (int64 i = 0; i < updates_rank; i++) {
+    for (int64_t i = 0; i < updates_rank; i++) {
       bool is_update_scatter_dim =
           !absl::c_binary_search(dim_numbers.update_window_dims(), i);
       if (is_update_scatter_dim) {
@@ -2116,10 +2121,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   // to 0.
   ShapeUtil::IndexIterationSpace IterationSpaceForUpdateWindowIndices(
       const Shape& updates_shape, const ScatterDimensionNumbers& dim_numbers) {
-    int64 updates_rank = updates_shape.dimensions_size();
+    int64_t updates_rank = updates_shape.dimensions_size();
     std::vector<int64> index_base(updates_rank, 0);
     std::vector<int64> index_count(updates_rank, 1);
-    for (int64 i = 0; i < updates_rank; i++) {
+    for (int64_t i = 0; i < updates_rank; i++) {
       bool is_update_window_dim =
           absl::c_binary_search(dim_numbers.update_window_dims(), i);
       if (is_update_window_dim) {
@@ -2146,13 +2151,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         const ScatterDimensionNumbers* dim_numbers, const Shape& input_shape,
         const Shape& updates_shape, const Literal* scatter_indices)
         : dim_numbers_(*dim_numbers), scatter_indices_(*scatter_indices) {
-      for (int64 i = 0; i < updates_shape.dimensions_size(); i++) {
+      for (int64_t i = 0; i < updates_shape.dimensions_size(); i++) {
         update_dim_is_scatter_dims_.push_back(
             !absl::c_binary_search(dim_numbers_.update_window_dims(), i));
       }
 
-      for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
-        int64 index_of_input_dim_in_index_vector =
+      for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
+        int64_t index_of_input_dim_in_index_vector =
             FindIndex(dim_numbers_.scatter_dims_to_operand_dims(), i);
         if (index_of_input_dim_in_index_vector ==
             dim_numbers_.scatter_dims_to_operand_dims_size()) {
@@ -2165,7 +2170,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
       index_vector_index_.resize(scatter_indices_.shape().dimensions_size());
       input_index_.resize(input_shape.dimensions_size());
-      int64 index_vector_size =
+      int64_t index_vector_size =
           scatter_indices_.shape().dimensions(dim_numbers_.index_vector_dim());
       index_vector_.resize(index_vector_size);
     }
@@ -2199,8 +2204,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // dimension we iterate over in FetchIndexVector.
     void PropagateUpdateIndexScatterDimsToIndexVectorIndex(
         absl::Span<const int64> update_index) {
-      int64 index_vector_index_i = 0;
-      for (int64 i = 0, e = update_index.size(); i < e; i++) {
+      int64_t index_vector_index_i = 0;
+      for (int64_t i = 0, e = update_index.size(); i < e; i++) {
         if (!update_dim_is_scatter_dims_[i]) {
           continue;
         }
@@ -2216,8 +2221,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // Populates index_vector_ by iterating over scatter_indices_ according to
     // index_vector_index_.
     Status FetchIndexVector() {
-      int64 index_vector_dim = dim_numbers_.index_vector_dim();
-      for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
+      int64_t index_vector_dim = dim_numbers_.index_vector_dim();
+      for (int64_t i = 0, e = index_vector_.size(); i < e; i++) {
         index_vector_index_[index_vector_dim] = i;
         index_vector_[i] =
             *scatter_indices_.GetIntegralAsS64(index_vector_index_);
@@ -2227,7 +2232,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // Populates input_index_.
     void PropagateIndexVectorToInputIndex() {
-      for (int64 i = 0, e = input_index_.size(); i < e; i++) {
+      for (int64_t i = 0, e = input_index_.size(); i < e; i++) {
         if (input_dim_value_to_index_vector_[i] != -1) {
           input_index_[i] = index_vector_[input_dim_value_to_index_vector_[i]];
         }
@@ -2276,8 +2281,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         const ScatterDimensionNumbers& dim_numbers, const Shape& input_shape,
         const Shape& updates_shape) {
       std::vector<int64> window_index_to_update_index;
-      int64 update_index_count = 0;
-      for (int64 i = 0; i < updates_shape.dimensions_size(); i++) {
+      int64_t update_index_count = 0;
+      for (int64_t i = 0; i < updates_shape.dimensions_size(); i++) {
         if (absl::c_binary_search(dim_numbers.update_window_dims(), i)) {
           window_index_to_update_index.push_back(update_index_count++);
         } else {
@@ -2285,8 +2290,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         }
       }
 
-      int64 window_dim_count = 0;
-      for (int64 i = 0; i < input_shape.dimensions_size(); i++) {
+      int64_t window_dim_count = 0;
+      for (int64_t i = 0; i < input_shape.dimensions_size(); i++) {
         if (absl::c_binary_search(dim_numbers.inserted_window_dims(), i)) {
           input_dim_value_to_update_index_.push_back(-1);
         } else {
@@ -2315,7 +2320,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // Returns for a given 'input_dim' the corresponding update dimension index,
     // or -1 if 'input_dim' is an elided window dimension.
-    int64 input_dim_value_to_update_index(int64 input_dim) {
+    int64 input_dim_value_to_update_index(int64_t input_dim) {
       return input_dim_value_to_update_index_[input_dim];
     }
 
@@ -2324,7 +2329,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // mutating input_index_ in place.
     void PropagateUpdateIndexWindowDimsToInputIndex(
         absl::Span<const int64> update_index) {
-      for (int64 i = 0, e = input_index_.size(); i < e; i++) {
+      for (int64_t i = 0, e = input_index_.size(); i < e; i++) {
         if (input_dim_value_to_update_index_[i] != -1) {
           input_index_[i] = update_index[input_dim_value_to_update_index_[i]];
         }
@@ -2391,14 +2396,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         DCHECK_LT(update_index[i], updates_shape.dimensions(i));
       }
       for (int i = 0, e = input_scatter_index.size(); i < e; i++) {
-        int64 update_dim =
+        int64_t update_dim =
             update_window_index_to_input_index.input_dim_value_to_update_index(
                 i);
         // If 'update_dim' is -1, it means 'i' is an elided window dim. This
         // means we set the iteration index to 0, so for the purpose of the
         // following calculations we can consider the update dimension size to
         // be 1.
-        int64 update_dim_size =
+        int64_t update_dim_size =
             update_dim == -1 ? 1 : updates_shape.dimensions(update_dim);
         // If any part of the update region is out-of-bounds, then do not
         // perform any update on the input.
@@ -2461,11 +2466,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
 
-    const int64 rank = operand->shape().rank();
+    const int64_t rank = operand->shape().rank();
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     auto func = [&](absl::Span<const int64> out_index) {
       DimensionVector operand_index(rank);
-      for (int64 i = 0; i < rank; ++i) {
+      for (int64_t i = 0; i < rank; ++i) {
         operand_index[i] =
             slice->slice_starts(i) + out_index[i] * slice->slice_strides(i);
       }
@@ -2841,7 +2846,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   // This lets you calculate LI given the multidimensional indices in any order.
   static DimensionVector MakeDimMultipliers(const Shape& shape) {
     DimensionVector v(shape.rank());
-    int64 scale = 1;
+    int64_t scale = 1;
     for (auto dim : LayoutUtil::MinorToMajor(shape)) {
       v[dim] = scale;
       scale *= shape.dimensions(dim);
@@ -2857,13 +2862,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       const Shape& window_shape, const Window& window, const Shape& base_shape,
       const absl::Span<const int64> window_count_index,
       const std::function<void(const std::vector<int64>&)>& f) {
-    const int64 rank = base_shape.rank();
+    const int64_t rank = base_shape.rank();
     DimensionVector window_index(rank);
     std::fill(window_index.begin(), window_index.end(), 0);
     do {
       std::vector<int64> base_index(rank);
       bool out_of_bound = false;
-      for (int64 i = 0; i < rank; ++i) {
+      for (int64_t i = 0; i < rank; ++i) {
         // Padding is applied to the dilated base. Say that padding is 3 and
         // dilation is 2 for some dimension. After applying base dilation and
         // padding, the dimension looks like:
@@ -2911,7 +2916,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     }
 
     // Clamp the start indices so the slice is in-bounds w.r.t the operand.
-    for (int64 i = 0; i < start.size(); ++i) {
+    for (int64_t i = 0; i < start.size(); ++i) {
       start[i] = std::min<int64>(
           std::max(int64{0}, start[i]),
           operand_literal.shape().dimensions(i) - result_shape.dimensions(i));
@@ -2921,7 +2926,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     Literal result(result_shape);
     TF_RETURN_IF_ERROR(
         result.Populate<ReturnT>([&](absl::Span<const int64> multi_index) {
-          for (int64 i = 0; i < operand_indices.size(); ++i) {
+          for (int64_t i = 0; i < operand_indices.size(); ++i) {
             CHECK_GE(multi_index[i] + start[i], 0);
             operand_indices[i] = multi_index[i] + start[i];
           }
@@ -2947,7 +2952,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // Clamp the update start indices so the slice is in-bounds w.r.t the
     // operand.
-    for (int64 i = 0; i < rank; ++i) {
+    for (int64_t i = 0; i < rank; ++i) {
       start[i] = std::min<int64>(
           std::max<int64>(0, start[i]),
           result.shape().dimensions(i) - update_literal.shape().dimensions(i));

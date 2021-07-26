@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
@@ -32,7 +35,7 @@ namespace profiler {
 namespace {
 
 void AddTensorFlowOpEvent(std::string&& tf_op_fullname,
-                          int64 start_timestamp_ns, int64 duration_ns,
+                          int64_t start_timestamp_ns, int64_t duration_ns,
                           bool on_device, absl::string_view kernel_name,
                           XPlaneBuilder* plane, XLineBuilder* line) {
   absl::string_view name = on_device ? kernel_name : tf_op_fullname;
@@ -48,10 +51,10 @@ void AddTensorFlowOpEvent(std::string&& tf_op_fullname,
 TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   static constexpr char kTfOp1[] = "TfOp1";
   static constexpr char kTfOp2[] = "TfOp2";
-  constexpr int64 kTfOp1StartNs = 100000;
-  constexpr int64 kTfOp1DurationNs = 8000;
-  constexpr int64 kTfOp2StartNs = 110000;
-  constexpr int64 kTfOp2DurationNs = 10000;
+  constexpr int64_t kTfOp1StartNs = 100000;
+  constexpr int64_t kTfOp1DurationNs = 8000;
+  constexpr int64_t kTfOp2StartNs = 110000;
+  constexpr int64_t kTfOp2DurationNs = 10000;
 
   XSpace xspace;
   XPlane* xplane = GetOrCreateHostXPlane(&xspace);
@@ -87,6 +90,7 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
 
   const OpMetrics& idle = op_metrics.metrics_db().at(1);
   EXPECT_EQ(kIdle, idle.name());
+  EXPECT_EQ(kIdle, idle.category());
   // Idle time is the gap between Op2 start and the end of Op1, which is 2000ns.
   EXPECT_EQ(NanosToPicos(2000), idle.time_ps());
 
@@ -104,12 +108,12 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   static constexpr char kKernel1[] = "kernel1";
   static constexpr char kKernel2[] = "kernel2";
   static constexpr char kKernel3[] = "kernel3";
-  constexpr int64 kKernel1StartNs = 100000;
-  constexpr int64 kKernel1DurationNs = 8000;
-  constexpr int64 kKernel2StartNs = 110000;
-  constexpr int64 kKernel2DurationNs = 10000;
-  constexpr int64 kKernel3StartNs = 120000;
-  constexpr int64 kKernel3DurationNs = 10000;
+  constexpr int64_t kKernel1StartNs = 100000;
+  constexpr int64_t kKernel1DurationNs = 8000;
+  constexpr int64_t kKernel2StartNs = 110000;
+  constexpr int64_t kKernel2DurationNs = 10000;
+  constexpr int64_t kKernel3StartNs = 120000;
+  constexpr int64_t kKernel3DurationNs = 10000;
 
   XSpace xspace;
   XPlane* xplane = GetOrCreateGpuXPlane(&xspace, /*device_ordinal=*/0);
@@ -143,7 +147,8 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   // from all GPU streams, which is from 100000 to 130000.
   uint64 total_duration =
       NanosToPicos(kKernel3StartNs + kKernel3DurationNs - kKernel1StartNs);
-  EXPECT_EQ(total_duration, op_metrics.total_time_ps());
+  EXPECT_EQ(std::max(total_duration, total_op_duration),
+            op_metrics.total_time_ps());
 
   // Verifies OpMetricsDb is built correctly.
   const OpMetrics& op_1 = op_metrics.metrics_db().at(0);
@@ -166,6 +171,7 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
 
   const OpMetrics& idle = op_metrics.metrics_db().at(3);
   EXPECT_EQ(kIdle, idle.name());
+  EXPECT_EQ(kIdle, idle.category());
   // GPU is always busy in this example.
   EXPECT_EQ(NanosToPicos(0), idle.time_ps());
 }

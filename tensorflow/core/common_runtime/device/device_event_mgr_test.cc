@@ -342,7 +342,7 @@ class EMBenchmarkHelper {
       }
     };
     std::sort(times->begin(), times->end(), TSSort());
-    int64 last_time = 0;
+    int64_t last_time = 0;
     // Display first, last and every > 5% change.
     for (int i = 0; i < times->size(); ++i) {
       if (i == (times->size() - 1) ||
@@ -382,7 +382,7 @@ class EMBenchmarkHelper {
       }
       gpu_helper_->h2d_stream()->ThenWaitFor(gpu_helper_->compute_stream());
       // Begin by copying the input values from CPU to GPU.
-      const int64 src_bytes = host_inputs_[0].TotalBytes();
+      const int64_t src_bytes = host_inputs_[0].TotalBytes();
       se::DeviceMemoryBase gpu_dst_ptr0(DMAHelper::base(&gpu_inputs_[0]),
                                         src_bytes);
       gpu_helper_->h2d_stream()->ThenMemcpy(
@@ -416,7 +416,7 @@ class EMBenchmarkHelper {
             });
       }
       gpu_helper_->d2h_stream()->ThenWaitFor(gpu_helper_->compute_stream());
-      const int64 return_bytes = ctx->mutable_output(0)->TotalBytes();
+      const int64_t return_bytes = ctx->mutable_output(0)->TotalBytes();
       se::DeviceMemoryBase gpu_src_ptr(DMAHelper::base(ctx->mutable_output(0)),
                                        return_bytes);
       gpu_helper_->d2h_stream()->ThenMemcpy(DMAHelper::base(&host_outputs_[0]),

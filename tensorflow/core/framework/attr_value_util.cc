@@ -45,7 +45,7 @@ constexpr int kMaxTensorNestDepth = 100;
 // not fully defined return -1.
 int64 TensorByteSize(const TensorProto& t) {
   // num_elements returns -1 if shape is not fully defined.
-  int64 num_elems = TensorShape(t.tensor_shape()).num_elements();
+  int64_t num_elems = TensorShape(t.tensor_shape()).num_elements();
   return num_elems < 0 ? -1 : num_elems * DataTypeSize(t.dtype());
 }
 
@@ -80,15 +80,15 @@ bool AreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs,
   // conversion to an actual Tensor if we can quickly rule out equality
   // by comparing the Tensor size since different sized Tensors are definitely
   // different.
-  const int64 lhs_tensor_bytes = TensorByteSize(lhs);
-  const int64 rhs_tensor_bytes = TensorByteSize(rhs);
+  const int64_t lhs_tensor_bytes = TensorByteSize(lhs);
+  const int64_t rhs_tensor_bytes = TensorByteSize(rhs);
   if (lhs_tensor_bytes != rhs_tensor_bytes) {
     return false;
   }
 
   // If the TensorProto representation expands into a much bigger Tensor,
   // we have a fast-path that first compares the protos.
-  const int64 lhs_proto_bytes = lhs.ByteSizeLong();
+  const int64_t lhs_proto_bytes = lhs.ByteSizeLong();
   const bool large_expansion =
       (lhs_proto_bytes < 512 && lhs_tensor_bytes > 4096);
 
@@ -487,8 +487,8 @@ void SetAttrValue(const AttrValue& value, AttrValue* out) { *out = value; }
 DEFINE_SET_ATTR_VALUE_ONE(const string&, s)
 DEFINE_SET_ATTR_VALUE_LIST(gtl::ArraySlice<string>, s)
 DEFINE_SET_ATTR_VALUE_BOTH(const char*, s)
-DEFINE_SET_ATTR_VALUE_BOTH(int64, i)
-DEFINE_SET_ATTR_VALUE_BOTH(int32, i)
+DEFINE_SET_ATTR_VALUE_BOTH(int64_t, i)
+DEFINE_SET_ATTR_VALUE_BOTH(int32_t, i)
 DEFINE_SET_ATTR_VALUE_BOTH(float, f)
 DEFINE_SET_ATTR_VALUE_BOTH(double, f)
 DEFINE_SET_ATTR_VALUE_BOTH(bool, b)

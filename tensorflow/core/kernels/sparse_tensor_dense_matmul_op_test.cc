@@ -54,7 +54,7 @@ static Graph* SparseTensorDenseMatmul(int nnz, int m, int k, int n,
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> a_lhs_dist(0, a_shape_t(0) - 1);
   std::uniform_int_distribution<> a_rhs_dist(0, a_shape_t(1) - 1);
-  for (int32 i = 0; i < nnz; ++i) {
+  for (int32_t i = 0; i < nnz; ++i) {
     a_indices_t(i, 0) = a_lhs_dist(gen);
     a_indices_t(i, 1) = a_rhs_dist(gen);
   }

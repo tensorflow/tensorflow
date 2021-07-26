@@ -48,7 +48,7 @@ class PriorityQueue
                                             std::vector<PriorityTensorPair>,
                                             ComparePriorityTensorPair> > {
  public:
-  PriorityQueue(int32 capacity, const DataTypeVector& component_dtypes,
+  PriorityQueue(int32_t capacity, const DataTypeVector& component_dtypes,
                 const std::vector<TensorShape>& component_shapes,
                 const string& name);
 

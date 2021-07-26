@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 
 const uint64 kIllegalFrameId = ~0uLL;
-const int64 kIllegalIterId = -1;
+const int64_t kIllegalIterId = -1;
 
 // For the purpose of control flow, every tensor produced by TensorFlow is
 // conceptually tagged by a 'FrameAndIter'. FrameAndIter consists of a
@@ -35,7 +35,7 @@ struct FrameAndIter {
 
   FrameAndIter() {}
 
-  FrameAndIter(uint64 frame, int64 iter) {
+  FrameAndIter(uint64 frame, int64_t iter) {
     frame_id = frame;
     iter_id = iter;
   }

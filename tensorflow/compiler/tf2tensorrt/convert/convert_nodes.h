@@ -220,11 +220,8 @@ class TRT_ShapedWeights {
   nvinfer1::DataType TrtDType() const { return type_; }
 
   // TODO(aaroey): make these private.
-  // Before TRT 6, scalar weights are not supported. In that case a TF scalar
-  // constant tensor is represented via TRT_ShapedWeights::shape_ = {1,{1}}.
-  //
-  // Starting TRT 6, scalar weights are supported, a scalar constant tensor is
-  // represented via TRT_ShapedWeights::shape_ = {0, {1}}.
+  // Scalar weights are supported, a scalar constant tensor is represented via
+  // TRT_ShapedWeights::shape_ = {0, {1}}.
   nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
 
  private:

@@ -49,7 +49,7 @@ Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
   slice->starts_.reserve(items.size());
   slice->lengths_.reserve(items.size());
   for (const string& x : items) {
-    int64 s, l;
+    int64_t s, l;
     if (x == "-") {
       // "everything"
       s = 0;
@@ -165,8 +165,8 @@ bool TensorSlice::Intersect(const TensorSlice& other,
     } else {
       // If we have an intersection here, it should have a start that is the
       // max of the two starts and an end that is the min of the two ends.
-      int64 s = std::max(start(d), other.start(d));
-      int64 l = std::min(end(d), other.end(d)) - s;
+      int64_t s = std::max(start(d), other.start(d));
+      int64_t l = std::min(end(d), other.end(d)) - s;
       if (l > 0) {
         // We have a real intersection
         if (result) {
@@ -267,6 +267,6 @@ Status TensorSlice::SliceTensorShape(const TensorShape& shape,
   return Status::OK();
 }
 
-const int64 TensorSlice::kFullExtent = -1;
+const int64_t TensorSlice::kFullExtent = -1;
 
 }  // namespace tensorflow

@@ -72,8 +72,8 @@ namespace xla {
   // D{L(1)} * ...
 
   // Scale factor holding the growing product of D{L(i)} terms.
-  int64 scale = 1;
-  int64 linear_index = 0;
+  int64_t scale = 1;
+  int64_t linear_index = 0;
   bool first = true;
   for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
     if (first) {
@@ -90,7 +90,7 @@ namespace xla {
 }
 
 /* static */ std::vector<int64> IndexUtil::LinearIndexToMultidimensionalIndex(
-    const Shape& shape, int64 linear_index) {
+    const Shape& shape, int64_t linear_index) {
   DCHECK_GE(linear_index, 0);
   DCHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
 
@@ -104,7 +104,7 @@ namespace xla {
   std::vector<int64> multi_index(shape.dimensions_size());
 
   // Accumulated product D{L(0)} * D{L(1)} * ...
-  int64 divisor = 1;
+  int64_t divisor = 1;
   for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
     multi_index[dimension] =
         (linear_index / divisor) % shape.dimensions(dimension);
@@ -115,8 +115,8 @@ namespace xla {
 
 /* static */ bool IndexUtil::BumpIndices(const Shape& shape,
                                          absl::Span<int64> indices) {
-  for (int64 dimno = indices.size() - 1; dimno >= 0; --dimno) {
-    int64 limit = shape.dimensions(dimno);
+  for (int64_t dimno = indices.size() - 1; dimno >= 0; --dimno) {
+    int64_t limit = shape.dimensions(dimno);
     if (indices[dimno] + 1 < limit) {
       indices[dimno]++;
       // Whenever an index of a dimension is increased, it means that all
@@ -129,8 +129,8 @@ namespace xla {
 }
 
 /* static */ int64 IndexUtil::GetDimensionStride(const Shape& shape,
-                                                 int64 dimension) {
-  int64 stride = 1;
+                                                 int64_t dimension) {
+  int64_t stride = 1;
   for (auto dim : LayoutUtil::MinorToMajor(shape)) {
     if (dim == dimension) {
       break;
@@ -142,12 +142,12 @@ namespace xla {
 
 /* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
                                            absl::Span<const int64> index) {
-  int64 rank = shape.rank();
-  const int64 index_size = index.size();
+  int64_t rank = shape.rank();
+  const int64_t index_size = index.size();
   if (rank != index_size) {
     return false;
   }
-  for (int64 d = 0; d < rank; ++d) {
+  for (int64_t d = 0; d < rank; ++d) {
     if (index[d] >= shape.dimensions(d)) {
       return false;
     }
@@ -157,10 +157,10 @@ namespace xla {
 
 /* static */ int IndexUtil::CompareIndices(absl::Span<const int64> lhs,
                                            absl::Span<const int64> rhs) {
-  int64 rank = lhs.size();
-  const int64 rhs_rank = rhs.size();
+  int64_t rank = lhs.size();
+  const int64_t rhs_rank = rhs.size();
   CHECK_EQ(rhs_rank, rank);
-  for (int64 dim = 0; dim < rank; ++dim) {
+  for (int64_t dim = 0; dim < rank; ++dim) {
     if (lhs[dim] < rhs[dim]) {
       return -1;
     } else if (lhs[dim] > rhs[dim]) {

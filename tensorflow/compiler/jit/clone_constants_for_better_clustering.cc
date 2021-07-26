@@ -74,7 +74,7 @@ StatusOr<bool> IsConstantSmall(Node* n) {
   // TODO(sanjoy): It may make sense to combine this threshold with XLA's "large
   // constant" threshold, if there is one.
   const int kSmallTensorThreshold = 16;
-  int64 total_elements = 1;
+  int64_t total_elements = 1;
   for (const auto& dim : proto->tensor_shape().dim()) {
     if (dim.size() < 0) {
       return errors::Internal("Unknown dimension size in constant tensor ",

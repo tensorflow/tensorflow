@@ -214,7 +214,7 @@ class Feature {
         return false;
       }
 
-      constexpr int32 kNumFloatBytes = 4;
+      constexpr int32_t kNumFloatBytes = 4;
       if (peek_tag == kDelimitedTag(1)) {                       // packed
         if (!stream.ExpectTag(kDelimitedTag(1))) return false;  // packed tag
         uint32 packed_length;
@@ -240,7 +240,7 @@ class Feature {
           if (!stream.ReadRaw(float_list->data() + initial_size, bytes_to_copy))
             return false;
         } else {
-          int64 index = initial_size;
+          int64_t index = initial_size;
           while (!stream.ExpectAtEnd()) {
             uint32 buffer32;
             if (!stream.ReadLittleEndian32(&buffer32)) return false;
@@ -256,10 +256,10 @@ class Feature {
         const size_t initial_size = float_list->size();
         // 1 byte for the tag (`1` encoded as Variant32) and kNumFloatBytes for
         // the value.
-        const int64 num_elements =
+        const int64_t num_elements =
             stream.BytesUntilLimit() / (1 + kNumFloatBytes);
         float_list->resize(initial_size + num_elements);
-        int64 index = initial_size;
+        int64_t index = initial_size;
         while (!stream.ExpectAtEnd()) {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32 buffer32;

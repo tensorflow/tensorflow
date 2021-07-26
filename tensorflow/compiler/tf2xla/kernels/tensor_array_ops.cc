@@ -146,7 +146,7 @@ class TensorArrayOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    int64 size;
+    int64_t size;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &size));
     OP_REQUIRES(ctx, size >= 0,
                 errors::InvalidArgument("TensorArray size must be >= 0"));
@@ -489,7 +489,7 @@ class TensorArraySplitOp : public XlaOpKernel {
     std::vector<int64> lengths;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &lengths));
 
-    int64 length = 0;
+    int64_t length = 0;
     if (!lengths.empty()) {
       length = lengths[0];
       for (int i = 1; i < lengths.size(); ++i) {

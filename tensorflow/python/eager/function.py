@@ -300,9 +300,10 @@ class _InterpolateFunctionError(object):
           func_stack.append("<unknown>")
     if g:
       message = error_interpolation.interpolate(message, g)
-      message += "\n\nFunction call stack:\n"
-      message += " -> ".join(func_stack)
-      message += "\n"
+      if len(func_stack) >= 2:
+        message += "\n\nFunction call stack:\n"
+        message += " -> ".join(func_stack)
+        message += "\n"
       exc._message = message  # pylint: disable=protected-access
     return False
 

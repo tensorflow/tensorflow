@@ -49,7 +49,7 @@ Status ReadGroundTruthFile(const string& file_name,
 void CalculateAccuracyStats(
     const std::vector<std::pair<string, int64>>& ground_truth_list,
     const std::vector<std::pair<string, int64>>& found_words,
-    int64 up_to_time_ms, int64 time_tolerance_ms,
+    int64_t up_to_time_ms, int64_t time_tolerance_ms,
     StreamingAccuracyStats* stats);
 
 // Writes a human-readable description of the statistics to stdout.

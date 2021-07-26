@@ -148,7 +148,8 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
 // assumes that the indices/values Tensors have been properly allocated
 // for the batch.
 int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
-                           const int64 offset, Tensor* indices, Tensor* values);
+                           const int64_t offset, Tensor* indices,
+                           Tensor* values);
 
 // Check that each dense_shape has known rank and inner dimensions; and
 // update variable_length (whether the outer dimension is None) and

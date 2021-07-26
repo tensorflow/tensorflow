@@ -58,8 +58,8 @@ SliceIndex HandleCopiesBatched(OpKernelContext* ctx,
   // Store the value of invalidate index for printing error information, it's a
   // shared variable.
   SliceIndex result = -1;
-  auto work = [&](int64 start, int64 end) {
-    const int64 r_start = start % (outer_size * indices_size);
+  auto work = [&](int64_t start, int64_t end) {
+    const int64_t r_start = start % (outer_size * indices_size);
     SliceIndex batch_idx = static_cast<SliceIndex>(
         start / (outer_size * indices_size));
     SliceIndex outer_idx = static_cast<SliceIndex>(r_start / indices_size);
@@ -130,12 +130,12 @@ struct GatherFunctorBatchedCPU {
                    typename TTypes<T, 4>::ConstTensor params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T, 4>::Tensor out) {
-    const int64 indices_size = indices.size();  // Includes the batch_size.
-    const int64 slice_size = out.dimension(3);
-    int64 bad_i;
+    const int64_t indices_size = indices.size();  // Includes the batch_size.
+    const int64_t slice_size = out.dimension(3);
+    int64_t bad_i;
 
-    const int64 batch_size = params.dimension(0);
-    const int64 outer_size = params.dimension(1);
+    const int64_t batch_size = params.dimension(0);
+    const int64_t outer_size = params.dimension(1);
 
     bool use_large = (slice_size > std::numeric_limits<int32>::max() ||
                       params.size() > std::numeric_limits<int32>::max() ||

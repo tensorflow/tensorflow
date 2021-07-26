@@ -96,7 +96,7 @@ Status QuantizeAndDequantizeV4GradHelper(const Scope& scope,
   Input input = Shape(scope, op.input(0));
   Input input_min = op.input(1);
   Input input_max = op.input(2);
-  int64 axis;
+  int64_t axis;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "axis", &axis));
   auto qdq_v4_grad = QuantizeAndDequantizeV4Grad(
       scope, grad_inputs[0], input, input_min, input_max,
@@ -433,11 +433,11 @@ Status StridedSliceGradHelper(const Scope& scope, const Operation& op,
   Input begin = op.input(1);
   Input end = op.input(2);
   Input strides = op.input(3);
-  int64 begin_mask;
-  int64 end_mask;
-  int64 ellipsis_mask;
-  int64 new_axis_mask;
-  int64 shrink_axis_mask;
+  int64_t begin_mask;
+  int64_t end_mask;
+  int64_t ellipsis_mask;
+  int64_t new_axis_mask;
+  int64_t shrink_axis_mask;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "begin_mask", &begin_mask));
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "end_mask", &end_mask));

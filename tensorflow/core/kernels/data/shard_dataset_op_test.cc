@@ -22,7 +22,7 @@ constexpr char kNodeName[] = "shard_dataset";
 class ShardDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  ShardDatasetParams(T input_dataset_params, int64 num_shards, int64 index,
+  ShardDatasetParams(T input_dataset_params, int64_t num_shards, int64_t index,
                      bool require_non_empty, DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
                      string node_name)

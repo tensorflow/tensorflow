@@ -95,10 +95,11 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   bool DeviceMemoryUsage(int64* free, int64* total) const override;
 
-  void DequeueOutfeed(int32 outfeed_queue_index, absl::Span<uint8> bytes,
+  void DequeueOutfeed(int32_t outfeed_queue_index, absl::Span<uint8> bytes,
                       StatusCallback done);
 
-  Status EnqueueInfeed(int32 infeed_queue_index, absl::Span<const uint8> bytes);
+  Status EnqueueInfeed(int32_t infeed_queue_index,
+                       absl::Span<const uint8> bytes);
 
   absl::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
 
@@ -151,9 +152,9 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   bool StartTimer(Stream* stream, ::stream_executor::Timer* timer) override;
   bool StopTimer(Stream* stream, ::stream_executor::Timer* timer) override;
 
-  Status WaitForInfeedReady(int32 infeed_queue_index);
+  Status WaitForInfeedReady(int32_t infeed_queue_index);
 
-  Status WaitForOutfeedReady(int32 outfeed_queue_index);
+  Status WaitForOutfeedReady(int32_t outfeed_queue_index);
 
   Status UnloadAllPrograms() override;
 

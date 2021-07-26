@@ -190,7 +190,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
           "TensorArray size must be scalar, but had shape: ",
           tensor_size->shape().DebugString());
     }
-    const int32 size = tensor_size->scalar<int32>()();
+    const int32_t size = tensor_size->scalar<int32>()();
     if (size < 0) {
       return errors::InvalidArgument("Size should be >= 0.");
     }
@@ -313,8 +313,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     // may no longer be resized by new Writes.
     tensor_array->DisableDynamicSize();
 
-    int32 array_size = 0;
-    int32 marked_size = 0;
+    int32_t array_size = 0;
+    int32_t marked_size = 0;
     TF_RETURN_IF_ERROR(tensor_array->Size(&array_size));
     TF_RETURN_IF_ERROR(tensor_array->MarkedSize(&marked_size));
 
@@ -431,7 +431,7 @@ class TensorArrayWriteOp : public OpKernel {
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
-    const int32 index = tensor_index->scalar<int32>()();
+    const int32_t index = tensor_index->scalar<int32>()();
     OP_REQUIRES(
         ctx, tensor_value->dtype() == tensor_array->ElemType(),
         errors::InvalidArgument("TensorArray dtype is ",
@@ -513,7 +513,7 @@ class TensorArrayReadOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
-    const int32 index = tensor_index->scalar<int32>()();
+    const int32_t index = tensor_index->scalar<int32>()();
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
         errors::InvalidArgument(
@@ -610,7 +610,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
     // TensorArray.
     OP_REQUIRES_OK(ctx, tensor_array->SetElemShape(element_shape_));
 
-    int32 num_indices;
+    int32_t num_indices;
     std::vector<Tensor> values;
     std::vector<int32> indices;
     if (LEGACY_PACK) {
@@ -830,7 +830,7 @@ class TensorArrayConcatOp : public OpKernel {
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
             " but Op requested dtype ", DataTypeString(dtype_), "."));
 
-    int32 array_size;
+    int32_t array_size;
     OP_REQUIRES_OK(ctx, tensor_array->PackOrConcatSize(&array_size));
 
     // If there are no elements, return a zero-element Tensor with
@@ -1046,11 +1046,11 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
                 errors::InvalidArgument("Input value for unpack must be at "
                                         "least a vector but received shape: ",
                                         element_shape.DebugString()));
-    int32 array_size;
+    int32_t array_size;
     OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
 
-    int32 max_index;
-    int32 num_values;
+    int32_t max_index;
+    int32_t num_values;
     std::vector<int32> write_indices;
     if (LEGACY_UNPACK) {
       num_values = element_shape.dim_size(0);
@@ -1237,11 +1237,11 @@ class TensorArraySplitOp : public OpKernel {
                 errors::InvalidArgument(
                     "Expected lengths to have < max int32 entries"));
 
-    int32 num_tensors = static_cast<int32>(tensor_lengths->NumElements());
+    int32_t num_tensors = static_cast<int32>(tensor_lengths->NumElements());
     auto tensor_lengths_t = tensor_lengths->vec<int64>();
     std::vector<int64> cumulative_lengths;
     cumulative_lengths.reserve(num_tensors);
-    int64 total_length = 0;
+    int64_t total_length = 0;
     for (int i = 0; i < num_tensors; ++i) {
       total_length += tensor_lengths_t(i);
       cumulative_lengths.push_back(total_length);
@@ -1259,15 +1259,15 @@ class TensorArraySplitOp : public OpKernel {
                                 "values.shape[0], but sum of lengths is ",
                                 total_length, " and value's shape is: ",
                                 tensor_value->shape().DebugString()));
-    int64 elements_per_row =
+    int64_t elements_per_row =
         (total_length == 0) ? 0 : (tensor_value->NumElements() / total_length);
 
-    int32 array_size;
+    int32_t array_size;
     OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
     bool dynamic_size = tensor_array->HasDynamicSize();
 
     std::vector<TensorShape> element_shapes(num_tensors, tensor_value->shape());
-    for (int32 i = 0; i < num_tensors; ++i) {
+    for (int32_t i = 0; i < num_tensors; ++i) {
       element_shapes[i].set_dim(0, tensor_lengths_t(i));
     }
 
@@ -1299,7 +1299,7 @@ class TensorArraySplitOp : public OpKernel {
     for (int i = 0; i < array_size; ++i) {
       Tensor tensor_value_i;
 
-      int64 previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
+      int64_t previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
       Eigen::DSizes<Eigen::DenseIndex, 3> indices{
           0, static_cast<Eigen::DenseIndex>(previous_length), 0};
       Eigen::DSizes<Eigen::DenseIndex, 3> sizes{

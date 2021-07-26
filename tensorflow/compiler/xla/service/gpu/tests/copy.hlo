@@ -86,11 +86,10 @@
 // CHECK:         store float %[[VAL_70]], float addrspace(3)* %[[VAL_71]], align 4
 // CHECK:         br label %[[VAL_33]]
 // CHECK:       output_x_in_tile-true:                            ; preds = %[[VAL_59]]
-// CHECK:         %[[VAL_72:.*]] = getelementptr [32 x [33 x float]], [32 x [33 x float]] addrspace(3)* @b.tile0, i64 0, i32 %[[VAL_65]], i32 %[[VAL_63]]
+// CHECK:         %[[VAL_72:.*]] = getelementptr [32 x [33 x float]], [32 x [33 x float]] addrspace(3)* @b.tile0, i32 0, i32 %[[VAL_65]], i32 %[[VAL_63]]
 // CHECK:         %[[VAL_73:.*]] = load float, float addrspace(3)* %[[VAL_72]], align 4
-// CHECK:         %[[VAL_74:.*]] = bitcast [200 x [100 x float]]* %[[VAL_7]] to [1 x [200 x [100 x float]]]*
-// CHECK:         %[[VAL_75:.*]] = getelementptr inbounds [1 x [200 x [100 x float]]], [1 x [200 x [100 x float]]]* %[[VAL_74]], i32 0, i32 0, i32 %[[VAL_64]], i32 %[[VAL_66]]
-// CHECK:         store float %[[VAL_73]], float* %[[VAL_75]], align 4
+// CHECK:         %[[VAL_74:.*]] = getelementptr inbounds [200 x [100 x float]], [200 x [100 x float]]* %[[VAL_7]], i32 0, i32 %[[VAL_64]], i32 %[[VAL_66]]
+// CHECK:         store float %[[VAL_73]], float* %[[VAL_74]], align 4
 // CHECK:         br label %[[VAL_55]]
 
 HloModule Test

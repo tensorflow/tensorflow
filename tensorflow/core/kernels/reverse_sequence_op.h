@@ -28,9 +28,9 @@ namespace generator {
 template <typename T, typename Tlen, size_t Dims>
 class ReverseGenerator {
  public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  ReverseGenerator(typename TTypes<T, Dims>::ConstTensor input, int32 batch_dim,
-                   int32 seq_dim, typename TTypes<Tlen>::ConstVec seq_lengths)
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE ReverseGenerator(
+      typename TTypes<T, Dims>::ConstTensor input, int32_t batch_dim,
+      int32_t seq_dim, typename TTypes<Tlen>::ConstVec seq_lengths)
       : input_(input),
         batch_dim_(batch_dim),
         seq_dim_(seq_dim),
@@ -62,7 +62,7 @@ template <typename Device, typename T, typename Tlen, size_t Dims>
 struct ReverseSequence {
   EIGEN_ALWAYS_INLINE static void Compute(
       const Device& d, typename TTypes<T, Dims>::ConstTensor input,
-      int32 batch_dim, int32 seq_dim,
+      int32_t batch_dim, int32_t seq_dim,
       typename TTypes<Tlen>::ConstVec seq_lengths,
       typename TTypes<T, Dims>::Tensor output) {
     generator::ReverseGenerator<T, Tlen, Dims> generator(input, batch_dim,

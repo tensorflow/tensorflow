@@ -268,11 +268,11 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          int64 max_intra_op_parallelism)
+          int64_t max_intra_op_parallelism)
       : Dataset(DatasetContext(ctx), input, max_intra_op_parallelism) {}
 
   Dataset(DatasetContext&& ctx, const DatasetBase* input,
-          int64 max_intra_op_parallelism)
+          int64_t max_intra_op_parallelism)
       : DatasetBase(std::move(ctx)),
         input_(input),
         max_intra_op_parallelism_(max_intra_op_parallelism),
@@ -382,7 +382,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
 
 /* static */
 void MaxIntraOpParallelismDatasetOp::MakeDatasetFromOptions(
-    OpKernelContext* ctx, DatasetBase* input, int32 max_intra_op_parallelism,
+    OpKernelContext* ctx, DatasetBase* input, int32_t max_intra_op_parallelism,
     DatasetBase** output) {
   OP_REQUIRES(
       ctx, max_intra_op_parallelism >= 0,
@@ -396,7 +396,7 @@ void MaxIntraOpParallelismDatasetOp::MakeDatasetFromOptions(
 void MaxIntraOpParallelismDatasetOp::MakeDataset(OpKernelContext* ctx,
                                                  DatasetBase* input,
                                                  DatasetBase** output) {
-  int64 max_intra_op_parallelism;
+  int64_t max_intra_op_parallelism;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64>(ctx, "max_intra_op_parallelism",
                                             &max_intra_op_parallelism));
@@ -527,7 +527,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
 /* static */
 void PrivateThreadPoolDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
                                                         DatasetBase* input,
-                                                        int32 num_threads,
+                                                        int32_t num_threads,
                                                         DatasetBase** output) {
   OP_REQUIRES(ctx, num_threads >= 0,
               errors::InvalidArgument("`num_threads` must be >= 0"));
@@ -541,7 +541,7 @@ void PrivateThreadPoolDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
 void PrivateThreadPoolDatasetOp::MakeDataset(OpKernelContext* ctx,
                                              DatasetBase* input,
                                              DatasetBase** output) {
-  int64 num_threads = 0;
+  int64_t num_threads = 0;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64>(ctx, "num_threads", &num_threads));
   OP_REQUIRES(ctx, num_threads >= 0,

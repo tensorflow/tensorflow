@@ -79,9 +79,10 @@ TEST_F(SingleMachineTest, CostModel) {
   TF_CHECK_OK(cluster_->Initialize(item));
 
   RunMetadata metadata;
-  const int64 start_micros = Env::Default()->NowMicros();
+  const int64_t start_micros = Env::Default()->NowMicros();
   TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
-  const int64 run_duration_micros = Env::Default()->NowMicros() - start_micros;
+  const int64_t run_duration_micros =
+      Env::Default()->NowMicros() - start_micros;
 
   // There should be at least 4 nodes corresponding to the 4 stages we created
   // in the fake input.

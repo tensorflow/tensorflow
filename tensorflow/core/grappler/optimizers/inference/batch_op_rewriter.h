@@ -29,10 +29,10 @@ constexpr char kInitialInflightBatchesAttr[] = "_initial_inflight_batches";
 constexpr char kMaxInflightBatchesAttr[] = "_max_inflight_batches";
 constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
 
-constexpr int64 kMinInflightBatches = 16;
-constexpr int64 kInitialInflightBatches = 16;
-constexpr int64 kBatchesToAverageOver = 10;
-constexpr int64 kMaxInflightBatches = 64;
+constexpr int64_t kMinInflightBatches = 16;
+constexpr int64_t kInitialInflightBatches = 16;
+constexpr int64_t kBatchesToAverageOver = 10;
+constexpr int64_t kMaxInflightBatches = 64;
 
 using ::tensorflow::serving::BatchOpRewriteConfig;
 

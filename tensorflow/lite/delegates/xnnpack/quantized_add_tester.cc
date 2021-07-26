@@ -25,7 +25,6 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
@@ -59,19 +58,62 @@ std::vector<int32_t> QuantizedAddTester::OutputShape() const {
   return output_shape;
 }
 
+template <class T>
+void QuantizedAddTester::Test(Interpreter* delegate_interpreter,
+                              Interpreter* default_interpreter) const {
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  std::uniform_int_distribution<int32_t> input1_distribution(
+      std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+  std::uniform_int_distribution<int32_t> input2_distribution(
+      std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+  auto input1_rng = std::bind(input1_distribution, std::ref(rng));
+  auto input2_rng = std::bind(input2_distribution, std::ref(rng));
+  if (!Input1Static()) {
+    T* default_input1_data = default_interpreter->typed_input_tensor<T>(0);
+    std::generate(default_input1_data,
+                  default_input1_data + ComputeSize(Input1Shape()),
+                  std::ref(input1_rng));
+
+    T* xnnpack_input1_data = delegate_interpreter->typed_input_tensor<T>(0);
+    std::copy(default_input1_data,
+              default_input1_data + ComputeSize(Input1Shape()),
+              xnnpack_input1_data);
+  }
+
+  if (!Input2Static()) {
+    T* default_input2_data =
+        default_interpreter->typed_input_tensor<T>(Input1Static() ? 0 : 1);
+    std::generate(default_input2_data,
+                  default_input2_data + ComputeSize(Input2Shape()),
+                  std::ref(input2_rng));
+
+    T* xnnpack_input2_data =
+        delegate_interpreter->typed_input_tensor<T>(Input1Static() ? 0 : 1);
+    std::copy(default_input2_data,
+              default_input2_data + ComputeSize(Input2Shape()),
+              xnnpack_input2_data);
+  }
+
+  ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
+  ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
+
+  T* default_output_data = default_interpreter->typed_output_tensor<T>(0);
+  T* delegate_output_data = delegate_interpreter->typed_output_tensor<T>(0);
+
+  for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
+    ASSERT_LE(std::abs(static_cast<int32_t>(default_output_data[i]) -
+                       static_cast<int32_t>(delegate_output_data[i])),
+              1)
+        << "default " << static_cast<int32_t>(default_output_data[i])
+        << ", delegate " << static_cast<int32_t>(delegate_output_data[i]);
+  }
+}
+
 void QuantizedAddTester::Test(TfLiteDelegate* delegate) const {
   if (Input1Static()) {
     ASSERT_FALSE(Input2Static());
   }
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  std::uniform_int_distribution<int32_t> input1_distribution(
-      std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max());
-  std::uniform_int_distribution<int32_t> input2_distribution(
-      std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max());
-  auto input1_rng = std::bind(input1_distribution, std::ref(rng));
-  auto input2_rng = std::bind(input2_distribution, std::ref(rng));
 
   std::vector<char> buffer = CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
@@ -110,48 +152,10 @@ void QuantizedAddTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  if (!Input1Static()) {
-    int8_t* default_input1_data = default_interpreter->typed_tensor<int8_t>(
-        default_interpreter->inputs()[0]);
-    std::generate(default_input1_data,
-                  default_input1_data + ComputeSize(Input1Shape()),
-                  std::ref(input1_rng));
-
-    int8_t* xnnpack_input1_data = delegate_interpreter->typed_tensor<int8_t>(
-        delegate_interpreter->inputs()[0]);
-    std::copy(default_input1_data,
-              default_input1_data + ComputeSize(Input1Shape()),
-              xnnpack_input1_data);
-  }
-
-  if (!Input2Static()) {
-    int8_t* default_input2_data = default_interpreter->typed_tensor<int8_t>(
-        default_interpreter->inputs()[Input1Static() ? 0 : 1]);
-    std::generate(default_input2_data,
-                  default_input2_data + ComputeSize(Input2Shape()),
-                  std::ref(input2_rng));
-
-    int8_t* xnnpack_input2_data = delegate_interpreter->typed_tensor<int8_t>(
-        delegate_interpreter->inputs()[Input1Static() ? 0 : 1]);
-    std::copy(default_input2_data,
-              default_input2_data + ComputeSize(Input2Shape()),
-              xnnpack_input2_data);
-  }
-
-  ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
-  ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
-
-  int8_t* default_output_data = default_interpreter->typed_tensor<int8_t>(
-      default_interpreter->outputs()[0]);
-  int8_t* delegate_output_data = delegate_interpreter->typed_tensor<int8_t>(
-      delegate_interpreter->outputs()[0]);
-
-  for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
-    ASSERT_LE(std::abs(static_cast<int32_t>(default_output_data[i]) -
-                       static_cast<int32_t>(delegate_output_data[i])),
-              1)
-        << "default " << static_cast<int32_t>(default_output_data[i])
-        << ", delegate " << static_cast<int32_t>(delegate_output_data[i]);
+  if (Unsigned()) {
+    Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());
+  } else {
+    Test<int8_t>(delegate_interpreter.get(), default_interpreter.get());
   }
 }
 
@@ -202,7 +206,8 @@ std::vector<char> QuantizedAddTester::CreateTfLiteModel() const {
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(Input1Shape().data(),
                                                  Input1Shape().size()),
-                   TensorType_INT8, input1_buffer, /*name=*/0,
+                   Unsigned() ? TensorType_UINT8 : TensorType_INT8,
+                   input1_buffer, /*name=*/0,
                    CreateQuantizationParameters(
                        builder, /*min=*/0, /*max=*/0,
                        builder.CreateVector<float>({Input1Scale()}),
@@ -210,7 +215,8 @@ std::vector<char> QuantizedAddTester::CreateTfLiteModel() const {
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(Input2Shape().data(),
                                                  Input2Shape().size()),
-                   TensorType_INT8, input2_buffer, /*name=*/0,
+                   Unsigned() ? TensorType_UINT8 : TensorType_INT8,
+                   input2_buffer, /*name=*/0,
                    CreateQuantizationParameters(
                        builder, /*min=*/0, /*max=*/0,
                        builder.CreateVector<float>({Input2Scale()}),
@@ -218,7 +224,8 @@ std::vector<char> QuantizedAddTester::CreateTfLiteModel() const {
       CreateTensor(builder,
                    builder.CreateVector<int32_t>(OutputShape().data(),
                                                  OutputShape().size()),
-                   TensorType_INT8, /*buffer=*/0, /*name=*/0,
+                   Unsigned() ? TensorType_UINT8 : TensorType_INT8,
+                   /*buffer=*/0, /*name=*/0,
                    CreateQuantizationParameters(
                        builder, /*min=*/0, /*max=*/0,
                        builder.CreateVector<float>({OutputScale()}),

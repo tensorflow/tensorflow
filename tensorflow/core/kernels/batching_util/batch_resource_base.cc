@@ -32,8 +32,8 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
-void RecordPaddingSize(int32 padding_size, const string& model_name,
-                       int32 execution_batch_size, const string& op_name) {
+void RecordPaddingSize(int32_t padding_size, const string& model_name,
+                       int32_t execution_batch_size, const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<3>::New(
       {"/tensorflow/serving/batching/padding_size",
        "Tracks the padding size distribution on batches by model_name (if "
@@ -46,7 +46,7 @@ void RecordPaddingSize(int32 padding_size, const string& model_name,
 }
 
 // TODO(b/181883417): Replace with RecordInputBatchSizeV2.
-void RecordInputBatchSize(int32 batch_size, const string& model_name,
+void RecordInputBatchSize(int32_t batch_size, const string& model_name,
                           const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
       {"/tensorflow/serving/batching/input_batch_size",
@@ -58,7 +58,7 @@ void RecordInputBatchSize(int32 batch_size, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
-void RecordInputBatchSizeV2(int32 batch_size, const string& model_name,
+void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
                             const string& op_name) {
   static auto* cell = tensorflow::monitoring::Sampler<2>::New(
       {"/tensorflow/serving/batching/input_batch_size_v2",
@@ -71,7 +71,7 @@ void RecordInputBatchSizeV2(int32 batch_size, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
-void RecordProcessedBatchSize(int32 batch_size, const string& model_name,
+void RecordProcessedBatchSize(int32_t batch_size, const string& model_name,
                               const string& op_name) {
   static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
       {"/tensorflow/serving/batching/processed_batch_size",
@@ -84,7 +84,7 @@ void RecordProcessedBatchSize(int32 batch_size, const string& model_name,
 }
 
 // Export the exact number instead of the distribution of processed batch size.
-void RecordProcessedBatchSizeV2(int32 batch_size, const string& model_name,
+void RecordProcessedBatchSizeV2(int32_t batch_size, const string& model_name,
                                 const string& op_name) {
   static auto* cell = monitoring::Counter<3>::New(
       "/tensorflow/serving/batching/processed_batch_size_v2",
@@ -255,8 +255,9 @@ Status BatchResourceBase::RegisterInput(
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
 BatchResourceBase::GetBatcherQueueOptions(
-    int32 num_batch_threads, int32 max_batch_size, int32 batch_timeout_micros,
-    int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
+    int32_t num_batch_threads, int32_t max_batch_size,
+    int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+    const std::vector<int32>& allowed_batch_sizes,
     bool enable_large_batch_splitting) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
@@ -286,8 +287,8 @@ BatchResourceBase::GetBatcherQueueOptions(
 
 /*static*/ BatchResourceBase::AdaptiveBatcherT::QueueOptions
 BatchResourceBase::GetAdaptiveBatcherQueueOptions(
-    int32 max_batch_size, int32 batch_timeout_micros,
-    int32 max_enqueued_batches, bool enable_large_batch_splitting,
+    int32_t max_batch_size, int32_t batch_timeout_micros,
+    int32_t max_enqueued_batches, bool enable_large_batch_splitting,
     const std::vector<int32>& allowed_batch_sizes) {
   AdaptiveBatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.max_input_task_size =
@@ -412,7 +413,7 @@ Status BatchResourceBase::ConcatInputTensors(
     std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
     int max_batch_size, std::vector<std::unique_ptr<BatchTask>>* output_tasks) {
   BatchTask& input_task = *(*input_task_ptr);
-  const int64 input_task_size = input_task.size();
+  const int64_t input_task_size = input_task.size();
 
   DCHECK_GT(input_task_size, open_batch_remaining_slot);
 

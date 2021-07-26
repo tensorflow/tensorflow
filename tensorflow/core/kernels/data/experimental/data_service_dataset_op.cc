@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -81,7 +83,7 @@ namespace data {
 
 namespace {
 // Default interval between task list refreshes.
-const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
+const int64_t kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
@@ -94,13 +96,13 @@ constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
 // to read from (in case workers are added or removed).
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int op_version, int64 dataset_id,
-          ProcessingMode processing_mode, const std::string& address,
+  Dataset(OpKernelContext* ctx, int op_version, int64_t dataset_id,
+          const ProcessingModeDef& processing_mode, const std::string& address,
           const std::string& protocol,
           const std::string& data_transfer_protocol,
           const std::string& job_name, absl::optional<int64> consumer_index,
-          absl::optional<int64> num_consumers, int64 max_outstanding_requests,
-          int64 task_refresh_interval_ms, const TargetWorkers target_workers,
+          absl::optional<int64> num_consumers, int64_t max_outstanding_requests,
+          int64_t task_refresh_interval_ms, const TargetWorkers target_workers,
           IterationCounter* iteration_counter, bool owns_resource,
           ResourceHandle iteration_counter_handle,
           const DataTypeVector& output_types,
@@ -177,7 +179,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     inputs.push_back(dataset_id);
 
     Node* processing_mode;
-    tstring processing_mode_str = ProcessingModeToString(processing_mode_);
+    tstring processing_mode_str = processing_mode_.SerializeAsString();
     TF_RETURN_IF_ERROR(b->AddScalar(processing_mode_str, &processing_mode));
     inputs.push_back(processing_mode);
 
@@ -239,7 +241,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64 iterator_index)
+    explicit Iterator(const Params& params, int64_t iterator_index)
         : DatasetIterator<Dataset>(params),
           iterator_index_(iterator_index),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_) {
@@ -274,7 +276,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
-      int64 deadline_micros = kint64max;
+      int64_t deadline_micros = kint64max;
       absl::optional<JobKey> key;
       if (!dataset()->job_name_.empty()) {
         key.emplace();
@@ -369,7 +371,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {
       data::TraceMeMetadata result;
-      int64 num_tasks = -1;
+      int64_t num_tasks = -1;
       if (mu_.try_lock()) {
         num_tasks = tasks_.size() - finished_tasks_;
         mu_.unlock();
@@ -434,6 +436,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             "Coordinated reads require non-local workers, but `target_workers` "
             "is `local`.");
       }
+      if (IsStaticShard(dataset()->processing_mode_) &&
+          dataset()->target_workers_ != TargetWorkers::LOCAL) {
+        return errors::InvalidArgument(
+            "Static sharding requires reading from local workers, but "
+            "`target_workers` is ",
+            TargetWorkersToString(dataset()->target_workers_));
+      }
       return Status::OK();
     }
 
@@ -490,7 +499,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           // All units are microseconds.
           while (!cancelled_ && Env::Default()->NowMicros() < next_check) {
-            int64 remaining_time = next_check - Env::Default()->NowMicros();
+            int64_t remaining_time = next_check - Env::Default()->NowMicros();
             VLOG(4) << "Task thread manager waiting for " << remaining_time
                     << "us";
             manager_thread_cv_.wait_for(
@@ -508,7 +517,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void TryBlockRound(int64 round) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void TryBlockRound(int64_t round) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (round_robin_round_limit_.has_value() &&
           round_robin_round_limit_.value() == round) {
         return;
@@ -756,7 +765,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           task_to_process->in_use = true;
           VLOG(3) << "Processing task " << task_to_process->info.task_id();
         }
-        int64 deadline_micros = kint64max;
+        int64_t deadline_micros = kint64max;
         Status s;
         if (StrictRoundRobin()) {
           s = GetElementTraced(task_to_process.get(), deadline_micros,
@@ -819,7 +828,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       get_next_cv_.notify_all();
     }
 
-    Status GetElementTraced(Task* task, int64 deadline_micros,
+    Status GetElementTraced(Task* task, int64_t deadline_micros,
                             bool enqueue_result, Result& result)
         TF_LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Getting an element for task id " << task->info.task_id();
@@ -846,7 +855,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return s;
     }
 
-    Status MaybeRemoveTask(Task& task, int64 deadline_micros, Result& result) {
+    Status MaybeRemoveTask(Task& task, int64_t deadline_micros,
+                           Result& result) {
       bool removed;
       VLOG(1) << "Requesting task removal for worker "
               << task.info.worker_address() << " in round " << task.round;
@@ -875,7 +885,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status GetElement(Task* task, int64 deadline_micros, bool enqueue_result,
+    Status GetElement(Task* task, int64_t deadline_micros, bool enqueue_result,
                       Result& result) TF_LOCKS_EXCLUDED(mu_) {
       GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
@@ -892,7 +902,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return errors::Cancelled("DataServiceDataset iterator cancelled");
           }
         }
-        int64 now_micros = Env::Default()->NowMicros();
+        int64_t now_micros = Env::Default()->NowMicros();
         if (now_micros > deadline_micros) {
           return s;
         }
@@ -903,7 +913,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return Status::OK();
           }
         }
-        int64 backoff_until = std::min(
+        int64_t backoff_until = std::min(
             deadline_micros,
             now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
         VLOG(1) << "Failed to get an element from worker "
@@ -997,7 +1007,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   const int op_version_;
   const int64 dataset_id_;
-  const ProcessingMode processing_mode_;
+  const ProcessingModeDef processing_mode_;
   const tstring address_;
   const tstring protocol_;
   const tstring data_transfer_protocol_;
@@ -1058,15 +1068,17 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
 
 void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                        DatasetBase** output) {
-  int64 dataset_id;
+  int64_t dataset_id;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id));
 
   tstring processing_mode_str;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kProcessingMode, &processing_mode_str));
-  ProcessingMode processing_mode;
-  OP_REQUIRES_OK(ctx,
-                 ParseProcessingMode(processing_mode_str, processing_mode));
+  ProcessingModeDef processing_mode;
+  OP_REQUIRES(ctx, processing_mode.ParseFromString(processing_mode_str),
+              errors::InvalidArgument(absl::Substitute(
+                  "Failed to parse ProcessingModeDef from string: $0",
+                  std::string(processing_mode_str))));
 
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));
@@ -1084,14 +1096,14 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   absl::optional<int64> consumer_index;
   absl::optional<int64> num_consumers;
   if (op_version_ >= 2) {
-    int64 consumer_index_int;
+    int64_t consumer_index_int;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument(ctx, kConsumerIndex, &consumer_index_int));
     if (consumer_index_int >= 0) {
       consumer_index = consumer_index_int;
     }
 
-    int64 num_consumers_int;
+    int64_t num_consumers_int;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, kNumConsumers, &num_consumers_int));
     if (num_consumers_int >= 0) {
@@ -1099,7 +1111,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
     }
   }
 
-  int64 max_outstanding_requests;
+  int64_t max_outstanding_requests;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kMaxOutstandingRequests,
                                           &max_outstanding_requests));
 

@@ -25,7 +25,7 @@ namespace tpu {
 
 // A reserved ID for deferred core selection. Intentionally set at a number
 // that is more than the number of cores available in a future system.
-constexpr int32 kDeferredCoreSelectionReserved = -8193;
+constexpr int32_t kDeferredCoreSelectionReserved = -8193;
 
 class TPUOrdinalSelector : TPUOrdinalSelectorInterface {
  public:

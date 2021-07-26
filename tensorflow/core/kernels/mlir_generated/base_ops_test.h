@@ -25,8 +25,8 @@ namespace tensorflow {
 namespace test {
 
 template <typename T>
-using is_integer = llvm::is_one_of<T, int8, int16, int32, int64, uint8, uint16,
-                                   uint32, uint64>;
+using is_integer = llvm::is_one_of<T, int8_t, int16_t, int32_t, int64_t,
+                                   uint8_t, uint16_t, uint32_t, uint64_t>;
 
 /// Helper functions to create or derive inputs of the right type and size.
 

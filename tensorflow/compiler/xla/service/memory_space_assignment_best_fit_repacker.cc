@@ -30,7 +30,7 @@ using Type = GlobalDecreasingSizeBestFitHeap<AllocationBlock>::Type;
 class BestFitRepacker
     : public GlobalDecreasingSizeBestFitHeap<AllocationBlock> {
  public:
-  BestFitRepacker(int64 max_size, int64 alignment, Type type)
+  BestFitRepacker(int64_t max_size, int64_t alignment, Type type)
       : GlobalDecreasingSizeBestFitHeap<AllocationBlock>(alignment, type),
         max_size_(max_size) {}
 

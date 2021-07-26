@@ -40,7 +40,7 @@ _DTYPES = set([
 def _values(values, dtype):
   return np.array(
       values,
-      dtype=(np.unicode if (dtype == dtypes.string) else dtype.as_numpy_dtype))
+      dtype=(np.str_ if (dtype == dtypes.string) else dtype.as_numpy_dtype))
 
 
 def _constant(values, dtype):

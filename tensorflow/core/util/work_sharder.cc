@@ -63,7 +63,7 @@ void Sharder::Do(int64_t total, int64_t cost_per_unit, const Work& work,
   // If total * cost_per_unit is small, it is not worth shard too
   // much. Let us assume each cost unit is 1ns, kMinCostPerShard=10000
   // is 10us.
-  static const int64 kMinCostPerShard = 10000;
+  static const int64_t kMinCostPerShard = 10000;
   const int num_shards =
       std::max<int>(1, std::min(static_cast<int64>(max_parallelism),
                                 total * cost_per_unit / kMinCostPerShard));
@@ -74,7 +74,7 @@ void Sharder::Do(int64_t total, int64_t cost_per_unit, const Work& work,
   // The 1st shard is done by the caller thread and the other shards
   // are dispatched to the worker threads. The last shard may be smaller than
   // block_size.
-  const int64 block_size = (total + num_shards - 1) / num_shards;
+  const int64_t block_size = (total + num_shards - 1) / num_shards;
   CHECK_GT(block_size, 0);  // total > 0 guarantees this.
   if (block_size >= total) {
     work(0, total);

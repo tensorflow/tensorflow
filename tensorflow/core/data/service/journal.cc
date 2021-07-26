@@ -41,7 +41,7 @@ Status ParseSequenceNumber(const std::string& journal_file,
 }  // namespace
 
 std::string DataServiceJournalFile(const std::string& journal_dir,
-                                   int64 sequence_number) {
+                                   int64_t sequence_number) {
   return io::JoinPath(journal_dir,
                       absl::StrCat(kJournal, "_", sequence_number));
 }
@@ -56,9 +56,9 @@ Status FileJournalWriter::EnsureInitialized() {
   std::vector<std::string> journal_files;
   TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(journal_dir_));
   TF_RETURN_IF_ERROR(env_->GetChildren(journal_dir_, &journal_files));
-  int64 latest_sequence_number = -1;
+  int64_t latest_sequence_number = -1;
   for (const auto& file : journal_files) {
-    int64 sequence_number;
+    int64_t sequence_number;
     TF_RETURN_IF_ERROR(ParseSequenceNumber(file, &sequence_number));
     latest_sequence_number = std::max(latest_sequence_number, sequence_number);
   }

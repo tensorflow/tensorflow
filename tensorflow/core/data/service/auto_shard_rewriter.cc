@@ -21,11 +21,14 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -39,49 +42,83 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 #include "tensorflow/core/kernels/data/experimental/auto_shard_dataset_op.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace data {
+namespace {
 
 using ::tensorflow::data::experimental::AutoShardDatasetOp;
 
-StatusOr<AutoShardRewriter> AutoShardRewriter::Create(
-    AutoShardPolicy auto_shard_policy,
-    absl::Span<const absl::string_view> worker_addresses,
-    absl::string_view worker_address) {
-  if (auto_shard_policy == AutoShardPolicy::OFF) {
-    return AutoShardRewriter(AutoShardPolicy::OFF, /*num_workers=*/0,
-                             /*worker_index=*/0);
+// Converts tf.data service `sharding_policy` to `AutoShardPolicy`.
+AutoShardPolicy ToAutoShardPolicy(
+    const ProcessingModeDef::ShardingPolicy sharding_policy) {
+  switch (sharding_policy) {
+    case ProcessingModeDef::FILE:
+      return AutoShardPolicy::FILE;
+    case ProcessingModeDef::DATA:
+      return AutoShardPolicy::DATA;
+    case ProcessingModeDef::FILE_OR_DATA:
+      return AutoShardPolicy::AUTO;
+    case ProcessingModeDef::HINT:
+      return AutoShardPolicy::HINT;
+    default:
+      return AutoShardPolicy::OFF;
   }
-
-  TF_ASSIGN_OR_RETURN(const int64 worker_index,
-                      GetWorkerIndex(worker_addresses, worker_address));
-  return AutoShardRewriter(auto_shard_policy,
-                           static_cast<int64>(worker_addresses.size()),
-                           worker_index);
 }
 
-StatusOr<int> AutoShardRewriter::GetWorkerIndex(
-    absl::Span<const absl::string_view> worker_addresses,
-    absl::string_view worker_address) {
-  const auto it = absl::c_find(worker_addresses, worker_address);
-  if (it == worker_addresses.cend()) {
-    return errors::NotFound(absl::Substitute(
-        "Failed to apply auto-shard policy: Worker $0 is not in the auto-shard "
-        "workers list. Got workers list $1.",
-        worker_address, absl::StrJoin(worker_addresses, ",")));
-  }
-  return std::distance(worker_addresses.cbegin(), it);
+// Extracts the host from `address`.
+std::string GetHost(absl::string_view address) {
+  absl::string_view::size_type port_pos = address.find_last_of(':');
+  return std::string(address.substr(0, port_pos));
 }
 
-AutoShardRewriter::AutoShardRewriter(const AutoShardPolicy auto_shard_policy,
-                                     const int64 num_workers,
-                                     const int64 worker_index)
-    : auto_shard_policy_(auto_shard_policy),
-      num_workers_(num_workers),
-      worker_index_(worker_index) {}
+// Extracts the port from `address`. Returns nullopt if `address` does not
+// specify a port.
+absl::optional<absl::string_view> GetPort(absl::string_view address) {
+  absl::string_view::size_type port_pos = address.find_last_of(':');
+  if (port_pos == absl::string_view::npos) {
+    return absl::nullopt;
+  }
+  return address.substr(port_pos + 1);
+}
+
+// A dynamic port has form %port% or %port_foo% that is to be replaced with the
+// actual port.
+bool HasDynamicPort(absl::string_view address) {
+  absl::optional<absl::string_view> port = GetPort(address);
+  return port && absl::StartsWith(*port, "%port") && absl::EndsWith(*port, "%");
+}
+
+// Returns true if `config_address` has no port or a dynamic port (e.g.: %port%)
+// and `worker_address` has an actual port (number of named port).
+//
+// For example, it returns true for the following cases:
+//
+//  config_address                    worker_address
+//  ----------------------------------------------------------
+//  /worker/task/0                    /worker/task/0:worker
+//  /worker/task/0:%port%             /worker/task/0:10000
+//  /worker/task/0:%port_worker%      /worker/task/0:worker
+//  /worker/task/0:%port_worker%      /worker/task/0:10000
+//  localhost                         localhost:10000
+//  localhost:%port%                  localhost:10000
+bool ShouldReplaceDynamicPort(absl::string_view config_address,
+                              absl::string_view worker_address) {
+  return (!GetPort(config_address) || HasDynamicPort(config_address)) &&
+         GetPort(worker_address) &&
+         GetHost(config_address) == GetHost(worker_address);
+}
+}  // namespace
+
+AutoShardRewriter::AutoShardRewriter(const TaskDef& task_def)
+    : auto_shard_policy_(
+          ToAutoShardPolicy(task_def.processing_mode_def().sharding_policy())),
+      num_workers_(task_def.num_workers()),
+      worker_index_(task_def.worker_index()) {}
 
 StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
     const GraphDef& graph_def) {
@@ -121,6 +158,51 @@ AutoShardRewriter::GetRewriteConfig() const {
       auto_shard_policy_);
   (*config.mutable_parameter_map())[AutoShardDatasetOp::kNumReplicas].set_i(1);
   return config;
+}
+
+Status WorkerIndexResolver::ValidateWorker(
+    absl::string_view worker_address) const {
+  if (worker_addresses_.empty()) {
+    return Status::OK();
+  }
+
+  for (absl::string_view config_address : worker_addresses_) {
+    if (config_address == worker_address ||
+        ShouldReplaceDynamicPort(config_address, worker_address)) {
+      return Status::OK();
+    }
+  }
+
+  return errors::FailedPrecondition(absl::Substitute(
+      "Failed to assign an index for worker $0. Configured workers list: [$1]. "
+      "The worker's address is not configured, or other workers are already "
+      "running at the configured host. If your worker has restarted, make sure "
+      "it runs at the same address and port.",
+      worker_address, absl::StrJoin(worker_addresses_, ", ")));
+}
+
+void WorkerIndexResolver::AddWorker(absl::string_view worker_address) {
+  for (std::string& config_address : worker_addresses_) {
+    if (config_address == worker_address) {
+      return;
+    }
+    if (ShouldReplaceDynamicPort(config_address, worker_address)) {
+      config_address = std::string(worker_address);
+      return;
+    }
+  }
+}
+
+StatusOr<int64> WorkerIndexResolver::GetWorkerIndex(
+    absl::string_view worker_address) const {
+  const auto it = absl::c_find(worker_addresses_, worker_address);
+  if (it == worker_addresses_.cend()) {
+    return errors::NotFound(absl::Substitute(
+        "Failed to shard dataset in tf.data service: Worker $0 is not in the "
+        "workers list. Got workers list $1.",
+        worker_address, absl::StrJoin(worker_addresses_, ",")));
+  }
+  return std::distance(worker_addresses_.cbegin(), it);
 }
 
 }  // namespace data

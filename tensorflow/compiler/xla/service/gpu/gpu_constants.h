@@ -22,14 +22,14 @@ namespace xla {
 namespace gpu {
 
 // Minimum alignment for buffers passed as incoming arguments by TensorFlow.
-extern const int64 kEntryParameterAlignBytes;
+extern const int64_t kEntryParameterAlignBytes;
 
 // Minimum alignment for buffers allocated by XLA: the temp buffers and the live
 // out (result) buffers.
-extern const int64 kXlaAllocatedBufferAlignBytes;
+extern const int64_t kXlaAllocatedBufferAlignBytes;
 
 // Minimum alignment for constant buffers.
-extern const int64 kConstantBufferAlignBytes;
+extern const int64_t kConstantBufferAlignBytes;
 
 }  // namespace gpu
 }  // namespace xla

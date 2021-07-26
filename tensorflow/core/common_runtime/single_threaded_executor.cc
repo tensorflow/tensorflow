@@ -103,7 +103,7 @@ class SingleThreadedExecutorImpl : public Executor {
     for (Node* n : ordered_nodes) {
       TF_RETURN_IF_ERROR(ValidateOp(*n));
       if (n->IsArg()) {
-        int32 arg_index;
+        int32_t arg_index;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &arg_index));
         if (arg_index < 0) {
           return errors::InvalidArgument("Invalid argument index ", arg_index,

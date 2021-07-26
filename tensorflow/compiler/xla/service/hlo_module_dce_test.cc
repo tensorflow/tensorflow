@@ -45,7 +45,7 @@ class HloModuleDceTest : public HloTestBase {
   // parameter to root instruction.
   bool WhileBodyHasPassThroughTupleElement(const HloComputation* computation,
                                            const string& while_name,
-                                           const int64 tuple_index) {
+                                           const int64_t tuple_index) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile &&
           instruction->name() == while_name) {

@@ -224,7 +224,7 @@ Status HeapSimulator::RunComputation(
 
   // Go through each step in the program and replay each buffer define and free
   // events.
-  for (int64 i = 0; i < hlo_live_range->schedule_end_time() + 1; ++i) {
+  for (int64_t i = 0; i < hlo_live_range->schedule_end_time() + 1; ++i) {
     VLOG(1) << "Time step: " << i;
 
     for (const HloValue* value : buffers_defined[i]) {
@@ -371,7 +371,7 @@ void HeapSimulator::Alloc(const HloValue* buffer,
       << "Alloc called on freed buffer: " << *buffer;
 
   allocated_buffers_.insert(buffer);
-  const int64 size = size_fn_(*buffer);
+  const int64_t size = size_fn_(*buffer);
   algorithm_->Alloc(buffer, size);
   no_fragmentation_stats_->Alloc(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
@@ -384,7 +384,7 @@ void HeapSimulator::Alloc(const HloValue* buffer,
 // causes Free to be called on the underlying algorithm.
 void HeapSimulator::Free(const HloValue* buffer,
                          const HloInstruction* instruction) {
-  const int64 size = size_fn_(*buffer);
+  const int64_t size = size_fn_(*buffer);
   algorithm_->Free(buffer, size);
   no_fragmentation_stats_->Free(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction, nullptr);
@@ -451,7 +451,7 @@ void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
 
 template <typename BufferType>
 void NoFragmentationStatsHeap<BufferType>::Alloc(const BufferType* buffer,
-                                                 int64 size) {
+                                                 int64_t size) {
   current_heap_size_ += size;
   if (current_heap_size_ > max_heap_size_) {
     max_heap_size_ = current_heap_size_;
@@ -460,16 +460,16 @@ void NoFragmentationStatsHeap<BufferType>::Alloc(const BufferType* buffer,
 
 template <typename BufferType>
 void NoFragmentationStatsHeap<BufferType>::AccountForSubcomputationMemory(
-    const HloInstruction* instruction, int64 alloc_size_by_instruction,
+    const HloInstruction* instruction, int64_t alloc_size_by_instruction,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   // We only count the memory usage of the largest subcomputation, instead of
   // adding them all, because subcomputations won't execute in parallel.
-  int64 max_subcomputation_bytes = 0;
+  int64_t max_subcomputation_bytes = 0;
   for (const auto* c : instruction->called_computations()) {
     auto it = memory_by_computation.find(c);
     if (it != memory_by_computation.end()) {
-      int64 subcomputation_bytes = it->second;
+      int64_t subcomputation_bytes = it->second;
       if (subcomputation_bytes > max_subcomputation_bytes) {
         max_subcomputation_bytes = subcomputation_bytes;
       }
@@ -489,7 +489,7 @@ void NoFragmentationStatsHeap<BufferType>::AccountForSubcomputationMemory(
 
 template <typename BufferType>
 void NoFragmentationStatsHeap<BufferType>::Free(const BufferType* buffer,
-                                                int64 size) {
+                                                int64_t size) {
   current_heap_size_ -= size;
 }
 
@@ -505,7 +505,7 @@ NoFragmentationStatsHeap<BufferType>::Finish() {
 
 template <typename BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::GlobalDecreasingSizeBestFitHeap(
-    int64 alignment, Type type)
+    int64_t alignment, Type type)
     : alignment_(alignment) {
   if (type == kTemporal) {
     buffer_interval_compare_ = GetTemporalBufferIntervalCompare();
@@ -520,12 +520,12 @@ typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferIntervalCompare
 GlobalDecreasingSizeBestFitHeap<BufferType>::GetTemporalBufferIntervalCompare()
     const {
   return [&](const BufferInterval& x, const BufferInterval& y) {
-    int64 x_end = x.end;
+    int64_t x_end = x.end;
     for (auto colocation : GetTransitiveColocations(x)) {
       x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
     }
 
-    int64 y_end = y.end;
+    int64_t y_end = y.end;
     for (auto colocation : GetTransitiveColocations(y)) {
       y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
     }
@@ -558,7 +558,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetSpatialBufferIntervalCompare() {
 
 template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::Alloc(
-    const BufferType* buffer, int64 size) {
+    const BufferType* buffer, int64_t size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     result_.chunk_map.emplace(buffer, Chunk{0, 0});
@@ -573,7 +573,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Alloc(
 
 template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::ShareWith(
-    const BufferType* buffer, const BufferType* share_with, int64 size) {
+    const BufferType* buffer, const BufferType* share_with, int64_t size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     result_.chunk_map.emplace(buffer, Chunk{0, 0});
@@ -607,7 +607,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetTransitiveColocations(
 
 template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
-                                                       int64 size) {
+                                                       int64_t size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
   if (size == 0) {
     return;
@@ -625,7 +625,7 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
 
 using Chunk = HeapSimulator::Chunk;
 
-void BufferIntervalTree::Add(int64 start, int64 end, const Chunk& chunk) {
+void BufferIntervalTree::Add(int64_t start, int64_t end, const Chunk& chunk) {
   node_storage_.emplace_back(BufferIntervalTreeNode{
       start, end, end, chunk,
       /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr});
@@ -656,7 +656,8 @@ void BufferIntervalTree::Add(int64 start, int64 end, const Chunk& chunk) {
   }
 }
 
-bool BufferIntervalTree::Remove(int64 start, int64 end, const Chunk& chunk) {
+bool BufferIntervalTree::Remove(int64_t start, int64_t end,
+                                const Chunk& chunk) {
   BufferIntervalTreeNode* to_delete = root_;
   while (to_delete != nullptr) {
     if (to_delete->start == start && to_delete->end == end &&
@@ -784,7 +785,7 @@ bool BufferIntervalTree::Remove(int64 start, int64 end, const Chunk& chunk) {
 }
 
 std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
-    int64 start, int64 end) const {
+    int64_t start, int64_t end) const {
   std::vector<Chunk> result;
   if (root_ == nullptr) {
     return result;
@@ -853,7 +854,7 @@ template <typename BufferType>
 typename GlobalDecreasingSizeBestFitHeap<BufferType>::ChunkCandidate
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
-    int64 preferred_offset) const {
+    int64_t preferred_offset) const {
   VLOG(1) << "Finding chunks for buffer: "
           << buffer_interval.buffer->ToString();
   VLOG(1) << "Size " << buffer_interval.size << ", start "
@@ -897,8 +898,8 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
   // Find the minimum free chunk that can hold this buffer.
   ChunkCandidate chunk_candidate{Chunk{-1, INT64_MAX}, result_.heap_size};
   Chunk& min_fit_chunk = chunk_candidate.chunk;
-  int64 preferred_chunk_end = preferred_offset + buffer_interval.size;
-  auto use_free_chunk_if_smaller = [&](int64 free_offset, int64 free_size) {
+  int64_t preferred_chunk_end = preferred_offset + buffer_interval.size;
+  auto use_free_chunk_if_smaller = [&](int64_t free_offset, int64_t free_size) {
     if (free_size < buffer_interval.size) {
       return;
     }
@@ -923,7 +924,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     }
   };
 
-  int64 offset = 0;
+  int64_t offset = 0;
   for (auto& chunk : chunks_overlapping_in_time) {
     if (offset < chunk.offset) {
       use_free_chunk_if_smaller(offset, chunk.offset - offset);
@@ -1033,7 +1034,7 @@ HeapSimulator::Result<BufferType>
 ChooseBestHeapAlgorithm<BufferType>::Finish() {
   DCHECK(!algorithms_.empty());
   std::vector<Result> results(algorithms_.size());
-  int64 min_size = INT64_MAX;
+  int64_t min_size = INT64_MAX;
   int min_size_index = -1;
   for (int i = 0; i < algorithms_.size(); ++i) {
     results[i] = algorithms_[i]->Finish();

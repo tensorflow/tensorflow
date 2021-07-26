@@ -22,6 +22,7 @@ import enum
 import numpy as np
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -135,7 +136,10 @@ def _get_key_counter_alg(seed, alg):
     alg = Algorithm.AUTO_SELECT.value
   alg = convert_alg_to_int(alg)
   key, counter = _get_key_counter(seed, alg)
-  return key, counter, _resolve_alg(alg)
+  if compat.forward_compatible(2021, 8, 11):
+    return key, counter, alg
+  else:
+    return key, counter, _resolve_alg(alg)
 
 
 def _philox_scramble_seed(seed):

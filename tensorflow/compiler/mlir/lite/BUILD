@@ -528,6 +528,7 @@ cc_library(
         "transforms/runtime_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
+        "transforms/unfold_large_splat_constant.cc",
         "transforms/while_loop_outline.cc",
     ],
     hdrs = [

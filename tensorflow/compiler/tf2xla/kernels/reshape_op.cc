@@ -43,7 +43,7 @@ class ReshapeOp : public XlaOpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(sizes_shape),
                 errors::InvalidArgument("sizes input must be 1-D, not shape ",
                                         sizes_shape.DebugString()));
-    const int64 num_dims = sizes_shape.num_elements();
+    const int64_t num_dims = sizes_shape.num_elements();
 
     std::vector<int64> shape_input;
     OP_REQUIRES_OK(ctx,
@@ -53,11 +53,11 @@ class ReshapeOp : public XlaOpKernel {
     // dimensions, and find the index of the unspecified one if there
     // is one.
     TensorShape shape;
-    int64 product = 1;
+    int64_t product = 1;
     int unknown_index = -1;
     bool shape_has_zero_dim = false;
     for (int d = 0; d < num_dims; ++d) {
-      const int32 size = shape_input[d];
+      const int32_t size = shape_input[d];
       if (size == -1) {
         OP_REQUIRES(
             ctx, unknown_index == -1,
@@ -81,7 +81,7 @@ class ReshapeOp : public XlaOpKernel {
     }
     auto input = ctx->Input(0);
     if (unknown_index != -1) {
-      int64 input_num_elements = 1;
+      int64_t input_num_elements = 1;
       bool input_has_zero_dim = false;
       for (int dim = 0; dim < input_shape.dims(); dim++) {
         // For zero dimension, we don't count it into `input_num_elements`
@@ -94,7 +94,7 @@ class ReshapeOp : public XlaOpKernel {
         }
       }
 
-      int64 missing = input_num_elements / product;
+      int64_t missing = input_num_elements / product;
       if (!input_has_zero_dim) {
         if (input_xla_shape->is_static() || input_xla_shape->rank() != 1) {
           OP_REQUIRES(
@@ -108,7 +108,7 @@ class ReshapeOp : public XlaOpKernel {
           // sure the input is multiple of the product of the known dimensions.
           // (We can probably do that for >1D shapes but that involves
           // factorizing the number of missing elements.)
-          int64 padded_input_num =
+          int64_t padded_input_num =
               xla::CeilOfRatio(input_num_elements, product) * product;
           missing = padded_input_num / product;
           input = xla::PadInDim(
@@ -134,7 +134,7 @@ class ReshapeOp : public XlaOpKernel {
 
     std::vector<xla::XlaOp> output_dim_sizes;
     std::vector<bool> dims_are_dynamic;
-    for (int64 i = 0; i < shape.dims(); ++i) {
+    for (int64_t i = 0; i < shape.dims(); ++i) {
       output_dim_sizes.push_back(
           xla::Reshape(xla::Slice(ctx->Input(1), {i}, {i + 1}, {1}), {}));
     }
@@ -151,7 +151,7 @@ class ReshapeOp : public XlaOpKernel {
         xla::CommonFactors(input_shape.dim_sizes(), shape.dim_sizes());
 
     // Find common_factors that the input belongs to.
-    for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+    for (int64_t i = 0; i < common_factors.size() - 1; ++i) {
       auto start = common_factors[i];
       auto end = common_factors[i + 1];
       bool input_is_dynamic = false;
@@ -159,7 +159,7 @@ class ReshapeOp : public XlaOpKernel {
       // reshape(Tensor([2, 3, 3]), [3, -1, 3]) product of the group
       // containing -1 will be 6.
       xla::XlaOp product = xla::One(ctx->builder(), xla::S32);
-      for (int64 dim = start.first; dim < end.first; ++dim) {
+      for (int64_t dim = start.first; dim < end.first; ++dim) {
         if (input_xla_shape->is_dynamic_dimension(dim)) {
           input_is_dynamic = true;
         }
@@ -169,7 +169,7 @@ class ReshapeOp : public XlaOpKernel {
       // The real size for the -1 dimension in a reshape. E.g., in
       // reshape(Tensor([2, 3, 3]), [3, -1, 3]) this will be 2.
       xla::XlaOp unknown_dim_size = product;
-      for (int64 dim = start.second; dim < end.second; ++dim) {
+      for (int64_t dim = start.second; dim < end.second; ++dim) {
         if (dim == unknown_index) {
           unknown_dim_in_group = true;
         } else {

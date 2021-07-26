@@ -118,7 +118,7 @@ TEST_F(FingerprintOpTest, StringGoldenValue) {
 TEST_F(FingerprintOpTest, Collision) {
   const TensorShape shape = {1, 2, 4, 6};
   for (DataType dtype : kRealNumberTypes) {
-    const int64 size = shape.num_elements() * DataTypeSize(dtype);
+    const int64_t size = shape.num_elements() * DataTypeSize(dtype);
 
     Tensor tensor(dtype, shape);
     auto buffer = tensor.bit_casted_shaped<uint8, 1>({size});
@@ -141,7 +141,7 @@ TEST_F(FingerprintOpTest, Collision) {
 }
 
 TEST_F(FingerprintOpTest, CollisionString) {
-  constexpr int64 size = 256;
+  constexpr int64_t size = 256;
 
   Tensor tensor(DT_STRING, {1});
   auto& input = tensor.vec<tstring>()(0);
@@ -174,7 +174,7 @@ TEST_F(FingerprintOpTest, CompareBytesAndString) {
   pods.setRandom();
 
   auto strings = strings_tensor.vec<tstring>();
-  for (int64 i = 0; i < strings.size(); ++i) {
+  for (int64_t i = 0; i < strings.size(); ++i) {
     strings(i).assign(reinterpret_cast<const char*>(&pods(i, 0)),
                       pods.dimension(1) * sizeof(pods(i, 0)));
   }

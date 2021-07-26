@@ -67,7 +67,7 @@ Literal ConvertType(LiteralSlice literal) {
               primitive_util::NativeToPrimitiveType<FromNativeT>()) {
             auto src = literal.data<FromNativeT>(shape_index);
             auto dest = result.data<ToNativeT>(shape_index);
-            for (int64 i = 0, end = src.size(); i < end; ++i) {
+            for (int64_t i = 0, end = src.size(); i < end; ++i) {
               dest[i] = static_cast<ToNativeT>(src[i]);
             }
           } else {
@@ -336,7 +336,8 @@ Literal ConvertType(LiteralSlice literal) {
 }
 
 /* static */ Literal LiteralUtil::CreateR2F32Linspace(float from, float to,
-                                                      int64 rows, int64 cols) {
+                                                      int64_t rows,
+                                                      int64_t cols) {
   auto value = MakeLinspaceArray2D(from, to, rows, cols);
   return CreateR2FromArray2D(*value);
 }
@@ -344,8 +345,8 @@ Literal ConvertType(LiteralSlice literal) {
 /* static */ Literal LiteralUtil::ReshapeSlice(
     absl::Span<const int64> new_dimensions,
     absl::Span<const int64> minor_to_major, const LiteralSlice& literal) {
-  int64 new_num_elements = 1;
-  for (int64 i = 0, end = new_dimensions.size(); i < end; ++i) {
+  int64_t new_num_elements = 1;
+  for (int64_t i = 0, end = new_dimensions.size(); i < end; ++i) {
     new_num_elements *= new_dimensions[i];
   }
   CHECK_EQ(ShapeUtil::ElementsIn(literal.shape()), new_num_elements);
@@ -361,7 +362,7 @@ Literal ConvertType(LiteralSlice literal) {
   *shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
 
   // Copy data into new literal, element-by-element.
-  for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
+  for (int64_t i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
     std::vector<int64> from_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
     std::vector<int64> to_multi_index =
@@ -564,7 +565,7 @@ Literal ConvertType(LiteralSlice literal) {
     element_shapes.push_back(element.shape());
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes));
-  for (int64 i = 0, end = elements.size(); i < end; ++i) {
+  for (int64_t i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(
         literal.MoveFrom(std::move(elements[i]), /*dest_shape_index=*/{i}));
   }

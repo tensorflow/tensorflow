@@ -161,7 +161,7 @@ MutableRunGraphResponseWrapper* Worker::CreateRunGraphResponse() {
 void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                         MutableRunGraphResponseWrapper* response,
                         StatusCallback done) {
-  const int64 step_id = request->step_id();
+  const int64_t step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
   Status s = recent_request_ids_.TrackUnique(request->request_id(),
                                              "RunGraph (Worker)", request);
@@ -259,7 +259,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
                                RunGraphRequestWrapper* request,
                                MutableRunGraphResponseWrapper* response,
                                StatusCallback done) {
-  const int64 step_id = request->step_id();
+  const int64_t step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
   Status s = recent_request_ids_.TrackUnique(
@@ -348,7 +348,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
 void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
                                CleanupGraphResponse* response,
                                StatusCallback done) {
-  const int64 step_id = request->step_id();
+  const int64_t step_id = request->step_id();
   env_->rendezvous_mgr->Cleanup(step_id);
   if (env_->collective_executor_mgr) {
     env_->collective_executor_mgr->Cleanup(step_id);

@@ -93,10 +93,10 @@ class LRNGradOp : public XlaOpKernel {
 
     OP_REQUIRES(ctx, in_grads_shape.dims() == 4 && in_image_shape.dims() == 4,
                 errors::InvalidArgument("inputs must be 4-dimensional"));
-    const int64 batch = in_grads_shape.dim_size(0);
-    const int64 rows = in_grads_shape.dim_size(1);
-    const int64 cols = in_grads_shape.dim_size(2);
-    const int64 depth = in_grads_shape.dim_size(3);
+    const int64_t batch = in_grads_shape.dim_size(0);
+    const int64_t rows = in_grads_shape.dim_size(1);
+    const int64_t cols = in_grads_shape.dim_size(2);
+    const int64_t depth = in_grads_shape.dim_size(3);
     OP_REQUIRES(
         ctx, in_image_shape.dim_size(0) == batch &&
                  in_image_shape.dim_size(1) == rows &&

@@ -80,10 +80,10 @@ class BatchNormalizationTest
     return operand;
   }
 
-  static constexpr int64 kSamples = 3;
-  static constexpr int64 kX = 1;
-  static constexpr int64 kY = 1;
-  static constexpr int64 kZ = 2;
+  static constexpr int64_t kSamples = 3;
+  static constexpr int64_t kX = 1;
+  static constexpr int64_t kY = 1;
+  static constexpr int64_t kZ = 2;
 
   Array4D<float> input_array_;
   Literal input_literal_;
@@ -552,10 +552,10 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
   input_array.FillRandom(GetParam().random_value_var,
                          GetParam().random_value_mean);
 
-  const int64 feature_index = GetParam().feature_index;
-  const int64 num_elements_per_feature =
+  const int64_t feature_index = GetParam().feature_index;
+  const int64_t num_elements_per_feature =
       Product(bounds) / bounds[feature_index];
-  const int64 feature_bound = bounds[feature_index];
+  const int64_t feature_bound = bounds[feature_index];
   std::vector<float> offset(feature_bound, 1);
   std::vector<float> scale(feature_bound, 2);
 
@@ -653,10 +653,10 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
   input_array.FillRandom(GetParam().random_value_var,
                          GetParam().random_value_mean);
 
-  const int64 feature_index = GetParam().feature_index;
-  const int64 num_elements_per_feature =
+  const int64_t feature_index = GetParam().feature_index;
+  const int64_t num_elements_per_feature =
       Product(bounds) / bounds[feature_index];
-  const int64 feature_bound = bounds[feature_index];
+  const int64_t feature_bound = bounds[feature_index];
   std::vector<float> offset(feature_bound, 1);
   std::vector<float> scale(feature_bound, 2);
 
@@ -765,10 +765,10 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   grad_output_array.FillRandom(GetParam().random_value_var,
                                GetParam().random_value_mean);
 
-  const int64 feature_index = GetParam().feature_index;
-  const int64 num_elements_per_feature =
+  const int64_t feature_index = GetParam().feature_index;
+  const int64_t num_elements_per_feature =
       Product(bounds) / bounds[feature_index];
-  const int64 feature_bound = bounds[feature_index];
+  const int64_t feature_bound = bounds[feature_index];
   std::vector<float> scale(feature_bound, 2);
 
   auto input_squared =

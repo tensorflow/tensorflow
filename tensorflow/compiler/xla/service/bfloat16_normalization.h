@@ -73,7 +73,7 @@ class BFloat16MixedPrecisionRemoval : public HloModulePass {
     ~BFloat16SupportForMixedPrecisionRemoval() override = default;
 
     bool SupportsBF16Operand(const HloInstruction& hlo,
-                             int64 operand_index) const override {
+                             int64_t operand_index) const override {
       return true;
     }
 

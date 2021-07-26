@@ -593,7 +593,7 @@ TEST(OutputTypesForNode, LargeOutput) {
                                    .Input("value: int64")
                                    .Output("output: num_split * int64")
                                    .Attr("num_split: int >= 1"));
-  int64 num_split = 1000000000000;
+  int64_t num_split = 1000000000000;
   const NodeDef node_def =
       ToNodeDef(std::move(NodeDefBuilder("test_split_op", &op_def)
                               .Input(FakeInput())

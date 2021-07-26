@@ -127,7 +127,7 @@ void TestAddShape(const std::vector<int64>& x_shape,
       expected_values_data,
       expected_values_data + expected_values_tensor.NumElements());
   std::vector<int64> expected_shape;
-  for (const int64 dim : expected_values_tensor.shape().dim_sizes()) {
+  for (const int64_t dim : expected_values_tensor.shape().dim_sizes()) {
     expected_shape.push_back(dim);
   }
   TestAdd(x_shape, x_values, x_min_value, x_max_value, y_shape, y_values,
@@ -135,7 +135,7 @@ void TestAddShape(const std::vector<int64>& x_shape,
 }
 
 void TimeAdd(const std::vector<int64>& x_shape,
-             const std::vector<int64>& y_shape, int64 iterations) {
+             const std::vector<int64>& y_shape, int64_t iterations) {
   TestAddShape(x_shape, y_shape);
 
   Scope root = Scope::NewRootScope();
@@ -159,17 +159,17 @@ void TimeAdd(const std::vector<int64>& x_shape,
   ClientSession session(root);
   std::vector<Tensor> outputs;
 
-  int64 total_duration = 0;
+  int64_t total_duration = 0;
   for (int i = 0; i < iterations; ++i) {
-    const int64 start_time = Env::Default()->NowMicros();
+    const int64_t start_time = Env::Default()->NowMicros();
     TF_EXPECT_OK(session.Run({{placeholder, x_quantized_tensor}},
                              {add.z, add.min_z, add.max_z}, &outputs));
-    const int64 end_time = Env::Default()->NowMicros();
+    const int64_t end_time = Env::Default()->NowMicros();
     total_duration += end_time - start_time;
   }
-  const int64 one_run_duration = total_duration / iterations;
+  const int64_t one_run_duration = total_duration / iterations;
 
-  const int64 num_ops = outputs[0].NumElements();
+  const int64_t num_ops = outputs[0].NumElements();
 
   const double million_ops_per_second =
       (iterations * num_ops) / static_cast<double>(total_duration);

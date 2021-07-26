@@ -179,7 +179,7 @@ class StringSplitOp : public OpKernel {
                                         input_tensor->shape().DebugString()));
 
     const auto input_vec = input_tensor->vec<tstring>();
-    const int64 batch_size = input_vec.dimension(0);
+    const int64_t batch_size = input_vec.dimension(0);
 
     const Tensor* delimiter_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("delimiter", &delimiter_tensor));
@@ -195,14 +195,14 @@ class StringSplitOp : public OpKernel {
     static constexpr int kReserveSize = 4;
     tokens.reserve(batch_size * kReserveSize);
 
-    int64 output_size = 0;
-    int64 max_num_entries = 0;
+    int64_t output_size = 0;
+    int64_t max_num_entries = 0;
     std::vector<int64> num_indices(batch_size);
-    for (int64 i = 0; i < batch_size; ++i) {
+    for (int64_t i = 0; i < batch_size; ++i) {
       std::vector<StringPiece> parts =
           skip_empty_ ? Split(input_vec(i), delimiter, str_util::SkipEmpty())
                       : Split(input_vec(i), delimiter, str_util::AllowEmpty());
-      int64 n_entries = parts.size();
+      int64_t n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;
       max_num_entries = std::max(max_num_entries, n_entries);
@@ -254,7 +254,7 @@ class StringSplitV2Op : public OpKernel {
                                         input_tensor->shape().DebugString()));
 
     const auto input_vec = input_tensor->vec<tstring>();
-    const int64 batch_size = input_vec.dimension(0);
+    const int64_t batch_size = input_vec.dimension(0);
 
     const Tensor* sep_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("sep", &sep_tensor));
@@ -268,12 +268,12 @@ class StringSplitV2Op : public OpKernel {
     static constexpr int kReserveSize = 4;
     tokens.reserve(batch_size * kReserveSize);
 
-    int64 output_size = 0;
-    int64 max_num_entries = 0;
+    int64_t output_size = 0;
+    int64_t max_num_entries = 0;
     std::vector<int64> num_indices(batch_size);
-    for (int64 i = 0; i < batch_size; ++i) {
+    for (int64_t i = 0; i < batch_size; ++i) {
       std::vector<StringPiece> parts = SplitV2(input_vec(i), sep, maxsplit_);
-      int64 n_entries = parts.size();
+      int64_t n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;
       max_num_entries = std::max(max_num_entries, n_entries);

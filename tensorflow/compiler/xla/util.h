@@ -228,9 +228,9 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(absl::Span<D> dest, int64 dest_base, int64 dest_stride,
-                 absl::Span<const S> src, int64 src_base, int64 src_stride,
-                 int64 count) {
+void StridedCopy(absl::Span<D> dest, int64_t dest_base, int64_t dest_stride,
+                 absl::Span<const S> src, int64_t src_base, int64_t src_stride,
+                 int64_t count) {
   for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
     dest[dest_base] = static_cast<D>(src[src_base]);
   }
@@ -330,7 +330,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 string Reindent(absl::string_view original, absl::string_view indentation);
 
 template <typename Container>
-int64 PositionInContainer(const Container& container, int64 value) {
+int64 PositionInContainer(const Container& container, int64_t value) {
   return std::distance(container.begin(), absl::c_find(container, value));
 }
 
@@ -387,7 +387,7 @@ string RoundTripFpToString(float value);
 string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
-PaddingConfig MakeNoPaddingConfig(int64 rank);
+PaddingConfig MakeNoPaddingConfig(int64_t rank);
 
 // Returns a PaddingConfig object where 'padding' contains
 // (low edge padding, high edge padding) pairs for each dimension.
@@ -577,12 +577,12 @@ int64 FindIndex(const C& c, Value&& value) {
 }
 
 template <typename C, typename Value>
-void InsertAt(C* c, int64 index, Value&& value) {
+void InsertAt(C* c, int64_t index, Value&& value) {
   c->insert(c->begin() + index, std::forward<Value>(value));
 }
 
 template <typename C>
-void EraseAt(C* c, int64 index) {
+void EraseAt(C* c, int64_t index) {
   c->erase(c->begin() + index);
 }
 

@@ -80,7 +80,7 @@ class DynamicStitchOpImplBase : public OpKernel {
     // Find maximum index in the indices vectors
     OP_REQUIRES_OK(c, c->input_list("indices", indices_inputs));
 
-    int32 max_index = -1;
+    int32_t max_index = -1;
     if (data_elements_size) {
       *data_elements_size = 0;
     }
@@ -137,7 +137,8 @@ class DynamicStitchOpImplBase : public OpKernel {
 
 template <typename T>
 void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
-                          const int32 slice_size, const int32 first_dim_size,
+                          const int32_t slice_size,
+                          const int32_t first_dim_size,
                           const GpuDeviceArrayStruct<int>& input_indices,
                           const GpuDeviceArrayStruct<const T*>& input_ptrs,
                           T* output);
@@ -195,9 +196,9 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
       }
 
       // data_flat index
-      int32 idx = 0;
+      int32_t idx = 0;
       // sum of indices_inputs[i].NumElements() for compute indices_flat value.
-      int32 base_size = 0;
+      int32_t base_size = 0;
       for (int i = 0; i < indices_inputs.size(); ++i) {
         auto indices_vec = indices_inputs[i].flat<int32>();
         auto data_ptr_base = data_inputs[i].template flat<T>().data();
@@ -263,7 +264,7 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
           T* merged_base = merged_flat.data();
           const T* data_base = data_flat.data();
           for (int i = 0; i < indices_vec.size(); i++) {
-            int32 index = internal::SubtleMustCopy(indices_vec(i));
+            int32_t index = internal::SubtleMustCopy(indices_vec(i));
             OP_REQUIRES(
                 c, FastBoundsCheck(index, first_dim_size),
                 errors::InvalidArgument("indices[", i, "] is out of range"));
@@ -275,7 +276,7 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
           for (int i = 0; i < indices_vec.size(); i++) {
             // Copy slice data[i] to merged[indices[i]]
             Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
-            int32 index = internal::SubtleMustCopy(indices_vec(i));
+            int32_t index = internal::SubtleMustCopy(indices_vec(i));
             OP_REQUIRES(
                 c, FastBoundsCheck(index, first_dim_size),
                 errors::InvalidArgument("indices[", i, "] is out of range"));

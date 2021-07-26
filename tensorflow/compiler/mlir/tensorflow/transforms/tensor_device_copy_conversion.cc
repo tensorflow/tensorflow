@@ -48,11 +48,21 @@ struct TensorDeviceCopyConversionPass
 void TensorDeviceCopyConversionPass::runOnFunction() {
   FuncOp func_op = getFunction();
 
-  auto should_fold_op_func = [&func_op](const mlir::Value &arg,
+  auto should_fold_op_func = [&func_op](const Value &arg,
                                         const StringAttr &op_device) {
-    // Also in TFRT TPU, tensor transfer is handled specifically by D2H and
-    // H2D transfer kernels so tf.Identity is folded.
+    // In TFRT TPU, tensor transfer is handled specifically by D2H and
+    // H2D transfer kernels. So fold the tf.Identity op if:
+    // * the identity op is placed on TPU, and
+    // * the arg to the identity op is produced by a TPUExecuteOp.
     if (op_device && op_device.getValue().contains("TPU")) {
+      return true;
+    }
+
+    Operation *def_op = arg.getDefiningOp();
+    // If the arg to this identity op is the arg of a function, there's no
+    // defining op.
+    if (def_op != nullptr &&
+        (isa<TF::TPUExecuteOp, TF::TPUExecuteAndUpdateVariablesOp>(def_op))) {
       return true;
     }
     if (BlockArgument block_arg = arg.dyn_cast<BlockArgument>()) {
@@ -85,8 +95,7 @@ void TensorDeviceCopyConversionPass::runOnFunction() {
   func_op.walk([&should_fold_op_func](TF::IdentityNOp op) {
     StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
     bool should_fold = llvm::all_of(
-        op.getOperands(),
-        [&op_device, &should_fold_op_func](const mlir::Value &arg) {
+        op.getOperands(), [&op_device, &should_fold_op_func](const Value &arg) {
           return should_fold_op_func(arg, op_device);
         });
     if (should_fold) {
@@ -99,8 +108,7 @@ void TensorDeviceCopyConversionPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<mlir::FuncOp>>
-CreateTensorDeviceCopyConversionPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTensorDeviceCopyConversionPass() {
   return std::make_unique<TensorDeviceCopyConversionPass>();
 }
 

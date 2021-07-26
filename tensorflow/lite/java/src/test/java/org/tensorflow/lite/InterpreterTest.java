@@ -876,7 +876,7 @@ public final class InterpreterTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Input error: SignatureDef methodName should not be null. null is only allowed if"
+                "Input error: SignatureDef signatureKey should not be null. null is only allowed if"
                     + " the model has a single Signature");
       }
     }

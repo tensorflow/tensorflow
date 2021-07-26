@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -146,8 +147,10 @@ class PermuterTest : public ::testing::Test {
       col_params_ = CreateCollectiveParams(*test_env_, rank, "Permute",
                                            PERMUTE_COLLECTIVE, dtype, shape);
       col_params_->instance.permutation = std::move(permutation);
-      col_params_->instance.devices = col_params_->group.device_names;
-      string dev_name = col_params_->group.device_names[rank];
+      for (const DeviceAttributes& device : col_params_->group.devices) {
+        col_params_->instance.devices.push_back(device.name());
+      }
+      string dev_name = col_params_->group.devices[rank].name();
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(dev_name, &device_))
           << "Couldn't find device " << dev_name
           << " existing devices: " << test_env_->device_mgr->DebugString();

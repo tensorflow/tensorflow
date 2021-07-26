@@ -36,12 +36,12 @@ Status WrapError(const std::string& message, const ::grpc::Status& status);
 // since the epoch.
 Status Retry(const std::function<Status()>& f,
              const std::function<bool()>& should_retry,
-             const std::string& description, int64 deadline_micros);
+             const std::string& description, int64_t deadline_micros);
 
 // Same as `Retry` above, but with a `should_retry` callback that always returns
 // `true`.
 Status Retry(const std::function<Status()>& f, const std::string& description,
-             int64 deadline_micros);
+             int64_t deadline_micros);
 
 }  // namespace grpc_util
 }  // namespace data

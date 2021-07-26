@@ -17,9 +17,7 @@ package org.tensorflow.lite;
 
 import java.io.File;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -37,17 +35,14 @@ class InterpreterImpl implements InterpreterApi {
    */
   static class Options extends InterpreterApi.Options {
     public Options() {
-      delegates = new ArrayList<>();
     }
 
     public Options(InterpreterApi.Options options) {
       super(options);
-      delegates = new ArrayList<>();
     }
 
     public Options(Options other) {
       super(other);
-      delegates = new ArrayList<>(other.delegates);
       allowFp16PrecisionForFp32 = other.allowFp16PrecisionForFp32;
       allowBufferHandleOutput = other.allowBufferHandleOutput;
       useXNNPACK = other.useXNNPACK;
@@ -65,9 +60,6 @@ class InterpreterImpl implements InterpreterApi {
     // Note: the initial "null" value indicates default behavior which may mean XNNPACK
     // delegate will be applied by default.
     Boolean useXNNPACK;
-
-    // See Interpreter.Options#addDelegate(boolean).
-    final List<Delegate> delegates;
   }
 
   /**
@@ -122,6 +114,10 @@ class InterpreterImpl implements InterpreterApi {
    */
   public InterpreterImpl(@NonNull ByteBuffer byteBuffer, Options options) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
+  }
+
+  InterpreterImpl(NativeInterpreterWrapper wrapper) {
+    this.wrapper = wrapper;
   }
 
   @Override

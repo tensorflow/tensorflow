@@ -27,7 +27,11 @@ help:
 	@echo "make clean        -- remove wheel and deb files"
 
 docker-image:
+ifeq ($(BASE_IMAGE),ubuntu:16.04)
+	docker build -t $(TAG_IMAGE) --build-arg IMAGE=$(BASE_IMAGE) --build-arg PYTHON_VERSION=3.8 -f Dockerfile.py3 .
+else
 	docker build -t $(TAG_IMAGE) --build-arg IMAGE=$(BASE_IMAGE) .
+endif
 
 docker-shell: docker-image
 	docker run --rm --interactive --tty \

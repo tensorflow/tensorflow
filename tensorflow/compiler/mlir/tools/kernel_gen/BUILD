@@ -1,7 +1,11 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
-    "get_compatible_with_cloud",
     "tf_cc_binary",
 )
 load(
@@ -32,7 +36,6 @@ cc_library(
     name = "kernel_creator",
     srcs = ["kernel_creator.cc"],
     hdrs = ["kernel_creator.h"],
-    compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "//tensorflow/compiler/mlir/hlo",
@@ -153,20 +156,30 @@ cc_library(
     name = "tf_framework_c_interface",
     srcs = ["tf_framework_c_interface.cc"],
     hdrs = ["tf_framework_c_interface.h"],
+    compatible_with = get_compatible_with_cloud(),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
+        ":kernel_creator",
+        ":tf_gpu_runtime_wrappers",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ExecutionEngine",
+        "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_runner_utils",
     ],
 )
 
 cc_library(
     name = "tf_gpu_runtime_wrappers",
+    hdrs = ["tf_gpu_runtime_wrappers.h"],
     deps = if_cuda_is_configured([
         ":tf_cuda_runtime_wrappers",
     ]) + if_rocm_is_configured([
         ":tf_rocm_runtime_wrappers",
-    ]),
+    ]) + ["@llvm-project//mlir:mlir_runner_utils"],
 )
 
 cc_library(

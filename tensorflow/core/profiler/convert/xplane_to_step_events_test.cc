@@ -37,12 +37,12 @@ namespace {
 // consists of matmul. The host's step db should be created only for the step
 // observed on the host.
 TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
-  constexpr int64 kFirstStepNum = 123;
-  constexpr int64 kSecondStepNum = 456;
-  constexpr int64 kFirstStepId = 0;
-  constexpr int64 kSecondStepId = 1;
-  constexpr int64 kFirstCorrelationId = 100;
-  constexpr int64 kSecondCorrelationId = 200;
+  constexpr int64_t kFirstStepNum = 123;
+  constexpr int64_t kSecondStepNum = 456;
+  constexpr int64_t kFirstStepId = 0;
+  constexpr int64_t kSecondStepId = 1;
+  constexpr int64_t kFirstCorrelationId = 100;
+  constexpr int64_t kSecondCorrelationId = 200;
 
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);

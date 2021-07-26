@@ -38,32 +38,32 @@ Status WrapError(const std::string& message, const ::grpc::Status& status) {
 }
 
 Status Retry(const std::function<Status()>& f, const std::string& description,
-             int64 deadline_micros) {
+             int64_t deadline_micros) {
   return Retry(
       f, [] { return true; }, description, deadline_micros);
 }
 
 Status Retry(const std::function<Status()>& f,
              const std::function<bool()>& should_retry,
-             const std::string& description, int64 deadline_micros) {
+             const std::string& description, int64_t deadline_micros) {
   Status s = f();
   for (int num_retries = 0;; ++num_retries) {
     if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
         !errors::IsCancelled(s)) {
       return s;
     }
-    int64 now_micros = EnvTime::NowMicros();
+    int64_t now_micros = EnvTime::NowMicros();
     if (now_micros > deadline_micros || !should_retry()) {
       return s;
     }
-    int64 deadline_with_backoff_micros =
+    int64_t deadline_with_backoff_micros =
         now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries);
     // Wait for a short period of time before retrying. If our backoff would put
     // us past the deadline, we truncate it to ensure our attempt starts before
     // the deadline.
-    int64 backoff_until =
+    int64_t backoff_until =
         std::min(deadline_with_backoff_micros, deadline_micros);
-    int64 wait_time_micros = backoff_until - now_micros;
+    int64_t wait_time_micros = backoff_until - now_micros;
     if (wait_time_micros > 100 * 1000) {
       LOG(INFO) << "Failed to " << description << ": " << s
                 << ". Will retry in " << wait_time_micros / 1000 << "ms.";

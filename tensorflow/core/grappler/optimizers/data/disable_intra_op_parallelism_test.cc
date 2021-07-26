@@ -36,7 +36,7 @@ class IntraOpAlreadySetTest
 
 TEST_P(IntraOpAlreadySetTest, IntraOpParallelism) {
   const string op = std::get<0>(GetParam());
-  const int64 value = std::get<1>(GetParam());
+  const int64_t value = std::get<1>(GetParam());
 
   GrapplerItem item;
   MutableGraphView graph(&item.graph);

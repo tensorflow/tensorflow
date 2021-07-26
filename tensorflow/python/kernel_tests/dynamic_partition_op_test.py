@@ -119,7 +119,7 @@ class DynamicPartitionTest(test.TestCase):
     self.assertEqual(num_partitions, len(partition_vals))
     for i in range(num_partitions):
       # reshape because of empty parts
-      parts_np = np.array(parts[i], dtype=np.float).reshape(-1, cols)
+      parts_np = np.array(parts[i], dtype=np.float64).reshape(-1, cols)
       self.assertAllEqual(parts_np, partition_vals[i])
 
   def testSimpleComplex(self):
@@ -210,8 +210,8 @@ class DynamicPartitionTest(test.TestCase):
     self.assertEqual(3, len(partition_vals))
     self.assertAllEqual([[]], partition_vals[0])
     self.assertAllEqual([[]], partition_vals[1])
-    self.assertAllEqual(np.array([], dtype=np.float).reshape(0, 0),
-                        partition_vals[2])
+    self.assertAllEqual(
+        np.array([], dtype=np.float64).reshape(0, 0), partition_vals[2])
 
   def testEmptyPartitions(self):
     data_list = []

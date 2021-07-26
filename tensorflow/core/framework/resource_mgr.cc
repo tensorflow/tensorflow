@@ -30,9 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Used to generate unique names for anonymous variables
-static std::atomic<int64> current_id_;
-
 ResourceHandle MakeResourceHandle(
     const string& container, const string& name, const DeviceBase& device,
     const TypeIndex& type_index,
@@ -43,7 +40,8 @@ ResourceHandle MakeResourceHandle(
   result.set_container(container);
   result.set_definition_stack_trace(definition_stack_trace);
   if (name == ResourceHandle::ANONYMOUS_NAME) {
-    result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));
+    result.set_name(
+        strings::StrCat("_AnonymousVar", ResourceHandle::GenerateUniqueId()));
   } else {
     result.set_name(name);
   }

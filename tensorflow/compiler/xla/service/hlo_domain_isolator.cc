@@ -27,7 +27,7 @@ namespace {
 
 StatusOr<bool> RunInternal(HloModule* module,
                            HloDomainIsolator::DomainCreator* creator) {
-  int64 added_domains = 0;
+  int64_t added_domains = 0;
   for (HloComputation* computation : module->computations()) {
     // Walk in post order and place all the required kDomain instructions.
     for (HloInstruction* instruction :

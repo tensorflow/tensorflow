@@ -29,7 +29,7 @@ namespace xla {
 namespace {
 
 int RealMain(int argc, char** argv) {
-  int32 port = 1685;
+  int32_t port = 1685;
   bool any_address = false;
   string platform_str;
   std::vector<tensorflow::Flag> flag_list = {

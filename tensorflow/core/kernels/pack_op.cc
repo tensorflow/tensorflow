@@ -74,19 +74,19 @@ class PackOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
 
-    int64 before_dim = 1;
+    int64_t before_dim = 1;
     for (int i = 0; i < axis; ++i) {
       before_dim *= output_shape.dim_size(i);
     }
 
-    int64 after_dim = 1;
+    int64_t after_dim = 1;
     for (int i = axis + 1; i < output_shape.dims(); ++i) {
       after_dim *= output_shape.dim_size(i);
     }
 
-    const int64 axis_dim = output_shape.dim_size(axis);
+    const int64_t axis_dim = output_shape.dim_size(axis);
 
-    const int64 output_size = output->NumElements();
+    const int64_t output_size = output->NumElements();
     if (output_size > 0) {
       auto output_flat =
           output->shaped<T, 2>({before_dim, after_dim * axis_dim});

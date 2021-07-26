@@ -97,7 +97,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
 
   // Replace all the smaller AllReduces with elements of the tuple output
   // of the single bigger AllReduce.
-  for (int64 i = 0; i < to_combine.size(); ++i) {
+  for (int64_t i = 0; i < to_combine.size(); ++i) {
     auto replace_with = HloInstruction::CreateGetTupleElement(
         to_combine[i]->shape(), combined, i);
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
@@ -107,8 +107,8 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
 }
 }  // namespace
 
-AllReduceCombiner::AllReduceCombiner(int64 combine_threshold_in_bytes,
-                                     int64 combine_threshold_count)
+AllReduceCombiner::AllReduceCombiner(int64_t combine_threshold_in_bytes,
+                                     int64_t combine_threshold_count)
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count) {}
 

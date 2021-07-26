@@ -39,7 +39,7 @@ class InTopKOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* context) override {
-    int64 k;
+    int64_t k;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &k));
     OP_REQUIRES(context, k >= 0,
                 errors::InvalidArgument("Need k >= 0, got ", k));
@@ -53,7 +53,7 @@ class InTopKOp : public XlaOpKernel {
                 errors::InvalidArgument("targets must be == 1-D, got shape ",
                                         targets_shape.DebugString()));
 
-    int64 batch_size = predictions_shape.dim_size(0);
+    int64_t batch_size = predictions_shape.dim_size(0);
     OP_REQUIRES(context, batch_size == targets_shape.dim_size(0),
                 errors::InvalidArgument(
                     "targets must have same elements as predictions rows. Had ",

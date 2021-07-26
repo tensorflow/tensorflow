@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/collective_decomposer_utils.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -51,79 +53,20 @@ HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
 }
 
 Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
-  const int64 shard_size =
-      ag->operand(0)->shape().dimensions(ag->all_gather_dimension());
-  const int64 ag_size = ag->shape().dimensions(ag->all_gather_dimension());
-  TF_RET_CHECK(ag_size % shard_size == 0);
-  int64 partition_count = ag_size / shard_size;
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(ag->channel_id().has_value(),
+                                               ag->use_global_device_ids()));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<HloInstruction*> start_indices,
+      CreateStartIndicesForCollectiveDecomposition(
+          group_mode, ag->replica_groups(), ag->operand(0)->shape(),
+          ag->all_gather_dimension(), comp));
+
   auto zero = comp->AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::Zero(ag->shape().element_type())));
   zero = comp->AddInstruction(
       HloInstruction::CreateBroadcast(ag->shape(), zero, {}));
-  auto zero_index = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(U32)));
-  std::vector<HloInstruction*> start_indices(ag->shape().rank(), zero_index);
-  auto shard_id_from_subgroup = [&](HloInstruction* replica_or_global_id) {
-    if (ag->replica_groups().empty()) {
-      return replica_or_global_id;
-    }
-    if (ag->replica_groups().size() == 1) {
-      // Whether the group is {1, 2, ..., N - 1}.
-      bool trivial_group = true;
-      for (int64 i = 0; i < ag->replica_groups()[0].replica_ids_size(); ++i) {
-        if (ag->replica_groups()[0].replica_ids(i) != i) {
-          trivial_group = false;
-          break;
-        }
-      }
-      if (trivial_group) {
-        CHECK_EQ(partition_count, ag->replica_groups()[0].replica_ids_size());
-        return replica_or_global_id;
-      }
-    }
-    // Create a table of shard IDs for each replica_or_global_id, then slice it
-    // using replica_or_global_id.
-    std::vector<uint32> shard_ids(ag->replica_groups().size() *
-                                  ag->replica_groups()[0].replica_ids_size());
-    for (const auto& group : ag->replica_groups()) {
-      for (int64 i = 0; i < group.replica_ids_size(); ++i) {
-        shard_ids[group.replica_ids(i)] = i;
-      }
-    }
-    auto id_table = comp->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<uint32>(shard_ids)));
-    auto shard_id = comp->AddInstruction(HloInstruction::CreateDynamicSlice(
-        ShapeUtil::MakeShape(U32, {1}), id_table, {replica_or_global_id}, {1}));
-    shard_id = comp->AddInstruction(
-        HloInstruction::CreateReshape(ShapeUtil::MakeShape(U32, {}), shard_id));
-    return shard_id;
-  };
-  HloInstruction* shard_id;
-  if (ag->channel_id().has_value()) {
-    if (ag->use_global_device_ids()) {
-      auto pid = comp->AddInstruction(HloInstruction::CreatePartitionId());
-      auto rid = comp->AddInstruction(HloInstruction::CreateReplicaId());
-      auto pcount = comp->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<uint32>(partition_count)));
-      auto global_id = comp->AddInstruction(HloInstruction::CreateBinary(
-          pid->shape(), HloOpcode::kAdd, pid,
-          comp->AddInstruction(HloInstruction::CreateBinary(
-              pid->shape(), HloOpcode::kMultiply, rid, pcount))));
-      shard_id = shard_id_from_subgroup(global_id);
-    } else {
-      TF_RET_CHECK(!ag->replica_groups().empty());
-      TF_RET_CHECK(ag->replica_groups()[0].replica_ids_size() == 1);
-      shard_id = comp->AddInstruction(HloInstruction::CreatePartitionId());
-    }
-  } else {
-    shard_id = shard_id_from_subgroup(
-        comp->AddInstruction(HloInstruction::CreateReplicaId()));
-  }
-  start_indices[ag->all_gather_dimension()] =
-      comp->AddInstruction(HloInstruction::CreateBinary(
-          shard_id->shape(), HloOpcode::kMultiply, shard_id,
-          comp->AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<uint32>(shard_size)))));
+
   auto dus = comp->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       zero->shape(), zero, ag->mutable_operand(0), start_indices));
   auto ar = comp->AddInstruction(HloInstruction::CreateAllReduce(

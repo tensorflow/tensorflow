@@ -61,16 +61,16 @@ const uint64 kIdTiers[] = {
 const int kMaxIdTier = sizeof(kIdTiers) / sizeof(uint64);
 const int kIdCollisionDelayMicros = 10;
 const int kMaxIdCollisions = 21;  // sum(2**i*10µs for i in range(21))~=21s
-const int64 kAbsent = 0LL;
+const int64_t kAbsent = 0LL;
 
 const char* kScalarPluginName = "scalars";
 const char* kImagePluginName = "images";
 const char* kAudioPluginName = "audio";
 const char* kHistogramPluginName = "histograms";
 
-const int64 kReserveMinBytes = 32;
+const int64_t kReserveMinBytes = 32;
 const double kReserveMultiplier = 1.5;
-const int64 kPreallocateRows = 1000;
+const int64_t kPreallocateRows = 1000;
 
 // Flush is a misnomer because what we're actually doing is having lots
 // of commits inside any SqliteTransaction that writes potentially
@@ -136,7 +136,7 @@ void PatchPluginName(SummaryMetadata* metadata, const char* name) {
   }
 }
 
-Status SetDescription(Sqlite* db, int64 id, const StringPiece& markdown) {
+Status SetDescription(Sqlite* db, int64_t id, const StringPiece& markdown) {
   const char* sql = R"sql(
     INSERT OR REPLACE INTO Descriptions (id, description) VALUES (?, ?)
   )sql";
@@ -171,7 +171,7 @@ class IdAllocator {
     SqliteStatement stmt;
     TF_RETURN_IF_ERROR(db_->Prepare("INSERT INTO Ids (id) VALUES (?)", &stmt));
     for (int i = 0; i < kMaxIdCollisions; ++i) {
-      int64 tid = MakeRandomId();
+      int64_t tid = MakeRandomId();
       stmt.BindInt(1, tid);
       s = stmt.StepAndReset();
       if (s.ok()) {
@@ -200,7 +200,7 @@ class IdAllocator {
 
  private:
   int64 MakeRandomId() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    int64 id = static_cast<int64>(random::New64() & kIdTiers[tier_]);
+    int64_t id = static_cast<int64>(random::New64() & kIdTiers[tier_]);
     if (id == kAbsent) ++id;
     return id;
   }
@@ -216,7 +216,8 @@ class IdAllocator {
 class GraphWriter {
  public:
   static Status Save(Sqlite* db, SqliteTransaction* txn, IdAllocator* ids,
-                     GraphDef* graph, uint64 now, int64 run_id, int64* graph_id)
+                     GraphDef* graph, uint64 now, int64_t run_id,
+                     int64* graph_id)
       SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db) {
     TF_RETURN_IF_ERROR(ids->CreateNewId(graph_id));
     GraphWriter saver{db, txn, graph, now, *graph_id};
@@ -229,7 +230,7 @@ class GraphWriter {
 
  private:
   GraphWriter(Sqlite* db, SqliteTransaction* txn, GraphDef* graph, uint64 now,
-              int64 graph_id)
+              int64_t graph_id)
       : db_(db), txn_(txn), graph_(graph), now_(now), graph_id_(graph_id) {}
 
   void MapNameToNodeId() {
@@ -261,9 +262,9 @@ class GraphWriter {
       const NodeDef& node = graph_->node(node_id);
       for (int idx = 0; idx < node.input_size(); ++idx) {
         StringPiece name = node.input(idx);
-        int64 input_node_id;
-        int64 input_node_idx = 0;
-        int64 is_control = 0;
+        int64_t input_node_id;
+        int64_t input_node_idx = 0;
+        int64_t is_control = 0;
         size_t i = name.rfind(':');
         if (i != StringPiece::npos) {
           if (!strings::safe_strto64(name.substr(i + 1, name.size() - i - 1),
@@ -331,7 +332,7 @@ class GraphWriter {
     return Status::OK();
   }
 
-  Status SaveGraph(int64 run_id) {
+  Status SaveGraph(int64_t run_id) {
     const char* sql = R"sql(
       INSERT OR REPLACE INTO Graphs (
         run_id,
@@ -404,13 +405,13 @@ class RunMetadata {
   Status SetGraph(Sqlite* db, uint64 now, double computed_time,
                   std::unique_ptr<GraphDef> g) SQLITE_TRANSACTIONS_EXCLUDED(*db)
       TF_LOCKS_EXCLUDED(mu_) {
-    int64 run_id;
+    int64_t run_id;
     {
       mutex_lock lock(mu_);
       TF_RETURN_IF_ERROR(InitializeRun(db, now, computed_time));
       run_id = run_id_;
     }
-    int64 graph_id;
+    int64_t graph_id;
     SqliteTransaction txn(*db);  // only to increase performance
     TF_RETURN_IF_ERROR(
         GraphWriter::Save(db, &txn, ids_, g.get(), now, run_id, &graph_id));
@@ -626,11 +627,12 @@ class RunMetadata {
 /// This class is thread safe.
 class SeriesWriter {
  public:
-  SeriesWriter(int64 series, RunMetadata* meta) : series_{series}, meta_{meta} {
+  SeriesWriter(int64_t series, RunMetadata* meta)
+      : series_{series}, meta_{meta} {
     DCHECK(series_ > 0);
   }
 
-  Status Append(Sqlite* db, int64 step, uint64 now, double computed_time,
+  Status Append(Sqlite* db, int64_t step, uint64 now, double computed_time,
                 const Tensor& t) SQLITE_TRANSACTIONS_EXCLUDED(*db)
       TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
@@ -641,7 +643,7 @@ class SeriesWriter {
         return s;
       }
     }
-    int64 rowid = rowids_.front();
+    int64_t rowid = rowids_.front();
     Status s = Write(db, rowid, step, computed_time, t);
     if (s.ok()) {
       ++count_;
@@ -673,7 +675,7 @@ class SeriesWriter {
   }
 
  private:
-  Status Write(Sqlite* db, int64 rowid, int64 step, double computed_time,
+  Status Write(Sqlite* db, int64_t rowid, int64_t step, double computed_time,
                const Tensor& t) SQLITE_TRANSACTIONS_EXCLUDED(*db) {
     if (t.dtype() == DT_STRING) {
       if (t.dims() == 0) {
@@ -690,8 +692,8 @@ class SeriesWriter {
     }
   }
 
-  Status Update(Sqlite* db, int64 step, double computed_time, const Tensor& t,
-                const StringPiece& data, int64 rowid) {
+  Status Update(Sqlite* db, int64_t step, double computed_time, const Tensor& t,
+                const StringPiece& data, int64_t rowid) {
     const char* sql = R"sql(
       UPDATE OR REPLACE
         Tensors
@@ -716,7 +718,7 @@ class SeriesWriter {
     return Status::OK();
   }
 
-  Status UpdateNdString(Sqlite* db, const Tensor& t, int64 tensor_rowid)
+  Status UpdateNdString(Sqlite* db, const Tensor& t, int64_t tensor_rowid)
       SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db) {
     DCHECK_EQ(t.dtype(), DT_STRING);
     DCHECK_GT(t.dims(), 0);
@@ -737,7 +739,7 @@ class SeriesWriter {
     SqliteStatement inserter;
     TF_RETURN_IF_ERROR(db->Prepare(inserter_sql, &inserter));
     auto flat = t.flat<tstring>();
-    for (int64 i = 0; i < flat.size(); ++i) {
+    for (int64_t i = 0; i < flat.size(); ++i) {
       inserter.BindInt(1, tensor_rowid);
       inserter.BindInt(2, i);
       inserter.BindBlobUnsafe(3, flat(i));
@@ -765,14 +767,14 @@ class SeriesWriter {
   Status ReserveData(Sqlite* db, SqliteTransaction* txn, size_t size)
       SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    int64 space =
+    int64_t space =
         static_cast<int64>(static_cast<double>(size) * kReserveMultiplier);
     if (space < kReserveMinBytes) space = kReserveMinBytes;
     return ReserveTensors(db, txn, space);
   }
 
   Status ReserveTensors(Sqlite* db, SqliteTransaction* txn,
-                        int64 reserved_bytes)
+                        int64_t reserved_bytes)
       SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const char* sql = R"sql(
@@ -786,7 +788,7 @@ class SeriesWriter {
     // TODO(jart): Maybe preallocate index pages by setting step. This
     //             is tricky because UPDATE OR REPLACE can have a side
     //             effect of deleting preallocated rows.
-    for (int64 i = 0; i < kPreallocateRows; ++i) {
+    for (int64_t i = 0; i < kPreallocateRows; ++i) {
       insert.BindInt(1, series_);
       insert.BindInt(2, reserved_bytes);
       TF_RETURN_WITH_CONTEXT_IF_ERROR(insert.StepAndReset(), "i=", i);
@@ -829,7 +831,7 @@ class RunWriter {
  public:
   explicit RunWriter(RunMetadata* meta) : meta_{meta} {}
 
-  Status Append(Sqlite* db, int64 tag_id, int64 step, uint64 now,
+  Status Append(Sqlite* db, int64_t tag_id, int64_t step, uint64 now,
                 double computed_time, const Tensor& t)
       SQLITE_TRANSACTIONS_EXCLUDED(*db) TF_LOCKS_EXCLUDED(mu_) {
     SeriesWriter* writer = GetSeriesWriter(tag_id);
@@ -850,7 +852,7 @@ class RunWriter {
   }
 
  private:
-  SeriesWriter* GetSeriesWriter(int64 tag_id) TF_LOCKS_EXCLUDED(mu_) {
+  SeriesWriter* GetSeriesWriter(int64_t tag_id) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock sl(mu_);
     auto spot = series_writers_.find(tag_id);
     if (spot == series_writers_.end()) {
@@ -894,7 +896,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
       // TODO(jart): Retry on transient errors here.
       LOG(ERROR) << s.ToString();
     }
-    int64 run_id = meta_.run_id();
+    int64_t run_id = meta_.run_id();
     if (run_id == kAbsent) return;
     const char* sql = R"sql(
       UPDATE Runs SET finished_time = ? WHERE run_id = ?
@@ -914,7 +916,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
 
   Status Flush() override { return Status::OK(); }
 
-  Status WriteTensor(int64 global_step, Tensor t, const string& tag,
+  Status WriteTensor(int64_t global_step, Tensor t, const string& tag,
                      const string& serialized_metadata) override {
     TF_RETURN_IF_ERROR(CheckSupportedType(t));
     SummaryMetadata metadata;
@@ -924,14 +926,15 @@ class SummaryDbWriter : public SummaryWriterInterface {
     return Write(global_step, t, tag, metadata);
   }
 
-  Status WriteScalar(int64 global_step, Tensor t, const string& tag) override {
+  Status WriteScalar(int64_t global_step, Tensor t,
+                     const string& tag) override {
     TF_RETURN_IF_ERROR(CheckSupportedType(t));
     SummaryMetadata metadata;
     PatchPluginName(&metadata, kScalarPluginName);
     return Write(global_step, AsScalar(t), tag, metadata);
   }
 
-  Status WriteGraph(int64 global_step, std::unique_ptr<GraphDef> g) override {
+  Status WriteGraph(int64_t global_step, std::unique_ptr<GraphDef> g) override {
     uint64 now = env_->NowMicros();
     return meta_.SetGraph(db_, now, DoubleTime(now), std::move(g));
   }
@@ -940,7 +943,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     return MigrateEvent(std::move(e));
   }
 
-  Status WriteHistogram(int64 global_step, Tensor t,
+  Status WriteHistogram(int64_t global_step, Tensor t,
                         const string& tag) override {
     uint64 now = env_->NowMicros();
     std::unique_ptr<Event> e{new Event};
@@ -951,7 +954,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     return MigrateEvent(std::move(e));
   }
 
-  Status WriteImage(int64 global_step, Tensor t, const string& tag,
+  Status WriteImage(int64_t global_step, Tensor t, const string& tag,
                     int max_images, Tensor bad_color) override {
     uint64 now = env_->NowMicros();
     std::unique_ptr<Event> e{new Event};
@@ -962,7 +965,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     return MigrateEvent(std::move(e));
   }
 
-  Status WriteAudio(int64 global_step, Tensor t, const string& tag,
+  Status WriteAudio(int64_t global_step, Tensor t, const string& tag,
                     int max_outputs, float sample_rate) override {
     uint64 now = env_->NowMicros();
     std::unique_ptr<Event> e{new Event};
@@ -976,11 +979,11 @@ class SummaryDbWriter : public SummaryWriterInterface {
   string DebugString() const override { return "SummaryDbWriter"; }
 
  private:
-  Status Write(int64 step, const Tensor& t, const string& tag,
+  Status Write(int64_t step, const Tensor& t, const string& tag,
                const SummaryMetadata& metadata) {
     uint64 now = env_->NowMicros();
     double computed_time = DoubleTime(now);
-    int64 tag_id;
+    int64_t tag_id;
     TF_RETURN_IF_ERROR(
         meta_.GetTagId(db_, now, computed_time, tag, &tag_id, metadata));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -1053,7 +1056,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     Tensor t;
     if (!t.FromProto(s->tensor())) return errors::InvalidArgument("bad proto");
     TF_RETURN_IF_ERROR(CheckSupportedType(t));
-    int64 tag_id;
+    int64_t tag_id;
     TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
                                       &tag_id, s->metadata()));
     return run_.Append(db_, tag_id, e->step(), now, e->wall_time(), t);
@@ -1065,7 +1068,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     // See tensorboard/plugins/scalar/summary.py and data_compat.py
     Tensor t{DT_FLOAT, {}};
     t.scalar<float>()() = s->simple_value();
-    int64 tag_id;
+    int64_t tag_id;
     PatchPluginName(s->mutable_metadata(), kScalarPluginName);
     TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
                                       &tag_id, s->metadata()));
@@ -1096,7 +1099,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
       data(j++) = histo.bucket_limit(i);
       data(j++) = histo.bucket(i);
     }
-    int64 tag_id;
+    int64_t tag_id;
     PatchPluginName(s->mutable_metadata(), kHistogramPluginName);
     TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
                                       &tag_id, s->metadata()));
@@ -1110,7 +1113,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     t.flat<tstring>()(0) = strings::StrCat(img->width());
     t.flat<tstring>()(1) = strings::StrCat(img->height());
     t.flat<tstring>()(2) = std::move(*img->mutable_encoded_image_string());
-    int64 tag_id;
+    int64_t tag_id;
     PatchPluginName(s->mutable_metadata(), kImagePluginName);
     TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
                                       &tag_id, s->metadata()));
@@ -1123,7 +1126,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     auto wav = s->mutable_audio();
     t.flat<tstring>()(0) = std::move(*wav->mutable_encoded_audio_string());
     t.flat<tstring>()(1) = "";
-    int64 tag_id;
+    int64_t tag_id;
     PatchPluginName(s->mutable_metadata(), kAudioPluginName);
     TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
                                       &tag_id, s->metadata()));

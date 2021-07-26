@@ -877,8 +877,8 @@ def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
   );
 }
 
-// Manually defined to restrict result type to `0DTensorOf<[I1]>`.
-def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
+// Manually defined to restrict result type to `I1Tensor`.
+def TF_ToBoolOp : TF_Op<"ToBool", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
   let summary = "Converts a tensor to a scalar predicate.";
 
   let description = [{
@@ -901,19 +901,19 @@ as true/false for a branch condition.
   );
 
   let results = (outs
-    0DTensorOf<[I1]>:$output
+    I1Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
-  let builders = [
-    OpBuilder<(ins "Value":$value),
-    [{
-      build($_builder, $_state, RankedTensorType::get({}, $_builder.getI1Type()),
-            value);
-    }]>];
-
   let hasCanonicalizer = 1;
+
+  let extraClassDeclaration = [{
+    // InferTypeOpInterface:
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return ArraysAreCastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {

@@ -170,15 +170,15 @@ ENTRY entry {
 
   // Try creating the module and the metadata kTrialCount times and check the
   // companion instructions remain in the same order.
-  const int64 kTrialCount = 5;
-  const int64 kDeviceCount = 10;
+  const int64_t kTrialCount = 5;
+  const int64_t kDeviceCount = 10;
   std::vector<int64> companion_order;
 
-  for (int64 t = 0; t < kTrialCount; ++t) {
+  for (int64_t t = 0; t < kTrialCount; ++t) {
     HloModuleGroup group(TestName());
-    for (int64 i = 0; i < kDeviceCount; ++i) {
-      const int64 send_channel = i;
-      const int64 recv_channel = i == 0 ? kDeviceCount - 1 : i - 1;
+    for (int64_t i = 0; i < kDeviceCount; ++i) {
+      const int64_t send_channel = i;
+      const int64_t recv_channel = i == 0 ? kDeviceCount - 1 : i - 1;
       TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                               ParseAndReturnVerifiedModule(absl::StrFormat(
                                   text, i, send_channel, send_channel,

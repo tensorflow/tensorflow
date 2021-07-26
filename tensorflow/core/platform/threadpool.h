@@ -145,14 +145,14 @@ class ThreadPool {
 
   // Returns the number of shards used by ParallelForFixedBlockSizeScheduling
   // with these parameters.
-  int NumShardsUsedByFixedBlockSizeScheduling(const int64 total,
-                                              const int64 block_size);
+  int NumShardsUsedByFixedBlockSizeScheduling(const int64_t total,
+                                              const int64_t block_size);
 
   // Returns the number of threads spawned by calling TransformRangeConcurrently
   // with these parameters.
   // Deprecated. Use NumShardsUsedByFixedBlockSizeScheduling.
-  int NumShardsUsedByTransformRangeConcurrently(const int64 block_size,
-                                                const int64 total);
+  int NumShardsUsedByTransformRangeConcurrently(const int64_t block_size,
+                                                const int64_t total);
 
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
@@ -165,18 +165,19 @@ class ThreadPool {
   // Context creation. Underestimating may not fully make use of the specified
   // parallelism, and may also cause inefficiencies due to load balancing
   // issues and stragglers.
-  void ParallelFor(int64 total, int64 cost_per_unit,
-                   const std::function<void(int64, int64)>& fn);
+  void ParallelFor(int64_t total, int64_t cost_per_unit,
+                   const std::function<void(int64_t, int64_t)>& fn);
 
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.
-  void ParallelFor(int64 total, const SchedulingParams& scheduling_params,
-                   const std::function<void(int64, int64)>& fn);
+  void ParallelFor(int64_t total, const SchedulingParams& scheduling_params,
+                   const std::function<void(int64_t, int64_t)>& fn);
 
   // Same as ParallelFor with Fixed Block Size scheduling strategy.
   // Deprecated. Prefer ParallelFor with a SchedulingStrategy argument.
-  void TransformRangeConcurrently(const int64 block_size, const int64 total,
-                                  const std::function<void(int64, int64)>& fn);
+  void TransformRangeConcurrently(
+      const int64_t block_size, const int64_t total,
+      const std::function<void(int64_t, int64_t)>& fn);
 
   // Shards the "total" units of work. For more details, see "ParallelFor".
   //
@@ -194,14 +195,14 @@ class ThreadPool {
   // should be stored in an array initially filled with null, and a buffer
   // should be allocated by fn the first time that the id is used.
   void ParallelForWithWorkerId(
-      int64 total, int64 cost_per_unit,
-      const std::function<void(int64, int64, int)>& fn);
+      int64_t total, int64_t cost_per_unit,
+      const std::function<void(int64_t, int64_t, int)>& fn);
 
   // Similar to ParallelForWithWorkerId above, but takes the specified
   // scheduling strategy into account.
   void ParallelForWithWorkerId(
-      int64 total, const SchedulingParams& scheduling_params,
-      const std::function<void(int64, int64, int)>& fn);
+      int64_t total, const SchedulingParams& scheduling_params,
+      const std::function<void(int64_t, int64_t, int)>& fn);
 
   // Returns the number of threads in the pool.
   int NumThreads() const;
@@ -224,8 +225,8 @@ class ThreadPool {
   // Here, k = NumShardsUsedByFixedBlockSizeScheduling(total, block_size).
   // Requires 0 < block_size <= total.
   void ParallelForFixedBlockSizeScheduling(
-      const int64 total, const int64 block_size,
-      const std::function<void(int64, int64)>& fn);
+      const int64_t total, const int64_t block_size,
+      const std::function<void(int64_t, int64_t)>& fn);
 
   // underlying_threadpool_ is the user_threadpool if user_threadpool is
   // provided in the constructor. Otherwise it is the eigen_threadpool_.

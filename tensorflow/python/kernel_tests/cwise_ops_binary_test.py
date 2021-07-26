@@ -96,7 +96,7 @@ class BinaryOpTest(test.TestCase):
         np_var_left = self.evaluate(tf_func(x, var_y))
         np_var_right = self.evaluate(tf_func(var_x, y))
 
-    if np_ans.dtype != np.object:
+    if np_ans.dtype != np.object_:
       self.assertAllClose(np_ans, tf_cpu)
       self.assertAllClose(np_ans, np_left)
       self.assertAllClose(np_ans, np_right)
@@ -363,9 +363,9 @@ class BinaryOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testComplex64Basic(self):
-    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(  # pylint: disable=too-many-function-args
+    x = (1 + 1j) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(  # pylint: disable=too-many-function-args
         np.complex64)
-    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(  # pylint: disable=too-many-function-args
+    y = (1 + 1j) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(  # pylint: disable=too-many-function-args
         np.complex64)
     self._compareBoth(x, y, np.add, math_ops.add)
     self._compareBoth(x, y, np.subtract, math_ops.subtract)
@@ -378,9 +378,9 @@ class BinaryOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testComplex128Basic(self):
-    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(  # pylint: disable=too-many-function-args
+    x = (1 + 1j) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(  # pylint: disable=too-many-function-args
         np.complex128)
-    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(  # pylint: disable=too-many-function-args
+    y = (1 + 1j) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(  # pylint: disable=too-many-function-args
         np.complex128)
     self._compareBoth(x, y, np.add, math_ops.add)
     self._compareBoth(x, y, np.subtract, math_ops.subtract)
@@ -404,12 +404,12 @@ class BinaryOpTest(test.TestCase):
   def testString(self):
     x = np.array([["x_0_0", "x_0_1", "x_0_2"], ["x_1_0", "x_1_1", "x_1_2"],
                   ["x_2_0", "x_2_1", "x_2_2"]],
-                 dtype=np.object)
+                 dtype=np.object_)
     y = np.array([["y_0_0", "y_0_1", "y_0_2"], ["y_1_0", "y_1_1", "y_1_2"],
                   ["y_2_0", "y_2_1", "y_2_2"]],
-                 dtype=np.object)
-    z = np.array([["z_0", "z_1", "z_2"]], dtype=np.object)
-    w = np.array("w", dtype=np.object)
+                 dtype=np.object_)
+    z = np.array([["z_0", "z_1", "z_2"]], dtype=np.object_)
+    w = np.array("w", dtype=np.object_)
     self._compareCpu(x, y, _ADD, _ADD)
     self._compareCpu(x, z, _ADD, _ADD)
     self._compareCpu(x, w, _ADD, _ADD)
@@ -433,8 +433,8 @@ class BinaryOpTest(test.TestCase):
           # care is taken with choosing the inputs and the delta. This is
           # a weaker check (in particular, it does not test the op itself,
           # only its gradient), but it's much better than nothing.
-          self._compareGradientX(x, y, np_func, tf_func, np.float)
-          self._compareGradientY(x, y, np_func, tf_func, np.float)
+          self._compareGradientX(x, y, np_func, tf_func, np.float64)
+          self._compareGradientY(x, y, np_func, tf_func, np.float64)
         else:
           self._compareGradientX(x, y, np_func, tf_func)
           self._compareGradientY(x, y, np_func, tf_func)
@@ -975,7 +975,7 @@ class ComparisonOpTest(test.TestCase):
         np.uint16,
         np.uint32,
         np.uint64,
-        np.bool,
+        np.bool_,
     ]
     x = np.asarray([0, 1, 2, 3, 4])
     y = np.asarray([0, 1, 2, 3, 4])

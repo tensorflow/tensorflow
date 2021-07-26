@@ -47,8 +47,8 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   // The default XLA layout is major-to-minor (dim 0 is major).
   // For more information on XLA layouts, see:
   // https://www.tensorflow.org/performance/xla/shapes
-  const int64 size = minor_to_major->size();
-  for (int64 i = 0; i < size; ++i) {
+  const int64_t size = minor_to_major->size();
+  for (int64_t i = 0; i < size; ++i) {
     (*minor_to_major)[i] = size - 1 - i;
   }
 }
@@ -57,14 +57,14 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
-    int64 element_size_in_bits, int64 memory_space) {
+    int64_t element_size_in_bits, int64_t memory_space) {
   Layout layout;
   layout.set_format(DENSE);
-  for (int64 dimension_number : minor_to_major) {
+  for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
   }
   for (const Tile& tile : tiles) {
-    for (int64 dim : tile.dimensions()) {
+    for (int64_t dim : tile.dimensions()) {
       if (dim < 0 && dim != Tile::kCombineDimension) {
         LOG(FATAL) << "Tile dimension size needs to be minimum int64 value if "
                       "it's negative. Value is "
@@ -78,13 +78,13 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   return layout;
 }
 
-/* static */ Layout LayoutUtil::MakeDescendingLayout(int64 rank) {
+/* static */ Layout LayoutUtil::MakeDescendingLayout(int64_t rank) {
   std::vector<int64> layout(rank);
   std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
   return MakeLayout(layout);
 }
 
-/* static */ Layout LayoutUtil::MakeAscendingLayout(int64 rank) {
+/* static */ Layout LayoutUtil::MakeAscendingLayout(int64_t rank) {
   std::vector<int64> layout(rank);
   std::iota(layout.begin(), layout.end(), static_cast<int64>(0));
   return MakeLayout(layout);
@@ -103,7 +103,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 namespace {
 
 // Internal helper that creates a default layout for an array of the given rank.
-Layout CreateDefaultLayoutForRank(int64 rank) {
+Layout CreateDefaultLayoutForRank(int64_t rank) {
   Layout layout;
   layout.set_format(DENSE);
   auto* minor_to_major = layout.mutable_minor_to_major();
@@ -125,7 +125,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   return CreateDefaultLayoutForRank(shape.dimensions_size());
 }
 
-/* static */ Layout LayoutUtil::GetDefaultLayoutForRank(int64 rank) {
+/* static */ Layout LayoutUtil::GetDefaultLayoutForRank(int64_t rank) {
   return CreateDefaultLayoutForRank(rank);
 }
 
@@ -235,8 +235,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     }
 
     std::vector<bool> dimensions_in_layout(shape.rank(), false);
-    for (int64 i = 0; i < shape.rank(); ++i) {
-      int64 dim = layout.minor_to_major(i);
+    for (int64_t i = 0; i < shape.rank(); ++i) {
+      int64_t dim = layout.minor_to_major(i);
       if (dim < 0 || dim >= shape.rank()) {
         return InvalidArgument(
             "layout minor_to_major field has out-of-bounds value: %s",
@@ -330,7 +330,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ int64 LayoutUtil::Major(const Layout& layout,
-                                     int64 physical_dimension_number) {
+                                     int64_t physical_dimension_number) {
   CHECK_LE(0, physical_dimension_number);
   CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
   return Minor(layout,
@@ -338,7 +338,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ int64 LayoutUtil::Minor(const Layout& layout,
-                                     int64 physical_dimension_number) {
+                                     int64_t physical_dimension_number) {
   CHECK_EQ(layout.format(), DENSE);
   CHECK_LE(0, physical_dimension_number);
   CHECK_LT(physical_dimension_number, layout.minor_to_major_size());
@@ -348,9 +348,9 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 /* static */ std::vector<int64> LayoutUtil::MakeLogicalToPhysical(
     const Layout& layout) {
   std::vector<int64> logical_to_physical(layout.minor_to_major_size());
-  for (int64 physical = 0, end = logical_to_physical.size(); physical < end;
+  for (int64_t physical = 0, end = logical_to_physical.size(); physical < end;
        ++physical) {
-    const int64 logical = Major(layout, physical);
+    const int64_t logical = Major(layout, physical);
     logical_to_physical[logical] = physical;
   }
   return logical_to_physical;
@@ -374,7 +374,7 @@ Status CopyLayoutInternal(const Shape& src, Shape* dst) {
       return InvalidArgument(
           "cannot copy layout from shape: tuple element count differs");
     }
-    for (int64 i = 0; i < ShapeUtil::TupleElementCount(src); ++i) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(src); ++i) {
       TF_RETURN_IF_ERROR(CopyLayoutInternal(src.tuple_shapes(i),
                                             dst->mutable_tuple_shapes(i)));
     }
@@ -426,7 +426,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     const Layout& layout, absl::Span<const int64> dims) {
   CHECK(IsDense(layout));
   std::vector<int64> positions_in_layout;
-  for (int64 dim : dims) {
+  for (int64_t dim : dims) {
     positions_in_layout.push_back(
         PositionInContainer(layout.minor_to_major(), dim));
   }
@@ -439,7 +439,8 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return true;
 }
 
-/*static*/ Layout LayoutUtil::MoveDimToMajor(const Layout& layout, int64 dim) {
+/*static*/ Layout LayoutUtil::MoveDimToMajor(const Layout& layout,
+                                             int64_t dim) {
   if (dim == MinorToMajor(layout).back()) return layout;
   Layout ret = layout;
   ret.clear_minor_to_major();
@@ -458,11 +459,11 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 
   size_t hash_value = hash<Format>()(layout.format());
 
-  for (int64 minor_to_major : layout.minor_to_major()) {
+  for (int64_t minor_to_major : layout.minor_to_major()) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
   for (const Tile& tile : layout.tiles()) {
-    for (int64 tile_dim : tile.dimensions()) {
+    for (int64_t tile_dim : tile.dimensions()) {
       hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));
     }
   }

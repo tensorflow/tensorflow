@@ -48,9 +48,11 @@ GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Float, float, float, baseline_add,
 GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Double, double, double,
                        baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int32, int32, int32, baseline_add,
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int32, int32_t, int32_t,
+                       baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
-GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64, int64, baseline_add,
+GENERATE_DEFAULT_TESTS(AddV2, /*test_name=*/Int64, int64_t, int64_t,
+                       baseline_add,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.BitwiseAnd`.
@@ -59,16 +61,19 @@ T baseline_bitwise_and(T lhs, T rhs) {
   return lhs & rhs;
 }
 GENERATE_DEFAULT_TESTS(BitwiseAnd,
-                       /*test_name=*/Int8, int8, int8, baseline_bitwise_and,
+                       /*test_name=*/Int8, int8_t, int8_t, baseline_bitwise_and,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseAnd,
-                       /*test_name=*/Int16, int16, int16, baseline_bitwise_and,
+                       /*test_name=*/Int16, int16_t, int16_t,
+                       baseline_bitwise_and,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseAnd,
-                       /*test_name=*/Int32, int32, int32, baseline_bitwise_and,
+                       /*test_name=*/Int32, int32_t, int32_t,
+                       baseline_bitwise_and,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseAnd,
-                       /*test_name=*/Int64, int64, int64, baseline_bitwise_and,
+                       /*test_name=*/Int64, int64_t, int64_t,
+                       baseline_bitwise_and,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.BitwiseOr`.
@@ -77,16 +82,19 @@ T baseline_bitwise_or(T lhs, T rhs) {
   return lhs | rhs;
 }
 GENERATE_DEFAULT_TESTS(BitwiseOr,
-                       /*test_name=*/Int8, int8, int8, baseline_bitwise_or,
+                       /*test_name=*/Int8, int8_t, int8_t, baseline_bitwise_or,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseOr,
-                       /*test_name=*/Int16, int16, int16, baseline_bitwise_or,
+                       /*test_name=*/Int16, int16_t, int16_t,
+                       baseline_bitwise_or,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseOr,
-                       /*test_name=*/Int32, int32, int32, baseline_bitwise_or,
+                       /*test_name=*/Int32, int32_t, int32_t,
+                       baseline_bitwise_or,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseOr,
-                       /*test_name=*/Int64, int64, int64, baseline_bitwise_or,
+                       /*test_name=*/Int64, int64_t, int64_t,
+                       baseline_bitwise_or,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.BitwiseXor`.
@@ -95,16 +103,19 @@ T baseline_bitwise_xor(T lhs, T rhs) {
   return lhs ^ rhs;
 }
 GENERATE_DEFAULT_TESTS(BitwiseXor,
-                       /*test_name=*/Int8, int8, int8, baseline_bitwise_xor,
+                       /*test_name=*/Int8, int8_t, int8_t, baseline_bitwise_xor,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseXor,
-                       /*test_name=*/Int16, int16, int16, baseline_bitwise_xor,
+                       /*test_name=*/Int16, int16_t, int16_t,
+                       baseline_bitwise_xor,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseXor,
-                       /*test_name=*/Int32, int32, int32, baseline_bitwise_xor,
+                       /*test_name=*/Int32, int32_t, int32_t,
+                       baseline_bitwise_xor,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(BitwiseXor,
-                       /*test_name=*/Int64, int64, int64, baseline_bitwise_xor,
+                       /*test_name=*/Int64, int64_t, int64_t,
+                       baseline_bitwise_xor,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.LeftShift`.
@@ -113,20 +124,23 @@ T baseline_left_shift(T lhs, T rhs) {
   return lhs << rhs;
 }
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    LeftShift, /*test_name=*/Int8, int8, int8, test::DefaultInput<int8>(),
-    test::DefaultInputLessThanBitwidth<int8>(), baseline_left_shift,
+    LeftShift, /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),
+    test::DefaultInputLessThanBitwidth<int8_t>(), baseline_left_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    LeftShift, /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
-    test::DefaultInputLessThanBitwidth<int16>(), baseline_left_shift,
+    LeftShift, /*test_name=*/Int16, int16_t, int16_t,
+    test::DefaultInput<int16_t>(),
+    test::DefaultInputLessThanBitwidth<int16_t>(), baseline_left_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    LeftShift, /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>(),
-    test::DefaultInputLessThanBitwidth<int32>(), baseline_left_shift,
+    LeftShift, /*test_name=*/Int32, int32_t, int32_t,
+    test::DefaultInput<int32_t>(),
+    test::DefaultInputLessThanBitwidth<int32_t>(), baseline_left_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
-    LeftShift, /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
-    test::DefaultInputLessThanBitwidth<int64>(), baseline_left_shift,
+    LeftShift, /*test_name=*/Int64, int64_t, int64_t,
+    test::DefaultInput<int64_t>(),
+    test::DefaultInputLessThanBitwidth<int64_t>(), baseline_left_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.RightShift`.
@@ -136,23 +150,23 @@ T baseline_right_shift(T lhs, T rhs) {
 }
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     RightShift,
-    /*test_name=*/Int8, int8, int8, test::DefaultInput<int8>(),
-    test::DefaultInputLessThanBitwidth<int8>(), baseline_right_shift,
+    /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),
+    test::DefaultInputLessThanBitwidth<int8_t>(), baseline_right_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     RightShift,
-    /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>(),
-    test::DefaultInputLessThanBitwidth<int16>(), baseline_right_shift,
+    /*test_name=*/Int16, int16_t, int16_t, test::DefaultInput<int16_t>(),
+    test::DefaultInputLessThanBitwidth<int16_t>(), baseline_right_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     RightShift,
-    /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>(),
-    test::DefaultInputLessThanBitwidth<int32>(), baseline_right_shift,
+    /*test_name=*/Int32, int32_t, int32_t, test::DefaultInput<int32_t>(),
+    test::DefaultInputLessThanBitwidth<int32_t>(), baseline_right_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     RightShift,
-    /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>(),
-    test::DefaultInputLessThanBitwidth<int64>(), baseline_right_shift,
+    /*test_name=*/Int64, int64_t, int64_t, test::DefaultInput<int64_t>(),
+    test::DefaultInputLessThanBitwidth<int64_t>(), baseline_right_shift,
     test::OpsTestConfig().ExpectStrictlyEqual())
 
 }  // namespace

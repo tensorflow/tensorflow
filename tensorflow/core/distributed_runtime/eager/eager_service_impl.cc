@@ -471,7 +471,7 @@ void EagerServiceImpl::RunComponentFunction(
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
           << operation.id();
   std::vector<int32> output_nums;
-  for (const int32 output_num : request->output_num()) {
+  for (const int32_t output_num : request->output_num()) {
     output_nums.push_back(output_num);
   }
 

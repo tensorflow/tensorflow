@@ -38,7 +38,7 @@ class ParallelTaskAssignment {
   // 'shape_size': shape size function used by HloCostAnalysis during parallel
   //               task assignment.
   // 'module': the containing HloModule.
-  ParallelTaskAssignment(const int64 max_parallelism,
+  ParallelTaskAssignment(const int64_t max_parallelism,
                          const HloCostAnalysis::ShapeSizeFunction& shape_size,
                          HloModule* module,
                          const TargetMachineFeatures* target_machine_features);
@@ -65,7 +65,7 @@ class ParallelTaskAssigner : public HloModulePass {
   // 'max_parallelism': the maximum parallel task count per instruction.
   // 'shape_size': shape size function used by HloCostAnalysis during parallel
   //               task assignment.
-  ParallelTaskAssigner(const int64 max_parallelism,
+  ParallelTaskAssigner(const int64_t max_parallelism,
                        const HloCostAnalysis::ShapeSizeFunction& shape_size,
                        const TargetMachineFeatures* target_machine_features)
       : max_parallelism_(max_parallelism),

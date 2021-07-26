@@ -95,11 +95,15 @@ class BaseConstOpModel : public BaseOpModel {
 };
 
 // Model for the tests case where axis is a dynamic tensor.
-template <BuiltinOperator op_code>
+template <BuiltinOperator op_code, bool symmetric_int16_scaling = false>
 class BaseDynamicOpModel : public BaseOpModel {
  public:
-  BaseDynamicOpModel(const TensorData& input, const TensorData& output,
+  BaseDynamicOpModel(TensorData input, TensorData output,
                      const TensorData& axis, bool keep_dims) {
+    if (symmetric_int16_scaling) {
+      SymmetricInt16Scaling(input);
+      SymmetricInt16Scaling(output);
+    }
     input_ = AddInput(input);
     axis_ = AddInput(axis);
     output_ = AddOutput(output);
@@ -115,8 +119,9 @@ using MeanOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_MEAN>;
 using SumOpConstModel = BaseConstOpModel<BuiltinOperator_SUM>;
 using SumOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_SUM>;
 
-using ProdOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_PROD>;
-using ProdOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_REDUCE_PROD>;
+using ProdOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_PROD, true>;
+using ProdOpDynamicModel =
+    BaseDynamicOpModel<BuiltinOperator_REDUCE_PROD, true>;
 
 using MaxOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_MAX>;
 using MaxOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_REDUCE_MAX>;
@@ -132,12 +137,11 @@ using AllOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_REDUCE_ALL>;
 
 // for quantized Add, the error shouldn't exceed step
 template <typename integer_type = int8_t>
-float GetTolerance(int min, int max) {
-  if (std::is_same<int16_t, integer_type>::value) {
-    return (max - min) / 65536.0;
-  } else {
-    return (max - min) / 255.0;
-  }
+float GetTolerance(float min, float max) {
+  float kQuantizedStep =
+      (max - min) / (std::numeric_limits<integer_type>::max() -
+                     std::numeric_limits<integer_type>::min());
+  return kQuantizedStep;
 }
 
 // Tests for reduce_mean
@@ -737,10 +741,10 @@ TEST(ConstInt8SumOpTest, Rescale) {
 
 // Tests for reduce_prod
 
-TEST(ConstFloatProdOpTest, NotKeepDims) {
-  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
-                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
-                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+TEST(ConstFloatProdOpTest, NotKeepDimsLarge) {
+  const std::vector<float> data = {
+      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
+      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   ProdOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {2}},
                      {4}, {1, 0, -3, -3}, false);
   m.SetInput(data);
@@ -749,6 +753,83 @@ TEST(ConstFloatProdOpTest, NotKeepDims) {
   EXPECT_THAT(
       m.GetOutput<float>(),
       ElementsAreArray(ArrayFloatNear({3.162341376e+11, 1.9619905536e+12})));
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void ConstIntProdOpTestNotKeepDimsLarge() {
+  const float input_min = (tensor_type == TensorType_INT16) ? -24.0 : 0.0;
+  const float input_max = 24.0;
+  const float output_min =
+      (tensor_type == TensorType_INT16) ? -1.9619905536e+12 : 0.0;
+  const float output_max = 1.9619905536e+12;
+
+  const std::vector<float> data = {
+      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
+      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  ProdOpConstModel m({tensor_type, {4, 3, 2}, input_min, input_max},
+                     {tensor_type, {2}, output_min, output_max}, {4},
+                     {1, 0, -3, -3}, false);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
+  m.Invoke();
+
+  const int reduced_axis_size = 12;
+  const float kQuantizedStep =
+      GetTolerance<integer_dtype>(output_min, output_max);
+  const float kQuantizedTolerance = reduced_axis_size * 2 * kQuantizedStep;
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {3.162341376e+11, 1.9619905536e+12}, kQuantizedTolerance)));
+}
+
+TEST(ConstInt8ProdOpTest, NotKeepDimsLarge) {
+  ConstIntProdOpTestNotKeepDimsLarge<TensorType_INT8, int8_t>();
+}
+
+TEST(ConstInt16ProdOpTest, NotKeepDimsLarge) {
+  ConstIntProdOpTestNotKeepDimsLarge<TensorType_INT16, int16_t>();
+}
+
+TEST(ConstFloatProdOpTest, NotKeepDimsSmall) {
+  const std::vector<float> data = {
+      -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2,
+      -0.2, 0.3,  0.4,  0.5,  0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3};
+  ProdOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {2}},
+                     {4}, {1, 0, -3, -3}, false);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({-0.0062270208, 0.0062270208})));
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void ConstIntProdOpTestNotKeepDimsSmall() {
+  const std::vector<float> data = {
+      -1.3, -1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2,
+      -0.2, 0.3,  0.4,  0.5,  0.6,  0.7,  0.8,  0.9,  1.0,  1.1,  1.2,  1.3};
+  ProdOpConstModel m({tensor_type, {4, 3, 2}, -1.3, 1.3},
+                     {tensor_type, {2}, -0.0062270208, 0.0062270208}, {4},
+                     {1, 0, -3, -3}, false);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
+  m.Invoke();
+
+  const int reduced_axis_size = 12;
+  const float kQuantizedStep =
+      GetTolerance<integer_dtype>(-0.0062270208, 0.0062270208);
+  const float kQuantizedTolerance = reduced_axis_size * 2 * kQuantizedStep;
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(ArrayFloatNear({-0.0062270208, 0.0062270208},
+                                              kQuantizedTolerance)));
+}
+
+TEST(ConstInt8ProdOpTest, NotKeepDimsSmall) {
+  ConstIntProdOpTestNotKeepDimsSmall<TensorType_INT8, int8_t>();
+}
+
+TEST(ConstInt16ProdOpTest, NotKeepDimsSmall) {
+  ConstIntProdOpTestNotKeepDimsSmall<TensorType_INT16, int16_t>();
 }
 
 TEST(ConstFloatProdOpTest, KeepDims) {
@@ -771,6 +852,16 @@ TEST(ConstFloatProdOpTest, ZeroInputDim) {
   }
   ProdOpConstModel m({TensorType_FLOAT32, {4, 0, 2}}, {TensorType_FLOAT32, {3}},
                      {2}, {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
+TEST(ConstInt8ProdOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ProdOpConstModel m({TensorType_INT8, {4, 0, 2}, 0.0, 1.0},
+                     {TensorType_INT8, {3}, 0.0, 1.0}, {2}, {0, 2}, true);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
 }
@@ -807,6 +898,44 @@ TEST(DynamicFloatProdOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(
                   ArrayFloatNear({7.74592e+06, 1.197504e+08, 6.6889152e+08})));
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void DynamicIntProdOpTestKeepDims() {
+  const float input_min = (tensor_type == TensorType_INT16) ? -24.0 : 0.0;
+  const float input_max = 24.0;
+  const float output_min =
+      (tensor_type == TensorType_INT16) ? -6.6889152e+08 : 0.0;
+  const float output_max = 6.6889152e+08;
+
+  const std::vector<float> data = {
+      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
+      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  ProdOpDynamicModel m({tensor_type, {4, 3, 2}, input_min, input_max},
+                       {tensor_type, {3}, output_min, output_max},
+                       {TensorType_INT32, {2}}, true);
+  std::vector<int> axis = {0, 2};
+  m.SetAxis(axis);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
+  m.Invoke();
+
+  const int reduced_axis_size = 8;
+  const float kQuantizedStep =
+      GetTolerance<integer_dtype>(output_min, output_max);
+  const float kQuantizedTolerance = reduced_axis_size * 2 * kQuantizedStep;
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear(
+          {7.74592e+06, 1.197504e+08, 6.6889152e+08}, kQuantizedTolerance)));
+}
+
+TEST(DynamicInt8ProdOpTest, KeepDims) {
+  DynamicIntProdOpTestKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(DynamicInt16ProdOpTest, KeepDims) {
+  DynamicIntProdOpTestKeepDims<TensorType_INT16, int16_t>();
 }
 
 TEST(DynamicFloatProdOpTest, Scale) {

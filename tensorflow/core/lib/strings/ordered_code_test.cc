@@ -1200,13 +1200,13 @@ TEST(EncodingIsExpected, Signed) {
        ByteSequence("\377\300\177\377\377\377\377\377\377\377")},
   };
   for (const auto& t : data) {
-    int64 num = t.first;
+    int64_t num = t.first;
     string result;
     OrderedCode::WriteSignedNumIncreasing(&result, num);
     EXPECT_EQ(t.second, result) << std::hex << num;
 
     StringPiece in = result;
-    int64 decoded;
+    int64_t decoded;
     EXPECT_TRUE(OrderedCode::ReadSignedNumIncreasing(&in, &decoded));
     EXPECT_EQ(num, decoded);
     EXPECT_EQ("", in);

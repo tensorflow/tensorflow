@@ -57,7 +57,7 @@ CollectiveExecutor* RpcCollectiveExecutorMgr::Create(int64_t step_id) {
 
 namespace {
 // StepId must leave the most-significant 7 bits empty for future use.
-static const int64 kStepIdMask = (((1uLL << 56) - 1) | (1uLL << 56));
+static const int64_t kStepIdMask = (((1uLL << 56) - 1) | (1uLL << 56));
 
 int64 NewRandomStepId() {
   int64_t step_id = random::New64();

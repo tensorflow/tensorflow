@@ -155,9 +155,9 @@ int BitWidth(PrimitiveType type);
 // Returns the number of bytes in the representation for a given type.
 int ByteWidth(PrimitiveType type);
 
-PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
+PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
-PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth);
+PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.

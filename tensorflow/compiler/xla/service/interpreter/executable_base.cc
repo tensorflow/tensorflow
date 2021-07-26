@@ -81,7 +81,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   }
 
   // Check that the args have the right shape.
-  for (int64 i = 0; i < computation->num_parameters(); ++i) {
+  for (int64_t i = 0; i < computation->num_parameters(); ++i) {
     const auto& expected_shape = computation->parameter_instruction(i)->shape();
     const auto& actual_shape = argument_buffers[i].on_device_shape();
     bool shape_match = true;
@@ -108,7 +108,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   // Transform the ShapedBuffer arguments into literals which the evaluator
   // consumes.
   std::vector<Literal> arg_literals;
-  for (int64 p = 0; p < computation->num_parameters(); ++p) {
+  for (int64_t p = 0; p < computation->num_parameters(); ++p) {
     TF_ASSIGN_OR_RETURN(Literal arg_literal,
                         transfer_manager->TransferLiteralFromDevice(
                             run_options->stream(), argument_buffers[p]));

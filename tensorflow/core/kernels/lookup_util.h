@@ -52,16 +52,16 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
                            DataType value_dtype, const string& table_name);
 
 // Initializes `table` from `filename`.
-Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
-                                   char delimiter, int32 key_index,
-                                   int32 value_index, int64 offset, Env* env,
-                                   InitializableLookupTable* table);
+Status InitializeTableFromTextFile(const string& filename, int64_t vocab_size,
+                                   char delimiter, int32_t key_index,
+                                   int32_t value_index, int64_t offset,
+                                   Env* env, InitializableLookupTable* table);
 
 // Initializes `table` from `filename`. `func` may specify how to represent the
 // initializer as a graphdef, so that the table can be serialized as metadata.
 Status InitializeTableFromTextFile(
-    const string& filename, int64 vocab_size, char delimiter, int32 key_index,
-    int32 value_index, int64 offset, Env* env,
+    const string& filename, int64_t vocab_size, char delimiter,
+    int32_t key_index, int32_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table);
 

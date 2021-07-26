@@ -450,7 +450,7 @@ FunctionDef InvalidControlFlow() {
       {{"o", "add:z"}});
 }
 
-FunctionDef LessThanOrEqualToN(int64 N) {
+FunctionDef LessThanOrEqualToN(int64_t N) {
   const Tensor kN = test::AsScalar<int64>(N);
   return FDH::Define(
       // Name
@@ -487,7 +487,7 @@ FunctionDef XPlusOneXTimesY() {
        {{"t"}, "Mul", {"x", "y"}, {{"T", "$T"}}}});
 }
 
-FunctionDef XYXLessThanOrEqualToN(int64 N) {
+FunctionDef XYXLessThanOrEqualToN(int64_t N) {
   const Tensor kN = test::AsScalar<int64>(N);
   return FDH::Define(
       // Name

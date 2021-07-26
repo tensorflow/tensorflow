@@ -34,6 +34,7 @@ import itertools
 
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -200,18 +201,20 @@ def add_dispatch_list(target):
 @tf_export("__internal__.dispatch.add_dispatch_support", v1=[])
 def add_dispatch_support(target):
   """Decorator that adds a dispatch handling wrapper to an op."""
-  def wrapper(*args, **kwargs):
+
+  @traceback_utils.filter_traceback
+  def op_dispatch_handler(*args, **kwargs):
     """Call target, and fall back on dispatchers if there is a TypeError."""
     try:
       return target(*args, **kwargs)
     except (TypeError, ValueError):
       # Note: convert_to_eager_tensor currently raises a ValueError, not a
       # TypeError, when given unexpected types.  So we need to catch both.
-      result = dispatch(wrapper, args, kwargs)
+      result = dispatch(op_dispatch_handler, args, kwargs)
       if result is not OpDispatcher.NOT_SUPPORTED:
         return result
       else:
         raise
 
-  add_dispatch_list(wrapper)
-  return tf_decorator.make_decorator(target, wrapper)
+  add_dispatch_list(op_dispatch_handler)
+  return tf_decorator.make_decorator(target, op_dispatch_handler)

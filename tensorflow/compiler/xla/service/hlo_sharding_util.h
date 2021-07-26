@@ -51,8 +51,8 @@ bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
 
 // Merges `to_merge` into `dst` only if they are compatible, and the merged
 // sharding has >= minimum_tiles tiles. Returns if merging happened.
-bool MergeShardingIfCompatible(const HloSharding& to_merge, int64 minimum_tiles,
-                               HloSharding* dst);
+bool MergeShardingIfCompatible(const HloSharding& to_merge,
+                               int64_t minimum_tiles, HloSharding* dst);
 
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
@@ -63,7 +63,7 @@ absl::optional<int64> SelectDominantDevice(
 // Assigns all the instructions of a computation, to a given device.
 // This API does not recurse into called computations, and does not assign
 // instructions which already have sharding.
-Status AssignComputationDevice(HloComputation* computation, int64 device);
+Status AssignComputationDevice(HloComputation* computation, int64_t device);
 
 // Given an instruction container, returns the device which is most commonly
 // occurring among the instructions.
@@ -105,7 +105,7 @@ HloSharding ReverseSharding(const HloSharding& sharding,
 // assignment of the sharding argument. Only dimensions in the dims span
 // argument are considered for reshaping, the others are ignored.
 // Assumptions: sharding is tile sharded, and dim must be included in dims.
-HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64 dim,
+HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64_t dim,
                                    absl::Span<const int64> dims);
 
 // Returns true if the provided module includes one or more instructions with

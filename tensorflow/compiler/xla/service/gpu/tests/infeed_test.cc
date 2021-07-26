@@ -124,8 +124,9 @@ TEST_F(BlockingInfeedTest, TestNoOoms) {
   array.FillIota(1.0f);
   auto literal = LiteralUtil::CreateR3FromArray3D<float>(array);
 
-  int64 kMemoryPressure = 32ul * 1024 * 1024 * 1024;
-  int64 infeed_count = kMemoryPressure / (array.num_elements() * sizeof(float));
+  int64_t kMemoryPressure = 32ul * 1024 * 1024 * 1024;
+  int64_t infeed_count =
+      kMemoryPressure / (array.num_elements() * sizeof(float));
 
   auto transfer_infeeds = [&] {
     for (int i = 0; i < infeed_count; i++) {

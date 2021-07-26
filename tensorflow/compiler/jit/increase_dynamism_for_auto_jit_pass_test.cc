@@ -111,9 +111,9 @@ TEST(SliceToDynamicSliceRewriteTest, Basic) {
   std::unique_ptr<Graph> result;
   TF_ASSERT_OK(IncreaseDynamismForAutoJit(root, &result));
 
-  const int64 zero_64 = 0;
-  const int32 zero_32 = 0;
-  const int64 one_64 = 1;
+  const int64_t zero_64 = 0;
+  const int32_t zero_32 = 0;
+  const int64_t one_64 = 1;
 
   auto m_input = Out(NodeWith(Op("Placeholder"), Name("input")));
   auto m_begin_s64 = Out(NodeWith(

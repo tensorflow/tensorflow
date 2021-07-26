@@ -30,7 +30,7 @@ constexpr char kNodeName[] = "repeat_dataset";
 class RepeatDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  RepeatDatasetParams(T input_dataset_params, int64 count,
+  RepeatDatasetParams(T input_dataset_params, int64_t count,
                       DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
                       string node_name)

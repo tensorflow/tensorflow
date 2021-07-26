@@ -62,8 +62,8 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 // If the result shape has integral element type, an optional
 // preferred_element_type can be specified to override the element type.
 StatusOr<HloInstruction*> MakeConvolveHlo(
-    HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
-    int64 batch_group_count, const Window& window,
+    HloInstruction* lhs, HloInstruction* rhs, int64_t feature_group_count,
+    int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     absl::optional<PrimitiveType> preferred_element_type);
@@ -110,13 +110,13 @@ HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
 // Creates a GetTupleElement HLO instruction and adds it to the computation
 // containing `operand`.
 StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
-                                                 int64 index);
+                                                 int64_t index);
 
 // Creates a Concatenate HLO instruction and adds it to the computation
 // containing `operands` (`operands` must be non-empty and every element must be
 // contained in the same computation).
 StatusOr<HloInstruction*> MakeConcatHlo(
-    absl::Span<HloInstruction* const> operands, int64 dimension);
+    absl::Span<HloInstruction* const> operands, int64_t dimension);
 
 // Creates a Convert HLO instruction that converts the given instruction to have
 // the given primitive type.
@@ -128,7 +128,7 @@ HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
 
 // Creates an Iota HLO instruction.
 HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
-                            int64 iota_dimension);
+                            int64_t iota_dimension);
 
 // Creates a Dot HLO instruction and adds it to the computation containing `lhs`
 // and `rhs` (both must be in the same computation). If the result shape has
@@ -178,7 +178,7 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
 // order. 'is_stable' specifies whether the sorting should be stable.
 StatusOr<HloInstruction*> MakeSortHlo(
     const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
-    int64 dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
+    int64_t dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
     HloModule* module);
 
 // Creates an R1 Constant HLO instruction of the given PrimitiveType with the
@@ -235,7 +235,8 @@ StatusOr<HloInstruction*> MakeFusionInstruction(
 //
 // For instance if `operand` has shape f32[7,8,9] and n is 2 then the output is
 // the `operand` reshaped to [56,9].
-StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n);
+StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand,
+                                             int64_t n);
 
 // Prepends `n` degenerate dimensions (dimensions with bound = 1) to `operand`
 // using a reshape.
@@ -244,7 +245,7 @@ StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n);
 // reshaped to f32[1,3,4,5].  If the operand is a f32 scalar (i.e. has shape
 // f32[]) then this returns the operand reshaped to f32[1].
 StatusOr<HloInstruction*> PrependDegenerateDims(HloInstruction* operand,
-                                                int64 n);
+                                                int64_t n);
 
 // Expands (via reshape) the first (logical) dimension of `operand` into a
 // sequence of `expanded_dims` dimensions.  `operand` must at least be of rank 1
@@ -279,8 +280,8 @@ StatusOr<HloInstruction*> InsertDegenerateDims(
 // Pads `operand` (which must have rank 1) with `zeros_to_prepend` zeros in the
 // front and `zeros_to_append` zeros in the back.
 StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
-                                             int64 zeros_to_prepend,
-                                             int64 zeros_to_append);
+                                             int64_t zeros_to_prepend,
+                                             int64_t zeros_to_append);
 
 // Broadcasts a zero value of type `element_type` into a tensor with element
 // type `element_type` and dimension bounds `broadcast_dimensions`.  The

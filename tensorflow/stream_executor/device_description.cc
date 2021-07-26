@@ -123,8 +123,8 @@ bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
 
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim) {
-  const int64 total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
-  const int64 threads_per_block_limit =
+  const int64_t total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
+  const int64_t threads_per_block_limit =
       device_description.threads_per_block_limit();
   if (total_threads > threads_per_block_limit) {
     VLOG(2) << "exceeded total-thread-per-block limit: " << total_threads

@@ -22,7 +22,7 @@ constexpr char kNodeName[] = "skip_dataset";
 class SkipDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  SkipDatasetParams(T input_dataset_params, int64 count,
+  SkipDatasetParams(T input_dataset_params, int64_t count,
                     DataTypeVector output_dtypes,
                     std::vector<PartialTensorShape> output_shapes,
                     string node_name)

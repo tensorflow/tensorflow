@@ -133,20 +133,18 @@ class ConstantTest(test.TestCase):
 
   def testComplex64(self):
     self._testAll(
-        np.complex(1, 2) *
-        np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex64))
+        (1 + 2j) * np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(
-        np.complex(1, 2) *
+        (1 + 2j) *
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex64))
 
   def testComplex128(self):
     self._testAll(
-        np.complex(1, 2) * np.arange(-15, 15).reshape([2, 3, 5
-                                                      ]).astype(np.complex128))
+        (1 + 2j) * np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex128))
     self._testAll(
-        np.complex(1, 2) * np.random.normal(size=30).reshape(
-            [2, 3, 5]).astype(np.complex128))
+        (1 + 2j) *
+        np.random.normal(size=30).reshape([2, 3, 5]).astype(np.complex128))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex128))
 
   @test_util.disable_tfrt("support creating string tensors from empty "
@@ -407,7 +405,7 @@ class ZerosLikeTest(test.TestCase):
   def _compareZeros(self, dtype, use_gpu):
     # Creates a tensor of non-zero values with shape 2 x 3.
     # NOTE(kearnes): The default numpy dtype associated with tf.string is
-    # np.object (and can't be changed without breaking a lot things), which
+    # np.object_ (and can't be changed without breaking a lot things), which
     # causes a TypeError in constant_op.constant below. Here we catch the
     # special case of tf.string and set the numpy dtype appropriately.
     if dtype == dtypes_lib.string:

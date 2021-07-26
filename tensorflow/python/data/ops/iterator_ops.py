@@ -38,6 +38,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.compat import collections_abc
@@ -964,3 +965,6 @@ def get_next_as_optional(iterator):
     of the iterator (if it exists) or no value.
   """
   return iterator.get_next_as_optional()
+
+
+_pywrap_utils.RegisterType("OwnedIterator", OwnedIterator)

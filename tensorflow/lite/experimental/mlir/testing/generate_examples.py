@@ -70,6 +70,7 @@ from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_get_item imp
 from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_length import make_tensor_list_length_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_resize import make_tensor_list_resize_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_list_set_item import make_tensor_list_set_item_tests
+from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_scatter_add import make_tensor_scatter_add_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.tensor_scatter_update import make_tensor_scatter_update_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.where_v2 import make_where_v2_tests
 from tensorflow.lite.experimental.mlir.testing.op_tests.while_loop import make_while_tests

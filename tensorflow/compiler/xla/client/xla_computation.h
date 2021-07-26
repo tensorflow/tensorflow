@@ -56,7 +56,7 @@ class XlaComputation {
   bool IsNull() const { return unique_id_ == -1; }
 
  private:
-  XlaComputation(const int64 unique_id) : unique_id_(unique_id) {}
+  XlaComputation(const int64_t unique_id) : unique_id_(unique_id) {}
   friend class XlaBuilder;
 
   int64 unique_id_;

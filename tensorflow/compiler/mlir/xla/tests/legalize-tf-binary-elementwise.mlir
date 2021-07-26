@@ -133,14 +133,15 @@ func @shift_right(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 
 // CHECK-LABEL: func @shift_right_unsigned
 func @shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<4xui8>) -> tensor<4xui8> {
-  // CHECK:  tf.RightShift
+  // CHECK:  mhlo.shift_right_logical %arg0, %arg1 : tensor<4xui8>
   %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xui8>, tensor<4xui8>) -> tensor<4xui8>
   return %0 : tensor<4xui8>
 }
 
 // CHECK-LABEL: func @broadcast_shift_right_unsigned
 func @broadcast_shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<2x4xui8>) -> tensor<2x4xui8> {
-  // CHECK:  tf.RightShift
+  // CHECK: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xui8>) -> tensor<2x4xui8>
+  // CHECK:  mhlo.shift_right_logical %[[BROADCAST]], %arg1 : tensor<2x4xui8>
   %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xui8>, tensor<2x4xui8>) -> tensor<2x4xui8>
   return %0 : tensor<2x4xui8>
 }

@@ -32,7 +32,7 @@ namespace tensorflow {
 template <typename SubQueue>
 class TypedQueue : public QueueBase {
  public:
-  TypedQueue(const int32 capacity, const DataTypeVector& component_dtypes,
+  TypedQueue(const int32_t capacity, const DataTypeVector& component_dtypes,
              const std::vector<TensorShape>& component_shapes,
              const string& name);
 
@@ -46,7 +46,7 @@ class TypedQueue : public QueueBase {
 
 template <typename SubQueue>
 TypedQueue<SubQueue>::TypedQueue(
-    int32 capacity, const DataTypeVector& component_dtypes,
+    int32_t capacity, const DataTypeVector& component_dtypes,
     const std::vector<TensorShape>& component_shapes, const string& name)
     : QueueBase(capacity, component_dtypes, component_shapes, name) {}
 

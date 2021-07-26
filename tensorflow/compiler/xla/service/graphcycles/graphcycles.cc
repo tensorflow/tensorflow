@@ -97,7 +97,7 @@ bool GraphCycles::CheckInvariants() const {
     if (!ranks.insert(nx->rank).second) {
       LOG(FATAL) << "Duplicate occurrence of rank " << nx->rank;
     }
-    for (int32 y : nx->out.GetSequence()) {
+    for (int32_t y : nx->out.GetSequence()) {
       Node* ny = r->nodes_[y];
       if (nx->rank >= ny->rank) {
         LOG(FATAL) << "Edge " << x << "->" << y << " has bad rank assignment "
@@ -119,19 +119,19 @@ int32 GraphCycles::NewNode() {
   } else {
     // Preserve preceding rank since the set of ranks in use must be
     // a permutation of [0,rep_->nodes_.size()-1].
-    int32 r = rep_->free_nodes_.back();
+    int32_t r = rep_->free_nodes_.back();
     rep_->nodes_[r]->data = nullptr;
     rep_->free_nodes_.pop_back();
     return r;
   }
 }
 
-void GraphCycles::RemoveNode(int32 node) {
+void GraphCycles::RemoveNode(int32_t node) {
   Node* x = rep_->nodes_[node];
-  for (int32 y : x->out.GetSequence()) {
+  for (int32_t y : x->out.GetSequence()) {
     rep_->nodes_[y]->in.Erase(node);
   }
-  for (int32 y : x->in.GetSequence()) {
+  for (int32_t y : x->in.GetSequence()) {
     rep_->nodes_[y]->out.Erase(node);
   }
   x->in.Clear();
@@ -139,33 +139,33 @@ void GraphCycles::RemoveNode(int32 node) {
   rep_->free_nodes_.push_back(node);
 }
 
-void* GraphCycles::GetNodeData(int32 node) const {
+void* GraphCycles::GetNodeData(int32_t node) const {
   return rep_->nodes_[node]->data;
 }
 
-void GraphCycles::SetNodeData(int32 node, void* data) {
+void GraphCycles::SetNodeData(int32_t node, void* data) {
   rep_->nodes_[node]->data = data;
 }
 
-bool GraphCycles::HasEdge(int32 x, int32 y) const {
+bool GraphCycles::HasEdge(int32_t x, int32_t y) const {
   return rep_->nodes_[x]->out.Contains(y);
 }
 
-void GraphCycles::RemoveEdge(int32 x, int32 y) {
+void GraphCycles::RemoveEdge(int32_t x, int32_t y) {
   rep_->nodes_[x]->out.Erase(y);
   rep_->nodes_[y]->in.Erase(x);
   // No need to update the rank assignment since a previous valid
   // rank assignment remains valid after an edge deletion.
 }
 
-static bool ForwardDFS(GraphCycles::Rep* r, int32 n, int32 upper_bound);
-static void BackwardDFS(GraphCycles::Rep* r, int32 n, int32 lower_bound);
+static bool ForwardDFS(GraphCycles::Rep* r, int32_t n, int32_t upper_bound);
+static void BackwardDFS(GraphCycles::Rep* r, int32_t n, int32_t lower_bound);
 static void Reorder(GraphCycles::Rep* r);
 static void Sort(const Vec<Node*>&, Vec<int32>* delta);
 static void MoveToList(GraphCycles::Rep* r, Vec<int32>* src, Vec<int32>* dst);
 static void ClearVisitedBits(GraphCycles::Rep* r, const Vec<int32>& nodes);
 
-bool GraphCycles::InsertEdge(int32 x, int32 y) {
+bool GraphCycles::InsertEdge(int32_t x, int32_t y) {
   if (x == y) return false;
   Rep* r = rep_;
   Node* nx = r->nodes_[x];
@@ -198,7 +198,7 @@ bool GraphCycles::InsertEdge(int32 x, int32 y) {
   return true;
 }
 
-static bool ForwardDFS(GraphCycles::Rep* r, int32 n, int32 upper_bound) {
+static bool ForwardDFS(GraphCycles::Rep* r, int32_t n, int32_t upper_bound) {
   // Avoid recursion since stack space might be limited.
   // We instead keep a stack of nodes to visit.
   r->deltaf_.clear();
@@ -226,7 +226,7 @@ static bool ForwardDFS(GraphCycles::Rep* r, int32 n, int32 upper_bound) {
   return true;
 }
 
-static void BackwardDFS(GraphCycles::Rep* r, int32 n, int32 lower_bound) {
+static void BackwardDFS(GraphCycles::Rep* r, int32_t n, int32_t lower_bound) {
   r->deltab_.clear();
   r->stack_.clear();
   r->stack_.push_back(n);
@@ -271,7 +271,7 @@ static void Reorder(GraphCycles::Rep* r) {
 static void Sort(const Vec<Node*>& nodes, Vec<int32>* delta) {
   struct ByRank {
     const Vec<Node*>* nodes;
-    bool operator()(int32 a, int32 b) const {
+    bool operator()(int32_t a, int32_t b) const {
       return (*nodes)[a]->rank < (*nodes)[b]->rank;
     }
   };
@@ -282,7 +282,7 @@ static void Sort(const Vec<Node*>& nodes, Vec<int32>* delta) {
 
 static void MoveToList(GraphCycles::Rep* r, Vec<int32>* src, Vec<int32>* dst) {
   for (Vec<int32>::size_type i = 0; i < src->size(); i++) {
-    int32 w = (*src)[i];
+    int32_t w = (*src)[i];
     (*src)[i] = r->nodes_[w]->rank;  // Replace src entry with its rank
     r->nodes_[w]->visited = false;   // Prepare for future DFS calls
     dst->push_back(w);
@@ -295,7 +295,7 @@ static void ClearVisitedBits(GraphCycles::Rep* r, const Vec<int32>& nodes) {
   }
 }
 
-int GraphCycles::FindPath(int32 x, int32 y, int max_path_len,
+int GraphCycles::FindPath(int32_t x, int32_t y, int max_path_len,
                           int32 path[]) const {
   // Forward depth first search starting at x until we hit y.
   // As we descend into a node, we push it onto the path.
@@ -307,7 +307,7 @@ int GraphCycles::FindPath(int32 x, int32 y, int max_path_len,
   r->stack_.clear();
   r->stack_.push_back(x);
   while (!r->stack_.empty()) {
-    int32 n = r->stack_.back();
+    int32_t n = r->stack_.back();
     r->stack_.pop_back();
     if (n < 0) {
       // Marker to indicate that we are leaving a node
@@ -335,11 +335,11 @@ int GraphCycles::FindPath(int32 x, int32 y, int max_path_len,
   return 0;
 }
 
-bool GraphCycles::IsReachable(int32 x, int32 y) const {
+bool GraphCycles::IsReachable(int32_t x, int32_t y) const {
   return FindPath(x, y, 0, nullptr) > 0;
 }
 
-bool GraphCycles::IsReachableNonConst(int32 x, int32 y) {
+bool GraphCycles::IsReachableNonConst(int32_t x, int32_t y) {
   if (x == y) return true;
   Rep* r = rep_;
   Node* nx = r->nodes_[x];
@@ -358,7 +358,7 @@ bool GraphCycles::IsReachableNonConst(int32 x, int32 y) {
   return reachable;
 }
 
-bool GraphCycles::CanContractEdge(int32 a, int32 b) {
+bool GraphCycles::CanContractEdge(int32_t a, int32_t b) {
   CHECK(HasEdge(a, b)) << "No edge exists from " << a << " to " << b;
   RemoveEdge(a, b);
   bool reachable = IsReachableNonConst(a, b);
@@ -368,7 +368,7 @@ bool GraphCycles::CanContractEdge(int32 a, int32 b) {
   return !reachable;
 }
 
-absl::optional<int32> GraphCycles::ContractEdge(int32 a, int32 b) {
+absl::optional<int32> GraphCycles::ContractEdge(int32_t a, int32_t b) {
   CHECK(HasEdge(a, b));
   RemoveEdge(a, b);
 
@@ -387,21 +387,21 @@ absl::optional<int32> GraphCycles::ContractEdge(int32 a, int32 b) {
   Node* nb = rep_->nodes_[b];
   OrderedNodeSet out = std::move(nb->out);
   OrderedNodeSet in = std::move(nb->in);
-  for (int32 y : out.GetSequence()) {
+  for (int32_t y : out.GetSequence()) {
     rep_->nodes_[y]->in.Erase(b);
   }
-  for (int32 y : in.GetSequence()) {
+  for (int32_t y : in.GetSequence()) {
     rep_->nodes_[y]->out.Erase(b);
   }
   rep_->free_nodes_.push_back(b);
 
   rep_->nodes_[a]->out.Reserve(rep_->nodes_[a]->out.Size() + out.Size());
-  for (int32 y : out.GetSequence()) {
+  for (int32_t y : out.GetSequence()) {
     InsertEdge(a, y);
   }
 
   rep_->nodes_[a]->in.Reserve(rep_->nodes_[a]->in.Size() + in.Size());
-  for (int32 y : in.GetSequence()) {
+  for (int32_t y : in.GetSequence()) {
     InsertEdge(y, a);
   }
 
@@ -409,20 +409,20 @@ absl::optional<int32> GraphCycles::ContractEdge(int32 a, int32 b) {
   return a;
 }
 
-absl::Span<const int32> GraphCycles::Successors(int32 node) const {
+absl::Span<const int32> GraphCycles::Successors(int32_t node) const {
   return rep_->nodes_[node]->out.GetSequence();
 }
 
-absl::Span<const int32> GraphCycles::Predecessors(int32 node) const {
+absl::Span<const int32> GraphCycles::Predecessors(int32_t node) const {
   return rep_->nodes_[node]->in.GetSequence();
 }
 
-std::vector<int32> GraphCycles::SuccessorsCopy(int32 node) const {
+std::vector<int32> GraphCycles::SuccessorsCopy(int32_t node) const {
   absl::Span<const int32> successors = Successors(node);
   return std::vector<int32>(successors.begin(), successors.end());
 }
 
-std::vector<int32> GraphCycles::PredecessorsCopy(int32 node) const {
+std::vector<int32> GraphCycles::PredecessorsCopy(int32_t node) const {
   absl::Span<const int32> predecessors = Predecessors(node);
   return std::vector<int32>(predecessors.begin(), predecessors.end());
 }
@@ -430,7 +430,7 @@ std::vector<int32> GraphCycles::PredecessorsCopy(int32 node) const {
 namespace {
 void SortInPostOrder(absl::Span<Node* const> nodes,
                      std::vector<int32>* to_sort) {
-  absl::c_sort(*to_sort, [&](int32 a, int32 b) {
+  absl::c_sort(*to_sort, [&](int32_t a, int32_t b) {
     DCHECK(a == b || nodes[a]->rank != nodes[b]->rank);
     return nodes[a]->rank > nodes[b]->rank;
   });
@@ -444,7 +444,7 @@ std::vector<int32> GraphCycles::AllNodesInPostOrder() const {
 
   std::vector<int32> all_nodes;
   all_nodes.reserve(rep_->nodes_.size() - free_nodes_set.size());
-  for (int64 i = 0, e = rep_->nodes_.size(); i < e; i++) {
+  for (int64_t i = 0, e = rep_->nodes_.size(); i < e; i++) {
     if (!free_nodes_set.contains(i)) {
       all_nodes.push_back(i);
     }
@@ -456,7 +456,7 @@ std::vector<int32> GraphCycles::AllNodesInPostOrder() const {
 
 string GraphCycles::DebugString() const {
   absl::flat_hash_set<int32> free_nodes_set;
-  for (int32 free_node : rep_->free_nodes_) {
+  for (int32_t free_node : rep_->free_nodes_) {
     free_nodes_set.insert(free_node);
   }
 
@@ -466,7 +466,7 @@ string GraphCycles::DebugString() const {
       continue;
     }
 
-    for (int32 succ : rep_->nodes_[i]->out.GetSequence()) {
+    for (int32_t succ : rep_->nodes_[i]->out.GetSequence()) {
       absl::StrAppend(&result, "  \"", i, "\" -> \"", succ, "\"\n");
     }
   }

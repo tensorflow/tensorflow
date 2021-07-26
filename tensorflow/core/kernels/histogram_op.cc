@@ -36,7 +36,7 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& values,
                         const typename TTypes<T, 1>::ConstTensor& value_range,
-                        int32 nbins, typename TTypes<Tout, 1>::Tensor& out) {
+                        int32_t nbins, typename TTypes<Tout, 1>::Tensor& out) {
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
     Tensor index_to_bin_tensor;
@@ -66,7 +66,7 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
             .template cast<int32>();
 
     out.setZero();
-    for (int32 i = 0; i < index_to_bin.size(); i++) {
+    for (int32_t i = 0; i < index_to_bin.size(); i++) {
       out(index_to_bin(i)) += Tout(1);
     }
     return Status::OK();

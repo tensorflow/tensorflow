@@ -53,7 +53,7 @@ Status UpdateInfeedLayout(xla::Shape* shape,
   if (sharding && sharding->type() == xla::OpSharding::OTHER) {
     TF_ASSIGN_OR_RETURN(auto hlo_sharding,
                         xla::HloSharding::FromProto(*sharding));
-    for (int64 i = 0; i < sharding->tile_assignment_devices_size(); ++i) {
+    for (int64_t i = 0; i < sharding->tile_assignment_devices_size(); ++i) {
       auto device = sharding->tile_assignment_devices(i);
       auto shard_shape =
           GetTPUInfeedLayout(hlo_sharding.TileShape(*shape, device));
@@ -127,7 +127,7 @@ class InfeedDequeueTupleOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
-    for (int64 i = 0; i < xla_shapes_.size(); ++i) {
+    for (int64_t i = 0; i < xla_shapes_.size(); ++i) {
       absl::optional<xla::OpSharding> sharding;
       if (b->sharding()) {
         sharding = b->sharding()->type() == xla::OpSharding::TUPLE

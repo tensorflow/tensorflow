@@ -50,8 +50,8 @@ Status GetElementShapeFromInput(OpKernelContext* c,
 
 Status GetInputList(OpKernelContext* c, int index, const TensorList** list);
 
-Status ForwardInputOrCreateNewList(OpKernelContext* c, int32 input_index,
-                                   int32 output_index,
+Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
+                                   int32_t output_index,
                                    const TensorList& input_list,
                                    TensorList** output_list);
 
@@ -173,7 +173,7 @@ class TensorListGetItem : public OpKernel {
                                         DataTypeString(element_dtype_),
                                         " but list elements ",
                                         DataTypeString(l->element_dtype)));
-    int32 index = c->input(1).scalar<int32>()();
+    int32_t index = c->input(1).scalar<int32>()();
     OP_REQUIRES(c, index < l->tensors().size(),
                 errors::InvalidArgument("Trying to access element ", index,
                                         " in a list with ", l->tensors().size(),
@@ -304,7 +304,7 @@ class TensorListConcat : public OpKernel {
     // The leading dimension of all list elements if they are all the same.
     // This is used as the leading dim of uninitialized tensors in the list
     // if leading_dims is not provided.
-    int64 first_dim = -1;
+    int64_t first_dim = -1;
     if (c->num_inputs() > 1) {
       // TensorListConcatV2
       PartialTensorShape element_shape;
@@ -339,7 +339,7 @@ class TensorListConcat : public OpKernel {
     //    value.
     if (!tensor_list->element_shape.IsFullyDefined()) {
       bool check_dim = (first_dim == -1);
-      int64 inferred_first_dim = first_dim;
+      int64_t inferred_first_dim = first_dim;
       for (int i = 0; i < tensor_list->tensors().size(); ++i) {
         const Tensor& t = tensor_list->tensors()[i];
         if (t.dtype() != DT_INVALID) {
@@ -385,9 +385,9 @@ class TensorListConcat : public OpKernel {
             1, TensorShape({static_cast<int64>(tensor_list->tensors().size())}),
             &lengths_tensor));
     auto lengths_tensor_vec = lengths_tensor->vec<int64>();
-    int64 leading_dim = 0;
+    int64_t leading_dim = 0;
     for (size_t i = 0; i < tensor_list->tensors().size(); i++) {
-      int64 dim;
+      int64_t dim;
       if (tensor_list->tensors()[i].dtype() != DT_INVALID) {
         dim = tensor_list->tensors()[i].shape().dim_size(0);
       } else {
@@ -514,10 +514,10 @@ class TensorListSplit : public OpKernel {
                     "Expected lengths to be a vector, received shape: ",
                     lengths.shape().DebugString()));
     output_list.tensors().reserve(lengths.shape().dim_size(0));
-    int64 start = 0;
-    int64 end = 0;
+    int64_t start = 0;
+    int64_t end = 0;
     for (int i = 0; i < lengths.shape().dim_size(0); ++i) {
-      int64 length = lengths.vec<int64>()(i);
+      int64_t length = lengths.vec<int64>()(i);
       OP_REQUIRES(
           c, length >= 0,
           errors::InvalidArgument("Invalid value in lengths: ", length));
@@ -749,7 +749,7 @@ class TensorListScatterIntoExistingList : public OpKernel {
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     const auto indices_vec = indices.vec<int32>();
-    int32 max_index =
+    int32_t max_index =
         (indices.NumElements() == 0)
             ? -1
             : *std::max_element(indices_vec.data(),
@@ -935,7 +935,7 @@ class TensorListPushBackBatch : public OpKernel {
                 errors::InvalidArgument(
                     "Expected input_handles to be a vector, but saw shape: ",
                     tls_shape.DebugString()));
-    const int64 batch_size = tls.NumElements();
+    const int64_t batch_size = tls.NumElements();
     OP_REQUIRES(c, input.dim_size(0) == batch_size,
                 errors::InvalidArgument(
                     "Expected tensor.shape[0] == input_handles.size, but saw ",
@@ -945,7 +945,7 @@ class TensorListPushBackBatch : public OpKernel {
     TensorShape input_element_shape = input.shape();
     input_element_shape.RemoveDim(0);
     std::vector<const TensorList*> tl_batch;
-    for (int64 b = 0; b < batch_size; ++b) {
+    for (int64_t b = 0; b < batch_size; ++b) {
       const TensorList* l = tls_t(b).get<TensorList>();
       OP_REQUIRES(c, l != nullptr,
                   errors::InvalidArgument("Input handle at index ", b,
@@ -986,7 +986,7 @@ class TensorListPushBackBatch : public OpKernel {
     auto input_t = input.flat_outer_dims<T, 2>();
     auto result_t = result->vec<Variant>();
 
-    for (int64 b = 0; b < batch_size; ++b) {
+    for (int64_t b = 0; b < batch_size; ++b) {
       if (!ok_to_alias) {
         result_t(b) = tl_batch[b]->Copy();
       }

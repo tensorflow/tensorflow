@@ -232,7 +232,7 @@ TEST(CAPI, LibraryLoadFunctions) {
 }
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
-  const tensorflow::int64 n = data.size();
+  const int64_t n = data.size();
   Status status;
   for (const std::vector<tensorflow::int64>& dims :
        std::vector<std::vector<tensorflow::int64>>{

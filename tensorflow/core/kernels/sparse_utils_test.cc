@@ -104,7 +104,7 @@ TEST(SparseUtilsTest, ParseRowStartIndices) {
   {
     Tensor t(DataType::DT_INT32, {1});
     int indx = 0;
-    for (const int32 v : {0}) {
+    for (const int32_t v : {0}) {
       t.flat<int32>()(indx++) = v;
     }
     EXPECT_TRUE(ParseRowStartIndices<int32>(t, 1) ==
@@ -113,7 +113,7 @@ TEST(SparseUtilsTest, ParseRowStartIndices) {
   {
     Tensor t(DataType::DT_INT64, {1});
     int indx = 0;
-    for (const int64 v : {0}) {
+    for (const int64_t v : {0}) {
       t.flat<int64>()(indx++) = v;
     }
     EXPECT_TRUE(ParseRowStartIndices<int64>(t, 2) ==
@@ -228,7 +228,7 @@ TEST(SparseUtilsTest, FindNextDenseRowStartIndex) {
     int32 data[] = {0, 0, 1, 0, 4, 0, 6, 0, 7, 0, 8, 0, 10, 0, 12, 0};
     TTypes<int32>::ConstMatrix indices_mat(data, 8, 2);
     // indices_list = {0, 1, 4, 6, 7, 8, 10, 12};
-    for (int32 i = 0; i < 8; ++i) {
+    for (int32_t i = 0; i < 8; ++i) {
       EXPECT_EQ(i + 1, FindNextDenseRowStartIndex<int32>(i, indices_mat));
     }
   }

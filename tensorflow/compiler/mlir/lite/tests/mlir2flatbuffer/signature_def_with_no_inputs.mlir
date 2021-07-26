@@ -34,8 +34,7 @@
 // CHECK-NEXT:    outputs: [ {
 // CHECK-NEXT:      name: "start_logits"
 // CHECK-NEXT:    } ],
-// CHECK-NEXT:    method_name: "serving_default",
-// CHECK-NEXT:    key: ""
+// CHECK-NEXT:    signature_key: "serving_default"
 // CHECK-NEXT:  } ]
 // CHECK-NEXT: }
 

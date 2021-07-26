@@ -46,7 +46,7 @@ class ShapeOp : public XlaOpKernel {
     std::vector<xla::XlaOp> operands;
     const int rank = input_shape.dims();
     if (rank != 0) {
-      for (int64 i = 0; i < rank; ++i) {
+      for (int64_t i = 0; i < rank; ++i) {
         operands.push_back(xla::Broadcast(
             xla::ConvertElementType(xla::GetDimensionSize(ctx->Input(0), i),
                                     ctx->output_xla_type(0)),
@@ -96,7 +96,7 @@ class XlaSetBoundOp : public XlaOpKernel {
         errors::InvalidArgument("XlaSetBound should only be used to set a "
                                 "bound to the an int32 scalar value: got",
                                 bound_shape.DebugString()));
-    int64 bound;
+    int64_t bound;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("bound", &bound));
     xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32>(bound);
     xla::XlaOp result =
@@ -129,7 +129,7 @@ class XlaSetDynamicDimensionSizeOp : public XlaOpKernel {
         ctx, dim_index_shape.dims() == 0 && size_shape.dims() == 0,
         errors::InvalidArgument("XlaSetDynamicDimensionSizeOp's dim_index and "
                                 "size has to be int32 scalar value"));
-    int64 dim_index;
+    int64_t dim_index;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("dim_index", &dim_index));
 
     xla::XlaOp result =
@@ -158,7 +158,7 @@ class XlaRemoveDynamicDimensionSizeOp : public XlaOpKernel {
         ctx, dim_index_shape.dims() == 0,
         errors::InvalidArgument("XlaRemoveDynamicDimensionSizeOp's dim_index "
                                 "has to be int32 scalar value"));
-    int64 dim_index;
+    int64_t dim_index;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("dim_index", &dim_index));
 
     xla::XlaOp result = xla::RemoveDynamicDimension(ctx->Input(0), dim_index);
@@ -185,7 +185,7 @@ class ShapeNOp : public XlaOpKernel {
       if (rank != 0) {
         // Each dimension can be dynamic, so use GetDimensionSize to get the
         // runtime dimension.
-        for (int64 dim = 0; dim < rank; ++dim) {
+        for (int64_t dim = 0; dim < rank; ++dim) {
           operands.push_back(xla::Broadcast(
               xla::ConvertElementType(xla::GetDimensionSize(ctx->Input(i), dim),
                                       ctx->output_xla_type(i)),
@@ -241,7 +241,7 @@ class SizeOp : public XlaOpKernel {
     const int rank = input_shape.dims();
     xla::XlaBuilder* builder = ctx->builder();
     auto size = xla::One(builder, xla::U32);
-    for (int64 i = 0; i < rank; ++i) {
+    for (int64_t i = 0; i < rank; ++i) {
       size = xla::Mul(
           size, xla::ConvertElementType(xla::GetDimensionSize(ctx->Input(0), i),
                                         xla::U32));
@@ -316,7 +316,7 @@ class SqueezeOp : public XlaOpKernel {
     std::unordered_set<int32> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
     // Validate squeeze dims against the input.
-    for (int32 dim : squeeze_dims_) {
+    for (int32_t dim : squeeze_dims_) {
       OP_REQUIRES(ctx, (dim >= -input_shape.dims() && dim < input_shape.dims()),
                   errors::InvalidArgument("Tried to squeeze dim index ", dim,
                                           " for tensor with ",
@@ -382,12 +382,12 @@ class ZerosLikeOp : public XlaOpKernel {
       const xla::Shape& list_shape = list_shape_or.ValueOrDie();
       std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
       list_dynamic_dims.reserve(list_shape.tuple_shapes_size() - 1);
-      for (int64 i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+      for (int64_t i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
         // Set dynamic dimension size to 0 for initialization value.
         std::vector<xla::XlaOp> dynamic_dims;
         const xla::Shape& shape = list_shape.tuple_shapes(i);
         auto sub_element = xla::GetTupleElement(list, i);
-        for (int64 dim = 0; dim < shape.dimensions_size(); ++dim) {
+        for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
           dynamic_dims.push_back(xla::GetDimensionSize(sub_element, dim));
         }
         list_dynamic_dims.push_back(dynamic_dims);
@@ -411,7 +411,7 @@ class ZerosLikeOp : public XlaOpKernel {
       auto result = xla::Broadcast(zero, input_shape.dimensions());
 
       // Setting up dynamic dimensions of the broadcast.
-      for (int64 i = 0; i < input_shape.dimensions_size(); ++i) {
+      for (int64_t i = 0; i < input_shape.dimensions_size(); ++i) {
         if (input_shape.is_dynamic_dimension(i)) {
           xla::XlaOp input_dynamic_dim = xla::GetDimensionSize(input, i);
           result = xla::SetDimensionSize(result, input_dynamic_dim, i);

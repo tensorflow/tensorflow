@@ -223,11 +223,11 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
         dimension_numbers.rhs_contracting_dimensions_size());
 
   // Check that contracting dimension sizes match.
-  for (int64 i = 0; i < dimension_numbers.lhs_contracting_dimensions_size();
+  for (int64_t i = 0; i < dimension_numbers.lhs_contracting_dimensions_size();
        ++i) {
-    const int64 lhs_contracting_dimension =
+    const int64_t lhs_contracting_dimension =
         dimension_numbers.lhs_contracting_dimensions(i);
-    const int64 rhs_contracting_dimension =
+    const int64_t rhs_contracting_dimension =
         dimension_numbers.rhs_contracting_dimensions(i);
     shape_inference::DimensionHandle unused;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -256,9 +256,11 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   std::vector<shape_inference::DimensionHandle> output_dims;
 
   // Check that batch dimension sizes match, and add them to output_dims.
-  for (int64 i = 0; i < dimension_numbers.lhs_batch_dimensions_size(); ++i) {
-    const int64 lhs_batch_dimension = dimension_numbers.lhs_batch_dimensions(i);
-    const int64 rhs_batch_dimension = dimension_numbers.rhs_batch_dimensions(i);
+  for (int64_t i = 0; i < dimension_numbers.lhs_batch_dimensions_size(); ++i) {
+    const int64_t lhs_batch_dimension =
+        dimension_numbers.lhs_batch_dimensions(i);
+    const int64_t rhs_batch_dimension =
+        dimension_numbers.rhs_batch_dimensions(i);
     shape_inference::DimensionHandle out;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         c->Merge(c->DimKnownRank(lhs_shape_handle, lhs_batch_dimension),
@@ -268,8 +270,8 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
     output_dims.emplace_back(out);
   }
 
-  const int32 lhs_rank = c->Rank(lhs_shape_handle);
-  for (int64 i = 0; i < lhs_rank; ++i) {
+  const int32_t lhs_rank = c->Rank(lhs_shape_handle);
+  for (int64_t i = 0; i < lhs_rank; ++i) {
     if (absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),
                               i) ||
         absl::c_linear_search(dimension_numbers.lhs_batch_dimensions(), i)) {
@@ -278,8 +280,8 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
     output_dims.emplace_back(c->Dim(lhs_shape_handle, i));
   }
 
-  const int32 rhs_rank = c->Rank(rhs_shape_handle);
-  for (int64 i = 0; i < rhs_rank; ++i) {
+  const int32_t rhs_rank = c->Rank(rhs_shape_handle);
+  for (int64_t i = 0; i < rhs_rank; ++i) {
     if (absl::c_linear_search(dimension_numbers.rhs_contracting_dimensions(),
                               i) ||
         absl::c_linear_search(dimension_numbers.rhs_batch_dimensions(), i)) {
@@ -485,7 +487,7 @@ REGISTER_OP("XlaPad")
       if (!c->RankKnown(input_shape_handle)) {
         return UnchangedRank(c);
       }
-      const int32 op_rank = c->Rank(input_shape_handle);
+      const int32_t op_rank = c->Rank(input_shape_handle);
 
       shape_inference::ShapeHandle padding_shape_handle = c->input(1);
       if (c->RankKnown(padding_shape_handle) &&
@@ -519,8 +521,8 @@ REGISTER_OP("XlaPad")
       }
       std::vector<shape_inference::DimensionHandle> output_dims;
       output_dims.reserve(op_rank);
-      for (int64 i = 0; i < op_rank; ++i) {
-        int64 low, high, interior;
+      for (int64_t i = 0; i < op_rank; ++i) {
+        int64_t low, high, interior;
         TF_RETURN_IF_ERROR(c->GetScalarFromTensor(padding_low_tensor, i, &low));
         TF_RETURN_IF_ERROR(
             c->GetScalarFromTensor(padding_high_tensor, i, &high));
@@ -536,7 +538,7 @@ REGISTER_OP("XlaPad")
             c->Dim(input_shape_handle, i);
         if (c->ValueKnown(orig_size_handle)) {
           auto orig_dim = c->Value(orig_size_handle);
-          int64 new_dim = orig_dim + low + high;
+          int64_t new_dim = orig_dim + low + high;
           if (orig_dim > 0) {
             new_dim += interior * (orig_dim - 1);
           }
@@ -610,7 +612,7 @@ REGISTER_OP("XlaReduce")
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
         std::set<int64> dims_set(dimensions_to_reduce.begin(),
                                  dimensions_to_reduce.end());
-        auto dim_in_range = [rank](int64 dim) {
+        auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
         const int dimensions_to_reduce_size = dimensions_to_reduce.size();
@@ -660,7 +662,7 @@ REGISTER_OP("XlaVariadicReduce")
             c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
         std::set<int64> dims_set(dimensions_to_reduce.begin(),
                                  dimensions_to_reduce.end());
-        auto dim_in_range = [rank](int64 dim) {
+        auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
         const int dimensions_to_reduce_size = dimensions_to_reduce.size();
@@ -741,7 +743,7 @@ REGISTER_OP("XlaVariadicReduceV2")
         std::set<int64> dims_set(dimensions_to_reduce.begin(),
                                  dimensions_to_reduce.end());
 
-        auto dim_in_range = [rank](int64 dim) {
+        auto dim_in_range = [rank](int64_t dim) {
           return dim >= 0 && dim < rank;
         };
         const int dimensions_to_reduce_size = dimensions_to_reduce.size();
@@ -753,7 +755,7 @@ REGISTER_OP("XlaVariadicReduceV2")
         }
 
         std::vector<shape_inference::DimensionHandle> output_dims;
-        for (int64 i = 0; i < rank; ++i) {
+        for (int64_t i = 0; i < rank; ++i) {
           if (dims_set.find(i) == dims_set.end()) {
             output_dims.emplace_back(c->Dim(input_shape, i));
           }
@@ -1012,9 +1014,9 @@ REGISTER_OP("XlaSpmdFullToShardShape")
         return shape_inference::UnchangedShape(c);
       }
       std::vector<shape_inference::DimensionHandle> dims;
-      for (int64 i = 0; i < c->Rank(input_handle); ++i) {
+      for (int64_t i = 0; i < c->Rank(input_handle); ++i) {
         auto dim = c->Value(c->Dim(input_handle, i));
-        int64 partitions_i = sharding.tile_assignment_dimensions(i);
+        int64_t partitions_i = sharding.tile_assignment_dimensions(i);
         if (dim != shape_inference::InferenceContext::kUnknownDim &&
             partitions_i != 1) {
           dim = (dim + partitions_i - 1) / partitions_i;

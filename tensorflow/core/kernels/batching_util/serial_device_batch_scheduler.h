@@ -365,7 +365,7 @@ void SerialDeviceBatchScheduler<TaskType>::RemoveQueue(
 
 template <typename TaskType>
 void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
-  const int64 kIdleThreadSleepTimeMicros = 1000;
+  const int64_t kIdleThreadSleepTimeMicros = 1000;
   const double kMaxNoBatchRatio = .1;
   const double kLowTrafficMovingAverageFactor = .1;
   for (;;) {

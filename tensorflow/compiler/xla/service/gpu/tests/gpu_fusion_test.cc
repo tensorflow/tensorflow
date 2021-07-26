@@ -58,7 +58,7 @@ TEST_F(GpuFusionTest, FusedReshape) {
 
 // Check that we limit the number of operands to fusions we create.
 TEST_F(GpuFusionTest, FusedBiggerThenThresholdButDoNotChangeTheFusionl) {
-  constexpr int64 kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
+  constexpr int64_t kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
 
   // Compute
   //   p0 + p1 + p2 + ... + pn,
@@ -72,7 +72,7 @@ TEST_F(GpuFusionTest, FusedBiggerThenThresholdButDoNotChangeTheFusionl) {
       b.AddInstruction(HloInstruction::CreateParameter(0, input_shape, "p"));
 
   std::vector<HloInstruction*> slice_params;
-  for (int64 i = 0; i < kNumParams; ++i) {
+  for (int64_t i = 0; i < kNumParams; ++i) {
     slice_params.push_back(b.AddInstruction(HloInstruction::CreateSlice(
         slice_shape, input, {0, 0}, {10, 2}, {1, 1})));
   }

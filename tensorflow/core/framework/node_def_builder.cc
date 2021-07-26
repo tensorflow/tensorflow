@@ -296,8 +296,8 @@ NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, AttrValue&& value) {
   }
 ATTR(StringPiece)
 ATTR(const char*)
-ATTR(int32)
-ATTR(int64)
+ATTR(int32_t)
+ATTR(int64_t)
 ATTR(float)
 ATTR(double)
 ATTR(bool)

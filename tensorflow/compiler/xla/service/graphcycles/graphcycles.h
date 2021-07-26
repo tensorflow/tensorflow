@@ -68,39 +68,39 @@ class GraphCycles {
   // After this call the identifier "node" it may no longer be used
   // as an argument to any routine until it has been reallocated with
   // NewNode().
-  void RemoveNode(int32 node);
+  void RemoveNode(int32_t node);
 
   // Attempt to insert an edge from source_node to dest_node.  If the
   // edge would introduce a cycle, return false without making any
   // changes. Otherwise add the edge and return true.
-  bool InsertEdge(int32 source_node, int32 dest_node);
+  bool InsertEdge(int32_t source_node, int32_t dest_node);
 
   // Remove any edge that exists from source_node to dest_node.
-  void RemoveEdge(int32 source_node, int32 dest_node);
+  void RemoveEdge(int32_t source_node, int32_t dest_node);
 
   // Return whether there is an edge directly from source_node to dest_node.
-  bool HasEdge(int32 source_node, int32 dest_node) const;
+  bool HasEdge(int32_t source_node, int32_t dest_node) const;
 
   // Contracts the edge from 'a' to node 'b', merging nodes 'a' and 'b'. One of
   // the nodes is removed from the graph, and edges to/from it are added to
   // the remaining one, which is returned. If contracting the edge would create
   // a cycle, does nothing and return no value.
-  absl::optional<int32> ContractEdge(int32 a, int32 b);
+  absl::optional<int32> ContractEdge(int32_t a, int32_t b);
 
   // Return true if can contract edge, otherwise return false.
-  bool CanContractEdge(int32 a, int32 b);
+  bool CanContractEdge(int32_t a, int32_t b);
 
   // Return whether dest_node is reachable from source_node
   // by following edges.
-  bool IsReachable(int32 source_node, int32 dest_node) const;
+  bool IsReachable(int32_t source_node, int32_t dest_node) const;
 
   // A faster non-thread-safe version of IsReachable.
-  bool IsReachableNonConst(int32 source_node, int32 dest_node);
+  bool IsReachableNonConst(int32_t source_node, int32_t dest_node);
 
   // Return or set the node data for a node.  This data is unused
   // by the implementation.
-  void *GetNodeData(int32 node) const;
-  void SetNodeData(int32 node, void *data);
+  void *GetNodeData(int32_t node) const;
+  void SetNodeData(int32_t node, void *data);
 
   // Find a path from "source" to "dest".  If such a path exists, place the
   // node IDs of the nodes on the path in the array path[], and return the
@@ -113,7 +113,8 @@ class GraphCycles {
   // except the source and destination node if they are identical; therefore,
   // the return value is at most one greater than the number of nodes in the
   // graph.
-  int FindPath(int32 source, int32 dest, int max_path_len, int32 path[]) const;
+  int FindPath(int32_t source, int32_t dest, int max_path_len,
+               int32 path[]) const;
 
   // Check internal invariants. Crashes on failure, returns true on success.
   // Expensive: should only be called from graphcycles_test.cc.
@@ -121,15 +122,15 @@ class GraphCycles {
 
   // Warning: Do not use these if iterating over the span and modifying the
   // GraphCycles at the same time. Instead use SuccessorsCopy/PredecessorsCopy.
-  absl::Span<const int32> Successors(int32 node) const;
-  absl::Span<const int32> Predecessors(int32 node) const;
+  absl::Span<const int32> Successors(int32_t node) const;
+  absl::Span<const int32> Predecessors(int32_t node) const;
 
   // Return a copy of the successors set. This is needed for code using the
   // collection while modifying the GraphCycles.
-  std::vector<int32> SuccessorsCopy(int32 node) const;
+  std::vector<int32> SuccessorsCopy(int32_t node) const;
   // Return a copy of the predecessors set. This is needed for code using the
   // collection while modifying the GraphCycles.
-  std::vector<int32> PredecessorsCopy(int32 node) const;
+  std::vector<int32> PredecessorsCopy(int32_t node) const;
 
   // Returns all nodes in post order.
   //

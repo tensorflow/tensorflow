@@ -38,7 +38,7 @@ namespace experimental {
 
 class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 cardinality,
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t cardinality,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
@@ -148,7 +148,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    static string ElementString(int64 n) {
+    static string ElementString(int64_t n) {
       if (n == kInfiniteCardinality) {
         return strings::StrCat("an infinite number of elements");
       }
@@ -175,7 +175,7 @@ AssertCardinalityDatasetOp::AssertCardinalityDatasetOp(
 void AssertCardinalityDatasetOp::MakeDataset(OpKernelContext* ctx,
                                              DatasetBase* input,
                                              DatasetBase** output) {
-  int64 cardinality;
+  int64_t cardinality;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64>(ctx, kCardinality, &cardinality));
   *output = new Dataset(ctx, input, cardinality, output_types_, output_shapes_);

@@ -61,8 +61,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -111,19 +109,17 @@ class PeriodicFunction {
   void NotifyStop();
 
   // (Blocking.) Loops forever calling "function_" every "interval_micros_".
-  void RunLoop(int64_t start) TF_LOCKS_EXCLUDED(mutex_);
+  void RunLoop(int64_t start);
 
   const std::function<void()> function_;  // Actual client function
   const int64 interval_micros_;           // Interval between calls.
   const Options options_;
 
-  // Protects state below.
-  mutable mutex mutex_;
   // Used to notify the thread to stop.
   Notification stop_thread_;
 
   // Thread for running "function_"
-  std::unique_ptr<Thread> thread_ TF_GUARDED_BY(mutex_) = nullptr;
+  std::unique_ptr<Thread> thread_ = nullptr;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PeriodicFunction);
 };

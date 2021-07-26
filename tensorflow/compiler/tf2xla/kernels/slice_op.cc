@@ -73,8 +73,8 @@ class SliceOp : public XlaOpKernel {
       }
 
       for (int i = 0; i < input_dims; ++i) {
-        int64 b = begin[i];
-        int64 s = wrapped_size[i];
+        int64_t b = begin[i];
+        int64_t s = wrapped_size[i];
         if (input_shape.dim_size(i) == 0) {
           OP_REQUIRES(ctx, b == 0 && s == 0,
                       errors::InvalidArgument(
@@ -105,7 +105,7 @@ class SliceOp : public XlaOpKernel {
       std::vector<int64> dynamic_size;
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &dynamic_size));
 
-      for (int64 i = 0; i < size.size(); ++i) {
+      for (int64_t i = 0; i < size.size(); ++i) {
         if (dynamic_size[i] == -1) {
           if (size[i] != -1) {
             // If there is a dynamic dimension, properly set dimension size of

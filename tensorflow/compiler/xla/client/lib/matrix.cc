@@ -47,8 +47,8 @@ limitations under the License.
 
 namespace xla {
 
-XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
-                     int64 n) {
+XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64_t m,
+                     int64_t n) {
   auto a = Iota(builder, U32, m);
   auto b = Iota(builder, U32, n);
   auto indicator = Eq(a, Broadcast(b, {m}), /*broadcast_dimensions=*/{0});
@@ -79,8 +79,8 @@ XlaOp GetMatrixDiagonal(XlaOp x, int k) {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     auto n_dims = static_cast<int32>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
-    const int64 m = shape.dimensions(n_dims - 2);
-    const int64 n = shape.dimensions(n_dims - 1);
+    const int64_t m = shape.dimensions(n_dims - 2);
+    const int64_t n = shape.dimensions(n_dims - 1);
 
     if (k <= -m || k >= n) {
       auto zero_size_shape = shape;
@@ -90,7 +90,7 @@ XlaOp GetMatrixDiagonal(XlaOp x, int k) {
     }
     auto mask = GetDiagonalMask(x, k);
 
-    int64 reduce_dim = n_dims - 1;
+    int64_t reduce_dim = n_dims - 1;
     if ((k == 0 && m >= n) || k < 0) {
       reduce_dim = n_dims - 2;
     }
@@ -113,8 +113,8 @@ XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
     auto n_dims = static_cast<int32>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
-    const int64 m = shape.dimensions(n_dims - 2);
-    const int64 n = shape.dimensions(n_dims - 1);
+    const int64_t m = shape.dimensions(n_dims - 2);
+    const int64_t n = shape.dimensions(n_dims - 1);
 
     // The start_indices has a shape of {diag_len, 2}, and each pair of value in
     // its dimension 1 represents the (row, col) of the diagonal. We set
@@ -122,11 +122,11 @@ XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
     // contain the same two dimension indices. This makes sure that the (row,
     // col) pairs in start_indices are propagated to the indices for the two
     // collapsed dimensions in the operand indices through start_index_map.
-    const int64 num_index_dims = 2;
-    const int64 axis = n_dims - num_index_dims;
+    const int64_t num_index_dims = 2;
+    const int64_t axis = n_dims - num_index_dims;
 
     // Calculate the indices of diagonal part with offset k.
-    const int64 diag_len =
+    const int64_t diag_len =
         std::max(std::min(m + std::min(k, 0), n - std::max(k, 0)), int64{0});
     XlaOp diag_base_indices = BroadcastInDim(Iota(builder, S32, diag_len),
                                              {diag_len, num_index_dims}, {0});
@@ -150,8 +150,8 @@ XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
     xla::GatherDimensionNumbers dim_numbers;
     std::vector<int64> slice_sizes;
     slice_sizes.reserve(n_dims);
-    for (int64 i = 0; i < n_dims; i++) {
-      int64 window_bound;
+    for (int64_t i = 0; i < n_dims; i++) {
+      int64_t window_bound;
       if (axis <= i) {
         dim_numbers.add_collapsed_slice_dims(i);
         dim_numbers.add_start_index_map(i);
@@ -177,12 +177,12 @@ XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k) {
     TF_ASSIGN_OR_RETURN(Shape diag_shape, builder->GetShape(diag));
     auto n_dims = static_cast<int32>(shape.rank());
     TF_RET_CHECK(n_dims >= 2);
-    const int64 m = shape.dimensions(n_dims - 2);
-    const int64 n = shape.dimensions(n_dims - 1);
-    const int64 d = diag_shape.dimensions(n_dims - 2);
+    const int64_t m = shape.dimensions(n_dims - 2);
+    const int64_t n = shape.dimensions(n_dims - 1);
+    const int64_t d = diag_shape.dimensions(n_dims - 2);
     std::vector<int64> broadcast_dims(n_dims - 1);
     absl::c_iota(broadcast_dims, 0);
-    int64 pad_high = m - d;
+    int64_t pad_high = m - d;
     if (k < 0) {
       ++(broadcast_dims.back());
       pad_high = n - d;
@@ -213,10 +213,10 @@ XlaOp TriangleMask(XlaOp x, int diagonal) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
+    const int64_t n_dims = shape.rank();
     TF_RET_CHECK(n_dims >= 2);
-    const int64 m = shape.dimensions(n_dims - 2);
-    const int64 n = shape.dimensions(n_dims - 1);
+    const int64_t m = shape.dimensions(n_dims - 2);
+    const int64_t n = shape.dimensions(n_dims - 1);
     absl::Span<const int64> major_dims =
         AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
     auto a = Iota(builder, S32, n);
@@ -245,8 +245,8 @@ XlaOp Symmetrize(XlaOp x, bool lower) {
           "Argument to symmetrize must have >= 2 dimensions, got %s",
           shape.ToString());
     }
-    const int64 m = ShapeUtil::GetDimension(shape, -2);
-    const int64 n = ShapeUtil::GetDimension(shape, -1);
+    const int64_t m = ShapeUtil::GetDimension(shape, -2);
+    const int64_t n = ShapeUtil::GetDimension(shape, -1);
     if (m != n) {
       return InvalidArgument(
           "The two most minor dimensions of the argument to symmetrize must be "
@@ -300,10 +300,10 @@ xla::XlaOp EinsumDiagonalMask(XlaOp x, absl::Span<const int64> config) {
     XlaOp mask = ConstantR0(builder, true);
 
     for (auto label = config.begin(); label != config.end(); ++label) {
-      const int64 dim = label - config.begin();
+      const int64_t dim = label - config.begin();
       auto first_label = absl::c_find(config, *label);
       if (first_label != label) {
-        const int64 first_dim = first_label - config.begin();
+        const int64_t first_dim = first_label - config.begin();
         mask = And(mask, Eq(Iota(builder, iota_shape, first_dim),
                             Iota(builder, iota_shape, dim)));
       }
@@ -337,7 +337,7 @@ xla::XlaOp EinsumInverseDiagonal(XlaOp x, absl::Span<const int64> config) {
     }
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     std::vector<int64> broadcast_sizes;
-    int64 x_dim = 0;
+    int64_t x_dim = 0;
     for (auto label = config.begin(); label != config.end(); ++label) {
       auto first_label = absl::c_find(config, *label);
       if (first_label == label) {
@@ -363,8 +363,8 @@ void DeleteDimsFromContainer(absl::Span<const int64> to_delete, Shape* shape,
   if (to_delete.empty()) {
     return;
   }
-  for (int64 i = to_delete.size() - 1; i >= 0; --i) {
-    int64 dim = to_delete[i];
+  for (int64_t i = to_delete.size() - 1; i >= 0; --i) {
+    int64_t dim = to_delete[i];
     shape->DeleteDimension(dim);
     for (auto& b : *batch_dims) {
       if (b > dim) {
@@ -408,9 +408,9 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
 
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
-    const int64 x_rank = x_config.size();
-    const int64 y_rank = y_config.size();
-    const int64 output_rank = output_config.size();
+    const int64_t x_rank = x_config.size();
+    const int64_t y_rank = y_config.size();
+    const int64_t output_rank = output_config.size();
     absl::flat_hash_set<int64> x_map;
     absl::flat_hash_set<int64> y_map;
     absl::flat_hash_set<int64> output_map;
@@ -428,14 +428,14 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     }
 
     DotDimensionNumbers dnums;
-    auto is_batch_dim = [&](int64 d) {
+    auto is_batch_dim = [&](int64_t d) {
       return x_map.contains(d) && y_map.contains(d) && output_map.contains(d);
     };
-    auto is_contracting = [&](int64 d) {
+    auto is_contracting = [&](int64_t d) {
       return x_map.contains(d) && y_map.contains(d);
     };
 
-    auto rhs_dimension_number = [&](int64 d) {
+    auto rhs_dimension_number = [&](int64_t d) {
       return absl::c_find(y_config, d) - y_config.begin();
     };
 
@@ -443,9 +443,9 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     absl::InlinedVector<int64, 8> lhs_outer_dims;
     absl::InlinedVector<int64, 8> rhs_delete_dims;
     absl::InlinedVector<int64, 8> lhs_delete_dims;
-    for (int64 i = 0; i < x_rank; ++i) {
+    for (int64_t i = 0; i < x_rank; ++i) {
       auto dim_name = x_config[i];
-      const int64 rhs_dim = rhs_dimension_number(dim_name);
+      const int64_t rhs_dim = rhs_dimension_number(dim_name);
 
       if (is_batch_dim(dim_name)) {
         if (x_shape.dimensions(i) == y_shape.dimensions(rhs_dim)) {
@@ -474,7 +474,7 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
       }
     }
 
-    for (int64 i = 0; i < y_rank; ++i) {
+    for (int64_t i = 0; i < y_rank; ++i) {
       auto dim_name = y_config[i];
       if (!is_batch_dim(dim_name) && !is_contracting(dim_name)) {
         rhs_outer_dims.push_back(i);
@@ -484,7 +484,7 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     absl::c_sort(rhs_outer_dims);
     absl::InlinedVector<int64, 8> output_transpose_dims;
 
-    auto output_dimension_number = [&](int64 d) -> absl::optional<int64> {
+    auto output_dimension_number = [&](int64_t d) -> absl::optional<int64> {
       auto pos = absl::c_find(output_config, d);
       if (pos == output_config.end()) {
         return absl::nullopt;
@@ -512,9 +512,9 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
       rhs_delete_dims.push_back(d);
     }
 
-    const int64 transpose_rank = output_transpose_dims.size();
+    const int64_t transpose_rank = output_transpose_dims.size();
     std::vector<int64> transpose_dims(output_rank);
-    for (int64 i = 0; i < transpose_rank; ++i) {
+    for (int64_t i = 0; i < transpose_rank; ++i) {
       transpose_dims[output_transpose_dims[i]] = i;
     }
 
@@ -551,11 +551,11 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
       return dot;
     }
 
-    auto is_output_only = [&](int64 d) {
+    auto is_output_only = [&](int64_t d) {
       return output_map.contains(d) && !x_map.contains(d) && !y_map.contains(d);
     };
 
-    int64 dot_dim = 0;
+    int64_t dot_dim = 0;
     std::vector<int64> new_dims;
     new_dims.reserve(output_rank);
     TF_ASSIGN_OR_RETURN(Shape dot_shape, builder->GetShape(dot));
@@ -592,7 +592,7 @@ XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
 }
 
 StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
-    absl::string_view einsum_config, int64 x_rank, int64 y_rank) {
+    absl::string_view einsum_config, int64_t x_rank, int64_t y_rank) {
   std::array<std::vector<int64>, 3> einsum_config_numeric;
   std::vector<absl::string_view> main_split =
       absl::StrSplit(einsum_config, ',');
@@ -611,8 +611,8 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
   };
 
   auto string_config_to_numeric =
-      [&](absl::string_view config, bool is_input_config, int64 input_rank,
-          int64 ellipsis_rank,
+      [&](absl::string_view config, bool is_input_config, int64_t input_rank,
+          int64_t ellipsis_rank,
           std::vector<int64>* numeric_config) -> StatusOr<int64> {
     std::vector<absl::string_view> splits = absl::StrSplit(config, "...");
     if (splits.empty()) {
@@ -640,7 +640,7 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
     if (has_ellipsis) {
       // For input configs, we use the value of ellipsis_rank we just computed.
       // For output config, we use the existing value of ellipsis_rank.
-      for (int64 i = ellipsis_rank; i > 0; --i) {
+      for (int64_t i = ellipsis_rank; i > 0; --i) {
         numeric_config->push_back(-i);
       }
       for (char d : splits[1]) {
@@ -652,7 +652,7 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
   };
 
   TF_ASSIGN_OR_RETURN(
-      const int64 x_ellipsis_rank,
+      const int64_t x_ellipsis_rank,
       string_config_to_numeric(main_split[0],
                                /*is_input_config=*/true, x_rank,
                                /*ellipsis_rank=*/0, &einsum_config_numeric[0]));
@@ -664,7 +664,7 @@ StatusOr<std::array<std::vector<int64>, 3>> ParseEinsumString(
   }
 
   TF_ASSIGN_OR_RETURN(
-      const int64 y_ellipsis_rank,
+      const int64_t y_ellipsis_rank,
       string_config_to_numeric(y_output_split[0],
                                /*is_input_config=*/true, y_rank,
                                /*ellipsis_rank=*/0, &einsum_config_numeric[1]));
@@ -735,7 +735,7 @@ XlaOp TransposeInMinorDims(XlaOp x) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
+    const int64_t n_dims = shape.rank();
     TF_RET_CHECK(n_dims >= 2);
     std::vector<int64> permutation(n_dims);
     std::iota(permutation.begin(), permutation.end(), 0);

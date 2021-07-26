@@ -94,6 +94,29 @@ func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tenso
 // CHECK: return %[[scale]], %[[zp]]
 }
 
+// CHECK-LABEL: quant_qparam_per_channel
+func @quant_qparam_per_channel(%arg0: tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1, 0.2:2, 0.3:3}>>) -> (tensor<3xf32>, tensor<3xi32>) {
+  %0 = "tfr.cast"(%arg0) : (tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1, 0.2:2, 0.3:3}>>) -> !tfr.tensor
+  %scale, %zp = tfr.quant_qparam(%0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
+  %1 = "tfr.cast"(%scale) : (!tfr.tensor) -> tensor<3xf32>
+  %2 = "tfr.cast"(%zp) : (!tfr.tensor) -> tensor<3xi32>
+  return %1, %2 : tensor<3xf32>, tensor<3xi32>
+
+// CHECK: %[[scale:.*]] = "tf.Const"() {value = dense<[1.000000e-01, 2.000000e-01, 3.000000e-01]> : tensor<3xf32>}
+// CHECK: %[[zp:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: return %[[scale]], %[[zp]]
+}
+
+// CHECK-LABEL: quant_qparam_invalid
+func @quant_qparam_invalid(%arg0: tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) -> (!tfr.tensor, !tfr.tensor) {
+  %0 = "tfr.cast"(%arg0) : (tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) -> !tfr.tensor
+  %scale, %zp = tfr.quant_qparam(%0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
+  return %scale, %zp: !tfr.tensor, !tfr.tensor
+
+// CHECK: %[[scale:.*]], %[[zp:.*]] = tfr.quant_qparam(%[[input:.*]]) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
+// CHECK: return %[[scale]], %[[zp]]
+}
+
 // -----
 
 // CHECK-LABEL: build_const_list

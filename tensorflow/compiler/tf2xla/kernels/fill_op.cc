@@ -53,7 +53,7 @@ class FillOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("dims", &dynamic_dims));
 
     auto output = xla::Broadcast(ctx->Input("value"), dims);
-    for (int64 i = 0; i < dims.size(); ++i) {
+    for (int64_t i = 0; i < dims.size(); ++i) {
       // If a dimension is dynamic, call set-dimension-size on the output.
       if (dynamic_dims[i] == -1) {
         auto dynamic_dim_size = xla::Slice(ctx->Input(0), {i}, {i + 1}, {1});

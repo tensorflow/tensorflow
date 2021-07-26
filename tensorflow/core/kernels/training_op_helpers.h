@@ -50,7 +50,7 @@ Status EnsureSparseVariableAccess(OpKernelContext* ctx, Var* var) {
 
     const auto elements_in = var->tensor()->flat<Variant>();
     auto elements_out = tmp.flat<Variant>();
-    for (int64 i = 0; i < elements_in.size(); ++i) {
+    for (int64_t i = 0; i < elements_in.size(); ++i) {
       elements_out(i) = elements_in(i);
     }
   } else {
@@ -208,7 +208,7 @@ Status PrepareToUpdateVariable(OpKernelContext* ctx, Tensor* tensor,
 
       const auto elements_in = tensor->flat<Variant>();
       auto elements_out = tmp.flat<Variant>();
-      for (int64 i = 0; i < elements_in.size(); ++i) {
+      for (int64_t i = 0; i < elements_in.size(); ++i) {
         elements_out(i) = elements_in(i);
       }
     } else {

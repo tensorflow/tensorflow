@@ -30,15 +30,11 @@ REGISTER8(BinaryOp, CPU, "AddV2", functor::add, int8, int16, complex64, uint8,
           uint16, uint32, uint64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER6(BinaryOp, GPU, "Add", functor::add, uint8, uint16, uint64, int64,
-          complex64, complex128);
+REGISTER4(BinaryOp, GPU, "Add", functor::add, uint8, int64, complex64,
+          complex128);
 
 REGISTER7(BinaryOp, GPU, "AddV2", functor::add, uint8, uint16, uint32, uint64,
           int64, complex64, complex128);
-#else
-REGISTER3(BinaryOp, GPU, "Add", functor::add, uint8, uint16, uint64);
-
-REGISTER4(BinaryOp, GPU, "AddV2", functor::add, uint8, uint16, uint32, uint64);
 #endif
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -177,7 +177,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       {
-        int64 temp;
+        int64_t temp;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kMode), &temp));
         mode_ = static_cast<Mode>(temp);
       }
@@ -346,7 +346,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        int64 temp;
+        int64_t temp;
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
         {
@@ -552,7 +552,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         {
           // TODO(b/78048575): Update this when saving size_t tensors directly
           // is supported.
-          int64 temp;
+          int64_t temp;
           TF_RETURN_IF_ERROR(
               iterator_state_reader->ReadScalar(full_name(kCurIndex), &temp));
           cur_index_ = static_cast<size_t>(temp);
@@ -889,7 +889,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         {
           // kIndex will not be set if we are restoring from a checkpoint
           // written by a MemoryWriterIterator that has completed its cache.
-          int64 temp = cache_->size();
+          int64_t temp = cache_->size();
           if (reader->Contains(full_name(kIndex))) {
             TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
           }

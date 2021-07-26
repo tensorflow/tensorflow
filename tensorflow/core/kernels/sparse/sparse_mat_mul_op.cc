@@ -51,8 +51,8 @@ namespace {
 // Callers are responsible for making sure the given dimensions are within the
 // valid dimension range of the TensorShape.
 void SwapDimSizes(const int dim_a, const int dim_b, TensorShape* shape) {
-  const int64 size_a = shape->dim_size(dim_a);
-  const int64 size_b = shape->dim_size(dim_b);
+  const int64_t size_a = shape->dim_size(dim_a);
+  const int64_t size_b = shape->dim_size(dim_b);
   shape->set_dim(dim_a, size_b);
   shape->set_dim(dim_b, size_a);
 }
@@ -171,14 +171,14 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     // Estimate the cost per batch per as num_output_rows times the product of
     // average number of nonzeros per row.
-    const int64 num_output_rows = output_shape_vec(row_dim);
+    const int64_t num_output_rows = output_shape_vec(row_dim);
     const double avg_nnz_per_row_a =
         input_matrix_a->total_nnz() /
         static_cast<double>(a_shape.dim_size(row_dim) * batch_size);
     const double avg_nnz_per_row_b =
         input_matrix_b->total_nnz() /
         static_cast<double>(b_shape.dim_size(row_dim) * batch_size);
-    const int64 matmul_cost_per_batch =
+    const int64_t matmul_cost_per_batch =
         num_output_rows * (avg_nnz_per_row_a * avg_nnz_per_row_b);
 
     // Parallelize matrix multiplication across batches.
@@ -209,7 +209,7 @@ class CSRSparseMatMulCPUOp : public OpKernel {
     std::partial_sum(batch_ptr_vec.data(),
                      batch_ptr_vec.data() + batch_size + 1,
                      batch_ptr_vec.data());
-    const int64 total_nnz = batch_ptr_vec(batch_size);
+    const int64_t total_nnz = batch_ptr_vec(batch_size);
 
     // Allocate output tensors.
     Tensor output_row_ptr(cpu_allocator(), DT_INT32,
@@ -229,7 +229,7 @@ class CSRSparseMatMulCPUOp : public OpKernel {
             for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
                  ++batch_idx) {
               const SparseMatrix& output_matrix = output_matrices[batch_idx];
-              const int64 nnz = output_matrix.nonZeros();
+              const int64_t nnz = output_matrix.nonZeros();
               std::copy(output_matrix.outerIndexPtr(),
                         output_matrix.outerIndexPtr() + num_output_rows + 1,
                         output_row_ptr_ptr + batch_idx * (num_output_rows + 1));
@@ -266,8 +266,8 @@ class CSRSparseMatMulCPUOp : public OpKernel {
       const CSRSparseMatrix& csr_matrix, const int rank, const int batch_index,
       const bool transpose, const bool adjoint) {
     const auto dense_shape = csr_matrix.dense_shape().vec<int64>();
-    const int64 num_rows = dense_shape(rank == 2 ? 0 : 1);
-    const int64 num_cols = dense_shape(rank == 2 ? 1 : 2);
+    const int64_t num_rows = dense_shape(rank == 2 ? 0 : 1);
+    const int64_t num_cols = dense_shape(rank == 2 ? 1 : 2);
 
     Eigen::Map<const SparseMatrix> sparse_matrix(
         num_rows, num_cols, csr_matrix.nnz(batch_index),
@@ -342,9 +342,9 @@ class CSRSparseMatMulGPUOp : public OpKernel {
     const int rank = a_tensor_shape.dims();
     const int row_dim = (rank == 2) ? 0 : 1;
 
-    const int64 a_inner_dim =
+    const int64_t a_inner_dim =
         a_tensor_shape.dim_size(transpose_a_ ? row_dim : row_dim + 1);
-    const int64 b_inner_dim =
+    const int64_t b_inner_dim =
         b_tensor_shape.dim_size(transpose_b_ ? row_dim + 1 : row_dim);
 
     const int batch_size = a_matrix->batch_size();
@@ -365,7 +365,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
     c_dense_shape(row_dim + 1) =
         b_tensor_shape.dim_size(transpose_b_ ? row_dim : row_dim + 1);
 
-    const int64 rows = c_dense_shape((rank == 2) ? 0 : 1);
+    const int64_t rows = c_dense_shape((rank == 2) ? 0 : 1);
 
     CSRSparseMatrix c;
     Tensor c_row_ptrs;

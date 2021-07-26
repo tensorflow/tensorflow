@@ -2005,7 +2005,6 @@ cc_test(
     size = "small",
     srcs = ["strided_slice_test.cc"],
     tags = [
-        "notap",  # TODO(b/193935673): re-enable the test.
         "tflite_nnapi",
     ],
     deps = [

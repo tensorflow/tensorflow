@@ -250,7 +250,7 @@ void PythonHooks::ProfileSlow(const py::object& frame, const string& event,
 
 void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
                                     PyObject* arg) {
-  const int64 thread_id = Env::Default()->GetCurrentThreadId();
+  const int64_t thread_id = Env::Default()->GetCurrentThreadId();
   uint64 now = GetCurrentTimeNanos();
   auto& thread_traces = entries_[thread_id];
 

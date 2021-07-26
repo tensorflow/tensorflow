@@ -205,8 +205,8 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
             std::vector<std::unique_ptr<CapturedFunction>> captured_funcs,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            int64 num_elements_per_branch, int64 ratio_numerator,
-            int64 ratio_denominator)
+            int64_t num_elements_per_branch, int64_t ratio_numerator,
+            int64_t ratio_denominator)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           captured_funcs_(std::move(captured_funcs)),
@@ -240,7 +240,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override {
-      int64 n = input_->Cardinality();
+      int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
@@ -460,7 +460,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         DCHECK_GE(branch_index_, 0);
         DCHECK_LT(branch_index_, histograms_.size());
 
-        int64 start = EnvTime::NowNanos();
+        int64_t start = EnvTime::NowNanos();
         Status s =
             current_iterator_->GetNext(ctx, out_tensors, end_of_sequence);
 
@@ -495,7 +495,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
                 << " as the fastest index.";
       }
 
-      Status MakeCurrentIterator(IteratorContext* ctx, int64 branch_index,
+      Status MakeCurrentIterator(IteratorContext* ctx, int64_t branch_index,
                                  bool is_experiment, bool is_get_next)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DCHECK_GE(branch_index, 0);
@@ -522,9 +522,9 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           take_dataset_params.type_string = "ChooseFastestBranch_Take";
           take_dataset_params.node_name =
               strings::StrCat(take_dataset_params.type_string, branch_index);
-          int64 count = dataset()->num_elements_per_branch_ *
-                        dataset()->ratio_numerator_ /
-                        dataset()->ratio_denominator_;
+          int64_t count = dataset()->num_elements_per_branch_ *
+                          dataset()->ratio_numerator_ /
+                          dataset()->ratio_denominator_;
           temp_dataset = new TakeDataset(std::move(take_dataset_params), count,
                                          temp_dataset);
         }

@@ -42,7 +42,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.platform import tf_logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
@@ -212,38 +212,59 @@ def _check_trt_version_compatibility():
   Raises:
     RuntimeError: if the TensorRT library version is incompatible.
   """
+
+  if not _pywrap_py_utils.is_tensorrt_enabled():
+    logging.error(
+        "Tensorflow needs to be built with TensorRT support enabled to allow "
+        "TF-TRT to operate.")
+
+    raise RuntimeError("Tensorflow has not been built with TensorRT support.")
+
   linked_version = _pywrap_py_utils.get_linked_tensorrt_version()
   loaded_version = _pywrap_py_utils.get_loaded_tensorrt_version()
-  assert isinstance(linked_version, tuple)
-  assert isinstance(loaded_version, tuple)
-  assert len(linked_version) == 3
-  assert len(loaded_version) == 3
-  tf_logging.info("Linked TensorRT version: %s" % str(linked_version))
-  tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
-  if loaded_version < linked_version:
-    tf_logging.error(
-        "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
-        (".".join(str(x) for x in loaded_version), ".".join(
-            str(x) for x in linked_version)) +
-        "TensorRT does not support forward compatibility. " +
-        "It is also required to use the same major version of TensorRT " +
-        "during compilation and runtime.")
-    raise RuntimeError("Incompatible TensorRT versions")
-  if loaded_version[0] > linked_version[0]:
-    tf_logging.error(
-        "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. " %
-        (".".join(str(x) for x in loaded_version), ".".join(
-            str(x) for x in linked_version)) +
-        "It is required to use the same major version " +
-        "of TensorRT during compilation and runtime.")
+
+  logging.info("Linked TensorRT version: %s", str(linked_version))
+  logging.info("Loaded TensorRT version: %s", str(loaded_version))
+
+  def raise_trt_version_deprecated(version_type, trt_version):
+    assert version_type in [
+        "linked", "loaded"
+    ], ("Incorrect value received for version_type: %s. Accepted: ['linked', "
+        "'loaded']") % version_type
+
+    logging.error(
+        "The {version_type} version of TensorRT: `{trt_version}` has now "
+        "been removed. Please upgrade to TensorRT 7 or more recent.".format(
+            version_type=version_type,
+            trt_version=trt_utils.versionTupleToString(trt_version)))
+
+    raise RuntimeError("Incompatible %s TensorRT versions" % version_type)
+
+  if not trt_utils.is_linked_tensorrt_version_greater_equal(7, 0, 0):
+    raise_trt_version_deprecated("linked", linked_version)
+
+  if not trt_utils.is_loaded_tensorrt_version_greater_equal(7, 0, 0):
+    raise_trt_version_deprecated("loaded", loaded_version)
+
+  if (loaded_version[0] != linked_version[0] or
+      not trt_utils.is_loaded_tensorrt_version_greater_equal(*linked_version)):
+    logging.error(
+        "Loaded TensorRT %s but linked TensorFlow against TensorRT %s. A few "
+        "requirements must be met:\n"
+        "\t-It is required to use the same major version of TensorRT during "
+        "compilation and runtime.\n"
+        "\t-TensorRT does not support forward compatibility. The loaded "
+        "version has to be equal or more recent than the linked version.",
+        trt_utils.versionTupleToString(loaded_version),
+        trt_utils.versionTupleToString(linked_version))
     raise RuntimeError("Incompatible TensorRT major version")
-  if loaded_version != linked_version:
-    tf_logging.info(
-        "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. " %
-        (".".join(str(x) for x in loaded_version), ".".join(
-            str(x) for x in linked_version)) +
-        "This is supported because TensorRT " +
-        " minor/patch upgrades are backward compatible")
+
+  elif loaded_version != linked_version:
+    logging.info(
+        "Loaded TensorRT %s and linked TensorFlow against TensorRT %s. This is "
+        "supported because TensorRT minor/patch upgrades are backward "
+        "compatible.", trt_utils.versionTupleToString(loaded_version),
+        trt_utils.versionTupleToString(linked_version))
 
 
 def _get_tensorrt_rewriter_config(conversion_params,
@@ -476,7 +497,7 @@ class TrtGraphConverter(object):
         ((precision_mode == TrtPrecisionMode.INT8) or
          (precision_mode == TrtPrecisionMode.INT8.lower())) and use_calibration)
     if self._need_calibration and not is_dynamic_op:
-      tf_logging.warn(
+      logging.warn(
           "INT8 precision mode with calibration is supported with "
           "dynamic TRT ops only. Disregarding is_dynamic_op parameter.")
       is_dynamic_op = True
@@ -485,8 +506,7 @@ class TrtGraphConverter(object):
     if is_dynamic_op:
       self._max_batch_size = None
       if max_batch_size is not None:
-        tf_logging.warn("When is_dynamic_op==True max_batch_size should be "
-                        "None")
+        logging.warn("When is_dynamic_op==True max_batch_size should be None")
     else:
       if not isinstance(max_batch_size, int):
         raise ValueError("When is_dynamic_op==False max_batch_size should be "
@@ -753,7 +773,7 @@ class TrtGraphConverter(object):
         collection_def = src_meta_graph_def.collection_def[key]
         kind = collection_def.WhichOneof("kind")
         if kind is None:
-          tf_logging.error(
+          logging.error(
               "Cannot identify data type for collection %s. Skipping.", key)
           continue
         from_proto = ops.get_from_proto_function(key)
@@ -882,8 +902,6 @@ class TrtGraphConverterV2(object):
 
      # Define a generator function that yields input data, and use it to execute
      # the graph to build TRT engines.
-     # With TensorRT 5.1, different engines will be built (and saved later) for
-     # different input shapes to the TRTEngineOp.
      def my_input_fn():
        for _ in range(num_runs):
          inp1, inp2 = ...
@@ -1036,8 +1054,10 @@ class TrtGraphConverterV2(object):
       The optimized GraphDef.
     """
     grappler_session_config = config_pb2.ConfigProto()
+    # Always set `allow_build_at_runtime` for offline TensorRT engine building.
     custom_rewriter_config = _get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params,
+        conversion_params=self._conversion_params._replace(
+            allow_build_at_runtime=True),
         is_dynamic_op=True,
         max_batch_size=None,
         disable_non_trt_optimizers=self._test_only_disable_non_trt_optimizers,
@@ -1118,8 +1138,8 @@ class TrtGraphConverterV2(object):
     # Remove the original function from the TF context in this case.
     for f in self._converted_graph_def.library.function:
       while context.context().has_function(f.signature.name):
-        tf_logging.info("Removing original function %s from the context",
-                        f.signature.name)
+        logging.info("Removing original function %s from the context",
+                     f.signature.name)
         context.context().remove_function(f.signature.name)
     # This also adds the converted functions to the context.
     self._converted_func = wrap_function.function_from_graph_def(
@@ -1251,10 +1271,11 @@ class TrtGraphConverterV2(object):
             filename=filename,
             delete_resource=True)
       except errors.NotFoundError:
-        tf_logging.info("Could not find %s in TF-TRT cache. "
-                        "This can happen if build() is not called, "
-                        "which means TensorRT engines will be built "
-                        "and cached at runtime." % canonical_engine_name)
+        logging.info(
+            "Could not find %s in TF-TRT cache. "
+            "This can happen if build() is not called, "
+            "which means TensorRT engines will be built "
+            "and cached at runtime.", canonical_engine_name)
         return
 
       # TODO(laigd): add an option for the user to choose the device.
@@ -1278,7 +1299,7 @@ class TrtGraphConverterV2(object):
     if not self._conversion_params.allow_build_at_runtime:
 
       def _reset_allow_build_at_runtime(node):
-        node.attr["allow_build_at_runtime"].b = False
+        node.attr["_allow_build_at_runtime"].b = False
 
       self._for_each_trt_node(self._converted_graph_def,
                               _reset_allow_build_at_runtime)

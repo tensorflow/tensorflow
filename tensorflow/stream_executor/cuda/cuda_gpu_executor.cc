@@ -931,7 +931,7 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
   buf[did_read] = '\0';
   content = buf;
 
-  int32 value;
+  int32_t value;
   if (port::safe_strto32(content, &value)) {
     if (value < 0) {  // See http://b/18228951 for details on this path.
       LOG(INFO) << "successful NUMA node read from SysFS had negative value ("

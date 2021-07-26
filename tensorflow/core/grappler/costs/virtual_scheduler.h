@@ -378,9 +378,9 @@ class SchedulerState {
   }
 
   OpContext CreateOpContext(const NodeDef* node) const;
-  std::vector<const NodeDef*> MarkNodeExecuted(const NodeDef* node,
-                                               const Costs& node_costs,
-                                               const OpContext& op_context);
+  std::vector<const NodeDef*> MarkNodeExecuted(
+      const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+      const std::string& override_device_name = "");
 
   // Some getter functions.
   const GrapplerItem* GetGrapplerItem() { return grappler_item_; }

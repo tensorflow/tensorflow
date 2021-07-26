@@ -50,9 +50,9 @@ class AdjustContrastOp : public OpKernel {
     OP_REQUIRES(context, input.dims() >= 3,
                 errors::InvalidArgument("input must be at least 3-D, got shape",
                                         input.shape().DebugString()));
-    const int64 height = input.dim_size(input.dims() - 3);
-    const int64 width = input.dim_size(input.dims() - 2);
-    const int64 channels = input.dim_size(input.dims() - 1);
+    const int64_t height = input.dim_size(input.dims() - 3);
+    const int64_t width = input.dim_size(input.dims() - 2);
+    const int64_t channels = input.dim_size(input.dims() - 1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor.shape()),
                 errors::InvalidArgument("contrast_factor must be scalar: ",
@@ -74,7 +74,7 @@ class AdjustContrastOp : public OpKernel {
                                                    &mean_values));
 
     if (input.NumElements() > 0) {
-      const int64 batch = input.NumElements() / (height * width * channels);
+      const int64_t batch = input.NumElements() / (height * width * channels);
       const int64 shape[4] = {batch, height, width, channels};
       functor::AdjustContrast<Device, T>()(
           context->eigen_device<Device>(), input.shaped<T, 4>(shape),
@@ -159,9 +159,9 @@ class AdjustContrastOpV2Base : public OpKernel {
     OP_REQUIRES(context, input.dims() >= 3,
                 errors::InvalidArgument("input must be at least 3-D, got shape",
                                         input.shape().DebugString()));
-    const int64 height = input.dim_size(input.dims() - 3);
-    const int64 width = input.dim_size(input.dims() - 2);
-    const int64 channels = input.dim_size(input.dims() - 1);
+    const int64_t height = input.dim_size(input.dims() - 3);
+    const int64_t width = input.dim_size(input.dims() - 2);
+    const int64_t channels = input.dim_size(input.dims() - 1);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(factor.shape()),
                 errors::InvalidArgument("contrast_factor must be scalar: ",
@@ -172,7 +172,7 @@ class AdjustContrastOpV2Base : public OpKernel {
                    context->allocate_output(0, input.shape(), &output));
 
     if (input.NumElements() > 0) {
-      const int64 batch = input.NumElements() / (height * width * channels);
+      const int64_t batch = input.NumElements() / (height * width * channels);
       ComputeOptions options;
       options.input = &input;
       options.factor = &factor;
@@ -200,11 +200,11 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
 
   void DoCompute(OpKernelContext* context,
                  const ComputeOptions& options) override {
-    const int64 batch = options.batch;
-    const int64 height = options.height;
-    const int64 width = options.width;
-    const int64 channels = options.channels;
-    const int64 image_size = height * width;
+    const int64_t batch = options.batch;
+    const int64_t height = options.height;
+    const int64_t width = options.width;
+    const int64_t channels = options.channels;
+    const int64_t image_size = height * width;
     const Tensor* input = options.input;
     const Tensor* factor = options.factor;
     Tensor* output = options.output;
@@ -232,25 +232,25 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
   void ReduceMeanAcrossImage(typename TTypes<float, 3>::ConstTensor input,
                              typename TTypes<float, 2>::Tensor mean,
                              typename TTypes<float, 3>::Tensor scratch) {
-    const int64 batch = input.dimension(0);
-    const int64 image_size = input.dimension(1);
-    const int64 channels = input.dimension(2);
+    const int64_t batch = input.dimension(0);
+    const int64_t image_size = input.dimension(1);
+    const int64_t channels = input.dimension(2);
     TTypes<float, 1>::ConstTensor input_flat(&input(0, 0, 0), input.size());
     TTypes<float, 1>::Tensor mean_flat(&mean(0, 0), mean.size());
     TTypes<float, 1>::Tensor summation_scratch(&scratch(0, 0, 0),
                                                scratch.size());
     typedef Eigen::array<Eigen::DenseIndex, 1> Index;
-    const int64 plane_size = image_size * channels;
+    const int64_t plane_size = image_size * channels;
     // Since the number of channels in the early layers is often small, a
     // straightforward loop for summing cannot utilize vectorization.
     // This algorithm repeatedly folds each image plane by half, until
     // only one set of channels remains.
-    for (int64 i = 0; i < batch; i++) {
+    for (int64_t i = 0; i < batch; i++) {
       auto input_plane =
           input_flat.slice(Index(i * plane_size), Index(plane_size));
       auto summation_plane =
           summation_scratch.slice(Index(i * plane_size), Index(plane_size));
-      int64 remaining_size = image_size;
+      int64_t remaining_size = image_size;
       int round = 0;
       // Sum the input(i, :, k) into mean(i, k). Repeatedly splits the input
       // array into half and sums the two halves, until only one set of channels
@@ -274,8 +274,8 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
       // that in each round we sum up elements that are contiguous. So we can
       // use their flattened structure to gain vectorization efficiency.
       do {
-        int64 right_size = remaining_size / 2;
-        int64 left_size = remaining_size - right_size;
+        int64_t right_size = remaining_size / 2;
+        int64_t left_size = remaining_size - right_size;
         DCHECK(left_size == right_size || left_size == right_size + 1);
         if (round == 0) {
           // In the first round, sum the left side and right side of the input
@@ -317,14 +317,14 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
   // dim-1.
   void BroadcastAcrossImage(typename TTypes<float, 2>::Tensor inputs,
                             typename TTypes<float, 3>::Tensor outputs) {
-    int64 batch = outputs.dimension(0);
-    int64 image_size = outputs.dimension(1);
-    int64 channels = outputs.dimension(2);
+    int64_t batch = outputs.dimension(0);
+    int64_t image_size = outputs.dimension(1);
+    int64_t channels = outputs.dimension(2);
     // Similar to the reduction case, a straightforward implementation of this
     // does not utilize vectorization well because of the small channel size.
     // This algorithm repeatedly increases the area to be copied, and leads to
     // much better vectorizations in the copy.
-    for (int64 i = 0; i < batch; i++) {
+    for (int64_t i = 0; i < batch; i++) {
       // Copy over the inputs into outputs in this batch. Effectively:
       // outputs(i, :, k) = inputs(i, k). An example of how this algorithm
       // works:
@@ -350,13 +350,13 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
       // Copy the first set of channels.
       float* output_p = &outputs(i, 0, 0);
       memcpy(output_p, mean_p, sizeof(float) * channels);
-      int64 copied = 1;
+      int64_t copied = 1;
       while (copied < image_size) {
         // Repeatedly increases the number of elements to copy so they have
         // better vectorizations. However, the source of the copy has to be
         // not too large to stay in the cache.
-        const int64 kMaxToCopy = 1024;
-        int64 to_copy = std::min({copied, image_size - copied, kMaxToCopy});
+        const int64_t kMaxToCopy = 1024;
+        int64_t to_copy = std::min({copied, image_size - copied, kMaxToCopy});
         memcpy(output_p + channels * copied, output_p,
                to_copy * channels * sizeof(float));
         copied += to_copy;
@@ -372,7 +372,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
     const float factor_value = factor();
     float* p = output.data();
     const float* q = input.data();
-    for (int64 n = 0; n < input.size(); ++n) {
+    for (int64_t n = 0; n < input.size(); ++n) {
       p[n] += factor_value * (q[n] - p[n]);
     }
   }

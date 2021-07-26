@@ -27,7 +27,7 @@ class TestStringStream : public InputStreamInterface {
  public:
   explicit TestStringStream(const string& content) : content_(content) {}
 
-  Status ReadNBytes(int64 bytes_to_read, tstring* result) override {
+  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     result->clear();
     if (pos_ + bytes_to_read > content_.size()) {
       return errors::OutOfRange("limit reached");

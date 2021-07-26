@@ -94,6 +94,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
 
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
@@ -855,6 +856,7 @@ class Function(core.GenericFunction):
   def _run_functions_eagerly(self):
     return RUN_FUNCTIONS_EAGERLY
 
+  @traceback_utils.filter_traceback
   def __call__(self, *args, **kwds):
     # Implements GenericFunction.__call__.
     if self._run_functions_eagerly:

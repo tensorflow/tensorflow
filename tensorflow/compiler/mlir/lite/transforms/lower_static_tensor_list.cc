@@ -1420,9 +1420,16 @@ void LowerStaticTensorListPass::runOnOperation() {
   patterns.insert<ConvertEmptyTensorList, ConvertTensorListReserve,
                   ConvertTensorListConcatV2>(context,
                                              allow_tensorlist_pass_through);
+  ModuleOp module = getOperation();
   if (!allow_tensorlist_pass_through) {
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns)))) {
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      module.emitError(
+          "Lowering tensor list ops is failed. Please consider using Select TF "
+          "ops and disabling `_experimental_lower_tensor_list_ops` flag in the "
+          "TFLite converter object. For example, "
+          "converter.target_spec.supported_ops = "
+          "[tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS]\\n "
+          "converter._experimental_lower_tensor_list_ops = False");
       signalPassFailure();
     }
   } else {
@@ -1431,8 +1438,7 @@ void LowerStaticTensorListPass::runOnOperation() {
     // a `StatusScopedDiagnosticHandler` here to capture diagnostics generated
     // within this pass.
     StatusScopedDiagnosticHandler handler(context);
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns)))) {
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       auto _ = handler.ConsumeStatus();
     }
   }

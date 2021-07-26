@@ -27,6 +27,7 @@ from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -530,8 +531,9 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeInvalidProcessingMode(self):
     ds = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegex(ValueError,
-                                "invalid is not a valid processing mode"):
+    with self.assertRaisesRegex(
+        ValueError, "should be a ShardingPolicy, `\"parallel_epochs\"`, or "
+        "`\"distributed_epoch\"`. Got 'invalid'."):
       ds = ds.apply(
           data_service_ops.distribute(
               processing_mode="invalid", service="grpc://localhost:5000"))
@@ -820,6 +822,14 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       ds = data_service_ops.from_dataset_id("parallel_epochs",
                                             cluster.dispatcher_address(),
                                             dataset_id)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoShardingPolicy(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(20)
+    dataset = self.make_distributed_dataset(
+        dataset, cluster=cluster, processing_mode=ShardingPolicy.OFF)
+    self.assertDatasetProduces(dataset, list(range(20)))
 
 
 if __name__ == "__main__":

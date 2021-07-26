@@ -55,9 +55,9 @@ class DynamicPartitionOp_Shared : public OpKernel {
     // Count how many occurrences of each partition id we have in partitions
     gtl::InlinedVector<int, 32> partition_count(num_partitions_);
     auto e_partitions = (*partitions)->flat<int32>();
-    const int64 N = e_partitions.dimension(0);
-    for (int64 i = 0; i < N; i++) {
-      const int32 p = internal::SubtleMustCopy(e_partitions(i));
+    const int64_t N = e_partitions.dimension(0);
+    for (int64_t i = 0; i < N; i++) {
+      const int32_t p = internal::SubtleMustCopy(e_partitions(i));
       OP_REQUIRES(c, FastBoundsCheck(p, num_partitions_),
                   errors::InvalidArgument(
                       "partitions", SliceDebugString((*partitions)->shape(), i),
@@ -96,7 +96,7 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
     if (num_partitions_ == 0 || data->NumElements() == 0) return;
 
     auto e_partitions = partitions->flat<int32>();
-    const int64 N = e_partitions.dimension(0);
+    const int64_t N = e_partitions.dimension(0);
     gtl::InlinedVector<int, 32> output_index(num_partitions_);
 
     if (partitions->dims() == data->dims()) {
@@ -109,8 +109,8 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
       for (int p = 0; p < num_partitions_; p++) {
         out_vec.push_back(outputs[p]->vec<T>());
       }
-      for (int64 i = 0; i < N; i++) {
-        const int32 p = internal::SubtleMustCopy(e_partitions(i));
+      for (int64_t i = 0; i < N; i++) {
+        const int32_t p = internal::SubtleMustCopy(e_partitions(i));
         OP_REQUIRES(
             c, FastBoundsCheck(p, num_partitions_),
             errors::InvalidArgument("indices[", i, "] is out of range"));
@@ -133,12 +133,12 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
       }
 
       // Walk through data and copy the data to the appropriate output tensor
-      const int64 slice_size = data->NumElements() / N;
+      const int64_t slice_size = data->NumElements() / N;
       const auto data_flat = data->shaped<T, 2>({N, slice_size});
       Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, slice_size);
-      for (int64 i = 0; i < N; i++) {
+      for (int64_t i = 0; i < N; i++) {
         // outputs[p][output_index[p]++] = data[i]
-        const int32 p = internal::SubtleMustCopy(e_partitions(i));
+        const int32_t p = internal::SubtleMustCopy(e_partitions(i));
         OP_REQUIRES(
             c, FastBoundsCheck(p, num_partitions_),
             errors::InvalidArgument("indices[", i,

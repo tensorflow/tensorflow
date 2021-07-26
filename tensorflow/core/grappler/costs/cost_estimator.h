@@ -29,8 +29,8 @@ class CostGraphDef;
 namespace grappler {
 struct GrapplerItem;
 
-constexpr int64 kMemoryUnknown = -1ll;
-constexpr int64 kZeroMemory = 0ll;
+constexpr int64_t kMemoryUnknown = -1ll;
+constexpr int64_t kZeroMemory = 0ll;
 
 struct DeviceInfo {
   // Billions of operations executed per second.

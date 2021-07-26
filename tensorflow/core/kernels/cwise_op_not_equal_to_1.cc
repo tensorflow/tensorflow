@@ -33,8 +33,6 @@ REGISTER_KERNEL_BUILDER(Name("NotEqual")
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "NotEqual", functor::not_equal_to, float, Eigen::half,
           double, uint8);
-#else
-REGISTER(BinaryOp, GPU, "NotEqual", functor::not_equal_to, uint8);
 #endif
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

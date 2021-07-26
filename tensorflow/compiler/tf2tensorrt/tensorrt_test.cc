@@ -53,12 +53,8 @@ TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
       nvinfer1::createInferBuilder(logger));
   ScopedWeights weights(2.0);
   ScopedWeights bias(3.0);
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network(
       builder->createNetworkV2(0L));
-#else
-  nvinfer1::INetworkDefinition* network = builder->createNetwork();
-#endif
   // Add the input.
   auto input = network->addInput(kInputTensor, nvinfer1::DataType::kFLOAT,
                                  nvinfer1::Dims3{1, 1, 1});
@@ -72,16 +68,11 @@ TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
   network->markOutput(*output);
   // Build the engine
   builder->setMaxBatchSize(1);
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builderConfig(
       builder->createBuilderConfig());
   builderConfig->setMaxWorkspaceSize(1 << 10);
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
       builder->buildEngineWithConfig(*network, *builderConfig));
-#else
-  builder->setMaxWorkspaceSize(1 << 10);
-  auto engine = builder->buildCudaEngine(*network);
-#endif
   EXPECT_NE(engine, nullptr);
   // Serialize the engine to create a model, then close everything.
   TrtUniquePtrType<nvinfer1::IHostMemory> model(engine->serialize());

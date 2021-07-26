@@ -48,7 +48,8 @@ namespace xla {
 namespace gpu {
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind);
-StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type);
+StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+    PrimitiveType element_type);
 
 bool IsGlobalNcclConfig();
 bool IsNcclLaunchModeParallel();

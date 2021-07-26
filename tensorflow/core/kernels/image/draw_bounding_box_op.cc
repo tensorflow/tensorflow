@@ -41,7 +41,7 @@ std::vector<std::vector<float>> DefaultColorTable(int depth) {
   color_table.emplace_back(std::vector<float>({1, 0, 1, 1}));    // 9: fuchsia
 
   if (depth == 1) {
-    for (int64 i = 0; i < color_table.size(); i++) {
+    for (int64_t i = 0; i < color_table.size(); i++) {
       color_table[i][0] = 1;
     }
   }
@@ -58,7 +58,7 @@ class DrawBoundingBoxesOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& images = context->input(0);
     const Tensor& boxes = context->input(1);
-    const int64 depth = images.dim_size(3);
+    const int64_t depth = images.dim_size(3);
 
     OP_REQUIRES(context, images.dims() == 4,
                 errors::InvalidArgument("The rank of the images should be 4"));
@@ -79,9 +79,9 @@ class DrawBoundingBoxesOp : public OpKernel {
             "The size of the third dimension of the box must be 4. Received: ",
             boxes.dim_size(2)));
 
-    const int64 batch_size = images.dim_size(0);
-    const int64 height = images.dim_size(1);
-    const int64 width = images.dim_size(2);
+    const int64_t batch_size = images.dim_size(0);
+    const int64_t height = images.dim_size(1);
+    const int64_t width = images.dim_size(2);
     std::vector<std::vector<float>> color_table;
     if (context->num_inputs() == 3) {
       const Tensor& colors_tensor = context->input(2);
@@ -96,9 +96,9 @@ class DrawBoundingBoxesOp : public OpKernel {
         color_table.clear();
 
         auto colors = colors_tensor.matrix<float>();
-        for (int64 i = 0; i < colors.dimension(0); i++) {
+        for (int64_t i = 0; i < colors.dimension(0); i++) {
           std::vector<float> color_value(4);
-          for (int64 j = 0; j < 4; j++) {
+          for (int64_t j = 0; j < 4; j++) {
             color_value[j] = colors(i, j);
           }
           color_table.emplace_back(color_value);
@@ -117,24 +117,27 @@ class DrawBoundingBoxesOp : public OpKernel {
     output->tensor<T, 4>() = images.tensor<T, 4>();
     auto canvas = output->tensor<T, 4>();
 
-    for (int64 b = 0; b < batch_size; ++b) {
-      const int64 num_boxes = boxes.dim_size(1);
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t num_boxes = boxes.dim_size(1);
       const auto tboxes = boxes.tensor<T, 3>();
-      for (int64 bb = 0; bb < num_boxes; ++bb) {
-        int64 color_index = bb % color_table.size();
-        const int64 min_box_row =
+      for (int64_t bb = 0; bb < num_boxes; ++bb) {
+        int64_t color_index = bb % color_table.size();
+        const int64_t min_box_row =
             static_cast<float>(tboxes(b, bb, 0)) * (height - 1);
-        const int64 min_box_row_clamp = std::max<int64>(min_box_row, int64{0});
-        const int64 max_box_row =
+        const int64_t min_box_row_clamp =
+            std::max<int64>(min_box_row, int64{0});
+        const int64_t max_box_row =
             static_cast<float>(tboxes(b, bb, 2)) * (height - 1);
-        const int64 max_box_row_clamp =
+        const int64_t max_box_row_clamp =
             std::min<int64>(max_box_row, height - 1);
-        const int64 min_box_col =
+        const int64_t min_box_col =
             static_cast<float>(tboxes(b, bb, 1)) * (width - 1);
-        const int64 min_box_col_clamp = std::max<int64>(min_box_col, int64{0});
-        const int64 max_box_col =
+        const int64_t min_box_col_clamp =
+            std::max<int64>(min_box_col, int64{0});
+        const int64_t max_box_col =
             static_cast<float>(tboxes(b, bb, 3)) * (width - 1);
-        const int64 max_box_col_clamp = std::min<int64>(max_box_col, width - 1);
+        const int64_t max_box_col_clamp =
+            std::min<int64>(max_box_col, width - 1);
 
         if (min_box_row > max_box_row || min_box_col > max_box_col) {
           LOG(WARNING) << "Bounding box (" << min_box_row << "," << min_box_col
@@ -196,32 +199,32 @@ class DrawBoundingBoxesOp : public OpKernel {
 
         // Draw top line.
         if (min_box_row >= 0) {
-          for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-            for (int64 c = 0; c < depth; c++) {
+          for (int64_t j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
+            for (int64_t c = 0; c < depth; c++) {
               canvas(b, min_box_row, j, c) =
                   static_cast<T>(color_table[color_index][c]);
             }
         }
         // Draw bottom line.
         if (max_box_row < height) {
-          for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-            for (int64 c = 0; c < depth; c++) {
+          for (int64_t j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
+            for (int64_t c = 0; c < depth; c++) {
               canvas(b, max_box_row, j, c) =
                   static_cast<T>(color_table[color_index][c]);
             }
         }
         // Draw left line.
         if (min_box_col >= 0) {
-          for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-            for (int64 c = 0; c < depth; c++) {
+          for (int64_t i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
+            for (int64_t c = 0; c < depth; c++) {
               canvas(b, i, min_box_col, c) =
                   static_cast<T>(color_table[color_index][c]);
             }
         }
         // Draw right line.
         if (max_box_col < width) {
-          for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-            for (int64 c = 0; c < depth; c++) {
+          for (int64_t i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
+            for (int64_t c = 0; c < depth; c++) {
               canvas(b, i, max_box_col, c) =
                   static_cast<T>(color_table[color_index][c]);
             }

@@ -1677,3 +1677,31 @@ class OnWritePolicy(VariablePolicy):
       options: A `SaveOptions` instance.
     """
     values_util.write_object_proto(var, proto, options)
+
+
+class PerWorkerResource():
+  """A per-worker CachableResource class for non-ParameterServer strategy.
+
+  Resources that populate `host_to_resources` should be instances of classes
+  subclassing CachableResource, although currently it's only used and tested for
+  StaticHashTable with TPUStrategy.
+  """
+
+  def __init__(self, strategy, host_to_resources):
+    self._strategy = strategy
+    self._host_to_resources = host_to_resources
+
+  def __getattribute__(self, name):
+    if name not in ("__init__", "__getattribute__", "_host_to_resources",
+                    "_strategy", "local_resource"):
+      return getattr(self.local_resource(), name)
+    return super(PerWorkerResource, self).__getattribute__(name)
+
+  def local_resource(self):
+    """Returns the resource on the local worker."""
+    current_device = device_util.canonicalize(device_util.current())
+    host_device = device_util.canonicalize(
+        device_util.get_host_for_device(current_device))
+    return self._host_to_resources.get(
+        host_device,
+        self._host_to_resources[next(iter(self._host_to_resources))])

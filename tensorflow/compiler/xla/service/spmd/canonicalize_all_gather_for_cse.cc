@@ -56,11 +56,11 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
       continue;
     }
     HloInstruction* real_data = ag->mutable_operand(0);
-    const int64 ag_dim = ag->all_gather_dimension();
+    const int64_t ag_dim = ag->all_gather_dimension();
     const Shape& out_shape = ag->shape();
     const Shape& in_shape = ag->operand(0)->shape();
     CHECK_EQ(out_shape.dimensions(ag_dim) % in_shape.dimensions(ag_dim), 0);
-    const int64 all_gather_participants =
+    const int64_t all_gather_participants =
         out_shape.dimensions(ag_dim) / in_shape.dimensions(ag_dim);
     // Look through bitcast/bitcast-like reshapes, keeping track of the position
     // of the all-gather dimension through the reshapes (should stay 0 or become

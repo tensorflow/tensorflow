@@ -267,13 +267,13 @@ bool DecodeVariant(std::string* buf, VariantTensorDataProto* value);
 
 // Encodes an array of Variant objects in to the given StringListEncoder.
 // `variant_array` is assumed to point to an array of `n` Variant objects.
-void EncodeVariantList(const Variant* variant_array, int64 n,
+void EncodeVariantList(const Variant* variant_array, int64_t n,
                        std::unique_ptr<port::StringListEncoder> e);
 
 // Decodes an array of Variant objects from the given StringListDecoder.
 // `variant_array` is assumed to point to an array of `n` Variant objects.
 bool DecodeVariantList(std::unique_ptr<port::StringListDecoder> d,
-                       Variant* variant_array, int64 n);
+                       Variant* variant_array, int64_t n);
 
 }  // end namespace tensorflow
 

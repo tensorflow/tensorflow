@@ -75,8 +75,8 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
                                           const DevicePutOptions& options) {
   void* ptr;
   Shape shape;
-  int64 data_int64;
-  int32 data_int32;
+  int64_t data_int64;
+  int32_t data_int32;
 
   if (options.squash_64bit_types) {
     try {

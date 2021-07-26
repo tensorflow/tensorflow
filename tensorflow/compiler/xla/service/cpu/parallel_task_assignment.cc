@@ -30,15 +30,15 @@ namespace cpu {
 
 class SimpleCostModel : public ParallelCostModel {
  public:
-  SimpleCostModel(const int64 max_parallelism,
+  SimpleCostModel(const int64_t max_parallelism,
                   const HloCostAnalysis::ShapeSizeFunction& shape_size)
       : max_parallelism_(max_parallelism), shape_size_(shape_size) {}
   ~SimpleCostModel() override {}
 
   int64 GetParallelTaskCount(HloInstruction* instruction) override {
     // Simple cost model based on hlo size and typical L2 cache size.
-    const int64 instruction_cost = shape_size_(instruction->shape());
-    const int64 min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
+    const int64_t instruction_cost = shape_size_(instruction->shape());
+    const int64_t min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
     // Return target parallel task count in [1, max_parallelism_].
     return std::min(max_parallelism_,
                     std::max(int64{1}, instruction_cost / min_cost_per_thread));
@@ -51,7 +51,7 @@ class SimpleCostModel : public ParallelCostModel {
 
 class DefaultCostModel : public ParallelCostModel {
  public:
-  DefaultCostModel(const int64 max_parallelism,
+  DefaultCostModel(const int64_t max_parallelism,
                    const HloCostAnalysis::ShapeSizeFunction& shape_size,
                    std::unique_ptr<HloCostAnalysis> cost_analysis)
       : max_parallelism_(max_parallelism),
@@ -65,7 +65,7 @@ class DefaultCostModel : public ParallelCostModel {
     int64_t min_cost_per_thread;
     int64_t max_parallelism;
     // Calculate flops-to-bytes-ratio for 'instruction'.
-    const int64 bytes_accessed =
+    const int64_t bytes_accessed =
         std::max(int64{1}, cost_analysis_->bytes_accessed(*instruction));
     const float flops_to_bytes_ratio =
         cost_analysis_->flop_count(*instruction) /
@@ -107,7 +107,7 @@ class DefaultCostModel : public ParallelCostModel {
 };
 
 ParallelTaskAssignment::ParallelTaskAssignment(
-    const int64 max_parallelism,
+    const int64_t max_parallelism,
     const HloCostAnalysis::ShapeSizeFunction& shape_size, HloModule* module,
     const TargetMachineFeatures* target_machine_features)
     : target_machine_features_(*target_machine_features) {
@@ -216,11 +216,11 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
       continue;
     }
     // Get target parallel task count computed for 'instruction'.
-    const int64 target_parallel_task_count = (*it).second;
+    const int64_t target_parallel_task_count = (*it).second;
     // Assign feasible dimension partitions (based on actual dimension sizes).
     auto dim_partition_counts = ShapePartitionAssigner(instruction->shape())
                                     .Run(target_parallel_task_count);
-    const int64 total_partition_count =
+    const int64_t total_partition_count =
         ShapePartitionAssigner::GetTotalPartitionCount(dim_partition_counts);
     if (total_partition_count <= 1) {
       // Feasible partition calculation resulting in no partitioning, so skip.
@@ -254,7 +254,7 @@ void ParallelTaskAssigner::ComputeTargetParallelTasks(
   for (auto* computation : module->MakeNonfusionComputations()) {
     for (auto* instruction : computation->instructions()) {
       // Query ParallelTaskAssignment for target parallel task count.
-      const int64 target_parallel_task_count =
+      const int64_t target_parallel_task_count =
           parallel_task_assignment.GetTargetParallelTaskCount(instruction);
       if (target_parallel_task_count > 1) {
         hlo_to_parallel_tasks->insert(

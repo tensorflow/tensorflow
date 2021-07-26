@@ -50,7 +50,11 @@ void populateExtraBufferizePatterns(MLIRContext *context,
 
 /// Populate patterns to rewrite TF operations to TF framework JIT invocations.
 void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
-                                       RewritePatternSet *patterns);
+                                       RewritePatternSet *patterns,
+                                       llvm::ArrayRef<int64_t> tile_sizes,
+                                       llvm::ArrayRef<int64_t> unroll_factors,
+                                       int64_t max_supported_rank,
+                                       bool cpu_codegen);
 
 }  // namespace transforms
 }  // namespace kernel_gen

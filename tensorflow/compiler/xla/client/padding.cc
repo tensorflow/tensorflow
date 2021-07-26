@@ -52,9 +52,9 @@ std::vector<std::pair<int64, int64>> MakePadding(
 
     case Padding::kSame:
       for (size_t i = 0; i < input_dimensions.size(); ++i) {
-        int64 input_dimension = input_dimensions[i];
-        int64 window_dimension = window_dimensions[i];
-        int64 window_stride = window_strides[i];
+        int64_t input_dimension = input_dimensions[i];
+        int64_t window_dimension = window_dimensions[i];
+        int64_t window_stride = window_strides[i];
         // We follow the same convention as in Tensorflow, such that
         // output dimension := ceil(input_dimension / window_stride).
         // See tensorflow/tensorflow/python/ops/nn.py
@@ -119,9 +119,9 @@ std::vector<std::pair<int64, int64>> MakePadding(
         // 3'rd kernel:             12345
         // 4'th kernel:                12345
         // padded base area:  00----------00
-        int64 output_dimension =
+        int64_t output_dimension =
             tensorflow::MathUtil::CeilOfRatio(input_dimension, window_stride);
-        int64 padding_size =
+        int64_t padding_size =
             std::max<int64>((output_dimension - 1) * window_stride +
                                 window_dimension - input_dimension,
                             0);

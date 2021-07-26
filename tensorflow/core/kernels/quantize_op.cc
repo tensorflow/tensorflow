@@ -143,7 +143,7 @@ class QuantizeV2Op : public OpKernel {
 
     auto input_tensor =
         input.template flat_inner_outer_dims<float, 3>(axis_ - 1);
-    int64 pre_dim = 1, post_dim = 1;
+    int64_t pre_dim = 1, post_dim = 1;
     for (int i = 0; i < axis_; ++i) {
       pre_dim *= output->dim_size(i);
     }

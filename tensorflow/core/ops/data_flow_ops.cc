@@ -89,11 +89,11 @@ REGISTER_OP("DynamicPartition")
 namespace {
 
 Status DynamicStitchShapeFunction(InferenceContext* c) {
-  int32 num_partitions;
+  int32_t num_partitions;
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
   bool all_indices_constant = true;
-  int32 max_index = -1;
+  int32_t max_index = -1;
   ShapeHandle extra_shape = c->UnknownShape();
   for (int i = 0; i < num_partitions; ++i) {
     const Tensor* indices_t = c->input_tensor(i);
@@ -340,7 +340,7 @@ REGISTER_OP("QueueDequeueManyV2")
       if (c->input_tensor(1) == nullptr) {
         n_shape = c->Vector(InferenceContext::kUnknownDim);
       } else {
-        const int32 n = c->input_tensor(1)->scalar<int32>()();
+        const int32_t n = c->input_tensor(1)->scalar<int32>()();
         if (n < 0) {
           return errors::InvalidArgument("Input 'n' must be >= 0, but is ", n);
         }
@@ -690,7 +690,7 @@ REGISTER_OP("TensorArrayGradWithShape")
         int64_t prepend_rank = c->Value(c->Dim(c->input(2), 0));
         if (c->RankKnown(input_shape) &&
             prepend_rank != InferenceContext::kUnknownDim) {
-          int32 input_rank = c->Rank(input_shape);
+          int32_t input_rank = c->Rank(input_shape);
           std::vector<DimensionHandle> dims;
           dims.reserve(prepend_rank + input_rank);
           for (int i = 0; i < prepend_rank; ++i) {

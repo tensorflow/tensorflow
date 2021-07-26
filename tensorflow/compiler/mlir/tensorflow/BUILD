@@ -18,6 +18,8 @@ package_group(
     packages = [
         "//platforms/darwinn/tools/mlir_fuzzer/...",
         "//tensorflow/compiler/...",
+        "//tensorflow/core/runtime_fallback/test/...",
+        "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/core/tfrt/utils/...",
         "//tensorflow/cc/...",
         "//tensorflow/python/...",

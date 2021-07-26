@@ -76,7 +76,7 @@ Status InputBuffer::ReadLine(T* result) {
 template Status InputBuffer::ReadLine<std::string>(std::string* result);
 template Status InputBuffer::ReadLine<tstring>(tstring* result);
 
-Status InputBuffer::ReadNBytes(int64 bytes_to_read, std::string* result) {
+Status InputBuffer::ReadNBytes(int64_t bytes_to_read, std::string* result) {
   result->clear();
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
@@ -89,7 +89,7 @@ Status InputBuffer::ReadNBytes(int64 bytes_to_read, std::string* result) {
   return status;
 }
 
-Status InputBuffer::ReadNBytes(int64 bytes_to_read, char* result,
+Status InputBuffer::ReadNBytes(int64_t bytes_to_read, char* result,
                                size_t* bytes_read) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
@@ -106,7 +106,7 @@ Status InputBuffer::ReadNBytes(int64 bytes_to_read, char* result,
       }
     }
     // Do not go over the buffer boundary.
-    const int64 bytes_to_copy =
+    const int64_t bytes_to_copy =
         std::min<int64>(limit_ - pos_, bytes_to_read - *bytes_read);
     // Copies buffered data into the destination.
     memcpy(result + *bytes_read, pos_, bytes_to_copy);
@@ -152,12 +152,12 @@ Status InputBuffer::ReadVarintFallback(T* result, int max_bytes) {
   return errors::DataLoss("Stored data longer than ", max_bytes, " bytes.");
 }
 
-Status InputBuffer::SkipNBytes(int64 bytes_to_skip) {
+Status InputBuffer::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can only skip forward, not ",
                                    bytes_to_skip);
   }
-  int64 bytes_skipped = 0;
+  int64_t bytes_skipped = 0;
   Status s;
   while (bytes_skipped < bytes_to_skip) {
     if (pos_ == limit_) {
@@ -167,7 +167,7 @@ Status InputBuffer::SkipNBytes(int64 bytes_to_skip) {
         break;
       }
     }
-    const int64 bytes_to_advance =
+    const int64_t bytes_to_advance =
         std::min<int64>(limit_ - pos_, bytes_to_skip - bytes_skipped);
     bytes_skipped += bytes_to_advance;
     pos_ += bytes_to_advance;
@@ -178,13 +178,13 @@ Status InputBuffer::SkipNBytes(int64 bytes_to_skip) {
   return s;
 }
 
-Status InputBuffer::Seek(int64 position) {
+Status InputBuffer::Seek(int64_t position) {
   if (position < 0) {
     return errors::InvalidArgument("Seeking to a negative position: ",
                                    position);
   }
   // Position of the buffer within file.
-  const int64 bufpos = file_pos_ - static_cast<int64>(limit_ - buf_);
+  const int64_t bufpos = file_pos_ - static_cast<int64>(limit_ - buf_);
   if (position >= bufpos && position < file_pos_) {
     // Seeks to somewhere inside the buffer.
     pos_ = buf_ + (position - bufpos);
@@ -197,7 +197,7 @@ Status InputBuffer::Seek(int64 position) {
   return Status::OK();
 }
 
-Status InputBuffer::Hint(int64 bytes_to_read) {
+Status InputBuffer::Hint(int64_t bytes_to_read) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                    bytes_to_read);
@@ -208,7 +208,7 @@ Status InputBuffer::Hint(int64 bytes_to_read) {
     return Status::OK();
   }
 
-  const int64 bytes_remain_in_buf = static_cast<int64>(limit_ - pos_);
+  const int64_t bytes_remain_in_buf = static_cast<int64>(limit_ - pos_);
 
   // There are enough data in the buffer. Do nothing.
   if (bytes_to_read <= bytes_remain_in_buf) {

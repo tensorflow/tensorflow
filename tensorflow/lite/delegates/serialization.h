@@ -201,6 +201,30 @@ class Serialization {
   const std::string model_token_;
 };
 
+// Helper for delegates to save their delegation decisions (which nodes to
+// delegate) in TfLiteDelegate::Prepare().
+// Internally, this uses a unique SerializationEntry based on the `context` &
+// `delegate_id` to save the `node_ids`. It is recommended that `delegate_id` be
+// unique to a backend/version to avoid reading back stale delegation decisions.
+//
+// NOTE: This implementation is platform-specific, so this method & the
+// subsequent call to GetDelegatedNodes should happen on the same device.
+TfLiteStatus SaveDelegatedNodes(TfLiteContext* context,
+                                Serialization* serialization,
+                                const std::string& delegate_id,
+                                const TfLiteIntArray* node_ids);
+
+// Retrieves list of delegated nodes that were saved earlier with
+// SaveDelegatedNodes.
+// Caller assumes ownership of data pointed by *nodes_ids.
+//
+// NOTE: This implementation is platform-specific, so SaveDelegatedNodes &
+// corresponding GetDelegatedNodes should be called on the same device.
+TfLiteStatus GetDelegatedNodes(TfLiteContext* context,
+                               Serialization* serialization,
+                               const std::string& delegate_id,
+                               TfLiteIntArray** node_ids);
+
 }  // namespace delegates
 }  // namespace tflite
 

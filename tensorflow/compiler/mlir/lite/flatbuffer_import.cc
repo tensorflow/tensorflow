@@ -998,7 +998,7 @@ void SetSignature(
   func->setAttr(
       kExportedNameAttr,
       mlir::ArrayAttr::get(
-          context, {mlir::StringAttr::get(context, signature->method_name)}));
+          context, {mlir::StringAttr::get(context, signature->signature_key)}));
 }
 
 // Build a FuncOp from a tflite SubGraph

@@ -50,7 +50,7 @@ class DynamicDimensionInference {
   // returns a scalar HloInstruction that represents the runtime size of that
   // dimension. Otherwise returns nullptr.
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
-                                 int64 dim) const;
+                                 int64_t dim) const;
 
   // Returns dynamic sizes of all dimensions of `inst`'s leaf node at `index`.
   // Static sizes are represented by nullptr.
@@ -69,8 +69,8 @@ class DynamicDimensionInference {
   // Update the dynamic mapping so that we know dimension `dim` of instruction
   // `inst` at `index` has a dynamic size, and its runtime size is represented
   // by a scalar instruction `size`.
-  void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
-                      HloInstruction* size);
+  void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
+                      int64_t dim, HloInstruction* size);
 
   // For all tensors whose dynamic dimension is `replace`, replace them with
   // `with`.

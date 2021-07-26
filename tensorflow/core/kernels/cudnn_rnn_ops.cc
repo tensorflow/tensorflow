@@ -313,7 +313,7 @@ DeviceMemory<U> CastDeviceMemory(Tensor* tensor) {
 }
 
 DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
-                                   int64 offset, int64 size) {
+                                   int64_t offset, int64_t size) {
   const void* base_ptr = device_memory.opaque();
   void* offset_ptr =
       const_cast<char*>(reinterpret_cast<const char*>(base_ptr) + offset);
@@ -369,10 +369,10 @@ class CudnnRnnAllocatorInTemp : public ScratchAllocator {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = ToTFDataType<T>::value;
-    int64 allocate_count =
+    int64_t allocate_count =
         Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
     Status allocation_status(context_->allocate_temp(
         tf_data_type, TensorShape({allocate_count}), &temporary_memory));
@@ -413,10 +413,10 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
   int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     CHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
-    int64 allocate_count =
+    int64_t allocate_count =
         Eigen::divup(byte_size, static_cast<int64>(sizeof(T)));
 
     Tensor* temporary_memory = nullptr;
@@ -453,7 +453,7 @@ class CudnnRNNSpaceAllocator : public ScratchAllocator {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
     if (total_byte_size_ != 0) {
       return Status(error::FAILED_PRECONDITION,
                     "Space allocator can only be called once");
@@ -974,8 +974,8 @@ void RestoreParams(const OpInputList params_input,
       << "Number of params mismatch. Expected " << params_input.size()
       << ", got " << num_params;
   for (int i = 0; i < params.size(); i++) {
-    int64 size_in_bytes = params[i].size;
-    int64 size = size_in_bytes / sizeof(T);
+    int64_t size_in_bytes = params[i].size;
+    int64_t size = size_in_bytes / sizeof(T);
     CHECK(size == params_input[i].NumElements())
         << "Params size mismatch. Expected " << size << ", got "
         << params_input[i].NumElements();
@@ -1168,10 +1168,10 @@ class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
     std::unique_ptr<RnnDescriptor> rnn_desc;
     OP_REQUIRES_OK(context,
                    ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
-    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    int64_t params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
-    int64 params_size = params_size_in_bytes / sizeof(T);
+    int64_t params_size = params_size_in_bytes / sizeof(T);
 
     Tensor* output_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, {1}, &output_t));
@@ -1241,7 +1241,7 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     std::unique_ptr<RnnDescriptor> rnn_desc;
     OP_REQUIRES_OK(context,
                    ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
-    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    int64_t params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
 
@@ -1299,8 +1299,8 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     int h_num_units = (num_proj_ == 0 ? num_units : num_proj_);
     int c_num_units = (num_proj_ == 0 ? 0 : num_units);
     for (int i = 0; i < rnn_desc->ParamsWeightRegions().size(); i++) {
-      int64 size_in_bytes = rnn_desc->ParamsWeightRegions()[i].size;
-      int64 size = size_in_bytes / sizeof(T);
+      int64_t size_in_bytes = rnn_desc->ParamsWeightRegions()[i].size;
+      int64_t size = size_in_bytes / sizeof(T);
       const int layer_idx = i / num_params_weights_per_layer;
       const int index_within_layer = i % num_params_weights_per_layer;
       int width = 0, height = (num_proj_ == 0 ? h_num_units : c_num_units);
@@ -1350,8 +1350,8 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
                                 num_params_biases_, ", got ",
                                 rnn_desc->ParamsBiasRegions().size()));
     for (int i = 0; i < rnn_desc->ParamsBiasRegions().size(); i++) {
-      int64 size_in_bytes = rnn_desc->ParamsBiasRegions()[i].size;
-      int64 size = size_in_bytes / sizeof(T);
+      int64_t size_in_bytes = rnn_desc->ParamsBiasRegions()[i].size;
+      int64_t size = size_in_bytes / sizeof(T);
       OP_REQUIRES(context, size == num_units,
                   errors::InvalidArgument("Params size mismatch. Expected ",
                                           num_units, ", got ", size));
@@ -1418,7 +1418,7 @@ class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
     std::unique_ptr<RnnDescriptor> rnn_desc;
     OP_REQUIRES_OK(context,
                    ExtractCudnnRNNParamsInfo<T>(context, num_proj_, &rnn_desc));
-    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    int64_t params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
     CHECK(params_size_in_bytes % sizeof(T) == 0)
         << "params_size_in_bytes must be multiple of element size";
     Tensor* output = nullptr;

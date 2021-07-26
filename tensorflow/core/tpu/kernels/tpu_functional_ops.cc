@@ -96,7 +96,7 @@ struct TPUVariableInfo {
   // The TPU core which the variable will be placed on.
   int device_ordinal;
   // If true, try to place the variable on fast memory space if hardware
-  // support. For example, PuffyLite has CMEM space.
+  // support.
   bool fast_mem;
 };
 
@@ -438,7 +438,7 @@ Status ConvertEdgeShapesToTensorShapes(
   // keys in tpu_input_shapes may be stale.
   for (const auto& iter : named_input_shapes) {
     VLOG(2) << iter.first << ", rank: " << iter.second.size();
-    const int64 rank = iter.second.size();
+    const int64_t rank = iter.second.size();
     std::vector<int64> dims(rank);
     for (int64_t d = 0; d < rank; ++d) {
       VLOG(2) << " dim[" << d << "]: " << iter.second.at(d);
@@ -1214,6 +1214,9 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     VLOG(3) << "Cache Miss: partitioning function " << func_.name()
             << " cache_hash: " << cache_hash
             << " device_ordinal: " << device_ordinal;
+
+    profiler::TraceMe trace_me(
+        "TPUPartitionedCallOp-RewriteAndInstantiateFunctions");
     std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
     int num_cores_per_replica = 1;
     bool enable_spmd_xla_partitioning = false;
@@ -2259,7 +2262,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
                   /*x_num_cores=*/1, /*y_num_cores=*/1, /*z_num_cores=*/1,
                   /*num_cores_per_chip=*/2, &natural_order));
               break;
-            case 4:  // we assume this is a puffylite donut (2x2 w/ 1 core/chip)
+            case 4:  // we assume this is a device with one core per chip.
               TF_RETURN_IF_ERROR(GenerateDeviceNaturalOrder(
                   /*x_num_cores=*/2, /*y_num_cores=*/2, /*z_num_cores=*/1,
                   /*num_cores_per_chip=*/1, &natural_order));
@@ -2272,7 +2275,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
             default:
               return errors::Unimplemented(
                   "You must specify a device assignment for all TPU "
-                  "configurations other than JF/DF/PL 1x1 or 2x2.");
+                  "configurations.");
           }
           if (*num_core_per_replica != num_cores &&
               !std::equal(natural_order.begin(), natural_order.end(),
@@ -2586,6 +2589,7 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
 void TPUPartitionedCallOp::ExecuteFunctions(
     const std::vector<DeviceAndFHandle>& functions, OpKernelContext* ctx,
     int device_ordinal, int64_t ordinal_selector_req_id, DoneCallback done) {
+  profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteFunctions");
   FunctionLibraryRuntime::Options opts;
   opts.step_container = ctx->step_container();
   opts.cancellation_manager = ctx->cancellation_manager();

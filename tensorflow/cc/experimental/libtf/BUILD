@@ -145,6 +145,47 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "runtime_test",
+    testonly = 1,
+    srcs = [
+        "tests/runtime_test.cc",
+    ],
+    hdrs = [
+        "tests/runtime_test.h",
+    ],
+    data = [":testdata"],
+    deps = [
+        ":libtf",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:unified_api_testutil",
+        "//tensorflow/cc/experimental/libtf/runtime",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "libtf_runtime_test",
+    size = "medium",
+    srcs = [
+        "tests/runtime_test_core.cc",
+        "tests/runtime_test_tfrt.cc",
+    ],
+    deps = [
+        ":runtime_test",
+        "//tensorflow/cc/experimental/libtf/runtime",
+        "//tensorflow/cc/experimental/libtf/runtime/core",
+        "//tensorflow/cc/experimental/libtf/runtime/tfrt",
+    ],
+)
+
 tf_cc_test(
     name = "libtf_module_test",
     size = "medium",
@@ -204,6 +245,32 @@ tf_cc_test(
         "//tensorflow/c/eager:unified_api_testutil",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "variable_test",
+    size = "small",
+    srcs = ["tests/variable_test.cc"],
+    tags = ["no_oss"],  # TODO(b/193268458): Need to disable TFRT.
+    deps = [
+        ":function",
+        ":libtf",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_function",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:graph_function",
+        "//tensorflow/c/eager:unified_api_testutil",
+        "//tensorflow/c/experimental/ops:resource_variable_ops",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",

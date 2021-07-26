@@ -26,15 +26,15 @@ namespace internal {
 template <typename Device, typename T>
 void TileSimpleImpl(const Device& d, Tensor* out, const Tensor& in) {
   const int ndims = in.dims();
-  const int64 nelem = out->NumElements();
+  const int64_t nelem = out->NumElements();
   gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
   gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
   const T* p = in.flat<T>().data();
   T* q = out->flat<T>().data();
 
-  for (int64 o_idx = 0; o_idx < nelem; ++o_idx) {
-    int64 i_idx = 0;
-    int64 t = o_idx;
+  for (int64_t o_idx = 0; o_idx < nelem; ++o_idx) {
+    int64_t i_idx = 0;
+    int64_t t = o_idx;
     for (int i = 0; i < ndims; ++i) {
       i_idx += t / out_strides[i] % in.dim_size(i) * in_strides[i];
       t %= out_strides[i];

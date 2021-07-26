@@ -49,7 +49,7 @@ WeightedPicker::~WeightedPicker() {
   delete[] level_;
 }
 
-static int32 UnbiasedUniform(SimplePhilox* r, int32 n) {
+static int32 UnbiasedUniform(SimplePhilox* r, int32_t n) {
   CHECK_LE(0, n);
   const uint32 range = ~static_cast<uint32>(0);
   if (n == 0) {
@@ -106,15 +106,15 @@ int WeightedPicker::Pick(SimplePhilox* rnd) const {
   return PickAt(UnbiasedUniform(rnd, total_weight()));
 }
 
-int WeightedPicker::PickAt(int32 weight_index) const {
+int WeightedPicker::PickAt(int32_t weight_index) const {
   if (weight_index < 0 || weight_index >= total_weight()) return -1;
 
-  int32 position = weight_index;
+  int32_t position = weight_index;
   int index = 0;
 
   for (int l = 1; l < num_levels_; l++) {
     // Pick left or right child of "level_[l-1][index]"
-    const int32 left_weight = level_[l][2 * index];
+    const int32_t left_weight = level_[l][2 * index];
     if (position < left_weight) {
       // Descend to left child
       index = 2 * index;
@@ -130,19 +130,19 @@ int WeightedPicker::PickAt(int32 weight_index) const {
   return index;
 }
 
-void WeightedPicker::set_weight(int index, int32 weight) {
+void WeightedPicker::set_weight(int index, int32_t weight) {
   assert(index >= 0);
   assert(index < N_);
 
   // Adjust the sums all the way up to the root
-  const int32 delta = weight - get_weight(index);
+  const int32_t delta = weight - get_weight(index);
   for (int l = num_levels_ - 1; l >= 0; l--) {
     level_[l][index] += delta;
     index >>= 1;
   }
 }
 
-void WeightedPicker::SetAllWeights(int32 weight) {
+void WeightedPicker::SetAllWeights(int32_t weight) {
   // Initialize leaves
   int32* leaves = level_[num_levels_ - 1];
   for (int i = 0; i < N_; i++) leaves[i] = weight;
@@ -174,7 +174,7 @@ void WeightedPicker::RebuildTreeWeights() {
   }
 }
 
-void WeightedPicker::Append(int32 weight) {
+void WeightedPicker::Append(int32_t weight) {
   Resize(num_elements() + 1);
   set_weight(num_elements() - 1, weight);
 }

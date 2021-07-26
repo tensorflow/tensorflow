@@ -63,7 +63,7 @@ class SparseSoftmaxOp : public OpKernel {
                     "Input should have rank >= 2, but received shape: ",
                     shape_t->SummarizeValue(3)));
 
-    const int64 nnz = indices_t->dim_size(0);
+    const int64_t nnz = indices_t->dim_size(0);
     const int rank = static_cast<int>(indices_t->dim_size(1));
     SparseTensor st;
     OP_REQUIRES_OK(

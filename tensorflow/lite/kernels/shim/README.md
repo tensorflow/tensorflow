@@ -96,14 +96,14 @@ Here is an example op kernel implementing this interface:
 template<TfRuntime R>
 class MyOp : public OpKernelShim<MyOp, R> {
 
-  // Input tensors declaration (name, type, shape)
-  static std::vector<TensorDeclaration> Inputs();
-
-  // Output tensors declaration (name, type, shape)
-  static std::vector<TensorDeclaration> Outputs();
-
-  // Attributes declaration (name, type)
+  // Attributes declaration (syntax: https://www.tensorflow.org/guide/create_op)
   static std::vector<std::string> Attrs();
+
+  // Input tensors declaration (syntax: https://www.tensorflow.org/guide/create_op)
+  static std::vector<std::string> Inputs();
+
+  // Output tensors declaration (syntax: https://www.tensorflow.org/guide/create_op)
+  static std::vector<std::string> Outputs();
 
   // Initializes the op
   absl::Status Init(InitContext* ctx);

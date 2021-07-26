@@ -133,7 +133,7 @@ class DeterminantOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -180,7 +180,7 @@ class DeterminantOpGpu : public AsyncOpKernel {
                input.NumElements() * sizeof(Scalar));
     }
     auto input_copy_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    const int64 batch_size = input_copy_reshaped.dimension(0);
+    const int64_t batch_size = input_copy_reshaped.dimension(0);
 
     // Allocate pivots on the device.
     Tensor pivots;
@@ -273,7 +273,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -325,7 +325,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
                input.NumElements() * sizeof(Scalar));
     }
     auto input_copy_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    const int64 batch_size = input_copy_reshaped.dimension(0);
+    const int64_t batch_size = input_copy_reshaped.dimension(0);
 
     // Allocate pivots on the device.
     Tensor pivots;

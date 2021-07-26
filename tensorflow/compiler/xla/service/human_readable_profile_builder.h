@@ -31,7 +31,7 @@ class HumanReadableProfileBuilder {
  public:
   explicit HumanReadableProfileBuilder(absl::string_view computation_name,
                                        bool is_entry_computation,
-                                       int64 total_cycles,
+                                       int64_t total_cycles,
                                        double clock_rate_ghz)
       : computation_name_(computation_name),
         is_entry_computation_(is_entry_computation),
@@ -46,8 +46,8 @@ class HumanReadableProfileBuilder {
   // floating-point ops or bytes touched by the op, or if you don't know how
   // fast it would run optimally, pass -1 for that param.
   void AddOp(absl::string_view op_name, absl::string_view short_name,
-             absl::string_view category, int64 cycles, int64 flop_count,
-             int64 transcendental_count, int64 bytes_accessed,
+             absl::string_view category, int64_t cycles, int64_t flop_count,
+             int64_t transcendental_count, int64_t bytes_accessed,
              float optimal_seconds) {
     op_infos_.push_back({string(op_name), string(short_name), string(category),
                          cycles, flop_count, transcendental_count,
@@ -69,10 +69,10 @@ class HumanReadableProfileBuilder {
     float optimal_seconds;  // -1 if unknown
   };
 
-  double CyclesToSeconds(int64 cycles) const {
+  double CyclesToSeconds(int64_t cycles) const {
     return cycles / clock_rate_ghz_ / 1e9;
   }
-  double CyclesToMicroseconds(int64 cycles) const {
+  double CyclesToMicroseconds(int64_t cycles) const {
     return cycles / clock_rate_ghz_ / 1000.0;
   }
 

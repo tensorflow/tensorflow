@@ -75,7 +75,7 @@ class SparseSliceGradOp : public OpKernel {
                     "Expected input_start to be a vector of length ", num_dims,
                     " but got length ", input_start->NumElements()));
 
-    const int64 input_nnz = input_indices->dim_size(0);
+    const int64_t input_nnz = input_indices->dim_size(0);
 
     Tensor *val_grad;
     OP_REQUIRES_OK(ctx,
@@ -89,14 +89,14 @@ class SparseSliceGradOp : public OpKernel {
     const auto input_indices_mat = input_indices->matrix<int64>();
     const auto output_indices_mat = output_indices->matrix<int64>();
     const auto input_start_flat = input_start->flat<int64>();
-    int64 j = 0;
-    for (int64 i = 0; i < input_nnz && j < backprop_val_grad->NumElements();
+    int64_t j = 0;
+    for (int64_t i = 0; i < input_nnz && j < backprop_val_grad->NumElements();
          ++i) {
       bool is_same = true;
       for (int d = 0; d < num_dims; ++d) {
-        const int64 a = input_indices_mat(i, d);
-        const int64 b = output_indices_mat(j, d);
-        const int64 offset = input_start_flat(d);
+        const int64_t a = input_indices_mat(i, d);
+        const int64_t b = output_indices_mat(j, d);
+        const int64_t offset = input_start_flat(d);
         if (a != b + offset) {
           is_same = false;
           break;

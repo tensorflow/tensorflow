@@ -261,8 +261,8 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
 
 // Encode the strings in 'array' into a contiguous buffer and return the base of
 // the buffer. The caller takes ownership of the buffer.
-Status EncodePyBytesArray(PyArrayObject* array, tensorflow::int64 nelems,
-                          size_t* size, void** buffer) {
+Status EncodePyBytesArray(PyArrayObject* array, int64_t nelems, size_t* size,
+                          void** buffer) {
   // Encode all strings.
   *size = nelems * sizeof(tensorflow::tstring);
   std::unique_ptr<tensorflow::tstring[]> base_ptr(
@@ -289,7 +289,7 @@ Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   auto iter = make_safe(PyArray_IterNew(reinterpret_cast<PyObject*>(dst)));
-  for (int64 i = 0; i < static_cast<int64>(nelems); ++i) {
+  for (int64_t i = 0; i < static_cast<int64>(nelems); ++i) {
     const tstring& tstr_i = tstr[i];
     auto py_string =
         make_safe(PyBytes_FromStringAndSize(tstr_i.data(), tstr_i.size()));
@@ -410,7 +410,7 @@ Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
   }
 
   TF_Tensor* moved = tensor.release();
-  int64 nelems = -1;
+  int64_t nelems = -1;
   gtl::InlinedVector<npy_intp, 4> dims;
   TF_RETURN_IF_ERROR(GetPyArrayDimensionsForTensor(moved, &dims, &nelems));
   return ArrayFromMemory(
@@ -429,7 +429,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
     *out_ndarray = Py_None;
     return Status::OK();
   }
-  int64 nelems = -1;
+  int64_t nelems = -1;
   gtl::InlinedVector<npy_intp, 4> dims;
   TF_RETURN_IF_ERROR(
       GetPyArrayDimensionsForTensor(tensor.get(), &dims, &nelems));
@@ -491,7 +491,7 @@ Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
   TF_DataType dtype = TF_FLOAT;
   TF_RETURN_IF_ERROR(PyArray_TYPE_to_TF_DataType(array, &dtype));
 
-  tensorflow::int64 nelems = 1;
+  int64_t nelems = 1;
   gtl::InlinedVector<int64_t, 4> dims;
   for (int i = 0; i < PyArray_NDIM(array); ++i) {
     dims.push_back(PyArray_SHAPE(array)[i]);
@@ -571,7 +571,7 @@ Status TensorToNdarray(const Tensor& t, PyObject** ret) {
   if (!status.ok()) {
     return status;
   }
-  return TF_TensorToPyArray(std::move(tf_tensor), ret);
+  return TF_TensorToMaybeAliasedPyArray(std::move(tf_tensor), ret);
 }
 
 }  // namespace tensorflow

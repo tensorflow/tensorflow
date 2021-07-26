@@ -41,7 +41,7 @@ class UnpackOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const int32 num = num_outputs();
+    const int32_t num = num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
 
@@ -60,7 +60,7 @@ class UnpackOp : public OpKernel {
 
     auto output_shape = input_shape;
     output_shape.RemoveDim(axis);
-    const int64 output_size = output_shape.num_elements();
+    const int64_t output_size = output_shape.num_elements();
     OP_REQUIRES(
         context,
         FastBoundsCheck(output_size,

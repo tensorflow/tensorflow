@@ -86,7 +86,7 @@ class InterpreterWrapper {
   PyObject* TensorQuantizationParameters(int i) const;
   PyObject* SetTensor(int i, PyObject* value, int subgraph_index);
   PyObject* GetTensor(int i, int subgraph_index) const;
-  PyObject* GetSubgraphIndexFromSignatureDefName(const char* method_name);
+  PyObject* GetSubgraphIndexFromSignature(const char* signature_key);
   PyObject* GetSignatureDefs() const;
   PyObject* ResetVariableTensors();
 

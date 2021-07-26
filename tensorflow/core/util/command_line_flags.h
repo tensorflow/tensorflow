@@ -79,8 +79,8 @@ class Flag {
   //
   // "default_value_for_display" is shown as the default value of this flag in
   // Flags::Usage().
-  Flag(const char* name, std::function<bool(int32)> int32_hook,
-       int32 default_value_for_display, const string& usage_text);
+  Flag(const char* name, std::function<bool(int32_t)> int32_hook,
+       int32_t default_value_for_display, const string& usage_text);
   Flag(const char* name, std::function<bool(int64_t)> int64_hook,
        int64_t default_value_for_display, const string& usage_text);
   Flag(const char* name, std::function<bool(float)> float_hook,
@@ -106,7 +106,7 @@ class Flag {
     TYPE_FLOAT,
   } type_;
 
-  std::function<bool(int32)> int32_hook_;
+  std::function<bool(int32_t)> int32_hook_;
   int32 int32_default_for_display_;
 
   std::function<bool(int64_t)> int64_hook_;

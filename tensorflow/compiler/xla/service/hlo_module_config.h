@@ -124,12 +124,12 @@ class HloModuleConfig {
 
   int32 launch_id() const { return launch_id_; }
 
-  void set_replica_count(int64 replica_count) {
+  void set_replica_count(int64_t replica_count) {
     replica_count_ = replica_count;
   }
   int64 replica_count() const { return replica_count_; }
 
-  void set_num_partitions(int64 num_partitions) {
+  void set_num_partitions(int64_t num_partitions) {
     num_partitions_ = num_partitions;
   }
   int64 num_partitions() const { return num_partitions_; }

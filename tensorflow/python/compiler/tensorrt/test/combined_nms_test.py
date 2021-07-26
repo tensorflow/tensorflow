@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -99,8 +100,8 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
         not trt_test.IsQuantizationMode(run_params.precision_mode)
     reason += ' and precision != INT8'
     # Only run for TRT 7.1.3 and above.
-    return should_run and trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3), \
-        reason + ' and >= TRT 7.1.3'
+    return should_run and trt_utils.is_linked_tensorrt_version_greater_equal(
+        7, 1, 3), reason + ' and >= TRT 7.1.3'
 
 
 class CombinedNmsExecuteNativeSegmentTest(CombinedNmsTest):

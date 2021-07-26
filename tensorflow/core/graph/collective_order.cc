@@ -36,7 +36,7 @@ Status DiscoverDataDependencies(
   // is collective, add as a dependency for the children.
   auto node_leave = [collective_nodes, instance_keys, data_dependencies,
                      &s](Node* node) {
-    int32 instance_key;
+    int32_t instance_key;
     bool enter_node =
         node->IsCollective() && node->type_string() == "CollectiveReduce";
     if (enter_node) {
@@ -160,7 +160,7 @@ Status InsertControlDependencies(
     // contains the list of instance keys for which `node` must wait.
     absl::flat_hash_map<Node*, absl::flat_hash_set<int32>> wait_for;
     for (const auto& pair : dependency_edges) {
-      int32 src_instance;
+      int32_t src_instance;
       TF_RETURN_IF_ERROR(
           GetNodeAttr(pair.first->attrs(), "instance_key", &src_instance));
       for (Node* dst_node : pair.second) {

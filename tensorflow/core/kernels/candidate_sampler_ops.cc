@@ -43,7 +43,7 @@ class BaseCandidateSamplerOp : public OpKernel {
     const Tensor& true_classes = context->input(0);
     OP_REQUIRES(context, true_classes.dims() == 2,
                 errors::InvalidArgument("true_classes must be a matrix"));
-    const int32 batch_size = true_classes.dim_size(0);
+    const int32_t batch_size = true_classes.dim_size(0);
     OP_REQUIRES(
         context, true_classes.dim_size(1) == num_true_,
         errors::InvalidArgument("true_classes must have "
@@ -84,7 +84,7 @@ class BaseCandidateSamplerOp : public OpKernel {
     // Approximately conservatively estimate the number of samples required.
     // In cases where rejection sampling is used we may occasionally use more
     // samples than expected, which will result in reused random bits.
-    const int64 samples32 = 2048 * num_sampled_;
+    const int64_t samples32 = 2048 * num_sampled_;
 
     // Pick sampled candidates.
     auto local_gen = generator_.ReserveSamples32(samples32);
@@ -114,7 +114,7 @@ class SimpleCandidateSamplerOp : public BaseCandidateSamplerOp {
  public:
   explicit SimpleCandidateSamplerOp(OpKernelConstruction* context)
       : BaseCandidateSamplerOp(context) {
-    int64 range_max;
+    int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
     set_sampler(new RangeSamplerType(range_max));
   }
@@ -138,7 +138,7 @@ class AllCandidateSamplerOp : public BaseCandidateSamplerOp {
  public:
   explicit AllCandidateSamplerOp(OpKernelConstruction* context)
       : BaseCandidateSamplerOp(context) {
-    int64 range_max;
+    int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("num_sampled", &range_max));
     set_sampler(new AllSampler(range_max));
   }
@@ -151,7 +151,7 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
  public:
   explicit FixedUnigramCandidateSamplerOp(OpKernelConstruction* context)
       : BaseCandidateSamplerOp(context) {
-    int64 range_max;
+    int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
     string vocab_file;
     OP_REQUIRES_OK(context, context->GetAttr("vocab_file", &vocab_file));
@@ -165,12 +165,12 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
                     "Must only provide one of vocab_file and unigrams."));
     float distortion;
     OP_REQUIRES_OK(context, context->GetAttr("distortion", &distortion));
-    int64 num_reserved_ids;
+    int64_t num_reserved_ids;
     OP_REQUIRES_OK(context,
                    context->GetAttr("num_reserved_ids", &num_reserved_ids));
-    int64 num_shards;
+    int64_t num_shards;
     OP_REQUIRES_OK(context, context->GetAttr("num_shards", &num_shards));
-    int64 shard;
+    int64_t shard;
     OP_REQUIRES_OK(context, context->GetAttr("shard", &shard));
 
     if (!vocab_file.empty()) {
@@ -203,7 +203,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
                 errors::InvalidArgument(
                     "true_candidates must be a batch_size * num_true matrix"));
 
-    const int64 batch_size = in_true_candidates_shape.dim_size(0);
+    const int64_t batch_size = in_true_candidates_shape.dim_size(0);
 
     const Tensor& in_sampled_candidates = context->input(1);
     OP_REQUIRES(context,
@@ -213,7 +213,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
                     "an output from CandidateSampler"));
 
     std::unordered_map<int64, int> sampled_candidate_to_pos;
-    for (int64 i = 0; i < in_sampled_candidates.dim_size(0); ++i) {
+    for (int64_t i = 0; i < in_sampled_candidates.dim_size(0); ++i) {
       sampled_candidate_to_pos[in_sampled_candidates.vec<int64>()(i)] = i;
     }
 
@@ -222,9 +222,9 @@ class ComputeAccidentalHitsOp : public OpKernel {
     std::vector<int64> ids;
     std::vector<float> weights;
 
-    for (int64 i = 0; i < batch_size; ++i) {
-      for (int64 j = 0; j < num_true_; ++j) {
-        const int64 true_candidate = in_true_candidates.matrix<int64>()(i, j);
+    for (int64_t i = 0; i < batch_size; ++i) {
+      for (int64_t j = 0; j < num_true_; ++j) {
+        const int64_t true_candidate = in_true_candidates.matrix<int64>()(i, j);
         const auto look = sampled_candidate_to_pos.find(true_candidate);
         if (look != sampled_candidate_to_pos.end()) {
           indices.push_back(i);

@@ -86,7 +86,7 @@ class CSRSparseMatrixAddFunctor {
     auto b_dense_shape = b.dense_shape().vec<int64>();
     Tensor c_dense_shape_t = a.dense_shape();
 
-    const int64 rows = a_dense_shape((rank == 2) ? 0 : 1);
+    const int64_t rows = a_dense_shape((rank == 2) ? 0 : 1);
 
     functor::CSRSparseMatrixAdd<Device, T> csr_geam(ctx_, alpha_, beta_);
     TF_RETURN_IF_ERROR(csr_geam.Initialize());

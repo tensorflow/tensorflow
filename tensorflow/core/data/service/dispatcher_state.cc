@@ -26,11 +26,18 @@ limitations under the License.
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
 
-DispatcherState::DispatcherState() {}
+DispatcherState::DispatcherState()
+    : worker_index_resolver_(std::vector<std::string>{}) {}
+
+DispatcherState::DispatcherState(
+    const experimental::DispatcherConfig& dispatcher_config)
+    : worker_index_resolver_(dispatcher_config.worker_addresses()) {}
 
 Status DispatcherState::Apply(const Update& update) {
   switch (update.update_type_case()) {
@@ -82,8 +89,8 @@ Status DispatcherState::Apply(const Update& update) {
 
 void DispatcherState::RegisterDataset(
     const RegisterDatasetUpdate& register_dataset) {
-  int64 id = register_dataset.dataset_id();
-  int64 fingerprint = register_dataset.fingerprint();
+  int64_t id = register_dataset.dataset_id();
+  int64_t fingerprint = register_dataset.fingerprint();
   auto dataset = std::make_shared<Dataset>(id, fingerprint);
   DCHECK(!datasets_by_id_.contains(id));
   datasets_by_id_[id] = dataset;
@@ -100,10 +107,11 @@ void DispatcherState::RegisterWorker(
       std::make_shared<Worker>(address, register_worker.transfer_address());
   tasks_by_worker_[address] =
       absl::flat_hash_map<int64, std::shared_ptr<Task>>();
+  worker_index_resolver_.AddWorker(address);
 }
 
 void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
-  int64 job_id = create_job.job_id();
+  int64_t job_id = create_job.job_id();
   absl::optional<NamedJobKey> named_job_key;
   if (create_job.has_named_job_key()) {
     named_job_key.emplace(create_job.named_job_key().name(),
@@ -114,10 +122,9 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
       CreateJobUpdate::kNumConsumers) {
     num_consumers = create_job.num_consumers();
   }
-  auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
-                                   ProcessingMode(create_job.processing_mode()),
-                                   create_job.num_split_providers(),
-                                   named_job_key, num_consumers);
+  auto job = std::make_shared<Job>(
+      job_id, create_job.dataset_id(), create_job.processing_mode_def(),
+      create_job.num_split_providers(), named_job_key, num_consumers);
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -133,7 +140,7 @@ void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
   std::shared_ptr<Job> job = jobs_[produce_split.job_id()];
   DCHECK(job->distributed_epoch_state.has_value());
   DistributedEpochState& state = job->distributed_epoch_state.value();
-  int64 provider_index = produce_split.split_provider_index();
+  int64_t provider_index = produce_split.split_provider_index();
   DCHECK_EQ(produce_split.repetition(), state.repetitions[provider_index]);
   if (produce_split.finished()) {
     state.repetitions[provider_index]++;
@@ -145,7 +152,7 @@ void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
 
 void DispatcherState::AcquireJobClient(
     const AcquireJobClientUpdate& acquire_job_client) {
-  int64 job_client_id = acquire_job_client.job_client_id();
+  int64_t job_client_id = acquire_job_client.job_client_id();
   std::shared_ptr<Job>& job = jobs_for_client_ids_[job_client_id];
   DCHECK(!job);
   job = jobs_[acquire_job_client.job_id()];
@@ -157,7 +164,7 @@ void DispatcherState::AcquireJobClient(
 
 void DispatcherState::ReleaseJobClient(
     const ReleaseJobClientUpdate& release_job_client) {
-  int64 job_client_id = release_job_client.job_client_id();
+  int64_t job_client_id = release_job_client.job_client_id();
   std::shared_ptr<Job>& job = jobs_for_client_ids_[job_client_id];
   DCHECK(job);
   job->num_clients--;
@@ -168,7 +175,7 @@ void DispatcherState::ReleaseJobClient(
 
 void DispatcherState::GarbageCollectJob(
     const GarbageCollectJobUpdate& garbage_collect_job) {
-  int64 job_id = garbage_collect_job.job_id();
+  int64_t job_id = garbage_collect_job.job_id();
   for (auto& task : tasks_by_job_[job_id]) {
     task->finished = true;
     tasks_by_worker_[task->worker_address].erase(task->task_id);
@@ -196,7 +203,7 @@ void DispatcherState::RemoveTask(const RemoveTaskUpdate& remove_task) {
 
 void DispatcherState::CreatePendingTask(
     const CreatePendingTaskUpdate& create_pending_task) {
-  int64 task_id = create_pending_task.task_id();
+  int64_t task_id = create_pending_task.task_id();
   auto& task = tasks_[task_id];
   DCHECK_EQ(task, nullptr);
   auto& job = jobs_[create_pending_task.job_id()];
@@ -211,7 +218,7 @@ void DispatcherState::CreatePendingTask(
 
 void DispatcherState::ClientHeartbeat(
     const ClientHeartbeatUpdate& client_heartbeat) {
-  int64 job_client_id = client_heartbeat.job_client_id();
+  int64_t job_client_id = client_heartbeat.job_client_id();
   auto& job = jobs_for_client_ids_[job_client_id];
   DCHECK(!job->pending_tasks.empty());
   auto& task = job->pending_tasks.front();
@@ -233,7 +240,7 @@ void DispatcherState::ClientHeartbeat(
 }
 
 void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
-  int64 task_id = create_task.task_id();
+  int64_t task_id = create_task.task_id();
   auto& task = tasks_[task_id];
   DCHECK_EQ(task, nullptr);
   auto& job = jobs_[create_task.job_id()];
@@ -247,7 +254,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
 
 void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   VLOG(2) << "Marking task " << finish_task.task_id() << " as finished";
-  int64 task_id = finish_task.task_id();
+  int64_t task_id = finish_task.task_id();
   auto& task = tasks_[task_id];
   DCHECK(task != nullptr);
   task->finished = true;
@@ -264,13 +271,13 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
 
 void DispatcherState::SetElementSpec(
     const SetElementSpecUpdate& set_element_spec) {
-  int64 dataset_id = set_element_spec.dataset_id();
+  int64_t dataset_id = set_element_spec.dataset_id();
   std::string element_spec = set_element_spec.element_spec();
   DCHECK(!id_element_spec_info_.contains(dataset_id));
   id_element_spec_info_[dataset_id] = element_spec;
 }
 
-Status DispatcherState::GetElementSpec(int64 dataset_id,
+Status DispatcherState::GetElementSpec(int64_t dataset_id,
                                        std::string& element_spec) const {
   auto it = id_element_spec_info_.find(dataset_id);
   if (it == id_element_spec_info_.end()) {
@@ -285,7 +292,7 @@ int64 DispatcherState::NextAvailableDatasetId() const {
 }
 
 Status DispatcherState::DatasetFromId(
-    int64 id, std::shared_ptr<const Dataset>& dataset) const {
+    int64_t id, std::shared_ptr<const Dataset>& dataset) const {
   auto it = datasets_by_id_.find(id);
   if (it == datasets_by_id_.end()) {
     return errors::NotFound("Dataset id ", id, " not found");
@@ -334,7 +341,7 @@ DispatcherState::ListJobs() {
   return jobs;
 }
 
-Status DispatcherState::JobFromId(int64 id,
+Status DispatcherState::JobFromId(int64_t id,
                                   std::shared_ptr<const Job>& job) const {
   auto it = jobs_.find(id);
   if (it == jobs_.end()) {
@@ -359,7 +366,7 @@ int64 DispatcherState::NextAvailableJobId() const {
   return next_available_job_id_;
 }
 
-Status DispatcherState::JobForJobClientId(int64 job_client_id,
+Status DispatcherState::JobForJobClientId(int64_t job_client_id,
                                           std::shared_ptr<const Job>& job) {
   job = jobs_for_client_ids_[job_client_id];
   if (!job) {
@@ -372,7 +379,7 @@ int64 DispatcherState::NextAvailableJobClientId() const {
   return next_available_job_client_id_;
 }
 
-Status DispatcherState::TaskFromId(int64 id,
+Status DispatcherState::TaskFromId(int64_t id,
                                    std::shared_ptr<const Task>& task) const {
   auto it = tasks_.find(id);
   if (it == tasks_.end()) {
@@ -383,7 +390,7 @@ Status DispatcherState::TaskFromId(int64 id,
 }
 
 Status DispatcherState::TasksForJob(
-    int64 job_id, std::vector<std::shared_ptr<const Task>>& tasks) const {
+    int64_t job_id, std::vector<std::shared_ptr<const Task>>& tasks) const {
   auto it = tasks_by_job_.find(job_id);
   if (it == tasks_by_job_.end()) {
     return errors::NotFound("Job ", job_id, " not found");
@@ -415,6 +422,15 @@ Status DispatcherState::TasksForWorker(
 
 int64 DispatcherState::NextAvailableTaskId() const {
   return next_available_task_id_;
+}
+
+Status DispatcherState::ValidateWorker(absl::string_view worker_address) const {
+  return worker_index_resolver_.ValidateWorker(worker_address);
+}
+
+StatusOr<int64> DispatcherState::GetWorkerIndex(
+    absl::string_view worker_address) const {
+  return worker_index_resolver_.GetWorkerIndex(worker_address);
 }
 
 }  // namespace data

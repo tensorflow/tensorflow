@@ -210,9 +210,9 @@ enum {
 // that encounters a failing node]. Indents in Match only appear when we
 // encounter a failing disjunction, so we just handle them as a special case
 // there.)
-inline void Indent(std::ostream* os, int64 indent) {
+inline void Indent(std::ostream* os, int64_t indent) {
   *os << "\n";
-  for (int64 i = 0; i < indent; ++i) {
+  for (int64_t i = 0; i < indent; ++i) {
     *os << " ";
   }
 }
@@ -255,7 +255,7 @@ class AllOfPattern {
     return matched;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     DescribeToImpl(os, std::integral_constant<size_t, 0>(), indent);
   }
 
@@ -304,7 +304,7 @@ class AllOfPattern {
   //
   template <size_t index>
   void DescribeToImpl(std::ostream* os, std::integral_constant<size_t, index>,
-                      int64 indent) const {
+                      int64_t indent) const {
     constexpr bool first_is_trivial =
         IsTrivialMatcher<typename std::remove_reference<decltype(std::get<0>(
             patterns_))>::type>::value;
@@ -343,7 +343,7 @@ class AllOfPattern {
 
   void DescribeToImpl(std::ostream* os,
                       std::integral_constant<size_t, sizeof...(Patterns)>,
-                      int64 indent) const {}
+                      int64_t indent) const {}
 
   std::tuple<Patterns...> patterns_;
 };
@@ -392,7 +392,7 @@ class LayoutPatternBaseImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "a layout";
   }
 
@@ -416,7 +416,7 @@ class LayoutPatternEqualImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "equal to " << LayoutUtil::HumanString(*layout_);
   }
 
@@ -439,7 +439,7 @@ class LayoutPatternFormatImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with format " << Format_Name(format_);
   }
 
@@ -485,7 +485,7 @@ class LayoutPattern {
     return false;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     impl_.DescribeTo(os, indent);
   }
 
@@ -518,7 +518,7 @@ class AnyOfPattern {
     return MatchImpl(item, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "any of:";
     Indent(os, indent);
     DescribeToImpl(os, std::integral_constant<size_t, 0>(), indent);
@@ -597,7 +597,7 @@ class AnyOfPattern {
 
   template <size_t index>
   void DescribeToImpl(std::ostream* os, std::integral_constant<size_t, index>,
-                      int64 indent) const {
+                      int64_t indent) const {
     *os << " - ";
     std::get<index>(patterns_).DescribeTo(os, indent + 3);
     if (index != sizeof...(Patterns) - 1) {
@@ -609,7 +609,7 @@ class AnyOfPattern {
 
   void DescribeToImpl(std::ostream* os,
                       std::integral_constant<size_t, sizeof...(Patterns)>,
-                      int64 indent) const {}
+                      int64_t indent) const {}
 
   std::tuple<Patterns...> patterns_;
 };
@@ -656,7 +656,7 @@ class ShapePatternBaseImpl {
     return shape != nullptr;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "a shape";
   }
 
@@ -679,7 +679,7 @@ class ShapePatternEqualImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "equal to " << ShapeUtil::HumanStringWithLayout(*shape_);
   }
 
@@ -703,7 +703,7 @@ class ShapePatternCompatibleImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "compatible with " << ShapeUtil::HumanString(*shape_);
   }
 
@@ -727,7 +727,7 @@ class ShapePatternElementTypeImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with element type " << PrimitiveType_Name(element_type_);
   }
 
@@ -751,7 +751,7 @@ class ShapePatternDimsImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with dimensions [" << absl::StrJoin(dims_, ",") << "]";
   }
 
@@ -772,7 +772,7 @@ class ShapePatternIsScalarImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "that represents a scalar";
   }
 };
@@ -790,7 +790,7 @@ class ShapePatternIsArrayImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "that represents an array";
   }
 };
@@ -808,7 +808,7 @@ class ShapePatternIsTupleImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "that represents a tuple";
   }
 };
@@ -827,7 +827,7 @@ class ShapePatternEffectiveScalarImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "that is an effective scalar";
   }
 };
@@ -836,7 +836,7 @@ class ShapePatternEffectiveScalarImpl {
 // rank.
 class ShapePatternRankImpl {
  public:
-  explicit constexpr ShapePatternRankImpl(int64 rank) : rank_(rank) {}
+  explicit constexpr ShapePatternRankImpl(int64_t rank) : rank_(rank) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
     if (shape->rank() != rank_) {
@@ -850,7 +850,7 @@ class ShapePatternRankImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     if (rank_ == 0) {
       *os << "that is a scalar";
     } else {
@@ -888,7 +888,7 @@ class ShapePatternLayoutImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with";
     Indent(os, indent + kIndentInc);
     layout_.DescribeTo(os, indent + kIndentInc);
@@ -916,7 +916,7 @@ class ShapePatternSubshapeImpl {
     return MatchImpl(shape, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with subshape at index " << index_.ToString() << " which is";
     Indent(os, indent + kIndentInc);
     subshape_.DescribeTo(os, indent + kIndentInc);
@@ -992,7 +992,7 @@ class ShapePattern {
     return false;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     return impl_.DescribeTo(os, indent);
   }
 
@@ -1037,7 +1037,7 @@ class ShapePattern {
   }
 
   // Modifies the pattern to match only if the shape has the given rank.
-  constexpr auto WithRank(int64 rank) const {
+  constexpr auto WithRank(int64_t rank) const {
     return AppendImpl(ShapePatternRankImpl(rank));
   }
 
@@ -1115,11 +1115,11 @@ inline constexpr auto Shape(::xla::Shape** matched_shape) {
 namespace detail {
 
 // Overloads to get a const or non-const operand out of an instruction.
-inline HloInstruction* HloOperand(HloInstruction* instr, int64 idx) {
+inline HloInstruction* HloOperand(HloInstruction* instr, int64_t idx) {
   return instr->mutable_operand(idx);
 }
 inline const HloInstruction* HloOperand(const HloInstruction* instr,
-                                        int64 idx) {
+                                        int64_t idx) {
   return instr->operand(idx);
 }
 
@@ -1145,7 +1145,7 @@ class HloInstructionPatternBaseImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "an HloInstruction";
   }
 
@@ -1167,7 +1167,7 @@ class HloInstructionPatternNameImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "named \"" << name_ << "\"";
   }
 
@@ -1192,7 +1192,7 @@ class HloInstructionIsImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which is " << std::hex << std::nouppercase << std::showbase
         << reinterpret_cast<uint64>(inst_) << " (" << InstToString(inst_)
         << ")";
@@ -1224,7 +1224,7 @@ class HloInstructionPatternOpcodeImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     if (!invert_) {
       *os << "with opcode " << HloOpcodeString(opcode_);
     } else {
@@ -1262,7 +1262,7 @@ class HloInstructionCustomCallTargetImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     if (custom_call_targets_.size() == 1) {
       *os << "custom call with target '" << custom_call_targets_.front() << "'";
     } else {
@@ -1279,7 +1279,7 @@ class HloInstructionCustomCallTargetImpl {
 // has the given number of operands.
 class HloInstructionPatternNumOperandsImpl {
  public:
-  explicit constexpr HloInstructionPatternNumOperandsImpl(int64 num_operands)
+  explicit constexpr HloInstructionPatternNumOperandsImpl(int64_t num_operands)
       : num_operands_(num_operands) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
@@ -1290,7 +1290,7 @@ class HloInstructionPatternNumOperandsImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with " << num_operands_ << " operand"
         << (num_operands_ != 1 ? "s" : "");
   }
@@ -1324,7 +1324,7 @@ class HloInstructionPatternShapeImpl {
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "outputting";
     Indent(os, indent + kIndentInc);
     shape_.DescribeTo(os, indent + kIndentInc);
@@ -1340,7 +1340,7 @@ template <typename OperandType, typename OperandImpl>
 class HloInstructionPatternOperandImpl {
  public:
   explicit constexpr HloInstructionPatternOperandImpl(
-      int64 operand_index,
+      int64_t operand_index,
       const HloInstructionPattern<OperandType, OperandImpl>& operand)
       : operand_index_(operand_index), operand_(operand) {}
 
@@ -1352,7 +1352,7 @@ class HloInstructionPatternOperandImpl {
     return MatchImpl(inst, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with operand " << operand_index_ << " which is:";
     Indent(os, indent + kIndentInc);
     operand_.DescribeTo(os, indent + kIndentInc);
@@ -1395,7 +1395,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
     return MatchImpl(inst, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with two operands in either order:";
     Indent(os, indent);
     *os << " - ";
@@ -1406,10 +1406,10 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
   }
 
  private:
-  HloInstruction* operand(HloInstruction* inst, int64 idx) const {
+  HloInstruction* operand(HloInstruction* inst, int64_t idx) const {
     return inst->mutable_operand(idx);
   }
-  const HloInstruction* operand(const HloInstruction* inst, int64 idx) const {
+  const HloInstruction* operand(const HloInstruction* inst, int64_t idx) const {
     return inst->operand(idx);
   }
 
@@ -1426,7 +1426,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
 
     // If we're not generating explanations, this is pretty simple.
     if (!option.explain_os) {
-      auto try_match = [&](int64 idx1, int64 idx2) {
+      auto try_match = [&](int64_t idx1, int64_t idx2) {
         MatchOption new_option = option;
         new_option.capture = false;
         if (op1_.Match(operand(inst, idx1), new_option) &&
@@ -1552,7 +1552,7 @@ class HloInstructionPatternFusionKindImpl {
     return MatchImpl(inst, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "with fusion kind " << ToString(kind_);
   }
 
@@ -1578,7 +1578,7 @@ class HloInstructionPatternFusionKindImpl {
 // is a kGetTupleElement with a particular tuple index.
 class HloInstructionPatternTupleIndexImpl {
  public:
-  explicit constexpr HloInstructionPatternTupleIndexImpl(int64 tuple_index)
+  explicit constexpr HloInstructionPatternTupleIndexImpl(int64_t tuple_index)
       : tuple_index_(tuple_index) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
@@ -1589,7 +1589,7 @@ class HloInstructionPatternTupleIndexImpl {
     return MatchImpl(inst, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which is a GTE with index " << tuple_index_;
   }
 
@@ -1613,7 +1613,8 @@ class HloInstructionPatternTupleIndexImpl {
 
 class HloInstructionPatternParameterNumImpl {
  public:
-  explicit constexpr HloInstructionPatternParameterNumImpl(int64 parameter_num)
+  explicit constexpr HloInstructionPatternParameterNumImpl(
+      int64_t parameter_num)
       : parameter_num_(parameter_num) {}
 
   bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
@@ -1624,7 +1625,7 @@ class HloInstructionPatternParameterNumImpl {
     return MatchImpl(inst, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which is parameter " << parameter_num_;
   }
 
@@ -1670,7 +1671,7 @@ class HloInstructionPatternOneUseImpl
       return false;
     }
 
-    int64 use_count = absl::c_count_if(
+    int64_t use_count = absl::c_count_if(
         inst->users()[0]->operands(),
         [&](const HloInstruction* operand) { return operand == inst; });
     if (use_count != 1) {
@@ -1682,7 +1683,7 @@ class HloInstructionPatternOneUseImpl
     return true;
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which has exactly one use";
   }
 };
@@ -1694,7 +1695,7 @@ class HloInstructionPatternOneUserImpl
     return MatchOneUser(inst, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which has exactly one user (but possibly is used multiple times by "
            "that instruction)";
   }
@@ -1714,7 +1715,7 @@ class HloInstructionPatternComparisonDirectionImpl {
     return MatchImpl(inst, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which has comparison direction "
         << ComparisonDirectionToString(direction_);
   }
@@ -1752,7 +1753,7 @@ class HloConstantScalarImpl {
     return MatchImpl(inst, option);
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     *os << "which is a constant "
         << (match_effective_scalar_ ? "effective " : "") << "scalar";
     if (val_.has_value()) {
@@ -1863,7 +1864,7 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionCustomCallTargetImpl(custom_call_targets));
   }
 
-  auto WithNumOperands(int64 num_operands) const {
+  auto WithNumOperands(int64_t num_operands) const {
     return AppendImpl(HloInstructionPatternNumOperandsImpl(num_operands));
   }
 
@@ -1944,7 +1945,7 @@ class HloInstructionPattern {
   // matches the given pattern.
   template <typename OperandType, typename OperandImpl>
   constexpr auto WithOperand(
-      int64 operand_index,
+      int64_t operand_index,
       const HloInstructionPattern<OperandType, OperandImpl>& operand) const {
     return AppendImpl(
         HloInstructionPatternOperandImpl<OperandType, OperandImpl>(
@@ -1969,13 +1970,13 @@ class HloInstructionPattern {
 
   // Modifies the pattern to match only if the instruction is a
   // get-tuple-element with the given tuple index.
-  constexpr auto WithTupleIndex(int64 tuple_index) const {
+  constexpr auto WithTupleIndex(int64_t tuple_index) const {
     return AppendImpl(HloInstructionPatternTupleIndexImpl(tuple_index));
   }
 
   // Modifies the pattern to match only if the instruction is a parameter
   // with the given parameter number.
-  constexpr auto WithParameterNum(int64 parameter_num) const {
+  constexpr auto WithParameterNum(int64_t parameter_num) const {
     return AppendImpl(HloInstructionPatternParameterNumImpl(parameter_num));
   }
 
@@ -1999,7 +2000,7 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternComparisonDirectionImpl(direction));
   }
 
-  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
     impl_.DescribeTo(os, indent);
   }
 
@@ -2187,12 +2188,13 @@ XLA_TERNOP_PATTERN(SelectAndScatter);
 
 namespace detail {
 template <typename Matcher, typename FirstArg>
-inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg) {
+inline auto WithOperands(Matcher&& m, int64_t operand_num,
+                         FirstArg&& first_arg) {
   return m.WithOperand(operand_num, std::forward<FirstArg>(first_arg));
 }
 
 template <typename Matcher, typename FirstArg, typename... Args>
-inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg,
+inline auto WithOperands(Matcher&& m, int64_t operand_num, FirstArg&& first_arg,
                          Args&&... args) {
   return WithOperands(
       m.WithOperand(operand_num, std::forward<FirstArg>(first_arg)),
@@ -2337,7 +2339,7 @@ inline auto NonConstant(HloInstructionType** matched_inst) {
 // Add overloads for GetTupleElement which take a int64 specifying which tuple
 // element is selected.
 template <typename Arg>
-inline auto GetTupleElement(Arg&& arg, int64 tuple_index) {
+inline auto GetTupleElement(Arg&& arg, int64_t tuple_index) {
   return Op()
       .WithOpcode(HloOpcode::kGetTupleElement)
       .WithOperand(0, std::forward<Arg>(arg))
@@ -2346,7 +2348,7 @@ inline auto GetTupleElement(Arg&& arg, int64 tuple_index) {
 
 template <typename HloInstructionType, typename Arg>
 inline auto GetTupleElement(HloInstructionType** matched_inst, Arg&& arg,
-                            int64 tuple_index) {
+                            int64_t tuple_index) {
   return Op(matched_inst)
       .WithOpcode(HloOpcode::kGetTupleElement)
       .WithOperand(0, std::forward<Arg>(arg))
@@ -2355,11 +2357,12 @@ inline auto GetTupleElement(HloInstructionType** matched_inst, Arg&& arg,
 
 // Add overloads for Parameter which take an int64 specifying the parameter
 // number.
-inline auto Parameter(int64 parameter_num) {
+inline auto Parameter(int64_t parameter_num) {
   return Op().WithOpcode(HloOpcode::kParameter).WithParameterNum(parameter_num);
 }
 template <typename HloInstructionType>
-inline auto Parameter(HloInstructionType** matched_inst, int64 parameter_num) {
+inline auto Parameter(HloInstructionType** matched_inst,
+                      int64_t parameter_num) {
   return Op(matched_inst)
       .WithOpcode(HloOpcode::kParameter)
       .WithParameterNum(parameter_num);

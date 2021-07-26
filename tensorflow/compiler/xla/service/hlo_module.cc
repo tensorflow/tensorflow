@@ -374,7 +374,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         HloComputation::CreateFromProto(computation_proto, computation_map,
                                         prohibit_empty_literal));
     CHECK_NE(computation.get(), nullptr);
-    int64 computation_id = computation_proto.id();
+    int64_t computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
     TF_RET_CHECK(!ContainsKey(computation_map, computation_id));
     computation_map[computation_id] = computation.get();
@@ -473,7 +473,7 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
   // passed in via the ProgramShape. Set the layouts to the appropriate values.
   ComputationLayout* entry_layout =
       module_config.mutable_entry_computation_layout();
-  for (int64 i = 0; i < entry_layout->parameter_count(); ++i) {
+  for (int64_t i = 0; i < entry_layout->parameter_count(); ++i) {
     TF_RETURN_IF_ERROR(
         entry_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
             program_shape.parameters(i)));
@@ -520,14 +520,14 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
       instructions_to_outline.begin(), instructions_to_outline.end());
   std::vector<HloInstruction*> arguments;
   std::vector<HloInstruction*> outputs;
-  int64 parameter_count = 0;
+  int64_t parameter_count = 0;
   for (HloInstruction* instruction_to_outline : instructions_to_outline) {
     // Clone the original instruction.
     HloInstruction* outlined_instruction =
         builder.AddInstruction(instruction_to_outline->Clone());
 
     // Replace its operands to their counterparts in the new function.
-    for (int64 operand_num = 0;
+    for (int64_t operand_num = 0;
          operand_num < outlined_instruction->operand_count(); ++operand_num) {
       HloInstruction* old_operand =
           outlined_instruction->mutable_operand(operand_num);
@@ -594,7 +594,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
 }
 
 int64 HloModule::instruction_count() const {
-  int64 n = 0;
+  int64_t n = 0;
   for (const auto& computation : computations_) {
     n += computation->instruction_count();
   }

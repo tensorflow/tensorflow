@@ -48,8 +48,8 @@ struct CSRSparseMatrixZeros {
       return errors::InvalidArgument("sparse tensor must have rank == 2 or 3; ",
                                      "but dense shape has ", rank, " entries");
     }
-    const int64 batch_size = (rank == 2) ? 1 : dense_shape(0);
-    const int64 rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
+    const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
 
     Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
                        TensorShape({batch_size + 1}));

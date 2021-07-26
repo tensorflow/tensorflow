@@ -49,7 +49,7 @@ void StatSummarizer::Validate(const std::vector<TensorDescription>* outputs,
                  << ns.output_size();
   } else {
     for (const auto& output : ns.output()) {
-      const int32 slot = output.slot();
+      const int32_t slot = output.slot();
       if ((slot < 0) || (slot >= ns.output_size())) {
         // This is not a hard error for Switch ops, so just pass.
         continue;
@@ -186,7 +186,7 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       }
 
       ++node_num;
-      const int64 curr_time = ns.all_end_rel_micros();
+      const int64_t curr_time = ns.all_end_rel_micros();
       curr_total_us += curr_time;
       auto output_result =
           outputs_.emplace(name, std::vector<TensorDescription>());
@@ -199,7 +199,7 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       if (output_result.second) {
         outputs->resize(ns.output_size());
         for (const auto& output : ns.output()) {
-          const int32 slot = output.slot();
+          const int32_t slot = output.slot();
           if ((slot < 0) || (slot >= ns.output_size())) {
             // This is not a hard error for Switch ops, so just pass.
             continue;
@@ -210,7 +210,7 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
 
       int64_t curr_node_mem = 0;
       for (const auto& mem : ns.memory()) {
-        const int64 mem_usage = mem.total_bytes();
+        const int64_t mem_usage = mem.total_bytes();
         curr_node_mem += mem_usage;
       }
       stats_calculator_->AddNodeStats(name, op_type, node_num, start_us,

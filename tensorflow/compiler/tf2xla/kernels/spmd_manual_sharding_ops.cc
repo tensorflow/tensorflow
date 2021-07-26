@@ -47,12 +47,12 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
                                           "proto."));
     }
     auto output_shape = input_shape_or.ValueOrDie();
-    int64 rank = output_shape.rank();
+    int64_t rank = output_shape.rank();
     if (sharding.type() == xla::OpSharding::OTHER) {
-      for (int64 i = 0; i < rank; ++i) {
-        int64 partitions_i = sharding.tile_assignment_dimensions(i);
+      for (int64_t i = 0; i < rank; ++i) {
+        int64_t partitions_i = sharding.tile_assignment_dimensions(i);
         if (partitions_i == 1) continue;
-        int64 dim_size =
+        int64_t dim_size =
             xla::CeilOfRatio(output_shape.dimensions(i), partitions_i);
         output_shape.set_dimensions(i, dim_size);
       }

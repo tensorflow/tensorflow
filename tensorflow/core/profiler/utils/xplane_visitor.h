@@ -98,11 +98,11 @@ class XStatsOwner {
   // Shortcut to get a specific stat type, nullopt if absent.
   // This function performs a linear search for the requested stat value.
   // Prefer ForEachStat above when multiple stat values are necessary.
-  absl::optional<XStatVisitor> GetStat(int64 stat_type) const;
+  absl::optional<XStatVisitor> GetStat(int64_t stat_type) const;
 
   // Same as above that skips searching for the stat.
   absl::optional<XStatVisitor> GetStat(
-      int64 stat_type, const XStatMetadata& stat_metadata) const {
+      int64_t stat_type, const XStatMetadata& stat_metadata) const {
     for (const XStat& stat : stats_owner_->stats()) {
       if (stat.metadata_id() == stat_metadata.id()) {
         return XStatVisitor(plane_, &stat, &stat_metadata, stat_type);
@@ -262,20 +262,20 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
   }
 
   // Returns event metadata given its id. Returns a default value if not found.
-  const XEventMetadata* GetEventMetadata(int64 event_metadata_id) const;
+  const XEventMetadata* GetEventMetadata(int64_t event_metadata_id) const;
 
   // Returns the type of an event given its id.
-  absl::optional<int64> GetEventType(int64 event_metadata_id) const;
+  absl::optional<int64> GetEventType(int64_t event_metadata_id) const;
 
   // Returns stat metadata given its id. Returns a default value if not found.
-  const XStatMetadata* GetStatMetadata(int64 stat_metadata_id) const;
+  const XStatMetadata* GetStatMetadata(int64_t stat_metadata_id) const;
 
   // Returns stat metadata given its type. Returns nullptr if not found.
   // Use as an alternative to GetStatMetadata above.
-  const XStatMetadata* GetStatMetadataByType(int64 stat_type) const;
+  const XStatMetadata* GetStatMetadataByType(int64_t stat_type) const;
 
   // Returns the type of an stat given its id.
-  absl::optional<int64> GetStatType(int64 stat_metadata_id) const;
+  absl::optional<int64> GetStatType(int64_t stat_metadata_id) const;
 
  private:
   void BuildEventTypeMap(const XPlane* plane,
@@ -294,7 +294,7 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
 };
 
 template <class T>
-absl::optional<XStatVisitor> XStatsOwner<T>::GetStat(int64 stat_type) const {
+absl::optional<XStatVisitor> XStatsOwner<T>::GetStat(int64_t stat_type) const {
   const auto* stat_metadata = plane_->GetStatMetadataByType(stat_type);
   if (stat_metadata != nullptr) {
     return GetStat(stat_type, *stat_metadata);
@@ -305,7 +305,7 @@ absl::optional<XStatVisitor> XStatsOwner<T>::GetStat(int64 stat_type) const {
 template <typename ForEachChildFunc>
 void XEventMetadataVisitor::ForEachChild(
     ForEachChildFunc&& for_each_child) const {
-  for (int64 child_id : metadata()->child_id()) {
+  for (int64_t child_id : metadata()->child_id()) {
     const auto* event_metadata = plane()->GetEventMetadata(child_id);
     if (event_metadata != nullptr) {
       for_each_child(XEventMetadataVisitor(plane(), event_metadata));

@@ -653,6 +653,62 @@ class CudnnFilterDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnFilterDescriptor);
 };
 
+// The errata sheet (JSON format) for marking the cudnn engines that might be
+// buggy. For example, we don't want the engine 999 of forward convolution:
+// R"({ "version" : 1,
+//      "rules"   : [
+//        { "rule_id"             : "ConvFwd_eng999",
+//          "operation"           : "ConvFwd",
+//          "engine"              : 999,
+//          "knob"                : [],
+//          "cudnn_version_start" : 8000,
+//          "cudnn_version_end"   : -1
+//        }
+// ]})"
+// We skip eng0 in the static filter because they are too slow. Additionally,
+// users can specify an additional errata JSON file via
+// CUDNN_ERRATA_JSON_FILE at runtime.
+const json* CudnnExecutionPlanEngineFilterStatic() {
+  static absl::string_view filter_str = R"({
+      "version" : 1,
+        "rules"   : [
+          { "rule_id"             : "ConvFwd_eng0",
+            "operation"           : "ConvFwd",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvBwdData_eng0",
+            "operation"           : "ConvBwdData",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvBwdFilter_eng0",
+            "operation"           : "ConvBwdFilter",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          }
+      ]})";
+  static const json* json_handle = new json(json::parse(filter_str));
+  return json_handle;
+}
+
+const json* CudnnExecutionPlanEngineFilterRuntime() {
+  static const json* json_handle = []() -> const json* {
+    json j;
+    if (cudnn_frontend::load_from_config(j, "")) {
+      return new json(j);
+    }
+    return nullptr;
+  }();
+  return json_handle;
+}
+
 // A helper function to decide whether to use
 // CUDNN_BATCHNORM_SPATIAL_PERSISTENT in batchnorm. This mode can be faster in
 // some tasks because an optimized path may be selected for CUDNN_DATA_FLOAT
@@ -3204,26 +3260,6 @@ namespace {
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
-absl::optional<int64_t> GetEngineId(cudnnBackendDescriptor_t engine_config) {
-  int64_t count;
-  int64_t engine_id;
-  cudnn_frontend::ManagedOpaqueDescriptor managed_engine =
-      cudnn_frontend::make_shared_backend_pointer(
-          CUDNN_BACKEND_ENGINE_DESCRIPTOR);
-  cudnnBackendDescriptor_t engine = managed_engine->get_backend_descriptor();
-  if (cudnnBackendGetAttribute(engine_config, CUDNN_ATTR_ENGINECFG_ENGINE,
-                               CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &count,
-                               &engine) != CUDNN_STATUS_SUCCESS) {
-    return absl::nullopt;
-  }
-  if (cudnnBackendGetAttribute(engine, CUDNN_ATTR_ENGINE_GLOBAL_INDEX,
-                               CUDNN_TYPE_INT64, 1, &count,
-                               &engine_id) != CUDNN_STATUS_SUCCESS) {
-    return absl::nullopt;
-  }
-  return engine_id;
-}
-
 bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
                          bool disable_winograd, bool disable_nondeterminism,
                          bool disable_tensor_core) {
@@ -3244,11 +3280,6 @@ bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
   if (disable_tensor_core) {
     ret |= cudnn_frontend::hasNumericalNote<CUDNN_NUMERICAL_NOTE_TENSOR_CORE>(
         engine_config);
-  }
-
-  auto maybe_engine_id = GetEngineId(engine_config);
-  if (maybe_engine_id.has_value()) {
-    ret |= *maybe_engine_id == 0;
   }
 
   return ret;
@@ -3490,7 +3521,7 @@ GetCudnnFusedOperationGraph(
     dnn::ConvolutionKind kind, dnn::DataType element_type, double alpha,
     double alpha2, Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& bias_descriptor,
+    dnn::BatchDescriptor bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::ActivationMode activation_mode, CudnnHandle& cudnn) {
@@ -3569,6 +3600,12 @@ GetCudnnFusedOperationGraph(
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_w);
+
+  // For the purposes of the cudnn graph, say that the bias tensor has the same
+  // layout as the output tensor.  It doesn't actually matter, because bias is a
+  // 1D array.  But we need to get the correct vectorization, otherwise the
+  // cudnn graph API rejects this tensor.
+  bias_descriptor.set_layout(output_descriptor.layout());
 
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(bias_descriptor, element_type);
@@ -3794,12 +3831,29 @@ GetFirstWorkingExecutionPlan(
   cudnn_frontend::filter(engine_config, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_list, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
+
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
                     .setHandle(cudnn.handle())
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (maybe_json_handle_static &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (maybe_json_handle_runtime &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       bool specify_workspace_limit = scratch_allocator != nullptr;
       auto memory_limit_bytes =
           specify_workspace_limit
@@ -4283,7 +4337,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
     SE_ASSIGN_OR_RETURN(
         std::unique_ptr<cudnn_frontend::OperationGraph> op_graph,
         GetCudnnFusedOperationGraph(
-            dnn::ConvolutionKind::FORWARD, accumulator_type, conv_input_scale,
+            dnn::ConvolutionKind::FORWARD, element_type, conv_input_scale,
             side_input_scale, stream, conv_input_descriptor, filter_descriptor,
             bias_descriptor, output_descriptor, convolution_descriptor,
             activation_mode, cudnn));
@@ -4327,9 +4381,9 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
   }
 
   void* data_ptrs[] = {
-      const_cast<void*>(conv_input_data.opaque()), output_data.opaque(),
-      const_cast<void*>(filter_data.opaque()), output_data.opaque(),
-      const_cast<void*>(biases.opaque())};
+      conv_input_data.opaque(), output_data.opaque(), filter_data.opaque(),
+      side_input_data.opaque(), biases.opaque(),
+  };
   int64_t uids[] = {'x', 'y', 'w', 'z', 'b'};
   auto variantPack = cudnn_frontend::VariantPackBuilder()
                          .setWorkspacePointer(scratch_memory.opaque())
@@ -4442,6 +4496,10 @@ bool CudnnSupport::GetConvolveExecutionPlans(
   cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
+
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
@@ -4451,6 +4509,19 @@ bool CudnnSupport::GetConvolveExecutionPlans(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (maybe_json_handle_static &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (maybe_json_handle_runtime &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       out_exec_plans->push_back(std::unique_ptr<dnn::ConvolveExecutionPlan>(
           new CudnnConvolveExecutionPlan(std::move(plan))));
       // We will use the first working plan when determinism is required.
@@ -4529,6 +4600,10 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
   cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
+
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
@@ -4538,6 +4613,19 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (maybe_json_handle_static &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (maybe_json_handle_runtime &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       out_exec_plans->push_back(std::unique_ptr<dnn::ConvolveExecutionPlan>(
           new CudnnConvolveExecutionPlan(std::move(plan))));
       // We will use the first working plan when determinism is required.

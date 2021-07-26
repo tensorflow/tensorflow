@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -312,10 +313,12 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   llvm::SmallDenseMap<ResourceHandle, int64_t> resource_handle_id_map;
   func_op.walk([&](Operation* op) {
     if (auto resource_alloc = dyn_cast<ResourceHandleAllocatorInterface>(op)) {
-      ResourceHandleValueAndId resource =
-          resource_alloc.GetResourceHandleValueAndId(resource_handle_id_map,
-                                                     next_unique_id);
-      AddValueUniqueIDMapping(resource.value, resource.id);
+      llvm::SmallVector<ResourceHandleValueAndId, 4> resources =
+          resource_alloc.GetResourceHandleValueAndIdList(resource_handle_id_map,
+                                                         next_unique_id);
+      for (auto& resource_handle : resources) {
+        AddValueUniqueIDMapping(resource_handle.value, resource_handle.id);
+      }
     } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
       for (auto result : filter_resources(op->getResults()))
         PropagateInputToOutput(op->getOperand(result.getResultNumber()),

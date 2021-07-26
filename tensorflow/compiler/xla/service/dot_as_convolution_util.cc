@@ -24,7 +24,8 @@ limitations under the License.
 namespace xla {
 namespace dot_as_convolution_util {
 
-bool ConvSpatialDimensionIsParallel(const WindowDimension& wd, int64 lhs_size) {
+bool ConvSpatialDimensionIsParallel(const WindowDimension& wd,
+                                    int64_t lhs_size) {
   // A parallel batch dimension in DotGeneral is represented as a
   // spatial dimension with window size B (batch dimension size),
   // stride B - 1, and base dilation B.
@@ -64,12 +65,12 @@ bool ConvSpatialDimensionIsParallel(const WindowDimension& wd, int64 lhs_size) {
                                    conv_dims.kernel_input_feature_dimension(),
                                    -1, -1});
 
-  for (int64 i = 0; i < conv_dims.input_spatial_dimensions_size(); ++i) {
-    int64 lhs = conv_dims.input_spatial_dimensions(i);
-    int64 lhs_size = conv->operand(0)->shape().dimensions(lhs);
-    int64 rhs = conv_dims.kernel_spatial_dimensions(i);
-    int64 rhs_size = conv->operand(1)->shape().dimensions(rhs);
-    int64 output = conv_dims.output_spatial_dimensions(i);
+  for (int64_t i = 0; i < conv_dims.input_spatial_dimensions_size(); ++i) {
+    int64_t lhs = conv_dims.input_spatial_dimensions(i);
+    int64_t lhs_size = conv->operand(0)->shape().dimensions(lhs);
+    int64_t rhs = conv_dims.kernel_spatial_dimensions(i);
+    int64_t rhs_size = conv->operand(1)->shape().dimensions(rhs);
+    int64_t output = conv_dims.output_spatial_dimensions(i);
     const auto& wd = conv->window().dimensions(i);
     if (ConvSpatialDimensionIsParallel(wd, lhs_size)) {
       dims.batch_dims.push_back({lhs, rhs, output, i});
@@ -155,14 +156,14 @@ CreateShardedConvForDotGeneralConvolution(
 DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
   const auto& dot_dim_numbs = dot->dot_dimension_numbers();
   dot_as_convolution_util::DotConvolutionDimsInfo dnums;
-  for (int64 i = 0; i < dot_dim_numbs.lhs_batch_dimensions().size(); ++i) {
+  for (int64_t i = 0; i < dot_dim_numbs.lhs_batch_dimensions().size(); ++i) {
     dnums.batch_dims.emplace_back();
     dnums.batch_dims.back().lhs = dot_dim_numbs.lhs_batch_dimensions(i);
     dnums.batch_dims.back().rhs = dot_dim_numbs.rhs_batch_dimensions(i);
     dnums.batch_dims.back().output = i;
     dnums.batch_dims.back().spatial_dim = -1;
   }
-  for (int64 i = 0; i < dot_dim_numbs.lhs_contracting_dimensions().size();
+  for (int64_t i = 0; i < dot_dim_numbs.lhs_contracting_dimensions().size();
        ++i) {
     dnums.contracting_dims.emplace_back();
     dnums.contracting_dims.back().lhs =
@@ -172,7 +173,7 @@ DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
     dnums.contracting_dims.back().output = -1;
     dnums.contracting_dims.back().spatial_dim = -1;
   }
-  for (int64 i = 0; i < dot->operand(0)->shape().rank(); ++i) {
+  for (int64_t i = 0; i < dot->operand(0)->shape().rank(); ++i) {
     if (!absl::c_linear_search(dot_dim_numbs.lhs_batch_dimensions(), i) &&
         !absl::c_linear_search(dot_dim_numbs.lhs_contracting_dimensions(), i)) {
       dnums.lhs_non_contracting_dims.emplace_back();
@@ -184,7 +185,7 @@ DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
       dnums.lhs_non_contracting_dims.back().spatial_dim = -1;
     }
   }
-  for (int64 i = 0; i < dot->operand(1)->shape().rank(); ++i) {
+  for (int64_t i = 0; i < dot->operand(1)->shape().rank(); ++i) {
     if (!absl::c_linear_search(dot_dim_numbs.rhs_batch_dimensions(), i) &&
         !absl::c_linear_search(dot_dim_numbs.rhs_contracting_dimensions(), i)) {
       dnums.rhs_non_contracting_dims.emplace_back();

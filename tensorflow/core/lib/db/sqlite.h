@@ -203,11 +203,11 @@ class SqliteStatement {
   void Reset();
 
   /// \brief Binds signed 64-bit integer to 1-indexed query parameter.
-  void BindInt(int parameter, int64 value) {
+  void BindInt(int parameter, int64_t value) {
     Update(sqlite3_bind_int64(stmt_, parameter, value), parameter);
     size_ += sizeof(int64);
   }
-  void BindInt(const char* parameter, int64 value) {
+  void BindInt(const char* parameter, int64_t value) {
     BindInt(GetParameterIndex(parameter), value);
   }
 

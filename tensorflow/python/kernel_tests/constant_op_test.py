@@ -117,20 +117,18 @@ class ConstantTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testComplex64(self):
     self._testAll(
-        np.complex(1, 2) *
-        np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex64))
+        (1 + 2j) * np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(
-        np.complex(1, 2) *
+        (1 + 2j) *
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.complex64))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex64))
 
   @test_util.run_deprecated_v1
   def testComplex128(self):
     self._testAll(
-        np.complex(1, 2) *
-        np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex128))
+        (1 + 2j) * np.arange(-15, 15).reshape([2, 3, 5]).astype(np.complex128))
     self._testAll(
-        np.complex(1, 2) *
+        (1 + 2j) *
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.complex128))
     self._testAll(np.empty((2, 0, 5)).astype(np.complex128))
 
@@ -496,7 +494,7 @@ class ZerosLikeTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       # Creates a tensor of non-zero values with shape 2 x 3.
       # NOTE(kearnes): The default numpy dtype associated with tf.string is
-      # np.object (and can't be changed without breaking a lot things), which
+      # np.object_ (and can't be changed without breaking a lot things), which
       # causes a TypeError in constant_op.constant below. Here we catch the
       # special case of tf.string and set the numpy dtype appropriately.
       if dtype == dtypes_lib.string:
@@ -880,7 +878,7 @@ class PlaceholderTest(test.TestCase):
       with ops.control_dependencies([p]):
         c = constant_op.constant(5, dtypes_lib.int32)
       d = math_ops.multiply(p, c)
-      val = np.array(2).astype(np.int)
+      val = np.array(2).astype(np.int64)
       self.assertEqual(10, d.eval(feed_dict={p: val}))
 
   @test_util.run_deprecated_v1

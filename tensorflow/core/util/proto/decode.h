@@ -223,7 +223,7 @@ inline const uint8* ReadFromArray<uint64, WireFormatLite::TYPE_FIXED64>(
 template <>
 inline const uint8* ReadFromArray<int64, WireFormatLite::TYPE_SFIXED32>(
     const uint8* buf, int64* value) {
-  int32 temp;
+  int32_t temp;
   buf = WireFormatLite::ReadPrimitiveFromArray<int32,
                                                WireFormatLite::TYPE_SFIXED32>(
       buf, &temp);

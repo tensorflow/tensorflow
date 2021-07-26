@@ -44,9 +44,9 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoDot(
     return {};
   }
 
-  int64 num_batch_dims =
+  int64_t num_batch_dims =
       dot.dot_dimension_numbers().lhs_batch_dimensions_size();
-  int64 expected_rank = 2 + num_batch_dims;
+  int64_t expected_rank = 2 + num_batch_dims;
   auto is_r2_transpose = [&](const HloInstruction& transpose) {
     if (transpose.opcode() != HloOpcode::kTranspose) {
       return false;
@@ -58,7 +58,7 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoDot(
 
     // Check that the transpose doesn't touch any batch dimensions, but does
     // transpose the non-batch ones.
-    for (int64 i = 0; i != expected_rank; ++i) {
+    for (int64_t i = 0; i != expected_rank; ++i) {
       bool is_batch = absl::c_linear_search(
           dot.dot_dimension_numbers().lhs_batch_dimensions(),
           transpose_dims[i]);
@@ -70,7 +70,7 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoDot(
   };
 
   TransposeFolding::OperandIndices operand_set;
-  for (int64 i = 0; i < dot.operand_count(); ++i) {
+  for (int64_t i = 0; i < dot.operand_count(); ++i) {
     auto& operand = *dot.operand(i);
     if (is_r2_transpose(operand)) {
       operand_set.push_back(i);
@@ -91,7 +91,7 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoConvolution(
   }
 
   TransposeFolding::OperandIndices operand_set;
-  for (int64 i = 0; i < convolution.operand_count(); ++i) {
+  for (int64_t i = 0; i < convolution.operand_count(); ++i) {
     auto& operand = *convolution.operand(i);
     if (operand.opcode() == HloOpcode::kTranspose) {
       operand_set.push_back(i);
@@ -116,7 +116,7 @@ Status FoldTransposeIntoDot(InstructionOperandsPair pair) {
   CHECK_EQ(new_dim_numbers.lhs_contracting_dimensions_size(), 1);
   CHECK_EQ(new_dim_numbers.rhs_contracting_dimensions_size(), 1);
 
-  for (int64 operand_index : pair.second) {
+  for (int64_t operand_index : pair.second) {
     // We checked that the batch dimensions are not touched by the transpose,
     // and shape inference guarantees that there is exactly one contracting
     // dimension.
@@ -158,7 +158,7 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
   ConvolutionDimensionNumbers new_dnums = dnums;
 
   HloInstruction* new_lhs;
-  const int64 kLhsIdx = 0;
+  const int64_t kLhsIdx = 0;
   if (absl::c_linear_search(operand_indices, kLhsIdx)) {
     HloInstruction& transpose = *convolution.mutable_operand(kLhsIdx);
     const auto& transpose_dimensions = transpose.dimensions();
@@ -181,7 +181,7 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
   }
 
   HloInstruction* new_rhs;
-  const int64 kRhsIdx = 1;
+  const int64_t kRhsIdx = 1;
   if (absl::c_linear_search(operand_indices, kRhsIdx)) {
     HloInstruction& transpose = *convolution.mutable_operand(kRhsIdx);
     const auto& transpose_dimensions = transpose.dimensions();

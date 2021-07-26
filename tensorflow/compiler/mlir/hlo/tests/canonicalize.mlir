@@ -144,6 +144,16 @@ func @concatenate_remove_operand(%arg0: tensor<4xi32>, %arg1: tensor<0xi32>) -> 
   return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: concatenate_forward
+func @concatenate_forward(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<12xi32> {
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<4xi32>, tensor<4xi32>) -> tensor<8xi32>
+  %1 = mhlo.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
+  // CHECK: "mhlo.concatenate"(%0, %arg0, %arg1) {dimension = 0 : i64} : (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<12xi32>
+  %2 = "mhlo.concatenate"(%0, %1) { dimension = 0 : i64 } : (tensor<8xi32>, tensor<4xi32>) -> tensor<12xi32>
+
+  return %2 : tensor<12xi32>
+}
+
 // CHECK-LABEL: concatenate_empty_bool
 func @concatenate_empty_bool(%arg0: tensor<0xi1>, %arg1: tensor<0xi1>) -> tensor<0xi1> {
   // CHECK: mhlo.constant
@@ -229,6 +239,24 @@ func @constant_like_constant_dynamic(%arg0: tensor<*xi32>) -> tensor<*xf32> {
   // CHECK: chlo.constant_like
   %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<*xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: dynamic_update_slice_identity_update
+func @dynamic_update_slice_identity_update(%arg0: tensor<3x4xi64>, %arg1: tensor<3x4xi64>) -> tensor<3x4xi64> {
+  // CHECK: return %arg1
+  %0 = mhlo.constant dense<0> : tensor<i64>
+  %1 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %0, %0) : (tensor<3x4xi64>, tensor<3x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+  return %1 : tensor<3x4xi64>
+}
+
+// CHECK-LABEL: dynamic_update_slice_fold_fail_dynamic_shapes
+func @dynamic_update_slice_fold_fail_dynamic_shapes(%arg0: tensor<?x?xi64>, %arg1: tensor<?x?xi64>) -> tensor<?x?xi64> {
+  %0 = mhlo.constant dense<0> : tensor<i64>
+  %1 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %0, %0) : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
+  return %1 : tensor<?x?xi64>
+  // CHECK: %[[CST:.*]] = mhlo.constant dense<0> : tensor<i64>
+  // CHECK: %[[VAL:.*]] = "mhlo.dynamic-update-slice"(%arg0, %arg1, %[[CST]], %[[CST]]) : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
+  // CHECK: return %[[VAL]] : tensor<?x?xi64>
 }
 
 // CHECK-LABEL: dynamic_slice_variable_start

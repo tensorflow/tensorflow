@@ -100,7 +100,7 @@ class Shape {
 
   // Removes the given dimension form the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
-  void DeleteDimension(int64 dim_to_delete);
+  void DeleteDimension(int64_t dim_to_delete);
 
   // The following methods mirror the protobuf generated code interface for the
   // message ShapeProto. This enabled easy migration of this data structure
@@ -115,8 +115,10 @@ class Shape {
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
   int64 dimensions(int index) const { return dimensions_.at(index); }
-  void set_dimensions(int index, int64 value) { dimensions_.at(index) = value; }
-  void add_dimensions(int64 value) {
+  void set_dimensions(int index, int64_t value) {
+    dimensions_.at(index) = value;
+  }
+  void add_dimensions(int64_t value) {
     dimensions_.push_back(value);
     dynamic_dimensions_.push_back(false);
   }
@@ -149,7 +151,7 @@ class Shape {
   // Recursively clear dynamic dimension of a shape.
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
-      for (int64 i = 0; i < dynamic_dimensions_.size(); ++i) {
+      for (int64_t i = 0; i < dynamic_dimensions_.size(); ++i) {
         dynamic_dimensions_[i] = false;
       }
       return;

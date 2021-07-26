@@ -25,7 +25,7 @@ namespace xla {
 class FusionNodeIndexingEvaluation {
  public:
   explicit FusionNodeIndexingEvaluation(const HloInstruction* fusion,
-                                        int64 root_usage_count = 1);
+                                        int64_t root_usage_count = 1);
 
   // Evaluate the number of times 'producer' would be emitted if it is fused
   // into 'fusion_'. If the duplication is "too high" (some arbitrary chosen
@@ -59,7 +59,7 @@ class FusionNodeIndexingEvaluation {
       HloInstruction* fusion_operand);
 
  private:
-  static const int64 kAllowedCodeDuplication;
+  static const int64_t kAllowedCodeDuplication;
 
   // Computes the 'indexing_users_' and 'index_usage_count_' maps based on the
   // current instructions inside the fusion node. Also updates

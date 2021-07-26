@@ -157,7 +157,7 @@ struct RendezvousKey {
   explicit RendezvousKey(const RunId& run_id,
                          std::vector<GlobalDeviceId> global_devices,
                          int num_local_participants,
-                         CollectiveOpKind collective_op_kind, int64 op_id)
+                         CollectiveOpKind collective_op_kind, int64_t op_id)
       : run_id(run_id),
         global_devices(std::move(global_devices)),
         num_local_participants(num_local_participants),
@@ -237,7 +237,7 @@ struct ParticipantData {
 // Encapsulates parameters to Rendezvous::SubmitParticipant.
 struct AllReduceParticipantData : ParticipantData {
   AllReduceParticipantData(const RendezvousKey& rendezvous_key_p,
-                           int64 device_ordinal_p, se::Stream* stream_p)
+                           int64_t device_ordinal_p, se::Stream* stream_p)
       : ParticipantData(rendezvous_key_p),
         device_ordinal(device_ordinal_p),
         stream(stream_p) {}

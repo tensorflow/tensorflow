@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -447,7 +448,8 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 }
 
 // Raise TFR call ops to the TF ops.
-struct RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
+class RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
+ public:
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
                     StandardOpsDialect>();
@@ -455,8 +457,8 @@ struct RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
 
   explicit RaiseToTFOpsPass(llvm::Optional<ModuleOp> tfr_module,
                             bool materialize_derived_attrs)
-      : external_tfr_module(tfr_module),
-        materialize_derived_attrs(materialize_derived_attrs) {}
+      : external_tfr_module_(tfr_module),
+        materialize_derived_attrs_(materialize_derived_attrs) {}
 
   StringRef getArgument() const final { return "tfr-raise-to-tf"; }
 
@@ -467,19 +469,19 @@ struct RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
   void runOnFunction() override;
 
  private:
-  llvm::Optional<ModuleOp> external_tfr_module;
-  const bool materialize_derived_attrs;
+  llvm::Optional<ModuleOp> external_tfr_module_;
+  const bool materialize_derived_attrs_;
 };
 
 void RaiseToTFOpsPass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = &getContext();
-  SymbolTable table(external_tfr_module.hasValue()
-                        ? *external_tfr_module
+  SymbolTable table(external_tfr_module_.hasValue()
+                        ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
   OwningRewritePatternList patterns(&getContext());
-  patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs);
+  patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
 
   populateCanonicalizationPatterns(func, patterns);
 

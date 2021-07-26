@@ -54,14 +54,15 @@ Status ConvBackpropExtractAndVerifyDimension(
     StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
     const gtl::ArraySlice<int32> dilations, const std::vector<int32>& strides,
-    Padding padding, int64 padding_before, int64 padding_after, int spatial_dim,
-    int filter_spatial_dim, ConvBackpropSpatialDimension* dim) {
+    Padding padding, int64_t padding_before, int64_t padding_after,
+    int spatial_dim, int filter_spatial_dim,
+    ConvBackpropSpatialDimension* dim) {
   dim->input_size = input_shape.dim_size(spatial_dim);
   dim->filter_size = filter_shape.dim_size(filter_spatial_dim);
   dim->output_size = output_shape.dim_size(spatial_dim);
   dim->stride = strides[spatial_dim];
   dim->dilation = dilations[spatial_dim];
-  int64 out_size = 0;
+  int64_t out_size = 0;
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerboseV2(
       dim->input_size, dim->filter_size, dim->dilation, dim->stride, padding,
       &out_size, &padding_before, &padding_after));
@@ -74,7 +75,7 @@ Status ConvBackpropExtractAndVerifyDimension(
         " stride: ", dim->stride, " dilation: ", dim->dilation);
   }
 
-  int64 effective_filter_size = (dim->filter_size - 1) * dim->dilation + 1;
+  int64_t effective_filter_size = (dim->filter_size - 1) * dim->dilation + 1;
   dim->expanded_output_size = (dim->output_size - 1) * dim->stride + 1;
   const auto padded_out_size = dim->input_size + effective_filter_size - 1;
   dim->pad_before = effective_filter_size - 1 - padding_before;
@@ -143,7 +144,7 @@ Status ConvBackpropComputeDimensionsV2(
   dims->spatial_dims.resize(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
     int image_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-    int64 padding_before = -1, padding_after = -1;
+    int64_t padding_before = -1, padding_after = -1;
     if (padding == EXPLICIT) {
       padding_before = explicit_paddings[2 * image_dim];
       padding_after = explicit_paddings[2 * image_dim + 1];

@@ -188,7 +188,7 @@ class Barrier : public ResourceBase {
           }
           {
             mutex_lock lock(mu_);
-            int32 ready = ready_size();
+            int32_t ready = ready_size();
             if (closed_ && incomplete_.empty() && queue_closed_ && ready > 0) {
               CloseQueueLocked(ctx, false, callback);
             } else {
@@ -199,7 +199,7 @@ class Barrier : public ResourceBase {
         });
   }
 
-  void TryTakeMany(int num_elements, bool allow_small_batch, int64 timeout,
+  void TryTakeMany(int num_elements, bool allow_small_batch, int64_t timeout,
                    OpKernelContext* ctx,
                    const IndicesKeysValuesCallback& callback) {
     int num_elements_to_deliver = num_elements;
@@ -448,7 +448,7 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
                 errors::InvalidArgument(
                     "All of the component shapes must be specified"));
 
-    int32 value_capacity;
+    int32_t value_capacity;
     OP_REQUIRES_OK(context, context->GetAttr("capacity", &value_capacity));
     OP_REQUIRES(context, value_capacity == -1,
                 errors::InvalidArgument(
@@ -582,7 +582,7 @@ class TakeManyOp : public BarrierOpKernel {
     OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(Tnum_elements->shape()),
                       errors::InvalidArgument("num_elements must be a scalar."),
                       callback);
-    const int32 num_elements = Tnum_elements->scalar<int32>()();
+    const int32_t num_elements = Tnum_elements->scalar<int32>()();
 
     DataTypeVector expected_inputs = {DT_STRING_REF, DT_INT32};
     // The first output is the insertion index, the second output is the key.

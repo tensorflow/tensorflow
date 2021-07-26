@@ -149,26 +149,26 @@ class LiteralUtil {
 
   // Creates a linspace-populated literal with the given number of rows and
   // columns.
-  static Literal CreateR2F32Linspace(float from, float to, int64 rows,
-                                     int64 cols);
+  static Literal CreateR2F32Linspace(float from, float to, int64_t rows,
+                                     int64_t cols);
 
   // Creates a literal that projects the (x, y) dimensions given in values into
   // the z dimension given by "projection".
   template <typename NativeT>
   static Literal CreateR3Projected(
       std::initializer_list<std::initializer_list<NativeT>> values,
-      int64 projection);
+      int64_t projection);
 
   // Creates a literal that projects the (x, y) dimensions given in values into
   // the z and p dimensions given.
   template <typename NativeT>
   static Literal CreateR4Projected(
       std::initializer_list<std::initializer_list<NativeT>> values,
-      int64 projection_p, int64 projection_z);
+      int64_t projection_p, int64_t projection_z);
 
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
-  static Literal MakeIdentityR2(int64 size);
+  static Literal MakeIdentityR2(int64_t size);
 
   // Returns a tuple literal composed of given literals. Data is copied from the
   // given elements into the returned literal.
@@ -337,15 +337,15 @@ template <typename NativeT>
     std::initializer_list<std::initializer_list<std::initializer_list<NativeT>>>
         values,
     const Layout& layout) {
-  const int64 d0 = values.size();
-  const int64 d1 = values.begin()->size();
-  const int64 d2 = values.begin()->begin()->size();
+  const int64_t d0 = values.size();
+  const int64_t d1 = values.begin()->size();
+  const int64_t d2 = values.begin()->begin()->size();
   Array3D<NativeT> tmp(d0, d1, d2);
-  int64 i0 = 0;
+  int64_t i0 = 0;
   for (auto d1_values : values) {
-    int64 i1 = 0;
+    int64_t i1 = 0;
     for (auto d2_values : d1_values) {
-      int64 i2 = 0;
+      int64_t i2 = 0;
       for (auto value : d2_values) {
         tmp(i0, i1, i2) = value;
         ++i2;
@@ -370,18 +370,18 @@ template <typename NativeT>
         std::initializer_list<std::initializer_list<NativeT>>>>
         values,
     const Layout& layout) {
-  const int64 d0 = values.size();
-  const int64 d1 = values.begin()->size();
-  const int64 d2 = values.begin()->begin()->size();
-  const int64 d3 = values.begin()->begin()->begin()->size();
+  const int64_t d0 = values.size();
+  const int64_t d1 = values.begin()->size();
+  const int64_t d2 = values.begin()->begin()->size();
+  const int64_t d3 = values.begin()->begin()->begin()->size();
   Array4D<NativeT> tmp(d0, d1, d2, d3);
-  int64 i0 = 0;
+  int64_t i0 = 0;
   for (auto d1_values : values) {
-    int64 i1 = 0;
+    int64_t i1 = 0;
     for (auto d2_values : d1_values) {
-      int64 i2 = 0;
+      int64_t i2 = 0;
       for (auto d3_values : d2_values) {
-        int64 i3 = 0;
+        int64_t i3 = 0;
         for (auto value : d3_values) {
           tmp(i0, i1, i2, i3) = value;
           ++i3;
@@ -447,16 +447,16 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR3Projected(
     std::initializer_list<std::initializer_list<NativeT>> values,
-    int64 projection) {
-  int64 dim0_size = projection;
-  int64 dim1_size = values.size();
-  int64 dim2_size = values.begin()->size();
+    int64_t projection) {
+  int64_t dim0_size = projection;
+  int64_t dim1_size = values.size();
+  int64_t dim2_size = values.begin()->size();
 
   Array3D<NativeT> array(dim0_size, dim1_size, dim2_size);
-  for (int64 dim0 = 0; dim0 < dim0_size; ++dim0) {
-    int64 dim1 = 0;
+  for (int64_t dim0 = 0; dim0 < dim0_size; ++dim0) {
+    int64_t dim1 = 0;
     for (auto inner_list : values) {
-      int64 dim2 = 0;
+      int64_t dim2 = 0;
       for (auto value : inner_list) {
         array(dim0, dim1, dim2) = value;
         ++dim2;
@@ -472,18 +472,18 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR4Projected(
     std::initializer_list<std::initializer_list<NativeT>> values,
-    int64 projection_p, int64 projection_z) {
-  int64 dim0_size = projection_p;
-  int64 dim1_size = projection_z;
-  int64 dim2_size = values.size();
-  int64 dim3_size = values.begin()->size();
+    int64_t projection_p, int64_t projection_z) {
+  int64_t dim0_size = projection_p;
+  int64_t dim1_size = projection_z;
+  int64_t dim2_size = values.size();
+  int64_t dim3_size = values.begin()->size();
 
   Array4D<NativeT> array(dim0_size, dim1_size, dim2_size, dim3_size);
-  for (int64 dim0 = 0; dim0 < dim0_size; ++dim0) {
-    for (int64 dim1 = 0; dim1 < dim1_size; ++dim1) {
-      int64 dim2 = 0;
+  for (int64_t dim0 = 0; dim0 < dim0_size; ++dim0) {
+    for (int64_t dim1 = 0; dim1 < dim1_size; ++dim1) {
+      int64_t dim2 = 0;
       for (auto inner_list : values) {
-        int64 dim3 = 0;
+        int64_t dim3 = 0;
         for (auto value : inner_list) {
           array(dim0, dim1, dim2, dim3) = value;
           ++dim3;
@@ -511,9 +511,9 @@ template <typename NativeT>
 
 // Returns an identity matrix (rank 2) with the given row and column count.
 template <typename NativeT>
-/* static */ Literal LiteralUtil::MakeIdentityR2(int64 size) {
+/* static */ Literal LiteralUtil::MakeIdentityR2(int64_t size) {
   Array2D<NativeT> array(size, size, 0);
-  for (int64 i = 0; i < size; ++i) {
+  for (int64_t i = 0; i < size; ++i) {
     array(i, i) = 1;
   }
   return CreateR2FromArray2D(array);

@@ -39,7 +39,7 @@ Status ConditionalAccumulatorBase::MatchesNodeDef(const NodeDef& node_def) {
  * step. Logs warning if the accumulator's time step is already larger than the
  * provided time step.
  */
-Status ConditionalAccumulatorBase::SetGlobalStep(int64 new_global_step) {
+Status ConditionalAccumulatorBase::SetGlobalStep(int64_t new_global_step) {
   mutex_lock lock(mu_);
   if (new_global_step < current_global_step_) {
     LOG(WARNING) << "Attempt to set current_global_step_ to smaller value: "

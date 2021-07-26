@@ -446,13 +446,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             << ", thus setting _use_implicit_batch=true";
     use_implicit_batch_ = true;
   }
-#if !IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (!use_implicit_batch_) {
-    VLOG(2) << "Need at least TensorRT 6.0 for explicit batch mode. Setting "
-            << "_use_implicit_batch=true";
-    use_implicit_batch_ = true;
-  }
-#endif
+
   status =
       context->GetAttr("_profile_generation_mode", &profile_generation_mode_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
@@ -840,9 +834,7 @@ Status TRTEngineOp::ExecuteTrtEngine(
   auto& cuda_engine = engine_context->cuda_engine;
 
   if (VLOG_IS_ON(2)) {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Network name: " << cuda_engine->getName();
-#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
     VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
             << " bytes";
 #if !IS_TRT_VERSION_GE(8, 0, 0, 0)
