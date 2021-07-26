@@ -40,6 +40,9 @@ bool IsDynamicShard(const ProcessingModeDef& processing_mode);
 // Returns true if `processing_mode` is static sharding.
 bool IsStaticShard(const ProcessingModeDef& processing_mode);
 
+// Returns an internal error if `processing_mode` is invalid.
+Status ValidateProcessingMode(const ProcessingModeDef& processing_mode);
+
 // Converts tf.data service `sharding_policy` to `AutoShardPolicy`. Returns an
 // internal error if `sharding_policy` is not supported.
 StatusOr<AutoShardPolicy> ToAutoShardPolicy(

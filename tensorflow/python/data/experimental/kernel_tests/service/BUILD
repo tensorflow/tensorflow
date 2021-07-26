@@ -17,7 +17,6 @@ tf_py_test(
         ":test_base",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:distribute",
-        "//tensorflow/python/data/experimental/ops:distribute_options",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/ops:dataset_ops",

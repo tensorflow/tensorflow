@@ -115,6 +115,24 @@ TEST(DataServiceTest, ConvertInvalidShardingPolicyToAutoShardPolicy) {
                        HasSubstr("please update the policy mapping.")));
 }
 
+TEST(DataServiceTest, ValidateProcessingMode) {
+  for (const ProcessingModeDef::ShardingPolicy policy :
+       EnumerateShardingPolicies()) {
+    ProcessingModeDef processing_mode;
+    processing_mode.set_sharding_policy(policy);
+    TF_EXPECT_OK(ValidateProcessingMode(processing_mode));
+  }
+}
+
+TEST(DataServiceTest, InvalidProcessingMode) {
+  ProcessingModeDef processing_mode;
+  processing_mode.set_sharding_policy(
+      static_cast<ProcessingModeDef::ShardingPolicy>(100));
+  EXPECT_THAT(ValidateProcessingMode(processing_mode),
+              StatusIs(error::INTERNAL,
+                       HasSubstr("does not specify a valid sharding policy.")));
+}
+
 TEST(DataServiceTest, ParseTargetWorkers) {
   EXPECT_THAT(ParseTargetWorkers("AUTO"), IsOkAndHolds(TargetWorkers::AUTO));
   EXPECT_THAT(ParseTargetWorkers("Auto"), IsOkAndHolds(TargetWorkers::AUTO));

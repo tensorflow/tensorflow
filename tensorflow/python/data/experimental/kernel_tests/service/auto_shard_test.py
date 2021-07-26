@@ -21,7 +21,6 @@ from tensorflow.python.data.experimental.kernel_tests.service import test_base a
 from tensorflow.python.data.experimental.kernel_tests.service.multi_process_cluster import MultiProcessCluster
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -502,19 +501,21 @@ class AutoShardTest(data_service_test_base.TestBase,
       _ = _make_service_cluster(
           num_workers=5, local_shard_index=1, worker_addresses=worker_addresses)
 
-  def testUnsupportedAutoShardPolicy(self):
-    supported_policies = [
-        AutoShardPolicy.OFF, AutoShardPolicy.AUTO, AutoShardPolicy.FILE,
-        AutoShardPolicy.DATA, AutoShardPolicy.HINT
-    ]
-    for policy in AutoShardPolicy:
-      self.assertIn(
-          policy, supported_policies,
-          f"Auto-shard policy {policy!r} is out of sync with "
-          "`tf.data.experimental.service.ShardingPolicy`. Please add it to "
-          "`tf.data.experimental.service.ShardingPolicy`, "
-          "`tensorflow.data.ProcessingModeDef.ShardingPolicy`, and "
-          "`tensorflow::data::IsStaticShard`.")
+  # TODO(b/186023347): Use Lint to keep the policies in sync.
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(sharding_policy=list(ShardingPolicy))))
+  def testEnumerateShardingPolicies(self, sharding_policy):
+    cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
+    dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
+    dataset = dataset.flat_map(readers.TFRecordDataset)
+    distributed_dataset = self.make_distributed_dataset(
+        dataset,
+        cluster=cluster,
+        processing_mode=sharding_policy,
+        target_workers="LOCAL")
+    self.getDatasetOutput(distributed_dataset, requires_initialization=True)
 
 
 if __name__ == "__main__":

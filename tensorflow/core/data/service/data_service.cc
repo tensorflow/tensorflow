@@ -47,6 +47,18 @@ bool IsStaticShard(const ProcessingModeDef& processing_mode) {
          processing_mode.sharding_policy() == ProcessingModeDef::HINT;
 }
 
+Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
+  if (!IsNoShard(processing_mode) && !IsDynamicShard(processing_mode) &&
+      !IsStaticShard(processing_mode)) {
+    return errors::Internal(
+        "ProcessingMode ", processing_mode.ShortDebugString(),
+        " does not "
+        "specify a valid sharding policy. Please add the policy to either "
+        "`IsDynamicShard` or `IsStaticShard` (i.e., auto-shard).");
+  }
+  return Status::OK();
+}
+
 StatusOr<AutoShardPolicy> ToAutoShardPolicy(
     const ProcessingModeDef::ShardingPolicy sharding_policy) {
   switch (sharding_policy) {

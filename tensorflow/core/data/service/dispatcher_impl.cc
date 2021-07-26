@@ -625,11 +625,7 @@ Status DataServiceDispatcherImpl::CreateJob(
     absl::optional<NamedJobKey> named_job_key,
     absl::optional<int64> num_consumers, std::shared_ptr<const Job>& job)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  if (!IsNoShard(processing_mode) && !IsDynamicShard(processing_mode) &&
-      !IsStaticShard(processing_mode)) {
-    return errors::Internal(absl::StrCat(
-        "ProcessingMode ", processing_mode.DebugString(), " not recognized"));
-  }
+  TF_RETURN_IF_ERROR(ValidateProcessingMode(processing_mode));
   int64_t job_id = state_.NextAvailableJobId();
   int64_t num_split_providers = 0;
   if (IsDynamicShard(processing_mode)) {
