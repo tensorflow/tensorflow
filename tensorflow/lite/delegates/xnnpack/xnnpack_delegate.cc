@@ -539,7 +539,19 @@ class Subgraph {
       for (int t : externals_) {
         xnn_external_value value = {0};
         value.id = static_cast<uint32_t>(t);
-        value.data = context->tensors[t].data.raw;
+        const TfLiteTensor& tensor = context->tensors[t];
+        if (tensor.data.raw == nullptr) {
+          if (tensor.bytes == 0) {
+            value.data = &dummy_data_;
+          } else {
+            TF_LITE_KERNEL_LOG(
+                context, "unexpected null data pointer in external tensor %d",
+                t);
+            return kTfLiteError;
+          }
+        } else {
+          value.data = tensor.data.raw;
+        }
         external_values.push_back(value);
       }
 
@@ -3405,6 +3417,9 @@ class Subgraph {
   // TFLite Tensor IDs == XNNPACK Value IDs of input/output tensors for the
   // delegated subgraph.
   std::unordered_set<int> externals_;
+  // Memory location to use for 0-size extenal tensors, as TFLite init their
+  // data pointer to nullptr, and XNNPACK requires valid data pointers.
+  char dummy_data_{0};
   bool first_run_{true};
 };
 
