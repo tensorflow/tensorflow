@@ -174,12 +174,12 @@ struct MaybeWith32BitIndexingImpl<Eigen::GpuDevice> {
   template <typename Func, typename... Args>
   void operator()(Func func, Args&&... args) const {
     auto all = [](const auto&... bool_vals) {
-      bool result = true;
-      int unpack[] = {0, (result = result && bool_vals, 0)...};
-      (void)unpack;
-      return result;
+      for (bool b : {bool_vals...}) {
+        if (!b) return false;
+      }
+      return true;
     };
-    if (all((SafeFor32BitIndexing(std::forward<Args>(args)))...)) {
+    if (all(SafeFor32BitIndexing(std::forward<Args>(args))...)) {
       func(To32Bit(std::forward<Args>(args))...);
     } else {
       func(std::forward<Args>(args)...);
