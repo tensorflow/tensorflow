@@ -39,11 +39,12 @@ import sys
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
-from tensorflow.python.platform import tf_logging as logging
 
 
 _CUSTOM_OPS_HDR = "Custom ops: "
 _TF_OPS_HDR = "TF Select ops: "
+_AUTHORING_ERROR_HDR = "COMPATIBILITY ERROR"
+_AUTHORING_WARNING_HDR = "COMPATIBILITY WARNING"
 
 
 class CompatibilityError(Exception):
@@ -56,6 +57,7 @@ class _Compatible:
 
   def __init__(self,
                target,
+               print_logs=True,
                raise_exception=False,
                converter_target_spec=None,
                converter_allow_custom_ops=None,
@@ -70,6 +72,7 @@ class _Compatible:
 
     Args:
       target: decorated function.
+      print_logs: to print warning / error messages to stdout.
       raise_exception : to raise an exception on compatibility issues.
           User need to use get_compatibility_log() to check details.
       converter_target_spec : target_spec of TFLite converter parameter.
@@ -82,6 +85,7 @@ class _Compatible:
     self._obj_func = None
     self._verified = False
     self._log_messages = []
+    self._print_logs = print_logs
     self._raise_exception = raise_exception
     self._converter_target_spec = converter_target_spec
     self._converter_allow_custom_ops = converter_allow_custom_ops
@@ -154,8 +158,7 @@ class _Compatible:
           callstack.append(str(single_call))
       callstack_dump = "\n".join(callstack)
       err_string = f"Op: {ops[i]}\n{callstack_dump}\n"
-      self._log_messages.append(err_string)
-      logging.warning(err_string)
+      self._log(err_string)
 
   def _decode_error_legacy(self, err):
     """Parses the given legacy ConverterError for OSS."""
@@ -164,20 +167,18 @@ class _Compatible:
       if line.startswith(_CUSTOM_OPS_HDR):
         custom_ops = line[len(_CUSTOM_OPS_HDR):]
         err_string = (
-            f"CompatibilityError: op '{custom_ops}' is(are) not natively "
+            f"{_AUTHORING_ERROR_HDR}: op '{custom_ops}' is(are) not natively "
             "supported by TensorFlow Lite. You need to provide a custom "
             "operator. https://www.tensorflow.org/lite/guide/ops_custom")
-        self._log_messages.append(err_string)
-        logging.warning(err_string)
+        self._log(err_string)
       # Check TensorFlow op usage error.
       elif line.startswith(_TF_OPS_HDR):
         tf_ops = line[len(_TF_OPS_HDR):]
         err_string = (
-            f"CompatibilityWarning: op '{tf_ops}' require(s) \"Select TF Ops\" "
-            "for model conversion for TensorFlow Lite. "
+            f"{_AUTHORING_WARNING_HDR}: op '{tf_ops}' require(s) \"Select TF "
+            "Ops\" for model conversion for TensorFlow Lite. "
             "https://www.tensorflow.org/lite/guide/ops_select")
-        self._log_messages.append(err_string)
-        logging.warning(err_string)
+        self._log(err_string)
 
   def _decode_converter_error(self, err):
     """Parses the given ConverterError which has detailed error information."""
@@ -198,21 +199,19 @@ class _Compatible:
     if custom_ops:
       custom_ops_str = ", ".join(sorted(custom_ops))
       err_string = (
-          f"CompatibilityError: op '{custom_ops_str}' is(are) not natively "
+          f"{_AUTHORING_ERROR_HDR}: op '{custom_ops_str}' is(are) not natively "
           "supported by TensorFlow Lite. You need to provide a custom "
           "operator. https://www.tensorflow.org/lite/guide/ops_custom")
-      self._log_messages.append(err_string)
-      logging.warning(err_string)
+      self._log(err_string)
       self._dump_error_details(custom_ops, custom_ops_location)
 
     if tf_ops:
       tf_ops_str = ", ".join(sorted(tf_ops))
       err_string = (
-          f"CompatibilityWarning: op '{tf_ops_str}' require(s) \"Select TF Ops"
-          "\" for model conversion for TensorFlow Lite. "
+          f"{_AUTHORING_WARNING_HDR}: op '{tf_ops_str}' require(s) \"Select TF"
+          " Ops\" for model conversion for TensorFlow Lite. "
           "https://www.tensorflow.org/lite/guide/ops_select")
-      self._log_messages.append(err_string)
-      logging.warning(err_string)
+      self._log(err_string)
       self._dump_error_details(tf_ops, tf_ops_location)
 
   def _decode_error(self, err):
@@ -224,6 +223,12 @@ class _Compatible:
 
     if self._raise_exception and self._log_messages:
       raise CompatibilityError(f"CompatibilityException at {repr(self._func)}")
+
+  def _log(self, message):
+    """Log and print authoring warning / error message."""
+    self._log_messages.append(message)
+    if self._print_logs:
+      print(message)
 
   def get_compatibility_log(self):
     """Returns list of compatibility log messages.

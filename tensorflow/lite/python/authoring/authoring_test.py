@@ -18,8 +18,6 @@
 import tensorflow as tf
 
 from tensorflow.lite.python.authoring import authoring
-from tensorflow.python.eager import test
-from tensorflow.python.platform import tf_logging as logging
 
 
 class TFLiteAuthoringTest(tf.test.TestCase):
@@ -36,7 +34,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     log_messages = f.get_compatibility_log()
     self.assertEqual(result, tf.constant([1.0]))
     self.assertIn(
-        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
+        "COMPATIBILITY WARNING: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -54,7 +52,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
       del result
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
+        "COMPATIBILITY WARNING: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -77,7 +75,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f(tf.ones(shape=(3, 3, 3, 3, 3), dtype=tf.float32))
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityWarning: op 'tf.Erf' require(s) \"Select TF Ops\" for "
+        "COMPATIBILITY WARNING: op 'tf.Erf' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -92,7 +90,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityError: op 'tf.DummySeedGenerator, tf.RangeDataset, "
+        "COMPATIBILITY ERROR: op 'tf.DummySeedGenerator, tf.RangeDataset, "
         "tf.ShuffleDatasetV3' is(are) not natively supported by "
         "TensorFlow Lite. You need to provide a custom operator. "
         "https://www.tensorflow.org/lite/guide/ops_custom", log_messages)
@@ -128,7 +126,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
 
     self.assertEqual(result, tf.constant([1.0]))
     self.assertIn(
-        "CompatibilityWarning: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
+        "COMPATIBILITY WARNING: op 'tf.Cosh' require(s) \"Select TF Ops\" for "
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
@@ -181,15 +179,10 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     def f(x):
       return tf.cosh(x)
 
-    warning_messages = []
-
-    def mock_warning(msg):
-      warning_messages.append(msg)
-
-    with test.mock.patch.object(logging, "warning", mock_warning):
-      f(tf.constant([1.0]))
-      f(tf.constant([2.0]))
-      f(tf.constant([3.0]))
+    f(tf.constant([1.0]))
+    f(tf.constant([2.0]))
+    f(tf.constant([3.0]))
+    warning_messages = f.get_compatibility_log()
 
     # Test if compatiblility checks happens only once.
     # The number of warning_messages will be 2 by op location detail.
@@ -236,7 +229,7 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "CompatibilityError: op 'tf.RangeDataset, tf.ShuffleDatasetV3' is(are) "
+        "COMPATIBILITY ERROR: op 'tf.RangeDataset, tf.ShuffleDatasetV3' is(are) "
         "not natively supported by TensorFlow Lite. You need to provide a "
         "custom operator. https://www.tensorflow.org/lite/guide/ops_custom",
         log_messages)
