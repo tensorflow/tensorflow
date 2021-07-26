@@ -934,11 +934,17 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   //
   //    We deem these differences in rounding, underflow, and overflow
   //    acceptable in the ML context.
+  //
+  //    Furthermore, if `enable_floats_are_real` is true, the simplification is
+  //    done nonetheless. This might cause numerical differences even if there
+  //    is no underflow or overflow.
   HloInstruction *b, *c;
   if (((Match(lhs, m::Multiply(m::Op(&a), m::Op(&c))) &&
         Match(rhs, m::MultiplyAnyOrder(m::Op().Is(c), m::Op(&b)))) ||
        (Match(lhs, m::Multiply(m::Op(&c), m::Op(&a))) &&
         Match(rhs, m::MultiplyAnyOrder(m::Op().Is(c), m::Op(&b))))) &&
+      // Make sure we would decrease the number of multiplies.
+      (lhs->user_count() == 1 && rhs->user_count() == 1) &&
       (ShapeUtil::ElementIsIntegral(add->shape()) ||
        options_.enable_floats_are_real() || IsAllFpConstantPowerOf2(c))) {
     return ReplaceWithNewInstruction(
