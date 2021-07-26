@@ -263,6 +263,7 @@ class CpuDevice(Device):
   def __repr__(self) -> str: ...
 
 class GpuDevice(Device):
+  device_vendor: str
   def __repr__(self) -> str: ...
 
 class TpuDevice(Device):

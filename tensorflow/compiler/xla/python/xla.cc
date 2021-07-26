@@ -163,6 +163,7 @@ PYBIND11_MODULE(xla_extension, m) {
       });
 
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
+      .def_property_readonly("device_vendor", &GpuDevice::device_vendor)
       .def("__repr__", [](const GpuDevice& device) {
         return absl::StrFormat("GpuDevice(id=%i, process_index=%i)",
                                device.id(), device.process_index());

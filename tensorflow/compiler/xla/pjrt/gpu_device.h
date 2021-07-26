@@ -28,7 +28,12 @@ namespace xla {
 class GpuDevice : public PjRtStreamExecutorDevice {
  public:
   GpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state,
-            std::string device_kind, int node_id);
+            std::string device_kind, std::string device_vendor, int node_id);
+
+  absl::string_view device_vendor();
+
+ private:
+  std::string device_vendor_;
 };
 
 struct GpuAllocatorConfig {
