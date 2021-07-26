@@ -117,6 +117,7 @@ tf_kernel_library(
         "tensor_array_ops.cc",
         "tensor_list_ops.cc",
         "tile_ops.cc",
+        "to_bool_op.cc",
         "topk_op.cc",
         "training_ops.cc",
         "transpose_op.cc",

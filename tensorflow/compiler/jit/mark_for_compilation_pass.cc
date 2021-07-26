@@ -2052,6 +2052,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "TensorScatterMin",
                                      "TensorScatterSub",
                                      "TensorScatterUpdate",
+                                     "ToBool",
                                      "TridiagonalSolve",
                                      "TruncatedNormal",
                                      "Unique",
