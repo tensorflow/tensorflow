@@ -130,6 +130,11 @@ struct TfrtPipelineOptions
                      "Otherwise, use the assigned core. Currently we use "
                      "core selector for Servo serving use cases."),
       llvm::cl::init(true)};
+  Option<bool> tpu_use_bundled_transfer{
+      *this, "tpu-use-bundled-transfer",
+      llvm::cl::desc("If true, use BundledTransferToTpuOp to transfer "
+                     "variables and input tensors to TPU."),
+      llvm::cl::init(true)};
   Option<bool> tpu_lower_to_fallback{
       *this, "tpu-lower-to-fallback",
       llvm::cl::desc("If true, lower an TF op that's placed on TPU device "

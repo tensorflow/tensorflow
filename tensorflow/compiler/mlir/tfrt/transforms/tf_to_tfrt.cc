@@ -1578,6 +1578,7 @@ class TfToTfrtConversionPass
     target_tpu_ = options.target_tpu;
     enable_native_ops_ = options.enable_native_ops;
     tpu_use_core_selector_ = options.tpu_use_core_selector;
+    tpu_use_bundled_transfer_ = options.tpu_use_bundled_transfer;
     tpu_lower_to_fallback_ = options.tpu_lower_to_fallback;
     tpu_transfer_result_to_host_ = options.tpu_transfer_result_to_host;
     cost_threshold_ = options.cost_threshold;
@@ -1601,10 +1602,12 @@ class TfToTfrtConversionPass
     tfrt_compiler::CostAnalysis cost_analysis(func);
 
     if (target_tpu_)
-      AddTPUTargetDialectAndPatterns(&target, &patterns, &context,
-                                     &corert_converter, tpu_use_core_selector_,
-                                     tpu_lower_to_fallback_,
-                                     tpu_transfer_result_to_host_);
+      AddTPUTargetDialectAndPatterns(
+          &target, &patterns, &context, &corert_converter,
+          TfrtTpuExecuteOpConversionOptions{tpu_use_core_selector_,
+                                            tpu_use_bundled_transfer_,
+                                            tpu_transfer_result_to_host_},
+          tpu_lower_to_fallback_);
 
     mlir::TypeConverter *func_type_converter;
     if (func_use_fallback_tensor_) {
@@ -1792,6 +1795,12 @@ class TfToTfrtConversionPass
       *this, "tpu-use-core-selector",
       llvm::cl::desc("If true, use ServingCoreSelector to pick TPU core. "
                      "Otherwise, use the assigned core."),
+      llvm::cl::init(true)};
+
+  Option<bool> tpu_use_bundled_transfer_{
+      *this, "tpu-use-bundled-transfer",
+      llvm::cl::desc("If true, use BundledTransferToTpuOp to transfer "
+                     "variables and input tensors to TPU."),
       llvm::cl::init(true)};
 
   Option<bool> tpu_lower_to_fallback_{
