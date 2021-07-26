@@ -101,32 +101,20 @@ template <typename NativeT = float>
 std::unique_ptr<Array2D<NativeT>> MakeLinspaceArray2D(double from, double to,
                                                       int64_t n1, int64_t n2) {
   auto array = absl::make_unique<Array2D<NativeT>>(n1, n2);
-<<<<<<< HEAD
-  int64 count = n1 * n2;
+  int64_t count = n1 * n2;
   // For types of smaller widths, do the arithmetics in double, since for
   // sufficiently large n1 & n2, this could overflow and generate nans
   using ArithT =
       typename std::conditional<(sizeof(NativeT) < 4), double, NativeT>::type;
   ArithT step =
       static_cast<ArithT>((count > 1) ? (to - from) / (count - 1) : 0);
-  auto set = [&array, n2](int64 index, NativeT value) {
-    (*array)(index / n2, index % n2) = value;
-  };
-  for (int64 i = 0; i < count - 1; ++i) {
-    set(i, static_cast<NativeT>(static_cast<ArithT>(from) +
-                                static_cast<ArithT>(i) *
-                                    static_cast<ArithT>(step)));
-=======
-  int64_t count = n1 * n2;
-  NativeT step =
-      static_cast<NativeT>((count > 1) ? (to - from) / (count - 1) : 0);
   auto set = [&array, n2](int64_t index, NativeT value) {
     (*array)(index / n2, index % n2) = value;
   };
   for (int64_t i = 0; i < count - 1; ++i) {
-    set(i, (static_cast<NativeT>(from) +
-            static_cast<NativeT>(i) * static_cast<NativeT>(step)));
->>>>>>> google_upstream/master
+    set(i, static_cast<NativeT>(static_cast<ArithT>(from) +
+                                static_cast<ArithT>(i) *
+                                    static_cast<ArithT>(step)));
   }
   set(count - 1, static_cast<NativeT>(to));
   return array;

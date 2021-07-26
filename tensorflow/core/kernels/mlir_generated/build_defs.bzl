@@ -280,16 +280,12 @@ def _gen_kernel_library(
         all_kernels += all_jit_kernels
 
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
-<<<<<<< HEAD
         amdhsa_obj = []
         if rocm_gpu_architectures():
             if int(rocm_version_number()) < 40100:
                 amdhsa_obj = ["--amdhsa-code-object-version=3"]
                 extra_args = extra_args + ["--amdhsa-code-object-version=3"]
-        for (type, output_type) in zip(types, output_types):
-=======
         for (type, output_type, jit) in all_kernels:
->>>>>>> google_upstream/master
             # Disable unrolling for integer types while LLVM does not vectorize these.
             # See b/182343395 for context.
             unrolling_disabled = (types_with_unrolling_disabled + ["i1", "i8", "i16", "i32", "i64"])
