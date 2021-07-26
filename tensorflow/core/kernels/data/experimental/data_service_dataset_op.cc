@@ -87,6 +87,9 @@ const int64_t kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
+
+constexpr const char kParallelEpochs[] = "parallel_epochs";
+constexpr const char kDistributedEpoch[] = "distributed_epoch";
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -1075,10 +1078,16 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kProcessingMode, &processing_mode_str));
   ProcessingModeDef processing_mode;
-  OP_REQUIRES(ctx, processing_mode.ParseFromString(processing_mode_str),
-              errors::InvalidArgument(absl::Substitute(
-                  "Failed to parse ProcessingModeDef from string: $0",
-                  std::string(processing_mode_str))));
+  if (processing_mode_str == kParallelEpochs) {
+    processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
+  } else if (processing_mode_str == kDistributedEpoch) {
+    processing_mode.set_sharding_policy(ProcessingModeDef::DYNAMIC);
+  } else {
+    OP_REQUIRES(ctx, processing_mode.ParseFromString(processing_mode_str),
+                errors::InvalidArgument(absl::Substitute(
+                    "Failed to parse ProcessingModeDef from string: $0",
+                    std::string(processing_mode_str))));
+  }
 
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));

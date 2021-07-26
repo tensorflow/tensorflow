@@ -98,12 +98,33 @@ class ShardingPolicy(enum.IntEnum):
 
 
 def _get_validated_sharding_policy(processing_mode):
-  if processing_mode == _PARALLEL_EPOCHS:
-    return ShardingPolicy.OFF
-  if processing_mode == _DISTRIBUTED_EPOCH:
-    return ShardingPolicy.DYNAMIC
+  """Validates `processing_mode` and converts it to ShardingPolicy."""
+
   if isinstance(processing_mode, ShardingPolicy):
     return processing_mode
+  if compat.forward_compatible(2021, 8, 24):
+    if processing_mode == _PARALLEL_EPOCHS:
+      return ShardingPolicy.OFF
+    if processing_mode == _DISTRIBUTED_EPOCH:
+      return ShardingPolicy.DYNAMIC
+  elif processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
+    return processing_mode
+
+  raise ValueError(
+      "tf.data service processing mode should be a ShardingPolicy, "
+      "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
+      f"{processing_mode!r}.")
+
+
+def _serialize(processing_mode):
+  processing_mode = _get_validated_sharding_policy(processing_mode)
+  if isinstance(processing_mode, ShardingPolicy):
+    processing_mode_def = data_service_pb2.ProcessingModeDef(
+        sharding_policy=processing_mode)
+    return processing_mode_def.SerializeToString()
+  if processing_mode in [_PARALLEL_EPOCHS, _DISTRIBUTED_EPOCH]:
+    return processing_mode
+
   raise ValueError(
       "tf.data service processing mode should be a ShardingPolicy, "
       "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
@@ -182,8 +203,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         avoid RPCs and data copy if every TF worker colocates with a tf.data
         service worker. Defaults to `"AUTO"`.
     """
-    processing_mode_def = data_service_pb2.ProcessingModeDef(
-        sharding_policy=_get_validated_sharding_policy(processing_mode))
+    processing_mode = _serialize(
+        _get_validated_sharding_policy(processing_mode))
     if consumer_index is None != num_consumers is None:
       raise ValueError(
           "Must either set both consumer_index and num_consumers, or neither. ",
@@ -202,9 +223,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     self._dataset_id = ops.convert_to_tensor(
         dataset_id, dtype=dtypes.int64, name="dataset_id")
     self._processing_mode = ops.convert_to_tensor(
-        processing_mode_def.SerializeToString(),
-        dtype=dtypes.string,
-        name="processing_mode")
+        processing_mode, dtype=dtypes.string, name="processing_mode")
     self._address = ops.convert_to_tensor(
         address, dtype=dtypes.string, name="address")
     self._protocol = ops.convert_to_tensor(
