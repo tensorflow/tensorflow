@@ -72,6 +72,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <stack>
 #include <string>
 #include <utility>
 
@@ -96,11 +97,16 @@ struct TransposePlan::Node {
   // These fields are ignored by the macrokernel.
   int64_t start;
   int64_t end;
-  int64_t inc;  // If inc == 0, indicates this is the last loop.
+  int64_t inc;  // The transpose sentinel node has inc < 0.
 
   // Strides of this dimension in A and B.
   int64_t lda;
   int64_t ldb;
+
+  // If > 0, this loop is a loop over tile exteriors and has a trailing partial
+  // tile. To handle the trailing partial tile, skip to the plan node this many
+  // steps ahead in the vector of plan nodes.
+  int trailing_tile_next_node_inc = 0;
 
   // Is this dimension the innermost dimension in either A or B, and hence may
   // have non-trivial blocking?
@@ -140,9 +146,10 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
   const int64_t ldb = node->ldb;
   const int64_t inc = node->inc;
   TransposePlan::Node const* next_node = node + 1;
-  if (next_node->inc == 0) {
+  if (next_node->inc < 0) {
     // This is the last loop in the nested loops. The next node is a sentinel
     // plan node that describes how to invoke the macrokernels.
+
     const int64_t lda_block = next_node->lda;
     const int64_t ldb_block = next_node->ldb;
     int64_t i;
@@ -153,6 +160,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
     // Handle trailing elements that didn't fit in a complete macrokernel.
     // Only the innermost dimensions have non-trivial outer_bs blocking.
     if (i < end) {
+      DCHECK_EQ(node->trailing_tile_next_node_inc, 0);
       DCHECK(node->is_inner_dim_in_a || node->is_inner_dim_in_b);
       if (node->is_inner_dim_in_a) {
         outer_bs_a = (end - i) / inner_bs;
@@ -179,6 +187,23 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
                             b + i * ldb, ldb_block, end - i);
         }
       }
+    } else if (node->trailing_tile_next_node_inc) {
+      // Handle the case where there is a trailing partial tile. We know
+      // inc == 1 for this case, so the loop above has already left `a` and `b`
+      // pointing to the start of the tile. We just need to use the alternate
+      // trailing_next_node to process the interior of the tile.
+      DCHECK_EQ(inc, 1);
+      TransposePlan::Node const* trailing_next_node =
+          node + node->trailing_tile_next_node_inc;
+      if (trailing_next_node->inc < 0) {
+        const int64_t lda_block = trailing_next_node->lda;
+        const int64_t ldb_block = trailing_next_node->ldb;
+        MacroKernel<T, inner_bs>(a + i * lda, lda_block, outer_bs_a,
+                                 b + i * ldb, ldb_block, outer_bs_b);
+      } else {
+        Transpose<T, inner_bs>(a + i * lda, outer_bs_a, b + i * ldb, outer_bs_b,
+                               trailing_next_node);
+      }
     }
   } else {
     // This is not the last loop in the nested loops. Recursively visit the
@@ -190,6 +215,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
                              next_node);
     }
     if (i < end) {
+      DCHECK_EQ(node->trailing_tile_next_node_inc, 0);
       DCHECK(node->is_inner_dim_in_a || node->is_inner_dim_in_b);
       if (node->is_inner_dim_in_a) {
         outer_bs_a = (end - i) / inner_bs;
@@ -214,122 +240,95 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
                           end - i, next_node);
         }
       }
+    } else if (node->trailing_tile_next_node_inc) {
+      TransposePlan::Node const* trailing_next_node =
+          node + node->trailing_tile_next_node_inc;
+      if (trailing_next_node->inc < 0) {
+        const int64_t lda_block = trailing_next_node->lda;
+        const int64_t ldb_block = trailing_next_node->ldb;
+        MacroKernel<T, inner_bs>(a + i * lda, lda_block, outer_bs_a,
+                                 b + i * ldb, ldb_block, outer_bs_b);
+      } else {
+        Transpose<T, inner_bs>(a + i * lda, outer_bs_a, b + i * ldb, outer_bs_b,
+                               trailing_next_node);
+      }
     }
   }
 }
 
-// This kernel is "unrolled" by 3 loop levels. Recursive calls have a non-zero
-// overhead, which we can amortize by having more than one loop per recursive
-// step. The loop planning code adds additional size-1 outer loops to ensure the
-// number of loops in the plan is a multiple of 3.
-static constexpr int kMemcpyUnrollFactor = 3;
 template <typename T>
 void TransposeConstStride1(const char* __restrict a, char* __restrict b,
                            TransposePlan::Node const* node) {
-  DCHECK_EQ(node[0].inc, 1);
-  DCHECK_EQ(node[1].inc, 1);
-  for (int i = 0; i < kMemcpyUnrollFactor; ++i) {
-    a += node[i].start * node[i].lda;
-    b += node[i].start * node[i].ldb;
-  }
-  if (node[2].inc == 0) {
-    int64_t num_bytes = (node[2].end - node[2].start) * sizeof(T);
-    for (int64_t i = node[0].start; i < node[0].end; ++i) {
-      const char* a1 = a;
-      char* b1 = b;
-      for (int64_t j = node[1].start; j < node[1].end; ++j) {
-        std::memcpy(b1, a1, num_bytes);
-        a1 += node[1].lda;
-        b1 += node[1].ldb;
-      }
-      a += node[0].lda;
-      b += node[0].ldb;
-    }
+  a += node->start * node->lda;
+  b += node->start * node->ldb;
+  if (node->is_inner_dim_in_a) {
+    DCHECK(node->is_inner_dim_in_b);
+    int64_t num_bytes = (node->end - node->start) * sizeof(T);
+    std::memcpy(b, a, num_bytes);
   } else {
-    TransposePlan::Node const* next = node + 3;
-    for (int64_t i = node[0].start; i < node[0].end; ++i) {
-      const char* a1 = a;
-      char* b1 = b;
-      for (int64_t j = node[1].start; j < node[1].end; ++j) {
-        const char* a2 = a1;
-        char* b2 = b1;
-        for (int64_t k = node[2].start; k < node[2].end; ++k) {
-          TransposeConstStride1<T>(a2, b2, next);
-          a2 += node[2].lda;
-          b2 += node[2].ldb;
-        }
-        a1 += node[1].lda;
-        b1 += node[1].ldb;
-      }
-      a += node[0].lda;
-      b += node[0].ldb;
+    DCHECK(!node->is_inner_dim_in_b);
+    TransposePlan::Node const* next = node + 1;
+    for (int64_t i = node->start; i < node->end; ++i) {
+      TransposeConstStride1<T>(a, b, next);
+      a += node->lda;
+      b += node->ldb;
+    }
+    if (node->trailing_tile_next_node_inc) {
+      TransposeConstStride1<T>(a, b, node + node->trailing_tile_next_node_inc);
     }
   }
 }
 
 template <typename T>
-void TransposePlan::ExecuteTyped(
-    const char* a, char* b,
-    absl::Span<std::vector<Node> const> root_nodes) const {
+void TransposePlan::ExecuteTyped(const char* a, char* b,
+                                 absl::Span<Node const> nodes) const {
   if (inner_kernel_is_memcpy_) {
-    for (std::vector<Node> const& node : root_nodes) {
-      TransposeConstStride1<T>(a, b, node.data());
-    }
+    TransposeConstStride1<T>(a, b, nodes.data());
   } else {
     switch (inner_block_elems_) {
       case 1:
-        for (std::vector<Node> const& nodes : root_nodes) {
-          if (nodes.size() > 1) {
-            Transpose<T, 1>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                            nodes.data());
-          } else {
-            MacroKernel<T, 1>(a, nodes.back().lda, outer_block_elems_a_, b,
-                              nodes.back().ldb, outer_block_elems_b_);
-          }
+        if (nodes.size() > 1) {
+          Transpose<T, 1>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                          nodes.data());
+        } else {
+          MacroKernel<T, 1>(a, nodes.back().lda, outer_block_elems_a_, b,
+                            nodes.back().ldb, outer_block_elems_b_);
         }
         break;
       case 2:
-        for (std::vector<Node> const& nodes : root_nodes) {
-          if (nodes.size() > 1) {
-            Transpose<T, 2>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                            nodes.data());
-          } else {
-            MacroKernel<T, 2>(a, nodes.back().lda, outer_block_elems_a_, b,
-                              nodes.back().ldb, outer_block_elems_b_);
-          }
+        if (nodes.size() > 1) {
+          Transpose<T, 2>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                          nodes.data());
+        } else {
+          MacroKernel<T, 2>(a, nodes.back().lda, outer_block_elems_a_, b,
+                            nodes.back().ldb, outer_block_elems_b_);
         }
         break;
       case 4:
-        for (std::vector<Node> const& nodes : root_nodes) {
-          if (nodes.size() > 1) {
-            Transpose<T, 4>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                            nodes.data());
-          } else {
-            MacroKernel<T, 4>(a, nodes.back().lda, outer_block_elems_a_, b,
-                              nodes.back().ldb, outer_block_elems_b_);
-          }
+        if (nodes.size() > 1) {
+          Transpose<T, 4>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                          nodes.data());
+        } else {
+          MacroKernel<T, 4>(a, nodes.back().lda, outer_block_elems_a_, b,
+                            nodes.back().ldb, outer_block_elems_b_);
         }
         break;
       case 8:
-        for (std::vector<Node> const& nodes : root_nodes) {
-          if (nodes.size() > 1) {
-            Transpose<T, 8>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                            nodes.data());
-          } else {
-            MacroKernel<T, 8>(a, nodes.back().lda, outer_block_elems_a_, b,
-                              nodes.back().ldb, outer_block_elems_b_);
-          }
+        if (nodes.size() > 1) {
+          Transpose<T, 8>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                          nodes.data());
+        } else {
+          MacroKernel<T, 8>(a, nodes.back().lda, outer_block_elems_a_, b,
+                            nodes.back().ldb, outer_block_elems_b_);
         }
         break;
       case 16:
-        for (std::vector<Node> const& nodes : root_nodes) {
-          if (nodes.size() > 1) {
-            Transpose<T, 16>(a, outer_block_elems_a_, b, outer_block_elems_b_,
-                             nodes.data());
-          } else {
-            MacroKernel<T, 16>(a, nodes.back().lda, outer_block_elems_a_, b,
-                               nodes.back().ldb, outer_block_elems_b_);
-          }
+        if (nodes.size() > 1) {
+          Transpose<T, 16>(a, outer_block_elems_a_, b, outer_block_elems_b_,
+                           nodes.data());
+        } else {
+          MacroKernel<T, 16>(a, nodes.back().lda, outer_block_elems_a_, b,
+                             nodes.back().ldb, outer_block_elems_b_);
         }
         break;
       default:
@@ -356,7 +355,7 @@ void TransposePlan::Execute(
   DCHECK((ac + elem_size_in_bytes_ * num_elems_ <= b ||
           bc + elem_size_in_bytes_ * num_elems_ <= a));
 
-  auto execute_by_type = [&](absl::Span<std::vector<Node> const> nodes) {
+  auto execute_by_type = [&](absl::Span<Node const> nodes) {
     switch (elem_size_in_bytes_) {
       case 1:
         ExecuteTyped<uint8_t>(ac, bc, nodes);
@@ -384,10 +383,9 @@ void TransposePlan::Execute(
     }
   } else {
     absl::BlockingCounter counter(nodes_.size());
-    for (const auto& nodes : nodes_) {
-      absl::Span<std::vector<Node> const> nodes_span = nodes;
-      schedule_work([&, nodes_span]() {
-        execute_by_type(nodes_span);
+    for (absl::Span<Node const> nodes : nodes_) {
+      schedule_work([&, nodes]() {
+        execute_by_type(nodes);
         counter.DecrementCount();
       });
     }
@@ -574,51 +572,85 @@ static Status ParseTilingSpecification(int ndim,
   return Status::OK();
 }
 
-// Recursive helper function that builds a plan.
+// Helper function that builds a plan.
 void TransposePlan::BuildPlanNodes(
     absl::Span<int64_t const> inverse_permutation, int thread_id,
-    absl::InlinedVector<std::vector<TransposePlan::Node>, 1>& output_nodes) {
+    std::vector<TransposePlan::Node>& nodes) {
+  VLOG(8) << "Before plan build: " << ToString();
   const int ndim = a_dims_.size();
   DCHECK_GT(ndim, 0);
   const int pos_stride1a = ndim - 1;
   const int pos_stride1b_in_a = permutation_.back();
   const int pos_stride1a_in_b = inverse_permutation[pos_stride1a];
 
+  // We builld plans in a depth-first order, visiting loops from outermost to
+  // innermost. We use a stack (depth-first) order to handle trailing partial
+  // tiles, which we "come back to" after handling the non-trailing case.
   struct Agendum {
-    std::vector<TransposePlan::Node> nodes;
-    // For which dimensions of a does `node` visit the partial trailing tile in
-    // an inner loop?
+    // The ID of the loop to visit in loop_order_.
+    int loop_id;
+    // The parent node ID whose trailing tile should be made to point to this
+    // node.
+    int parent_node_id;
+
+    // The number of parallel tasks available to run this loop and its
+    // successors.
+    int num_tasks_at_loop;
+
+    // The ID number of the current thread in the tasks at this loop.
+    int task_id_at_loop;
+
+    // For which dimensions of `a` are we to visit the partial trailing tile
+    // a loop that visits that tile's interior?
     absl::InlinedVector<bool, 4> partial_tiles;
   };
-  std::vector<Agendum> current_agenda;
-  // Builds a sentinel node that says that we should invoke the kernel.
-  std::vector<Node> nodes;
-  if (!inner_kernel_is_memcpy_) {
-    nodes.emplace_back();
-    Node* node = &nodes.back();
-    node->start = node->end = node->inc = -1;
-    node->lda = a_tiling_[pos_stride1b_in_a] > 1 ? lda_tile_[pos_stride1b_in_a]
-                                                 : lda_[pos_stride1b_in_a];
-    node->ldb = b_tiling_[pos_stride1a_in_b] > 1 ? ldb_tile_[pos_stride1a_in_b]
-                                                 : ldb_[pos_stride1a_in_b];
-  }
-  current_agenda = {
-      Agendum{std::move(nodes), absl::InlinedVector<bool, 4>(ndim, false)}};
+  std::stack<Agendum> agenda;
 
-  auto loop_has_trivial_iteration_space = [](const Node* node) {
-    return node->start == 0 && node->start + node->inc == node->end;
+  int total_tasks =
+      absl::c_accumulate(loop_parallelism_, int{1}, std::multiplies<int>());
+
+  agenda.push(Agendum{/*loop_id=*/0, /*parent_node_id=*/-1,
+                      /*num_tasks_at_loop=*/total_tasks,
+                      /*task_id_at_loop=*/thread_id,
+                      absl::InlinedVector<bool, 4>(ndim, false)});
+
+  auto loop_has_trivial_iteration_space = [](const Node& node) {
+    return node.start == 0 && node.start + node.inc == node.end;
   };
 
-  // Number of tasks to be assigned to the current loop
-  int num_tasks_at_loop =
-      absl::c_accumulate(loop_parallelism_, int{1}, std::multiplies<int>());
-  // ID of the current task within the tasks at the current loop.
-  int task_id_at_loop = thread_id;
+  while (!agenda.empty()) {
+    Agendum agendum = std::move(agenda.top());
+    agenda.pop();
 
-  std::vector<Agendum> new_agenda;
-  for (int loop_id = static_cast<int>(loop_order_.size()) - 1; loop_id >= 0;
-       --loop_id) {
-    const Loop& loop = loop_order_[loop_id];
+    int node_id = static_cast<int>(nodes.size());
+    if (agendum.parent_node_id >= 0) {
+      // This is a trailing partial tile node; update the parent node to
+      // point to it.
+      nodes[agendum.parent_node_id].trailing_tile_next_node_inc =
+          node_id - agendum.parent_node_id;
+    }
+
+    if (agendum.loop_id == loop_order_.size()) {
+      // We've reached the end of the loop nest.
+      DCHECK_EQ(agendum.num_tasks_at_loop, 1);
+      // Transpose loops have a sentinel node, indicated by a negative `inc`
+      // value, that describes the striding of the inner transpose kernel.
+      if (!inner_kernel_is_memcpy_) {
+        Node node;
+        node.start = node.end = node.inc = -1;
+        node.lda = a_tiling_[pos_stride1b_in_a] > 1
+                       ? lda_tile_[pos_stride1b_in_a]
+                       : lda_[pos_stride1b_in_a];
+        node.ldb = b_tiling_[pos_stride1a_in_b] > 1
+                       ? ldb_tile_[pos_stride1a_in_b]
+                       : ldb_[pos_stride1a_in_b];
+        nodes.push_back(node);
+      }
+      DCHECK(!(inner_kernel_is_memcpy_ && agendum.parent_node_id >= 0));
+      continue;
+    }
+
+    const Loop& loop = loop_order_[agendum.loop_id];
     int a_dim = loop.dim_in_a;
     int b_dim = inverse_permutation[a_dim];
     DCHECK(a_tiling_[a_dim] == 1 || b_tiling_[b_dim] == 1 ||
@@ -626,188 +658,115 @@ void TransposePlan::BuildPlanNodes(
     int64_t tile_size = std::max(a_tiling_[a_dim], b_tiling_[b_dim]);
 
     // Compute the number of tasks for the next loop iteration.
-    num_tasks_at_loop /= loop_parallelism_[loop_id];
+    int task_id_at_loop = agendum.task_id_at_loop;
+    int num_tasks_at_loop =
+        agendum.num_tasks_at_loop / loop_parallelism_[agendum.loop_id];
+    int task_id_at_next_loop = task_id_at_loop % num_tasks_at_loop;
 
-    new_agenda.clear();
-
-    DCHECK_GE(tile_size, 1);
-    absl::InlinedVector<TransposePlan::Node*, 1> partial_tile_nodes;
-    // If the dimension is tiled, generate two nested loops, one for inside the
-    // tile, one for outside.
     if (loop.tile_interior) {
+      // We are visiting the tile interior of a tiled dimension.
+      bool partial = agendum.partial_tiles[a_dim];
+
+      Node node;
+      node.lda = a_tiling_[a_dim] > 1 ? lda_tile_[a_dim] : lda_[a_dim];
+      node.ldb = b_tiling_[b_dim] > 1 ? ldb_tile_[b_dim] : ldb_[b_dim];
+      node.inc = 1;
+      node.is_inner_dim_in_a = (a_dim == pos_stride1a);
+      node.is_inner_dim_in_b = (a_dim == pos_stride1b_in_a);
+      if (node.is_inner_dim_in_a) {
+        node.inc = inner_block_elems_ * outer_block_elems_a_;
+      } else if (node.is_inner_dim_in_b) {
+        node.inc = inner_block_elems_ * outer_block_elems_b_;
+      }
+      int task_id = task_id_at_loop / num_tasks_at_loop;
+      if (partial) {
+        // Only the last task handles the trailing tile.
+        // DCHECK_EQ(task_id, loop_parallelism_[agendum.loop_id] - 1);
+        node.start = 0;
+        node.end = a_dims_[a_dim] % tile_size;
+      } else {
+        int64_t num_iterations = CeilOfRatio(tile_size, node.inc);
+        int64_t num_iterations_per_task = CeilOfRatio<int64_t>(
+            num_iterations, loop_parallelism_[agendum.loop_id]);
+        node.start =
+            std::min(tile_size, task_id * num_iterations_per_task * node.inc);
+        node.end = std::min(tile_size,
+                            (task_id + 1) * num_iterations_per_task * node.inc);
+      }
+      if (!loop_has_trivial_iteration_space(node) ||
+          (inner_kernel_is_memcpy_ && node.is_inner_dim_in_a)) {
+        nodes.push_back(node);
+      }
+      Agendum new_agendum;
+      new_agendum.loop_id = agendum.loop_id + 1;
+      new_agendum.parent_node_id = -1;
+      new_agendum.task_id_at_loop = task_id_at_next_loop;
+      new_agendum.num_tasks_at_loop = num_tasks_at_loop;
+      new_agendum.partial_tiles = agendum.partial_tiles;
+      agenda.push(std::move(new_agendum));
+    } else {
+      // We are either visiting an untiled dimension, or the loop that iterates
+      // over tile exteriors.
+      int task_id = task_id_at_loop / num_tasks_at_loop;
+      int64_t num_complete_tiles = a_dims_[a_dim] / tile_size;
       bool has_partial_tile = (a_dims_[a_dim] % tile_size != 0);
 
-      auto make_tile_node = [&](const Agendum& agendum,
-                                bool partial) -> absl::optional<Agendum> {
-        std::vector<Node> nodes(agendum.nodes.size() + 1);
-        std::copy(agendum.nodes.begin(), agendum.nodes.end(),
-                  nodes.begin() + 1);
-        Node* node = &nodes.front();
-        node->lda = a_tiling_[a_dim] > 1 ? lda_tile_[a_dim] : lda_[a_dim];
-        node->ldb = b_tiling_[b_dim] > 1 ? ldb_tile_[b_dim] : ldb_[b_dim];
-        node->inc = 1;
-        if (a_dim == pos_stride1a) {
-          node->inc = inner_block_elems_ * outer_block_elems_a_;
-          node->is_inner_dim_in_a = true;
-        } else if (a_dim == pos_stride1b_in_a) {
-          node->inc = inner_block_elems_ * outer_block_elems_b_;
-          node->is_inner_dim_in_b = true;
-        }
-        int task_id = task_id_at_loop / num_tasks_at_loop;
-        if (partial) {
-          // Only the last task handles the trailing tile.
-          if (task_id != loop_parallelism_[loop_id] - 1) {
-            return absl::nullopt;
-          }
-          node->start = 0;
-          node->end = a_dims_[a_dim] % tile_size;
-        } else {
-          int64_t num_iterations = CeilOfRatio(tile_size, node->inc);
-          int64_t num_iterations_per_task =
-              CeilOfRatio<int64_t>(num_iterations, loop_parallelism_[loop_id]);
-          node->start = std::min(tile_size,
-                                 task_id * num_iterations_per_task * node->inc);
-          node->end = std::min(
-              tile_size, (task_id + 1) * num_iterations_per_task * node->inc);
-        }
-
-        DCHECK(partial || node->start + node->inc <= node->end)
-            << node->start << " " << node->inc << " " << node->end;
-        // If this loop has a trivial iteration space, drop it.
-        if (node->start >= node->end) {
-          return absl::nullopt;
-        }
-        if (loop_has_trivial_iteration_space(node) && !agendum.nodes.empty()) {
-          nodes = agendum.nodes;
-        }
+      // If there is a trailing partial tile as well as complete tiles, handle
+      // it as a trailer on the loop over complete tiles.
+      bool has_trailing_plan_node = false;
+      if (num_complete_tiles > 0 && has_partial_tile &&
+          task_id == loop_parallelism_[agendum.loop_id] - 1) {
         Agendum new_agendum;
-        new_agendum.nodes = std::move(nodes);
+        new_agendum.loop_id = agendum.loop_id + 1;
+        new_agendum.parent_node_id = node_id;
+        new_agendum.task_id_at_loop = task_id_at_next_loop;
+        new_agendum.num_tasks_at_loop = num_tasks_at_loop;
         new_agendum.partial_tiles = agendum.partial_tiles;
-        new_agendum.partial_tiles[a_dim] = partial;
-        return new_agendum;
-      };
-
-      for (const Agendum& agendum : current_agenda) {
-        // If the dimension contains a complete tile, add a loop over the entire
-        // tile.
-        if (a_dims_[a_dim] >= tile_size) {
-          auto new_agendum = make_tile_node(agendum, /*partial=*/false);
-          if (new_agendum) {
-            new_agenda.push_back(std::move(*new_agendum));
-          }
-        }
-
-        // If the dimension size is not exactly divisible by the tile size,
-        // then add an additional loop that handles just the trailing partial
-        // tile.
-        if (has_partial_tile) {
-          auto new_agendum = make_tile_node(agendum, /*partial=*/true);
-          if (new_agendum) {
-            new_agenda.push_back(std::move(*new_agendum));
-          }
-        }
+        new_agendum.partial_tiles[a_dim] = true;
+        agenda.push(std::move(new_agendum));
+        has_trailing_plan_node = true;
       }
-    } else {
-      auto make_node = [&](const Agendum& agendum,
-                           bool partial) -> absl::optional<Agendum> {
-        std::vector<Node> nodes(agendum.nodes.size() + 1);
-        std::copy(agendum.nodes.begin(), agendum.nodes.end(),
-                  nodes.begin() + 1);
-        Node* node = &nodes.front();
-        node->lda = lda_[a_dim] * tile_size / a_tiling_[a_dim];
-        node->ldb = ldb_[b_dim] * tile_size / b_tiling_[b_dim];
-        node->inc = 1;
-        if (tile_size == 1 && a_dim == ndim - 1) {
-          node->inc = inner_block_elems_ * outer_block_elems_a_;
-          node->is_inner_dim_in_a = true;
-        } else if (tile_size == 1 && a_dim == pos_stride1b_in_a) {
-          node->inc = inner_block_elems_ * outer_block_elems_b_;
-          node->is_inner_dim_in_b = true;
-        }
-        int task_id = task_id_at_loop / num_tasks_at_loop;
-        int64_t num_complete_tiles = a_dims_[a_dim] / tile_size;
-        if (partial) {
-          // For trailing partial tiles, we only need visit the single entry at
-          // the end.
-          DCHECK_NE(a_dims_[a_dim] % tile_size, 0);
-          // Only the last task handles the trailing tile.
-          if (task_id != loop_parallelism_[loop_id] - 1) {
-            return absl::nullopt;
-          }
-          node->start = num_complete_tiles;
-          node->end = num_complete_tiles + 1;
-        } else {
-          // Evenly divide the loop iterations amongst the threads.
-          int64_t num_iterations = CeilOfRatio(num_complete_tiles, node->inc);
-          int64_t num_iterations_per_task =
-              CeilOfRatio<int64_t>(num_iterations, loop_parallelism_[loop_id]);
-          node->start = std::min(num_complete_tiles,
-                                 task_id * num_iterations_per_task * node->inc);
-          node->end =
-              std::min(num_complete_tiles,
-                       (task_id + 1) * num_iterations_per_task * node->inc);
-        }
-        // If this loop has a trivial iteration space, drop it.
-        if (node->start >= node->end) {
-          return absl::nullopt;
-        }
-        if (loop_has_trivial_iteration_space(node) && !agendum.nodes.empty()) {
-          nodes = agendum.nodes;
-        }
-        Agendum new_agendum;
-        new_agendum.nodes = std::move(nodes);
-        new_agendum.partial_tiles = agendum.partial_tiles;
-        return new_agendum;
-      };
-      for (const Agendum& agendum : current_agenda) {
-        if (tile_size > 1 && agendum.partial_tiles[a_dim]) {
-          if (a_dims_[a_dim] / tile_size == 0) {
-            DCHECK_EQ(loop_parallelism_[loop_id], 1);
-            new_agenda.push_back(agendum);
-          } else {
-            auto new_agendum = make_node(agendum, /*partial=*/true);
-            if (new_agendum) {
-              new_agenda.push_back(std::move(*new_agendum));
-            }
-          }
-        } else {
-          if (tile_size > 1 && a_dims_[a_dim] == tile_size) {
-            DCHECK_EQ(loop_parallelism_[loop_id], 1);
-            new_agenda.push_back(agendum);
-          } else {
-            auto new_agendum = make_node(agendum, /*partial=*/false);
-            if (new_agendum) {
-              new_agenda.push_back(std::move(*new_agendum));
-            }
-          }
-        }
+      Node node;
+      node.lda = lda_[a_dim] * tile_size / a_tiling_[a_dim];
+      node.ldb = ldb_[b_dim] * tile_size / b_tiling_[b_dim];
+      node.inc = 1;
+      node.is_inner_dim_in_a = (tile_size == 1 && a_dim == ndim - 1);
+      node.is_inner_dim_in_b = (tile_size == 1 && a_dim == pos_stride1b_in_a);
+      if (node.is_inner_dim_in_a) {
+        node.inc = inner_block_elems_ * outer_block_elems_a_;
+      } else if (node.is_inner_dim_in_b) {
+        node.inc = inner_block_elems_ * outer_block_elems_b_;
       }
+
+      // If this tiled dimension consists only of a single partial tile, handle
+      // it here; there's no point emitting a degenerate loop and a separate
+      // path to handle the trailing tile.
+      bool partial = num_complete_tiles == 0 && has_partial_tile;
+
+      // Evenly divide the loop iterations amongst the threads.
+      int64_t num_tiles = partial ? 1 : num_complete_tiles;
+      int64_t num_iterations = CeilOfRatio(num_tiles, node.inc);
+      int64_t num_iterations_per_task = CeilOfRatio<int64_t>(
+          num_iterations, loop_parallelism_[agendum.loop_id]);
+      node.start =
+          std::min(num_tiles, task_id * num_iterations_per_task * node.inc);
+      node.end = std::min(num_tiles,
+                          (task_id + 1) * num_iterations_per_task * node.inc);
+      // If this loop has a trivial iteration space, drop it.
+      if (!loop_has_trivial_iteration_space(node) ||
+          (inner_kernel_is_memcpy_ && node.is_inner_dim_in_a) ||
+          has_trailing_plan_node) {
+        nodes.push_back(node);
+      }
+      Agendum new_agendum;
+      new_agendum.loop_id = agendum.loop_id + 1;
+      new_agendum.parent_node_id = -1;
+      new_agendum.task_id_at_loop = task_id_at_next_loop;
+      new_agendum.num_tasks_at_loop = num_tasks_at_loop;
+      new_agendum.partial_tiles = agendum.partial_tiles;
+      new_agendum.partial_tiles[a_dim] = partial;
+      agenda.push(std::move(new_agendum));
     }
-    std::swap(current_agenda, new_agenda);
-
-    task_id_at_loop = task_id_at_loop % num_tasks_at_loop;
-  }
-  DCHECK_EQ(num_tasks_at_loop, 1);
-  output_nodes.reserve(current_agenda.size());
-  for (Agendum& agendum : current_agenda) {
-    agendum.nodes.back().inc = 0;  // Marks the last node as a sentinel.
-
-    // The memcpy kernel requires that the number of loops is a multiple of
-    // kMemcpyUnrollFactor.
-    if (inner_kernel_is_memcpy_) {
-      while (agendum.nodes.size() % kMemcpyUnrollFactor != 0) {
-        std::vector<Node> nodes(agendum.nodes.size() + 1);
-        std::copy(agendum.nodes.begin(), agendum.nodes.end(),
-                  nodes.begin() + 1);
-        Node* node = &nodes.front();
-        node->start = 0;
-        node->end = 1;
-        node->inc = 1;
-        node->lda = node->ldb = 0;
-        agendum.nodes = std::move(nodes);
-      }
-    }
-    output_nodes.push_back(std::move(agendum.nodes));
   }
 }
 
@@ -953,8 +912,8 @@ void TransposePlan::Initialize() {
       lda_.empty()
           ? -1
           : (a_tiling_[ndim - 1] > 1 ? lda_tile_[ndim - 1] : lda_[ndim - 1]);
-  // We don't accept arbitrary stridings for B, so we know B always has a stride
-  // 1 dimension innermost.
+  // We don't accept arbitrary stridings for B, so we know B always has a
+  // stride 1 dimension innermost.
 
   // If the plan is 0-dimensional, or the innermost dimension of A is not of
   // stride 1, adds a trivial size 1 dimension. The transpose kernels rely on
@@ -1005,6 +964,9 @@ void TransposePlan::Initialize() {
            std::make_tuple(inner_kernel_is_memcpy_ && b.tile_interior,
                            -cost(b));
   });
+  // It is a required invariant of the loop order that tile interiors always
+  // appear after the corresponding tile exterior. This is a consequence of the
+  // heuristic above, because
 
   if (inner_kernel_is_memcpy_) {
     // The stride-1 loop must be innermost.
@@ -1031,16 +993,22 @@ void TransposePlan::Initialize() {
     }
   }
 
-  // Bound the block sizes so they are smaller than the stride-1 dimension size.
+  // Bound the block sizes so they are smaller than the stride-1 dimension
+  // size.
   int64_t a_stride1_size = std::max(
       a_tiling_[pos_stride1a], b_tiling_[inverse_permutation[pos_stride1a]]);
   if (a_stride1_size == 1) {
     a_stride1_size = a_dims_[pos_stride1a];
+  } else {
+    // If there's only one tile, we should use the dimension size.
+    a_stride1_size = std::min(a_dims_[pos_stride1a], a_stride1_size);
   }
   int64_t b_stride1_size =
       std::max(a_tiling_[permutation_.back()], b_tiling_.back());
   if (b_stride1_size == 1) {
     b_stride1_size = b_dims_.back();
+  } else {
+    b_stride1_size = std::min(b_stride1_size, b_dims_.back());
   }
 
   if (inner_kernel_is_memcpy_) {
@@ -1142,24 +1110,20 @@ std::vector<int> TransposePlan::ChooseParallelizationStrategy(
 
 std::string TransposePlan::ToString() const {
   std::string nodes_str = absl::StrJoin(
-      nodes_, "\n",
-      [](std::string* out, absl::Span<std::vector<Node> const> thread_nodes) {
+      nodes_, "\n", [](std::string* out, absl::Span<Node const> thread_nodes) {
         absl::StrAppend(
             out, "thread:\n",
             absl::StrJoin(
-                thread_nodes, "\n",
-                [](std::string* out, absl::Span<Node const> nodes) {
-                  absl::StrAppend(
-                      out, "  root:\n",
-                      absl::StrJoin(
-                          nodes, "\n", [](std::string* out, const Node& node) {
-                            absl::StrAppendFormat(
-                                out,
-                                "    "
-                                "Node(start=%d,end=%d,inc=%d,lda=%d,ldb=%d)",
-                                node.start, node.end, node.inc, node.lda,
-                                node.ldb);
-                          }));
+                thread_nodes, "\n", [](std::string* out, const Node& node) {
+                  absl::StrAppendFormat(
+                      out,
+                      "    "
+                      "Node(start=%d,end=%d,inc=%d,lda=%"
+                      "d,ldb=%d,next_trailing=%d,inner_a=%s,inner_b=%s)",
+                      node.start, node.end, node.inc, node.lda, node.ldb,
+                      node.trailing_tile_next_node_inc,
+                      node.is_inner_dim_in_a ? "y" : "n",
+                      node.is_inner_dim_in_b ? "y" : "n");
                 }));
       });
   auto format_loop_order = [](std::string* out, const Loop& loop) {
@@ -1168,7 +1132,8 @@ std::string TransposePlan::ToString() const {
   };
   return absl::StrFormat(
       "a_dims=%s b_dims=%s permutation=%s a_tiling=%s b_tiling=%s "
-      "lda=%s lda_tile=%s ldb=%s ldb_tile=%s loop_order=%s loop_parallelism=%s "
+      "lda=%s lda_tile=%s ldb=%s ldb_tile=%s loop_order=%s "
+      "loop_parallelism=%s "
       "outer_bs=[%d,%d] inner_bs=%d\n"
       "nodes:\n%s",
       absl::StrJoin(a_dims_, ","),
