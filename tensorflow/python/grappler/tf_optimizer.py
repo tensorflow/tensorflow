@@ -50,10 +50,22 @@ def OptimizeGraph(config_proto,
   if not isinstance(config_proto, config_pb2.ConfigProto):
     raise TypeError('Expected config_proto to be a ConfigProto, saw type %s' %
                     type(config_proto))
-  if cluster is None:
+  if cluster is not None:
+    out_graph = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
+                                        config_proto.SerializeToString(),
+                                        metagraph.SerializeToString(), verbose,
+                                        graph_id, strip_default_attributes)
+  else:
     cluster = gcluster.Cluster()
-  out_graph = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
-                                      config_proto.SerializeToString(),
-                                      metagraph.SerializeToString(), verbose,
-                                      graph_id, strip_default_attributes)
+    try:
+      out_graph = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
+                                          config_proto.SerializeToString(),
+                                          metagraph.SerializeToString(),
+                                          verbose, graph_id,
+                                          strip_default_attributes)
+    finally:
+      # Force the cleanup instead of waiting on python GC to cleanup the
+      # temporary cluster we've created. Otherwise subsequent calls might
+      # not have a clean slate because GC may not have run yet.
+      cluster.Shutdown()
   return graph_pb2.GraphDef().FromString(out_graph)
