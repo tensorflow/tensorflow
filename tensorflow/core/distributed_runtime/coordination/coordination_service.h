@@ -64,7 +64,7 @@ class CoordinationServiceInterface {
  public:
   using CoordinationServiceFactory =
       std::function<std::unique_ptr<CoordinationServiceInterface>(
-          WorkerEnv* env, const ServerDef& server_def,
+          const WorkerEnv* env, const ServerDef& server_def,
           std::unique_ptr<CoordinationClientCache> cache)>;
 
   using StatusOrValueCallback =
@@ -80,8 +80,8 @@ class CoordinationServiceInterface {
   }
 
   static std::unique_ptr<CoordinationServiceInterface>
-  EnableCoordinationService(const std::string& service_type, WorkerEnv* env,
-                            const ServerDef& server_def,
+  EnableCoordinationService(const std::string& service_type,
+                            const WorkerEnv* env, const ServerDef& server_def,
                             std::unique_ptr<CoordinationClientCache> cache) {
     const auto* factories = GetCoordinationServiceFactories();
     auto factories_iter = factories->find(service_type);
@@ -91,7 +91,9 @@ class CoordinationServiceInterface {
       return nullptr;
     }
     auto service = factories_iter->second(env, server_def, std::move(cache));
-    *GetCoordinationServiceInstancePtr() = service.get();
+    if (service != nullptr) {
+      *GetCoordinationServiceInstancePtr() = service.get();
+    }
     return service;
   }
 

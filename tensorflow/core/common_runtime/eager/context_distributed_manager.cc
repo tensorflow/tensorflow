@@ -868,13 +868,9 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       DeviceNameUtils::ParseFullName(leader, &parsed);
       if (parsed.job == server_def.job_name() &&
           parsed.task == server_def.task_index()) {
-        std::unique_ptr<CoordinationClientCache> service_cache;
-        LOG_AND_RETURN_IF_ERROR(
-            worker_cache->GetCoordinationClientCache(&service_cache));
-        coordination_service_ =
-            CoordinationServiceInterface::EnableCoordinationService(
-                config.experimental().coordination_service(),
-                server->worker_env(), server_def, std::move(service_cache));
+        LOG_AND_RETURN_IF_ERROR(EnableCoordinationService(
+            config.experimental().coordination_service(), server->worker_env(),
+            server_def, worker_cache));
       }
       LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
           coordination_service_agent_.get()));
@@ -926,6 +922,17 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         UpdateDeviceManager(context_, server_def, local_devices));
   }
 #undef LOG_AND_RETURN_IF_ERROR
+  return Status::OK();
+}
+
+Status EagerContextDistributedManager::EnableCoordinationService(
+    const std::string& service_type, const WorkerEnv* worker_env,
+    const ServerDef& server_def, WorkerCacheInterface* worker_cache) {
+  std::unique_ptr<CoordinationClientCache> client_cache;
+  TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
+  coordination_service_ =
+      CoordinationServiceInterface::EnableCoordinationService(
+          service_type, worker_env, server_def, std::move(client_cache));
   return Status::OK();
 }
 
