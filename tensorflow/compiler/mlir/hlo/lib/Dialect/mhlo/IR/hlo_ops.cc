@@ -1400,41 +1400,6 @@ class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
     return failure();
   }
 };
-
-class ConcatenateForwarding : public OpRewritePattern<ConcatenateOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(ConcatenateOp op,
-                                PatternRewriter& rewriter) const override {
-    bool has_flatten = false;
-    llvm::SmallVector<Value, 6> new_operands;
-    llvm::SmallVector<ConcatenateOp, 2> flatten_stack = {op};
-
-    while (!flatten_stack.empty()) {
-      ConcatenateOp cur_op = flatten_stack.pop_back_val();
-
-      for (auto operand : cur_op.val()) {
-        Operation* defining_op = operand.getDefiningOp();
-        if (auto concat_op =
-                mlir::dyn_cast_or_null<ConcatenateOp>(defining_op)) {
-          if (concat_op.dimension() == op.dimension()) {
-            flatten_stack.push_back(concat_op);
-            has_flatten = true;
-            continue;
-          }
-        }
-        new_operands.push_back(operand);
-      }
-    }
-
-    if (has_flatten) {
-      rewriter.replaceOpWithNewOp<ConcatenateOp>(op, op.getResult().getType(),
-                                                 new_operands, op.dimension());
-      return success();
-    }
-    return failure();
-  }
-};
-
 }  // namespace
 
 LogicalResult ConcatenateOp::inferReturnTypes(
@@ -1519,7 +1484,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
 
 void ConcatenateOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
+  results.insert<ConcatenateOperandRemoval>(context);
 }
 
 template <typename T>
