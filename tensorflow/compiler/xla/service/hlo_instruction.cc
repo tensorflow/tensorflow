@@ -1708,6 +1708,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kTrace:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
