@@ -53,23 +53,6 @@ namespace {
 
 using ::tensorflow::data::experimental::AutoShardDatasetOp;
 
-// Converts tf.data service `sharding_policy` to `AutoShardPolicy`.
-AutoShardPolicy ToAutoShardPolicy(
-    const ProcessingModeDef::ShardingPolicy sharding_policy) {
-  switch (sharding_policy) {
-    case ProcessingModeDef::FILE:
-      return AutoShardPolicy::FILE;
-    case ProcessingModeDef::DATA:
-      return AutoShardPolicy::DATA;
-    case ProcessingModeDef::FILE_OR_DATA:
-      return AutoShardPolicy::AUTO;
-    case ProcessingModeDef::HINT:
-      return AutoShardPolicy::HINT;
-    default:
-      return AutoShardPolicy::OFF;
-  }
-}
-
 // Extracts the host from `address`.
 std::string GetHost(absl::string_view address) {
   absl::string_view::size_type port_pos = address.find_last_of(':');
@@ -114,11 +97,13 @@ bool ShouldReplaceDynamicPort(absl::string_view config_address,
 }
 }  // namespace
 
-AutoShardRewriter::AutoShardRewriter(const TaskDef& task_def)
-    : auto_shard_policy_(
-          ToAutoShardPolicy(task_def.processing_mode_def().sharding_policy())),
-      num_workers_(task_def.num_workers()),
-      worker_index_(task_def.worker_index()) {}
+StatusOr<AutoShardRewriter> AutoShardRewriter::Create(const TaskDef& task_def) {
+  TF_ASSIGN_OR_RETURN(
+      AutoShardPolicy auto_shard_policy,
+      ToAutoShardPolicy(task_def.processing_mode_def().sharding_policy()));
+  return AutoShardRewriter(auto_shard_policy, task_def.num_workers(),
+                           task_def.worker_index());
+}
 
 StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
     const GraphDef& graph_def) {
@@ -145,6 +130,12 @@ StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
       &cluster, *grappler_item, &rewritten_graph, &stats));
   return rewritten_graph;
 }
+
+AutoShardRewriter::AutoShardRewriter(AutoShardPolicy auto_shard_policy,
+                                     int64 num_workers, int64 worker_index)
+    : auto_shard_policy_(auto_shard_policy),
+      num_workers_(num_workers),
+      worker_index_(worker_index) {}
 
 tensorflow::RewriterConfig::CustomGraphOptimizer
 AutoShardRewriter::GetRewriteConfig() const {

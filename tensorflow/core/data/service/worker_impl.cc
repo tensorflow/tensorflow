@@ -283,7 +283,8 @@ StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
 StatusOr<std::unique_ptr<standalone::Dataset>>
 DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
                                    const TaskDef& task_def) const {
-  AutoShardRewriter auto_shard_rewriter(task_def);
+  TF_ASSIGN_OR_RETURN(AutoShardRewriter auto_shard_rewriter,
+                      AutoShardRewriter::Create(task_def));
   // `ApplyAutoShardRewrite` does nothing if auto-sharding is disabled.
   TF_ASSIGN_OR_RETURN(
       GraphDef rewritten_graph,

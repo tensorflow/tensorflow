@@ -140,7 +140,8 @@ inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
 TEST(AutoShardRewriterTest, AutoShard) {
   TaskDef task_def = GetTaskDef(ProcessingModeDef::FILE_OR_DATA,
                                 /*num_workers=*/3, /*worker_index=*/1);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeSquareDataset(10);
   TF_ASSERT_OK_AND_ASSIGN(GraphDef rewritten_graph,
@@ -155,7 +156,8 @@ TEST(AutoShardRewriterTest, AutoShard) {
 TEST(AutoShardRewriterTest, ShardByData) {
   TaskDef task_def = GetTaskDef(ProcessingModeDef::DATA, /*num_workers=*/3,
                                 /*worker_index=*/1);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeSquareDataset(10);
   TF_ASSERT_OK_AND_ASSIGN(GraphDef rewritten_graph,
@@ -170,7 +172,8 @@ TEST(AutoShardRewriterTest, ShardByData) {
 TEST(AutoShardRewriterTest, ShardByFile) {
   TaskDef task_def = GetTaskDef(ProcessingModeDef::FILE, /*num_workers=*/3,
                                 /*worker_index=*/1);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeSquareDataset(10);
   EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
@@ -181,7 +184,8 @@ TEST(AutoShardRewriterTest, ShardByFile) {
 TEST(AutoShardRewriterTest, ShardByHint) {
   TaskDef task_def = GetTaskDef(ProcessingModeDef::HINT, /*num_workers=*/3,
                                 /*worker_index=*/1);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeDatasetWithShardHint(10);
   TF_ASSERT_OK_AND_ASSIGN(GraphDef rewritten_graph,
@@ -196,7 +200,8 @@ TEST(AutoShardRewriterTest, ShardByHint) {
 TEST(AutoShardRewriterTest, NoShard) {
   TaskDef task_def =
       GetTaskDef(ProcessingModeDef::OFF, /*num_workers=*/3, /*worker_index=*/1);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeSquareDataset(10);
   EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
@@ -207,7 +212,8 @@ TEST(AutoShardRewriterTest, EmptyDataset) {
   TaskDef task_def =
       GetTaskDef(ProcessingModeDef::FILE_OR_DATA, /*num_workers=*/3,
                  /*worker_index=*/1);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeSquareDataset(0);
   TF_ASSERT_OK_AND_ASSIGN(GraphDef rewritten_graph,
@@ -223,7 +229,8 @@ TEST(AutoShardRewriterTest, NoWorkers) {
   TaskDef task_def =
       GetTaskDef(ProcessingModeDef::FILE_OR_DATA, /*num_workers=*/0,
                  /*worker_index=*/0);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeSquareDataset(10);
   EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
@@ -234,7 +241,8 @@ TEST(AutoShardRewriterTest, NoWorkers) {
 TEST(AutoShardRewriterTest, NoWorkersWhenShardIsOff) {
   TaskDef task_def =
       GetTaskDef(ProcessingModeDef::OFF, /*num_workers=*/0, /*worker_index=*/0);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeSquareDataset(10);
   EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
@@ -245,7 +253,8 @@ TEST(AutoShardRewriterTest, WorkerIndexOutOfRange) {
   TaskDef task_def =
       GetTaskDef(ProcessingModeDef::FILE_OR_DATA, /*num_workers=*/2,
                  /*worker_index=*/5);
-  AutoShardRewriter rewriter(task_def);
+  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
+                          AutoShardRewriter::Create(task_def));
 
   DatasetDef dataset = RangeSquareDataset(10);
   EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
