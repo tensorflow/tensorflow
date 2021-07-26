@@ -958,13 +958,11 @@ void LegalizeTF::runOnFunction() {
   target.addLegalOp<mlir::ConstantOp>();
   target.addLegalOp<ConstOp>();
   if (run_tfl_runtime_verification_) {
-    target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
-        Optional<ConversionTarget::DynamicLegalityCallbackFn>(
-            [](Operation* op) {
-              auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
-              if (!tfl_op) return false;
-              return succeeded(tfl_op.VerifyTflRuntimeConstraints(op));
-            }));
+    target.addDynamicallyLegalDialect<TensorFlowLiteDialect>([](Operation* op) {
+      auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
+      if (!tfl_op) return false;
+      return succeeded(tfl_op.VerifyTflRuntimeConstraints(op));
+    });
   } else {
     target.addLegalDialect<TensorFlowLiteDialect>();
   }

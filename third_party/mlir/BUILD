@@ -1805,6 +1805,7 @@ cc_library(
         ":IR",
         ":Pass",
         ":SCFDialect",
+        ":SCFToStandard",
         ":StandardOps",
         ":Support",
         ":TransformUtils",

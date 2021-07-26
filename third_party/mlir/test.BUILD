@@ -166,10 +166,10 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestAttrDefs.td",
-    td_srcs = [
+    test = True,
+    deps = [
         ":TestOpTdFiles",
     ],
-    test = True,
 )
 
 gentbl_cc_library(
