@@ -42,7 +42,7 @@ StatusOr<bool> AliasPassthroughParams::Run(HloModule* module) {
           module->input_output_alias_config().ParameterHasAlias(
               root->operand(i)->parameter_number(), /*param_index=*/{})) {
         VLOG(2) << "Skip setting the above pass-through alias as an alias may"
-                << " have been set up by ResVarIoAliasing.";
+                << " have been set up for alising resource update.";
         continue;
       }
 

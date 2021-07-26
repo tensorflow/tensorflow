@@ -57,5 +57,29 @@ TEST_F(AliasPassthroughParamsTest, DoNotAliasPassThroughParamsMoreThanOnce) {
   EXPECT_FALSE(alias_config.OutputHasAlias({1}));
 }
 
+TEST_F(AliasPassthroughParamsTest, PresetAliases) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    sum = f16[2048,1024] add(p0, p1)
+    ROOT root = (f16[2048,1024], f16[2048,1024], f16[2048,1024]) tuple(p0, sum, p1)
+  })").ValueOrDie();
+
+  // Presetting an alias for p0 -> Sum. This could happen in a case of
+  // `alias_resource_update`.
+  auto& preset_alias = module->input_output_alias_config();
+  EXPECT_OK(preset_alias.SetUpAlias(/*output_index=*/{1},
+                                    /*param_number=*/0,
+                                    /*param_index=*/{}));
+
+  EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).ValueOrDie());
+  const auto& alias_result = module->input_output_alias_config();
+  EXPECT_EQ(1, alias_result.GetAliasedParameter({2})->parameter_number);
+  EXPECT_FALSE(alias_result.OutputHasAlias({0}));
+}
+
 }  // namespace gpu
 }  // namespace xla
