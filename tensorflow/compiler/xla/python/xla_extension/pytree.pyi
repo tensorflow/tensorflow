@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Callable, Iterable, List, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Callable, Hashable, Iterable, List, Optional, Sequence, Tuple, Type, TypeVar
 
 _T = TypeVar("T")
 
@@ -41,7 +41,10 @@ class PyTreeDef:
   def __ne__(self, __other: PyTreeDef) -> bool: ...
   def __hash__(self) -> int: ...
 
+_Children = TypeVar("_Children", bound=Iterable[Any])
+_AuxData = TypeVar("_AuxData", bound=Hashable)
+
 def register_node(
     __type: Type[_T],
-    to_iterable: Callable[[_T], Tuple[Iterable[Any], Any]],
-    from_iterable: Callable[[Any, Iterable[Any]], _T]) -> Any: ...
+    to_iterable: Callable[[_T], Tuple[_Children, _AuxData]],
+    from_iterable: Callable[[_AuxData, _Children], _T]) -> Any: ...
