@@ -484,6 +484,7 @@ tf_py_test(
     size = "small",
     srcs = ["traceback_utils_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:variables",
