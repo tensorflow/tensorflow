@@ -123,6 +123,7 @@ add_custom_target(check-mlir-hlo)
 
 add_subdirectory(include/mlir-hlo)
 add_subdirectory(lib)
+add_subdirectory(runtime)
 add_subdirectory(tools)
 add_subdirectory(tests)
 
