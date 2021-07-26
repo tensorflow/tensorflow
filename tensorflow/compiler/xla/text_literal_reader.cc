@@ -102,7 +102,7 @@ StatusOr<Literal> TextLiteralReader::ReadAllLines() {
     coordinates = absl::StrSplit(coordinates_string, ',');
     coordinate_values.clear();
     for (absl::string_view piece : coordinates) {
-      int64 coordinate_value;
+      int64_t coordinate_value;
       if (!absl::SimpleAtoi(piece, &coordinate_value)) {
         return InvalidArgument(
             "could not parse coordinate member as int64: \"%s\"",

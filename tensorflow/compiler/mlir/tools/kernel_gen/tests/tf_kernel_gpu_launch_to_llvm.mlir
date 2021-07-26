@@ -10,7 +10,7 @@ gpu.module @kernel_module attributes {gpu.binary_blob = "BLOB!"} {
   }
 }
 
-// CHECK: llvm.func @tfKernelGenLaunchKernel(!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<i8>, i64, i64, i64, i64, i64, i64, !llvm.ptr<ptr<i8>>)
+// CHECK: llvm.func @_mlir_ciface_tf_launch_kernel(!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<i8>, i64, i64, i64, i64, i64, i64, !llvm.ptr<ptr<i8>>)
 // CHECK: llvm.mlir.global internal constant @kernel_module_the_kernel_kernel_name("the_kernel\00")
 // CHECK: llvm.mlir.global internal constant @kernel_module_blob("BLOB!")
 
@@ -26,7 +26,7 @@ func @launch(%ctx: !tf_framework.op_kernel_context, %memref: memref<?x10xf32>) {
   // CHECK: %[[NAME_PTR:.*]] = llvm.getelementptr %[[NAME]][%[[C0_1]], %[[C0_1]]] : (!llvm.ptr<array<11 x i8>>, i64, i64) -> !llvm.ptr<i8>
   // CHECK: %[[C7:.*]] = llvm.mlir.constant(7 : i32) : i32
   // CHECK: %[[ARGS:.*]] = llvm.alloca %24 x !llvm.ptr<i8> : (i32) -> !llvm.ptr<ptr<i8>>
-  // CHECK: llvm.call @tfKernelGenLaunchKernel(%[[CTX]], %[[BLOB_PTR]], %[[NAME_PTR]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[ARGS]])
+  // CHECK: llvm.call @_mlir_ciface_tf_launch_kernel(%[[CTX]], %[[BLOB_PTR]], %[[NAME_PTR]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[ARGS]])
   %c1 = constant 1 : index
   gpu.launch_func  @kernel_module::@the_kernel
       blocks in (%c1, %c1, %c1)

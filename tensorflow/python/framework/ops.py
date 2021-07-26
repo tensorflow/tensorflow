@@ -77,6 +77,7 @@ from tensorflow.python.util import memory
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -775,7 +776,7 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
           unknown_shape)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
-      raise ValueError(str(e))
+      raise ValueError(e.message)
 
   @property
   def value_index(self):
@@ -1048,7 +1049,7 @@ class _EagerTensorBase(Tensor):
     try:
       return self._shape_tuple()[0]
     except core._NotOkStatusException as e:
-      six.raise_from(core._status_to_exception(e.code, e.message), None)
+      raise core._status_to_exception(e.code, e.message) from None
 
   def __array__(self):
     return self._numpy()
@@ -1060,7 +1061,7 @@ class _EagerTensorBase(Tensor):
     try:
       return self._numpy_internal()
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
-      six.raise_from(core._status_to_exception(e.code, e.message), None)  # pylint: disable=protected-access
+      raise core._status_to_exception(e.code, e.message) from None  # pylint: disable=protected-access
 
   @property
   def dtype(self):
@@ -1169,7 +1170,7 @@ class _EagerTensorBase(Tensor):
       ctx.ensure_initialized()
       new_tensor = self._copy_to_device(device_name)
     except core._NotOkStatusException as e:
-      six.raise_from(core._status_to_exception(e.code, e.message), None)
+      raise core._status_to_exception(e.code, e.message) from None
     return new_tensor
 
   def _copy(self, ctx=None, device_name=None):
@@ -1198,7 +1199,7 @@ class _EagerTensorBase(Tensor):
         # `EagerTensor`, in C.
         self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
       except core._NotOkStatusException as e:
-        six.raise_from(core._status_to_exception(e.code, e.message), None)
+        raise core._status_to_exception(e.code, e.message) from None
 
     return self._tensor_shape
 
@@ -1830,6 +1831,7 @@ _VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
 
 
 @tf_export("__internal__.create_c_op", v1=[])
+@traceback_utils.filter_traceback
 def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
   """Creates a TF_Operation.
 
@@ -1881,7 +1883,7 @@ def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
     c_op = pywrap_tf_session.TF_FinishOperation(op_desc)
   except errors.InvalidArgumentError as e:
     # Convert to ValueError for backwards compatibility.
-    raise ValueError(str(e))
+    raise ValueError(e.message)
 
   return c_op
 
@@ -2562,7 +2564,7 @@ class Operation(object):
         data = pywrap_tf_session.TF_GetBuffer(buf)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
-      raise ValueError(str(e))
+      raise ValueError(e.message)
     x = attr_value_pb2.AttrValue()
     x.ParseFromString(data)
 
@@ -2589,7 +2591,7 @@ class Operation(object):
       return _DTYPES_INTERN_TABLE[dtype_enum]
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
-      raise ValueError(str(e))
+      raise ValueError(e.message)
 
   def _get_attr_bool(self, name):
     """Returns the `bool` value of the attr of this op with the given `name`."""
@@ -2597,7 +2599,7 @@ class Operation(object):
       return pywrap_tf_session.TF_OperationGetAttrBool(self._c_op, name)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
-      raise ValueError(str(e))
+      raise ValueError(e.message)
 
   def _get_attr_int(self, name):
     """Returns the `int` value of the attr of this op with the given `name`."""
@@ -2605,7 +2607,7 @@ class Operation(object):
       return pywrap_tf_session.TF_OperationGetAttrInt(self._c_op, name)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
-      raise ValueError(str(e))
+      raise ValueError(e.message)
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.
@@ -3524,6 +3526,7 @@ class Graph(object):
   @deprecated_args(None,
                    "Shapes are always computed; don't use the compute_shapes "
                    "as it has no effect.", "compute_shapes")
+  @traceback_utils.filter_traceback
   def create_op(
       self,
       op_type,
@@ -4359,14 +4362,17 @@ class Graph(object):
           raise ValueError("'%s' is not a valid scope name" % name)
     old_stack = self._name_stack
     if not name:  # Both for name=None and name="" we re-set to empty scope.
-      new_stack = None
+      new_stack = ""
+      returned_scope = ""
     elif name[-1] == "/":
       new_stack = name_from_scope_name(name)
+      returned_scope = name
     else:
       new_stack = self.unique_name(name)
+      returned_scope = new_stack + "/"
     self._name_stack = new_stack
     try:
-      yield "" if new_stack is None else new_stack + "/"
+      yield returned_scope
     finally:
       self._name_stack = old_stack
 
@@ -5993,8 +5999,13 @@ def disable_eager_execution():
   """Disables eager execution.
 
   This function can only be called before any Graphs, Ops, or Tensors have been
-  created. It can be used at the beginning of the program for complex migration
-  projects from TensorFlow 1.x to 2.x.
+  created.
+
+  @compatibility(TF2)
+  This function is not necessary if you are using TF2. Eager execution is
+  enabled by default. If you want to use Graph mode please consider
+  [tf.function](https://www.tensorflow.org/api_docs/python/tf/function).
+  @end_compatibility
   """
   _api_usage_gauge.get_cell().set(False)
   logging.vlog(1, "Disabling eager execution")
@@ -7017,9 +7028,7 @@ def to_raw_op(f):
 
 def raise_from_not_ok_status(e, name):
   message = e.message + (" name: " + name if name is not None else "")
-  # pylint: disable=protected-access
-  six.raise_from(core._status_to_exception(e.code, message), None)
-  # pylint: enable=protected-access
+  raise core._status_to_exception(e.code, message) from None  # pylint: disable=protected-access
 
 
 def add_exit_callback_to_default_func_graph(fn):

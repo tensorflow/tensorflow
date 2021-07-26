@@ -44,7 +44,7 @@ void FarmhashFingerprint64(TTypes<uint8, 2>::ConstTensor input,
                            TTypes<uint8, 2>::Matrix output) {
   DCHECK_EQ(output.dimension(0), input.dimension(0));
   DCHECK_EQ(output.dimension(1), sizeof(uint64));
-  for (int64 i = 0; i < output.dimension(0); ++i) {
+  for (int64_t i = 0; i < output.dimension(0); ++i) {
     const uint64 fingerprint =
         Fingerprint64({reinterpret_cast<const char*>(&input(i, 0)),
                        static_cast<std::size_t>(input.dimension(1))});
@@ -56,7 +56,7 @@ void FarmhashFingerprint64(TTypes<tstring>::ConstFlat input,
                            TTypes<uint8, 2>::Matrix output) {
   DCHECK_EQ(output.dimension(0), input.dimension(0));
   DCHECK_EQ(output.dimension(1), sizeof(uint64));
-  for (int64 i = 0; i < input.dimension(0); ++i) {
+  for (int64_t i = 0; i < input.dimension(0); ++i) {
     const uint64 fingerprint =
         Fingerprint64({input(i).data(), input(i).size()});
     CopyToBuffer(fingerprint, &output(i, 0));
@@ -90,8 +90,8 @@ class FingerprintOp : public OpKernel {
         errors::InvalidArgument("`data` should have at least one dimension: ",
                                 input.shape()));
 
-    const int64 dim0 = input.shape().dim_size(0);
-    int64 dim1;
+    const int64_t dim0 = input.shape().dim_size(0);
+    int64_t dim1;
     if (dim0 == 0) {
       dim1 = 0;
     } else {

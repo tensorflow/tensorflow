@@ -219,10 +219,10 @@ class XlaCompilationCache : public ResourceBase {
     mutex async_compilation_state_mu;
 
     // Number of threads for asynchronous compilations.
-    static constexpr int64 kNumCompilerThreads = 10;
+    static constexpr int64_t kNumCompilerThreads = 10;
 
     // Maximum number of ongoing compilations.
-    static constexpr int64 kMaxNumOngoingCompilations = kNumCompilerThreads;
+    static constexpr int64_t kMaxNumOngoingCompilations = kNumCompilerThreads;
 
     // Number of ongoing compilations.
     int64 num_ongoing_compilations TF_GUARDED_BY(async_compilation_state_mu) =
@@ -241,7 +241,7 @@ class XlaCompilationCache : public ResourceBase {
 
   // The number of times a lazy compilation must be requested for a specific
   // signature before  we attempt to compile it.
-  static constexpr int64 kDefaultCompilationThreshold = 2;
+  static constexpr int64_t kDefaultCompilationThreshold = 2;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };

@@ -36,10 +36,10 @@ class StampedResource : public ResourceBase {
  public:
   StampedResource() : stamp_(-1) {}
 
-  bool is_stamp_valid(int64 stamp) const { return stamp_ == stamp; }
+  bool is_stamp_valid(int64_t stamp) const { return stamp_ == stamp; }
 
   int64 stamp() const { return stamp_; }
-  void set_stamp(int64 stamp) { stamp_ = stamp; }
+  void set_stamp(int64_t stamp) { stamp_ = stamp; }
 
  private:
   int64 stamp_;
@@ -52,7 +52,7 @@ class BoostedTreesEnsembleResource : public StampedResource {
 
   string DebugString() const override;
 
-  bool InitFromSerialized(const string& serialized, const int64 stamp_token);
+  bool InitFromSerialized(const string& serialized, const int64_t stamp_token);
 
   string SerializeAsString() const;
 
@@ -67,87 +67,93 @@ class BoostedTreesEnsembleResource : public StampedResource {
   //       the index of the row to read in each bucketized_features).
   //   bucketized_features: vector of feature Vectors.
   int32 next_node(
-      const int32 tree_id, const int32 node_id, const int32 index_in_batch,
+      const int32_t tree_id, const int32_t node_id,
+      const int32_t index_in_batch,
       const std::vector<TTypes<int32>::ConstMatrix>& bucketized_features) const;
 
-  std::vector<float> node_value(const int32 tree_id, const int32 node_id) const;
+  std::vector<float> node_value(const int32_t tree_id,
+                                const int32_t node_id) const;
 
-  void set_node_value(const int32 tree_id, const int32 node_id,
+  void set_node_value(const int32_t tree_id, const int32_t node_id,
                       const float logits);
 
-  int32 GetNumLayersGrown(const int32 tree_id) const;
+  int32 GetNumLayersGrown(const int32_t tree_id) const;
 
-  void SetNumLayersGrown(const int32 tree_id, int32 new_num_layers) const;
+  void SetNumLayersGrown(const int32_t tree_id, int32_t new_num_layers) const;
 
-  void UpdateLastLayerNodesRange(const int32 node_range_start,
-                                 int32 node_range_end) const;
+  void UpdateLastLayerNodesRange(const int32_t node_range_start,
+                                 int32_t node_range_end) const;
 
   void GetLastLayerNodesRange(int32* node_range_start,
                               int32* node_range_end) const;
 
-  int64 GetNumNodes(const int32 tree_id);
+  int64 GetNumNodes(const int32_t tree_id);
 
   void UpdateGrowingMetadata() const;
 
   int32 GetNumLayersAttempted();
 
-  bool is_leaf(const int32 tree_id, const int32 node_id) const;
+  bool is_leaf(const int32_t tree_id, const int32_t node_id) const;
 
-  int32 feature_id(const int32 tree_id, const int32 node_id) const;
+  int32 feature_id(const int32_t tree_id, const int32_t node_id) const;
 
-  int32 bucket_threshold(const int32 tree_id, const int32 node_id) const;
+  int32 bucket_threshold(const int32_t tree_id, const int32_t node_id) const;
 
-  int32 left_id(const int32 tree_id, const int32 node_id) const;
+  int32 left_id(const int32_t tree_id, const int32_t node_id) const;
 
-  int32 right_id(const int32 tree_id, const int32 node_id) const;
+  int32 right_id(const int32_t tree_id, const int32_t node_id) const;
 
   // Add a tree to the ensemble and returns a new tree_id.
-  int32 AddNewTree(const float weight, const int32 logits_dimension);
+  int32 AddNewTree(const float weight, const int32_t logits_dimension);
 
   // Adds new tree with one node to the ensemble and sets node's value to logits
   int32 AddNewTreeWithLogits(const float weight,
                              const std::vector<float>& logits,
-                             const int32 logits_dimension);
+                             const int32_t logits_dimension);
 
   // Grows the tree by adding a bucketized split and leaves.
   void AddBucketizedSplitNode(
-      const int32 tree_id,
+      const int32_t tree_id,
       const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
-      const int32 logits_dimension, int32* left_node_id, int32* right_node_id);
+      const int32_t logits_dimension, int32* left_node_id,
+      int32* right_node_id);
 
   // Grows the tree by adding a categorical split and leaves.
   void AddCategoricalSplitNode(
-      const int32 tree_id,
+      const int32_t tree_id,
       const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
-      const int32 logits_dimension, int32* left_node_id, int32* right_node_id);
+      const int32_t logits_dimension, int32* left_node_id,
+      int32* right_node_id);
 
   // Retrieves tree weights and returns as a vector.
   // It involves a copy, so should be called only sparingly (like once per
   // iteration, not per example).
   std::vector<float> GetTreeWeights() const;
 
-  float GetTreeWeight(const int32 tree_id) const;
+  float GetTreeWeight(const int32_t tree_id) const;
 
-  float IsTreeFinalized(const int32 tree_id) const;
+  float IsTreeFinalized(const int32_t tree_id) const;
 
-  float IsTreePostPruned(const int32 tree_id) const;
+  float IsTreePostPruned(const int32_t tree_id) const;
 
-  void SetIsFinalized(const int32 tree_id, const bool is_finalized);
+  void SetIsFinalized(const int32_t tree_id, const bool is_finalized);
 
   // Sets the weight of i'th tree.
-  void SetTreeWeight(const int32 tree_id, const float weight);
+  void SetTreeWeight(const int32_t tree_id, const float weight);
 
   // Resets the resource and frees the protos in arena.
   // Caller needs to hold the mutex lock while calling this.
   virtual void Reset();
 
-  void PostPruneTree(const int32 current_tree, const int32 logits_dimension);
+  void PostPruneTree(const int32_t current_tree,
+                     const int32_t logits_dimension);
 
   // For a given node, returns the id in a pruned tree, as well as correction
   // to the cached prediction that should be applied. If tree was not
   // post-pruned, current_node_id will be equal to initial_node_id and logit
   // update will be equal to zero.
-  void GetPostPruneCorrection(const int32 tree_id, const int32 initial_node_id,
+  void GetPostPruneCorrection(const int32_t tree_id,
+                              const int32_t initial_node_id,
                               int32* current_node_id,
                               std::vector<float>* logit_updates) const;
   mutex* get_mutex() { return &mu_; }
@@ -155,19 +161,19 @@ class BoostedTreesEnsembleResource : public StampedResource {
  private:
   // Helper method to check whether a node is a terminal node in that it
   // only has leaf nodes as children.
-  bool IsTerminalSplitNode(const int32 tree_id, const int32 node_id) const;
+  bool IsTerminalSplitNode(const int32_t tree_id, const int32_t node_id) const;
 
   // For each pruned node, finds the leaf where it finally ended up and
   // calculates the total update from that pruned node prediction.
   void CalculateParentAndLogitUpdate(
-      const int32 start_node_id,
+      const int32_t start_node_id,
       const std::vector<std::pair<int32, std::vector<float>>>& nodes_change,
       int32* parent_id, std::vector<float>* change) const;
 
   // Helper method to collect the information to be used to prune some nodes in
   // the tree.
   void RecursivelyDoPostPrunePreparation(
-      const int32 tree_id, const int32 node_id,
+      const int32_t tree_id, const int32_t node_id,
       std::vector<int32>* nodes_to_delete,
       std::vector<std::pair<int32, std::vector<float>>>* nodes_meta);
 
@@ -177,9 +183,10 @@ class BoostedTreesEnsembleResource : public StampedResource {
   boosted_trees::TreeEnsemble* tree_ensemble_;
 
   boosted_trees::Node* AddLeafNodes(
-      int32 tree_id,
+      int32_t tree_id,
       const std::pair<int32, boosted_trees::SplitCandidate>& split_entry,
-      const int32 logits_dimension, int32* left_node_id, int32* right_node_id);
+      const int32_t logits_dimension, int32* left_node_id,
+      int32* right_node_id);
 };
 
 }  // namespace tensorflow

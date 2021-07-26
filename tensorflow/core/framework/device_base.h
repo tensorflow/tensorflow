@@ -193,7 +193,7 @@ class DeviceBase {
   // Return an Allocator prepared for use in particular places by graph
   // optimization
   virtual Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                        int64 step_id) {
+                                        int64_t step_id) {
     LOG(FATAL) << "Device does not implement GetScopedAllocator()";
     return nullptr;
   }

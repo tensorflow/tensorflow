@@ -1107,7 +1107,7 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
   if (id_field == nullptr) {
     return -1;
   }
-  tensorflow::int64 id = MakeInt(id_field);
+  int64_t id = MakeInt(id_field);
   Py_DECREF(id_field);
   return id;
 }
@@ -1144,11 +1144,10 @@ DataType PyTensor_DataType(PyObject* tensor) {
 
 class PyTapeTensor {
  public:
-  PyTapeTensor(tensorflow::int64 id, tensorflow::DataType dtype,
+  PyTapeTensor(int64_t id, tensorflow::DataType dtype,
                const tensorflow::TensorShape& shape)
       : id_(id), dtype_(dtype), shape_(shape) {}
-  PyTapeTensor(tensorflow::int64 id, tensorflow::DataType dtype,
-               PyObject* shape)
+  PyTapeTensor(int64_t id, tensorflow::DataType dtype, PyObject* shape)
       : id_(id), dtype_(dtype), shape_(shape) {
     Py_INCREF(absl::get<1>(shape_));
   }
@@ -1250,7 +1249,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       // The caller detects whether a python exception has been raised.
       return -1;
     }
-    tensorflow::int64 r = MakeInt(result);
+    int64_t r = MakeInt(result);
     Py_DECREF(result);
     return r;
   }
@@ -1483,7 +1482,7 @@ class VariableWatcher {
     if (handle == nullptr) {
       return -1;
     }
-    tensorflow::int64 id = FastTensorId(handle.get());
+    int64_t id = FastTensorId(handle.get());
 
     tensorflow::mutex_lock l(watched_variables_mu_);
     auto insert_result = watched_variables_.emplace(id, v);
@@ -1516,7 +1515,7 @@ class VariableWatcher {
     tensorflow::int64 id;
     PyObject* variable;
 
-    IdAndVariable(tensorflow::int64 id, PyObject* variable)
+    IdAndVariable(int64_t id, PyObject* variable)
         : id(id), variable(variable) {}
   };
   struct CompareById {
@@ -1548,7 +1547,7 @@ class GradientTape
   }
 
   void WatchVariable(PyObject* v) {
-    tensorflow::int64 id = variable_watcher_.WatchVariable(v);
+    int64_t id = variable_watcher_.WatchVariable(v);
 
     if (!PyErr_Occurred()) {
       this->Watch(id);
@@ -1926,7 +1925,7 @@ static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
 #else
     if (PyLong_Check(item) || PyInt_Check(item)) {
 #endif
-      tensorflow::int64 id = MakeInt(item);
+      int64_t id = MakeInt(item);
       tensor_ids.push_back(id);
     } else {
       tensor_ids.push_back(-1);
@@ -2067,7 +2066,7 @@ void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
   if (!CouldBackprop()) {
     return;
   }
-  tensorflow::int64 tensor_id = FastTensorId(tensor);
+  int64_t tensor_id = FastTensorId(tensor);
   if (PyErr_Occurred()) {
     return;
   }
@@ -2104,7 +2103,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     tensorflow::ImmediateExecutionTensorHandle* handle =
         tensorflow::unwrap(EagerTensor_Handle(tensor));
-    tensorflow::int64 id = PyEagerTensor_ID(tensor);
+    int64_t id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
         static_cast<tensorflow::DataType>(handle->DataType());
     if (DTypeNeedsHandleData(dtype)) {
@@ -2116,7 +2115,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
     tensorflow::Status status = handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size;
+        int64_t dim_size;
         status = handle->Dim(i, &dim_size);
         if (!status.ok()) break;
         tensor_shape.AddDim(dim_size);
@@ -2130,7 +2129,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
       return PyTapeTensor(id, dtype, tensor_shape);
     }
   }
-  tensorflow::int64 id = FastTensorId(tensor);
+  int64_t id = FastTensorId(tensor);
   if (PyErr_Occurred()) {
     return PyTapeTensor(id, static_cast<tensorflow::DataType>(0),
                         tensorflow::TensorShape({}));
@@ -2278,7 +2277,7 @@ std::vector<tensorflow::DataType> MakeTensorDtypeList(PyObject* tensors) {
 
 PyObject* ForwardAccumulatorDeleteGradient(PyObject* tensor_id,
                                            PyObject* weak_tensor_ref) {
-  tensorflow::int64 parsed_tensor_id = MakeInt(tensor_id);
+  int64_t parsed_tensor_id = MakeInt(tensor_id);
   for (TFE_Py_ForwardAccumulator* accumulator : *GetAccumulatorSet()) {
     accumulator->accumulator->DeleteGradient(parsed_tensor_id);
   }
@@ -2292,8 +2291,7 @@ static PyMethodDef forward_accumulator_delete_gradient_method_def = {
     "ForwardAccumulatorDeleteGradient", ForwardAccumulatorDeleteGradient,
     METH_O, "ForwardAccumulatorDeleteGradient"};
 
-void RegisterForwardAccumulatorCleanup(PyObject* tensor,
-                                       tensorflow::int64 tensor_id) {
+void RegisterForwardAccumulatorCleanup(PyObject* tensor, int64_t tensor_id) {
   tensorflow::Safe_PyObjectPtr callback(
       PyCFunction_New(&forward_accumulator_delete_gradient_method_def,
                       PyLong_FromLong(tensor_id)));
@@ -2376,7 +2374,7 @@ bool TapeSetRecordForwardprop(
           PySequence_Fast_ITEMS(jvp_index_seq.get());
       for (Py_ssize_t jvp_index = 0; jvp_index < num_jvps; ++jvp_index) {
         PyObject* tuple = jvp_index_seq_array[jvp_index];
-        tensorflow::int64 primal_tensor_id =
+        int64_t primal_tensor_id =
             output_info[MakeInt(PyTuple_GetItem(tuple, 0))].GetID();
         (*it)->accumulator->Watch(
             primal_tensor_id,
@@ -2711,7 +2709,7 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
   Py_RETURN_NONE;
 }
 
-void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
+void TFE_Py_TapeSetDeleteTrace(int64_t tensor_id) {
   for (TFE_Py_Tape* tape : *GetTapeSet()) {
     tape->tape->DeleteTrace(tensor_id);
   }
@@ -2767,7 +2765,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   std::unordered_map<tensorflow::int64, PyTapeTensor>
       source_tensors_that_are_targets;
   for (int i = 0; i < len; ++i) {
-    tensorflow::int64 target_id = target_vec[i];
+    int64_t target_id = target_vec[i];
     if (sources_set.find(target_id) != sources_set.end()) {
       auto tensor = seq_array[i];
       source_tensors_that_are_targets.insert(
@@ -2881,7 +2879,7 @@ void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator) {
 
 void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
                                     PyObject* tangent) {
-  tensorflow::int64 tensor_id = FastTensorId(tensor);
+  int64_t tensor_id = FastTensorId(tensor);
   reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator)
       ->accumulator->Watch(tensor_id, tangent);
   RegisterForwardAccumulatorCleanup(tensor, tensor_id);
@@ -2958,7 +2956,7 @@ PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
     if (saving_jvps) {
       for (int input_index = 0; input_index < augmented_input_ids.size();
            ++input_index) {
-        tensorflow::int64 existing_input = augmented_input_ids[input_index];
+        int64_t existing_input = augmented_input_ids[input_index];
         PyObject* jvp = (*it)->accumulator->FetchJVP(existing_input);
         if (jvp != nullptr) {
           new_tensors.push_back(jvp);
@@ -3964,6 +3962,7 @@ const char kList[] = "L";
 const char kListEnd[] = "l";
 const char kTuple[] = "U";
 const char kTupleEnd[] = "u";
+const char kDIter[] = "I";
 const char kDict[] = "D";
 const char kRaw[] = "R";
 const char kShape[] = "s";
@@ -4019,7 +4018,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
       absl::StrAppend(&result->str, num_dims);
     } else {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size;
+        int64_t dim_size;
         status = handle->Dim(i, &dim_size);
         if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
@@ -4086,15 +4085,17 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
-                                          bool include_tensor_ranks_only,
-                                          EncodeResult* result);
+tensorflow::Status TFE_Py_EncodeArgHelperInternal(
+    PyObject* arg, bool include_tensor_ranks_only, std::vector<int>& res_vec,
+    absl::flat_hash_map<int, int>& res_map, int& cur_res, EncodeResult* result);
 
 // This function doesn't set the type of sequence before
 tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
                                          const char* end_type,
                                          bool include_tensor_ranks_only,
-                                         EncodeResult* result) {
+                                         std::vector<int>& res_vec,
+                                         absl::flat_hash_map<int, int>& res_map,
+                                         int& cur_res, EncodeResult* result) {
   tensorflow::Safe_PyObjectPtr arg_seq(
       PySequence_Fast(arg, "unable to create seq from list/tuple"));
 
@@ -4106,8 +4107,8 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
     if (item == Py_None) {
       absl::StrAppend(&result->str, kNone);
     } else {
-      TF_RETURN_IF_ERROR(
-          TFE_Py_EncodeArgHelper(item, include_tensor_ranks_only, result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
+          item, include_tensor_ranks_only, res_vec, res_map, cur_res, result));
     }
   }
   absl::StrAppend(&result->str, end_type);
@@ -4115,19 +4116,72 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
-                                          bool include_tensor_ranks_only,
-                                          EncodeResult* result) {
+void UpdateResourceCount(int res_id, std::vector<int>& res_vec,
+                         absl::flat_hash_map<int, int>& res_map, int& cur_res) {
+  const auto& it = res_map.find(res_id);
+  if (it == res_map.end()) {
+    res_map[res_id] = cur_res;
+    res_vec.push_back(cur_res);
+    ++cur_res;
+  } else {
+    res_vec.push_back(it->second);
+  }
+}
+
+tensorflow::Status TFE_Py_EncodeArgHelperInternal(
+    PyObject* arg, bool include_tensor_ranks_only, std::vector<int>& res_vec,
+    absl::flat_hash_map<int, int>& res_map, int& cur_res,
+    EncodeResult* result) {
   if (tensorflow::swig::IsTensor(arg)) {
     absl::StrAppend(&result->str, kTensor);
     TF_RETURN_IF_ERROR(
         TFE_Py_EncodeTensor(arg, include_tensor_ranks_only, result));
+  } else if (tensorflow::swig::IsOwnedIterator(arg)) {
+    // TODO(jiaweix): distinguish other resource types
+    // Similar to IsCompositeTensor below, plus resource id
+    PyObject* type_spec(PyObject_GetAttrString(arg, "_type_spec"));
+    if (type_spec == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "Error while reading OwnedIterator._type_spec.");
+    }
+    result->objects.push_back(type_spec);
+
+    // Add resource tracking
+    tensorflow::Safe_PyObjectPtr itr_res(
+        PyObject_GetAttrString(arg, "_iterator_resource"));
+    if (itr_res == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "Error while reading Dataset iterator resource.");
+    }
+    // OwnedIterator does not always have a unique resource id,
+    // because a Dataset object is not required for OwnedIterator.__init__.
+    // As a result we check whether '_iterator_resource' is a Tensor.
+    if (tensorflow::swig::IsTensor(itr_res.get())) {
+      absl::StrAppend(&result->str, kDIter);
+      tensorflow::Safe_PyObjectPtr p_res_id(
+          PyObject_GetAttrString(itr_res.get(), "_id"));
+      if (p_res_id == nullptr) {
+        return tensorflow::errors::InvalidArgument(
+            "Error while reading Dataset iterator resouce id.");
+      }
+      int res_id = PyLong_AsSize_t(p_res_id.get());
+      if (res_id < 0) {
+        return tensorflow::errors::InvalidArgument("PyLong_AsSize_t failure");
+      }
+      UpdateResourceCount(res_id, res_vec, res_map, cur_res);
+    } else {
+      // If '_iterator_resource' is not a Tensor, there is no resource id.
+      // Instead we treat it the same way as a CompositeTensor
+      absl::StrAppend(&result->str, kCompositeTensor);
+    }
   } else if (PyList_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
-        arg, kList, kListEnd, include_tensor_ranks_only, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, kListEnd,
+                                             include_tensor_ranks_only, res_vec,
+                                             res_map, cur_res, result));
   } else if (tensorflow::swig::IsTuple(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
-        arg, kTuple, kTupleEnd, include_tensor_ranks_only, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, kTupleEnd,
+                                             include_tensor_ranks_only, res_vec,
+                                             res_map, cur_res, result));
   } else if (tensorflow::swig::IsMapping(arg)) {
     tensorflow::Safe_PyObjectPtr keys(tensorflow::swig::MappingKeys(arg));
     if (PyList_Sort(keys.get()) == -1) {
@@ -4139,11 +4193,12 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
 
     for (int i = 0; i < len; i++) {
       PyObject* key = PyList_GetItem(keys.get(), i);
-      TF_RETURN_IF_ERROR(
-          TFE_Py_EncodeArgHelper(key, include_tensor_ranks_only, result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
+          key, include_tensor_ranks_only, res_vec, res_map, cur_res, result));
       tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(arg, key));
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
-          value.get(), include_tensor_ranks_only, result));
+      TF_RETURN_IF_ERROR(
+          TFE_Py_EncodeArgHelperInternal(value.get(), include_tensor_ranks_only,
+                                         res_vec, res_map, cur_res, result));
     }
   } else if (tensorflow::swig::IsCompositeTensor(arg)) {
     absl::StrAppend(&result->str, kCompositeTensor);
@@ -4171,8 +4226,9 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
       tensorflow::Safe_PyObjectPtr name(
           PyObject_GetAttrString(item.get(), "name"));
       tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(arg, name.get()));
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
-          attr_arg.get(), include_tensor_ranks_only, result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelperInternal(
+          attr_arg.get(), include_tensor_ranks_only, res_vec, res_map, cur_res,
+          result));
     }
     absl::StrAppend(&result->str, kAttrsEnd);
   } else {
@@ -4190,6 +4246,29 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
   }
 
   return tensorflow::Status::OK();
+}
+
+tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
+                                          bool include_tensor_ranks_only,
+                                          EncodeResult* result) {
+  std::vector<int> res_vec;
+  absl::flat_hash_map<int, int> res_map;
+  int cur_res = 0;
+  auto status = TFE_Py_EncodeArgHelperInternal(
+      arg, include_tensor_ranks_only, res_vec, res_map, cur_res, result);
+
+  // Add 'encoding' of resources
+  std::string str_resource_encoding = "";
+  for (auto&& i : res_vec) {
+    str_resource_encoding.append(std::to_string(i));
+    str_resource_encoding.append("_");
+  }
+  if (!str_resource_encoding.empty()) {
+    result->objects.push_back(
+        PyUnicode_FromString(str_resource_encoding.c_str()));
+  }
+
+  return status;
 }
 
 }  // namespace
@@ -4357,8 +4436,8 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
   if (!thread_local_data) {
     thread_local_data.reset(new EagerContextThreadLocalData());
 
-    Safe_PyObjectPtr is_eager(PyObject_CallFunctionObjArgs(
-        defaults->second.is_eager.get(), nullptr));
+    Safe_PyObjectPtr is_eager(
+        PyObject_CallFunctionObjArgs(defaults->second.is_eager.get(), nullptr));
     if (!is_eager) return nullptr;
     thread_local_data->is_eager = PyObject_IsTrue(is_eager.get());
 

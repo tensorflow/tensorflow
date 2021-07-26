@@ -31,7 +31,7 @@ namespace gpu {
 // ForThunk executes 'loop_limit' invocations of 'body_thunk_sequence'.
 class ForThunk : public Thunk {
  public:
-  ForThunk(ThunkInfo thunk_info, const int64 loop_limit,
+  ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
            std::unique_ptr<ThunkSequence> body_thunk_sequence);
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;

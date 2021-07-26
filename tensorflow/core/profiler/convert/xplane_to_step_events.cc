@@ -73,8 +73,8 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
     const StepEvents& device_step_events) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
-    int64 correlation_id = -1;
-    int64 group_id = -1;
+    int64_t correlation_id = -1;
+    int64_t group_id = -1;
     absl::string_view step_name;
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (!stat.Type().has_value()) return;
@@ -149,8 +149,8 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const uint64 device_id,
                                                const XLineVisitor& line) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
-    int64 correlation_id = -1;
-    int64 group_id = -1;
+    int64_t correlation_id = -1;
+    int64_t group_id = -1;
     absl::string_view tensor_shapes;
     absl::string_view memcpy_details;
     event.ForEachStat([&](const XStatVisitor& stat) {
@@ -208,7 +208,7 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents result;
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
-    int64 line_id = line.Id();
+    int64_t line_id = line.Id();
     if (line_id == kThreadIdStepInfo) {
       CombineStepEvents(ConvertDeviceStepInfoToStepMarkers(line), &result);
     } else if (IsDerivedThreadId(line_id)) {

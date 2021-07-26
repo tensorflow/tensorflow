@@ -136,41 +136,30 @@ for worker in workers:
       processing_mode="parallel_epochs",
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
-      job_name="shared_job"))
+      job_name="shared_job")
 ```
 
 ### Processing Modes
 
-tf.data service supports two processing modes: `"parallel_epochs"` and
-`"distributed_epoch"`. `"parallel_epochs"` is suitable for training which
-does not require visitation guarantees (i.e. clean separation of epoch
-boundaries), while "distributed_epoch" is suitable for training which require
-clean
-separation of epoch boundaries, where instead of processing multiple epochs of
-data in a parallel fashion the aim is to process a single epoch of data in a
-distributed fashion. "parallel_epochs" mode is in general more performant,
-because it requires less coordination. "parallel_epochs" mode also supports a
-wider range of input pipelines, not requiring splittability like
-"distributed_epoch" mode.
+`processing_mode` specifies how to shard a dataset among tf.data service
+workers. tf.data service supports `OFF`, `DYNAMIC`, `FILE`, `DATA`,
+`FILE_OR_DATA`, `HINT` sharding policies.
 
-#### Parallel Epochs
+OFF: No sharding will be performed. The entire input dataset will be processed
+independently by each of the tf.data service workers. For this reason, it is
+important to shuffle data (e.g. filenames) non-deterministically, so that each
+worker will process the elements of the dataset in a different order. This mode
+can be used to distribute datasets that aren't splittable.
 
-In "parallel_epochs" mode, the entire input dataset will be processed
-independently by each of the tf.data service workers. For this
-reason, it is important to shuffle data (e.g. filenames) non-deterministically,
-so that each worker will process the elements of the dataset in a different
-order. "parallel_epochs" can be used to distribute datasets that aren't
-splittable.
+#### Dynamic Sharding
 
-#### Distributed Epoch
-
-In distributed epoch mode, tf.data service divides the dataset into two
-components: a source component that generates "splits" such as filenames, and a
-processing component that takes in splits and outputs dataset elements. The
-source component is executed in a centralized fashion by the tf.data service
-dispatcher, which generates different splits of input data. The processing
-component is executed in a parallel fashion by the tf.data service workers,
-each operating on a different set of input data splits.
+DYNAMIC: In this mode, tf.data service divides the dataset into two components:
+a source component that generates "splits" such as filenames, and a processing
+component that takes splits and outputs dataset elements. The source component
+is executed in a centralized fashion by the tf.data service dispatcher, which
+generates different splits of input data. The processing component is executed
+in a parallel fashion by the tf.data service workers, each operating on a
+different set of input data splits.
 
 For example, consider the following dataset:
 
@@ -181,7 +170,8 @@ dataset = dataset.map(preprocess_fn)
 dataset = dataset.batch(batch_size)
 dataset = dataset.apply(
     tf.data.experimental.service.distribute(
-        processing_mode="distributed_epochs", ...)
+        processing_mode=tf.data.experimental.service.ShardingPolicy.DYNAMIC,
+        ...))
 ```
 
 The `from_tensor_slices` will be run on the dispatcher, while the `interleave`,
@@ -193,6 +183,35 @@ transformations support splitting, there are exceptions, such as `zip` or
 `sample_from_datasets`. Please file a Github issue if you would like to use
 distributed epoch processing for a currently unsupported dataset source or
 transformation.
+
+#### Static Sharding
+
+The following are static sharding policies. The semantics are similar to
+`tf.data.experimental.AutoShardPolicy`. These policies require:
+
+  * The tf.data service cluster has a fixed size, and you need to specify the
+     workers in DispatcherConfig.
+  * Each client only reads from the local tf.data service worker.
+
+FILE: Shards by input files (i.e. each worker will get a fixed set of files to
+process). When this option is selected, make sure that there is at least as
+many files as workers. If there are fewer input files than workers, a runtime
+error will be raised.
+
+DATA: Shards by elements produced by the dataset. Each worker will process the
+whole dataset and discard the portion that is not for itself. Note that for
+this mode to correctly partition the dataset elements, the dataset needs to
+produce elements in a deterministic order.
+
+FILE_OR_DATA: Attempts FILE-based sharding, falling back to DATA-based
+sharding on failure.
+
+HINT: Looks for the presence of `shard(SHARD_HINT, ...)` which is treated as a
+placeholder to replace with `shard(num_workers, worker_index)`.
+
+For backwards compatibility, `processing_mode` may also be set to the strings
+`"parallel_epochs"` or `"distributed_epoch"`, which are respectively equivalent
+to `ShardingPolicy.OFF` and `ShardingPolicy.DYNAMIC`.
 
 ### Jobs
 
@@ -280,7 +299,7 @@ dataset = tf.data.experimental.service.from_dataset_id(
     processing_mode="parallel_epochs",
     service=FLAGS.tf_data_service_address,
     dataset_id=dataset_id,
-    job_name="shared_job"))
+    job_name="shared_job")
 
 dataset = strategy.experimental_distribute_dataset(dataset)
 ```
@@ -305,7 +324,7 @@ def new_dataset_fn(input_context):
       processing_mode="parallel_epochs",
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
-      job_name="shared_job"))
+      job_name="shared_job")
 
 dataset = strategy.distribute_datasets_from_function(new_dataset_fn)
 ```
@@ -327,7 +346,7 @@ def new_dataset_fn(input_context):
       processing_mode="parallel_epochs",
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
-      job_name="shared_job"))
+      job_name="shared_job")
 
 dataset = coordinator.create_per_worker_dataset(new_dataset_fn)
 ```
@@ -353,6 +372,7 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops.data_service_ops import distribute
 from tensorflow.python.data.experimental.ops.data_service_ops import from_dataset_id
 from tensorflow.python.data.experimental.ops.data_service_ops import register_dataset
+from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
 from tensorflow.python.data.experimental.service.server_lib import DispatcherConfig
 from tensorflow.python.data.experimental.service.server_lib import DispatchServer
 from tensorflow.python.data.experimental.service.server_lib import WorkerConfig

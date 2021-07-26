@@ -17,10 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum
 import functools
-
 import six
 
+from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
@@ -41,37 +42,80 @@ from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_AUTO = "AUTO"
 COMPRESSION_NONE = None
+_PARALLEL_EPOCHS = "parallel_epochs"
+_DISTRIBUTED_EPOCH = "distributed_epoch"
+
 # TODO(b/176933539): Use the regular import.
 nested_structure_coder = lazy_loader.LazyLoader(
     "nested_structure_coder", globals(),
     "tensorflow.python.saved_model.nested_structure_coder")
 
 
-class ProcessingMode(object):
-  """tf.data service processing modes."""
+@tf_export("data.experimental.service.ShardingPolicy")
+class ShardingPolicy(enum.IntEnum):
+  """Specifies how to shard data among tf.data service workers.
 
-  PARALLEL_EPOCHS = "parallel_epochs"
-  DISTRIBUTED_EPOCH = "distributed_epoch"
+  OFF: No sharding will be performed. Each worker produces the entire dataset
+  without any sharding. With this mode, the best practice is to shuffle the
+  dataset nondeterministically so that workers process the dataset in different
+  orders.
 
-  @staticmethod
-  def validate(mode):
-    """Raises a ValueError if the given object is not a valid processing mode."""
-    valid_modes = [
-        ProcessingMode.PARALLEL_EPOCHS, ProcessingMode.DISTRIBUTED_EPOCH
-    ]
-    if mode not in valid_modes:
-      raise ValueError(
-          "{0} is not a valid processing mode. Valid modes: {1}".format(
-              mode, valid_modes))
+  DYNAMIC: The input dataset is dynamically split among workers at runtime. Each
+  worker gets the next split when it reads data from the dispatcher. Data is
+  produced non-deterministically in this mode. Dynamic sharding works well with
+  varying-sized tf.data service clusters, e.g., when you need to auto-scale your
+  workers.
+
+  The following are static sharding policies. The semantics are similar to
+  `tf.data.experimental.AutoShardPolicy`. These policies require:
+  * The tf.data service cluster has a fixed size, and you need to specify the
+    workers in DispatcherConfig.
+  * Each client only reads from the local tf.data service worker.
+
+  FILE: Shards by input files (i.e. each worker will get a fixed set of files to
+  process). When this option is selected, make sure that there is at least as
+  many files as workers. If there are fewer input files than workers, a runtime
+  error will be raised.
+
+  DATA: Shards by elements produced by the dataset. Each worker will process the
+  whole dataset and discard the portion that is not for itself. Note that for
+  this mode to correctly partition the dataset elements, the dataset needs to
+  produce elements in a deterministic order.
+
+  FILE_OR_DATA: Attempts FILE-based sharding, falling back to DATA-based
+  sharding on failure.
+
+  HINT: Looks for the presence of `shard(SHARD_HINT, ...)` which is treated as a
+  placeholder to replace with `shard(num_workers, worker_index)`.
+  """
+
+  OFF = 0
+  DYNAMIC = 1
+  FILE = 2
+  DATA = 3
+  FILE_OR_DATA = 4
+  HINT = 5
 
 
-def _check_job_name(job_name):
+def _get_validated_sharding_policy(processing_mode):
+  if processing_mode == _PARALLEL_EPOCHS:
+    return ShardingPolicy.OFF
+  if processing_mode == _DISTRIBUTED_EPOCH:
+    return ShardingPolicy.DYNAMIC
+  if isinstance(processing_mode, ShardingPolicy):
+    return processing_mode
+  raise ValueError(
+      "tf.data service processing mode should be a ShardingPolicy, "
+      "`\"parallel_epochs\"`, or `\"distributed_epoch\"`. Got "
+      f"{processing_mode!r}.")
+
+
+def _validate_job_name(job_name):
   if job_name is None:
     return
   if not isinstance(job_name, six.string_types):
-    raise ValueError(
-        "job_name must be a string, but job_name was of type "
-        "{0}. job_name={1}".format(type(job_name), job_name))
+    raise ValueError("job_name must be a string, but job_name was of type "
+                     "{0}. job_name={1}".format(type(job_name), job_name))
   if not job_name:
     raise ValueError("job_name must not be empty")
 
@@ -96,11 +140,12 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
 
     Args:
       dataset_id: The dataset id for the dataset to read from.
-      processing_mode: A string specifying the policy for how data should be
-        processed by tf.data workers. Can be either "parallel_epochs" to have
-        each tf.data worker process a copy of the dataset, or
-        "distributed_epoch" to split a single iteration of the dataset across
-        all the workers.
+      processing_mode: A `tf.data.experimental.service.ShardingPolicy`
+        specifying how to shard the dataset among tf.data workers. See
+        `tf.data.experimental.service.ShardingPolicy` for details. For backwards
+        compatibility, `processing_mode` may also be set to the strings
+        `"parallel_epochs"` or `"distributed_epoch"`, which are respectively
+        equivalent to `ShardingPolicy.OFF` and `ShardingPolicy.DYNAMIC`.
       address: The tf.data service address, e.g. "localhost:5000".
       element_spec: The dataset element spec for the dataset to read from.
       protocol: The protocol to use for communicating with the tf.data service,
@@ -137,6 +182,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         avoid RPCs and data copy if every TF worker colocates with a tf.data
         service worker. Defaults to `"AUTO"`.
     """
+    processing_mode_def = data_service_pb2.ProcessingModeDef(
+        sharding_policy=_get_validated_sharding_policy(processing_mode))
     if consumer_index is None != num_consumers is None:
       raise ValueError(
           "Must either set both consumer_index and num_consumers, or neither. ",
@@ -155,7 +202,9 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     self._dataset_id = ops.convert_to_tensor(
         dataset_id, dtype=dtypes.int64, name="dataset_id")
     self._processing_mode = ops.convert_to_tensor(
-        processing_mode, dtype=dtypes.string, name="processing_mode")
+        processing_mode_def.SerializeToString(),
+        dtype=dtypes.string,
+        name="processing_mode")
     self._address = ops.convert_to_tensor(
         address, dtype=dtypes.string, name="address")
     self._protocol = ops.convert_to_tensor(
@@ -280,10 +329,12 @@ def _distribute(processing_mode,
   parameters which we do not yet want to add to the public Python API.
 
   Args:
-    processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Can be either "parallel_epochs" to have each
-      tf.data worker process a copy of the dataset, or "distributed_epoch" to
-      split a single iteration of the dataset across all the workers.
+    processing_mode: A `tf.data.experimental.service.ShardingPolicy` specifying
+      how to shard the dataset among tf.data workers. See
+      `tf.data.experimental.service.ShardingPolicy` for details. For backwards
+      compatibility, `processing_mode` may also be set to the strings
+      `"parallel_epochs"` or `"distributed_epoch"`, which are respectively
+      equivalent to `ShardingPolicy.OFF` and `ShardingPolicy.DYNAMIC`.
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
@@ -326,7 +377,7 @@ def _distribute(processing_mode,
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
-  ProcessingMode.validate(processing_mode)
+  processing_mode = _get_validated_sharding_policy(processing_mode)
   valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
   if compression not in valid_compressions:
     raise ValueError(
@@ -536,10 +587,12 @@ def distribute(processing_mode,
   others.
 
   Args:
-    processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Can be either "parallel_epochs" to have each
-      tf.data worker process a copy of the dataset, or "distributed_epoch" to
-      split a single iteration of the dataset across all the workers.
+    processing_mode: A `tf.data.experimental.service.ShardingPolicy` specifying
+      how to shard the dataset among tf.data workers. See
+      `tf.data.experimental.service.ShardingPolicy` for details. For backwards
+      compatibility, `processing_mode` may also be set to the strings
+      `"parallel_epochs"` or `"distributed_epoch"`, which are respectively
+      equivalent to `ShardingPolicy.OFF` and `ShardingPolicy.DYNAMIC`.
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
@@ -580,7 +633,7 @@ def distribute(processing_mode,
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
   """
-  _check_job_name(job_name)
+  _validate_job_name(job_name)
   return _distribute(
       processing_mode=processing_mode,
       service=service,
@@ -712,10 +765,12 @@ def _from_dataset_id(processing_mode,
   parameters which we do not yet want to add to the public Python API.
 
   Args:
-    processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Can be either "parallel_epochs" to have each
-      tf.data worker process a copy of the dataset, or "distributed_epoch" to
-      split a single iteration of the dataset across all the workers.
+    processing_mode: A `tf.data.experimental.service.ShardingPolicy` specifying
+      how to shard the dataset among tf.data workers. See
+      `tf.data.experimental.service.ShardingPolicy` for details. For backwards
+      compatibility, `processing_mode` may also be set to the strings
+      `"parallel_epochs"` or `"distributed_epoch"`, which are respectively
+      equivalent to `ShardingPolicy.OFF` and `ShardingPolicy.DYNAMIC`.
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
@@ -764,7 +819,7 @@ def _from_dataset_id(processing_mode,
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
   """
-  ProcessingMode.validate(processing_mode)
+  processing_mode = _get_validated_sharding_policy(processing_mode)
   valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
   if isinstance(service, tuple):
     protocol, address = service
@@ -893,10 +948,12 @@ def from_dataset_id(processing_mode,
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   Args:
-    processing_mode: A string specifying the policy for how data should be
-      processed by tf.data workers. Can be either "parallel_epochs" to have each
-      tf.data worker process a copy of the dataset, or "distributed_epoch" to
-      split a single iteration of the dataset across all the workers.
+    processing_mode: A `tf.data.experimental.service.ShardingPolicy` specifying
+      how to shard the dataset among tf.data workers. See
+      `tf.data.experimental.service.ShardingPolicy` for details. For backwards
+      compatibility, `processing_mode` may also be set to the strings
+      `"parallel_epochs"` or `"distributed_epoch"`, which are respectively
+      equivalent to `ShardingPolicy.OFF` and `ShardingPolicy.DYNAMIC`.
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
@@ -941,7 +998,7 @@ def from_dataset_id(processing_mode,
   Returns:
     A `tf.data.Dataset` which reads from the tf.data service.
   """
-  _check_job_name(job_name)
+  _validate_job_name(job_name)
   if job_name is not None:
     job_name = string_ops.string_join(
         ["dataset_id=", string_ops.as_string(dataset_id), job_name], "/")

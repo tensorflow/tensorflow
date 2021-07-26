@@ -33,6 +33,11 @@ limitations under the License.
 namespace tensorflow {
 namespace kernel_gen {
 
+// Parses tf_code to create a module. An MLIRContext is taken in case any
+// unexpected dialects are needed.
+StatusOr<mlir::OwningModuleRef> SetupContextAndParseModule(
+    mlir::MLIRContext& context, llvm::StringRef tf_code);
+
 // Converts TF code to LLVM with or without GPU support.
 xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,

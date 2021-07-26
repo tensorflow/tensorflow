@@ -56,7 +56,8 @@ REGISTER_OP("BatchFunction")
     .Attr("enable_large_batch_splitting: bool = false")
     // TODO(apassos): Fix this shape inference function. It requires shape
     // inference of function calls.
-    .SetShapeFn(shape_inference::UnknownShape);
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsDistributedCommunication();
 
 REGISTER_OP("Batch")
     .Input("in_tensors: T")
@@ -88,7 +89,8 @@ REGISTER_OP("Batch")
           {c->MakeShape({shape_inference::DimensionOrConstant(c->UnknownDim()),
                          shape_inference::DimensionOrConstant(3)})}));
       return Status::OK();
-    });
+    })
+    .SetIsDistributedCommunication();
 
 REGISTER_OP("Unbatch")
     .Input("batched_tensor: T")

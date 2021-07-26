@@ -185,14 +185,14 @@ class DatasetParams {
 // testing.
 class RangeDatasetParams : public DatasetParams {
  public:
-  RangeDatasetParams(int64 start, int64 stop, int64 step,
+  RangeDatasetParams(int64_t start, int64_t stop, int64_t step,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
                      string node_name);
 
-  RangeDatasetParams(int64 start, int64 stop, int64 step);
+  RangeDatasetParams(int64_t start, int64_t stop, int64_t step);
 
-  RangeDatasetParams(int64 start, int64 stop, int64 step,
+  RangeDatasetParams(int64_t start, int64_t stop, int64_t step,
                      DataTypeVector output_dtypes);
 
   std::vector<Tensor> GetInputTensors() const override;
@@ -214,7 +214,7 @@ class RangeDatasetParams : public DatasetParams {
 class BatchDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  BatchDatasetParams(T input_dataset_params, int64 batch_size,
+  BatchDatasetParams(T input_dataset_params, int64_t batch_size,
                      bool drop_remainder, bool parallel_copy,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
@@ -633,7 +633,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   // with the given `num_shards` and `shard_index` produces the expected
   // outputs.
   Status CheckSplitProviderShardedIteration(
-      const DatasetParams& params, int64 num_shards, int64 shard_index,
+      const DatasetParams& params, int64_t num_shards, int64_t shard_index,
       const std::vector<Tensor>& expected_outputs);
 
   // Checks `DatasetBase::node_name()`.

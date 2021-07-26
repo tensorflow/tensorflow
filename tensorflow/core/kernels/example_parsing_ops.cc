@@ -1034,7 +1034,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
                                     "  Feature is: ", f.DebugString()));
 
         Tensor feature_values = FeatureSparseCopy(0, key, dtype, f);
-        const int64 num_elements = feature_values.NumElements();
+        const int64_t num_elements = feature_values.NumElements();
         TensorShape indices_shape({num_elements, 1});
         Tensor* sp_indices_d = nullptr;
         Tensor* sp_shape_d = nullptr;
@@ -1103,7 +1103,7 @@ class ParseSingleSequenceExampleOp : public OpKernel {
       OP_REQUIRES_OK(ctx,
                      feature_list_dense_values.allocate(d, out_shape, &out));
 
-      for (int64 t = 0; t < fl.feature_size(); ++t) {
+      for (int64_t t = 0; t < fl.feature_size(); ++t) {
         const Feature& f = fl.feature(t);
         bool types_match;
         OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
@@ -1128,11 +1128,11 @@ class ParseSingleSequenceExampleOp : public OpKernel {
           (feature_list_found != feature_list_dict.end());
 
       std::vector<Tensor> sparse_values_tmp;
-      int64 feature_list_size = 0;
+      int64_t feature_list_size = 0;
       if (feature_list_has_data) {
         const FeatureList& fl = feature_list_found->second;
         feature_list_size = fl.feature_size();
-        for (int64 t = 0; t < feature_list_size; ++t) {
+        for (int64_t t = 0; t < feature_list_size; ++t) {
           const Feature& f = fl.feature(t);
           bool types_match;
           OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
@@ -1149,11 +1149,11 @@ class ParseSingleSequenceExampleOp : public OpKernel {
         sparse_values_tmp.push_back(Tensor(dtype, TensorShape({0})));
       }
 
-      int64 total_num_features = 0;
-      int64 max_num_features = 0;
+      int64_t total_num_features = 0;
+      int64_t max_num_features = 0;
       for (int t = 0; t < feature_list_size; ++t) {
         const Tensor& v = sparse_values_tmp[t];
-        const int64 num_elements = v.shape().num_elements();
+        const int64_t num_elements = v.shape().num_elements();
         total_num_features += num_elements;
         max_num_features = std::max(max_num_features, num_elements);
       }
@@ -1173,10 +1173,10 @@ class ParseSingleSequenceExampleOp : public OpKernel {
       shape_t(0) = feature_list_size;
       shape_t(1) = max_num_features;
 
-      int64 offset = 0;
+      int64_t offset = 0;
 
       for (int t = 0; t < feature_list_size; ++t) {
-        const int64 num_elements = CopyIntoSparseTensor(
+        const int64_t num_elements = CopyIntoSparseTensor(
             sparse_values_tmp[t], t, offset, sp_indices_d, sp_values_d);
         offset += num_elements;
       }

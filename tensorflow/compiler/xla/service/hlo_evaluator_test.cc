@@ -651,7 +651,7 @@ TEST_F(HloEvaluatorTest, Pad2DIntegerArrayWithZeroDimension) {
   auto operand_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
 
-  constexpr int32 kPadValue = 10;
+  constexpr int32_t kPadValue = 10;
   auto pad_value = LiteralUtil::CreateR0<int32>(kPadValue);
   auto padding_value_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(pad_value)));

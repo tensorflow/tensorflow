@@ -54,7 +54,7 @@ class SnappyInputBuffer : public InputStreamInterface {
   //   If input_buffer_ is smaller in size than a compressed block.
   // others:
   //   If reading from file failed.
-  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
+  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
   int64 Tell() const override;
 

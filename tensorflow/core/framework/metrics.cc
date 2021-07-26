@@ -210,7 +210,7 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
   return tf_data_model_gauge->GetCell(id);
 }
 
-void RecordTFDataBytesFetched(int64 num_bytes) {
+void RecordTFDataBytesFetched(int64_t num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
 
@@ -240,7 +240,7 @@ void RecordTFDataIteratorLifetime(uint64 duration_us) {
   tf_data_iterator_lifetime_cell->IncrementBy(duration_us);
 }
 
-void RecordTFDataOptimization(const string& name, int64 num_changes) {
+void RecordTFDataOptimization(const string& name, int64_t num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
 }
 
@@ -252,19 +252,19 @@ void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
-void RecordParseDenseFeature(int64 num_features) {
+void RecordParseDenseFeature(int64_t num_features) {
   static auto* parse_dense_feature_counter_cell =
       parse_dense_feature_counter->GetCell();
   parse_dense_feature_counter_cell->IncrementBy(num_features);
 }
 
-void RecordParseSparseFeature(int64 num_features) {
+void RecordParseSparseFeature(int64_t num_features) {
   static auto* parse_sparse_feature_counter_cell =
       parse_sparse_feature_counter->GetCell();
   parse_sparse_feature_counter_cell->IncrementBy(num_features);
 }
 
-void RecordParseRaggedFeature(int64 num_features) {
+void RecordParseRaggedFeature(int64_t num_features) {
   static auto* parse_ragged_feature_counter_cell =
       parse_ragged_feature_counter->GetCell();
   parse_ragged_feature_counter_cell->IncrementBy(num_features);
@@ -282,7 +282,7 @@ void RecordGraphOutputTensors(const size_t size) {
   graph_run_output_tensor_bytes_cell->Add(size);
 }
 
-void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica) {
+void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica) {
   xla_tpu_spmd_cores_per_replica->GetCell(absl::StrCat(cores_per_replica))
       ->IncrementBy(1);
 }

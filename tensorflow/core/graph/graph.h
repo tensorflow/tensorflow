@@ -107,11 +107,11 @@ class Node {
 
   // input and output types
   int32 num_inputs() const;
-  DataType input_type(int32 i) const;
+  DataType input_type(int32_t i) const;
   const DataTypeVector& input_types() const;
 
   int32 num_outputs() const;
-  DataType output_type(int32 o) const;
+  DataType output_type(int32_t o) const;
   const DataTypeVector& output_types() const;
 
   // The device requested by the user.  For the actual assigned device,

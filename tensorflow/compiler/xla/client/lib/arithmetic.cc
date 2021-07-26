@@ -151,7 +151,7 @@ XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min,
     } else {
       value_init_value = MinValue(builder, input_shape.element_type());
     }
-    int64 dimension_size = input_shape.dimensions(axis);
+    int64_t dimension_size = input_shape.dimensions(axis);
     auto index_type = dimension_size <= INT32_MAX ? S32 : output_type;
     XlaOp index_init_value = Zero(builder, index_type);
     auto iota_shape = input_shape;

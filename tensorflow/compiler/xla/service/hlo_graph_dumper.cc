@@ -491,9 +491,9 @@ stylesheet=<
   for (const auto& kv : edge_ids_) {
     const HloInstruction* from_node = kv.first.first;
     const HloInstruction* to_node = kv.first.second;
-    int64 edge_id = kv.second;
+    int64_t edge_id = kv.second;
 
-    auto add_hover_css_rule = [&](string elem_type, int64 elem_id,
+    auto add_hover_css_rule = [&](string elem_type, int64_t elem_id,
                                   const char* color) {
       // One could imagine other ways of writing this CSS rule that involve
       // less duplication, but this way seems to be relatively performant.
@@ -510,12 +510,12 @@ stylesheet=<
 
     // The "to_node" value may be a NULL, indicating that this points to the
     // "root" tag rather than a normal node.
-    int64 from_node_id =
+    int64_t from_node_id =
         tensorflow::gtl::FindWithDefault(node_ids_, from_node, -1);
     if (from_node_id == -1) {
       LOG(FATAL) << from_node->name() << " was added to edges but not to nodes";
     }
-    int64 to_node_id =
+    int64_t to_node_id =
         to_node ? tensorflow::gtl::FindWithDefault(node_ids_, to_node, -1)
                 : root_node_id_;
     if (to_node != nullptr && to_node_id == -1) {
@@ -538,11 +538,11 @@ stylesheet=<
     if (to_node) {
       if (from_node->IsFused() &&
           from_node->parent()->root_instruction() == from_node) {
-        int64 cluster_id = cluster_ids_.at(from_node->parent());
+        int64_t cluster_id = cluster_ids_.at(from_node->parent());
         add_hover_css_rule("clust", cluster_id, kBlue);
       }
       if (to_node->IsFused() && to_node->opcode() == HloOpcode::kParameter) {
-        int64 cluster_id = cluster_ids_.at(to_node->parent());
+        int64_t cluster_id = cluster_ids_.at(to_node->parent());
         add_hover_css_rule("clust", cluster_id, kRed);
       }
     }
@@ -862,7 +862,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
   };
 
   std::vector<string> lines;
-  for (int64 i = 0; i < instr->operand_count(); ++i) {
+  for (int64_t i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
     optional<string> operand_str;
     if (const auto* constant_operand =
@@ -1216,7 +1216,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
 
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
-                      int64 operand_num, bool control_edge = false) {
+                      int64_t operand_num, bool control_edge = false) {
     from = GetNodeForEdge(from);
 
     if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant ||
@@ -1257,7 +1257,7 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
                /*operand_num=*/0);
     }
   } else {
-    for (int64 i = 0; i < instr->operand_count(); ++i) {
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
       add_edge(instr->operand(i), instr, i);
     }
     for (const HloInstruction* pred : instr->control_predecessors()) {
@@ -1276,7 +1276,7 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
   }
 
   std::vector<string> lines;
-  for (int64 i = 0; i < instr->called_computations().size(); ++i) {
+  for (int64_t i = 0; i < instr->called_computations().size(); ++i) {
     optional<string> computation_type =
         MatchTrivialComputation(instr->called_computations()[i]);
     if (!computation_type) {
@@ -1305,7 +1305,7 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
 NodeFilter MakeNodeRadiusAroundFilter(
-    const HloInstruction* root, int64 radius,
+    const HloInstruction* root, int64_t radius,
     const absl::flat_hash_set<const HloInstruction*>& boundary) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
@@ -1314,7 +1314,7 @@ NodeFilter MakeNodeRadiusAroundFilter(
   worklist.push_back({root, 0});
   while (!worklist.empty()) {
     const HloInstruction* instr;
-    int64 depth;
+    int64_t depth;
     std::tie(instr, depth) = worklist.front();
     worklist.pop_front();
 
@@ -1418,7 +1418,7 @@ NodeFilter MakeNodeRadiusAroundFilter(
 // the all-paths set contains more than max_nodes elements, includes the nodes
 // on the shortest paths and sets hit_limit to true.
 NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
-                                const HloInstruction* to, int64 max_nodes,
+                                const HloInstruction* to, int64_t max_nodes,
                                 bool* hit_limit) {
   *hit_limit = false;
 
@@ -1781,7 +1781,8 @@ StatusOr<string> RenderNeighborhoodAround(
 }
 
 StatusOr<string> RenderAllPathsFromTo(const HloInstruction& from,
-                                      const HloInstruction& to, int64 max_nodes,
+                                      const HloInstruction& to,
+                                      int64_t max_nodes,
                                       RenderedGraphFormat format,
                                       HloRenderOptions hlo_render_options) {
   tensorflow::mutex_lock lock(url_renderer_mu);

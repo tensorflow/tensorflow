@@ -1947,6 +1947,136 @@ static LogicalResult Verify(DataFormatVecPermuteOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// DivNoNanOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Canonicalization template for tf.DivNoNan and tf.MulNoNan:
+/// If the op is tf.DivNoNan and the divisor is a constant tensor (with all the
+/// elements of any allowed type: float or complex), rewrite the op to the
+/// divisor if all the elements of the divisor are zero and to tf.Div if all the
+/// elements of the divisor are non-zero.
+
+/// Similarly, if the op is tf.MulNoNan and the multiplier is a constant tensor
+/// (with all the elements of any allowed type: float or complex), rewrite the
+/// op to the multiplier if all the elements of the multiplier are zero and to
+/// tf.Mul if all the elements of the multiplier are non-zero.
+
+/// Replace the given op with an op of type `RetT`. Upon calling
+/// DivNoNanOrMulNoNanConstantY for canonicalizing tf.DivNoNan, tf.DivOp is
+/// passed as the second argument and for canonicalizing tf.MulNoNan, tf.MulOp
+/// is passed as the second argument.
+template <typename OpT, typename RetT>
+class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
+  using OpRewritePattern<OpT>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpT op,
+                                PatternRewriter &rewriter) const override {
+    static_assert(
+        llvm::is_one_of<OpT, DivNoNanOp, MulNoNanOp>::value,
+        "only canonicalization of tf.DivNoNan and tf.MulNoNan is supported");
+
+    // Returns true iff `val` (a complex constant with float real and imaginary
+    // parts) is zero.
+    auto complexIsZero = [](const std::complex<APFloat> val) {
+      // Note that when `val` is of complex type, it is zero iff both
+      // its real and imaginary parts are zero.
+      if (val.real().isZero() && val.imag().isZero())
+        return true;
+      else
+        return false;
+    };
+
+    // Returns true iff `attr` has both zero and non-zero elements
+    // (float/complex type) in `attr`.
+    auto hasBothZeroAndNonzeroElements =
+        [&complexIsZero](ElementsAttr attr, bool hasComplexElements) {
+          bool foundZero = false, foundNonzero = false;
+          if (!hasComplexElements) {
+            for (const auto val : attr.getValues<APFloat>()) {
+              if (val.isZero())
+                foundZero = true;
+              else
+                foundNonzero = true;
+              if (foundZero && foundNonzero) return true;
+            }
+          } else {
+            for (const auto val : attr.getValues<std::complex<APFloat>>()) {
+              if (complexIsZero(val))
+                foundZero = true;
+              else
+                foundNonzero = true;
+              if (foundZero && foundNonzero) return true;
+            }
+          }
+          return false;
+        };
+
+    // Note that `y` is the divisor if the op is tf.DivNoNan and it is the
+    // multiplier if the op is tf.MulNoNan.
+    Value y = op.y();
+    // The below if condition is true iff `y.getDefiningOp()` is of the type
+    // TF::ConstOp, i.e., if `y` is defined by an op and it is the tf.Const op.
+    // In that case, `yDefOp` stores this tf.Const op.
+    // Note that if `y` is a block argument, `y.getDefiningOp()` will return
+    // null, which will get propogated by dyn_cast_or_null to `yDefOp`.
+    // Further, if `y` is defined by an op other than tf.Const,
+    // `y.getDefiningOp()` will not return null but dyn_cast_or_null will.
+    if (auto yDefOp = dyn_cast_or_null<TF::ConstOp>(y.getDefiningOp())) {
+      Type typeOfElementsInY = getElementTypeOrSelf(y.getType());
+      ElementsAttr attr = yDefOp.value();
+      bool yHasComplexElements = typeOfElementsInY.isa<ComplexType>();
+
+      // If `y` is a splat constant, then the op will definitely get replaced.
+      // We check for a splat constant first, in order to optimize the
+      // performance of this canonicalization because this check will be O(1).
+      if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
+        bool splatAttrIsZero = false;
+        if (!yHasComplexElements) {
+          if (splatAttr.getSplatValue<APFloat>().isZero())
+            splatAttrIsZero = true;
+        } else {
+          if (complexIsZero(splatAttr.getSplatValue<std::complex<APFloat>>()))
+            splatAttrIsZero = true;
+        }
+        if (splatAttrIsZero) {
+          // When `y` is a zero splat constant (i.e., all the elements in `y`
+          // are zero, replace the op (tf.divNoNan or tf.MulNoNan) with `y`.
+          rewriter.replaceOp(op, y);
+        } else {
+          // When `y` is a non-zero splat constant, replace tf.DivNoNan with
+          // tf.Div and tf.MulNoNan with tf.Mul.
+          rewriter.replaceOpWithNewOp<RetT>(op, op->getResult(0).getType(),
+                                            op->getOperand(0),
+                                            op->getOperand(1));
+        }
+        return success();
+      }
+
+      // If `y` has both zero and non-zero elements, do nothing.
+      if (hasBothZeroAndNonzeroElements(attr, yHasComplexElements)) {
+        return failure();
+      } else {
+        // When all the elements in `y` are non-splat and non-zero, replace
+        // tf.DivNoNan with tf.Div and tf.MulNoNan with tf.Mul.
+        rewriter.replaceOpWithNewOp<RetT>(op, op->getResult(0).getType(),
+                                          op->getOperand(0), op->getOperand(1));
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+}  // namespace
+
+void DivNoNanOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<DivNoNanOrMulNoNanConstantY<TF::DivNoNanOp, TF::DivOp>>(
+      context);
+}
+
+//===----------------------------------------------------------------------===//
 // DivOp
 //===----------------------------------------------------------------------===//
 
@@ -2884,6 +3014,16 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   setOperand(1, shuffled_reduction_op);
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MulNoNanOp
+//===----------------------------------------------------------------------===//
+
+void MulNoNanOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<DivNoNanOrMulNoNanConstantY<TF::MulNoNanOp, TF::MulOp>>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//

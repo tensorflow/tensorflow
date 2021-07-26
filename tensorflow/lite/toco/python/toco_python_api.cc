@@ -177,7 +177,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
 
   std::string output_file_contents_txt;
   tensorflow::Status status;
-  int64 arithmetic_ops_count;
+  int64_t arithmetic_ops_count;
 
   // Convert model.
   if (enable_mlir_converter) {
@@ -373,7 +373,7 @@ PyObject* RegisterCustomOpdefs(PyObject* list) {
     return nullptr;
   }
 
-  int64 size = PyList_Size(list);
+  int64_t size = PyList_Size(list);
   for (int i = 0; i < size; ++i) {
     // Get character array from Python object.
     char* tf_opdefs;

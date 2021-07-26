@@ -42,7 +42,7 @@ Status SaveAndRestore(SplitProvider* split_provider) {
 
 Status CheckOutput(SplitProvider* split_provider,
                    std::vector<Tensor> expected) {
-  int64 next = 0;
+  int64_t next = 0;
   bool end_of_splits = false;
   while (!end_of_splits) {
     Tensor split;

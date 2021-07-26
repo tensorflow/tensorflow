@@ -1789,3 +1789,85 @@ func @testHashTableAndLookupTableFindToV2(%arg0: tensor<!tf.string>, %arg1: tens
   return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: testDivNoNanAndMulNoNanWithConstantY
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>)
+func @testDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) {
+  // CHECK: %[[CON3:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK-NEXT: %[[CON2:.*]] = "tf.Const"() {value = dense<[1.000000e+01, 0.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK-NEXT: %[[CON1:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK-NEXT: %[[RES1:.*]] = "tf.Div"(%[[ARG0]], %[[CON1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[RES2:.*]] = "tf.MulNoNan"(%[[ARG0]], %[[CON2]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[CON3]] : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
+  %con1 = "tf.Const"() { value = dense<[1.0, 2.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %con2 = "tf.Const"() { value = dense<[10.0, 0.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %con3 = "tf.Const"() { value = dense<[0.0, 0.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+
+  %res1 = "tf.DivNoNan"(%arg0, %con1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %res2 = "tf.MulNoNan"(%arg0, %con2) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %res3 = "tf.DivNoNan"(%arg0, %con3) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %res1, %res2, %res3 : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
+}
+
+// CHECK-LABEL: testComplexDivNoNanAndMulNoNanWithConstantY
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xcomplex<f32>>)
+func @testComplexDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) {
+  // CHECK-NEXT: %[[COMP3:.*]] = "tf.Const"() {value = dense<(0.000000e+00,0.000000e+00)> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[COMP2:.*]] = "tf.Const"() {value = dense<[(0.000000e+00,0.000000e+00), (2.000000e+00,0.000000e+00)]> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
+  // CHECK: %[[COMP1:.*]] = "tf.Const"() {value = dense<[(1.000000e+00,3.000000e+00), (2.000000e+00,4.000000e+00)]> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[RES1:.*]] = "tf.Mul"(%[[ARG0]], %[[COMP1]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[RES2:.*]] = "tf.DivNoNan"(%[[ARG0]], %[[COMP2]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[COMP3]] : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
+  %con11 = "tf.Const"() { value = dense<[1.0, 2.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %con12 = "tf.Const"() { value = dense<[3.0, 4.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %con21 = "tf.Const"() { value = dense<[0.0, 2.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %con22 = "tf.Const"() { value = dense<[0.0, 0.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %con31 = "tf.Const"() { value = dense<[0.0, 0.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %con32 = "tf.Const"() { value = dense<[0.0, 0.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+
+  %comp1 = "tf.Complex"(%con11, %con12) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xcomplex<f32>>
+  %comp2 = "tf.Complex"(%con21, %con22) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xcomplex<f32>>
+  %comp3 = "tf.Complex"(%con31, %con32) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xcomplex<f32>>
+
+  %res1 = "tf.MulNoNan"(%arg0, %comp1) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  %res2 = "tf.DivNoNan"(%arg0, %comp2) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  %res3 = "tf.MulNoNan"(%arg0, %comp3) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %res1, %res2, %res3 : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
+}
+
+// CHECK-LABEL: testDivNoNanAndMulNoNanWithNonConstantY
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xf32>, %[[ARG1:.*]]: tensor<2xf32>)
+func @testDivNoNanAndMulNoNanWithNonConstantY(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) {
+  // CHECK: %[[NONCON2:.*]] = "tf.AddV2"(%[[ARG0]], %[[ARG1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[NONCON3:.*]] = "tf.Square"(%[[NONCON2]]) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[RES1:.*]] = "tf.DivNoNan"(%[[ARG0]], %[[ARG1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[RES2:.*]] = "tf.MulNoNan"(%[[ARG0]], %[[NONCON2]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[RES3:.*]] = "tf.DivNoNan"(%[[ARG0]], %[[NONCON3]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[RES3]] : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
+  %noncon2 = "tf.AddV2"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %noncon3 = "tf.Square"(%noncon2) : (tensor<2xf32>) -> tensor<2xf32>
+
+  %res1 = "tf.DivNoNan"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %res2 = "tf.MulNoNan"(%arg0, %noncon2) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %res3 = "tf.DivNoNan"(%arg0, %noncon3) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %res1, %res2, %res3 : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
+}
+
+// CHECK-LABEL: testComplexDivNoNanOpWithNonConstantY
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<2xcomplex<f32>>, %[[ARG1:.*]]: tensor<2xcomplex<f32>>, %[[ARG2:.*]]: tensor<2xf32>)
+func @testComplexDivNoNanOpWithNonConstantY(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomplex<f32>>, %arg2: tensor<2xf32>) -> (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) {
+  // CHECK: %[[CON1:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
+  // CHECK-NEXT: %[[NONCON2:.*]] = "tf.Sub"(%[[ARG0]], %[[ARG1]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[NONCON3:.*]] = "tf.Complex"(%[[CON1]], %[[ARG2]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[RES1:.*]] = "tf.MulNoNan"(%[[ARG0]], %[[ARG1]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>
+  // CHECK-NEXT: %[[RES2:.*]] = "tf.DivNoNan"(%[[ARG0]], %[[NONCON2]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[RES3:.*]] = "tf.MulNoNan"(%[[ARG0]], %[[NONCON3]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[RES3]] : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
+  %con1 = "tf.Const"() { value = dense<[1.0, 2.0]> : tensor<2xf32> } : () -> tensor<2xf32>
+  %noncon2 = "tf.Sub"(%arg0, %arg1) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  %noncon3 = "tf.Complex"(%con1, %arg2) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xcomplex<f32>>
+
+  %res1 = "tf.MulNoNan"(%arg0, %arg1) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  %res2 = "tf.DivNoNan"(%arg0, %noncon2) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  %res3 = "tf.MulNoNan"(%arg0, %noncon3) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %res1, %res2, %res3 : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
+}

@@ -482,7 +482,7 @@ Status AddNGrad(const Scope& scope, const Operation& op,
   // So the gradient for AddN just transfers the incoming gradient to
   // all outgoing gradients.
   auto incoming = Identity(scope, grad_inputs[0]);
-  for (int32 i = 0; i < op.num_inputs(); ++i) {
+  for (int32_t i = 0; i < op.num_inputs(); ++i) {
     grad_outputs->push_back(incoming);
   }
   return scope.status();

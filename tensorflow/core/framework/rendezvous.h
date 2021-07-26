@@ -106,7 +106,7 @@ class RendezvousInterface {
 
   // Synchronous wrapper for RecvAsync.
   Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
-              bool* is_dead, int64 timeout_ms);
+              bool* is_dead, int64_t timeout_ms);
   Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
               bool* is_dead);
 
@@ -134,9 +134,9 @@ class Rendezvous : public RendezvousInterface, public core::RefCounted {
     // Default to a factory that evaluates to false.
     Factory() : valid_(false) {}
 
-    Factory(std::function<Status(const int64, const DeviceMgr*, Rendezvous**)>
+    Factory(std::function<Status(const int64_t, const DeviceMgr*, Rendezvous**)>
                 create_fn,
-            std::function<Status(const int64)> cleanup_fn)
+            std::function<Status(const int64_t)> cleanup_fn)
         : valid_(true),
           create_fn_(std::move(create_fn)),
           cleanup_fn_(std::move(cleanup_fn)) {}
@@ -144,26 +144,26 @@ class Rendezvous : public RendezvousInterface, public core::RefCounted {
     // If no clean up fn is provided, just put in a dummy.
     // For backwards compatibility.
     explicit Factory(
-        std::function<Status(const int64, const DeviceMgr*, Rendezvous**)>
+        std::function<Status(const int64_t, const DeviceMgr*, Rendezvous**)>
             create_fn)
         : valid_(true),
           create_fn_(std::move(create_fn)),
-          cleanup_fn_([](const int64 step_id) { return Status::OK(); }) {}
+          cleanup_fn_([](const int64_t step_id) { return Status::OK(); }) {}
 
     explicit operator bool() const { return valid_; }
 
-    Status operator()(const int64 step_id, const DeviceMgr* device_mgr,
+    Status operator()(const int64_t step_id, const DeviceMgr* device_mgr,
                       Rendezvous** rendez) const {
       return create_fn_(step_id, device_mgr, rendez);
     }
 
-    Status CleanUp(const int64 step_id) const { return cleanup_fn_(step_id); }
+    Status CleanUp(const int64_t step_id) const { return cleanup_fn_(step_id); }
 
    private:
     bool valid_;
-    std::function<Status(const int64, const DeviceMgr*, Rendezvous**)>
+    std::function<Status(const int64_t, const DeviceMgr*, Rendezvous**)>
         create_fn_;
-    std::function<Status(const int64)> cleanup_fn_;
+    std::function<Status(const int64_t)> cleanup_fn_;
   };
 
   // Constructs a rendezvous key for the tensor of "name" sent from

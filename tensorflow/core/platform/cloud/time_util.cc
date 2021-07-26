@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-constexpr int64 kNanosecondsPerSecond = 1000 * 1000 * 1000;
+constexpr int64_t kNanosecondsPerSecond = 1000 * 1000 * 1000;
 
 }  // namespace
 

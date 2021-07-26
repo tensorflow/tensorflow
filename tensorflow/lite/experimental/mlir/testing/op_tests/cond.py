@@ -57,7 +57,7 @@ def make_cond_tests(options):
     input_values = [
         create_tensor_data(parameters["dtype"], (1,)),
         create_tensor_data(parameters["dtype"], (1,)),
-        np.array([parameters["pred"]], dtype=np.bool),
+        np.array([parameters["pred"]], dtype=np.bool_),
     ]
     return input_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, input_values)))

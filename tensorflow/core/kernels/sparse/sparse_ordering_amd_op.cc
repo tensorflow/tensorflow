@@ -75,8 +75,8 @@ class CSROrderingAMDCPUOp : public OpKernel {
                                         "but dense_shape has size ", rank));
 
     auto dense_shape_vec = dense_shape.vec<int64>();
-    const int64 num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
-    const int64 num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
+    const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
+    const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
 
     OP_REQUIRES(ctx, num_rows == num_cols,
                 errors::InvalidArgument("sparse matrix must be square; got: ",
@@ -92,7 +92,7 @@ class CSROrderingAMDCPUOp : public OpKernel {
 
     // Parallelize AMD computation across batches using a threadpool.
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    const int64 amd_cost_per_batch =
+    const int64_t amd_cost_per_batch =
         10 * num_rows * (input_matrix->total_nnz() / batch_size);
     Shard(
         worker_threads.num_threads, worker_threads.workers, batch_size,

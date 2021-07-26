@@ -120,7 +120,7 @@ void AllToAll::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
   string send_buf_key =
       strings::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   col_ctx_->col_exec->remote_access()->PostToPeer(
-      col_params_->group.device_names[target_rank],
+      col_params_->group.devices[target_rank].name(),
       col_params_->group.task_names[target_rank], send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), tensor, col_ctx_->device_locality,
@@ -132,7 +132,7 @@ void AllToAll::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
   string recv_buf_key =
       strings::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   col_ctx_->col_exec->remote_access()->RecvFromPeer(
-      col_params_->group.device_names[src_rank],
+      col_params_->group.devices[src_rank].name(),
       col_params_->group.task_names[src_rank],
       col_params_->task.is_local[src_rank], recv_buf_key, col_ctx_->device,
       col_ctx_->op_ctx->op_device_context(),

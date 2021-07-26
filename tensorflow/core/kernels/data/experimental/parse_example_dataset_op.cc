@@ -118,7 +118,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_parallel_calls = 0;
+    int64_t num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
     OP_REQUIRES(
@@ -213,7 +213,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             std::vector<Tensor> dense_defaults, std::vector<string> sparse_keys,
             std::vector<string> dense_keys,
             std::map<string, int> key_to_output_index,
-            example::FastParseExampleConfig config, int32 num_parallel_calls,
+            example::FastParseExampleConfig config, int32_t num_parallel_calls,
             const DataTypeVector& sparse_types,
             const DataTypeVector& dense_types,
             const std::vector<PartialTensorShape>& dense_shapes,
@@ -467,7 +467,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(*mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        int64 invocation_results_size;
+        int64_t invocation_results_size;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
             &invocation_results_size));
@@ -478,7 +478,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &result.status));
           size_t num_return_values;
           {
-            int64 size;
+            int64_t size;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat(kInvocationResults, "[", i, "]",
                                           kSizeSuffix)),
@@ -508,7 +508,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       }
 
       TraceMeMetadata GetTraceMeMetadata() const override {
-        int64 parallelism = -1;
+        int64_t parallelism = -1;
         // NOTE: We only set the parallelism value if the lock can be acquired
         // right away to avoid introducing tracing overhead.
         if (mu_->try_lock()) {
@@ -531,7 +531,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
      private:
       struct InvocationResult {
         InvocationResult() = default;
-        explicit InvocationResult(int64 id) : id(id) {}
+        explicit InvocationResult(int64_t id) : id(id) {}
 
         Notification notification;
         Status status;
@@ -709,7 +709,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             stats_aggregator->IncrementCounter(
                 stats_utils::kFeatureValuesCount, "trainer",
                 feature_stats.feature_values_count);
-            int64 steps = model_node() ? model_node()->num_elements() : 0;
+            int64_t steps = model_node() ? model_node()->num_elements() : 0;
             stats_aggregator->AddToHistogram(
                 stats_utils::FeatureHistogramName(dataset()->node_name()),
                 {static_cast<double>(feature_stats.features_count)}, steps);
@@ -755,12 +755,12 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           new_calls.reserve(num_parallel_calls_->value);
         }
         auto busy = [this]() TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-          int64 num_parallel_calls = num_parallel_calls_->value;
+          int64_t num_parallel_calls = num_parallel_calls_->value;
           return num_calls_ >= num_parallel_calls ||
                  invocation_results_.size() >= num_parallel_calls;
         };
         // Counts the total number of calls to use as an id of InvocationResult.
-        int64 num_total_calls = 0;
+        int64_t num_total_calls = 0;
         while (true) {
           {
             mutex_lock l(*mu_);
@@ -820,7 +820,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       }
 
       void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
-        for (int64 step = 0;; ++step) {
+        for (int64_t step = 0;; ++step) {
           int num_calls;
           int num_parallel_calls;
           {
@@ -862,7 +862,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
                               Status* status)
           TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-        int64 code_int;
+        int64_t code_int;
         TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
         error::Code code = static_cast<error::Code>(code_int);
 

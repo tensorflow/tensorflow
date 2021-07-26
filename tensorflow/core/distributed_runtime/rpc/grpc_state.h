@@ -44,7 +44,7 @@ class RPCState : public GrpcClientCQTag {
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
            const ::grpc::string& method, const protobuf::Message& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
-           thread::ThreadPool* threadpool, int32 max_retries = 0,
+           thread::ThreadPool* threadpool, int32_t max_retries = 0,
            bool fail_fast = true, const string* target = nullptr)
       : RPCState(
             stub, cq, method, request, response, std::move(done), call_opts,
@@ -86,7 +86,7 @@ class RPCState : public GrpcClientCQTag {
            const ::grpc::string& method, const Request& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
            thread::ThreadPool* threadpool, bool fail_fast,
-           int64_t timeout_in_ms, int32 max_retries, const string* target)
+           int64_t timeout_in_ms, int32_t max_retries, const string* target)
       : call_opts_(call_opts),
         threadpool_(threadpool),
         done_(std::move(done)),

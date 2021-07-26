@@ -59,7 +59,7 @@ Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
 
 StatusOr<bool> HloDomainRemover::RunContext::Run() {
   VLOG(4) << "Processing metadata domain: '" << remover_->kind_ << "'";
-  int64 removed_domains = 0;
+  int64_t removed_domains = 0;
   for (HloComputation* computation : module_->computations()) {
     // First create the domain instruction sets. A domain instruction set is
     // the set of instructions whose edges never cross a kDomain instruction.

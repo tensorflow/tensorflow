@@ -25,20 +25,20 @@ limitations under the License.
 
 namespace xla {
 
-XlaOp TopK(XlaOp input, int64 k) {
+XlaOp TopK(XlaOp input, int64_t k) {
   XlaBuilder* const builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     int last_dim = input_shape.dimensions_size() - 1;
-    int64 last_dim_size = input_shape.dimensions(last_dim);
+    int64_t last_dim_size = input_shape.dimensions(last_dim);
     // TODO(b/148796364): tune these constants for better performance.
-    const int64 kPerPartitionSize = 8192;        // 2^13
-    const int64 kLastDimSizeThreshold = 524288;  // 2^19
-    const int64 kMinNumPartitions = 8;
-    const int64 kMinimalK = 1000;
+    const int64_t kPerPartitionSize = 8192;        // 2^13
+    const int64_t kLastDimSizeThreshold = 524288;  // 2^19
+    const int64_t kMinNumPartitions = 8;
+    const int64_t kMinimalK = 1000;
     if ((k >= kMinimalK) && (k < kPerPartitionSize) &&
         (kPerPartitionSize / k > 2) && last_dim_size >= kLastDimSizeThreshold) {
-      int64 num_partitions =
+      int64_t num_partitions =
           CeilOfRatio(last_dim_size - k, kPerPartitionSize - k);
       if (num_partitions >= kMinNumPartitions) {
         return TopKWithPartitions(input, k, num_partitions);
@@ -48,7 +48,7 @@ XlaOp TopK(XlaOp input, int64 k) {
     Shape iota_shape =
         ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
-    for (int64 i = 0; i < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
         // Propagate dynamic dimension from inputs to iota.
         iota_s32 = SetDimensionSize(iota_s32, GetDimensionSize(input, i), i);
@@ -77,15 +77,16 @@ XlaOp TopK(XlaOp input, int64 k) {
   });
 }
 
-XlaOp TopKWithPartitions(XlaOp input, int64 k, int64 num_partitions) {
+XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
   XlaBuilder* const builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     int last_dim = input_shape.dimensions_size() - 1;
     // Calculate per partition size.
     auto input_dims = input_shape.dimensions();
-    int64 last_dim_size = input_shape.dimensions(last_dim);
-    const int64 per_partition_size = CeilOfRatio(last_dim_size, num_partitions);
+    int64_t last_dim_size = input_shape.dimensions(last_dim);
+    const int64_t per_partition_size =
+        CeilOfRatio(last_dim_size, num_partitions);
     // Do normal TopK when per partition size is smaller than or equal to k.
     if (k >= per_partition_size) {
       return TopK(input, k);
@@ -94,7 +95,7 @@ XlaOp TopKWithPartitions(XlaOp input, int64 k, int64 num_partitions) {
     Shape iota_shape =
         ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
-    for (int64 i = 0; i < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
         // Propagate dynamic dimension from inputs to iota.
         iota_s32 = SetDimensionSize(iota_s32, GetDimensionSize(input, i), i);

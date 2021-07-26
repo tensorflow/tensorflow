@@ -70,7 +70,7 @@ class TileOp : public XlaOpKernel {
                             xla::ValueInferenceMode::kUpperBound));
 
     std::vector<int64> output_dims(input_shape.dims());
-    for (int64 i = 0; i < input_shape.dims(); ++i) {
+    for (int64_t i = 0; i < input_shape.dims(); ++i) {
       OP_REQUIRES(ctx, multiples_bounds[i] >= 0,
                   errors::InvalidArgument("Expected multiples[", i,
                                           "] >= 0, but got ", output_dims[i]));
@@ -89,7 +89,7 @@ class TileOp : public XlaOpKernel {
     if (all_multiples_are_static) {
       // If all multiples are 1, than the input is the same as the output.
       if (absl::c_all_of(multiples_bounds,
-                         [](int64 multiple) { return multiple == 1; })) {
+                         [](int64_t multiple) { return multiple == 1; })) {
         ctx->SetOutput(0, input);
         return;
       }
@@ -102,7 +102,7 @@ class TileOp : public XlaOpKernel {
     if (!all_multiples_are_static) {
       // Some values of multiples are unknown at compile time, this is a dynamic
       // tile op. We need to call set dimension size.
-      for (int64 i = 0; i < multiples_are_dynamic.size(); ++i) {
+      for (int64_t i = 0; i < multiples_are_dynamic.size(); ++i) {
         if (!multiples_are_dynamic[i]) {
           continue;
         }

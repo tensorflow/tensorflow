@@ -108,7 +108,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   AbstractTensorInterface* CreateInt64Scalar(int64_t value) override;
   AbstractTensorInterface* CreateUint64Scalar(uint64 value) override;
-  AbstractTensorInterface* CreateInt32Scalar(int32 value) override;
+  AbstractTensorInterface* CreateInt32Scalar(int32_t value) override;
   AbstractTensorInterface* CreateFloatScalar(float value) override;
   AbstractTensorInterface* CreateDoubleScalar(double value) override;
   AbstractTensorInterface* CreateHalfScalar(Eigen::half value) override;
@@ -408,7 +408,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       DynamicDeviceMgr* remote_device_mgr,
       const std::vector<string>& remote_contexts, uint64 context_id,
       uint64 context_view_id,
-      std::function<Rendezvous*(const int64)> rendezvous_creator,
+      std::function<Rendezvous*(const int64_t)> rendezvous_creator,
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr,
@@ -470,6 +470,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   ImmediateExecutionDistributedManager* GetDistributedManager() override {
     return distributed_manager_.get();
   }
+
+  // May only be used during multi-client setup so that a RemoteRendezvous
+  // can be initialized instead of defaulting to the IntraProcessRendezvous.
+  void SetWorkerEnv(WorkerEnv* worker_env,
+                    std::shared_ptr<WorkerSession> worker_session);
 #endif  // IS_MOBILE_PLATFORM
 
   // Closes remote eager contexts, waits for all RPCs to finish, and
@@ -606,7 +611,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list_
       TF_GUARDED_BY(device_type_list_mu_);
   Rendezvous* rendezvous_;
-  std::function<Rendezvous*(const int64)> rendezvous_creator_;
+  std::function<Rendezvous*(const int64_t)> rendezvous_creator_;
   CustomDeviceOpHandler custom_device_op_handler_;
 
   mutable mutex composite_devices_mu_;

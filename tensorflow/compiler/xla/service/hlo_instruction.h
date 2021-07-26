@@ -201,7 +201,7 @@ class HloPrintOptions {
   }
 
   // If true, operands' shapes will be printed.
-  HloPrintOptions& set_print_operand_index_annotation_interval(int64 value) {
+  HloPrintOptions& set_print_operand_index_annotation_interval(int64_t value) {
     print_operand_index_annotation_interval_ = value;
     return *this;
   }
@@ -544,20 +544,19 @@ class HloInstruction {
       bool prohibit_empty_literal = true);
 
   // Creates a parameter-retrieving instruction.
-  static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
-                                                         const Shape& shape,
-                                                         const string& name);
+  static std::unique_ptr<HloInstruction> CreateParameter(
+      int64_t parameter_number, const Shape& shape, const string& name);
 
   // Creates a literal constant instruction.
   static std::unique_ptr<HloInstruction> CreateConstant(Literal literal);
 
   // Creates an Iota instruction.
   static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape,
-                                                    int64 iota_dimension);
+                                                    int64_t iota_dimension);
 
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
-      const Shape& shape, HloInstruction* operand, int64 index);
+      const Shape& shape, HloInstruction* operand, int64_t index);
 
   // Creates a trace instruction that logs the input operand in the computation.
   static std::unique_ptr<HloInstruction> CreateTrace(const string& tag,
@@ -586,7 +585,7 @@ class HloInstruction {
   // reflect the new state after `delta` units of 32 random bits are generated
   // and returns the old state.
   static std::unique_ptr<HloInstruction> CreateRngGetAndUpdateState(
-      const Shape& shape, int64 delta);
+      const Shape& shape, int64_t delta);
 
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
@@ -626,7 +625,8 @@ class HloInstruction {
   // and window describes how the filter is applied to lhs.
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      int64 feature_group_count, int64 batch_group_count, const Window& window,
+      int64_t feature_group_count, int64_t batch_group_count,
+      const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 
@@ -675,9 +675,9 @@ class HloInstruction {
   // order of inputs from different participants.
   static std::unique_ptr<HloInstruction> CreateAllGather(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64 all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
-      bool constrain_layout, const absl::optional<int64>& channel_id,
-      bool use_global_device_ids);
+      int64_t all_gather_dimension,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
   // Creates an all-gather-start op, which concats the operands of all
   // participants
@@ -688,9 +688,9 @@ class HloInstruction {
   // conjunction of a AllGatherDone op that synchronizes and returns the result.
   static std::unique_ptr<HloInstruction> CreateAllGatherStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64 all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
-      bool constrain_layout, const absl::optional<int64>& channel_id,
-      bool use_global_device_ids);
+      int64_t all_gather_dimension,
+      absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
   // Creates a cross replica reduction op.
   //
@@ -719,7 +719,7 @@ class HloInstruction {
       HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids,
-      int64 scatter_dimension);
+      int64_t scatter_dimension);
 
   // Creates an asynchronous cross replica reduction op.
   //
@@ -848,7 +848,7 @@ class HloInstruction {
   // another computation that has the same channel id. If is_host_transfer is
   // true, then this Send operation transfers data to the host.
   static std::unique_ptr<HloInstruction> CreateSend(
-      HloInstruction* operand, HloInstruction* token, int64 channel_id,
+      HloInstruction* operand, HloInstruction* token, int64_t channel_id,
       bool is_host_transfer = false);
 
   // Blocks until data transfer for the Send instruction (operand) is complete.
@@ -862,7 +862,7 @@ class HloInstruction {
   // is_host_transfer is true, then this Send operation transfers data from the
   // host.
   static std::unique_ptr<HloInstruction> CreateRecv(
-      const Shape& shape, HloInstruction* token, int64 channel_id,
+      const Shape& shape, HloInstruction* token, int64_t channel_id,
       bool is_host_transfer = false);
 
   // Blocks until data transfer for the Recv instruction (operand) is complete
@@ -895,7 +895,7 @@ class HloInstruction {
   // the provided dimension.
   static std::unique_ptr<HloInstruction> CreateConcatenate(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64 dimension);
+      int64_t dimension);
 
   // Creates a reduce instruction, where the computation (given by the handle)
   // is applied successively to every element in operand. For example, let f be
@@ -945,19 +945,19 @@ class HloInstruction {
   // Creates a batch-norm-training instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
       const Shape& shape, HloInstruction* operand, HloInstruction* scale,
-      HloInstruction* offset, float epsilon, int64 feature_index);
+      HloInstruction* offset, float epsilon, int64_t feature_index);
 
   // Creates a batch-norm-inference instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormInference(
       const Shape& shape, HloInstruction* operand, HloInstruction* scale,
       HloInstruction* offset, HloInstruction* mean, HloInstruction* variance,
-      float epsilon, int64 feature_index);
+      float epsilon, int64_t feature_index);
 
   // Creates a batch-norm-grad instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormGrad(
       const Shape& shape, HloInstruction* operand, HloInstruction* scale,
       HloInstruction* mean, HloInstruction* variance,
-      HloInstruction* grad_output, float epsilon, int64 feature_index);
+      HloInstruction* grad_output, float epsilon, int64_t feature_index);
 
   // Creates a scatter computation that scatters the `source` array to the
   // selected indices of each window.
@@ -995,7 +995,7 @@ class HloInstruction {
   // order and then reshaped to the given result shape.
   static std::unique_ptr<HloInstruction> CreateReshape(
       const Shape& shape, HloInstruction* operand,
-      int64 inferred_dimension = -1);
+      int64_t inferred_dimension = -1);
 
   // Creates a dynamic reshape instruction. Similar to reshape but dynamic
   // dimensions sizes are provided as additional variadic arguments.
@@ -1016,7 +1016,7 @@ class HloInstruction {
   // specific index positions which should be compared, and should return a
   // PRED. 'is_stable' specifies whether stable sorting is required.
   static std::unique_ptr<HloInstruction> CreateSort(
-      const Shape& shape, int64 dimension,
+      const Shape& shape, int64_t dimension,
       absl::Span<HloInstruction* const> operands, HloComputation* compare,
       bool is_stable);
 
@@ -1132,11 +1132,11 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateToken();
 
   static std::unique_ptr<HloInstruction> CreateGetDimensionSize(
-      const Shape& shape, HloInstruction* operand, int64 dimension);
+      const Shape& shape, HloInstruction* operand, int64_t dimension);
 
   static std::unique_ptr<HloInstruction> CreateSetDimensionSize(
       const Shape& shape, HloInstruction* operand, HloInstruction* val,
-      int64 dimension);
+      int64_t dimension);
 
   static std::unique_ptr<HloInstruction> CreateAddDependency(
       HloInstruction* data_operand, HloInstruction* token_operand);
@@ -1161,10 +1161,10 @@ class HloInstruction {
   Shape* mutable_shape() { return &shape_; }
 
   // Returns the ith operand to this instruction.
-  const HloInstruction* operand(int64 i) const;
+  const HloInstruction* operand(int64_t i) const;
 
   // Returns the ith operand to this instruction.
-  HloInstruction* mutable_operand(int64 i);
+  HloInstruction* mutable_operand(int64_t i);
 
   // Returns the number of operands to this instruction.
   int64 operand_count() const { return operands_.size(); }
@@ -1295,10 +1295,10 @@ class HloInstruction {
   //
   // This function does NOT remove duplicated operands even if this instruction
   // is a fusion, so that the existing operand numbers do not change.
-  Status ReplaceOperandWith(int64 operand_num, HloInstruction* new_operand);
+  Status ReplaceOperandWith(int64_t operand_num, HloInstruction* new_operand);
 
   // Same as ReplaceOperandWith(), but new_operand can have a different shape.
-  Status ReplaceOperandWithDifferentShape(int64 operand_num,
+  Status ReplaceOperandWithDifferentShape(int64_t operand_num,
                                           HloInstruction* new_operand);
 
   // Replaces all uses of this instruction with the new producer. If
@@ -1507,7 +1507,7 @@ class HloInstruction {
   }
   void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.
-  void set_device_sharding(int64 device) {
+  void set_device_sharding(int64_t device) {
     set_single_sharding(HloSharding::AssignDevice(device));
   }
   // Remove any sharding from this operator.
@@ -1558,7 +1558,7 @@ class HloInstruction {
   // to the newly cloned nodes.
   void ReplaceCalledComputations(
       std::function<HloComputation*(HloComputation*)> map_function) {
-    for (int64 i = 0; i < called_computations_.size(); ++i) {
+    for (int64_t i = 0; i < called_computations_.size(); ++i) {
       called_computations_[i] = map_function(called_computations_[i]);
     }
   }
@@ -1581,7 +1581,7 @@ class HloInstruction {
   // Note on performance: when this instruction is kFusion, this method, in the
   // worst case, scans all fused instructions. We could speed this up by
   // caching.
-  bool IsElementwiseOnOperand(int64 operand_idx) const;
+  bool IsElementwiseOnOperand(int64_t operand_idx) const;
 
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
@@ -1598,7 +1598,7 @@ class HloInstruction {
   bool IsElementwiseBinary() const;
 
   // Returns whether this instruction may reuse elements of its `i`th operand.
-  bool ReusesOperandElements(int64 i) const {
+  bool ReusesOperandElements(int64_t i) const {
     return OperandElementUse(i) == UseKind::kReuse;
   }
 
@@ -1705,26 +1705,26 @@ class HloInstruction {
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
   void set_metadata(const OpMetadata& metadata) {
-    int64 creation_pass_id = metadata_.creation_pass_id();
+    int64_t creation_pass_id = metadata_.creation_pass_id();
     metadata_ = metadata;
     metadata_.set_creation_pass_id(creation_pass_id);
   }
 
-  void set_size_of_generated_code_in_bytes(int64 code_size_in_bytes) {
+  void set_size_of_generated_code_in_bytes(int64_t code_size_in_bytes) {
     metadata_.set_size_of_generated_code_in_bytes(code_size_in_bytes);
   }
   void set_size_of_memory_working_set_in_bytes(
-      int64 working_set_size_in_bytes) {
+      int64_t working_set_size_in_bytes) {
     metadata_.set_size_of_memory_working_set_in_bytes(
         working_set_size_in_bytes);
   }
-  void set_creation_pass_id(int64 pass_id) {
+  void set_creation_pass_id(int64_t pass_id) {
     metadata_.set_creation_pass_id(pass_id);
   }
   void set_metadata_op_name(const std::string& name) {
     metadata_.set_op_name(name);
   }
-  void set_logical_creation_pass_id(int64 pass_id) {
+  void set_logical_creation_pass_id(int64_t pass_id) {
     metadata_.set_logical_creation_pass_id(pass_id);
   }
   const OpMetadata& metadata() const { return metadata_; }
@@ -1774,7 +1774,7 @@ class HloInstruction {
   virtual const std::vector<int64>& dimensions() const {
     LOG(FATAL) << "Unimplemented method.";
   }
-  virtual int64 dimensions(int64 index) const {
+  virtual int64 dimensions(int64_t index) const {
     LOG(FATAL) << "Unimplemented method.";
   }
   virtual std::vector<int64>* mutable_dimensions() {
@@ -1794,17 +1794,17 @@ class HloInstruction {
   bool IsRank2Transpose() const;
 
   // Delegates to HloSliceInstruction::slice_start.
-  int64 slice_starts(int64 dimension) const;
+  int64 slice_starts(int64_t dimension) const;
   const std::vector<int64>& slice_starts() const;
   std::vector<int64>* mutable_slice_starts();
 
   // Delegates to HloSliceInstruction::slice_limits.
-  int64 slice_limits(int64 dimension) const;
+  int64 slice_limits(int64_t dimension) const;
   const std::vector<int64>& slice_limits() const;
   std::vector<int64>* mutable_slice_limits();
 
   // Delegates to HloSliceInstruction::slice_strides.
-  int64 slice_strides(int64 dimension) const;
+  int64 slice_strides(int64_t dimension) const;
   const std::vector<int64>& slice_strides() const;
   std::vector<int64>* mutable_slice_strides();
 
@@ -1857,7 +1857,7 @@ class HloInstruction {
   int64 fused_instruction_count() const;
 
   // Delegates to HloFusionInstruction::fused_parameter.
-  HloInstruction* fused_parameter(int64 parameter_number) const;
+  HloInstruction* fused_parameter(int64_t parameter_number) const;
 
   // Delegates to HloFusionInstruction::fused_parameters.
   const std::vector<HloInstruction*>& fused_parameters() const;
@@ -1893,7 +1893,7 @@ class HloInstruction {
   int64 tuple_index() const;
 
   // Delegates to HloGetTupleElementInstruction::set_tuple_index.
-  void set_tuple_index(int64 new_tuple_index);
+  void set_tuple_index(int64_t new_tuple_index);
 
   // Delegates to HloReducePrecisionInstruction::exponent_bits.
   int32 exponent_bits() const;
@@ -1954,12 +1954,12 @@ class HloInstruction {
   // dimension and output feature dimension.
   int64 feature_group_count() const;
 
-  void set_feature_group_count(int64 feature_group_count);
+  void set_feature_group_count(int64_t feature_group_count);
 
   // The number of batch groups. Must be a divisor of the input batch dimension
   int64 batch_group_count() const;
 
-  void set_batch_group_count(int64 batch_group_count);
+  void set_batch_group_count(int64_t batch_group_count);
 
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;
@@ -1984,7 +1984,7 @@ class HloInstruction {
   PaddingType padding_type() const;
 
   // Delegates to HloDynamicSliceInstruction::slice_sizes.
-  int64 slice_sizes(int64 dimension) const;
+  int64 slice_sizes(int64_t dimension) const;
 
   // Delegates to HloDynamicSliceInstruction::dynamic_slice_sizes.
   const std::vector<int64>& dynamic_slice_sizes() const;
@@ -2159,7 +2159,7 @@ class HloInstruction {
   void RemoveUser(HloInstruction* user);
 
   // Returns how this instruction uses elements of its operand at operand_num.
-  UseKind OperandElementUse(int64 operand_num) const;
+  UseKind OperandElementUse(int64_t operand_num) const;
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.

@@ -42,7 +42,7 @@ class XlaCompileOnDemandOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  XlaCompiler::Argument CreateCompilerArgument(OpKernelContext* ctx, int64 i);
+  XlaCompiler::Argument CreateCompilerArgument(OpKernelContext* ctx, int64_t i);
   Status Compile(OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** result,
                  XlaCompilationCache** cache,

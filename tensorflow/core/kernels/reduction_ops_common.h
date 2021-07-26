@@ -227,8 +227,8 @@ class ReductionOp : public OpKernel {
                                                &shuffled, alloc_attr));
         OP_REQUIRES_OK(ctx, DoTranspose(d, data_reshaped, helper.permutation(),
                                         &shuffled));
-        const int64 unreduced = tmp_out.NumElements();
-        const int64 reduced = shuffled.NumElements() / unreduced;
+        const int64_t unreduced = tmp_out.NumElements();
+        const int64_t reduced = shuffled.NumElements() / unreduced;
         const Tensor& const_shuffled = shuffled;
         Functor::Reduce(ctx, tmp_out.flat<T>(),
                         const_shuffled.shaped<T, 2>({unreduced, reduced}),

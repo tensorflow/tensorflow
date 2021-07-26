@@ -54,7 +54,7 @@ class NameUniquer {
     // Tries to register id as used identifier. If id is not already used, the
     // id itself will be returned. Otherwise a new one will be generated, and
     // returned.
-    int64 RegisterId(int64 id) {
+    int64 RegisterId(int64_t id) {
       if (used_.insert(id).second) {
         return id;
       }

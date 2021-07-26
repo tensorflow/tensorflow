@@ -126,7 +126,7 @@ REGISTER_OP("DecodePaddedRaw")
       DataType out_type;
       TF_RETURN_IF_ERROR(c->GetAttr("out_type", &out_type));
 
-      int32 data_type_size = DataTypeSize(out_type);
+      int32_t data_type_size = DataTypeSize(out_type);
 
       DimensionHandle width;
       TF_RETURN_IF_ERROR(c->Divide(fixed_length, data_type_size, true, &width));

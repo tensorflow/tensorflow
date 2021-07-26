@@ -64,7 +64,7 @@ void DoImageProjectiveTransformOp(OpKernelContext* ctx,
               errors::InvalidArgument(
                   "Input transform should be num_images x 8 or 1 x 8"));
 
-  int32 out_height, out_width;
+  int32_t out_height, out_width;
   // Kernel is shared by legacy "ImageProjectiveTransform" op with 2 args.
   if (ctx->num_inputs() >= 3) {
     const Tensor& shape_t = ctx->input(2);

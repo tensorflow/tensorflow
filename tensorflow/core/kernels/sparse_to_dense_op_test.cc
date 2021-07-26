@@ -262,7 +262,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
   }
 
   // processing input, mainly
-  int64 bytes_per_iter = static_cast<int64>((N + N * NDIM) * sizeof(float));
+  int64_t bytes_per_iter = static_cast<int64>((N + N * NDIM) * sizeof(float));
   state.SetBytesProcessed(bytes_per_iter * state.iterations());
 }
 

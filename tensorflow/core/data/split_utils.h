@@ -28,7 +28,7 @@ namespace data {
 // into.
 class IndexSplitProvider : public SplitProvider {
  public:
-  explicit IndexSplitProvider(int64 n);
+  explicit IndexSplitProvider(int64_t n);
   Status GetNext(Tensor* split, bool* end_of_splits) override;
   Status Reset() override;
   Status Save(std::function<std::string(std::string)> full_name,
@@ -46,7 +46,7 @@ class IndexSplitProvider : public SplitProvider {
 // where `index != shard_index % num_shards`
 class ShardingSplitProvider : public SplitProvider {
  public:
-  ShardingSplitProvider(int64 num_shards, int64 shard_index,
+  ShardingSplitProvider(int64_t num_shards, int64_t shard_index,
                         std::shared_ptr<SplitProvider> split_provider);
 
   Status GetNext(Tensor* split, bool* end_of_splits) override;

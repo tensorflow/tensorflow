@@ -33,7 +33,7 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, string* out) {
   out->assign(src.data(), src.size());
 }
 
-void EncodeStringList(const tstring* strings, int64 n, string* out) {
+void EncodeStringList(const tstring* strings, int64_t n, string* out) {
   out->clear();
   for (int i = 0; i < n; ++i) {
     core::PutVarint32(out, strings[i].size());
@@ -43,10 +43,10 @@ void EncodeStringList(const tstring* strings, int64 n, string* out) {
   }
 }
 
-bool DecodeStringList(const string& src, tstring* strings, int64 n) {
+bool DecodeStringList(const string& src, tstring* strings, int64_t n) {
   std::vector<uint32> sizes(n);
   StringPiece reader(src);
-  int64 tot = 0;
+  int64_t tot = 0;
   for (auto& v : sizes) {
     if (!core::GetVarint32(&reader, &v)) return false;
     tot += v;
@@ -56,7 +56,7 @@ bool DecodeStringList(const string& src, tstring* strings, int64 n) {
   }
 
   tstring* data = strings;
-  for (int64 i = 0; i < n; ++i, ++data) {
+  for (int64_t i = 0; i < n; ++i, ++data) {
     auto size = sizes[i];
     if (size > reader.size()) {
       return false;
@@ -102,7 +102,7 @@ class StringListDecoderImpl : public StringListDecoder {
   ~StringListDecoderImpl() override = default;
 
   bool ReadSizes(std::vector<uint32>* sizes) override {
-    int64 total = 0;
+    int64_t total = 0;
     for (auto& size : *sizes) {
       if (!core::GetVarint32(&reader_, &size)) return false;
       total += size;
@@ -137,7 +137,7 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, absl::Cord* out) {
   *out = absl::MakeCordFromExternal(src, [obj] { obj->Unref(); });
 }
 
-void EncodeStringList(const tstring* strings, int64 n, absl::Cord* out) {
+void EncodeStringList(const tstring* strings, int64_t n, absl::Cord* out) {
   out->Clear();
   for (int i = 0; i < n; ++i) {
     ::strings::CordAppendVarint(strings[i].size(), out);
@@ -147,10 +147,10 @@ void EncodeStringList(const tstring* strings, int64 n, absl::Cord* out) {
   }
 }
 
-bool DecodeStringList(const absl::Cord& src, string* strings, int64 n) {
+bool DecodeStringList(const absl::Cord& src, string* strings, int64_t n) {
   std::vector<uint32> sizes(n);
   CordReader reader(src);
-  int64 tot = 0;
+  int64_t tot = 0;
   for (auto& v : sizes) {
     if (!::strings::CordReaderReadVarint(&reader, &v)) return false;
     tot += v;
@@ -170,10 +170,10 @@ bool DecodeStringList(const absl::Cord& src, string* strings, int64 n) {
   return true;
 }
 
-bool DecodeStringList(const absl::Cord& src, tstring* strings, int64 n) {
+bool DecodeStringList(const absl::Cord& src, tstring* strings, int64_t n) {
   std::vector<uint32> sizes(n);
   CordReader reader(src);
-  int64 tot = 0;
+  int64_t tot = 0;
   for (auto& v : sizes) {
     if (!::strings::CordReaderReadVarint(&reader, &v)) return false;
     tot += v;
@@ -225,7 +225,7 @@ class CordStringListDecoderImpl : public StringListDecoder {
   ~CordStringListDecoderImpl() override = default;
 
   bool ReadSizes(std::vector<uint32>* sizes) override {
-    int64 total = 0;
+    int64_t total = 0;
     for (auto& size : *sizes) {
       if (!::strings::CordReaderReadVarint(&reader_, &size)) return false;
       total += size;

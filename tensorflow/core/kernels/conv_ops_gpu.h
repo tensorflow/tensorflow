@@ -35,7 +35,7 @@ namespace tensorflow {
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
-                           int64 default_value_in_bytes);
+                           int64_t default_value_in_bytes);
 
 // A class to provide scratch-space allocator for Stream-Executor Cudnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after
@@ -43,11 +43,11 @@ int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
 class DnnScratchAllocator : public se::ScratchAllocator {
  public:
   virtual ~DnnScratchAllocator() {}
-  DnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
+  DnnScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64 GetMemoryLimitInBytes() override { return memory_limit_; }
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      int64 byte_size) override {
+      int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
       return se::port::Status{se::port::error::INVALID_ARGUMENT,
@@ -92,8 +92,8 @@ class DnnScratchAllocator : public se::ScratchAllocator {
 class ConvParameters {
  public:
   using SpatialArray = gtl::InlinedVector<int64, 3>;
-  ConvParameters(int64 batch, int64 in_depths, const SpatialArray& in,
-                 TensorFormat data_format, int64 out_depths,
+  ConvParameters(int64_t batch, int64_t in_depths, const SpatialArray& in,
+                 TensorFormat data_format, int64_t out_depths,
                  const SpatialArray& filter, const SpatialArray& dilation,
                  const SpatialArray& stride, const SpatialArray& padding,
                  DataType dtype, int device_id, int group_count = 1)
@@ -111,13 +111,13 @@ class ConvParameters {
         group_count_(group_count) {
     hash_code_ = batch;
     hash_code_ = Hash64Combine(hash_code_, in_depths);
-    for (int64 val : in) hash_code_ = Hash64Combine(hash_code_, val);
+    for (int64_t val : in) hash_code_ = Hash64Combine(hash_code_, val);
     hash_code_ = Hash64Combine(hash_code_, data_format);
     hash_code_ = Hash64Combine(hash_code_, out_depths);
-    for (int64 val : filter) hash_code_ = Hash64Combine(hash_code_, val);
-    for (int64 val : dilation) hash_code_ = Hash64Combine(hash_code_, val);
-    for (int64 val : stride) hash_code_ = Hash64Combine(hash_code_, val);
-    for (int64 val : padding) hash_code_ = Hash64Combine(hash_code_, val);
+    for (int64_t val : filter) hash_code_ = Hash64Combine(hash_code_, val);
+    for (int64_t val : dilation) hash_code_ = Hash64Combine(hash_code_, val);
+    for (int64_t val : stride) hash_code_ = Hash64Combine(hash_code_, val);
+    for (int64_t val : padding) hash_code_ = Hash64Combine(hash_code_, val);
     hash_code_ = Hash64Combine(hash_code_, dtype);
     hash_code_ = Hash64Combine(hash_code_, device_id);
     hash_code_ = Hash64Combine(hash_code_, group_count);

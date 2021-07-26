@@ -35,9 +35,9 @@ struct SpatialDimensionOutputSizeAndPadding {
 // Verifies that the dimensions all match, and computes the size and padding of
 // a spatial dimension for convolution gradient operations.
 StatusOr<SpatialDimensionOutputSizeAndPadding>
-ConvGradExtractAndVerifyDimension(int64 input_size, int64 filter_size,
-                                  int64 output_size, int64 dilation,
-                                  int64 stride, Padding padding);
+ConvGradExtractAndVerifyDimension(int64_t input_size, int64_t filter_size,
+                                  int64_t output_size, int64_t dilation,
+                                  int64_t stride, Padding padding);
 
 }  // namespace xla
 

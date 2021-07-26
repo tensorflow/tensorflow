@@ -52,7 +52,7 @@ class RunId {
  public:
   // Creates a new, unique RunId.
   RunId();
-  explicit RunId(int64 value) : data_(value) {}
+  explicit RunId(int64_t value) : data_(value) {}
 
   RunId(const RunId&) = default;
   RunId& operator=(const RunId&) = default;
@@ -130,7 +130,7 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_rng_seed(int rng_seed);
   int rng_seed() const;
 
-  ExecutableRunOptions& set_launch_id(int32 launch_id) {
+  ExecutableRunOptions& set_launch_id(int32_t launch_id) {
     launch_id_ = launch_id;
     return *this;
   }

@@ -45,7 +45,7 @@ using ::tensorflow::serving::BatchOpRewriteConfig;
 void AddBatchOp(
     GraphDef* graph, int num_batch_threads,
     const absl::flat_hash_map<string, int>& reserved_int_attrs = {}) {
-  auto set_batch_node_attribute = [&](const int32 num_batch_threads,
+  auto set_batch_node_attribute = [&](const int32_t num_batch_threads,
                                       NodeDef* batch_op) {
     batch_op->set_name("cond/batch/BatchFunction");
     batch_op->set_op("BatchFunction");

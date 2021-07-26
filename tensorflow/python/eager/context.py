@@ -701,7 +701,7 @@ class Context(object):
 
   def set_config_key_value(self, key, value):
     ensure_initialized()
-    pywrap_tfe.TFE_SetConfigKeyValue(self._context_handle, key, value)
+    pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
   def get_config_key_value(self, key):
     ensure_initialized()

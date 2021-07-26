@@ -76,7 +76,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
     }
 
-    int64 buffer_size = 0;
+    int64_t buffer_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(ctx, buffer_size > 0,
@@ -347,14 +347,14 @@ class CSVDatasetOp : public DatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         ResetStreamsLocked();
-        int64 current_file_index;
+        int64_t current_file_index;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_file_index"),
                                               &current_file_index));
         current_file_index_ = size_t(current_file_index);
         // The keys "pos" and "num_buffer_reads" are written only if
         // the iterator was saved with an open, partially read file.
         if (reader->Contains(full_name("pos"))) {
-          int64 pos, num_buffer_reads;
+          int64_t pos, num_buffer_reads;
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("pos"), &pos));
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("num_buffer_reads"),
                                                 &num_buffer_reads));
@@ -729,7 +729,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<int32>()() =
                   dataset()->record_defaults_[output_idx].flat<int32>()(0);
             } else {
-              int32 value;
+              int32_t value;
               if (!strings::safe_strto32(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
@@ -744,7 +744,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<int64>()() =
                   dataset()->record_defaults_[output_idx].flat<int64>()(0);
             } else {
-              int64 value;
+              int64_t value;
               if (!strings::safe_strto64(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,

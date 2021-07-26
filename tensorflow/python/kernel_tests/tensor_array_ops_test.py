@@ -52,7 +52,7 @@ from tensorflow.python.platform import test
 def _make_converter(tf_dtype):
   def _converter(x):
     if tf_dtype == dtypes.string:
-      # In Python3, np.str is unicode, while we always want bytes
+      # In Python3, np.str_ is unicode, while we always want bytes
       return np.asarray(x).astype("|S")
     x = np.asarray(x).astype(tf_dtype.as_numpy_dtype)
     if tf_dtype.is_complex:

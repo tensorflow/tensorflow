@@ -57,7 +57,7 @@ Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
                                         cross_program_prefetch_addr->size(),
                                         cross_program_prefetch_addr->payload()};
   }
-  int32 rng_seed = run_options.run_options().rng_seed();
+  int32_t rng_seed = run_options.run_options().rng_seed();
 
   XLA_DeviceAssignment c_dev_assign{/*bytes=*/nullptr, /*size=*/0};
   auto dev_assign = run_options.run_options().device_assignment();

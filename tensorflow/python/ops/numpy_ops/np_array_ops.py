@@ -1392,7 +1392,7 @@ def sign(x, out=None, where=None, **kwargs):  # pylint: disable=missing-docstrin
 
   x = asarray(x)
   dtype = x.dtype.as_numpy_dtype
-  if np.issubdtype(dtype, np.complex):
+  if np.issubdtype(dtype, np.complexfloating):
     result = math_ops.cast(math_ops.sign(math_ops.real(x)), dtype)
   else:
     result = math_ops.sign(x)
@@ -1801,7 +1801,7 @@ def _getitem(self, slice_spec):
   if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
                                        slice_spec.dtype == dtypes.bool) or
       (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool)):
+       slice_spec.dtype == np.bool_)):
     return array_ops.boolean_mask(tensor=self, mask=slice_spec)
 
   if not isinstance(slice_spec, tuple):
@@ -1816,7 +1816,7 @@ def _with_index_update_helper(update_method, a, slice_spec, updates):
   if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
                                        slice_spec.dtype == dtypes.bool) or
       (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
-       slice_spec.dtype == np.bool)):
+       slice_spec.dtype == np.bool_)):
     slice_spec = nonzero(slice_spec)
 
   if not isinstance(slice_spec, tuple):

@@ -63,15 +63,15 @@ class ResizeAreaOpTest : public OpsTestBase {
   void ResizeAreaBaseline(TTypes<float, 4>::ConstTensor input_data,
                           TTypes<float, 4>::Tensor output_data) {
     const int batch_size = input_data.dimension(0);
-    const int64 in_height = input_data.dimension(1);
-    const int64 in_width = input_data.dimension(2);
+    const int64_t in_height = input_data.dimension(1);
+    const int64_t in_width = input_data.dimension(2);
     const int channels = input_data.dimension(3);
 
     ASSERT_EQ(batch_size, output_data.dimension(0));
     ASSERT_EQ(channels, output_data.dimension(3));
 
-    const int64 out_height = output_data.dimension(1);
-    const int64 out_width = output_data.dimension(2);
+    const int64_t out_height = output_data.dimension(1);
+    const int64_t out_width = output_data.dimension(2);
 
     const float height_scale = in_height / static_cast<float>(out_height);
     const float width_scale = in_width / static_cast<float>(out_width);
@@ -100,33 +100,33 @@ class ResizeAreaOpTest : public OpsTestBase {
     //   out[1] = (in[1] * 2/3 + in[2] * 2/3 * scale
     //   out[2] = (in[3] * 1/3 + in[3] * 1.0) * scale
     float scale = 1.0 / (height_scale * width_scale);
-    for (int64 b = 0; b < batch_size; ++b) {
-      for (int64 y = 0; y < out_height; ++y) {
+    for (int64_t b = 0; b < batch_size; ++b) {
+      for (int64_t y = 0; y < out_height; ++y) {
         const float in_y = y * height_scale;
         const float in_y1 = (y + 1) * height_scale;
         // The start and end height indices of all the cells that could
         // contribute to the target cell.
-        int64 y_start = std::floor(in_y);
-        int64 y_end = std::ceil(in_y1);
+        int64_t y_start = std::floor(in_y);
+        int64_t y_end = std::ceil(in_y1);
 
-        for (int64 x = 0; x < out_width; ++x) {
+        for (int64_t x = 0; x < out_width; ++x) {
           const float in_x = x * width_scale;
           const float in_x1 = (x + 1) * width_scale;
           // The start and end width indices of all the cells that could
           // contribute to the target cell.
-          int64 x_start = std::floor(in_x);
-          int64 x_end = std::ceil(in_x1);
+          int64_t x_start = std::floor(in_x);
+          int64_t x_end = std::ceil(in_x1);
 
           sum_data.setConstant(0.0);
-          for (int64 i = y_start; i < y_end; ++i) {
+          for (int64_t i = y_start; i < y_end; ++i) {
             float scale_y = i < in_y
                                 ? (i + 1 > in_y1 ? height_scale : i + 1 - in_y)
                                 : (i + 1 > in_y1 ? in_y1 - i : 1.0);
-            for (int64 j = x_start; j < x_end; ++j) {
+            for (int64_t j = x_start; j < x_end; ++j) {
               float scale_x = j < in_x
                                   ? (j + 1 > in_x1 ? width_scale : j + 1 - in_x)
                                   : (j + 1 > in_x1 ? in_x1 - j : 1.0);
-              for (int64 c = 0; c < channels; ++c) {
+              for (int64_t c = 0; c < channels; ++c) {
 #define BOUND(val, limit) \
   std::min(((limit)-int64{1}), (std::max(int64{0}, (val))))
                 sum_data(c) +=
@@ -137,7 +137,7 @@ class ResizeAreaOpTest : public OpsTestBase {
               }
             }
           }
-          for (int64 c = 0; c < channels; ++c) {
+          for (int64_t c = 0; c < channels; ++c) {
             output_data(b, y, x, c) = sum_data(c);
           }
         }

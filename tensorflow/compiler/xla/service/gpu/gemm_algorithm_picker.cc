@@ -65,7 +65,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
   }
 
   const HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
-  const int32 cublas_autotune_level =
+  const int32_t cublas_autotune_level =
       gemm->GetModule()->config().debug_options().xla_gpu_autotune_level();
   const bool init_cublas_data = cublas_autotune_level >= 2;
   const bool reinit_cublas_data = cublas_autotune_level >= 3;

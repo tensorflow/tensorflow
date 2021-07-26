@@ -78,9 +78,9 @@ std::vector<int64> IntTensorAsVector(const Tensor& t) {
   std::vector<int64> result;
   result.reserve(t.NumElements());
   for (int i = 0; i < t.NumElements(); i++) {
-    int64 element = t.dtype() == DT_INT32
-                        ? static_cast<int64>(t.flat<int32>()(i))
-                        : t.flat<int64>()(i);
+    int64_t element = t.dtype() == DT_INT32
+                          ? static_cast<int64>(t.flat<int32>()(i))
+                          : t.flat<int64>()(i);
     result.push_back(element);
   }
   return result;
@@ -149,7 +149,7 @@ class ConstantCache {
                          const std::vector<const Edge*>& control_deps)
       : scope_(s), control_deps_(control_deps) {}
 
-  Output Get1DHostConstant(int64 constant) {
+  Output Get1DHostConstant(int64_t constant) {
     auto it = cache_.find(constant);
     if (it == cache_.end()) {
       Output new_const =
@@ -182,7 +182,7 @@ Status ComputeSliceSize(const Scope& host_scope,
   // IsRewritableSlice.
 
   if (absl::c_all_of(slice_inputs.size_as_vector,
-                     [](int64 i) { return i >= 0; })) {
+                     [](int64_t i) { return i >= 0; })) {
     *size = slice_inputs.size;
     return Status::OK();
   }
@@ -333,8 +333,9 @@ StatusOr<bool> ShouldRewriteSlice(Node* n) {
 
   // If slice_size[i] < -1 for any i then executing the slice will throw an
   // error, and we don't do anything here.
-  bool slice_size_has_error = absl::c_all_of(
-      slice_inputs->size_as_vector, [](int64 size_i) { return size_i >= -1; });
+  bool slice_size_has_error =
+      absl::c_all_of(slice_inputs->size_as_vector,
+                     [](int64_t size_i) { return size_i >= -1; });
   if (!slice_size_has_error) {
     return false;
   }

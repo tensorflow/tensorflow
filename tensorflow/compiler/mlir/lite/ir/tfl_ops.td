@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// LINT.IfChange
 // This is the operation definition file for TensorFlow Lite.
 
 #ifndef TFL_OPS
@@ -5062,3 +5063,5 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
 }
 
 #endif // TFL_OPS
+
+// LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)

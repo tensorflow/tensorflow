@@ -200,21 +200,21 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         const std::vector<ServiceExecutableRunOptions>&,
         const std::vector<absl::Span<const ShapedBuffer* const>>&)>
         execution_helper,
-    std::function<int64(int64)> argument_count_provider,
-    std::function<const Literal*(int64, int64)> argument_provider,
+    std::function<int64(int64_t)> argument_count_provider,
+    std::function<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   std::vector<std::unique_ptr<se::Stream>> streams;
   std::vector<ServiceExecutableRunOptions> service_run_options;
-  int64 num_partitions = device_assignment->computation_count();
+  int64_t num_partitions = device_assignment->computation_count();
 
   std::vector<ScopedShapedBuffer> argument_buffers;
   // This reserve() call is necessary for correctness, because
   // argument_buffer_ptrs contains pointers into the elements of
   // argument_buffers.
-  const int64 total_argument_count = [&]() {
-    int64 total = 0;
-    for (int64 i = 0; i < options.num_replicas; ++i) {
+  const int64_t total_argument_count = [&]() {
+    int64_t total = 0;
+    for (int64_t i = 0; i < options.num_replicas; ++i) {
       total += argument_count_provider(i);
     }
     return total;
@@ -226,10 +226,11 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   std::vector<const ShapedBuffer*> argument_buffer_ptrs(total_argument_count +
                                                         1);
   std::vector<absl::Span<const ShapedBuffer* const>> argument_buffer_slices;
-  int64 index = 0;
+  int64_t index = 0;
   RunId run_id;
-  for (int64 i = 0; i < options.num_replicas; ++i) {
-    int64 device = (*device_assignment)(i / num_partitions, i % num_partitions);
+  for (int64_t i = 0; i < options.num_replicas; ++i) {
+    int64_t device =
+        (*device_assignment)(i / num_partitions, i % num_partitions);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend().stream_executor(device));
     streams.push_back(absl::make_unique<se::Stream>(executor));
@@ -238,8 +239,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         device, streams.back().get(), device_assignment, run_id));
 
     // Copy arguments to device.
-    const int64 argument_count = argument_count_provider(i);
-    for (int64 arg_index = 0; arg_index < argument_count; arg_index++) {
+    const int64_t argument_count = argument_count_provider(i);
+    for (int64_t arg_index = 0; arg_index < argument_count; arg_index++) {
       const Literal* const argument = argument_provider(i, arg_index);
       TF_RET_CHECK(argument != nullptr);
       TF_ASSIGN_OR_RETURN(
@@ -259,7 +260,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
   TF_RET_CHECK(options.infeed_values.empty() ||
                options.infeed_values.size() == options.num_replicas);
-  int64 num_threads = options.infeed_values.size();
+  int64_t num_threads = options.infeed_values.size();
   if (ShapeUtil::IsInitialized(options.outfeed_shape)) {
     num_threads += options.num_replicas;
   }
@@ -269,14 +270,14 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         /*num_threads=*/num_threads);
   }
   if (!options.infeed_values.empty()) {
-    for (int64 i = 0; i < options.num_replicas; ++i) {
-      int64 device =
+    for (int64_t i = 0; i < options.num_replicas; ++i) {
+      int64_t device =
           (*device_assignment)(i / num_partitions, i % num_partitions);
       pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
             backend().stream_executor(device).ValueOrDie();
         VLOG(1) << "Starting infeed on device " << device;
-        for (int64 step = 1;
+        for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralToInfeed(
               executor, *options.infeed_values[i]));
@@ -291,14 +292,14 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     if (options.outfeed_values) {
       options.outfeed_values->resize(options.num_replicas);
     }
-    for (int64 i = 0; i < options.num_replicas; ++i) {
-      int64 device =
+    for (int64_t i = 0; i < options.num_replicas; ++i) {
+      int64_t device =
           (*device_assignment)(i / num_partitions, i % num_partitions);
       pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
             backend().stream_executor(device).ValueOrDie();
         VLOG(1) << "Starting outfeed on device " << device;
-        for (int64 step = 1;
+        for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
           Literal literal(options.outfeed_shape);
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
@@ -321,7 +322,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   LOG(INFO) << "Replicated execution terminated";
 
   std::vector<Literal> exec_results;
-  for (int64 i = 0; i < options.num_replicas; ++i) {
+  for (int64_t i = 0; i < options.num_replicas; ++i) {
     TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
     TF_ASSIGN_OR_RETURN(Literal literal,
                         backend().transfer_manager()->TransferLiteralFromDevice(
@@ -353,7 +354,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
                       << " replicas";
             tensorflow::thread::ThreadPool pool(
                 tensorflow::Env::Default(), "replicas", options.num_replicas);
-            for (int64 i = 0; i < options.num_replicas; ++i) {
+            for (int64_t i = 0; i < options.num_replicas; ++i) {
               pool.Schedule([&, i] {
                 auto result = executable->ExecuteOnStream(
                     &service_run_options[i], argument_buffer_slices[i],
@@ -375,15 +376,15 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         }
         return results;
       },
-      [&](int64 replica) { return options.arguments.size(); },
-      [&](int64 replica, int64 index) { return options.arguments[index]; },
+      [&](int64_t replica) { return options.arguments.size(); },
+      [&](int64_t replica, int64_t index) { return options.arguments[index]; },
       options, device_assignment);
 }
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    std::function<Executable*(int64)> executable_provider,
-    std::function<int64(int64)> argument_count_provider,
-    std::function<const Literal*(int64, int64)> argument_provider,
+    std::function<Executable*(int64_t)> executable_provider,
+    std::function<int64(int64_t)> argument_count_provider,
+    std::function<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options) {
   TF_ASSIGN_OR_RETURN(
       DeviceAssignment device_assignment,
@@ -403,7 +404,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
                     << " replicas";
           tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(),
                                               "replicas", options.num_replicas);
-          for (int64 i = 0; i < options.num_replicas; ++i) {
+          for (int64_t i = 0; i < options.num_replicas; ++i) {
             for (const auto& arg : argument_buffer_slices[i]) {
               TF_RET_CHECK(arg != nullptr);
             }
@@ -455,7 +456,7 @@ StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
 }
 
 ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
-    int64 device, se::Stream* stream, DeviceAssignment* device_assignment,
+    int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
     RunId run_id) {
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(device);

@@ -108,7 +108,7 @@ class SparseDenseBinaryOpShared : public OpKernel {
 
     Tensor *output_values = nullptr;
     Tensor dense_gathered;
-    const int64 nnz = indices_t->dim_size(0);
+    const int64_t nnz = indices_t->dim_size(0);
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({nnz}), &output_values));
     OP_REQUIRES_OK(

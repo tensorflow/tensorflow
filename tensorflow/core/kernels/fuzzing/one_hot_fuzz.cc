@@ -36,8 +36,8 @@ class FuzzOneHot : public FuzzSession {
   }
 
   void FuzzImpl(const uint8_t* data, size_t size) override {
-    int64 input_size;
-    int32 depth;
+    int64_t input_size;
+    int32_t depth;
     uint8 on, off;
     const uint8_t* input_data;
 

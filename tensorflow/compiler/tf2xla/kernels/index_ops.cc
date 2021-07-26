@@ -44,7 +44,7 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
                   "dim must be a scalar, but received tensor of shape: ",
                   dimension_shape.DebugString()));
 
-  int64 dim;
+  int64_t dim;
   OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &dim));
 
   const int input_dims = input_shape.dims();
@@ -54,7 +54,7 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
       ctx, axis >= 0 && axis < input_dims,
       errors::InvalidArgument("Expected dimension in the range [", -input_dims,
                               ", ", input_dims, "), but got ", dim));
-  const int64 axis_size = input_shape.dim_size(axis);
+  const int64_t axis_size = input_shape.dim_size(axis);
   OP_REQUIRES(
       ctx, axis_size > 0,
       errors::InvalidArgument("Reduction axis ", dim, " is empty in shape ",

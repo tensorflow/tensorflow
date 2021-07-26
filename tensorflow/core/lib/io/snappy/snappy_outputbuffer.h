@@ -52,8 +52,8 @@ class SnappyOutputBuffer : public WritableFile {
   // 2. the deflated output
   // with sizes `input_buffer_bytes` and `output_buffer_bytes` respectively.
   // Does not take ownership of `file`.
-  SnappyOutputBuffer(WritableFile* file, int32 input_buffer_bytes,
-                     int32 output_buffer_bytes);
+  SnappyOutputBuffer(WritableFile* file, int32_t input_buffer_bytes,
+                     int32_t output_buffer_bytes);
 
   // Per convention, the dtor does not call Flush() or Close(). We expect the
   // caller to call those manually when done.

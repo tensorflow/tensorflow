@@ -29,7 +29,7 @@ namespace {
 
 template <DataType DT>
 Status HandleSliceToElement(const Tensor& parent, Tensor* element,
-                            int64 index) {
+                            int64_t index) {
   typedef typename EnumToDataType<DT>::Type T;
   DCHECK_NE(parent.dim_size(0), 0);
   DCHECK_GE(index, 0);
@@ -49,7 +49,7 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element,
 
 }  // namespace
 
-QueueBase::QueueBase(int32 capacity, const DataTypeVector& component_dtypes,
+QueueBase::QueueBase(int32_t capacity, const DataTypeVector& component_dtypes,
                      const std::vector<TensorShape>& component_shapes,
                      const string& name)
     : capacity_(capacity),
@@ -100,8 +100,8 @@ Status QueueBase::MatchesNodeDefOp(const NodeDef& node_def,
 }
 
 Status QueueBase::MatchesNodeDefCapacity(const NodeDef& node_def,
-                                         int32 capacity) const {
-  int32 requested_capacity = -1;
+                                         int32_t capacity) const {
+  int32_t requested_capacity = -1;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "capacity", &requested_capacity));
   if (requested_capacity < 0) requested_capacity = kUnbounded;
   if (requested_capacity != capacity) {
@@ -160,7 +160,7 @@ Status QueueBase::ValidateTuple(const Tuple& tuple) {
 //   reduce the number of times that they are called.
 Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
   TF_RETURN_IF_ERROR(ValidateTupleCommon(tuple));
-  const int64 batch_size = tuple[0].dim_size(0);
+  const int64_t batch_size = tuple[0].dim_size(0);
   if (specified_shapes()) {
     for (size_t i = 0; i < tuple.size(); ++i) {
       // Expected shape is [batch_size] + component_shapes_[i]
@@ -335,13 +335,13 @@ void QueueBase::FlushUnlocked() {
 }
 
 Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
-                                     int64 index) {
+                                     int64_t index) {
   return batch_util::CopySliceToElement(parent, element, index);
 }
 
 /* static */
 Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                     int64 index) {
+                                     int64_t index) {
   return batch_util::CopyElementToSlice(element, parent, index);
 }
 

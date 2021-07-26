@@ -1070,8 +1070,9 @@ def linspace(  # pylint: disable=missing-docstring
   else:
     # math_ops.linspace does not support endpoint=False so we manually handle it
     # here.
-    if num > 1:
+    if num > 0:
       step = ((stop - start) / num)
+    if num > 1:
       new_stop = math_ops.cast(stop, step.dtype) - step
       start = math_ops.cast(start, new_stop.dtype)
       result = math_ops.linspace(start, new_stop, num, axis=axis)

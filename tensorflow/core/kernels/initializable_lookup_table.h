@@ -183,7 +183,7 @@ class InitializableLookupTable : public LookupInterface {
   // calling get_expected_num_elements if size is not needed for DoPrepare.
   virtual Status DoLazyPrepare(
       std::function<int64(void)> get_expected_num_elements) {
-    int64 expected_num_elements = get_expected_num_elements();
+    int64_t expected_num_elements = get_expected_num_elements();
     if (expected_num_elements < 0) {
       return errors::FailedPrecondition("Got negative expected_num_elements.");
     }

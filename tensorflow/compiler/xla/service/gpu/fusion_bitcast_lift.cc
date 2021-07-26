@@ -136,7 +136,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             VLOG(3) << "kParameter: " << i->ToString();
             // Replace the parameter inside the fusion.
             Shape new_shape = i->users()[0]->shape();
-            int64 parameter_number = i->parameter_number();
+            int64_t parameter_number = i->parameter_number();
             string name = i->name();
             auto n = HloInstruction::CreateParameter(parameter_number,
                                                      new_shape, name);

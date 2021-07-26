@@ -226,6 +226,291 @@ static bool HasCanonicalDimensionNumbers(
   return true;
 }
 
+//===----------------------------------------------------------------------===//
+// mhlo.Einsum conversion patterns.
+//===----------------------------------------------------------------------===//
+
+// Looks through a set of dimension that has been marked as reduction axes,
+// if it is found within the set, then we set it as "reduction", otherwise
+// we can label it as "parallel".
+SmallVector<StringRef, 3> GetEinsumLoopsAttrs(
+    const llvm::SmallSetVector<StringRef, 4>& input_ind,
+    const llvm::SmallSetVector<StringRef, 4>& reduction_dims) {
+  SmallVector<StringRef, 3> res;
+  for (StringRef dim : input_ind) {
+    if (!reduction_dims.contains(dim)) {
+      res.push_back(getParallelIteratorTypeName());
+    } else {
+      res.push_back(getReductionIteratorTypeName());
+    }
+  }
+  return res;
+}
+
+SmallVector<Value, 2> ExtractDynamicEinsumSizes(
+    OpBuilder& b, Location loc, Value lhs, Value rhs,
+    const SmallVector<std::string>& lhs_loop_vec,
+    const SmallVector<std::string>& rhs_loop_vec,
+    const SmallVector<std::string>& output_loop_vec) {
+  SmallVector<Value, 2> dyn_sizes;
+  for (const std::string& dim_ind : output_loop_vec) {
+    Value dim_size;
+    auto dim_ind_it =
+        std::find(lhs_loop_vec.begin(), lhs_loop_vec.end(), dim_ind);
+    if (dim_ind_it != lhs_loop_vec.end()) {
+      // Query from lhs vars.
+      auto dim_ind_pos = dim_ind_it - lhs_loop_vec.begin();
+      auto lhs_shape = lhs.getType().dyn_cast<RankedTensorType>().getShape();
+      if (lhs_shape[dim_ind_pos] != ShapedType::kDynamicSize) continue;
+      dim_size = b.create<tensor::DimOp>(loc, lhs, dim_ind_pos);
+    } else {
+      // query from rhs vars.
+      dim_ind_it = std::find(rhs_loop_vec.begin(), rhs_loop_vec.end(), dim_ind);
+      auto dim_ind_pos = dim_ind_it - rhs_loop_vec.begin();
+      auto rhs_shape = rhs.getType().dyn_cast<RankedTensorType>().getShape();
+      if (rhs_shape[dim_ind_pos] != ShapedType::kDynamicSize) continue;
+      dim_size = b.create<tensor::DimOp>(loc, rhs, dim_ind_pos);
+    }
+    dyn_sizes.push_back(dim_size);
+  }
+  return dyn_sizes;
+}
+
+// Adds indices/axes that are missing from output set.
+llvm::SmallSetVector<StringRef, 4> FindSummationAxes(
+    const llvm::SmallSetVector<StringRef, 4>& input_set,
+    const llvm::SmallSetVector<StringRef, 4>& output_set) {
+  llvm::SmallSetVector<StringRef, 4> summation_axes;
+  for (StringRef ind : input_set) {
+    if (!output_set.contains(ind)) summation_axes.insert(ind);
+  }
+  return summation_axes;
+}
+
+// Given a 1:1 map from std::string -> affine dimension expression
+// we can get the affine expression of dimensions that an
+// operand will access based on the input_str of einsum_config.
+// For example:
+// let string_dim_umap = {'a' : d0, 'b' : d1, 'c' : d2}
+// for einsum_config "abc,cb->acb"
+// first_input_operand will get umap[{"a","b","c"}] -> (d0, d1, d2).
+// second_input_operand will get umap[{"c","b"}] -> (d2, d1).
+// ouput_operand will get umap[{"a","c","b"}] -> (d0, d2, d1).
+SmallVector<AffineExpr> GetExprFromConfig(
+    const SmallVector<std::string>& loop_dims,
+    const DenseMap<StringRef, AffineExpr>& str_affine_dim_umap) {
+  SmallVector<AffineExpr> exprs;
+  for (const auto& dim : loop_dims) {
+    exprs.push_back(str_affine_dim_umap.lookup(dim));
+  }
+  return exprs;
+}
+
+// Convert mhlo.einsum op into linalg.generic.
+// Algorithm in general 3 steps:
+
+// Step1) Dissect entire einsum_config to different operands
+// e.g f("abc,cd->abd") = {lhs:["abc"], rhs:["cd"], out:["abd"]}.
+
+// Step2) Split up the string into vector of the elements
+// e.g {lhs:["abc"], rhs:["cd"], out:["abd"]} = {lhs:["a","b","c"],
+// rhs:["c","d"], out:["a","b","d"]}.
+
+// Step3) Convert the vector into data access
+// patern represented by affineMaps with affineDimensions e.g
+// {lhs:["a","b","c"], rhs:["c","d"], out:["a","b","d"]} = {lhs:[d0,d1,d2],
+// rhs:[d2,d3], out:[d0,d1,d3]}.
+class EinsumToLinalgConverter : public OpConversionPattern<mhlo::EinsumOp> {
+ public:
+  using OpConversionPattern<mhlo::EinsumOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::EinsumOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    mhlo::EinsumOp::Adaptor adaptor(args);
+    auto get_rank = [](Value v) {
+      return v.getType().cast<ShapedType>().getRank();
+    };
+    auto einsum_config = op.einsum_config();
+
+    // With the assumption of binary input operand and single output
+    // get the inputs and output operands' indices.
+    // einsum_config = "lhs_loop,rhs_loop->out_loop"
+    std::size_t pos_arrow = einsum_config.find(kArrow);
+    std::size_t pos_comma = einsum_config.find(kComma);
+
+    StringRef lhs_loop = einsum_config.substr(0, pos_comma);
+    StringRef rhs_loop = einsum_config.substr(
+        pos_comma + kComma.size(), pos_arrow - (pos_comma + kComma.size()));
+    StringRef out_loop = einsum_config.substr(pos_arrow + kArrow.size());
+
+    // Check for Invalid Configs.
+    // 1.Check that there is only maximum 2 inputs
+    // 2.Check that there is only maximum 1 output
+    // 3.Check that there is 1 kArrow
+    if (rhs_loop.find(kComma) != std::string::npos ||
+        out_loop.find(kComma) != std::string::npos ||
+        out_loop.find(kArrow) != std::string::npos) {
+      return rewriter.notifyMatchFailure(op, "Invalid einsum config!");
+    }
+
+    // Find result type, if on tensors.
+    auto result_ty = this->typeConverter
+                         ->convertType(GetHloOpResultType</*isLHLO=*/false>(op))
+                         .dyn_cast<RankedTensorType>();
+
+    // Check result type compatibility.
+    if (!result_ty || !(result_ty.getElementType().isSignlessIntOrFloat())) {
+      return rewriter.notifyMatchFailure(op, "Invalid result type");
+    }
+
+    // Convert the representation to vector<string>.
+    SmallVector<std::string> lhs_ein =
+        GetEinsumConfigAsVector(lhs_loop, get_rank(adaptor.lhs()));
+    SmallVector<std::string> rhs_ein =
+        GetEinsumConfigAsVector(rhs_loop, get_rank(adaptor.rhs()));
+    SmallVector<std::string> out_ein =
+        GetEinsumConfigAsVector(out_loop, result_ty.getRank());
+
+    if (!CheckBatchHasEqualRank(lhs_ein.size(), lhs_loop, rhs_ein.size(),
+                                rhs_loop, out_ein.size(), out_loop)) {
+      return rewriter.notifyMatchFailure(
+          op, "Invalid elipsis('...') within einsum config!");
+    }
+
+    // Find all unique indices in the input and output.
+    llvm::SmallSetVector<StringRef, 4> input_ind;
+    llvm::SmallSetVector<StringRef, 4> output_ind;
+
+    input_ind.insert(lhs_ein.begin(), lhs_ein.end());
+    input_ind.insert(rhs_ein.begin(), rhs_ein.end());
+    output_ind.insert(out_ein.begin(), out_ein.end());
+
+    llvm::SmallSetVector<StringRef, 4> reduction_axe =
+        FindSummationAxes(input_ind, output_ind);
+
+    // Find input/output values and types.
+    auto loc = op.getLoc();
+
+    // Prepare init tensor for linalg.generic op.
+    auto dyn_sizes = ExtractDynamicEinsumSizes(
+        rewriter, loc, adaptor.lhs(), adaptor.rhs(), lhs_ein, rhs_ein, out_ein);
+    Value output = GetInitTensor(rewriter, loc, result_ty, dyn_sizes);
+    if (!reduction_axe.empty()) {
+      auto zero_attr = rewriter.getZeroAttr(result_ty.getElementType());
+      Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
+      output = rewriter.create<linalg::FillOp>(loc, zero, output).getResult(0);
+    }
+
+    // Create indexing maps.
+    // Create a 1:1 map from f:strDimension -> affineDimension.
+    int64_t nloops = input_ind.size();
+    DenseMap<StringRef, AffineExpr> str_affine_dim_umap;
+    for (auto it : llvm::enumerate(input_ind)) {
+      str_affine_dim_umap[it.value()] = rewriter.getAffineDimExpr(it.index());
+    }
+
+    // From einsum_config of each operand in vector<string>, generate
+    // the equivalent vector<AffineExpr>.
+    SmallVector<AffineMap, 4> maps;
+    for (const SmallVector<std::string>& loop_operand :
+         {lhs_ein, rhs_ein, out_ein}) {
+      auto exprs = GetExprFromConfig(loop_operand, str_affine_dim_umap);
+      maps.push_back(AffineMap::get(nloops, 0, exprs, rewriter.getContext()));
+    }
+
+    auto linalg_op = rewriter.create<linalg::GenericOp>(
+        loc, result_ty ? result_ty : TypeRange{}, args, output, maps,
+        GetEinsumLoopsAttrs(input_ind, reduction_axe),
+        [&](OpBuilder& b, Location nested_loc, ValueRange args) {
+          Value result_val =
+              b.create<mlir::MulFOp>(nested_loc, args[0], args[1]);
+          if (!reduction_axe.empty()) {
+            result_val =
+                b.create<mlir::AddFOp>(nested_loc, args[2], result_val);
+          }
+          b.create<linalg::YieldOp>(nested_loc, result_val);
+        });
+    rewriter.replaceOp(op, linalg_op.getResults());
+    return success();
+  }
+
+ private:
+  static constexpr StringRef kArrow = "->";
+  static constexpr StringRef kComma = ",";
+  static constexpr StringRef kEllipsis = "...";
+
+  static bool CheckBatchHasEqualRank(size_t lhs_rank, StringRef lhs_loop,
+                                     size_t rhs_rank, StringRef rhs_loop,
+                                     size_t out_rank, StringRef out_loop);
+  static SmallVector<std::string> GetEinsumConfigAsVector(StringRef loop,
+                                                          size_t operand_rank);
+};
+
+// Definition of util const member variables.
+constexpr StringRef EinsumToLinalgConverter::kArrow;
+constexpr StringRef EinsumToLinalgConverter::kComma;
+constexpr StringRef EinsumToLinalgConverter::kEllipsis;
+
+// Convert the representation from string/vector<char> to vector<string>.
+// i.e ("abc") -> {"a", "b", "c"}. For cases with ellipsis with batch rank 3:
+// get loop_dim = f("ab...cde") = {"a","b","0","1","2","c","d","e"}
+SmallVector<std::string> EinsumToLinalgConverter::GetEinsumConfigAsVector(
+    StringRef loop, size_t operand_rank) {
+  SmallVector<std::string> loop_dim;
+  size_t pre_elip = loop.find(kEllipsis);
+  bool has_elip = pre_elip != std::string::npos;
+  if (!has_elip) pre_elip = loop.size();
+  // Add the dimension until the end or up to ellipsis if it exist.
+  for (int pre_elip_ind = 0; pre_elip_ind < pre_elip; pre_elip_ind++) {
+    loop_dim.push_back(loop.substr(pre_elip_ind, 1).str());
+  }
+  if (!has_elip) return loop_dim;
+  // Case where Ellipsis presence:
+  size_t non_batch_rank = loop.size() - kEllipsis.size();
+  size_t batch_rank = operand_rank - non_batch_rank;
+  // Add the batch dimension ("0",...,"N") where N is rank of batch into the
+  // loop.
+  for (int batch_ind = 0; batch_ind < batch_rank; batch_ind++) {
+    loop_dim.push_back(std::to_string(batch_ind));
+  }
+  // Add the dimension after ellipsis into the loop.
+  int post_elip = pre_elip + kEllipsis.size();
+  for (int post_elip_ind = post_elip; post_elip_ind < loop.size();
+       post_elip_ind++) {
+    loop_dim.push_back(loop.substr(post_elip_ind, 1).str());
+  }
+  return loop_dim;
+}
+
+// Returns true if all operand's batch has same rank.
+bool EinsumToLinalgConverter::CheckBatchHasEqualRank(
+    size_t lhs_rank, StringRef lhs_loop, size_t rhs_rank, StringRef rhs_loop,
+    size_t out_rank, StringRef out_loop) {
+  SmallVector<int, 3> batch_rank_vec;
+  if (lhs_rank != lhs_loop.size()) {
+    size_t lhs_batch_rank = lhs_rank - (lhs_loop.size() - kEllipsis.size());
+    batch_rank_vec.push_back(lhs_batch_rank);
+  }
+  if (rhs_rank != rhs_loop.size()) {
+    size_t rhs_batch_rank = rhs_rank - (rhs_loop.size() - kEllipsis.size());
+    batch_rank_vec.push_back(rhs_batch_rank);
+  }
+  if (out_rank != out_loop.size()) {
+    size_t out_batch_rank = out_rank - (out_loop.size() - kEllipsis.size());
+    batch_rank_vec.push_back(out_batch_rank);
+  }
+  bool batch_has_equal_rank = true;
+
+  // Condition is valid if only 1 operand or less have batches.
+  if (batch_rank_vec.size() < 2) return batch_has_equal_rank;
+  if (!std::equal(batch_rank_vec.begin() + 1, batch_rank_vec.end(),
+                  batch_rank_vec.begin()) &&
+      batch_rank_vec.size() > 1)
+    batch_has_equal_rank = false;
+  return batch_has_equal_rank;
+}
+
 template <typename OpTy, bool isLHLO = true>
 class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
  public:
@@ -2126,17 +2411,6 @@ struct ReduceWindowOpOnTensorsConversion
       Value filled_init_tensor =
           rewriter.create<linalg::FillOp>(loc, init_value, init_tensor)
               .getResult(0);
-      // TODO(hanchung): Remove create_op_tc after migrating Linalg tc ops to
-      // Linalg yaml ops. The order of attributes is different.
-      auto create_op_tc = [&](auto* type_ptr) -> linalg::LinalgOp {
-        return cast<linalg::LinalgOp>(
-            rewriter
-                .create<std::remove_pointer_t<decltype(type_ptr)>>(
-                    loc, ArrayRef<Type>{result_type},
-                    ValueRange{input, fake_window_dims.getResult()},
-                    filled_init_tensor, dilations, strides)
-                .getOperation());
-      };
       auto create_op = [&](auto* type_ptr) -> linalg::LinalgOp {
         return cast<linalg::LinalgOp>(
             rewriter
@@ -2151,7 +2425,7 @@ struct ReduceWindowOpOnTensorsConversion
       switch (pooling_type) {
         case PoolingType::k2DMin: {
           pooling_op =
-              create_op_tc(static_cast<linalg::PoolingNHWCMinFOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNhwcMinOp*>(nullptr));
           break;
         }
         case PoolingType::k3DMin: {
@@ -2161,7 +2435,7 @@ struct ReduceWindowOpOnTensorsConversion
         }
         case PoolingType::k2DMax: {
           pooling_op =
-              create_op_tc(static_cast<linalg::PoolingNHWCMaxFOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNhwcMaxOp*>(nullptr));
           break;
         }
         case PoolingType::k3DMax: {
@@ -2171,7 +2445,7 @@ struct ReduceWindowOpOnTensorsConversion
         }
         case PoolingType::k2DAdd: {
           pooling_op =
-              create_op_tc(static_cast<linalg::PoolingNHWCSumFOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNhwcSumOp*>(nullptr));
           break;
         }
         case PoolingType::k3DAdd: {
@@ -2661,6 +2935,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       BroadcastConverter<mhlo::BroadcastOp, false>, ConcatenateConverter,
       ConstConverterTensor, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
+      EinsumToLinalgConverter,
       IotaConverter<mhlo::DynamicIotaOp, false>,
       PointwiseToLinalgConverter<mhlo::AbsOp, false>,
       PointwiseToLinalgConverter<mhlo::AddOp, false>,

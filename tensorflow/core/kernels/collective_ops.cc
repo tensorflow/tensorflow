@@ -25,8 +25,8 @@ namespace tensorflow {
 
 namespace {
 
-static string CollectiveKey(OpKernelContext* ctx, int32 group_key,
-                            int32 instance_key) {
+static string CollectiveKey(OpKernelContext* ctx, int32_t group_key,
+                            int32_t instance_key) {
   return strings::StrCat(group_key, ":", instance_key, ":",
                          ctx->frame_iter().frame_id, ":",
                          ctx->frame_iter().iter_id);
@@ -98,8 +98,7 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
   // immediately.
   bool CanProceedWithCompute(OpKernelContext* c, CollectiveExecutor* col_exec,
                              const DoneCallback& done) {
-    if (col_params_->group.group_size >
-        col_params_->group.device_names.size()) {
+    if (col_params_->group.group_size > col_params_->group.devices.size()) {
       // This is the first invocation: Finish initializing col_params_.
       // Schedule the `CompleteParamsAsync` call on a work queue that can handle
       // blocking work because it's not guaranteed that this call cannot block.

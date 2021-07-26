@@ -36,7 +36,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("DenseToSparseBatchDataset only supports "
                                 "inputs with a single component."));
 
-    int64 batch_size;
+    int64_t batch_size;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument<int64>(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
@@ -76,7 +76,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
   template <class T>
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, int64 batch_size,
+    Dataset(OpKernelContext* ctx, int64_t batch_size,
             const PartialTensorShape& row_shape, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           batch_size_(batch_size),
@@ -113,7 +113,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override {
-      int64 n = input_->Cardinality();
+      int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
@@ -167,7 +167,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         // Each row of the output SparseTensor is an individual tensor
         // from the input iterator.
         std::vector<Tensor> batch_elements;
-        int64 total_elements = 0;
+        int64_t total_elements = 0;
         batch_elements.reserve(
             DatasetIterator<Dataset<T>>::dataset()->batch_size_);
         const PartialTensorShape& row_shape =
@@ -245,8 +245,8 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         auto indices_matrix = indices.matrix<int64>();
         auto values_flat = values.flat<T>();
 
-        int64 current_position_in_values = 0;
-        for (int64 i = 0; i < batch_elements.size(); ++i) {
+        int64_t current_position_in_values = 0;
+        for (int64_t i = 0; i < batch_elements.size(); ++i) {
           const Tensor& t = batch_elements[i];
           const auto& t_flat = t.flat<T>();
           // TODO(mrry): Replace with a memcpy or something more
@@ -261,10 +261,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
             }
           }
 
-          for (int64 j = 0; j < t.NumElements(); ++j) {
+          for (int64_t j = 0; j < t.NumElements(); ++j) {
             values_flat(current_position_in_values) = t_flat(j);
             indices_matrix(current_position_in_values, 0) = i;
-            int64 index = j;
+            int64_t index = j;
             for (size_t k = 0; k < strides.size(); ++k) {
               indices_matrix(current_position_in_values, k + 1) =
                   index / strides[k];

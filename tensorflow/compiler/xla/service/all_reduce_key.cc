@@ -48,7 +48,7 @@ absl::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
   const HloInstruction* to_apply_root = ar->to_apply()->root_instruction();
   // Domain metadata id returned by `GetDomainMetadataId` is guaranteed to be >=
   // 0, so use -1 when we don't need to track domain metadata id.
-  int64 domain_metadata_id =
+  int64_t domain_metadata_id =
       domain_map ? domain_map->GetDomainMetadataId(ar) : -1;
   return AllReduceKey{
       to_apply_root->opcode(),     to_apply_root->shape().element_type(),

@@ -21,11 +21,9 @@ import os
 if not os.path.splitext(__file__)[0].endswith(
     os.path.join("tflite_runtime", "analyzer")):
   # This file is part of tensorflow package.
-  from tensorflow.lite.tools import visualize
   from tensorflow.lite.python.analyzer_wrapper import _pywrap_analyzer_wrapper as _analyzer_wrapper
 else:
   # This file is part of tflite_runtime package.
-  from tflite_runtime import visualize
   from tflite_runtime import _pywrap_analyzer_wrapper as _analyzer_wrapper
 
 
@@ -55,38 +53,33 @@ class ModelAnalyzer:
   @staticmethod
   def analyze(model_path=None,
               model_content=None,
-              result_format="txt",
+              experimental_use_mlir=False,
               gpu_compatibility=False):
     """Analyzes the given tflite_model.
 
     Args:
       model_path: TFLite flatbuffer model path.
       model_content: TFLite flatbuffer model object.
-      result_format: txt|mlir|html|webserver.
+      experimental_use_mlir: Use MLIR format for model dump.
       gpu_compatibility: Whether to check GPU delegate compatibility.
-          It only works with 'txt' output for now.
 
     Returns:
-      Analyzed report with the given result_format.
+      Print analyzed report via console output.
     """
     if not model_path and not model_content:
       raise ValueError("neither `model_path` nor `model_content` is provided")
     if model_path:
+      print(f"=== {model_path} ===\n")
       tflite_model = model_path
       input_is_filepath = True
     else:
+      print("=== TFLite ModelAnalyzer ===\n")
       tflite_model = model_content
       input_is_filepath = False
 
-    if result_format == "txt":
-      return _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath,
-                                             gpu_compatibility)
-    elif result_format == "mlir":
-      return _analyzer_wrapper.FlatBufferToMlir(tflite_model, input_is_filepath)
-    elif result_format == "html":
-      return visualize.create_html(tflite_model, input_is_filepath)
-    elif result_format == "webserver":
-      html_body = visualize.create_html(tflite_model, input_is_filepath)
-      _handle_webserver("localhost", 8080, html_body)
+    if experimental_use_mlir:
+      print(_analyzer_wrapper.FlatBufferToMlir(tflite_model, input_is_filepath))
     else:
-      raise ValueError(f"result_format '{result_format}' is not supported")
+      print(
+          _analyzer_wrapper.ModelAnalyzer(tflite_model, input_is_filepath,
+                                          gpu_compatibility))

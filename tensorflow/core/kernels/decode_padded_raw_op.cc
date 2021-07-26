@@ -83,7 +83,7 @@ class DecodePaddedRawOp : public OpKernel {
     // output type is a single byte (meaning the ordering doesn't matter), we
     // can copy the memory directly.
     if (!convert_data_endianness_ || sizeof(T) == 1) {
-      for (int64 i = 0; i < flat_in.size(); ++i) {
+      for (int64_t i = 0; i < flat_in.size(); ++i) {
         const auto to_copy =
             std::min(flat_in(i).size(), static_cast<size_t>(fixed_length));
         memcpy(out_data, flat_in(i).data(), to_copy);
@@ -95,7 +95,7 @@ class DecodePaddedRawOp : public OpKernel {
     } else {
       // Otherwise, the data is not in the host's byte order, and rather than a
       // direct copy, we need to reverse the byte ordering of each element.
-      for (int64 i = 0; i < flat_in.size(); ++i) {
+      for (int64_t i = 0; i < flat_in.size(); ++i) {
         const char* in_data_bytes =
             reinterpret_cast<const char*>(flat_in(i).data());
         char* out_data_bytes = reinterpret_cast<char*>(out_data);

@@ -22,8 +22,8 @@ namespace io {
 
 ZlibOutputBuffer::ZlibOutputBuffer(
     WritableFile* file,
-    int32 input_buffer_bytes,  // size of z_stream.next_in buffer
-    int32 output_buffer_bytes,
+    int32_t input_buffer_bytes,  // size of z_stream.next_in buffer
+    int32_t output_buffer_bytes,
     const ZlibCompressionOptions&
         zlib_options)  // size of z_stream.next_out buffer
     : file_(file),
@@ -94,9 +94,10 @@ void ZlibOutputBuffer::AddToInputBuffer(StringPiece data) {
   // If it doesn't fit we free the space at the head of the stream and then
   // append `data` at the end of existing data.
 
-  int32 read_bytes = z_stream_->next_in - z_stream_input_.get();
-  int32 unread_bytes = z_stream_->avail_in;
-  int32 free_tail_bytes = input_buffer_capacity_ - (read_bytes + unread_bytes);
+  int32_t read_bytes = z_stream_->next_in - z_stream_input_.get();
+  int32_t unread_bytes = z_stream_->avail_in;
+  int32_t free_tail_bytes =
+      input_buffer_capacity_ - (read_bytes + unread_bytes);
 
   if (static_cast<int32>(bytes_to_write) > free_tail_bytes) {
     memmove(z_stream_input_.get(), z_stream_->next_in, z_stream_->avail_in);

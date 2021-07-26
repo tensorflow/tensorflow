@@ -25,11 +25,11 @@ class PrefetchDatasetOpTest : public DatasetOpsTestBase {};
 class PrefetchDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  PrefetchDatasetParams(T input_dataset_params, int64 buffer_size,
+  PrefetchDatasetParams(T input_dataset_params, int64_t buffer_size,
                         DataTypeVector output_dtypes,
                         std::vector<PartialTensorShape> output_shapes,
-                        int64 slack_period, bool legacy_autotune,
-                        int64 buffer_size_min, string node_name)
+                        int64_t slack_period, bool legacy_autotune,
+                        int64_t buffer_size_min, string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         buffer_size_(buffer_size),

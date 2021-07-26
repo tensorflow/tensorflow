@@ -824,13 +824,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     // errors, deliberately ignore executor statuses in cleanup.
   });
   m.def(
-      "TFE_SetConfigKeyValue",
+      "TFE_InsertConfigKeyValue",
       [](py::handle& ctx, const char* config_key, const char* config_value) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
         Py_BEGIN_ALLOW_THREADS;
-        TFE_SetConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
-                              config_value, status.get());
+        TFE_InsertConfigKeyValue(tensorflow::InputTFE_Context(ctx), config_key,
+                                 config_value, status.get());
         Py_END_ALLOW_THREADS;
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
       },

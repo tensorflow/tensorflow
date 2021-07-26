@@ -241,8 +241,19 @@ class SliceTest(test.TestCase):
   def testSimple(self):
     with test_util.use_gpu():
       for dtype in [
-          np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64, np.bool,
-          np.float16, np.float32, np.float64, np.complex64, np.complex128,]:
+          np.uint8,
+          np.int8,
+          np.uint16,
+          np.int16,
+          np.int32,
+          np.int64,
+          np.bool_,
+          np.float16,
+          np.float32,
+          np.float64,
+          np.complex64,
+          np.complex128,
+      ]:
         inp = np.random.rand(4, 4).astype(dtype)
         a = constant_op.constant(
             [float(x) for x in inp.ravel(order="C")],

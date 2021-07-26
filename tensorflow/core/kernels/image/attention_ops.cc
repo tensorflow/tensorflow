@@ -68,14 +68,14 @@ class ExtractGlimpseOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32 num_dims = input_shape.dims();
+    const int32_t num_dims = input_shape.dims();
     OP_REQUIRES(
         context, num_dims == 4,
         errors::InvalidArgument(
             "input must be 4-dimensional (batch_size, height, width, depth)",
             input_shape.DebugString()));
 
-    const int64 batch_size = input_shape.dim_size(0);
+    const int64_t batch_size = input_shape.dim_size(0);
 
     const Tensor& window_size = context->input(1);
     OP_REQUIRES(context,
@@ -85,8 +85,8 @@ class ExtractGlimpseOp : public OpKernel {
                     "input must be a vector of size 2 (height, width)",
                     window_size.shape().DebugString()));
 
-    const int64 output_height = window_size.tensor<int, 1>()(0);
-    const int64 output_width = window_size.tensor<int, 1>()(1);
+    const int64_t output_height = window_size.tensor<int, 1>()(0);
+    const int64_t output_width = window_size.tensor<int, 1>()(1);
     TensorShape output_shape = input_shape;
     output_shape.set_dim(1, output_height);
     output_shape.set_dim(2, output_width);

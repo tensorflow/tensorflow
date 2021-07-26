@@ -24,17 +24,17 @@ namespace xla {
 
 class Semaphore {
  public:
-  explicit Semaphore(int64 capacity);
+  explicit Semaphore(int64_t capacity);
 
   // Acquires `amount` units. Blocks until `amount` units are available.
-  void Acquire(int64 amount);
+  void Acquire(int64_t amount);
 
   // Returns `amount` units to the semaphore.
-  void Release(int64 amount);
+  void Release(int64_t amount);
 
   class ScopedReservation {
    public:
-    ScopedReservation(Semaphore* semaphore, int64 amount)
+    ScopedReservation(Semaphore* semaphore, int64_t amount)
         : semaphore_(semaphore), amount_(amount) {}
     ~ScopedReservation();
 
@@ -49,7 +49,7 @@ class Semaphore {
   };
   // RAII version of Acquire. Releases the reservation when the
   // ScopedReservation is destroyed.
-  ScopedReservation ScopedAcquire(int64 amount);
+  ScopedReservation ScopedAcquire(int64_t amount);
 
  private:
   struct CanAcquireArgs {

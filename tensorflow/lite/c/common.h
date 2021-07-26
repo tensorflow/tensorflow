@@ -803,6 +803,18 @@ typedef struct TfLiteContext {
   // WARNING: This method may not be available on all platforms.
   TfLiteEvalTensor* (*GetEvalTensor)(const struct TfLiteContext* context,
                                      int tensor_idx);
+
+  // Retrieves named metadata buffer from the TFLite model.
+  // Returns kTfLiteOk if metadata is successfully obtained from the flatbuffer
+  // Model: that is, there exists a `metadata` entry with given `name` string.
+  // (see TFLite's schema.fbs).
+  // The corresponding `buffer` information is populated in `ptr` & `bytes`.
+  // The data from `ptr` is valid for the lifetime of the Interpreter.
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*GetModelMetadata)(const struct TfLiteContext* context,
+                                   const char* name, const char** ptr,
+                                   size_t* bytes);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {

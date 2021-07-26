@@ -52,7 +52,7 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), op_version_(ctx->def().op() == kDatasetToGraph ? 1 : 2) {
   if (op_version_ == 2) {
     if (ctx->HasAttr(kExternalStatePolicy)) {
-      int64 state_change_option;
+      int64_t state_change_option;
       OP_REQUIRES_OK(ctx,
                      ctx->GetAttr(kExternalStatePolicy, &state_change_option));
       external_state_policy_ =

@@ -1134,7 +1134,7 @@ TEST_F(HloInstructionTest, PartiallyElementwise) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {max, broadcast, div, mul}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
-  for (int64 operand_idx = 0; operand_idx < fusion->operand_count();
+  for (int64_t operand_idx = 0; operand_idx < fusion->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = fusion->operand(operand_idx);
     if (operand == p3) {
@@ -1175,7 +1175,7 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {sub, broadcast, min}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
-  for (int64 operand_idx = 0; operand_idx < fusion->operand_count();
+  for (int64_t operand_idx = 0; operand_idx < fusion->operand_count();
        ++operand_idx) {
     if (fusion->operand(operand_idx) == y) {
       EXPECT_FALSE(fusion->IsElementwiseOnOperand(operand_idx));

@@ -51,8 +51,8 @@ constexpr char kArgsList[] = "args_list_";
 class InterleaveDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
-          int64 block_length, const DataTypeVector& output_types,
+          std::unique_ptr<CapturedFunction> captured_func, int64_t cycle_length,
+          int64_t block_length, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
@@ -265,14 +265,14 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      int64 cycle_index;
+      int64_t cycle_index;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kCycleIndex), &cycle_index));
       cycle_index_ = size_t(cycle_index);
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kBlockIndex), &block_index_));
       if (reader->Contains(full_name(kEndOfInput))) end_of_input_ = true;
-      int64 num_open;
+      int64_t num_open;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumOpen), &num_open));
       num_open_ = size_t(num_open);
       TF_RETURN_IF_ERROR(RestoreCurrentElements(ctx, reader));
@@ -309,7 +309,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         if (reader->Contains(
                 full_name(strings::StrCat(kArgsSize, "[", idx, "]")))) {
-          int64 args_size;
+          int64_t args_size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               full_name(strings::StrCat(kArgsSize, "[", idx, "]")),
               &args_size));
@@ -383,7 +383,7 @@ InterleaveDatasetOp::InterleaveDatasetOp(OpKernelConstruction* ctx)
 
 void InterleaveDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                       DatasetBase** output) {
-  int64 cycle_length = 0;
+  int64_t cycle_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
   if (cycle_length == model::kAutotune) {
     cycle_length = port::MaxParallelism();
@@ -392,7 +392,7 @@ void InterleaveDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       ctx, cycle_length > 0,
       errors::InvalidArgument("cycle_length must be greater than zero."));
 
-  int64 block_length = 0;
+  int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(
       ctx, block_length > 0,

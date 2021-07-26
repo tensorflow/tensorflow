@@ -378,24 +378,6 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, BHWC* shape) {
   return absl::OkStatus();
 }
 
-absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
-  switch (fused_activation) {
-    case kTfLiteActNone:
-    case kTfLiteActRelu:
-    case kTfLiteActReluN1To1:
-    case kTfLiteActRelu6:
-    case kTfLiteActTanh:
-    case kTfLiteActSigmoid:
-      return absl::OkStatus();
-    case kTfLiteActSignBit:
-      return absl::UnimplementedError(
-          "TfLiteFusedActivation.kTfLiteActSignBit");
-
-      // Do not add default; we want compilation error rather than run-time
-      // error.
-  }
-}
-
 // If there is fused activation present, then there will be another node created
 // that will have identical output as the given node. New operation node will
 // depend on the given node output.

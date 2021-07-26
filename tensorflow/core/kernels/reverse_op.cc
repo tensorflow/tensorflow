@@ -44,11 +44,11 @@ namespace {
 template <typename T, int NUM_CHANNELS>
 void ReverseRows(OpKernelContext* context, const Tensor& input,
                  Tensor* result) {
-  auto work = [&input, result](int64 start, int64 end) {
-    const int64 inner_size =
+  auto work = [&input, result](int64_t start, int64_t end) {
+    const int64_t inner_size =
         NUM_CHANNELS > 0 ? NUM_CHANNELS : input.dim_size(2);
-    const int64 middle_size = input.dim_size(1);
-    const int64 row_size = inner_size * middle_size;
+    const int64_t middle_size = input.dim_size(1);
+    const int64_t row_size = inner_size * middle_size;
     DCHECK_EQ(input.dim_size(2), inner_size);
 
     const T* in_ptr = input.bit_casted_tensor<T, 3>().data();
@@ -72,8 +72,8 @@ void ReverseRows(OpKernelContext* context, const Tensor& input,
   };
 
   // Shard across outer dimension.
-  const int64 N = input.dim_size(0);
-  const int64 cost_per_unit = input.NumElements() / N;
+  const int64_t N = input.dim_size(0);
+  const int64_t cost_per_unit = input.NumElements() / N;
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
   Shard(worker_threads->num_threads, worker_threads->workers, N, cost_per_unit,
         std::move(work));

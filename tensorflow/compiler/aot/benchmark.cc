@@ -59,7 +59,7 @@ void DumpStatsToStdout(const Stats& stats) {
   const size_t count_trimmed = count_us * trim_ratio;
   const size_t count_best = count_us * best_ratio;
   for (size_t i = 0; i < sorted_us.size(); ++i) {
-    const int64 us = sorted_us[i];
+    const int64_t us = sorted_us[i];
     sum_us += us;
     if (i >= count_trimmed && i < count_us - count_trimmed) {
       sum_us_trimmed += us;
@@ -111,20 +111,20 @@ void DumpStatsToStdout(const Stats& stats) {
 
 void Benchmark(const Options& options, const BenchmarkFn& fn, Stats* stats) {
   // If neither max_seconds or max_iters is set, stop at kDefaultMicros.
-  const int64 max_us = (options.max_micros <= 0 && options.max_iters <= 0)
-                           ? Options::kDefaultMicros
-                           : options.max_micros;
+  const int64_t max_us = (options.max_micros <= 0 && options.max_iters <= 0)
+                             ? Options::kDefaultMicros
+                             : options.max_micros;
   // NOLINTNEXTLINE
   printf("Running benchmark for %lld us\n", static_cast<long long>(max_us));
-  const int64 start_us = NowMicros();
+  const int64_t start_us = NowMicros();
   int64_t iters = 0;
   while (true) {
-    const int64 iter_start_us = NowMicros();
+    const int64_t iter_start_us = NowMicros();
     fn();
-    const int64 end_us = NowMicros();
+    const int64_t end_us = NowMicros();
     // Collect stats and decide whether to stop.
     stats->per_iter_us.push_back(end_us - iter_start_us);
-    const int64 total_us = end_us - start_us;
+    const int64_t total_us = end_us - start_us;
     ++iters;
     if ((max_us > 0 && total_us >= max_us) ||
         (options.max_iters > 0 && iters >= options.max_iters)) {

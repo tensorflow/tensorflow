@@ -29,7 +29,7 @@ namespace {
 
 int64 CountParametersOnNode(const string& node_name,
                             const Model::ModelParameters& parameters) {
-  int64 cnt = 0;
+  int64_t cnt = 0;
   for (const auto& pair : parameters) {
     if (pair.first == node_name) {
       cnt++;
@@ -42,7 +42,7 @@ class AsyncInterleaveManyTest
     : public ::testing::TestWithParam<std::tuple<int64, double>> {};
 
 TEST_P(AsyncInterleaveManyTest, Model) {
-  const int64 parallelism = std::get<0>(GetParam());
+  const int64_t parallelism = std::get<0>(GetParam());
   const double input_time = std::get<1>(GetParam());
   std::shared_ptr<Node> async_interleave_many =
       model::MakeAsyncInterleaveManyNode(
@@ -124,9 +124,9 @@ class AsyncKnownRatioTest
     : public ::testing::TestWithParam<std::tuple<int64, double, int64>> {};
 
 TEST_P(AsyncKnownRatioTest, Model) {
-  const int64 parallelism = std::get<0>(GetParam());
+  const int64_t parallelism = std::get<0>(GetParam());
   const double input_time = std::get<1>(GetParam());
-  const int64 num_inputs_per_output = std::get<2>(GetParam());
+  const int64_t num_inputs_per_output = std::get<2>(GetParam());
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {0, "async_known_many", nullptr}, num_inputs_per_output,
       {model::MakeParameter("parallelism",
@@ -250,7 +250,7 @@ TEST(InterleaveManyTest, Model) {
 class KnownRatioTest : public ::testing::TestWithParam<int64> {};
 
 TEST_P(KnownRatioTest, Model) {
-  const int64 num_inputs_per_output = GetParam();
+  const int64_t num_inputs_per_output = GetParam();
   std::shared_ptr<Node> known_many = model::MakeKnownRatioNode(
       {0, "known_many", nullptr}, num_inputs_per_output);
   std::shared_ptr<Node> source1 =
@@ -496,7 +496,7 @@ TEST(BufferedBytesTest, Node) {
 }
 
 // Returns a weighted sum of a prior and the actual processing time.
-double weighted_processing_time(int64 num_elements, double processing_time,
+double weighted_processing_time(int64_t num_elements, double processing_time,
                                 double prior) {
   if (num_elements < 30) {
     double prior_weight = 1.0L / static_cast<double>(2 << num_elements);
@@ -673,7 +673,7 @@ class AsyncKnownRatioGradientTest : public ::testing::TestWithParam<string> {};
 TEST_P(AsyncKnownRatioGradientTest, Model) {
   const string parameter_name = GetParam();
   const double input_time = 100;
-  const int64 num_inputs_per_output = 2;
+  const int64_t num_inputs_per_output = 2;
 
   std::shared_ptr<Parameter> known_parameter =
       model::MakeParameter(parameter_name,
@@ -732,7 +732,7 @@ INSTANTIATE_TEST_SUITE_P(Test, AsyncKnownRatioGradientTest,
 
 TEST(InterleaveManyGradientTest, Model) {
   const double input_time = 100;
-  const int64 num_inputs_per_output = 2;
+  const int64_t num_inputs_per_output = 2;
   std::shared_ptr<Node> interleave_many =
       model::MakeInterleaveManyNode({0, "interleave_many", nullptr});
   std::shared_ptr<Parameter> known_parameter =
@@ -767,7 +767,7 @@ TEST(InterleaveManyGradientTest, Model) {
 
 TEST(KnownRatioGradientTest, Model) {
   const double input_time = 100;
-  const int64 num_inputs_per_output = 2;
+  const int64_t num_inputs_per_output = 2;
   std::shared_ptr<Node> known_many = model::MakeKnownRatioNode(
       {0, "known_many", nullptr}, num_inputs_per_output);
   std::shared_ptr<Parameter> known_parameter =
@@ -799,7 +799,7 @@ TEST(KnownRatioGradientTest, Model) {
 
 TEST(UnknownRatioGradientTest, Model) {
   const double input_time = 100;
-  const int64 num_inputs_per_output = 2;
+  const int64_t num_inputs_per_output = 2;
   std::shared_ptr<Node> unknown_many =
       model::MakeUnknownRatioNode({0, "unknown_many", nullptr});
   std::shared_ptr<Parameter> known_parameter =
@@ -831,7 +831,7 @@ TEST(UnknownRatioGradientTest, Model) {
 
 TEST(UnknownGradientTest, Model) {
   const double input_time = 100;
-  const int64 num_inputs_per_output = 2;
+  const int64_t num_inputs_per_output = 2;
   std::shared_ptr<Node> unknown =
       model::MakeUnknownNode({0, "unknown", nullptr});
   std::shared_ptr<Parameter> known_parameter =
@@ -866,8 +866,8 @@ TEST(SnapshotTest, Model) {
       model::MakeUnknownNode({0, std::to_string(0), nullptr});
   std::shared_ptr<Node> current = root;
 
-  int64 num_nodes = 20;
-  for (int64 i = 1; i < num_nodes; i++) {
+  int64_t num_nodes = 20;
+  for (int64_t i = 1; i < num_nodes; i++) {
     std::shared_ptr<Node> input =
         model::MakeUnknownNode({i, std::to_string(i), current});
     input->set_autotune(std::rand() % 2 == 1);
@@ -879,7 +879,7 @@ TEST(SnapshotTest, Model) {
   current = root;
   std::shared_ptr<Node> cloned_current = cloned_root;
 
-  for (int64 i = 0; i < num_nodes; i++) {
+  for (int64_t i = 0; i < num_nodes; i++) {
     EXPECT_EQ(current->id(), cloned_current->id());
     EXPECT_EQ(current->name(), cloned_current->name());
     EXPECT_EQ(current->autotune(), cloned_current->autotune());
@@ -910,8 +910,8 @@ TEST(SaveModelTest, Model) {
                 nullptr, &root);
   std::shared_ptr<Node> current = root;
 
-  int64 num_nodes = 20;
-  for (int64 i = 1; i < num_nodes; i++) {
+  int64_t num_nodes = 20;
+  for (int64_t i = 1; i < num_nodes; i++) {
     std::shared_ptr<Node> input;
     switch (i % 6) {
       case 0:
@@ -1092,7 +1092,7 @@ INSTANTIATE_TEST_SUITE_P(
 class SelfProcessingTimeTest : public ::testing::TestWithParam<int64> {};
 
 TEST_P(SelfProcessingTimeTest, Model) {
-  const int64 add_times = GetParam();
+  const int64_t add_times = GetParam();
   std::shared_ptr<Node> source = model::MakeSourceNode({0, "source", nullptr});
   for (int i = 0; i < add_times; i++) {
     source->add_processing_time(i);

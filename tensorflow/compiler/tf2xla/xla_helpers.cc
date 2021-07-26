@@ -261,11 +261,11 @@ StatusOr<absl::optional<xla::DeviceAssignment>> ResolveDeviceAssignment(
     return errors::InvalidArgument("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
-  const std::vector<std::string>& devices = params->group.device_names;
 
-  xla::DeviceAssignment out(devices.size(), 1);
-  for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
-    const std::string& device_name = devices[device_idx];
+  xla::DeviceAssignment out(params->group.group_size, 1);
+  for (int device_idx = 0; device_idx < params->group.group_size;
+       device_idx++) {
+    const std::string& device_name = params->group.devices[device_idx].name();
     Device* resolved_device = nullptr;
     TF_RETURN_IF_ERROR(ctx->function_library()->device_mgr()->LookupDevice(
         device_name, &resolved_device));

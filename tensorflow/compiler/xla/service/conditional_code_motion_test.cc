@@ -1280,7 +1280,7 @@ ENTRY main {
       for (int flip_start = 0; flip_start < 7; ++flip_start) {
         // Start flipping at index config, repeat thereafter, until reaching
         // max.
-        int64 search_config = ConditionalCodeMotion::MakeSearchConfig(
+        int64_t search_config = ConditionalCodeMotion::MakeSearchConfig(
             flip_start, max_flip, flip_stride);
         ConditionalCodeMotion pass(true, true, search_config);
         VLOG(1) << "Testing max_flip=" << max_flip

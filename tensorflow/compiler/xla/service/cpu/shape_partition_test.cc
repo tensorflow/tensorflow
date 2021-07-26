@@ -170,19 +170,19 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   std::vector<int64> dim_partition_counts(num_outer_dims_to_partition);
   int64_t total_dim_size = 1;
   for (int i = 0; i < num_outer_dims_to_partition; ++i) {
-    const int64 dimension = shape.layout().minor_to_major(
+    const int64_t dimension = shape.layout().minor_to_major(
         shape.layout().minor_to_major_size() - 1 - i);
     dim_sizes[i] = shape.dimensions(dimension);
     total_dim_size *= dim_sizes[i];
     // Choose dimension partition count in [1, dim_size]
-    const int64 dim_partition_count = 1 + Rand() % dim_sizes[i];
+    const int64_t dim_partition_count = 1 + Rand() % dim_sizes[i];
     dim_partition_counts[i] = dim_partition_count;
   }
   // Iterate through all partition: for each partition record covered
   // index ranges by dimension.
   std::vector<std::map<int64, int64>> ranges(num_outer_dims_to_partition);
   ShapePartitionIterator partition_iterator(shape, dim_partition_counts);
-  const int64 partition_count = partition_iterator.GetTotalPartitionCount();
+  const int64_t partition_count = partition_iterator.GetTotalPartitionCount();
   for (int64_t i = 0; i < partition_count; ++i) {
     const auto& dim_partition = partition_iterator.GetPartition(i);
     for (int dim = 0; dim < dim_partition.size(); ++dim) {

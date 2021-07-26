@@ -171,7 +171,7 @@ std::vector<int64> StridesForShape(const Shape& shape) {
   CHECK(shape.has_layout());
 
   strides.resize(shape.dimensions_size());
-  int64 stride = 1;
+  int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
     strides.at(i) = stride;
     stride *= shape.dimensions(i);
@@ -193,8 +193,8 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
     }
     return dims[a] == 1 && dims[b] != 1;
   });
-  int64 stride = 1;
-  for (int64 d : minor_to_major) {
+  int64_t stride = 1;
+  for (int64_t d : minor_to_major) {
     if (strides[d] != stride) {
       return Unimplemented(
           "Only DLPack tensors with trivial (compact) striding are supported; "

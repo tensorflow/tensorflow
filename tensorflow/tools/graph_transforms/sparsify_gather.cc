@@ -50,7 +50,7 @@ Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
   std::vector<int64> indices;
   std::vector<float> values;
 
-  for (int64 i = 0; i < flat.size(); i++) {
+  for (int64_t i = 0; i < flat.size(); i++) {
     float val = flat(i);
     if (std::abs(val) >= 1.0e-5) {
       indices.push_back(i);
@@ -301,7 +301,7 @@ Status SparsifyGatherInternal(
 
             Tensor axis_t;
             TF_RETURN_IF_ERROR(GetNodeAttr(axis_node, "value", &axis_t));
-            int64 axis = 0;
+            int64_t axis = 0;
             if (axis_t.dtype() == DT_INT32) {
               axis = axis_t.scalar<int32>()();
             } else if (axis_t.dtype() == DT_INT64) {

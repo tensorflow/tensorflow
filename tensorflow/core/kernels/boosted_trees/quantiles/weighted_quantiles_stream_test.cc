@@ -54,9 +54,9 @@ TEST(GetQuantileSpecs, NonZeroEps) {
 class WeightedQuantilesStreamTest : public ::testing::Test {};
 
 // Stream generators.
-void GenerateFixedUniformSummary(int32 worker_id, int64 max_elements,
+void GenerateFixedUniformSummary(int32_t worker_id, int64_t max_elements,
                                  double *total_weight, Stream *stream) {
-  for (int64 i = 0; i < max_elements; ++i) {
+  for (int64_t i = 0; i < max_elements; ++i) {
     const double x = static_cast<double>(i) / max_elements;
     stream->PushEntry(x, 1.0);
     ++(*total_weight);
@@ -64,9 +64,9 @@ void GenerateFixedUniformSummary(int32 worker_id, int64 max_elements,
   stream->Finalize();
 }
 
-void GenerateFixedNonUniformSummary(int32 worker_id, int64 max_elements,
+void GenerateFixedNonUniformSummary(int32_t worker_id, int64_t max_elements,
                                     double *total_weight, Stream *stream) {
-  for (int64 i = 0; i < max_elements; ++i) {
+  for (int64_t i = 0; i < max_elements; ++i) {
     const double x = static_cast<double>(i) / max_elements;
     stream->PushEntry(x, x);
     (*total_weight) += x;
@@ -74,13 +74,14 @@ void GenerateFixedNonUniformSummary(int32 worker_id, int64 max_elements,
   stream->Finalize();
 }
 
-void GenerateRandUniformFixedWeightsSummary(int32 worker_id, int64 max_elements,
+void GenerateRandUniformFixedWeightsSummary(int32_t worker_id,
+                                            int64_t max_elements,
                                             double *total_weight,
                                             Stream *stream) {
   // Simulate uniform distribution stream.
   random::PhiloxRandom philox(13 + worker_id);
   random::SimplePhilox rand(&philox);
-  for (int64 i = 0; i < max_elements; ++i) {
+  for (int64_t i = 0; i < max_elements; ++i) {
     const double x = rand.RandDouble();
     stream->PushEntry(x, 1);
     ++(*total_weight);
@@ -88,13 +89,14 @@ void GenerateRandUniformFixedWeightsSummary(int32 worker_id, int64 max_elements,
   stream->Finalize();
 }
 
-void GenerateRandUniformRandWeightsSummary(int32 worker_id, int64 max_elements,
+void GenerateRandUniformRandWeightsSummary(int32_t worker_id,
+                                           int64_t max_elements,
                                            double *total_weight,
                                            Stream *stream) {
   // Simulate uniform distribution stream.
   random::PhiloxRandom philox(13 + worker_id);
   random::SimplePhilox rand(&philox);
-  for (int64 i = 0; i < max_elements; ++i) {
+  for (int64_t i = 0; i < max_elements; ++i) {
     const double x = rand.RandDouble();
     const double w = rand.RandDouble();
     stream->PushEntry(x, w);
@@ -105,8 +107,8 @@ void GenerateRandUniformRandWeightsSummary(int32 worker_id, int64 max_elements,
 
 // Single worker tests.
 void TestSingleWorkerStreams(
-    double eps, int64 max_elements,
-    const std::function<void(int32, int64, double *, Stream *)>
+    double eps, int64_t max_elements,
+    const std::function<void(int32_t, int64_t, double *, Stream *)>
         &worker_summary_generator,
     std::initializer_list<double> expected_quantiles,
     double quantiles_matcher_epsilon) {
@@ -130,14 +132,14 @@ void TestSingleWorkerStreams(
 }
 
 // Stream generators.
-void GenerateOneValue(int32 worker_id, int64 max_elements, double *total_weight,
-                      Stream *stream) {
+void GenerateOneValue(int32_t worker_id, int64_t max_elements,
+                      double *total_weight, Stream *stream) {
   stream->PushEntry(10, 1);
   ++(*total_weight);
   stream->Finalize();
 }
 
-void GenerateOneZeroWeightedValue(int32 worker_id, int64 max_elements,
+void GenerateOneZeroWeightedValue(int32_t worker_id, int64_t max_elements,
                                   double *total_weight, Stream *stream) {
   stream->PushEntry(10, 0);
   stream->Finalize();
@@ -145,21 +147,21 @@ void GenerateOneZeroWeightedValue(int32 worker_id, int64 max_elements,
 
 TEST(WeightedQuantilesStreamTest, OneValue) {
   const double eps = 0.01;
-  const int64 max_elements = 1 << 16;
+  const int64_t max_elements = 1 << 16;
   TestSingleWorkerStreams(eps, max_elements, GenerateOneValue,
                           {10.0, 10.0, 10.0, 10.0, 10.0}, 1e-2);
 }
 
 TEST(WeightedQuantilesStreamTest, OneZeroWeightValue) {
   const double eps = 0.01;
-  const int64 max_elements = 1 << 16;
+  const int64_t max_elements = 1 << 16;
   TestSingleWorkerStreams(eps, max_elements, GenerateOneZeroWeightedValue, {},
                           1e-2);
 }
 
 TEST(WeightedQuantilesStreamTest, FixedUniform) {
   const double eps = 0.01;
-  const int64 max_elements = 1 << 16;
+  const int64_t max_elements = 1 << 16;
   TestSingleWorkerStreams(eps, max_elements, GenerateFixedUniformSummary,
                           {0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
                           1e-2);
@@ -167,7 +169,7 @@ TEST(WeightedQuantilesStreamTest, FixedUniform) {
 
 TEST(WeightedQuantilesStreamTest, FixedNonUniform) {
   const double eps = 0.01;
-  const int64 max_elements = 1 << 16;
+  const int64_t max_elements = 1 << 16;
   TestSingleWorkerStreams(eps, max_elements, GenerateFixedNonUniformSummary,
                           {0, std::sqrt(0.1), std::sqrt(0.2), std::sqrt(0.3),
                            std::sqrt(0.4), std::sqrt(0.5), std::sqrt(0.6),
@@ -177,7 +179,7 @@ TEST(WeightedQuantilesStreamTest, FixedNonUniform) {
 
 TEST(WeightedQuantilesStreamTest, RandUniformFixedWeights) {
   const double eps = 0.01;
-  const int64 max_elements = 1 << 16;
+  const int64_t max_elements = 1 << 16;
   TestSingleWorkerStreams(
       eps, max_elements, GenerateRandUniformFixedWeightsSummary,
       {0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}, 1e-2);
@@ -185,7 +187,7 @@ TEST(WeightedQuantilesStreamTest, RandUniformFixedWeights) {
 
 TEST(WeightedQuantilesStreamTest, RandUniformRandWeights) {
   const double eps = 0.01;
-  const int64 max_elements = 1 << 16;
+  const int64_t max_elements = 1 << 16;
   TestSingleWorkerStreams(
       eps, max_elements, GenerateRandUniformRandWeightsSummary,
       {0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}, 1e-2);
@@ -193,15 +195,15 @@ TEST(WeightedQuantilesStreamTest, RandUniformRandWeights) {
 
 // Distributed tests.
 void TestDistributedStreams(
-    int32 num_workers, double eps, int64 max_elements,
-    const std::function<void(int32, int64, double *, Stream *)>
+    int32_t num_workers, double eps, int64_t max_elements,
+    const std::function<void(int32_t, int64_t, double *, Stream *)>
         &worker_summary_generator,
     std::initializer_list<double> expected_quantiles,
     double quantiles_matcher_epsilon) {
   // Simulate streams on each worker running independently
   double total_weight = 0;
   std::vector<std::vector<SummaryEntry>> worker_summaries;
-  for (int32 i = 0; i < num_workers; ++i) {
+  for (int32_t i = 0; i < num_workers; ++i) {
     Stream stream(eps / 2, max_elements);
     worker_summary_generator(i, max_elements / num_workers, &total_weight,
                              &stream);
@@ -234,18 +236,18 @@ void TestDistributedStreams(
 }
 
 TEST(WeightedQuantilesStreamTest, FixedUniformDistributed) {
-  const int32 num_workers = 10;
+  const int32_t num_workers = 10;
   const double eps = 0.01;
-  const int64 max_elements = num_workers * (1 << 16);
+  const int64_t max_elements = num_workers * (1 << 16);
   TestDistributedStreams(
       num_workers, eps, max_elements, GenerateFixedUniformSummary,
       {0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}, 1e-2);
 }
 
 TEST(WeightedQuantilesStreamTest, FixedNonUniformDistributed) {
-  const int32 num_workers = 10;
+  const int32_t num_workers = 10;
   const double eps = 0.01;
-  const int64 max_elements = num_workers * (1 << 16);
+  const int64_t max_elements = num_workers * (1 << 16);
   TestDistributedStreams(num_workers, eps, max_elements,
                          GenerateFixedNonUniformSummary,
                          {0, std::sqrt(0.1), std::sqrt(0.2), std::sqrt(0.3),
@@ -255,18 +257,18 @@ TEST(WeightedQuantilesStreamTest, FixedNonUniformDistributed) {
 }
 
 TEST(WeightedQuantilesStreamTest, RandUniformFixedWeightsDistributed) {
-  const int32 num_workers = 10;
+  const int32_t num_workers = 10;
   const double eps = 0.01;
-  const int64 max_elements = num_workers * (1 << 16);
+  const int64_t max_elements = num_workers * (1 << 16);
   TestDistributedStreams(
       num_workers, eps, max_elements, GenerateRandUniformFixedWeightsSummary,
       {0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}, 1e-2);
 }
 
 TEST(WeightedQuantilesStreamTest, RandUniformRandWeightsDistributed) {
-  const int32 num_workers = 10;
+  const int32_t num_workers = 10;
   const double eps = 0.01;
-  const int64 max_elements = num_workers * (1 << 16);
+  const int64_t max_elements = num_workers * (1 << 16);
   TestDistributedStreams(
       num_workers, eps, max_elements, GenerateRandUniformRandWeightsSummary,
       {0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0}, 1e-2);

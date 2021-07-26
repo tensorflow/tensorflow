@@ -222,7 +222,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
         "errors policy must be one of 'strict', 'replace', or 'ignore'");
   }
 
-  int32 replacement_char;
+  int32_t replacement_char;
   TF_RETURN_IF_ERROR(ctx->GetAttr("replacement_char", &replacement_char));
 
   if (replacement_char >= UCHAR_MIN_VALUE &&
@@ -568,7 +568,7 @@ class UnicodeEncodeOp : public OpKernel {
           errors::InvalidArgument("Values in input_splits must be less than or "
                                   "equal to input_tensor length."));
       for (; idx < input_splits_flat(i); ++idx) {
-        int32 code_point = input_tensor_flat(idx);
+        int32_t code_point = input_tensor_flat(idx);
         // Check for invalid code point
         if (!U_IS_UNICODE_CHAR(code_point)) {
           if (error_options_.error_on_malformatting) {

@@ -333,8 +333,8 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
   if (first[0].replica_ids_size() != second.size()) {
     return false;
   }
-  for (int64 i = 0; i < first.size(); ++i) {
-    for (int64 j = 0; j < first[i].replica_ids_size(); ++j) {
+  for (int64_t i = 0; i < first.size(); ++i) {
+    for (int64_t j = 0; j < first[i].replica_ids_size(); ++j) {
       if (first[i].replica_ids(j) != second[j].replica_ids(i)) {
         return false;
       }

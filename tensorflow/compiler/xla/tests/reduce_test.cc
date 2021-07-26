@@ -324,11 +324,11 @@ class ReduceTest : public ClientLibraryTestBase {
           reduction_function_generator_for_type,
       const std::function<float(float, float)>&
           reference_reduction_function_for_floats,
-      const std::function<int32(int32, int32)>&
+      const std::function<int32(int32_t, int32_t)>&
           reference_reduction_function_for_ints,
       const std::function<uint32(uint32, uint32)>&
           reference_reduction_function_for_uints,
-      float floating_point_identity, int32 signed_int_identity,
+      float floating_point_identity, int32_t signed_int_identity,
       uint32 unsigned_int_identity) {
     // Float version
     RunVectorizedReduceTestForType<float>(
@@ -438,7 +438,7 @@ XLA_TEST_F(ReduceTest, OrReduceOnesAndZerosR1_10_Pred) {
 }
 
 XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
-  const int64 rows = 111, cols = 50;
+  const int64_t rows = 111, cols = 50;
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
@@ -468,7 +468,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
 }
 
 XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
-  const int64 rows = 111, cols = 50;
+  const int64_t rows = 111, cols = 50;
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
@@ -515,7 +515,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceR3_12x111x50_To_R2) {
 }
 
 XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
-  const int64 rows = 111, cols = 50;
+  const int64_t rows = 111, cols = 50;
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
@@ -754,7 +754,7 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Add) {
   RunVectorizedReduceTest(
       static_cast<FuncGeneratorForType>(CreateScalarAddComputation),
       [](float a, float b) { return a + b; },
-      [](int32 a, int32 b) {
+      [](int32_t a, int32_t b) {
         return static_cast<int32>(static_cast<uint32>(a) +
                                   static_cast<uint32>(b));
       },
@@ -765,7 +765,7 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Multiply) {
   RunVectorizedReduceTest(
       static_cast<FuncGeneratorForType>(CreateScalarMultiplyComputation),
       [](float a, float b) { return a * b; },
-      [](int32 a, int32 b) {
+      [](int32_t a, int32_t b) {
         return static_cast<int32>(static_cast<uint32>(a) *
                                   static_cast<uint32>(b));
       },
@@ -776,7 +776,7 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Max) {
   RunVectorizedReduceTest(
       static_cast<FuncGeneratorForType>(CreateScalarMaxComputation),
       [](float a, float b) { return std::max(a, b); },
-      [](int32 a, int32 b) { return std::max(a, b); },
+      [](int32_t a, int32_t b) { return std::max(a, b); },
       [](uint32 a, uint32 b) { return std::max(a, b); },
       std::numeric_limits<float>::min(), std::numeric_limits<int32>::min(),
       std::numeric_limits<uint32>::min());
@@ -786,7 +786,7 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
   RunVectorizedReduceTest(
       static_cast<FuncGeneratorForType>(CreateScalarMinComputation),
       [](float a, float b) { return std::min(a, b); },
-      [](int32 a, int32 b) { return std::min(a, b); },
+      [](int32_t a, int32_t b) { return std::min(a, b); },
       [](uint32 a, uint32 b) { return std::min(a, b); },
       std::numeric_limits<float>::max(), std::numeric_limits<int32>::max(),
       std::numeric_limits<uint32>::max());

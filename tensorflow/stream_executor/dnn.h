@@ -944,7 +944,7 @@ class NormalizeDescriptor {
     return *this;
   }
 
-  NormalizeDescriptor& set_range(int32 range) {
+  NormalizeDescriptor& set_range(int32_t range) {
     range_ = range;
     return *this;
   }
@@ -964,7 +964,7 @@ class NormalizeDescriptor {
     return *this;
   }
 
-  NormalizeDescriptor& set_segment_size(int32 segment_size) {
+  NormalizeDescriptor& set_segment_size(int32_t segment_size) {
     segment_size_ = segment_size;
     return *this;
   }

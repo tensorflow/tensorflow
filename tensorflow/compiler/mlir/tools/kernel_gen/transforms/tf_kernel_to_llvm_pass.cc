@@ -44,7 +44,7 @@ namespace transforms {
 namespace {
 
 constexpr StringRef kTfWrapperLibaryLaunchHelperName =
-    "tfKernelGenLaunchKernel";
+    "_mlir_ciface_tf_launch_kernel";
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"

@@ -70,7 +70,7 @@ static optional<int64> GetGTEOperandIndex(const HloInstruction* instr,
   // All operands of `instr` must be either constants or of the form
   //   get-tuple-element(gte_operand, tuple_idx)
   // for the same value tuple_idx.
-  int64 tuple_idx = (*gte_it)->tuple_index();
+  int64_t tuple_idx = (*gte_it)->tuple_index();
   for (const HloInstruction* operand : instr->operands()) {
     if (!Match(operand, m::Constant()) &&
         !Match(operand,
@@ -141,7 +141,7 @@ std::vector<const HloInstruction*> GetAuxiliaryLoopInductionVars(
     VLOG(2) << "While body root is not a tuple:" << while_body_root->ToString();
     return aux_ind_gte;
   }
-  int64 index = -1;
+  int64_t index = -1;
   std::map<int64, const HloInstruction*> insertions;
   for (const HloInstruction* operand : while_body_root->operands()) {
     index++;
@@ -348,12 +348,12 @@ static optional<int64> LiteralAsScalarInt64(const Literal& l) {
 }
 
 // Computes a + b, returning nullopt if it overflows.
-optional<int64> CheckedAdd(int64 a, int64 b) {
+optional<int64> CheckedAdd(int64_t a, int64_t b) {
   // Overflow occurred iff `a` and `b` have the same sign and `a + b` has a
   // different sign, see Hacker's Delignt 2nd Ed. pp 28.
   uint64 aa = absl::bit_cast<uint64>(a);
   uint64 bb = absl::bit_cast<uint64>(b);
-  int64 result = absl::bit_cast<int64>(aa + bb);
+  int64_t result = absl::bit_cast<int64>(aa + bb);
   if (a >= 0 == b >= 0 && result >= 0 != a >= 0) {
     return nullopt;
   }
@@ -361,10 +361,10 @@ optional<int64> CheckedAdd(int64 a, int64 b) {
 }
 
 // Computes a - b, returning nullopt if it overflows.
-optional<int64> CheckedSubtract(int64 a, int64 b) {
+optional<int64> CheckedSubtract(int64_t a, int64_t b) {
   uint64 aa = absl::bit_cast<uint64>(a);
   uint64 bb = absl::bit_cast<uint64>(b);
-  int64 result = absl::bit_cast<int64>(aa - bb);
+  int64_t result = absl::bit_cast<int64>(aa - bb);
   // Overflow occurred iff `a` and `b` have different signs and the sign of
   // `a - b` is the same as that of `b`, see Hacker's Delight 2nd Ed. pp 29.
   if (a >= 0 != b >= 0 && result >= 0 == b >= 0) {
@@ -379,7 +379,7 @@ optional<int64> CheckedSubtract(int64 a, int64 b) {
 //  - the while body does `i++`.
 // If so, it's trivial to compute the loop bound.
 static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
-                                                 int64 indvar_tuple_idx,
+                                                 int64_t indvar_tuple_idx,
                                                  const Literal& indvar_init) {
   // First, find the scalar constant K that `i` is initialized to.
   optional<int64> indvar_init_val = LiteralAsScalarInt64(indvar_init);
@@ -473,7 +473,7 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
 }
 
 optional<int64> ComputeWhileLoopTripCount(HloInstruction* while_op,
-                                          int64 max_brute_force_iters) {
+                                          int64_t max_brute_force_iters) {
   VLOG(2) << "Getting trip count for loop " << while_op->ToString();
 
   // The loop's induction variable is found at
@@ -516,7 +516,7 @@ optional<int64> ComputeWhileLoopTripCount(HloInstruction* while_op,
   auto* while_cond_root = while_cond->root_instruction();
   auto* while_cond_indvar = NonConstantOperand(while_cond_root);
 
-  for (int64 trip_count = 0; trip_count != max_brute_force_iters + 1;
+  for (int64_t trip_count = 0; trip_count != max_brute_force_iters + 1;
        ++trip_count) {
     StatusOr<Literal> result = evaluator.EvaluateWithSubstitutions(
         while_cond_root, {{while_cond_indvar, &indvar_iter_val}});
@@ -599,7 +599,7 @@ optional<int64> ComputeWhileLoopTripCountUpperBound(HloInstruction* while_op) {
     return nullopt;
   }
 
-  int64 indvar_index = cond_gte->tuple_index();
+  int64_t indvar_index = cond_gte->tuple_index();
   auto* while_body_indvar = while_body_root->operand(indvar_index);
   if (while_body_indvar->opcode() != HloOpcode::kConstant) {
     VLOG(3) << "While body does not set the IV to a constant: "

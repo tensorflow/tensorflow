@@ -506,7 +506,7 @@ Node* CheckNumerics(Graph* g, Node* in, const string& message) {
   return ret;
 }
 
-Node* Arg(Graph* g, int64 index, DataType type) {
+Node* Arg(Graph* g, int64_t index, DataType type) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Arg")
                   .Attr("T", type)
@@ -515,7 +515,7 @@ Node* Arg(Graph* g, int64 index, DataType type) {
   return ret;
 }
 
-Node* Retval(Graph* g, int64 index, Node* in) {
+Node* Retval(Graph* g, int64_t index, Node* in) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Retval")
                   .Input(in)

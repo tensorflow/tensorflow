@@ -65,6 +65,7 @@ BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
   // We create bins to fit all possible ranges that cover the
   // memory_limit_ starting from allocations up to 256 bytes to
   // allocations up to (and including) the memory limit.
+  VLOG(1) << "Creating new BFCAllocator named: " << name;
   for (BinNum b = 0; b < kNumBins; b++) {
     size_t bin_size = BinNumToSize(b);
     VLOG(1) << "Creating bin of max chunk size "
@@ -152,7 +153,8 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   }
 
   VLOG(1) << "Extending allocation by "
-          << strings::HumanReadableNumBytes(bytes_received) << " bytes.";
+          << strings::HumanReadableNumBytes(bytes_received) << " bytes for "
+          << Name() << ".";
 
   total_region_allocated_bytes_ += bytes_received;
   VLOG(1) << "Total allocated bytes: "
@@ -253,37 +255,40 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
 
 void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
-  VLOG(1) << "AllocateRaw " << Name() << "  " << num_bytes;
-  if (!allocation_attr.retry_on_failure) {
-    // Return immediately upon the first failure if this is for allocating an
-    // optional scratch space.
-    bool dump_log_on_failure = VLOG_IS_ON(2);
-    uint64 freed_by_count = 0;
-    if (allocation_attr.freed_by_func != nullptr) {
-      freed_by_count = (*allocation_attr.freed_by_func)();
-    }
-    void* result = AllocateRawInternal(unused_alignment, num_bytes,
-                                       dump_log_on_failure, freed_by_count);
-    if (result == nullptr) {
-      static std::atomic<int32> log_counter{0};
-      int32 counter_value = log_counter.load(std::memory_order_relaxed);
-      if (counter_value < 10) {
-        log_counter.store(counter_value + 1, std::memory_order_relaxed);
-        LOG(WARNING)
-            << "Allocator (" << Name() << ") ran out of memory trying "
-            << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-            << " with freed_by_count=" << freed_by_count
-
-            << ". The caller indicates that this is not a failure, but"
-            << " may mean that there could be performance gains if more"
-            << " memory were available.";
+  VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes;
+  void* result = [&] {
+    if (!allocation_attr.retry_on_failure) {
+      // Return immediately upon the first failure if this is for allocating an
+      // optional scratch space.
+      bool dump_log_on_failure = VLOG_IS_ON(2);
+      uint64 freed_by_count = 0;
+      if (allocation_attr.freed_by_func != nullptr) {
+        freed_by_count = (*allocation_attr.freed_by_func)();
       }
+      void* res = AllocateRawInternal(unused_alignment, num_bytes,
+                                      dump_log_on_failure, freed_by_count);
+      if (res == nullptr) {
+        static std::atomic<int32> log_counter{0};
+        int32 counter_value = log_counter.load(std::memory_order_relaxed);
+        if (counter_value < 10) {
+          log_counter.store(counter_value + 1, std::memory_order_relaxed);
+          LOG(WARNING)
+              << "Allocator (" << Name() << ") ran out of memory trying "
+              << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
+              << " with freed_by_count=" << freed_by_count
+              << ". The caller indicates that this is not a failure, but"
+              << " may mean that there could be performance gains if more"
+              << " memory were available.";
+        }
+      }
+      return res;
+    } else {
+      return AllocateRawInternalWithRetry(unused_alignment, num_bytes,
+                                          allocation_attr);
     }
-    return result;
-  } else {
-    return AllocateRawInternalWithRetry(unused_alignment, num_bytes,
-                                        allocation_attr);
-  }
+  }();
+  VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes << " " << result;
+  return result;
 }
 
 // static
@@ -570,6 +575,10 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // Update stats.
         ++stats_.num_allocs;
         stats_.bytes_in_use += chunk->size;
+        if (stats_.bytes_in_use > stats_.peak_bytes_in_use) {
+          VLOG(2) << "New Peak memory usage of " << stats_.bytes_in_use
+                  << " bytes for " << Name();
+        }
         stats_.peak_bytes_in_use =
             std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
         stats_.largest_alloc_size =
@@ -647,7 +656,7 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 }
 
 void BFCAllocator::DeallocateRaw(void* ptr) {
-  VLOG(1) << "DeallocateRaw " << Name() << " "
+  VLOG(3) << "DeallocateRaw " << Name() << " "
           << (ptr ? RequestedSize(ptr) : 0);
   DeallocateRawInternal(ptr);
   retry_helper_.NotifyDealloc();

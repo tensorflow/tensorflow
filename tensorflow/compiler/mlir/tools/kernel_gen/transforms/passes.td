@@ -41,6 +41,17 @@ def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
 def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
   let summary = "Pass to rewrite all TF operations to JIT invocations";
   let constructor = "transforms::CreateTFToJITInvocationPass()";
+  let options = [
+      ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
+                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+      ListOption<"unroll_factors_", "unroll-factors", "int64_t",
+                 "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore, "
+                 "llvm::cl::MiscFlags::CommaSeparated">,
+      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
+           /*default=*/"", "Max rank that this kernel supports">,
+      Option<"cpu_codegen_", "cpu-codegen", "bool",
+           /*default=*/"", "CPU codegen (false implies GPU)">,
+  ];
 }
 
 def BufferReusePass : FunctionPass<"buffer-reuse"> {

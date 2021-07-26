@@ -63,7 +63,7 @@ int64 EstimateBytesPerElement<tstring>(
   // randomly sample a few input strings to get a sense of the average size
   // of each element
   int num_samples = 0;
-  int64 num_bytes_in_samples = 0;
+  int64_t num_bytes_in_samples = 0;
   for (const auto& input : inputs) {
     const auto dim0 = input->dimension(0);
     const auto dim1 = input->dimension(1);
@@ -88,7 +88,7 @@ int64 EstimateBytesPerElement<tstring>(
   }
   // We don't use sizeof(std::string) as the overhead, since that would
   // overestimate the memory touched for copying a string.
-  int64 string_overhead = sizeof(char*) + sizeof(size_t);
+  int64_t string_overhead = sizeof(char*) + sizeof(size_t);
   return string_overhead +
          ((num_samples > 0) ? (num_bytes_in_samples / num_samples) : 0);
 }
@@ -101,7 +101,7 @@ void ConcatCPU(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs,
     typename TTypes<T, 2>::Matrix* output) {
-  int64 cost_per_unit = EstimateBytesPerElement<T>(inputs);
+  int64_t cost_per_unit = EstimateBytesPerElement<T>(inputs);
   ConcatCPUImpl<T>(d, inputs, cost_per_unit, MemCpyCopier<T>(), output);
 }
 

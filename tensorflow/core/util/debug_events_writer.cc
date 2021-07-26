@@ -274,7 +274,7 @@ Status DebugEventsWriter::WriteGraphExecutionTrace(
 
 Status DebugEventsWriter::WriteGraphExecutionTrace(
     const string& tfdbg_context_id, const string& device_name,
-    const string& op_name, int32 output_slot, int32 tensor_debug_mode,
+    const string& op_name, int32_t output_slot, int32_t tensor_debug_mode,
     const Tensor& tensor_value) {
   std::unique_ptr<GraphExecutionTrace> trace(new GraphExecutionTrace());
   trace->set_tfdbg_context_id(tfdbg_context_id);

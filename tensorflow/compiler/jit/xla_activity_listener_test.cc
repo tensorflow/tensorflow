@@ -164,7 +164,7 @@ summary {
   EXPECT_EQ(listener()->jit_compilation_activity().cluster_name(), "cluster_0");
   EXPECT_EQ(listener()->jit_compilation_activity().compile_count(), 1);
 
-  int64 first_compile_time =
+  int64_t first_compile_time =
       listener()->jit_compilation_activity().compile_time_us();
   EXPECT_GT(first_compile_time, 0);
   EXPECT_EQ(listener()->jit_compilation_activity().cumulative_compile_time_us(),

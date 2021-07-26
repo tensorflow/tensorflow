@@ -400,7 +400,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
       /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
-          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
             *r = new IntraProcessRendezvous(device_mgr);
             return Status::OK();
           }});
@@ -638,7 +638,7 @@ Status DatasetOpsTestBase::CheckSplitProviderFullIteration(
 }
 
 Status DatasetOpsTestBase::CheckSplitProviderShardedIteration(
-    const DatasetParams& params, int64 num_shards, int64 shard_index,
+    const DatasetParams& params, int64_t num_shards, int64_t shard_index,
     const std::vector<Tensor>& expected_outputs) {
   std::unique_ptr<TestDataset> dataset;
   TF_RETURN_IF_ERROR(MakeDataset(params, &dataset));
@@ -983,7 +983,7 @@ bool DatasetParams::IsDatasetTensor(const Tensor& tensor) {
 }
 
 RangeDatasetParams::RangeDatasetParams(
-    int64 start, int64 stop, int64 step, DataTypeVector output_dtypes,
+    int64_t start, int64_t stop, int64_t step, DataTypeVector output_dtypes,
     std::vector<PartialTensorShape> output_shapes, string node_name)
     : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                     std::move(node_name)),
@@ -991,13 +991,15 @@ RangeDatasetParams::RangeDatasetParams(
       stop_(stop),
       step_(step) {}
 
-RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
+RangeDatasetParams::RangeDatasetParams(int64_t start, int64_t stop,
+                                       int64_t step)
     : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset"),
       start_(start),
       stop_(stop),
       step_(step) {}
 
-RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step,
+RangeDatasetParams::RangeDatasetParams(int64_t start, int64_t stop,
+                                       int64_t step,
                                        DataTypeVector output_dtypes)
     : DatasetParams(std::move(output_dtypes), {PartialTensorShape({})},
                     "range_dataset"),

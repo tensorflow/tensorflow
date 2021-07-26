@@ -81,12 +81,12 @@ class HloRematerialization : public HloModulePass {
   //   compact_shape_function: Function which returns the compact form of a
   //   shape. If nullptr is provided, an default identity function is used.
   explicit HloRematerialization(
-      const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
+      const ShapeSizeFunction& size_function, int64_t memory_limit_bytes,
       RematerializationSizes* sizes, RematerializationPass pass_location,
       int block_size_limit, int block_rematerialization_factor,
       CompactShapeFunction compact_shape_function = nullptr,
       RematerializationMode mode = RematerializationMode::kRecomputeAndCompress,
-      int64 min_remat_size = 0)
+      int64_t min_remat_size = 0)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
         sizes_(sizes),
@@ -117,8 +117,8 @@ class HloRematerialization : public HloModulePass {
   // and inserted into 'order'.
   virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
                                                   HloSchedule* schedule,
-                                                  int64 memory_limit_bytes,
-                                                  int64 min_remat_size);
+                                                  int64_t memory_limit_bytes,
+                                                  int64_t min_remat_size);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at

@@ -70,8 +70,8 @@ class TopK : public OpKernel {
 
     const auto& input = input_in.flat_inner_dims<T>();
 
-    const int64 num_rows = input.dimension(0);  // generally batch_size
-    const int64 num_cols = input.dimension(1);
+    const int64_t num_rows = input.dimension(0);  // generally batch_size
+    const int64_t num_cols = input.dimension(1);
     OP_REQUIRES(
         context, num_rows <= std::numeric_limits<int32>::max(),
         errors::InvalidArgument(
@@ -111,11 +111,11 @@ namespace functor {
 
 template <typename T>
 struct TopKFunctor<CPUDevice, T> {
-  static EIGEN_ALWAYS_INLINE Status
-  Compute(OpKernelContext* context, bool sorted, int k,
-          const typename TTypes<T, 2>::ConstTensor& input, const int64 num_rows,
-          const int64 num_cols, typename TTypes<T, 2>::Tensor values,
-          typename TTypes<int, 2>::Tensor indices) {
+  static EIGEN_ALWAYS_INLINE Status Compute(
+      OpKernelContext* context, bool sorted, int k,
+      const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows,
+      const int64_t num_cols, typename TTypes<T, 2>::Tensor values,
+      typename TTypes<int, 2>::Tensor indices) {
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
     // Special case for k == 1.
@@ -146,10 +146,11 @@ struct TopKFunctor<CPUDevice, T> {
       return Status::OK();
     }
 
-    auto SortIndices = [&](int64 start_batch, int64 limit_batch) {
-      for (int32 b = start_batch; b < limit_batch; ++b) {
+    auto SortIndices = [&](int64_t start_batch, int64_t limit_batch) {
+      for (int32_t b = start_batch; b < limit_batch; ++b) {
         const T* input_data = &input(b, 0);
-        const auto stable_comp = [input_data](const int32 a, const int32 b) {
+        const auto stable_comp = [input_data](const int32_t a,
+                                              const int32_t b) {
           if (input_data[b] < input_data[a]) {
             return true;
           } else if (input_data[b] > input_data[a]) {
@@ -158,7 +159,7 @@ struct TopKFunctor<CPUDevice, T> {
             return a < b;
           }
         };
-        const auto comp = [input_data](const int32 a, const int32 b) {
+        const auto comp = [input_data](const int32_t a, const int32_t b) {
           return input_data[b] < input_data[a];
         };
         // TODO(ebrevdo): For large k < num_cols, instead of using
@@ -192,11 +193,11 @@ struct TopKFunctor<CPUDevice, T> {
           // Use the TopN heap object to sort.
           gtl::TopN<int32, decltype(stable_comp)> filter(k, stable_comp);
           filter.reserve(num_cols);
-          for (int32 c = 0; c < num_cols; ++c) {
+          for (int32_t c = 0; c < num_cols; ++c) {
             filter.push(c);
           }
 
-          int32 i = 0;
+          int32_t i = 0;
           if (sorted) {
             std::unique_ptr<std::vector<int32>> top_k(filter.Extract());
             for (auto top_k_it = top_k->begin(); top_k_it != top_k->end();
@@ -212,8 +213,9 @@ struct TopKFunctor<CPUDevice, T> {
         }
         // Now that the indices are sorted, copy the values over in
         // sorted order.
-        std::transform(&indices(b, 0), &indices(b, k), &values(b, 0),
-                       [b, &input](const int32 loc) { return input(b, loc); });
+        std::transform(
+            &indices(b, 0), &indices(b, k), &values(b, 0),
+            [b, &input](const int32_t loc) { return input(b, loc); });
       }  // for (int32 b = ...
     };
 
@@ -228,9 +230,9 @@ struct TopKFunctor<CPUDevice, T> {
     const double sort_cost = (k == num_cols) ? base_cost : 4 * base_cost;
     const double copy_cost = 2 * k * Eigen::TensorOpCost::AddCost<T>();
     const double total_cost = sort_cost + copy_cost;
-    const int64 final_cost = (total_cost >= static_cast<double>(kint64max))
-                                 ? kint64max
-                                 : static_cast<int64>(total_cost);
+    const int64_t final_cost = (total_cost >= static_cast<double>(kint64max))
+                                   ? kint64max
+                                   : static_cast<int64>(total_cost);
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, num_rows,
           final_cost, SortIndices);

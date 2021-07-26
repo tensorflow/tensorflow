@@ -658,12 +658,12 @@ PyObject* InterpreterWrapper::GetSignatureDefs() const {
   return result;
 }
 
-PyObject* InterpreterWrapper::GetSubgraphIndexFromSignatureDefName(
-    const char* method_name) {
+PyObject* InterpreterWrapper::GetSubgraphIndexFromSignature(
+    const char* signature_key) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
 
   int32_t subgraph_index =
-      interpreter_->GetSubgraphIndexFromSignatureDefName(method_name);
+      interpreter_->GetSubgraphIndexFromSignature(signature_key);
 
   if (subgraph_index < 0) {
     PyErr_SetString(PyExc_ValueError, "No matching signature.");

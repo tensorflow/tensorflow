@@ -66,6 +66,8 @@ bool Verify(const void* buf, size_t len, const OpResolver& resolver,
 // Currently, it verifies:
 // * The file is following a legit flatbuffer schema.
 // * The model is in supported version.
+// * Some basic consistency checks on the graph.
+// * Some validity checks on the tensors.
 bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter);
 
 }  // namespace tflite

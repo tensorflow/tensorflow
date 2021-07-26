@@ -146,8 +146,8 @@ func @decompose_resource_apply_gradient_descent(%arg0: tensor<f32>) -> () {
 
     // CHECK: %[[ALPHA:.*]] = "tf.Const"
     // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
-    // CHECK: %[[MUL:[0-9]*]] = "tf.Mul"(%[[DELTA]], %[[ALPHA]])
     // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]])
+    // CHECK: %[[MUL:[0-9]*]] = "tf.Mul"(%[[DELTA]], %[[ALPHA]])
     // CHECK: %[[SUB:[0-9]*]] = "tf.Sub"(%[[RES_READ_VAL]], %[[MUL]])
     // CHECK: "tf.AssignVariableOp"(%[[RES_HANDLE]], %[[SUB]])
 
@@ -314,8 +314,8 @@ func @decompose_resource_apply_adagradv2(%arg0: tensor<f32>, %arg1: tensor<f32>,
 
     // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"()
     // CHECK: [[ACC_HANDLE:%.*]] = "tf.VarHandleOp"()
-    // CHECK: [[GRAD_SQUARE:%.*]] = "tf.Mul"([[GRAD]], [[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: [[OLD_ACC:%.*]] = "tf.ReadVariableOp"([[ACC_HANDLE]]) : (tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<*xf32>
+    // CHECK: [[GRAD_SQUARE:%.*]] = "tf.Mul"([[GRAD]], [[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: [[NEW_ACC:%.*]] = "tf.AddV2"([[OLD_ACC]], [[GRAD_SQUARE]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
     // CHECK: [[LR_MULTIPLY:%.*]] = "tf.Mul"([[LR]], [[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: [[SQRT:%.*]] = "tf.Sqrt"([[NEW_ACC]]) : (tensor<*xf32>) -> tensor<*xf32>
@@ -343,8 +343,8 @@ func @decompose_resource_apply_adagrad(%arg0: tensor<f32>, %arg1: tensor<f32>) -
 
     // CHECK: %[[VAR_HANDLE:.*]] = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xf32>>>
     // CHECK: %[[ACCUM_HANDLE:.*]] = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xf32>>>
-    // CHECK: %[[GRAD_SQUARE:.*]] = "tf.Mul"(%[[GRAD]], %[[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: %[[ACCUM:.*]] = "tf.ReadVariableOp"(%[[ACCUM_HANDLE]]) : (tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<*xf32>
+    // CHECK: %[[GRAD_SQUARE:.*]] = "tf.Mul"(%[[GRAD]], %[[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: %[[ACCUM_NEW:.*]] = "tf.AddV2"(%[[ACCUM]], %[[GRAD_SQUARE]]) : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
     // CHECK: %[[LR_MULTIPLY:.*]] = "tf.Mul"(%[[LR]], %[[GRAD]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: %[[SQRT:.*]] = "tf.Sqrt"(%[[ACCUM_NEW]]) : (tensor<*xf32>) -> tensor<*xf32>
@@ -614,8 +614,8 @@ func @decompose_resource_scatter_add_op(%indices : tensor<2x?xi32>, %updates: te
     // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
 
-    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<2x?xi32>, tensor<i32>) -> tensor<2x?x1xi32>
     // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<2x?xi32>, tensor<i32>) -> tensor<2x?x1xi32>
     // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterAdd"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
     // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
     "tf.ResourceScatterAdd"(%resource, %indices, %updates) : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()
@@ -635,8 +635,8 @@ func @decompose_resource_scatter_add_op_1d_indices(%indices : tensor<?xi32>, %up
     // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
 
-    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<?xi32>, tensor<i32>) -> tensor<?x1xi32>
     // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<?xi32>, tensor<i32>) -> tensor<?x1xi32>
     // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterAdd"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
     // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
     "tf.ResourceScatterAdd"(%resource, %indices, %updates) : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<?xi32>, tensor<?x?x?xi32>) -> ()
@@ -657,8 +657,8 @@ func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates:
     // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
 
-    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<2x?xi32>, tensor<i32>) -> tensor<2x?x1xi32>
     // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<2x?xi32>, tensor<i32>) -> tensor<2x?x1xi32>
     // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterUpdate"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
     // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
     "tf.ResourceScatterUpdate"(%resource, %indices, %updates) : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()

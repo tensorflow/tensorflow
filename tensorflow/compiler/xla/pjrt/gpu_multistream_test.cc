@@ -58,7 +58,7 @@ TEST(GpuMultiStream, Basics) {
       std::unique_ptr<PjRtExecutable> executable,
       client->Compile(computation, std::move(compile_options)));
 
-  int64 dummy_size = 1 << 20;
+  int64_t dummy_size = 1 << 20;
   std::vector<int32> dummy_inputs(dummy_size);
   Shape dummy_shape = ShapeUtil::MakeShape(S32, {dummy_size});
 

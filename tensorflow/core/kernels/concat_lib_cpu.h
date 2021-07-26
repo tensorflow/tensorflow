@@ -33,13 +33,13 @@ void ConcatCPUImpl(
     DeviceBase* d,
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs,
-    int64 cost_per_unit, ElementCopier copier,
+    int64_t cost_per_unit, ElementCopier copier,
     typename TTypes<T, 2>::Matrix* output) {
   size_t num_inputs = inputs.size();
 
   std::vector<ptrdiff_t> sizes;
   sizes.reserve(num_inputs);
-  int64 row_size = 0;
+  int64_t row_size = 0;
   for (const auto& input : inputs) {
     sizes.push_back(input->dimension(1));
     row_size += sizes.back();
@@ -48,7 +48,7 @@ void ConcatCPUImpl(
   // cost_per_unit is estimated bytes to copy per output array element (for
   // strings this includes an estimate of the number of bytes of the actual
   // string data, as well).
-  const int64 estimated_total_cost = output->size() * cost_per_unit;
+  const int64_t estimated_total_cost = output->size() * cost_per_unit;
 
   auto worker_threads = d->tensorflow_cpu_worker_threads();
   int num_threads = std::min(4, worker_threads->num_threads);
@@ -63,9 +63,9 @@ void ConcatCPUImpl(
     for (const auto& input : inputs) {
       inp.push_back(&(*input)(0, 0));
     }
-    const int64 dim0 = output->dimension(0);
-    for (int64 i = 0; i < dim0; ++i) {
-      for (int64 j = 0; j < num_inputs; ++j) {
+    const int64_t dim0 = output->dimension(0);
+    for (int64_t i = 0; i < dim0; ++i) {
+      for (int64_t j = 0; j < num_inputs; ++j) {
         auto size = sizes[j];
         copier.Copy(out, inp[j], j, size);
         out += size;
@@ -77,8 +77,8 @@ void ConcatCPUImpl(
 
   // Sharded mode.
   auto work = [&row_size, &sizes, &inputs, &output, &copier, &num_inputs](
-                  int64 start, int64 end) {
-    int64 skipped_rows = start / row_size;
+                  int64_t start, int64_t end) {
+    int64_t skipped_rows = start / row_size;
     T* out = output->data() + skipped_rows * row_size;
     T* out_start = output->data() + start;
     T* out_end = output->data() + end;
@@ -115,9 +115,9 @@ void ConcatCPUImpl(
     for (const auto& input : inputs) {
       inp.push_back(&(*input)(skipped_rows, 0));
     }
-    const int64 dim0 = output->dimension(0);
-    for (int64 i = skipped_rows; i < dim0; ++i) {
-      for (int64 j = 0; j < num_inputs; ++j) {
+    const int64_t dim0 = output->dimension(0);
+    for (int64_t i = skipped_rows; i < dim0; ++i) {
+      for (int64_t j = 0; j < num_inputs; ++j) {
         ptrdiff_t size = std::min(sizes[j], out_end - out);
         copier.Copy(out, inp[j], j, size);
         out += size;

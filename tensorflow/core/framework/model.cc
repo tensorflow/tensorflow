@@ -26,8 +26,8 @@ namespace tensorflow {
 namespace data {
 namespace model {
 
-constexpr int64 Model::kOptimizationPeriodMinMs;
-constexpr int64 Model::kOptimizationPeriodMaxMs;
+constexpr int64_t Model::kOptimizationPeriodMinMs;
+constexpr int64_t Model::kOptimizationPeriodMaxMs;
 
 namespace {
 
@@ -146,7 +146,7 @@ Status ModelFromProtoHelper(ModelProto model, std::shared_ptr<Node>* output) {
   while (!to_restore_inputs.empty()) {
     std::shared_ptr<Node> node = to_restore_inputs.front();
     to_restore_inputs.pop_front();
-    for (int64 input_id : model.nodes().at(node->id()).inputs()) {
+    for (int64_t input_id : model.nodes().at(node->id()).inputs()) {
       std::shared_ptr<Node> input;
       TF_RETURN_IF_ERROR(
           Node::FromProto(model.nodes().at(input_id), node, &input));
@@ -926,7 +926,7 @@ class Unknown : public Node {
 
 }  // namespace
 
-thread_local int64 Node::work_start_;
+thread_local int64_t Node::work_start_;
 
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
@@ -1324,7 +1324,7 @@ double Node::TotalProcessingTimeForInputs(
     if (input->autotune()) {
       double input_processing_time =
           total_processing_times.at(input->long_name());
-      int64 num_elements = input->num_elements();
+      int64_t num_elements = input->num_elements();
       if (num_elements < kNumElementsThreshold) {
         if (input_processing_time_count_ < kCountThreshold) {
           sum += input_processing_time;
@@ -1537,7 +1537,7 @@ Status Node::FromProtoHelper(ModelProto::Node node_proto,
   node->record_metrics_.store(node_proto.record_metrics());
 
   // Restore parameters.
-  int64 num_parameters = node_proto.parameters_size();
+  int64_t num_parameters = node_proto.parameters_size();
   for (int i = 0; i < num_parameters; i++) {
     const ModelProto::Node::Parameter& parameter_proto =
         node_proto.parameters(i);
@@ -1645,8 +1645,8 @@ void Model::FlushMetrics() {
   }
 }
 
-void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                     int64 ram_budget, double model_input_time,
+void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                     int64_t ram_budget, double model_input_time,
                      CancellationManager* cancellation_manager) {
   std::shared_ptr<Node> snapshot;
   {
@@ -1688,7 +1688,7 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
-bool Model::ShouldStop(int64 cpu_budget, int64 ram_budget,
+bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
                        const Model::ModelParameters& parameters,
                        const Model::ModelParameters& parallelism_parameters,
                        const Model::ModelParameters& buffer_size_parameters,
@@ -1698,7 +1698,7 @@ bool Model::ShouldStop(int64 cpu_budget, int64 ram_budget,
     // If those essential transformations' parallelism reaches the CPU
     // budget, we will only tune the buffer size parameters in future
     // iterations.
-    int64 model_parallelism = 0;
+    int64_t model_parallelism = 0;
     for (auto& pair : parallelism_parameters) {
       model_parallelism += std::round(pair.second->value);
     }
@@ -1720,8 +1720,8 @@ bool Model::ShouldStop(int64 cpu_budget, int64 ram_budget,
 }
 
 // TODO(jsimsa): Add support for tracking and using the model input time.
-Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                           int64 ram_budget,
+Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                           int64_t ram_budget,
                            CancellationManager* cancellation_manager) {
   std::function<void()> unused;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -1732,8 +1732,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
       },
       /*deregister_fn=*/&unused));
 
-  int64 last_optimization_ms = 0;
-  int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+  int64_t last_optimization_ms = 0;
+  int64_t current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
   while (true) {
     {
       mutex_lock l(mu_);
@@ -1750,10 +1750,10 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
       }
     }
 
-    int64 start_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+    int64_t start_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     Optimize(algorithm, cpu_budget, ram_budget, /*model_input_time=*/0,
              cancellation_manager);
-    int64 end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+    int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 
     // Exponentially increase the period of running the optimization
@@ -1799,7 +1799,7 @@ void Model::OptimizeGradientDescent(
   constexpr double kOptimizationPrecision = 100.0L;
 
   // Maximum number of iterations for optimization.
-  constexpr int64 kMaxIterations = 1000;
+  constexpr int64_t kMaxIterations = 1000;
 
   double output_time = 0;
   double new_output_time;
@@ -1979,7 +1979,7 @@ Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
 }
 
 std::string Model::DebugString() {
-  constexpr int64 kMinSecondsBetweenCalls = 30;
+  constexpr int64_t kMinSecondsBetweenCalls = 30;
   if (absl::Now() < cache_until_) return cached_debug_string_;
   std::shared_ptr<Node> snapshot;
   {

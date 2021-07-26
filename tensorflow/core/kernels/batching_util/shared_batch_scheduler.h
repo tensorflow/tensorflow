@@ -445,7 +445,7 @@ SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
         break;
       }
     }
-    const int64 kSleepTimeMicros = 100;
+    const int64_t kSleepTimeMicros = 100;
     options_.env->SleepForMicroseconds(kSleepTimeMicros);
   }
   // Delete the batch threads before allowing state the threads may access (e.g.
@@ -575,7 +575,8 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
     if (batch_to_process == nullptr) {
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
-      const int64 kTimeoutMillis = 1;  // The smallest accepted granule of time.
+      const int64_t kTimeoutMillis =
+          1;  // The smallest accepted granule of time.
       WaitForMilliseconds(&l, &schedulable_batch_cv_, kTimeoutMillis);
       return;
     }
@@ -715,10 +716,10 @@ Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
           "full");
     }
 
-    const int64 open_batch_remaining_slot =
+    const int64_t open_batch_remaining_slot =
         max_execution_batch_size - batches_.back()->size();
 
-    const int64 input_task_size = (*task)->size();
+    const int64_t input_task_size = (*task)->size();
 
     std::vector<std::unique_ptr<TaskType>> output_tasks;
 

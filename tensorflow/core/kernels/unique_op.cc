@@ -88,7 +88,7 @@ class UniqueOp : public OpKernel {
                     "unique does not support input tensors larger than ",
                     std::numeric_limits<int32>::max(), " elements"));
 
-    int64 axis = 0;
+    int64_t axis = 0;
     std::vector<int64> new_sizes{1, input.NumElements(), 1};
     if (context->num_inputs() == 1) {
       OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
@@ -124,13 +124,13 @@ class UniqueOp : public OpKernel {
                     errors::InvalidArgument("axis has to be between [0, ",
                                             input.dims(), ")"));
         if (axis > 0) {
-          for (int64 i = 0; i < axis; i++) {
+          for (int64_t i = 0; i < axis; i++) {
             new_sizes[0] *= input.dim_size(i);
           }
         }
         new_sizes[1] = input.dim_size(axis);
         if (axis + 1 < input.dims()) {
-          for (int64 i = axis + 1; i < input.dims(); i++) {
+          for (int64_t i = axis + 1; i < input.dims(); i++) {
             new_sizes[2] *= input.dim_size(i);
           }
         }
@@ -142,13 +142,13 @@ class UniqueOp : public OpKernel {
                                 1, TensorShape({new_sizes[1]}), &idx));
     auto idx_vec = idx->template vec<TIndex>();
 
-    int64 uniq_size;
+    int64_t uniq_size;
     if (new_sizes[0] == 1 && new_sizes[2] == 1) {
       // Specialized and faster implementation when unique is run over single
       // elements. Here we put T directly into the map rather than ints pointing
       // to them as in the general case.
       auto Tin = input.flat<T>();
-      const int64 N = static_cast<int64>(Tin.size());
+      const int64_t N = static_cast<int64>(Tin.size());
 
       typename UniqueOpHashMap<T, TIndex>::map_type uniq;
       uniq.reserve(2 * N);
@@ -203,7 +203,7 @@ class UniqueOp : public OpKernel {
 
       uniq.reserve(2 * Tin.dimension(1));
 
-      for (int64 i = 0, j = 0; i < Tin.dimension(1); ++i) {
+      for (int64_t i = 0, j = 0; i < Tin.dimension(1); ++i) {
         auto it = uniq.emplace(i, j);
         idx_vec(i) = it.first->second;
         if (it.second) {
@@ -232,7 +232,7 @@ class UniqueOp : public OpKernel {
       auto count_output_vec = output->template vec<TIndex>();
       count_output_vec.setZero();
       const int N = idx_vec.size();
-      for (int64 i = 0; i < N; ++i) {
+      for (int64_t i = 0; i < N; ++i) {
         count_output_vec(idx_vec(i))++;
       }
     }

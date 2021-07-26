@@ -103,8 +103,8 @@ class TensorShapeRep {
 
   // We use the max value of uint16 or uint32 to represent unknown shapes, so
   // the maximum representable valid shape in these representations is one less.
-  static constexpr int64 kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
-  static constexpr int64 kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
+  static constexpr int64_t kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
+  static constexpr int64_t kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
   static constexpr uint16 kUnknownRep16 = std::numeric_limits<uint16>::max();
   static constexpr uint32 kUnknownRep32 = std::numeric_limits<uint32>::max();
 
@@ -141,7 +141,7 @@ class TensorShapeRep {
   RepTag tag() const { return static_cast<RepTag>(buf()[15]); }
   void set_tag(RepTag tag) { buf()[15] = static_cast<uint8>(tag); }
 
-  void set_num_elements(int64 n) { num_elements_ = n; }
+  void set_num_elements(int64_t n) { num_elements_ = n; }
 
  private:
   void DestructorOutOfLine();
@@ -203,11 +203,11 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// \brief Add a dimension to the end ("inner-most").
   /// REQUIRES: `size >= 0`
-  void AddDim(int64 size);
+  void AddDim(int64_t size);
 
   /// Same as `AddDim` but returns a `Status`.
   /// Use if unsure is `size >= 0`, to prevent `CHECK`-crashes.
-  Status AddDimWithStatus(int64 size);
+  Status AddDimWithStatus(int64_t size);
 
   /// Appends all the dimensions from `shape`.
   void AppendShape(const TensorShapeBase& shape);
@@ -219,22 +219,22 @@ class TensorShapeBase : public TensorShapeRep {
   /// \brief Insert a dimension somewhere in the `TensorShape`.
   /// REQUIRES: `0 <= d <= dims()`
   /// REQUIRES: `size >= 0`
-  void InsertDim(int d, int64 size);
+  void InsertDim(int d, int64_t size);
 
   /// Same as `InsertDim` but returns a `Status`.
   /// Use if unsure if requirements in `InsertDim` are satistified, to prevent
   /// `CHECK`-fail crashes.
-  Status InsertDimWithStatus(int d, int64 size);
+  Status InsertDimWithStatus(int d, int64_t size);
 
   /// \brief Modifies the size of the dimension `d` to be `size`
   /// REQUIRES: `0 <= d < dims()`
   /// REQUIRES: `size >= 0`
-  void set_dim(int d, int64 size);
+  void set_dim(int d, int64_t size);
 
   /// Same as `set_dim` but returns a `Status`.
   /// Use if unsure if requirements in `set_dim` are satistified, to prevent
   /// `CHECK`-fail crashes.
-  Status SetDimWithStatus(int d, int64 size);
+  Status SetDimWithStatus(int d, int64_t size);
 
   /// \brief Removes dimension `d` from the `TensorShape`.
   /// REQUIRES: `0 <= d < dims()`
@@ -245,7 +245,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Same as `RemoveDim` but returns a `Status`.
   /// Use if unsure is `0 <= d < dims()`, to prevent `CHECK`-crashes.
-  Status RemoveDimWithStatus(int64 d) {
+  Status RemoveDimWithStatus(int64_t d) {
     if (TF_PREDICT_FALSE(d < 0)) {
       return errors::Internal(
           "Expected dimension index to be non-negative, got ", d);
@@ -262,7 +262,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Same as `RemoveLastDims` but returns a `Status`.
   /// Use if unsure is `0 <= n <= dims()`, to prevent `CHECK`-crashes.
-  Status RemoveLastDimsWithStatus(int64 n) {
+  Status RemoveLastDimsWithStatus(int64_t n) {
     if (TF_PREDICT_FALSE(n < dims())) {
       return errors::Internal("Expected dimension index to be at most ", dims(),
                               " got ", n);
@@ -333,11 +333,11 @@ class TensorShapeBase : public TensorShapeRep {
                 "Shape is neither TensorShape nor PartialTensorShape");
 
   // Used by AddDim and MakeShapeHelper.  Does no error checking.
-  void UnsafeAddDim(int64 size, int64 new_num_elements);
+  void UnsafeAddDim(int64_t size, int64_t new_num_elements);
 
   // For use by TensorShapeUtils::MakeShape
   template <class T, class S>
-  friend Status MakeShapeHelper(const T*, int64, S*);
+  friend Status MakeShapeHelper(const T*, int64_t, S*);
 };
 
 /// Outputs `TensorShapeBase` to `std::ostream`.
@@ -426,7 +426,7 @@ inline std::ostream& operator<<(std::ostream& os, const TensorShape& ts) {
 
 /// Represents the value of one dimension in a TensorShape.
 struct TensorShapeDim {
-  explicit TensorShapeDim(int64 s) : size(s) {}
+  explicit TensorShapeDim(int64_t s) : size(s) {}
   int64 size;
 };
 
@@ -476,12 +476,14 @@ class TensorShapeUtils {
 
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
-  static Status MakeShape(const int32* dims, int64 n, TensorShape* out);
-  static Status MakeShape(const int64* dims, int64 n, TensorShape* out);
+  static Status MakeShape(const int32* dims, int64_t n, TensorShape* out);
+  static Status MakeShape(const int64* dims, int64_t n, TensorShape* out);
   static Status MakeShape(gtl::ArraySlice<int32> shape, TensorShape* out);
   static Status MakeShape(gtl::ArraySlice<int64> shape, TensorShape* out);
-  static Status MakeShape(const int32* dims, int64 n, PartialTensorShape* out);
-  static Status MakeShape(const int64* dims, int64 n, PartialTensorShape* out);
+  static Status MakeShape(const int32* dims, int64_t n,
+                          PartialTensorShape* out);
+  static Status MakeShape(const int64* dims, int64_t n,
+                          PartialTensorShape* out);
   static Status MakeShape(gtl::ArraySlice<int32> shape,
                           PartialTensorShape* out);
   static Status MakeShape(gtl::ArraySlice<int64> shape,
@@ -511,12 +513,12 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
   /// Add a dimension to the end ("inner-most"), returns a new
   /// PartialTensorShape.
   /// REQUIRES: `size >= -1`, where -1 means unknown
-  PartialTensorShape Concatenate(int64 size) const;
+  PartialTensorShape Concatenate(int64_t size) const;
 
   /// Similar to `Concatenate` but returning `Status`.
   /// Use if calling code cannot validate all requirements and if `CHECK`-fails
   /// are to be avoided.
-  Status ConcatenateWithStatus(int64 size, PartialTensorShape* out) const;
+  Status ConcatenateWithStatus(int64_t size, PartialTensorShape* out) const;
 
   /// Appends all the dimensions from `shape`.  Returns a new
   /// PartialTensorShape.

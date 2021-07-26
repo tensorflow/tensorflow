@@ -411,7 +411,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
 
     // Input #2 is a 4x16 integer tensor.
     Tensor input_2(DT_INT32, TensorShape({4, 16}));
-    for (int64 i = 0; i < input_2.NumElements(); ++i) {
+    for (int64_t i = 0; i < input_2.NumElements(); ++i) {
       input_2.flat<int32>()(i) = i + 1;
     }
     inputs.push_back({nullptr, &input_2});
@@ -451,7 +451,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
   Tensor* output = GetOutput(0);
   TensorShape expected({2, 16});
   EXPECT_TRUE(output->shape().IsSameSize(expected));
-  for (int64 i = 0; i < expected.num_elements(); ++i) {
+  for (int64_t i = 0; i < expected.num_elements(); ++i) {
     EXPECT_EQ(i + 1, output->flat<int32>()(i));
   }
 }

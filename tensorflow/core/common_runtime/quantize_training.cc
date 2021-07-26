@@ -52,7 +52,7 @@ struct EdgeToConvert {
   float input_min;
   float input_max;
 
-  EdgeToConvert(const Edge* e, int32 bits, bool sign, bool range, float min,
+  EdgeToConvert(const Edge* e, int32_t bits, bool sign, bool range, float min,
                 float max)
       : edge(e),
         num_bits(bits),
@@ -593,7 +593,7 @@ Status ProcessTargetEdges(Graph* graph, const string& quant_op_type,
 
 }  // namespace
 
-Status DoQuantizeTraining(int32 num_bits, const string& quant_op_type,
+Status DoQuantizeTraining(int32_t num_bits, const string& quant_op_type,
                           Graph* graph) {
   if (graph == nullptr) {
     return errors::InvalidArgument("Cannot accept empty graph pointer.");
@@ -659,7 +659,8 @@ Status DoQuantizeTraining(int32 num_bits, const string& quant_op_type,
 }
 
 Status DoQuantizeTrainingOnGraphDef(const GraphDef& input_graphdef,
-                                    int32 num_bits, const string& quant_op_type,
+                                    int32_t num_bits,
+                                    const string& quant_op_type,
                                     GraphDef* result_graphdef) {
   Graph graph(OpRegistry::Global());
   GraphConstructorOptions opts;
@@ -674,7 +675,7 @@ Status DoQuantizeTrainingOnGraphDef(const GraphDef& input_graphdef,
 }
 
 Status DoQuantizeTrainingOnSerializedGraphDef(const string& input_graph_string,
-                                              int32 num_bits,
+                                              int32_t num_bits,
                                               const string& quant_op_type,
                                               string* result_graph_string) {
   // First create the graph from the GraphDef.

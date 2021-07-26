@@ -89,7 +89,7 @@ class BufferAssignmentTest : public HloTestBase {
   ~BufferAssignmentTest() override {}
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
-                                                        int64 alignment = 1) {
+                                                        int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
@@ -99,7 +99,7 @@ class BufferAssignmentTest : public HloTestBase {
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
-      HloModule* module, int64 alignment = 1) {
+      HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
@@ -109,7 +109,7 @@ class BufferAssignmentTest : public HloTestBase {
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
-      HloModule* module, int64 alignment = 1) {
+      HloModule* module, int64_t alignment = 1) {
     absl::flat_hash_set<HloOpcode> must_not_live_out = {HloOpcode::kAdd};
 
     return BufferAssigner::Run(
@@ -123,7 +123,8 @@ class BufferAssignmentTest : public HloTestBase {
   }
 
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
-      HloModule* module, BufferAssigner::Colorer colorer, int64 alignment = 1) {
+      HloModule* module, BufferAssigner::Colorer colorer,
+      int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
@@ -134,7 +135,7 @@ class BufferAssignmentTest : public HloTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
       HloModule* module, absl::Span<HloInstruction* const> instruction_sequence,
-      int64 alignment = 1) {
+      int64_t alignment = 1) {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
     return BufferAssigner::Run(
@@ -147,7 +148,7 @@ class BufferAssignmentTest : public HloTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithPresetAssignments(
       HloModule* module, std::unique_ptr<PresetAssignments> preset_assignments,
-      int64 alignment = 1) {
+      int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, absl::make_unique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
@@ -296,7 +297,7 @@ class BufferAssignmentTest : public HloTestBase {
     }
 
     // Gets the total size of all buffers assigned.
-    int64 total_size = 0;
+    int64_t total_size = 0;
     for (auto& allocation : buffers.Allocations()) {
       total_size += allocation.size();
     }
@@ -902,7 +903,7 @@ TEST_F(BufferAssignmentTest, MultipleUsersForNode) {
 
   // Log size information for inspection.
   const std::vector<const HloInstruction*> level0 = GetInstructions(sub);
-  int64 size0 = ValidateBuffers(level0, *buffers);
+  int64_t size0 = ValidateBuffers(level0, *buffers);
   LOG(INFO) << "LogicalBuffer count " << buffers->Allocations().size()
             << " for " << level0.size() << " instructions; "
             << "total buffer size " << size0;
@@ -934,8 +935,8 @@ TEST_F(BufferAssignmentTest, TrivialMap) {
 
   // Assigns buffers and fetches sizes.
   auto buffers = RunBufferAssignment(module.get());
-  int64 size0 = ValidateBuffers(level0, *buffers);
-  int64 size1 = ValidateBuffers(level1, *buffers);
+  int64_t size0 = ValidateBuffers(level0, *buffers);
+  int64_t size1 = ValidateBuffers(level1, *buffers);
 
   // Both algorithms assign the map's buffer before processing the embedded
   // computation, so we can verify that the buffers aren't shared between them
@@ -1049,9 +1050,9 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
 
   // Assigns buffers and fetches sizes.
   auto buffers = RunBufferAssignment(module.get());
-  int64 size0 = ValidateBuffers(level0, *buffers);
-  int64 sizec = ValidateBuffers(levelc, *buffers);
-  int64 sizeb = ValidateBuffers(levelb, *buffers);
+  int64_t size0 = ValidateBuffers(level0, *buffers);
+  int64_t sizec = ValidateBuffers(levelc, *buffers);
+  int64_t sizeb = ValidateBuffers(levelb, *buffers);
 
   // BufferAssignment will assign a single allocation for the following
   // instructions: while, while.cond.param, while.body.param, while.body.result.
@@ -2073,7 +2074,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
-                                                        int64 alignment = 1) {
+                                                        int64_t alignment = 1) {
     HloSchedule schedule =
         ScheduleModule(module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
@@ -2199,7 +2200,7 @@ ENTRY %test_module {
 
   // Run CopyInsertion and check if the graph constructed above doesn't need
   // any copies inserted for BufferAssignment to run.
-  int64 instruction_count = m->instruction_count();
+  int64_t instruction_count = m->instruction_count();
   CopyInsertion copy_insertion;
   ASSERT_IS_OK(copy_insertion.Run(m.get()).status());
   ASSERT_EQ(instruction_count, m->instruction_count());
@@ -2266,7 +2267,7 @@ ENTRY %test_module {
 
   // Run CopyInsertion and check if the graph constructed above doesn't need
   // any copies inserted for BufferAssignment to run.
-  int64 instruction_count = m->instruction_count();
+  int64_t instruction_count = m->instruction_count();
   CopyInsertion copy_insertion;
   ASSERT_IS_OK(copy_insertion.Run(m.get()).status());
   ASSERT_EQ(instruction_count, m->instruction_count());
@@ -2374,7 +2375,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
 
   // Run CopyInsertion and check if the graph constructed above doesn't need
   // any copies inserted for BufferAssignment to run.
-  int64 instruction_count = module->instruction_count();
+  int64_t instruction_count = module->instruction_count();
   CopyInsertion copy_insertion;
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   ASSERT_EQ(instruction_count, module->instruction_count());

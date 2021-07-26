@@ -135,7 +135,7 @@ class ArchiveEnvironment : public ::testing::Environment {
   // Delete all temporary directories on teardown.
   void TearDown() override {
     for (const auto& dir : temporary_directories_) {
-      tensorflow::int64 undeleted_dirs, undeleted_files;
+      int64_t undeleted_dirs, undeleted_files;
       TF_CHECK_OK(
           env->DeleteRecursively(dir, &undeleted_dirs, &undeleted_files));
     }

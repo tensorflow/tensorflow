@@ -143,7 +143,7 @@ TEST(RemoveWhitespaceContext, Basic) {
   EXPECT_EQ(data, StringPiece(""));
 }
 
-void TestConsumeLeadingDigits(StringPiece s, int64 expected,
+void TestConsumeLeadingDigits(StringPiece s, int64_t expected,
                               StringPiece remaining) {
   uint64 v;
   StringPiece input(s);

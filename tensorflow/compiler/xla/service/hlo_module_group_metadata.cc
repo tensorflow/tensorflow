@@ -133,7 +133,7 @@ Status HloModuleGroupMetadata::Build() {
   // While building the companion sets, initial sets may be removed by inserting
   // nullptr in companion_sets_. Prune those removed sets to compact.
   std::vector<std::unique_ptr<std::vector<HloInstruction*>>> sets;
-  for (int64 i = 0; i < companion_sets_.size(); ++i) {
+  for (int64_t i = 0; i < companion_sets_.size(); ++i) {
     if (companion_sets_[i] == nullptr) {
       continue;
     }
@@ -179,7 +179,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
                              << " does not have a device";
         comm_devices.insert(*device);
       }
-      for (int64 device : comm_devices) {
+      for (int64_t device : comm_devices) {
         if (!devices.insert(device).second) {
           std::stringstream ss;
           ss << "Companion set:" << std::endl;
@@ -223,12 +223,12 @@ bool HloModuleGroupMetadata::InstructionCommunicates(
 }
 
 const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
-    int64 channel_id) const {
+    int64_t channel_id) const {
   CHECK(channel_id_map_.find(channel_id) != channel_id_map_.end());
   return channels_[channel_id_map_.at(channel_id)];
 }
 
-bool HloModuleGroupMetadata::HasChannel(int64 channel_id) const {
+bool HloModuleGroupMetadata::HasChannel(int64_t channel_id) const {
   return channel_id_map_.find(channel_id) != channel_id_map_.end();
 }
 
@@ -249,7 +249,7 @@ HloComputation* HloModuleGroupMetadata::PeerComputation(
 }
 
 const std::vector<HloInstruction*>& HloModuleGroupMetadata::GetAllReduceGroup(
-    int64 channel_id) const {
+    int64_t channel_id) const {
   auto it = all_reduce_map_.find(channel_id);
   CHECK(it != all_reduce_map_.end());
   return it->second;
@@ -275,7 +275,7 @@ bool HloModuleGroupMetadata::CheckCompanionPathsCompatibility(
             << " != " << path1.size();
     return false;
   }
-  for (int64 i = 0; i < path0.size(); ++i) {
+  for (int64_t i = 0; i < path0.size(); ++i) {
     if (path0[i] != path1[i]) {
       VLOG(5) << "Companion instructions at path index " << i
               << " do not have the same opcode: " << path0[i].ToString()
@@ -287,7 +287,7 @@ bool HloModuleGroupMetadata::CheckCompanionPathsCompatibility(
 }
 
 int64 HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
-  for (int64 i = 0; i < modules_.size(); ++i) {
+  for (int64_t i = 0; i < modules_.size(); ++i) {
     if (modules_[i] == module) {
       return i;
     }
@@ -431,7 +431,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     absl::c_copy(Companions(instruction2),
                  std::back_inserter(
                      *companion_sets_[companion_set_index_[instruction1]]));
-    int64 index_to_remove = companion_set_index_[instruction2];
+    int64_t index_to_remove = companion_set_index_[instruction2];
     for (HloInstruction* hlo : Companions(instruction2)) {
       companion_set_index_[hlo] = companion_set_index_[instruction1];
     }

@@ -46,7 +46,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
  public:
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
-  explicit HloEvaluator(int64 max_loop_iterations = -1);
+  explicit HloEvaluator(int64_t max_loop_iterations = -1);
 
   // Evaluates an HLO module and an array of pointers to literals.  Returns the
   // evaluated result as a literal if successful.

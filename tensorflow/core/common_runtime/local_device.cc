@@ -73,7 +73,7 @@ struct LocalDevice::EigenThreadPoolInfo {
   explicit EigenThreadPoolInfo(const SessionOptions& options, int numa_node,
                                Allocator* allocator) {
     // Use session setting if specified.
-    int32 intra_op_parallelism_threads =
+    int32_t intra_op_parallelism_threads =
         options.config.intra_op_parallelism_threads();
     // If no session setting, use environment setting.
     if (intra_op_parallelism_threads == 0) {

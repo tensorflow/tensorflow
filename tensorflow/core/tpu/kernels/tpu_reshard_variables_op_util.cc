@@ -153,7 +153,7 @@ xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
       transfer_manager->HostShapeToDeviceShape(input_host_shape));
 
   // Allocates a buffer for the root tuple.
-  const int64 root_size =
+  const int64_t root_size =
       transfer_manager->GetByteSizeRequirement(input_buffers.shape());
   TF_ASSIGN_OR_RETURN(*input_buffers.mutable_element({}),
                       allocator->Allocate(device_ordinal, root_size));
@@ -229,7 +229,7 @@ Status UpdateOutputVariables(
     const std::shared_ptr<se::Event>& definition_event) {
   profiler::TraceMe trace_me("UpdateOutputVariables", /*level=*/2);
   // Shapes of the outputs, in TensorShape form.
-  const int64 sub_elements =
+  const int64_t sub_elements =
       xla::ShapeUtil::TupleElementCount(result_buffers.on_host_shape());
   if (sub_elements != output_tensor_shape_protos.size()) {
     return errors::InvalidArgument(

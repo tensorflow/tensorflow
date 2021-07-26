@@ -311,7 +311,6 @@ void TrtShapeOptimizationProfile::InitProfiles(
   }
 }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status TrtShapeOptimizationProfile::AddProfiles(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network) {
@@ -351,29 +350,24 @@ Status TrtShapeOptimizationProfile::AddProfiles(
   // if TRT_VERSION < 6, then we do not need to add.
   return Status::OK();
 }
-#endif
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status TrtShapeOptimizationProfile::ConfigureBuilder(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network) {
   TF_RETURN_IF_ERROR(AddProfiles(builder, config, network));
   return Status::OK();
 }
-#endif
 
 // Sets the shape tensor mask from the TRT engine definition.
 void TrtShapeOptimizationProfile::SetShapeTensorMask(
     const nvinfer1::ICudaEngine* engine, int n_inputs) {
   is_shape_tensor_.resize(n_inputs, false);
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   for (int i = 0; i < n_inputs; i++) {
     is_shape_tensor_[i] = engine->isShapeBinding(i);
     if (is_shape_tensor_[i]) {
       VLOG(2) << "Found shape tensor at " << i;
     }
   }
-#endif
   has_shape_tensor_ =
       absl::c_any_of(is_shape_tensor_, [](bool b) { return b; });
 }
@@ -383,7 +377,6 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
     const nvinfer1::INetworkDefinition* network) {
   int n_inputs = network->getNbInputs();
   is_shape_tensor_.resize(n_inputs, false);
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   for (int i = 0; i < n_inputs; i++) {
     const ITensorProxyPtr input = network->getInput(i);
     is_shape_tensor_[i] = input->isShapeTensor();
@@ -391,7 +384,6 @@ void TrtShapeOptimizationProfile::SetShapeTensorMask(
       VLOG(2) << "Found shape tensor " << input->getName() << ' at ' << i;
     }
   }
-#endif
   has_shape_tensor_ =
       absl::c_any_of(is_shape_tensor_, [](bool b) { return b; });
 }
@@ -443,11 +435,9 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
       //   set optimizationprofiles.
       // - The 0th profile is set implicitly for the first execution context
       //   therefore we do not need to set.
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
       if (!context->setOptimizationProfile(i)) {
         return errors::Internal("Could not set TRT optimization profile.");
       }
-#endif
     }
     exec_contexts->push_back(std::move(context));
     i++;
@@ -459,7 +449,6 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
 Status TrtShapeOptimizationProfile::SetInputShapeBinding(
     int input_index, int binding_index, nvinfer1::ICudaEngine* cuda_engine,
     nvinfer1::IExecutionContext* exec_context) const {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   if (cuda_engine->isShapeBinding(binding_index)) {
     // Input shape binding data has to be in host memory. That is the reason
     // we can't use input_tensor.flat().data(). which contains the same
@@ -475,13 +464,11 @@ Status TrtShapeOptimizationProfile::SetInputShapeBinding(
                               binding_index);
     }
   }
-#endif
   return Status::OK();
 }
 
 // If binding_idx is a shape tensor, then returns the associated min/max/opt
 // shape values from prof_idx.
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 nvinfer1::Dims GetDimsFromShapeVal(int prof_idx, int binding_idx,
                                    nvinfer1::OptProfileSelector selector,
                                    const nvinfer1::ICudaEngine* engine) {
@@ -503,22 +490,18 @@ nvinfer1::Dims GetDimsFromShapeVal(int prof_idx, int binding_idx,
   }
   return {0, {0}};
 }
-#endif
 
 Status TrtShapeOptimizationProfile::RestoreProfiles(
     const nvinfer1::ICudaEngine* engine) {
   need_profiles_ = false;
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   if (!engine) {
     // We do not need to restore profiles for an empty engine.
     return Status::OK();
   }
-#if IS_TRT_VERSION_GE(7, 0, 0, 0)
   if (engine->hasImplicitBatchDimension()) {
     // Nothing to do, we cannot have profiles in implicit batch mode.
     return Status::OK();
   }
-#endif
   int n_profiles = engine->getNbOptimizationProfiles();
   need_profiles_ = n_profiles > 0;
 #if IS_TRT_VERSION_GE(7, 1, 3, 0)
@@ -565,7 +548,6 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
     VLOG(2) << "Restored profile " << cfg.DebugString();
     profiles_.push_back(std::move(cfg));
   }
-#endif
   return Status::OK();
 }
 

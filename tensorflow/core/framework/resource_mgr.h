@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -32,10 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -43,16 +41,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Forward declaration to avoid introducing a dependency on headers in
-// "tensorflow/core/graph/...".
-class GraphDefBuilder;
-class Node;
-
 // A ResourceMgr instance keeps track of named and typed resources
 // grouped into containers.
 //
-// Each resource must be represented as a sub-class of ResourceBase,
-// which is reference counted explicitly.  Each named resource is
+// Each named resource is
 // registered with ResourceMgr under a named "container" name. At any
 // time, there is at most one instance of a resource given the container
 // name, the resource type and the resource name.
@@ -82,21 +74,6 @@ class Node;
 //   }
 //   my_var->Unref();   // Or use ScopedUnref().
 //   ctx->SetStatus(s);
-class ResourceBase : public core::RefCounted {
- public:
-  // Returns a debug string for *this.
-  virtual std::string DebugString() const = 0;
-
-  // Returns memory used by this resource.
-  virtual int64 MemoryUsed() const { return 0; }
-
-  // Writes a representation of this resource into `builder`, so that executing
-  // `*out` will recreate this resource.
-  virtual Status AsGraphDef(GraphDefBuilder* builder, Node** out) const {
-    return errors::Unimplemented("AsGraphDef not implemented for resource ",
-                                 DebugString());
-  }
-};
 
 // Container used for per-step resources.
 class ScopedStepContainer {
@@ -105,14 +82,14 @@ class ScopedStepContainer {
   // has to be unique.
   // cleanup: callback to delete a container of this name.
   // prefix: optional string prefix to disambiguate step containers.
-  ScopedStepContainer(const int64 step_id,
+  ScopedStepContainer(const int64_t step_id,
                       std::function<void(const string&)> cleanup)
       : step_id_(step_id),
         container_(strings::StrCat("__per_step_", step_id)),
         cleanup_(cleanup),
         dirty_(false) {}
 
-  ScopedStepContainer(const int64 step_id,
+  ScopedStepContainer(const int64_t step_id,
                       std::function<void(const string&)> cleanup,
                       const std::string& prefix)
       : step_id_(step_id),
@@ -750,12 +727,7 @@ Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p);
 template <typename T>
 Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
-  auto type_index = TypeIndex::Make<T>();
-  if (type_index.hash_code() != p.hash_code()) {
-    return errors::InvalidArgument(
-        "Trying to access resource using the wrong type. Expected ",
-        p.maybe_type_name(), " got ", type_index.name());
-  }
+  TF_RETURN_IF_ERROR(p.ValidateType<T>());
   return Status::OK();
 }
 

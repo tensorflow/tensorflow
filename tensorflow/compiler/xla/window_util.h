@@ -78,7 +78,7 @@ bool IsTrivialWindowDimension(const WindowDimension& window_dimension);
 // For a 1D array with 3 entries 1, 2, 3, a dilation factor of 2 yields a new
 // window with values 1, x, 2, x, 3, where x indicates holes left by the
 // dilation. So DilatedBound(3, 2) == 5.
-int64 DilatedBound(int64 bound, int64 dilation);
+int64 DilatedBound(int64_t bound, int64_t dilation);
 
 // Returns the number of valid positions of a window with the given size and
 // stride within an array with the given bound. This is the bound of an output
@@ -88,7 +88,7 @@ int64 DilatedBound(int64 bound, int64 dilation);
 // returned value is 2. There are valid positions at offset 0 and offset 2,
 // while offset 4 is not valid since the window's last entry would be at 5,
 // which is beyond the bound of 5.
-int64 StridedBound(int64 bound, int64 window_size, int64 stride);
+int64 StridedBound(int64_t bound, int64_t window_size, int64_t stride);
 
 }  // namespace window_util
 }  // namespace xla

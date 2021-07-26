@@ -78,8 +78,8 @@ class QuantizedAvgPoolingOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, params.forward_output_shape(), &output));
-    const int32 highest = static_cast<int32>(Eigen::NumTraits<T>::highest());
-    const int32 lowest = static_cast<int32>(Eigen::NumTraits<T>::lowest());
+    const int32_t highest = static_cast<int32>(Eigen::NumTraits<T>::highest());
+    const int32_t lowest = static_cast<int32>(Eigen::NumTraits<T>::lowest());
 
     // TODO(vrv): Switch this to the Eigen::Tensor version of
     // SpatialAvgPooling once that version is running quickly.

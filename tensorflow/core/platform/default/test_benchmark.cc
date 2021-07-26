@@ -35,10 +35,10 @@ void UseCharPointer(char const volatile*) {}
 
 static std::vector<Benchmark*>* all_benchmarks = nullptr;
 static std::string label;
-static int64 bytes_processed;
-static int64 items_processed;
-static int64 accum_time = 0;
-static int64 start_time = 0;
+static int64_t bytes_processed;
+static int64_t items_processed;
+static int64_t accum_time = 0;
+static int64_t start_time = 0;
 static Env* env;
 
 Benchmark::Benchmark(const char* name, void (*fn)(int))
@@ -109,7 +109,7 @@ void AddRange(std::vector<int>* dst, int lo, int hi, int mult) {
   dst->push_back(lo);
 
   // Now space out the benchmarks in multiples of "mult"
-  for (int32 i = 1; i < kint32max / mult; i *= mult) {
+  for (int32_t i = 1; i < kint32max / mult; i *= mult) {
     if (i >= hi) break;
     if (i > lo) {
       dst->push_back(i);
@@ -249,10 +249,10 @@ void Benchmark::Register() {
 
 void Benchmark::Run(int arg1, int arg2, int* run_count, double* run_seconds) {
   env = Env::Default();
-  static const int64 kMinIters = 100;
-  static const int64 kMaxIters = 1000000000;
+  static const int64_t kMinIters = 100;
+  static const int64_t kMaxIters = 1000000000;
   static const double kMinTime = 0.5;
-  int64 iters = kMinIters;
+  int64_t iters = kMinIters;
 
   while (true) {
     accum_time = 0;
@@ -295,8 +295,8 @@ void Benchmark::Run(int arg1, int arg2, int* run_count, double* run_seconds) {
 // benchmark_min_time, etc).
 void RunBenchmarks() { Benchmark::Run("all"); }
 void SetLabel(const std::string& l) { label = l; }
-void BytesProcessed(int64 n) { bytes_processed = n; }
-void ItemsProcessed(int64 n) { items_processed = n; }
+void BytesProcessed(int64_t n) { bytes_processed = n; }
+void ItemsProcessed(int64_t n) { items_processed = n; }
 void StartTiming() {
   if (start_time == 0) start_time = env->NowMicros();
 }

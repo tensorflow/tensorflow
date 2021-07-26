@@ -42,7 +42,7 @@ class HloInputOutputAliasConfig {
   // Defines the alias information for a given output buffer. A given output
   // buffer shape index can refer only to one parameter+index.
   struct Alias {
-    Alias(int64 parameter_number, ShapeIndex parameter_index,
+    Alias(int64_t parameter_number, ShapeIndex parameter_index,
           AliasKind kind = kMayAlias)
         : parameter_number(parameter_number),
           parameter_index(std::move(parameter_index)),
@@ -70,13 +70,13 @@ class HloInputOutputAliasConfig {
 
   // Sets up alias config from `output_index` to `param_index` at
   // `param_number`.
-  Status SetUpAlias(const ShapeIndex& output_index, int64 param_number,
+  Status SetUpAlias(const ShapeIndex& output_index, int64_t param_number,
                     const ShapeIndex& param_index,
                     AliasKind must_alias = kMayAlias);
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
-  bool ParameterHasAlias(int64 param_number,
+  bool ParameterHasAlias(int64_t param_number,
                          const ShapeIndex& param_index) const {
     return GetAliasedOutput(param_number, param_index).has_value();
   }
@@ -95,7 +95,7 @@ class HloInputOutputAliasConfig {
   // aliased with. A nullopt is returned if there is no output that is aliased
   // with the parameter number and index.
   absl::optional<ShapeIndex> GetAliasedOutput(
-      int64 param_number, const ShapeIndex& param_index) const;
+      int64_t param_number, const ShapeIndex& param_index) const;
 
   // Returns the number of parameter and index of the parameter buffer that the
   // given output buffer index is aliased with. A nullopt is returned if there
@@ -105,7 +105,7 @@ class HloInputOutputAliasConfig {
 
   // Returns if the parameter at the given parameter number and parameter
   // index must-alias with an output.
-  bool ParameterMustAlias(int64 param_number,
+  bool ParameterMustAlias(int64_t param_number,
                           const ShapeIndex& param_index) const;
 
   using AliasFn =

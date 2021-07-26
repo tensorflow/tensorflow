@@ -1,0 +1,28 @@
+path: "tensorflow.data.experimental.service.ShardingPolicy"
+tf_class {
+  is_instance: "<enum \'ShardingPolicy\'>"
+  member {
+    name: "DATA"
+    mtype: "<enum \'ShardingPolicy\'>"
+  }
+  member {
+    name: "DYNAMIC"
+    mtype: "<enum \'ShardingPolicy\'>"
+  }
+  member {
+    name: "FILE"
+    mtype: "<enum \'ShardingPolicy\'>"
+  }
+  member {
+    name: "FILE_OR_DATA"
+    mtype: "<enum \'ShardingPolicy\'>"
+  }
+  member {
+    name: "HINT"
+    mtype: "<enum \'ShardingPolicy\'>"
+  }
+  member {
+    name: "OFF"
+    mtype: "<enum \'ShardingPolicy\'>"
+  }
+}

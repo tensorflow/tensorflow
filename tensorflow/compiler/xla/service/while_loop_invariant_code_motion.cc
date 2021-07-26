@@ -225,7 +225,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       // platforms where memory is limited. This can be especially harmful if
       // the instruction has a significantly larger output than its input, e.g.
       // kIota, kBroadcast or kConstant.
-      int64 input_size = 0, output_size = 0;
+      int64_t input_size = 0, output_size = 0;
 
       for (auto* operand : instruction->operands()) {
         ShapeUtil::ForEachSubshape(

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -53,9 +54,9 @@ using ::testing::MatchResultListener;
 using ::testing::PolymorphicMatcher;
 using ::testing::SizeIs;
 
-constexpr int64 kShardHint = -1;
+constexpr int64_t kShardHint = -1;
 
-DatasetDef RangeDatasetWithShardHint(const int64 range) {
+DatasetDef RangeDatasetWithShardHint(const int64_t range) {
   DatasetDef dataset_def;
   *dataset_def.mutable_graph() = GDef(
       {NDef("start", "Const", /*inputs=*/{},
@@ -101,6 +102,15 @@ StatusOr<int64> GetValue(const GraphDef& graph_def, absl::string_view name) {
                                            name, graph_def.ShortDebugString()));
 }
 
+TaskDef GetTaskDef(const ProcessingModeDef::ShardingPolicy sharding_policy,
+                   const int64 num_workers, const int64 worker_index) {
+  TaskDef task_def;
+  task_def.mutable_processing_mode_def()->set_sharding_policy(sharding_policy);
+  task_def.set_num_workers(num_workers);
+  task_def.set_worker_index(worker_index);
+  return task_def;
+}
+
 // TODO(yangchen): Make EqualsProto available in Googletest
 // (https://github.com/google/googletest/issues/1761).
 class ProtoStringMatcher {
@@ -128,13 +138,11 @@ inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
 }
 
 TEST(AutoShardRewriterTest, AutoShard) {
+  TaskDef task_def = GetTaskDef(ProcessingModeDef::FILE_OR_DATA,
+                                /*num_workers=*/3, /*worker_index=*/1);
+  AutoShardRewriter rewriter(task_def);
+
   DatasetDef dataset = RangeSquareDataset(10);
-  TF_ASSERT_OK_AND_ASSIGN(
-      AutoShardRewriter rewriter,
-      AutoShardRewriter::Create(
-          AutoShardPolicy::AUTO,
-          /*worker_addresses=*/{"worker0", "worker1", "worker2"},
-          /*worker_address=*/"worker1"));
   TF_ASSERT_OK_AND_ASSIGN(GraphDef rewritten_graph,
                           rewriter.ApplyAutoShardRewrite(dataset.graph()));
   TF_ASSERT_OK_AND_ASSIGN(NodeDef shard_node,
@@ -145,13 +153,11 @@ TEST(AutoShardRewriterTest, AutoShard) {
 }
 
 TEST(AutoShardRewriterTest, ShardByData) {
+  TaskDef task_def = GetTaskDef(ProcessingModeDef::DATA, /*num_workers=*/3,
+                                /*worker_index=*/1);
+  AutoShardRewriter rewriter(task_def);
+
   DatasetDef dataset = RangeSquareDataset(10);
-  TF_ASSERT_OK_AND_ASSIGN(
-      AutoShardRewriter rewriter,
-      AutoShardRewriter::Create(
-          AutoShardPolicy::DATA,
-          /*worker_addresses=*/{"worker0", "worker1", "worker2"},
-          /*worker_address=*/"worker1"));
   TF_ASSERT_OK_AND_ASSIGN(GraphDef rewritten_graph,
                           rewriter.ApplyAutoShardRewrite(dataset.graph()));
   TF_ASSERT_OK_AND_ASSIGN(NodeDef shard_node,
@@ -162,26 +168,22 @@ TEST(AutoShardRewriterTest, ShardByData) {
 }
 
 TEST(AutoShardRewriterTest, ShardByFile) {
+  TaskDef task_def = GetTaskDef(ProcessingModeDef::FILE, /*num_workers=*/3,
+                                /*worker_index=*/1);
+  AutoShardRewriter rewriter(task_def);
+
   DatasetDef dataset = RangeSquareDataset(10);
-  TF_ASSERT_OK_AND_ASSIGN(
-      AutoShardRewriter rewriter,
-      AutoShardRewriter::Create(
-          AutoShardPolicy::FILE,
-          /*worker_addresses=*/{"worker0", "worker1", "worker2"},
-          /*worker_address=*/"worker1"));
   EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
               StatusIs(error::NOT_FOUND,
                        HasSubstr("Found an unshardable source dataset")));
 }
 
 TEST(AutoShardRewriterTest, ShardByHint) {
+  TaskDef task_def = GetTaskDef(ProcessingModeDef::HINT, /*num_workers=*/3,
+                                /*worker_index=*/1);
+  AutoShardRewriter rewriter(task_def);
+
   DatasetDef dataset = RangeDatasetWithShardHint(10);
-  TF_ASSERT_OK_AND_ASSIGN(
-      AutoShardRewriter rewriter,
-      AutoShardRewriter::Create(
-          AutoShardPolicy::HINT,
-          /*worker_addresses=*/{"worker0", "worker1", "worker2"},
-          /*worker_address=*/"worker1"));
   TF_ASSERT_OK_AND_ASSIGN(GraphDef rewritten_graph,
                           rewriter.ApplyAutoShardRewrite(dataset.graph()));
   TF_ASSERT_OK_AND_ASSIGN(NodeDef shard_node,
@@ -192,25 +194,22 @@ TEST(AutoShardRewriterTest, ShardByHint) {
 }
 
 TEST(AutoShardRewriterTest, NoShard) {
+  TaskDef task_def =
+      GetTaskDef(ProcessingModeDef::OFF, /*num_workers=*/3, /*worker_index=*/1);
+  AutoShardRewriter rewriter(task_def);
+
   DatasetDef dataset = RangeSquareDataset(10);
-  TF_ASSERT_OK_AND_ASSIGN(
-      AutoShardRewriter rewriter,
-      AutoShardRewriter::Create(
-          AutoShardPolicy::OFF,
-          /*worker_addresses=*/{"worker0", "worker1", "worker2"},
-          /*worker_address=*/"worker1"));
   EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
               IsOkAndHolds(EqualsProto(dataset.graph())));
 }
 
 TEST(AutoShardRewriterTest, EmptyDataset) {
+  TaskDef task_def =
+      GetTaskDef(ProcessingModeDef::FILE_OR_DATA, /*num_workers=*/3,
+                 /*worker_index=*/1);
+  AutoShardRewriter rewriter(task_def);
+
   DatasetDef dataset = RangeSquareDataset(0);
-  TF_ASSERT_OK_AND_ASSIGN(
-      AutoShardRewriter rewriter,
-      AutoShardRewriter::Create(
-          AutoShardPolicy::AUTO,
-          /*worker_addresses=*/{"worker0", "worker1", "worker2"},
-          /*worker_address=*/"worker1"));
   TF_ASSERT_OK_AND_ASSIGN(GraphDef rewritten_graph,
                           rewriter.ApplyAutoShardRewrite(dataset.graph()));
   TF_ASSERT_OK_AND_ASSIGN(NodeDef shard_node,
@@ -220,25 +219,250 @@ TEST(AutoShardRewriterTest, EmptyDataset) {
   EXPECT_THAT(GetValue(rewritten_graph, shard_node.input(2)), IsOkAndHolds(1));
 }
 
-TEST(AutoShardRewriterTest, WorkerNotFound) {
-  EXPECT_THAT(AutoShardRewriter::Create(AutoShardPolicy::AUTO,
-                                        /*worker_addresses=*/{},
-                                        /*worker_address=*/"worker1"),
-              StatusIs(error::NOT_FOUND,
-                       HasSubstr("Worker worker1 is not in the auto-shard "
-                                 "workers list.")));
+TEST(AutoShardRewriterTest, NoWorkers) {
+  TaskDef task_def =
+      GetTaskDef(ProcessingModeDef::FILE_OR_DATA, /*num_workers=*/0,
+                 /*worker_index=*/0);
+  AutoShardRewriter rewriter(task_def);
+
+  DatasetDef dataset = RangeSquareDataset(10);
+  EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
+              StatusIs(error::INVALID_ARGUMENT,
+                       "num_workers should be >= 1, currently 0"));
 }
 
-TEST(AutoShardRewriterTest, WorkerListIsEmptyWhenShardIsOff) {
+TEST(AutoShardRewriterTest, NoWorkersWhenShardIsOff) {
+  TaskDef task_def =
+      GetTaskDef(ProcessingModeDef::OFF, /*num_workers=*/0, /*worker_index=*/0);
+  AutoShardRewriter rewriter(task_def);
+
   DatasetDef dataset = RangeSquareDataset(10);
-  TF_ASSERT_OK_AND_ASSIGN(AutoShardRewriter rewriter,
-                          AutoShardRewriter::Create(AutoShardPolicy::OFF,
-                                                    /*worker_addresses=*/{},
-                                                    /*worker_address=*/""));
   EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
               IsOkAndHolds(EqualsProto(dataset.graph())));
 }
 
+TEST(AutoShardRewriterTest, WorkerIndexOutOfRange) {
+  TaskDef task_def =
+      GetTaskDef(ProcessingModeDef::FILE_OR_DATA, /*num_workers=*/2,
+                 /*worker_index=*/5);
+  AutoShardRewriter rewriter(task_def);
+
+  DatasetDef dataset = RangeSquareDataset(10);
+  EXPECT_THAT(rewriter.ApplyAutoShardRewrite(dataset.graph()),
+              StatusIs(error::INVALID_ARGUMENT,
+                       "index should be >= 0 and < 2, currently 5"));
+}
+
+TEST(WorkerIndexResolverTest, AddOneWorker) {
+  WorkerIndexResolver resolver(std::vector<std::string>{"localhost"});
+  EXPECT_THAT(resolver.GetWorkerIndex("localhost:12345"),
+              StatusIs(error::NOT_FOUND));
+
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:12345"));
+  resolver.AddWorker("localhost:12345");
+  EXPECT_THAT(resolver.GetWorkerIndex("localhost:12345"), IsOkAndHolds(0));
+}
+
+TEST(WorkerIndexResolverTest, AddMultipleWorkers) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "/worker/task/0", "/worker/task/1", "/worker/task/2"});
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/2:12345"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/1:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/0:34567"));
+  resolver.AddWorker("/worker/task/2:12345");
+  resolver.AddWorker("/worker/task/1:23456");
+  resolver.AddWorker("/worker/task/0:34567");
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/0:34567"), IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/1:23456"), IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:12345"), IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, NamedPorts) {
+  WorkerIndexResolver resolver(
+      std::vector<std::string>{"/worker/task/0:worker", "/worker/task/1:worker",
+                               "/worker/task/2:worker"});
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/2:worker"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/1:worker"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/0:worker"));
+  resolver.AddWorker("/worker/task/2:worker");
+  resolver.AddWorker("/worker/task/1:worker");
+  resolver.AddWorker("/worker/task/0:worker");
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/0:worker"),
+              IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/1:worker"),
+              IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:worker"),
+              IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, DynamicPorts) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "/worker/task/0:%port_worker%", "/worker/task/1:%port_worker%",
+      "/worker/task/2:%port_worker%"});
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/2:worker"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/1:worker"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/0:worker"));
+  resolver.AddWorker("/worker/task/2:worker");
+  resolver.AddWorker("/worker/task/1:worker");
+  resolver.AddWorker("/worker/task/0:worker");
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/0:worker"),
+              IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/1:worker"),
+              IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:worker"),
+              IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, AnonymousPorts) {
+  WorkerIndexResolver resolver(
+      std::vector<std::string>{"/worker/task/0:%port%", "/worker/task/1:%port%",
+                               "/worker/task/2:%port%"});
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/2:10000"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/1:10001"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/0:10002"));
+  resolver.AddWorker("/worker/task/2:10000");
+  resolver.AddWorker("/worker/task/1:10001");
+  resolver.AddWorker("/worker/task/0:10002");
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/0:10002"), IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/1:10001"), IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:10000"), IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, NumericPorts) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "/worker/task/0:12345", "/worker/task/1:23456", "/worker/task/2:34567"});
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/0:12345"), IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/1:23456"), IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:34567"), IsOkAndHolds(2));
+
+  // Adding duplicate workers is a no-op.
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/2:34567"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/1:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/0:12345"));
+  resolver.AddWorker("/worker/task/2:34567");
+  resolver.AddWorker("/worker/task/1:23456");
+  resolver.AddWorker("/worker/task/0:12345");
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/0:12345"), IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/1:23456"), IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:34567"), IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, HostNameHasColons) {
+  WorkerIndexResolver resolver(
+      std::vector<std::string>{":worker:task:0:%port%", ":worker:task:1:%port%",
+                               ":worker:task:2:34567"});
+  TF_EXPECT_OK(resolver.ValidateWorker(":worker:task:0:12345"));
+  TF_EXPECT_OK(resolver.ValidateWorker(":worker:task:1:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker(":worker:task:2:34567"));
+  resolver.AddWorker(":worker:task:0:12345");
+  resolver.AddWorker(":worker:task:1:23456");
+  resolver.AddWorker(":worker:task:2:34567");
+  EXPECT_THAT(resolver.GetWorkerIndex(":worker:task:0:12345"), IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex(":worker:task:1:23456"), IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex(":worker:task:2:34567"), IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, ChangeWorkerPort) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "/worker/task/0", "/worker/task/1", "/worker/task/2"});
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/2:12345"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/1:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/0:34567"));
+  resolver.AddWorker("/worker/task/2:12345");
+  resolver.AddWorker("/worker/task/1:23456");
+  resolver.AddWorker("/worker/task/0:34567");
+  EXPECT_THAT(resolver.ValidateWorker("/worker/task/0:99999"),
+              StatusIs(error::FAILED_PRECONDITION,
+                       HasSubstr("already running at the configured host")));
+  EXPECT_THAT(resolver.ValidateWorker("/worker/task/1:99999"),
+              StatusIs(error::FAILED_PRECONDITION,
+                       HasSubstr("already running at the configured host")));
+  EXPECT_THAT(resolver.ValidateWorker("/worker/task/2:99999"),
+              StatusIs(error::FAILED_PRECONDITION,
+                       HasSubstr("already running at the configured host")));
+}
+
+TEST(WorkerIndexResolverTest, WorkerNotFound) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "/worker/task/0", "/worker/task/1", "/worker/task/2"});
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/0:34567"),
+              StatusIs(error::NOT_FOUND));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/1:23456"),
+              StatusIs(error::NOT_FOUND));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:12345"),
+              StatusIs(error::NOT_FOUND));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/3:45678"),
+              StatusIs(error::NOT_FOUND));
+
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/2:12345"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/1:23456"));
+  TF_EXPECT_OK(resolver.ValidateWorker("/worker/task/0:34567"));
+  EXPECT_THAT(resolver.ValidateWorker("/worker/task/3:45678"),
+              StatusIs(error::FAILED_PRECONDITION,
+                       HasSubstr("The worker's address is not configured")));
+  resolver.AddWorker("/worker/task/3:45678");
+  resolver.AddWorker("/worker/task/2:12345");
+  resolver.AddWorker("/worker/task/1:23456");
+  resolver.AddWorker("/worker/task/0:34567");
+
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/0:34567"), IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/1:23456"), IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("/worker/task/2:12345"), IsOkAndHolds(2));
+  EXPECT_THAT(
+      resolver.GetWorkerIndex("/worker/task/3:45678"),
+      StatusIs(error::NOT_FOUND,
+               HasSubstr(
+                   "Worker /worker/task/3:45678 is not in the workers list.")));
+}
+
+TEST(WorkerIndexResolverTest, MultipleWorkersInOneHost) {
+  WorkerIndexResolver resolver(
+      std::vector<std::string>{"localhost", "localhost", "localhost"});
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:12345"));
+  resolver.AddWorker("localhost:12345");
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:23456"));
+  resolver.AddWorker("localhost:23456");
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:34567"));
+  resolver.AddWorker("localhost:34567");
+  EXPECT_THAT(resolver.GetWorkerIndex("localhost:12345"), IsOkAndHolds(0));
+  EXPECT_THAT(resolver.GetWorkerIndex("localhost:23456"), IsOkAndHolds(1));
+  EXPECT_THAT(resolver.GetWorkerIndex("localhost:34567"), IsOkAndHolds(2));
+}
+
+TEST(WorkerIndexResolverTest, MoreWorkersThanConfigured) {
+  WorkerIndexResolver resolver(std::vector<std::string>{
+      "localhost:%port%", "localhost:%port%", "localhost:%port%"});
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:12345"));
+  resolver.AddWorker("localhost:12345");
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:23456"));
+  resolver.AddWorker("localhost:23456");
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:34567"));
+  resolver.AddWorker("localhost:34567");
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:12345"));
+  resolver.AddWorker("localhost:12345");
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:23456"));
+  resolver.AddWorker("localhost:23456");
+  TF_EXPECT_OK(resolver.ValidateWorker("localhost:34567"));
+  resolver.AddWorker("localhost:34567");
+  EXPECT_THAT(resolver.ValidateWorker("localhost:45678"),
+              StatusIs(error::FAILED_PRECONDITION,
+                       HasSubstr("already running at the configured host")));
+  EXPECT_THAT(resolver.ValidateWorker("localhost:56789"),
+              StatusIs(error::FAILED_PRECONDITION,
+                       HasSubstr("already running at the configured host")));
+}
+
+TEST(WorkerIndexResolverTest, WorkerNotConfigured) {
+  WorkerIndexResolver resolver(std::vector<std::string>{""});
+  EXPECT_THAT(resolver.GetWorkerIndex("localhost:12345"),
+              StatusIs(error::NOT_FOUND));
+  EXPECT_THAT(resolver.ValidateWorker("localhost:12345"),
+              StatusIs(error::FAILED_PRECONDITION,
+                       HasSubstr("The worker's address is not configured")));
+  resolver.AddWorker("localhost:12345");
+  EXPECT_THAT(resolver.GetWorkerIndex("localhost:12345"),
+              StatusIs(error::NOT_FOUND));
+}
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

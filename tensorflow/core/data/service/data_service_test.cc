@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -34,32 +35,43 @@ namespace {
 
 constexpr const char kProtocol[] = "grpc";
 
-TEST(DataService, ParseParallelEpochsProcessingMode) {
-  ProcessingMode mode;
-  TF_ASSERT_OK(ParseProcessingMode("parallel_epochs", mode));
-  EXPECT_EQ(mode, ProcessingMode::PARALLEL_EPOCHS);
+TEST(DataServiceTest, NoShard) {
+  ProcessingModeDef processing_mode;
+  processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
+  EXPECT_TRUE(IsNoShard(processing_mode));
+  EXPECT_FALSE(IsDynamicShard(processing_mode));
+  EXPECT_FALSE(IsStaticShard(processing_mode));
 }
 
-TEST(DataService, ParseDistributedEpochProcessingMode) {
-  ProcessingMode mode;
-  TF_ASSERT_OK(ParseProcessingMode("distributed_epoch", mode));
-  EXPECT_EQ(mode, ProcessingMode::DISTRIBUTED_EPOCH);
+TEST(DataServiceTest, DynamicShard) {
+  ProcessingModeDef processing_mode;
+  processing_mode.set_sharding_policy(ProcessingModeDef::DYNAMIC);
+  EXPECT_FALSE(IsNoShard(processing_mode));
+  EXPECT_TRUE(IsDynamicShard(processing_mode));
+  EXPECT_FALSE(IsStaticShard(processing_mode));
 }
 
-TEST(DataService, ParseInvalidProcessingMode) {
-  ProcessingMode mode;
-  EXPECT_THAT(ParseProcessingMode("invalid", mode),
-              testing::StatusIs(error::INVALID_ARGUMENT));
+TEST(DataServiceTest, StaticShard) {
+  ProcessingModeDef processing_mode;
+  std::vector<ProcessingModeDef::ShardingPolicy> policies = {
+      ProcessingModeDef::FILE, ProcessingModeDef::DATA,
+      ProcessingModeDef::FILE_OR_DATA, ProcessingModeDef::HINT};
+  for (const ProcessingModeDef::ShardingPolicy policy : policies) {
+    processing_mode.set_sharding_policy(policy);
+    EXPECT_FALSE(IsNoShard(processing_mode));
+    EXPECT_FALSE(IsDynamicShard(processing_mode));
+    EXPECT_TRUE(IsStaticShard(processing_mode));
+  }
 }
 
-TEST(DataService, ProcessingModeToString) {
-  EXPECT_EQ("parallel_epochs",
-            ProcessingModeToString(ProcessingMode::PARALLEL_EPOCHS));
-  EXPECT_EQ("distributed_epoch",
-            ProcessingModeToString(ProcessingMode::DISTRIBUTED_EPOCH));
+TEST(DataServiceTest, DefaultShardingPolicyIsNoShard) {
+  ProcessingModeDef processing_mode;
+  EXPECT_TRUE(IsNoShard(processing_mode));
+  EXPECT_FALSE(IsDynamicShard(processing_mode));
+  EXPECT_FALSE(IsStaticShard(processing_mode));
 }
 
-TEST(DataService, ParseTargetWorkers) {
+TEST(DataServiceTest, ParseTargetWorkers) {
   EXPECT_THAT(ParseTargetWorkers("AUTO"),
               testing::IsOkAndHolds(TargetWorkers::AUTO));
   EXPECT_THAT(ParseTargetWorkers("Auto"),
@@ -76,18 +88,18 @@ TEST(DataService, ParseTargetWorkers) {
               testing::IsOkAndHolds(TargetWorkers::AUTO));
 }
 
-TEST(DataService, ParseInvalidTargetWorkers) {
+TEST(DataServiceTest, ParseInvalidTargetWorkers) {
   EXPECT_THAT(ParseTargetWorkers("UNSET"),
               testing::StatusIs(error::INVALID_ARGUMENT));
 }
 
-TEST(DataService, TargetWorkersToString) {
+TEST(DataServiceTest, TargetWorkersToString) {
   EXPECT_EQ(TargetWorkersToString(TargetWorkers::AUTO), "AUTO");
   EXPECT_EQ(TargetWorkersToString(TargetWorkers::ANY), "ANY");
   EXPECT_EQ(TargetWorkersToString(TargetWorkers::LOCAL), "LOCAL");
 }
 
-TEST(DataService, GetWorkers) {
+TEST(DataServiceTest, GetWorkers) {
   TestCluster cluster(1);
   TF_ASSERT_OK(cluster.Initialize());
   DataServiceDispatcherClient dispatcher(cluster.DispatcherAddress(),

@@ -51,7 +51,7 @@ std::function<
 DelegatePluginConverter(const TfLiteOpaqueDelegatePlugin& plugin_c_api) {
   return [plugin_c_api](const ::tflite::TFLiteSettings& settings)
              -> std::unique_ptr<DelegatePluginInterface> {
-    return absl::MakeUnique<DelegatePluginViaCApi>(plugin_c_api, settings);
+    return absl::make_unique<DelegatePluginViaCApi>(plugin_c_api, settings);
   };
 }
 

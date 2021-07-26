@@ -99,7 +99,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 n = input.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -140,7 +140,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
               output_reshaped);
 
     // Launch a Cholesky kernel for each matrix in the batch.
-    const int64 batch_size = input_reshaped.dimension(0);
+    const int64_t batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
 
 #if CUDA_VERSION >= 9020

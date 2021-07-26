@@ -42,7 +42,7 @@ template <class Distribution>
 struct FillPhiloxRandom<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d, const uint64* key,
                   const uint64* counter, random::PhiloxRandom gen,
-                  typename Distribution::ResultElementType* data, int64 size,
+                  typename Distribution::ResultElementType* data, int64_t size,
                   Distribution dist);
 };
 
@@ -53,7 +53,7 @@ template <class Distribution>
 struct FillPhiloxRandom<GPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const GPUDevice& d, const uint64* key,
                   const uint64* counter, random::PhiloxRandom gen,
-                  typename Distribution::ResultElementType* data, int64 size,
+                  typename Distribution::ResultElementType* data, int64_t size,
                   Distribution dist);
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

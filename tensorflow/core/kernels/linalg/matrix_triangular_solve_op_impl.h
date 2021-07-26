@@ -356,7 +356,7 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     const uint64 colmajor_rows = n;
     const uint64 colmajor_cols = m;
 
-    const int64 batch_size = bcast.output_batch_size();
+    const int64_t batch_size = bcast.output_batch_size();
     std::vector<const Scalar*> a_ptrs;
     std::vector<Scalar*> out_ptrs;
     std::vector<const Scalar*> a_tmp_ptrs;

@@ -35,7 +35,7 @@ class WhileTransformerTest : public HloTestBase {
         condition_result_shape_(ShapeUtil::MakeShape(PRED, {})) {}
 
   std::unique_ptr<HloComputation> BuildConditionComputation(
-      const int64 tuple_index, const int64 limit) {
+      const int64_t tuple_index, const int64_t limit) {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(limit)));
@@ -51,8 +51,8 @@ class WhileTransformerTest : public HloTestBase {
   }
 
   std::unique_ptr<HloComputation> BuildBodyComputation(
-      const int64 ind_var_tuple_index, const int64 data_tuple_index,
-      const int64 increment) {
+      const int64_t ind_var_tuple_index, const int64_t data_tuple_index,
+      const int64_t increment) {
     auto builder = HloComputation::Builder(TestName() + ".Body");
     // Create param instruction to access loop state.
     auto loop_state = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -84,8 +84,8 @@ class WhileTransformerTest : public HloTestBase {
 
   HloInstruction* BuildWhileInstruction(HloComputation* condition,
                                         HloComputation* body,
-                                        const int64 ind_var_tuple_index,
-                                        const int64 ind_var_init) {
+                                        const int64_t ind_var_tuple_index,
+                                        const int64_t ind_var_init) {
     auto builder = HloComputation::Builder(TestName() + ".While");
     auto induction_var_init =
         builder.AddInstruction(HloInstruction::CreateConstant(
@@ -106,7 +106,7 @@ class WhileTransformerTest : public HloTestBase {
     return while_hlo;
   }
 
-  Shape GetLoopStateShape(const int64 ind_var_tuple_index) {
+  Shape GetLoopStateShape(const int64_t ind_var_tuple_index) {
     if (ind_var_tuple_index == 0) {
       return ShapeUtil::MakeTupleShape(
           {induction_variable_shape_, data_shape_});

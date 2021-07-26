@@ -29,7 +29,7 @@ constexpr char kSlash[] = "/";
 constexpr char kIndex[] = "index";
 }  // namespace
 
-IndexSplitProvider::IndexSplitProvider(int64 n) : i_(0), n_(n) {}
+IndexSplitProvider::IndexSplitProvider(int64_t n) : i_(0), n_(n) {}
 
 Status IndexSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   mutex_lock l(mu_);
@@ -64,7 +64,7 @@ Status IndexSplitProvider::Restore(
 }
 
 ShardingSplitProvider::ShardingSplitProvider(
-    int64 num_shards, int64 shard_index,
+    int64_t num_shards, int64_t shard_index,
     std::shared_ptr<SplitProvider> split_provider)
     : num_shards_(num_shards),
       shard_index_(shard_index),
@@ -154,7 +154,7 @@ StatusOr<std::vector<IteratorContext>> CreateInputIteratorContexts(
     }
     return result;
   }
-  int64 split_provider_index = 0;
+  int64_t split_provider_index = 0;
   for (size_t i = 0; i < inputs.size(); ++i) {
     IteratorContext::Params params(ctx);
     if (inputs[i]->num_sources() < 0) {

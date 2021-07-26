@@ -349,6 +349,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",

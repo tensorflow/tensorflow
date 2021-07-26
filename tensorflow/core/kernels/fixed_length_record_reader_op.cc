@@ -32,9 +32,9 @@ namespace tensorflow {
 // so that we will always "hop" after each read (except first).
 class FixedLengthRecordReader : public ReaderBase {
  public:
-  FixedLengthRecordReader(const string& node_name, int64 header_bytes,
-                          int64 record_bytes, int64 footer_bytes,
-                          int64 hop_bytes, const string& encoding, Env* env)
+  FixedLengthRecordReader(const string& node_name, int64_t header_bytes,
+                          int64_t record_bytes, int64_t footer_bytes,
+                          int64_t hop_bytes, const string& encoding, Env* env)
       : ReaderBase(
             strings::StrCat("FixedLengthRecordReader '", node_name, "'")),
         header_bytes_(header_bytes),
@@ -90,7 +90,7 @@ class FixedLengthRecordReader : public ReaderBase {
         // If hop_bytes_ is larger than the cached data, we clean up
         // the cache, then skip hop_bytes_ - cache_size from the file
         // as the cache_size has been skipped through cache.
-        int64 cache_size = lookahead_cache_.size();
+        int64_t cache_size = lookahead_cache_.size();
         lookahead_cache_.clear();
         Status s = buffered_inputstream_->SkipNBytes(hop_bytes_ - cache_size);
         if (!s.ok()) {
@@ -163,8 +163,8 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
  public:
   explicit FixedLengthRecordReaderOp(OpKernelConstruction* context)
       : ReaderOpKernel(context) {
-    int64 header_bytes = -1, record_bytes = -1, footer_bytes = -1,
-          hop_bytes = -1;
+    int64_t header_bytes = -1, record_bytes = -1, footer_bytes = -1,
+            hop_bytes = -1;
     OP_REQUIRES_OK(context, context->GetAttr("header_bytes", &header_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("record_bytes", &record_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("footer_bytes", &footer_bytes));

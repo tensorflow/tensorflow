@@ -58,8 +58,8 @@ string CollGroupParams::ToString() const {
       "CollGroupParams {group_key=", group_key, " group_size=", group_size,
       " device_type=", device_type.type_string(), " num_tasks=", num_tasks,
       " runtime_details=", runtime_details.ToString(), " devices {");
-  for (const auto& d : device_names) {
-    strings::StrAppend(&v, d, ",");
+  for (const auto& d : devices) {
+    strings::StrAppend(&v, d.name(), ",");
   }
   strings::StrAppend(&v, "} task_names={");
   for (const auto& n : task_names) {
@@ -170,7 +170,8 @@ CollectiveContext::CollectiveContext(
     CollectiveExecutor* col_exec, NcclCommunicatorInterface* nccl_communicator,
     const DeviceMgr* dev_mgr, OpKernelContext* ctx,
     OpKernelContext::Params* op_params, const CollectiveParams* col_params,
-    const string& exec_key, int64 step_id, const Tensor* input, Tensor* output)
+    const string& exec_key, int64_t step_id, const Tensor* input,
+    Tensor* output)
     : col_exec(col_exec),
       nccl_communicator(nccl_communicator),
       dev_mgr(dev_mgr),
@@ -182,10 +183,10 @@ CollectiveContext::CollectiveContext(
       input(input),
       output(output),
       device(nullptr),
-      device_name(col_params->group.device_names[col_params->default_rank]) {}
+      device_name(col_params->group.devices[col_params->default_rank].name()) {}
 
 /*static*/
-int64 CollectiveExecutor::kInvalidId = -1;
+int64_t CollectiveExecutor::kInvalidId = -1;
 
 /*static*/
 Status CollectiveRegistry::Lookup(

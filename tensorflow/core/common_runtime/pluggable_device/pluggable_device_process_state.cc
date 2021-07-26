@@ -185,7 +185,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     SubAllocator* sub_allocator = new DeviceHostAllocator(
         se, numa_node, pluggable_device_host_alloc_visitors_[numa_node],
         pluggable_device_host_free_visitors_[numa_node]);
-    int64 pluggable_device_host_mem_limit_in_mb = -1;
+    int64_t pluggable_device_host_mem_limit_in_mb = -1;
     Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                         1LL << 16 /*64GB max by default*/,
                                         &pluggable_device_host_mem_limit_in_mb);
@@ -193,7 +193,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
       LOG(ERROR) << "GetPluggableDeviceHostAllocator: "
                  << status.error_message();
     }
-    int64 pluggable_device_host_mem_limit =
+    int64_t pluggable_device_host_mem_limit =
         pluggable_device_host_mem_limit_in_mb << 20;
 
     Allocator* allocator = new BFCAllocator(

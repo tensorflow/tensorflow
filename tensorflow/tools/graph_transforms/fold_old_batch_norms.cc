@@ -74,7 +74,7 @@ Status GetScaleAndOffsetValues(const NodeMatch& match,
   const float variance_epsilon = batch_norm_node.attr().at(epsilon_attr).f();
 
   // Make sure all the inputs really are vectors with the same shape.
-  const int64 num_cols = mean.shape().dim_size(0);
+  const int64_t num_cols = mean.shape().dim_size(0);
   TF_RETURN_IF_ERROR(ErrorIfNotVector(variance, "Variance", num_cols));
   TF_RETURN_IF_ERROR(ErrorIfNotVector(beta, "Beta", num_cols));
   TF_RETURN_IF_ERROR(ErrorIfNotVector(gamma, "gamma", num_cols));
@@ -114,7 +114,7 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
   CHECK_EQ("Const", weights_node.op());
 
   Tensor weights = GetNodeTensorAttr(weights_node, "value");
-  int64 weights_cols;
+  int64_t weights_cols;
   if (conv_node.op() == "Conv2D") {
     weights_cols = weights.shape().dim_size(3);
   } else if (conv_node.op() == "DepthwiseConv2dNative") {
@@ -128,14 +128,14 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
   auto weights_vector = weights.flat<float>();
   Tensor scaled_weights(DT_FLOAT, weights.shape());
   auto scaled_weights_vector = scaled_weights.flat<float>();
-  for (int64 row = 0; row < weights_vector.dimension(0); ++row) {
+  for (int64_t row = 0; row < weights_vector.dimension(0); ++row) {
     scaled_weights_vector(row) =
         weights_vector(row) * scale_values[row % weights_cols];
   }
   // Figure out the remaining bias to add on.
   Tensor bias_offset(DT_FLOAT, {weights_cols});
   auto bias_offset_vector = bias_offset.flat<float>();
-  for (int64 col = 0; col < weights_cols; ++col) {
+  for (int64_t col = 0; col < weights_cols; ++col) {
     bias_offset_vector(col) = offset_values[col];
   }
 
@@ -235,7 +235,7 @@ Status FuseBatchNormWithConvConcat(const NodeMatch& match,
   NodeDef axis_node = concat_node_match.inputs[2].node;
   CHECK_EQ("Const", axis_node.op());
   Tensor axis = GetNodeTensorAttr(axis_node, "value");
-  int32 axis_scalar = (axis.scalar<int32>())();
+  int32_t axis_scalar = (axis.scalar<int32>())();
 
   // Set both conv0 and conv1 have the same scale and offset in default.
   std::vector<float> scale0(scale_values);
@@ -246,7 +246,7 @@ Status FuseBatchNormWithConvConcat(const NodeMatch& match,
     // If axis is 3, then scale and offset will be split into two halfs.
     const NodeDef& weights0_node = concat_node_match.inputs[0].inputs[1].node;
     Tensor weights0 = GetNodeTensorAttr(weights0_node, "value");
-    const int64 split_cols = weights0.shape().dim_size(3);
+    const int64_t split_cols = weights0.shape().dim_size(3);
     // Only keep the first half for scale0/offset0.
     scale0.erase(scale0.begin() + split_cols, scale0.end());
     offset0.erase(offset0.begin() + split_cols, offset0.end());

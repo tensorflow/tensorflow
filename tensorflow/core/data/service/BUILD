@@ -69,6 +69,8 @@ cc_library(
     ],
     deps = [
         ":common_proto_cc",
+        ":data_service",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:rewrite_utils",
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
@@ -83,11 +85,11 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data:optimizer_base",
         "//tensorflow/core/kernels/data/experimental:auto_shard_dataset_op",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -148,6 +150,7 @@ cc_library(
         "data_service.h",
     ],
     deps = [
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -258,6 +261,7 @@ cc_library(
         ":grpc_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -316,11 +320,12 @@ cc_library(
         "dispatcher_state.h",
     ],
     deps = [
+        ":auto_shard_rewriter",
         ":common_proto_cc",
         ":data_service",
         ":journal",
         ":journal_proto_cc",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -339,10 +344,12 @@ tf_cc_test(
         ":journal",
         ":journal_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -370,6 +377,7 @@ tf_cc_test(
         ":server_lib",
         ":test_util",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
@@ -378,7 +386,6 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         tf_grpc_cc_dependency(),
     ] + tf_protos_profiler_service(),
 )
@@ -436,6 +443,7 @@ tf_cc_test(
         ":test_util",
         ":worker_proto_cc",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
@@ -445,7 +453,6 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:types",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         tf_grpc_cc_dependency(),
     ] + tf_protos_profiler_service(),
 )
@@ -469,6 +476,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         ":common_proto",
+        "//tensorflow/core:protos_all",
     ],
 )
 
@@ -480,6 +488,7 @@ tf_cc_test(
         ":journal",
         ":journal_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -567,8 +576,8 @@ cc_library(
         ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )
 
@@ -756,9 +765,9 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/platform:errors",
@@ -777,6 +786,7 @@ cc_library(
         "worker_impl.h",
     ],
     deps = [
+        ":auto_shard_rewriter",
         ":common_proto_cc",
         ":credentials_factory",
         ":data_service",

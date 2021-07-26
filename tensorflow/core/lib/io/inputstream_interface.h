@@ -35,13 +35,13 @@ class InputStreamInterface {
   // Reads the next bytes_to_read from the file. Typical return codes:
   //  * OK - in case of success.
   //  * OUT_OF_RANGE - not enough bytes remaining before end of file.
-  virtual Status ReadNBytes(int64 bytes_to_read, tstring* result) = 0;
+  virtual Status ReadNBytes(int64_t bytes_to_read, tstring* result) = 0;
 
 #if defined(TF_CORD_SUPPORT)
   // Reads the next bytes_to_read from the file. Typical return codes:
   //  * OK - in case of success.
   //  * OUT_OF_RANGE - not enough bytes remaining before end of file.
-  virtual Status ReadNBytes(int64 bytes_to_read, absl::Cord* cord) {
+  virtual Status ReadNBytes(int64_t bytes_to_read, absl::Cord* cord) {
     return errors::Unimplemented(
         "ReadNBytes(int64, absl::Cord*) is not implemented.");
   }
@@ -51,7 +51,7 @@ class InputStreamInterface {
   // Typical return codes:
   //  * OK - in case of success.
   //  * OUT_OF_RANGE - not enough bytes remaining before end of file.
-  virtual Status SkipNBytes(int64 bytes_to_skip);
+  virtual Status SkipNBytes(int64_t bytes_to_skip);
 
   // Return the offset of the current byte relative to the beginning of the
   // file.

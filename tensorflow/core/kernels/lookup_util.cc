@@ -44,7 +44,7 @@ Status GetNumLinesInTextFile(Env* env, const string& vocab_file,
   io::InputBuffer input_buffer(file.get(), kInputBufferSize);
   string line;
   Status s = input_buffer.ReadLine(&line);
-  int64 next_id = 0;
+  int64_t next_id = 0;
   while (s.ok()) {
     next_id++;
     s = input_buffer.ReadLine(&line);
@@ -80,9 +80,9 @@ class TextFileLineIterator
   // - Index -1 means the line number stored in int64.
   // - Index >= 0 represent index (starting at zero) of the split line based on
   //   delimiter.
-  Status Init(const string& filename, int64 vocab_size, char delimiter,
-              DataType key_dtype, int64 key_index, DataType value_dtype,
-              int64 value_index, int64 offset, Env* env) {
+  Status Init(const string& filename, int64_t vocab_size, char delimiter,
+              DataType key_dtype, int64_t key_index, DataType value_dtype,
+              int64_t value_index, int64_t offset, Env* env) {
     filename_ = filename;
     vocab_size_ = vocab_size;
     delimiter_ = delimiter;
@@ -175,7 +175,7 @@ class TextFileLineIterator
 
   int64 total_size() const override {
     if (vocab_size_ == -1) {
-      int64 new_size = -1;
+      int64_t new_size = -1;
       Status status = GetNumLinesInTextFile(env_, filename_, &new_size);
       if (!status.ok()) {
         LOG(WARNING) << "Unable to get line count: " << status;
@@ -206,7 +206,7 @@ class TextFileLineIterator
   // Set the corresponding value from line or tokens based on 'index' into the
   // tensor 't'. The value is transformed to the given data type 'dtype'.
   Status SetValue(const string& line, const std::vector<string>& tokens,
-                  int64 index, Tensor* tensor) {
+                  int64_t index, Tensor* tensor) {
     if (index == kLineNumber) {
       tensor->flat<int64>()(0) = next_id_ + offset_;
       return Status::OK();
@@ -215,7 +215,7 @@ class TextFileLineIterator
     const DataType& dtype = tensor->dtype();
     switch (dtype) {
       case DT_INT32: {
-        int32 value;
+        int32_t value;
         if (!strings::safe_strto32(token.c_str(), &value)) {
           valid_ = false;
           return errors::InvalidArgument("Field ", token, " in line ", next_id_,
@@ -224,7 +224,7 @@ class TextFileLineIterator
         tensor->flat<int32>()(0) = value + offset_;
       } break;
       case DT_INT64: {
-        int64 value;
+        int64_t value;
         if (!strings::safe_strto64(token.c_str(), &value)) {
           valid_ = false;
           return errors::InvalidArgument("Field ", token, " in line ", next_id_,
@@ -359,18 +359,18 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
 }
 
 // Helper function to initialize an InitializableLookupTable from a text file.
-Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
-                                   char delimiter, int32 key_index,
-                                   int32 value_index, int64 offset, Env* env,
-                                   InitializableLookupTable* table) {
+Status InitializeTableFromTextFile(const string& filename, int64_t vocab_size,
+                                   char delimiter, int32_t key_index,
+                                   int32_t value_index, int64_t offset,
+                                   Env* env, InitializableLookupTable* table) {
   return InitializeTableFromTextFile(filename, vocab_size, delimiter, key_index,
                                      value_index, offset, env,
                                      /*serializer=*/nullptr, table);
 }
 
 Status InitializeTableFromTextFile(
-    const string& filename, int64 vocab_size, char delimiter, int32 key_index,
-    int32 value_index, int64 offset, Env* env,
+    const string& filename, int64_t vocab_size, char delimiter,
+    int32_t key_index, int32_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table) {
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {

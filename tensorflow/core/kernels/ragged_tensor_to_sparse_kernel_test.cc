@@ -41,7 +41,7 @@ class RaggedTensorToSparseTest : public ::tensorflow::OpsTestBase {
       const TensorShape& rt_dense_values_shape,
       const std::vector<T>& rt_dense_values) {
     const auto& dtype = DataTypeToEnum<T>::v();
-    int64 num_splits = rt_nested_splits.size();
+    int64_t num_splits = rt_nested_splits.size();
     TF_ASSERT_OK(NodeDefBuilder("tested_op", "RaggedTensorToSparse")
                      .Input(FakeInput(num_splits))  // rt_nested_splits
                      .Input(FakeInput(dtype))       // rt_dense_values
@@ -50,7 +50,7 @@ class RaggedTensorToSparseTest : public ::tensorflow::OpsTestBase {
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
     for (const auto& splits : rt_nested_splits) {
-      int64 splits_size = splits.size();
+      int64_t splits_size = splits.size();
       AddInputFromArray<int64>(TensorShape({splits_size}), splits);
     }
     AddInputFromArray<T>(rt_dense_values_shape, rt_dense_values);

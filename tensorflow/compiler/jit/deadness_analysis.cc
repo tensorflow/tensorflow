@@ -141,7 +141,7 @@ class Predicate {
   static void Visit(Predicate* p, const FunctionTy& func);
 
  protected:
-  explicit Predicate(int64 id) : id_(id) {}
+  explicit Predicate(int64_t id) : id_(id) {}
 
  private:
   const int64 id_;
@@ -152,7 +152,7 @@ class Predicate {
 // Represents a logical conjunction of a set of predicates.
 class AndPredicate : public Predicate {
  public:
-  explicit AndPredicate(int64 id, std::vector<Predicate*> operands)
+  explicit AndPredicate(int64_t id, std::vector<Predicate*> operands)
       : Predicate(id), operands_(std::move(operands)) {}
 
   string ToString() const override {
@@ -182,7 +182,7 @@ class AndPredicate : public Predicate {
 // Represents a logical disjunction of a set of predicates.
 class OrPredicate : public Predicate {
  public:
-  explicit OrPredicate(int64 id, std::vector<Predicate*> operands)
+  explicit OrPredicate(int64_t id, std::vector<Predicate*> operands)
       : Predicate(id), operands_(std::move(operands)) {}
 
   string ToString() const override {
@@ -211,7 +211,7 @@ class OrPredicate : public Predicate {
 // Represents a logical negation of a set of predicates.
 class NotPredicate : public Predicate {
  public:
-  explicit NotPredicate(int64 id, Predicate* operand)
+  explicit NotPredicate(int64_t id, Predicate* operand)
       : Predicate(id), operands_({operand}) {}
 
   string ToString() const override {
@@ -249,7 +249,7 @@ class NotPredicate : public Predicate {
 // iterations).
 class AndRecurrencePredicate : public Predicate {
  public:
-  explicit AndRecurrencePredicate(int64 id, Predicate* start, Predicate* step,
+  explicit AndRecurrencePredicate(int64_t id, Predicate* start, Predicate* step,
                                   std::vector<string> frame)
       : Predicate(id), operands_({start, step}), frame_(std::move(frame)) {}
 
@@ -280,7 +280,7 @@ class AndRecurrencePredicate : public Predicate {
 // symbols.
 class SymbolPredicate : public Predicate {
  public:
-  explicit SymbolPredicate(int64 id, TensorId tensor_id, bool must_be_true)
+  explicit SymbolPredicate(int64_t id, TensorId tensor_id, bool must_be_true)
       : Predicate(id),
         tensor_id_(std::move(tensor_id)),
         must_be_true_(must_be_true) {}
@@ -313,7 +313,7 @@ class SymbolPredicate : public Predicate {
 // symbols.
 class IntSymbolPredicate : public Predicate {
  public:
-  explicit IntSymbolPredicate(int64 id, TensorId tensor_id,
+  explicit IntSymbolPredicate(int64_t id, TensorId tensor_id,
                               absl::optional<int> must_have_value)
       : Predicate(id),
         tensor_id_(std::move(tensor_id)),

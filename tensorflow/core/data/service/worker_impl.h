@@ -106,7 +106,7 @@ class DataServiceWorkerImpl {
   StatusOr<DatasetDef> GetDatasetDef(const TaskDef& task_def) const;
   // Creates a dataset from `dataset_def`.
   StatusOr<std::unique_ptr<standalone::Dataset>> MakeDataset(
-      const DatasetDef& dataset_def) const;
+      const DatasetDef& dataset_def, const TaskDef& task_def) const;
   // Creates an iterator for `dataset`.
   StatusOr<std::unique_ptr<standalone::Iterator>> MakeDatasetIterator(
       standalone::Dataset& dataset, const TaskDef& task_def) const;

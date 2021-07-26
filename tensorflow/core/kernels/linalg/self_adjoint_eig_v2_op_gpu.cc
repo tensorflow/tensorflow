@@ -52,13 +52,13 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
         context, ndims >= 2,
         errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
         done);
-    const int64 n = input.dim_size(ndims - 1);
+    const int64_t n = input.dim_size(ndims - 1);
     OP_REQUIRES_ASYNC(
         context, input.dim_size(ndims - 2) == n,
         errors::InvalidArgument("Input matrices must be squares, got",
                                 input.dim_size(ndims - 2), " != ", n),
         done);
-    const int64 batch_size =
+    const int64_t batch_size =
         input.template flat_inner_dims<Scalar, 3>().dimension(0);
 
     // Allocate outputs.

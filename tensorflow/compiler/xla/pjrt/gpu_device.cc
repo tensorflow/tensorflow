@@ -243,8 +243,8 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
         /*alloc_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>(),
         /*free_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>());
 
-    int64 free_memory;
-    int64 total_memory;
+    int64_t free_memory;
+    int64_t total_memory;
     if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
       return Unavailable("Failed to query available memory from device %i",
                          device_ordinal);
@@ -320,7 +320,7 @@ std::unique_ptr<tensorflow::BFCAllocator> GetGpuHostAllocator(
   tensorflow::SubAllocator* sub_allocator = new tensorflow::DeviceHostAllocator(
       executor, /*numa_node=*/0, /*alloc_visitors=*/{}, /*free_visitors=*/{});
   // TODO(phawkins): allow the user to tune this.
-  const int64 kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+  const int64_t kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
   return absl::make_unique<tensorflow::BFCAllocator>(
       sub_allocator, kGpuHostMemoryLimitBytes, /*allow_growth=*/true,
       /*name=*/"xla_gpu_host_bfc");

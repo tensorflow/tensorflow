@@ -61,7 +61,7 @@ FunctionDef XTimesX() {
       /*ret_def=*/{{"y", "y:z:0"}});
 }
 
-GraphDef GetRangeSquareDatasetDef(const int64 range) {
+GraphDef GetRangeSquareDatasetDef(const int64_t range) {
   return GDef(
       {NDef("start", "Const", /*inputs=*/{},
             {{"value", AsScalar<int64>(0)}, {"dtype", DT_INT64}}),

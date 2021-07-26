@@ -37,7 +37,7 @@ constexpr char kInputImplEmpty[] = "input_impl_empty";
 
 class SkipDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
+  Dataset(OpKernelContext* ctx, int64_t count, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
     input_->Ref();
   }
@@ -68,7 +68,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -213,7 +213,7 @@ SkipDatasetOp::SkipDatasetOp(OpKernelConstruction* ctx)
 void SkipDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                 DatasetBase** output) {
   // Create a new SkipDatasetOp::Dataset, and return it as the output.
-  int64 count;
+  int64_t count;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
 
   *output = new Dataset(ctx, count, input);

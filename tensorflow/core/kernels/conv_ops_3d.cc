@@ -142,11 +142,11 @@ class Conv3DOp : public BinaryOp<T> {
     OP_REQUIRES(context, filter.dims() == 5,
                 errors::InvalidArgument("filter must be 5-dimensional"));
 
-    const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    const int64 in_batch = GetTensorDim(input, data_format_, 'N');
+    const int64_t in_depth = GetTensorDim(input, data_format_, 'C');
+    const int64_t in_batch = GetTensorDim(input, data_format_, 'N');
 
-    const int64 filter_depth = filter.dim_size(3);
-    const int64 out_depth = filter.dim_size(4);
+    const int64_t filter_depth = filter.dim_size(3);
+    const int64_t out_depth = filter.dim_size(4);
 
     OP_REQUIRES(context, filter_depth != 0,
                 errors::InvalidArgument("filter_depth must be non-zero"));
@@ -228,22 +228,22 @@ struct LaunchConvOp<GPUDevice, T> {
 
     Tensor input = input_param;
 
-    const int64 in_batch = GetTensorDim(input, data_format, 'N');
-    int64 in_planes = GetTensorDim(input, data_format, '0');
-    int64 in_rows = GetTensorDim(input, data_format, '1');
-    int64 in_cols = GetTensorDim(input, data_format, '2');
-    const int64 in_depth = GetTensorDim(input, data_format, 'C');
+    const int64_t in_batch = GetTensorDim(input, data_format, 'N');
+    int64_t in_planes = GetTensorDim(input, data_format, '0');
+    int64_t in_rows = GetTensorDim(input, data_format, '1');
+    int64_t in_cols = GetTensorDim(input, data_format, '2');
+    const int64_t in_depth = GetTensorDim(input, data_format, 'C');
 
-    const int64 filter_planes = filter.dim_size(0);
-    const int64 filter_rows = filter.dim_size(1);
-    const int64 filter_cols = filter.dim_size(2);
-    const int64 filter_depth = filter.dim_size(3);
-    const int64 out_depth = filter.dim_size(4);
+    const int64_t filter_planes = filter.dim_size(0);
+    const int64_t filter_rows = filter.dim_size(1);
+    const int64_t filter_cols = filter.dim_size(2);
+    const int64_t filter_depth = filter.dim_size(3);
+    const int64_t out_depth = filter.dim_size(4);
 
-    int64 pad_planes = 0, pad_rows = 0, pad_cols = 0;
-    int64 out_planes = GetTensorDim(*output, data_format, '0');
-    int64 out_rows = GetTensorDim(*output, data_format, '1');
-    int64 out_cols = GetTensorDim(*output, data_format, '2');
+    int64_t pad_planes = 0, pad_rows = 0, pad_cols = 0;
+    int64_t out_planes = GetTensorDim(*output, data_format, '0');
+    int64_t out_rows = GetTensorDim(*output, data_format, '1');
+    int64_t out_cols = GetTensorDim(*output, data_format, '2');
 
     if (padding == Padding::SAME) {
       pad_planes = std::max<int64>(
@@ -311,9 +311,9 @@ struct LaunchConvOp<GPUDevice, T> {
       // overhead and would work as long as an op trained this way is only
       // used on GPU.
       if (rows_odd || cols_odd || planes_odd) {
-        const int64 new_in_rows = in_rows + rows_odd;
-        const int64 new_in_cols = in_cols + cols_odd;
-        const int64 new_in_planes = in_planes + planes_odd;
+        const int64_t new_in_rows = in_rows + rows_odd;
+        const int64_t new_in_cols = in_cols + cols_odd;
+        const int64_t new_in_planes = in_planes + planes_odd;
 
         Tensor transformed_input;
         TensorShape transformed_shape = ShapeFromFormat(
@@ -470,7 +470,7 @@ struct LaunchConvOp<GPUDevice, T> {
         AsDeviceMemory(transformed_output.template flat<T>().data(),
                        transformed_output.template flat<T>().size());
 
-    static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
+    static int64_t ConvolveScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     int device_id = stream->parent()->device_ordinal();

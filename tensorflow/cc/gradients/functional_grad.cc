@@ -36,7 +36,7 @@ Status PartitionedCallGrad(const Scope& scope, const Operation& op,
   std::vector<Output> func_inputs;
   std::vector<DataType> input_dtypes;
 
-  for (int32 i = 0; i < op.num_inputs(); i++) {
+  for (int32_t i = 0; i < op.num_inputs(); i++) {
     func_inputs.push_back(op.input(i));
     input_dtypes.push_back(op.input_type(i));
   }
@@ -45,7 +45,7 @@ Status PartitionedCallGrad(const Scope& scope, const Operation& op,
                      std::end(grad_inputs));
 
   auto grad = SymbolicGradient(scope, func_inputs, input_dtypes, f);
-  for (int32 i = 0; i < op.num_inputs(); i++) {
+  for (int32_t i = 0; i < op.num_inputs(); i++) {
     grad_outputs->push_back(grad[i]);
   }
 

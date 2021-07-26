@@ -75,16 +75,16 @@ Status ReaderBase::RestoreStateLocked(const tstring& state) {
   return errors::Unimplemented("Reader RestoreState");
 }
 
-int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
+int64 ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
                            std::vector<tstring>* keys,
                            std::vector<tstring>* values,
                            OpKernelContext* context) {
   mutex_lock lock(mu_);
-  int64 records_produced_this_call = 0;
+  int64_t records_produced_this_call = 0;
   while (true) {
     // Records produced by this iteration of the ReadUpToLocked call.
-    int64 num_records_produced = 0;
-    int64 remaining = num_records - records_produced_this_call;
+    int64_t num_records_produced = 0;
+    int64_t remaining = num_records - records_produced_this_call;
     if (remaining == 0) {
       return records_produced_this_call;
     }
@@ -133,7 +133,8 @@ int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
 }
 
 // Default implementation just reads one record at a time.
-Status ReaderBase::ReadUpToLocked(int64 num_records, std::vector<tstring>* keys,
+Status ReaderBase::ReadUpToLocked(int64_t num_records,
+                                  std::vector<tstring>* keys,
                                   std::vector<tstring>* values, int64* num_read,
                                   bool* at_end) {
   bool produced = false;

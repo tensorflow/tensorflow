@@ -303,7 +303,7 @@ class MirrorPadGradOp : public OpKernel {
                   errors::InvalidArgument(
                       "Paddings must be non-negative: ", before, ", ", after));
 
-      const int64 out_size = in0.dim_size(d) - (before + after);
+      const int64_t out_size = in0.dim_size(d) - (before + after);
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(context, before <= out_size && after <= out_size,
                     errors::InvalidArgument("paddings must be no greater "

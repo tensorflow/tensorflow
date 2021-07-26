@@ -31,7 +31,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-XEvent CreateEvent(int64 offset_ps, int64 duration_ps) {
+XEvent CreateEvent(int64_t offset_ps, int64_t duration_ps) {
   XEvent event;
   event.set_offset_ps(offset_ps);
   event.set_duration_ps(duration_ps);
@@ -161,8 +161,8 @@ TEST(XPlaneUtilsTest, SortXPlaneTest) {
 namespace {
 
 XLineBuilder CreateXLine(XPlaneBuilder* plane, absl::string_view name,
-                         absl::string_view display, int64 id,
-                         int64 timestamp_ns) {
+                         absl::string_view display, int64_t id,
+                         int64_t timestamp_ns) {
   XLineBuilder line = plane->GetOrCreateLine(id);
   line.SetName(name);
   line.SetTimestampNs(timestamp_ns);
@@ -173,7 +173,7 @@ XLineBuilder CreateXLine(XPlaneBuilder* plane, absl::string_view name,
 XEventBuilder CreateXEvent(XPlaneBuilder* plane, XLineBuilder line,
                            absl::string_view event_name,
                            absl::optional<absl::string_view> display,
-                           int64 offset_ns, int64 duration_ns) {
+                           int64_t offset_ns, int64_t duration_ns) {
   XEventMetadata* event_metadata = plane->GetOrCreateEventMetadata(event_name);
   if (display) event_metadata->set_display_name(std::string(*display));
   XEventBuilder event = line.AddEvent(*event_metadata);
@@ -190,8 +190,8 @@ void CreateXStats(XPlaneBuilder* plane, T* stats_owner,
 }
 
 void CheckXLine(const XLine& line, absl::string_view name,
-                absl::string_view display, int64 start_time_ns,
-                int64 events_size) {
+                absl::string_view display, int64_t start_time_ns,
+                int64_t events_size) {
   EXPECT_EQ(line.name(), name);
   EXPECT_EQ(line.display_name(), display);
   EXPECT_EQ(line.timestamp_ns(), start_time_ns);
@@ -200,7 +200,7 @@ void CheckXLine(const XLine& line, absl::string_view name,
 
 void CheckXEvent(const XEvent& event, const XPlane& plane,
                  absl::string_view name, absl::string_view display,
-                 int64 offset_ns, int64 duration_ns, int64 stats_size) {
+                 int64_t offset_ns, int64_t duration_ns, int64_t stats_size) {
   const XEventMetadata& event_metadata =
       plane.event_metadata().at(event.metadata_id());
   EXPECT_EQ(event_metadata.name(), name);
@@ -213,10 +213,10 @@ void CheckXEvent(const XEvent& event, const XPlane& plane,
 
 TEST(XPlaneUtilsTest, MergeXPlaneTest) {
   XPlane src_plane, dst_plane;
-  constexpr int64 kLineIdOnlyInSrcPlane = 1LL;
-  constexpr int64 kLineIdOnlyInDstPlane = 2LL;
-  constexpr int64 kLineIdInBothPlanes = 3LL;   // src start ts < dst start ts
-  constexpr int64 kLineIdInBothPlanes2 = 4LL;  // src start ts > dst start ts
+  constexpr int64_t kLineIdOnlyInSrcPlane = 1LL;
+  constexpr int64_t kLineIdOnlyInDstPlane = 2LL;
+  constexpr int64_t kLineIdInBothPlanes = 3LL;   // src start ts < dst start ts
+  constexpr int64_t kLineIdInBothPlanes2 = 4LL;  // src start ts > dst start ts
 
   {  // Populate the source plane.
     XPlaneBuilder src(&src_plane);

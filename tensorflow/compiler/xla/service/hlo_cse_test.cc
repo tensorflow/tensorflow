@@ -160,13 +160,13 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f))));
 
   const Shape shape_r0 = ShapeUtil::MakeShape(F32, {});
-  for (int64 i = 0; i < constants.size(); ++i) {
+  for (int64_t i = 0; i < constants.size(); ++i) {
     constants[i] = builder.AddInstruction(
         HloInstruction::CreateConvert(shape_r0, constants[i]));
   }
   HloInstruction* root = builder.AddInstruction(HloInstruction::CreateBinary(
       shape_r0, HloOpcode::kAdd, constants[0], constants[1]));
-  for (int64 i = 2; i < constants.size(); ++i) {
+  for (int64_t i = 2; i < constants.size(); ++i) {
     root = builder.AddInstruction(HloInstruction::CreateBinary(
         shape_r0, HloOpcode::kAdd, root, constants[i]));
   }

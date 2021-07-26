@@ -137,9 +137,9 @@ class IteratorStateReader {
 class IteratorStateWriter {
  public:
   // Writes an integer for the given key.
-  virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
+  virtual Status WriteScalar(StringPiece key, const int64_t val) = 0;
   virtual Status WriteScalar(StringPiece name, StringPiece key,
-                             const int64 val) = 0;
+                             const int64_t val) = 0;
 
   // Writes a string for the given key.
   virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
@@ -406,7 +406,7 @@ class IteratorContext {
       if (thread_pool) {
         runner_threadpool_size = thread_pool->NumThreads();
       } else {
-        static const int32 kDefaultRunnerThreadpoolSize =
+        static const int32_t kDefaultRunnerThreadpoolSize =
             port::MaxParallelism();
         runner_threadpool_size = kDefaultRunnerThreadpoolSize;
       }
@@ -731,7 +731,7 @@ class IteratorBase {
 
   // Saves the state of this iterator.
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-    int64 start_us = EnvTime::NowMicros();
+    int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
     VLOG(1) << "Saved " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
@@ -745,7 +745,7 @@ class IteratorBase {
 
   // Restores the state of this iterator.
   virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
-    int64 start_us = EnvTime::NowMicros();
+    int64_t start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
     VLOG(1) << "Restored " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
@@ -1153,7 +1153,7 @@ class DatasetBaseIterator : public IteratorBase {
   // has produced an element and its size in bytes.
   void RecordElement(IteratorContext* ctx, std::vector<Tensor>* out_tensors) {
     if (node_) {
-      int64 num_bytes = GetAllocatedBytes(*out_tensors);
+      int64_t num_bytes = GetAllocatedBytes(*out_tensors);
       node_->record_element();
       node_->record_bytes_produced(num_bytes);
       if (node_->output()) {
@@ -1166,7 +1166,7 @@ class DatasetBaseIterator : public IteratorBase {
   // this iterator has started work.
   void RecordStart(IteratorContext* ctx) {
     if (collect_resource_usage(ctx)) {
-      int64 now_nanos = EnvTime::NowNanos();
+      int64_t now_nanos = EnvTime::NowNanos();
       node_->record_start(now_nanos);
     }
   }
@@ -1175,7 +1175,7 @@ class DatasetBaseIterator : public IteratorBase {
   // this iterator has stopped work.
   void RecordStop(IteratorContext* ctx) {
     if (collect_resource_usage(ctx)) {
-      int64 now_nanos = EnvTime::NowNanos();
+      int64_t now_nanos = EnvTime::NowNanos();
       node_->record_stop(now_nanos);
     }
   }

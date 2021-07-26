@@ -25,7 +25,7 @@ class PaddedBatchDatasetOpTest : public DatasetOpsTestBase {};
 class PaddedBatchDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  PaddedBatchDatasetParams(T input_dataset_params, int64 batch_size,
+  PaddedBatchDatasetParams(T input_dataset_params, int64_t batch_size,
                            std::vector<Tensor> padded_shapes,
                            std::vector<Tensor> padded_values,
                            bool drop_remainder, bool parallel_copy,

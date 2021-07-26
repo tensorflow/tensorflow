@@ -60,7 +60,7 @@ class InplaceUpdateOp : public XlaOpKernel {
     auto const_zero = xla::ConstantR0(builder, 0);
     auto current = ctx->Input(0);
 
-    for (int64 i = 0; i < i_shape.num_elements(); i++) {
+    for (int64_t i = 0; i < i_shape.num_elements(); i++) {
       std::vector<xla::XlaOp> update_indices;
       update_indices.push_back(
           xla::Reshape(xla::SliceInDim(ctx->Input(1), i, i + 1, 1, 0), {}));

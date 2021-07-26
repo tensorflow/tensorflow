@@ -132,13 +132,14 @@ class HloModuleGroupMetadata {
   bool InstructionCommunicates(HloInstruction* hlo) const;
 
   // Returns the Channel instance for the given channel id.
-  const Channel& GetChannel(int64 channel_id) const;
+  const Channel& GetChannel(int64_t channel_id) const;
 
   // Returns if the given channel id exists in metadata.
-  bool HasChannel(int64 channel_id) const;
+  bool HasChannel(int64_t channel_id) const;
 
   // Returns the all-reduce instructions with the same channel_id.
-  const std::vector<HloInstruction*>& GetAllReduceGroup(int64 channel_id) const;
+  const std::vector<HloInstruction*>& GetAllReduceGroup(
+      int64_t channel_id) const;
 
   // Returns the computation that contains the peer channel instructions for
   // the given instruction.
@@ -184,7 +185,7 @@ class HloModuleGroupMetadata {
   }
 
   // Returns the companion set at the given index.
-  const std::vector<HloInstruction*>& companion_set(int64 index) const {
+  const std::vector<HloInstruction*>& companion_set(int64_t index) const {
     CHECK_LT(index, companion_sets_.size());
     return *companion_sets_[index];
   }

@@ -686,29 +686,29 @@ class NumericSummaryTest(test_util.TensorFlowTestCase):
         self, [-3, 3, 1.79282868526, 2.39789673081], out.lines[3:4])
 
   def testNumericSummaryOnBool(self):
-    x = np.array([False, True, True, False], dtype=np.bool)
+    x = np.array([False, True, True, False], dtype=np.bool_)
     out = tensor_format.numeric_summary(x)
     cli_test_utils.assert_lines_equal_ignoring_whitespace(
         self,
         ["| False  True | total |", "|     2     2 |     4 |"], out.lines)
 
-    x = np.array([True] * 10, dtype=np.bool)
+    x = np.array([True] * 10, dtype=np.bool_)
     out = tensor_format.numeric_summary(x)
     cli_test_utils.assert_lines_equal_ignoring_whitespace(
         self, ["| True | total |", "|   10 |    10 |"], out.lines)
 
-    x = np.array([False] * 10, dtype=np.bool)
+    x = np.array([False] * 10, dtype=np.bool_)
     out = tensor_format.numeric_summary(x)
     cli_test_utils.assert_lines_equal_ignoring_whitespace(
         self, ["| False | total |", "|    10 |    10 |"], out.lines)
 
-    x = np.array([], dtype=np.bool)
+    x = np.array([], dtype=np.bool_)
     out = tensor_format.numeric_summary(x)
     self.assertEqual(["No numeric summary available due to empty tensor."],
                      out.lines)
 
   def testNumericSummaryOnStrTensor(self):
-    x = np.array(["spam", "egg"], dtype=np.object)
+    x = np.array(["spam", "egg"], dtype=np.object_)
     out = tensor_format.numeric_summary(x)
     self.assertEqual(
         ["No numeric summary available due to tensor dtype: object."],

@@ -670,7 +670,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
 
   // Fetch the constant tensors and replace the corresponding tensors in the
   // original graph with those constants.
-  int32 num_nodes_replaced = 0;
+  int32_t num_nodes_replaced = 0;
   for (size_t c = 0; c < outputs.size(); ++c) {
     const gtl::FlatSet<Node*>& control_deps =
         constant_control_deps[tensors_to_replace[c].first];

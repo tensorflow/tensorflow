@@ -52,12 +52,12 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   //  input according to `paddings` to produce `padded` of shape `padded_shape`.
   xla::PaddingConfig padding_config;
   std::vector<int64> padded_shape(input_shape.begin(), input_shape.end());
-  int64 block_num_elems = 1LL;
+  int64_t block_num_elems = 1LL;
   padding_config.add_dimensions();  // Don't pad the batch dimension.
   for (int i = 0; i < block_rank; ++i) {
     auto* dim = padding_config.add_dimensions();
-    int64 pad_start = paddings.Get<int64>({i, 0});
-    int64 pad_end = paddings.Get<int64>({i, 1});
+    int64_t pad_start = paddings.Get<int64>({i, 0});
+    int64_t pad_end = paddings.Get<int64>({i, 1});
     OP_REQUIRES(ctx, pad_start >= 0 && pad_end >= 0,
                 errors::InvalidArgument("Paddings must be non-negative"));
     dim->set_edge_padding_low(pad_start);
@@ -85,7 +85,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   //       padded_shape[M] / block_shape[M-1],
   //       block_shape[M-1]] +
   //      remaining_shape
-  const int64 batch_size = input_shape[0];
+  const int64_t batch_size = input_shape[0];
   std::vector<int64> reshaped_padded_shape(input_rank + block_rank);
   reshaped_padded_shape[0] = batch_size;
   for (int i = 0; i < block_rank; ++i) {

@@ -27,7 +27,7 @@ Status ValidateSegmentReduction(OpKernelContext* context, const Tensor& input,
   if (!TensorShapeUtils::IsVector(segment_ids.shape())) {
     return errors::InvalidArgument("segment_ids should be a vector.");
   }
-  const int64 num_indices = segment_ids.NumElements();
+  const int64_t num_indices = segment_ids.NumElements();
   if (num_indices != input.dim_size(0)) {
     return errors::InvalidArgument(
         "segment_ids should be the same size as dimension 0 of"
@@ -70,7 +70,7 @@ Status ValidateSparseSegmentReduction(OpKernelContext* context,
           "num_segments should be a scalar, not shape ",
           num_segments_t.shape().DebugString());
     }
-    int64 output_rows = internal::SubtleMustCopy(
+    int64_t output_rows = internal::SubtleMustCopy(
         num_segments_t.dtype() == DT_INT32 ? num_segments_t.scalar<int32>()()
                                            : num_segments_t.scalar<int64>()());
     if (output_rows < 0) {
@@ -86,7 +86,7 @@ Status ValidateSparseSegmentReduction(OpKernelContext* context,
     return errors::InvalidArgument("segment_ids should be a vector.");
   }
 
-  const int64 num_indices = indices.NumElements();
+  const int64_t num_indices = indices.NumElements();
   if (num_indices != segment_ids.NumElements()) {
     return errors::InvalidArgument(
         "segment_ids and indices should have same size.");

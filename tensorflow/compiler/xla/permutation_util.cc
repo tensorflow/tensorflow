@@ -22,7 +22,7 @@ namespace xla {
 
 bool IsPermutation(absl::Span<const int64> permutation) {
   absl::InlinedVector<bool, 8> seen(permutation.size(), false);
-  for (int64 p : permutation) {
+  for (int64_t p : permutation) {
     if (p < 0 || p >= permutation.size() || seen[p]) {
       return false;
     }
@@ -53,7 +53,7 @@ std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
 }
 
 bool IsIdentityPermutation(absl::Span<const int64> permutation) {
-  for (int64 i = 0; i < permutation.size(); ++i) {
+  for (int64_t i = 0; i < permutation.size(); ++i) {
     if (permutation[i] != i) {
       return false;
     }

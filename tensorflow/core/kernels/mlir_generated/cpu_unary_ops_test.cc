@@ -51,20 +51,20 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Abs, DT_INT8, DT_INT32, DT_INT8, DT_INT32,
-    test::NearZeroAndExtremeInput<int8>(), std::abs,
+    test::NearZeroAndExtremeInput<int8_t>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     Abs, DT_INT16, DT_INT32, DT_INT16, DT_INT32,
-    test::NearZeroAndExtremeInput<int16>(), std::abs,
+    test::NearZeroAndExtremeInput<int16_t>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Abs, DT_INT32, DT_INT32, test::NearZeroAndExtremeInput<int32>(), std::abs,
+    Abs, DT_INT32, DT_INT32, test::NearZeroAndExtremeInput<int32_t>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
+    Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64_t>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 /// Test `tf.Angle`.

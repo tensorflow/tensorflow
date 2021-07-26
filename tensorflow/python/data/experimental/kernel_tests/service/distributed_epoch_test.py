@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -303,6 +304,16 @@ class DistributedEpochTest(data_service_test_base.TestBase,
                    "of type DataServiceDataset")
     with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
       self.getDatasetOutput(ds)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDynamicShardingPolicy(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = self.make_distributed_dataset(
+        ds, cluster, processing_mode=ShardingPolicy.DYNAMIC)
+    self.assertDatasetProduces(
+        ds, list(range(num_elements)), assert_items_equal=True)
 
 
 if __name__ == "__main__":

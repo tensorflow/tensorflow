@@ -61,6 +61,7 @@ filegroup(
     name = "java_experimental_srcs",
     srcs = [
         "src/main/java/org/tensorflow/lite/Interpreter.java",
+        "src/main/java/org/tensorflow/lite/NativeInterpreterWrapperExperimental.java",
         "src/main/java/org/tensorflow/lite/package-info.java",
     ],
 )

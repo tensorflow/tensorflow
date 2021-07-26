@@ -50,7 +50,6 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   if (use_implicit_batch) {
     dims = cuda_engine->getBindingDimensions(binding_index);
   } else {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     // Get dims from context instead of engine in explicit batch mode because
     // the engine might have dynamic shapes.
     dims = execution_context->getBindingDimensions(binding_index);
@@ -62,10 +61,6 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
           "Binding index out of range. This can happen if profile is not set, "
           "or the network is invalid for the current profile.");
     }
-#else
-    return errors::Internal(
-        "Explicit batch mode is only supported with TensorRT 6 and above.");
-#endif
   }
   TF_RETURN_IF_ERROR(TrtDimsToTensorShape(
       dims, &shape,
@@ -88,11 +83,7 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
     LOG(ERROR) << msg;
     return errors::NotFound(msg);
   }
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   int n_profiles = cuda_engine->getNbOptimizationProfiles();
-#else
-  int n_profiles = 1;
-#endif
   // If we have more then one optimization profile, then we need to shift the
   // binding index according to the following formula:
   // binding_index_within_engine = binding_index_within_profile +
@@ -129,7 +120,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
         return errors::NotFound(msg);
       }
     }
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     // Set known input dimensions. This is necessary because TRT network
     // could be made with dynamic dimensions.
     if (!use_implicit_batch) {
@@ -150,7 +140,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
         }
       }
     }
-#endif
     // Setup input bindings.
     auto dtype = cuda_engine->getBindingDataType(binding_index);
     switch (dtype) {
@@ -174,7 +163,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     }
   }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Ensure all network dynamic dimensions (if any) are set in execution
   // context.
   if (!execution_context->allInputDimensionsSpecified()) {
@@ -185,7 +173,6 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     return errors::Internal(
         "Failed to set dimensions for all shape input tensors.");
   }
-#endif
   return Status::OK();
 }
 
@@ -261,13 +248,8 @@ Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
     ret = execution_context->enqueue(batch_size, &buffers[0], stream, nullptr);
     VLOG(1) << "Called IExecutionContext::enqueue";
   } else {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     ret = execution_context->enqueueV2(&buffers[0], stream, nullptr);
     VLOG(1) << "Called IExecutionContext::enqueueV2";
-#else
-    return errors::Internal(
-        "Explicit batch mode is only supported with TensorRT 6 and above.");
-#endif
   }
   if (!ret) {
     return errors::Internal("Failed to enqueue batch for TRT engine");

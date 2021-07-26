@@ -639,14 +639,14 @@ TEST_F(UpperBoundInferenceTest, KeyValueSort) {
   Compare(p0, p1, ComparisonDirection::kGe);
   TF_ASSERT_OK_AND_ASSIGN(auto comparator, comparator_b.Build());
 
-  int64 elem_count = 17;
+  int64_t elem_count = 17;
   XlaBuilder b(TestName());
   auto param = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {elem_count}), "p0");
   auto iota = Iota(&b, S32, elem_count);
   auto sort = Sort({param, iota}, comparator);
   auto gte = GetTupleElement(sort, 1);
 
-  for (int64 i = 0; i < elem_count; ++i) {
+  for (int64_t i = 0; i < elem_count; ++i) {
     auto result_first_elem =
         ComputeUpperBoundLiteral(gte, &b).ValueOrDie().Get<int32>({i});
     // We can infer the bound of sort.

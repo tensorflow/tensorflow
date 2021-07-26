@@ -62,7 +62,7 @@ class ResourceMgrArena {
 
 /* static */ xla::StatusOr<RefPtr<XRTCompilationCache>>
 XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
-    OpKernelContext* ctx, int64 max_number_of_entries) {
+    OpKernelContext* ctx, int64_t max_number_of_entries) {
   ResourceMgr* rm;
   TF_RETURN_IF_ERROR(GetResourceManager(ctx, &rm));
   return tensorflow::GetOrCreateCompilationCache(rm, max_number_of_entries);

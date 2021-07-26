@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
@@ -417,6 +418,33 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     }
   }
   return status;
+}
+
+Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
+    const std::vector<TensorShape>& arg_shapes,
+    TpuProgramGroupInterface* tpu_program_group, uint64 fingerprint) {
+  // TODO(chiachenc): Support only one program for now.
+  if (tpu_program_group->program_count() != 1) {
+    LOG(INFO) << "Found " << tpu_program_group->program_count()
+              << " programs. Skip fingerprint registration.";
+  } else {
+    ResourceMgr* rm = GetTPUConfigResourceMgr();
+    tpu::TpuFingerprintLookup* fingerprint_lookup;
+    TF_RETURN_IF_ERROR(rm->LookupOrCreate<tpu::TpuFingerprintLookup>(
+        rm->default_container(), tpu::kFingerprintLookupResourceName,
+        &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
+          *new_lookup = tpu::TpuFingerprintLookup::Create();
+          return Status::OK();
+        }));
+    uint64 tf_fingerprint =
+        tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
+    std::string xla_fingerprint = tpu_program_group->fingerprint(0);
+    VLOG(1) << "Registering TF fingerprint: " << tf_fingerprint
+            << " with XLA fingerprint: " << xla_fingerprint;
+    fingerprint_lookup->RegisterIntermediateAndValuePair(
+        tf_fingerprint, std::move(xla_fingerprint));
+  }
+  return Status::OK();
 }
 }  // namespace tpu
 }  // namespace tensorflow

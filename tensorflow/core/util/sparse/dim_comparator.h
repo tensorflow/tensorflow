@@ -57,9 +57,9 @@ class DimComparator {
     }
   }
 
-  inline bool operator()(const int64 i, const int64 j) const {
+  inline bool operator()(const int64_t i, const int64_t j) const {
     for (int di = 0; di < dims_; ++di) {
-      const int64 d = order_[di];
+      const int64_t d = order_[di];
       if (ix_(i, d) < ix_(j, d)) return true;
       if (ix_(i, d) > ix_(j, d)) return false;
     }
@@ -71,10 +71,11 @@ class DimComparator {
   // to distinguish between all three orderings (<, ==, >).
   inline static int cmp(const TTypes<int64>::ConstMatrix& a_idx,
                         const TTypes<int64>::ConstMatrix& b_idx,
-                        const int64 a_row, const int64 b_row, const int dims) {
+                        const int64_t a_row, const int64_t b_row,
+                        const int dims) {
     for (int d = 0; d < dims; ++d) {
-      const int64 a = a_idx(a_row, d);
-      const int64 b = b_idx(b_row, d);
+      const int64_t a = a_idx(a_row, d);
+      const int64_t b = b_idx(b_row, d);
       if (a < b) {
         return -1;
       } else if (a > b) {
@@ -99,10 +100,10 @@ class FixedDimComparator : DimComparator {
       : DimComparator(ix, order, shape) {
     DCHECK_EQ(order.size(), ORDER_DIM);
   }
-  inline bool operator()(const int64 i, const int64 j) const {
+  inline bool operator()(const int64_t i, const int64_t j) const {
     bool value = false;
     for (int di = 0; di < ORDER_DIM; ++di) {
-      const int64 d = order_[di];
+      const int64_t d = order_[di];
       if (ix_(i, d) < ix_(j, d)) {
         value = true;
         break;

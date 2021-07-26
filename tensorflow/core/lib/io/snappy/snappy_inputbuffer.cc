@@ -30,7 +30,7 @@ SnappyInputBuffer::SnappyInputBuffer(
       next_in_(input_buffer_.get()),
       bytes_read_(0) {}
 
-Status SnappyInputBuffer::ReadNBytes(int64 bytes_to_read, tstring* result) {
+Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read, tstring* result) {
   result->clear();
   result->resize_uninitialized(bytes_to_read);
 

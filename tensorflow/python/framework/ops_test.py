@@ -1546,6 +1546,25 @@ class NameStackTest(test_util.TensorFlowTestCase):
       with g.name_scope("_bar"):
         pass
 
+  def testEmptyScopeEdgeCases(self):
+    g = ops.Graph()
+    self.assertEqual("", g.get_name_scope())
+    with g.name_scope("") as scope:
+      self.assertEqual("", scope)
+      self.assertEqual("", g.get_name_scope())
+    with g.name_scope(None) as scope:
+      self.assertEqual("", scope)
+      self.assertEqual("", g.get_name_scope())
+    with g.name_scope("foo") as scope:
+      self.assertEqual("foo/", scope)
+      self.assertEqual("foo", g.get_name_scope())
+      with g.name_scope("") as scope:
+        self.assertEqual("", scope)
+        self.assertEqual("", g.get_name_scope())
+      with g.name_scope(None) as scope:
+        self.assertEqual("", scope)
+        self.assertEqual("", g.get_name_scope())
+
 
 class NameTest(test_util.TensorFlowTestCase):
 

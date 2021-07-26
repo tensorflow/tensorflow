@@ -289,7 +289,7 @@ class TraceMe {
 
  private:
   // Start time used when tracing is disabled.
-  constexpr static int64 kUntracedActivity = 0;
+  constexpr static int64_t kUntracedActivity = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TraceMe);
 

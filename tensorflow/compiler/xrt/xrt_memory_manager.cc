@@ -34,12 +34,12 @@ namespace {
 // unordered maps.
 const int kDeviceBits = 12;
 
-int64 MakeDeviceHandle(int64 device_ordinal, int64 rnd_value) {
-  const int64 kUidMask = (static_cast<int64>(1) << (64 - kDeviceBits)) - 1;
+int64 MakeDeviceHandle(int64_t device_ordinal, int64_t rnd_value) {
+  const int64_t kUidMask = (static_cast<int64>(1) << (64 - kDeviceBits)) - 1;
   return (device_ordinal << (64 - kDeviceBits)) | (rnd_value & kUidMask);
 }
 
-int GetDeviceFromHandle(int64 handle) {
+int GetDeviceFromHandle(int64_t handle) {
   return (handle >> (64 - kDeviceBits)) & ((1 << kDeviceBits) - 1);
 }
 
@@ -58,7 +58,7 @@ class XRTMemoryManager::DeviceContext {
  public:
   int64 Register(RefPtr<XRTTupleAllocation> tuple) {
     while (true) {
-      int64 handle = MakeDeviceHandle(tuple->device_ordinal(), CreateUid());
+      int64_t handle = MakeDeviceHandle(tuple->device_ordinal(), CreateUid());
       mutex_lock lock(lock_);
       allocs_.emplace_front(tuple);
       if (alloc_map_.emplace(handle, allocs_.begin()).second) {
@@ -70,7 +70,7 @@ class XRTMemoryManager::DeviceContext {
     }
   }
 
-  bool Release(int64 handle) {
+  bool Release(int64_t handle) {
     mutex_lock lock(lock_);
     auto it = alloc_map_.find(handle);
     if (it == alloc_map_.end()) {
@@ -81,7 +81,7 @@ class XRTMemoryManager::DeviceContext {
     return true;
   }
 
-  RefPtr<XRTTupleAllocation> Lookup(int64 handle) {
+  RefPtr<XRTTupleAllocation> Lookup(int64_t handle) {
     mutex_lock lock(lock_);
     auto it = alloc_map_.find(handle);
     if (it == alloc_map_.end()) {
@@ -171,7 +171,7 @@ class XRTMemoryManager::DeviceContext {
 
  private:
   static int64 CreateUid() {
-    int64 uid;
+    int64_t uid;
     do {
       uid = random::New64() & INT64_MAX;
     } while (uid == InvalidKey());
@@ -197,7 +197,8 @@ XRTMemoryManager::WorkingSet::~WorkingSet() {
 }
 
 Status XRTMemoryManager::WorkingSet::LookupAndPin(
-    xla::Backend* backend, int64 handle, se::DeviceMemoryAllocator* allocator) {
+    xla::Backend* backend, int64_t handle,
+    se::DeviceMemoryAllocator* allocator) {
   TF_ASSIGN_OR_RETURN(auto tuple, memory_manager_->Lookup(handle));
   TF_RETURN_IF_ERROR(
       tuple->PinAndSwapIn(memory_manager_.get(), backend, allocator).status());
@@ -224,7 +225,7 @@ int64 XRTMemoryManager::Register(RefPtr<XRTTupleAllocation> tuple) {
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> XRTMemoryManager::Lookup(
-    int64 handle) {
+    int64_t handle) {
   int device_ordinal = GetDeviceFromHandle(handle);
   DeviceContext* device_context = GetDeviceContext(device_ordinal,
                                                    /*create_if_missing=*/false);
@@ -238,7 +239,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> XRTMemoryManager::Lookup(
   return std::move(tuple);
 }
 
-Status XRTMemoryManager::Release(int64 handle) {
+Status XRTMemoryManager::Release(int64_t handle) {
   int device_ordinal = GetDeviceFromHandle(handle);
   DeviceContext* device_context = GetDeviceContext(device_ordinal,
                                                    /*create_if_missing=*/false);

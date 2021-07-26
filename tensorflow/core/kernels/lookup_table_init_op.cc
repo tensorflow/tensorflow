@@ -141,7 +141,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
     OP_REQUIRES(ctx, !vocab_filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 
-    int64 memory_used_before = 0;
+    int64_t memory_used_before = 0;
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }

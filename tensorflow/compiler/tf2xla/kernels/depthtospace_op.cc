@@ -80,7 +80,7 @@ class DepthToSpaceOp : public XlaOpKernel {
       for (int i = 0; i < num_spatial_dims; ++i) {
         reshaped_shape.push_back(input_shape[1 + i]);
       }
-      int64 block_elems = 1;
+      int64_t block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         reshaped_shape.push_back(block_size_);
         block_elems *= block_size_;
@@ -102,7 +102,7 @@ class DepthToSpaceOp : public XlaOpKernel {
     } else {
       // NCHW format.
       reshaped_shape.push_back(input_shape[0]);
-      int64 block_elems = 1;
+      int64_t block_elems = 1;
       for (int i = 0; i < num_spatial_dims; ++i) {
         reshaped_shape.push_back(block_size_);
         block_elems *= block_size_;

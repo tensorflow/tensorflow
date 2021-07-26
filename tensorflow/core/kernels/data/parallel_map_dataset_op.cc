@@ -72,7 +72,7 @@ constexpr int kStatsReportingPeriodMillis = 1000;
 class ParallelMapDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          int64 num_parallel_calls, const DataTypeVector& output_types,
+          int64_t num_parallel_calls, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes,
           DeterminismPolicy deterministic,
           std::unique_ptr<CapturedFunction> captured_func,
@@ -312,7 +312,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      int64 invocation_results_size;
+      int64_t invocation_results_size;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
                              kSize, &invocation_results_size));
@@ -326,7 +326,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             ReadStatusLocked(reader, element_prefix, &result.status));
         size_t num_return_values;
         {
-          int64 size;
+          int64_t size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
@@ -350,7 +350,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 parallelism = -1;
+      int64_t parallelism = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
@@ -511,7 +511,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         new_calls.reserve(num_parallel_calls_->value);
       }
       auto busy = [this]() TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-        int64 num_parallel_calls = num_parallel_calls_->value;
+        int64_t num_parallel_calls = num_parallel_calls_->value;
         return num_calls_ >= num_parallel_calls ||
                invocation_results_.size() >= num_parallel_calls;
       };
@@ -573,7 +573,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
 
     void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
-      for (int64 step = 0;; ++step) {
+      for (int64_t step = 0;; ++step) {
         int num_calls;
         int num_parallel_calls;
         {
@@ -614,7 +614,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status ReadStatusLocked(IteratorStateReader* reader, const std::string& key,
                             Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      int64 code_int;
+      int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(key, kErrorCode, &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
@@ -703,9 +703,9 @@ ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)
 
 void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase** output) {
-  int64 num_parallel_calls;
+  int64_t num_parallel_calls;
   if (op_version_ == 1) {
-    int32 parallel_calls;
+    int32_t parallel_calls;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument(ctx, kNumParallelCalls, &parallel_calls));
     num_parallel_calls = parallel_calls;

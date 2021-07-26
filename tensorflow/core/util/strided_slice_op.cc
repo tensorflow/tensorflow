@@ -25,7 +25,7 @@ namespace tensorflow {
 namespace {
 
 /// Constants
-constexpr int32 kShrinkAxis = -1, kNewAxis = -2;
+constexpr int32_t kShrinkAxis = -1, kNewAxis = -2;
 
 // Sparse slicing specification
 // if one does foo[3:5, ..., -3], this will have 3 length tensors
@@ -107,9 +107,9 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
       if ((1 << i) & sparse.ellipsis_mask) {
         // Expand the ellipsis into the appropriate indices
         // NOTE: this only works because we guaranteed one ellipsis
-        int32 next_index = std::min(dense->dims - (sparse.dims - i) + 1 +
-                                        sparse.num_add_axis_after_ellipsis,
-                                    dense->dims);
+        int32_t next_index = std::min(dense->dims - (sparse.dims - i) + 1 +
+                                          sparse.num_add_axis_after_ellipsis,
+                                      dense->dims);
         for (; full_index < next_index; full_index++) {
           // new_axis' aren't real axis so you have to skip
           dense->begin[full_index] = dense->end[full_index] = 0;
@@ -169,8 +169,8 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask,
+    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
     PartialTensorShape* processing_shape, PartialTensorShape* final_shape,
     bool* is_identity, bool* is_simple_slice, bool* slice_dim0,
     gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
@@ -224,7 +224,7 @@ Status ValidateStridedSliceOp(
                                         new_axis_mask,
                                         shrink_axis_mask};
 
-  for (int32 i = 0; i < sparse_spec.dims; i++) {
+  for (int32_t i = 0; i < sparse_spec.dims; i++) {
     if (ellipsis_seen && ((1 << i) & new_axis_mask) != 0) {
       sparse_spec.num_add_axis_after_ellipsis++;
     }
@@ -418,12 +418,12 @@ Status ValidateStridedSliceOp(
 Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
-    int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
-    TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
-    bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
-    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides,
-    StridedSliceShapeSpec* shape_spec) {
+    int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
+    TensorShape* processing_shape, TensorShape* final_shape, bool* is_identity,
+    bool* is_simple_slice, bool* slice_dim0,
+    gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
+    gtl::InlinedVector<int64, 4>* strides, StridedSliceShapeSpec* shape_spec) {
   // Validate with PartialTensorShape output
   PartialTensorShape partial_processing_shape, partial_final_shape;
   TF_RETURN_IF_ERROR(ValidateStridedSliceOp(

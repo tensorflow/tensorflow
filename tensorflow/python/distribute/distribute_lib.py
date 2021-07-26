@@ -374,11 +374,13 @@ class _CurrentDistributionContext(object):
                strategy,
                var_creator_scope,
                var_scope=None,
+               resource_creator_scope=None,
                default_device=None):
     self._context = distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
         strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
+    self._resource_creator_scope = resource_creator_scope
     if default_device:
       self._device_scope = ops.device(default_device)
     else:
@@ -396,6 +398,9 @@ class _CurrentDistributionContext(object):
       if self._var_scope:
         self._var_scope.__enter__()
       self._var_creator_scope.__enter__()
+      if self._resource_creator_scope:
+        nest.map_structure(lambda scope: scope.__enter__(),
+                           self._resource_creator_scope)
       if self._device_scope:
         self._device_scope.__enter__()
     return self._context.strategy
@@ -421,6 +426,16 @@ class _CurrentDistributionContext(object):
           RuntimeError("Variable creator scope nesting error: move call to "
                        "tf.distribute.set_strategy() out of `with` scope."),
           e)
+
+    if self._resource_creator_scope:
+      try:
+        self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                              traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Resource creator scope nesting error: move call "
+                         "to tf.distribute.set_strategy() out of `with` "
+                         "scope."), e)
 
     if self._var_scope:
       try:
@@ -2085,6 +2100,10 @@ class StrategyExtendedV2(object):
     # when creating Datasets from numpy array inputs.
     self._require_static_shapes = False
 
+  def _resource_creator_scope(self):
+    """Returns one or more ops.resource_creator_scope for some Strategy."""
+    return None
+
   def _container_strategy(self):
     """Get the containing `tf.distribute.Strategy`.
 
@@ -2159,7 +2178,9 @@ class StrategyExtendedV2(object):
         variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=distributed_getter), self._default_device)
+            custom_getter=distributed_getter),
+        strategy.extended._resource_creator_scope(),  # pylint: disable=protected-access
+        self._default_device)
 
   def _allow_variable_partition(self):
     return False

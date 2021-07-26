@@ -101,6 +101,7 @@ cc_library(
         ":tfr_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -138,6 +139,7 @@ cc_library(
         "passes/decompose.cc",
         "passes/generated_decompose.inc",
         "passes/raise_to_tf.cc",
+        "passes/rewrite_quantized_io.cc",
     ],
     hdrs = [
         "passes/passes.h",
