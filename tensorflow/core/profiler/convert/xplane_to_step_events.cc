@@ -68,6 +68,56 @@ uint64 ParseNumBytesFromMemcpyDetail(absl::string_view memcpy_detail) {
   return 0ULL;
 }
 
+EventType ClassifyGpuCompute(absl::string_view event_name,
+                             absl::string_view tensor_shapes) {
+  if (tensor_shapes.empty()) {
+    // Deduces the precision from the name.
+    return (absl::StrContains(event_name, "half") ||
+            absl::StrContains(event_name, "fp16"))
+               ? DEVICE_COMPUTE_16
+               : DEVICE_COMPUTE_32;
+  } else {
+    // Deduces the precision from the shapes.
+    return (absl::StrContains(tensor_shapes, "half")) ? DEVICE_COMPUTE_16
+                                                      : DEVICE_COMPUTE_32;
+  }
+}
+
+EventType ClassifyGpuEvent(absl::string_view event_name,
+                           absl::string_view tensor_shapes) {
+  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD")) {
+    return HOST_TO_DEVICE;
+  } else if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoH")) {
+    return DEVICE_TO_HOST;
+  } else if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoD")) {
+    return DEVICE_TO_DEVICE;
+  } else if (absl::StartsWithIgnoreCase(event_name, "nccl")) {
+    return DEVICE_COLLECTIVES;
+  } else {
+    return ClassifyGpuCompute(event_name, tensor_shapes);
+  }
+}
+
+EventType ClassifyCpuEvent(absl::string_view event_name, bool has_device,
+                           bool has_correlation_id) {
+  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD") ||
+      absl::StrContains(event_name, "Infeed")) {
+    return HOST_TO_DEVICE;
+  } else if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoH")) {
+    return HOST_TO_HOST;
+  } else if (has_device && (has_correlation_id ||
+                            absl::StartsWithIgnoreCase(
+                                event_name, "ExecutorState::Process"))) {
+    // TODO(b/150420972): Separate runtime overhead from actual compute for
+    // CPU-only.
+    return HOST_PREPARE;
+  } else if (absl::StartsWithIgnoreCase(event_name, "IteratorGetNext")) {
+    return HOST_WAIT_INPUT;
+  } else {
+    return HOST_COMPUTE;
+  }
+}
+
 }  // namespace
 
 StepEvents ConvertHostThreadsXLineToStepEvents(
@@ -109,7 +159,7 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
                      event.GetTimespan()));
     } else if (IsRealCpuCompute(event.Name())) {
       result[group_id].AddEvent(EventTypeSpan(
-          ClassifyCpuEvent(event.Name(), correlation_id, has_device),
+          ClassifyCpuEvent(event.Name(), has_device, correlation_id >= 0),
           event.GetTimespan()));
     }
     if (!step_name.empty()) {

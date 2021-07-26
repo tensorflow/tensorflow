@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -128,24 +127,6 @@ void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   if (dst->StepName().empty()) dst->SetStepName(src.StepName());
 }
 
-EventType ClassifyDeviceCompute(absl::string_view event_name,
-                                absl::string_view tensor_shapes) {
-  if (tensor_shapes.empty()) {
-    // Deduces the precision from the name.
-    if (absl::StrContains(event_name, "half") ||
-        absl::StrContains(event_name, "fp16"))
-      return DEVICE_COMPUTE_16;
-    else
-      return DEVICE_COMPUTE_32;
-  } else {
-    // Deduces the precision from the shapes.
-    if (absl::StrContains(tensor_shapes, "half"))
-      return DEVICE_COMPUTE_16;
-    else
-      return DEVICE_COMPUTE_32;
-  }
-}
-
 constexpr int kNumGenericEventTypes = GenericEventType::kLastGenericEventType -
                                       GenericEventType::kFirstGenericEventType +
                                       1;
@@ -173,38 +154,6 @@ const GenericEventTypeStrMap& GetGenericEventTypeStrMap() {
 
 absl::string_view GetGenericEventTypeStr(GenericEventType event_type) {
   return GetGenericEventTypeStrMap().at(event_type);
-}
-
-EventType ClassifyGpuEvent(absl::string_view event_name,
-                           absl::string_view tensor_shapes) {
-  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD"))
-    return HOST_TO_DEVICE;
-  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoH"))
-    return DEVICE_TO_HOST;
-  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoD"))
-    return DEVICE_TO_DEVICE;
-  if (absl::StartsWithIgnoreCase(event_name, "nccl")) {
-    return DEVICE_COLLECTIVES;
-  }
-  return ClassifyDeviceCompute(event_name, tensor_shapes);
-}
-
-EventType ClassifyCpuEvent(absl::string_view event_name, int64_t correlation_id,
-                           bool has_device) {
-  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD") ||
-      absl::StrContains(event_name, "Infeed"))
-    return HOST_TO_DEVICE;
-  if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoH")) return HOST_TO_HOST;
-  // TODO(b/150420972): Separate runtime overhead from actual compute for
-  // CPU-only.
-  if (has_device &&
-      (correlation_id >= 0 ||
-       absl::StartsWithIgnoreCase(event_name, "ExecutorState::Process"))) {
-    return HOST_PREPARE;
-  }
-  if (absl::StartsWithIgnoreCase(event_name, "IteratorGetNext"))
-    return HOST_WAIT_INPUT;
-  return HOST_COMPUTE;
 }
 
 std::string PrintEventType(EventType event_type) {
