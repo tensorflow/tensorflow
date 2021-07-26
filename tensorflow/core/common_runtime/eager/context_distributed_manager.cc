@@ -47,9 +47,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
+#include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #endif  // !IS_MOBILE_PLATFORM
@@ -292,12 +293,7 @@ Status RemoveRemoteDevicesFromMgr(
 
 Status ListRemoteWorkers(ServerInterface* server, const string& local_worker,
                          std::vector<string>* remote_workers) {
-  GrpcServer* grpc_server = dynamic_cast<GrpcServer*>(server);
-  if (grpc_server == nullptr) {
-    return errors::Internal(
-        "Currently, TFE_NewContext only supports GrpcServer.");
-  }
-  grpc_server->master_env()->worker_cache->ListWorkers(remote_workers);
+  server->master_env()->worker_cache->ListWorkers(remote_workers);
   remote_workers->erase(
       std::remove(remote_workers->begin(), remote_workers->end(), local_worker),
       remote_workers->end());
@@ -583,14 +579,14 @@ Status UpdateContextWithServerDef(EagerContext* context,
 
   // New server created for new server_def. Unused if updating server_def.
   std::unique_ptr<ServerInterface> new_server;
-  GrpcServer* grpc_server;
+  ServerInterface* server;
   if (reset_context) {
     DeviceMgr* device_mgr = AreLocalDevicesCompatible(context, server_def)
                                 ? context->local_device_mgr()
                                 : nullptr;
     LOG_AND_RETURN_IF_ERROR(
         NewServerWithOptions(server_def, {device_mgr}, &new_server));
-    grpc_server = dynamic_cast<GrpcServer*>(new_server.get());
+    server = new_server.get();
     LOG_AND_RETURN_IF_ERROR(
         ListRemoteWorkers(new_server.get(), worker_name, &remote_workers));
   } else {
@@ -598,10 +594,10 @@ Status UpdateContextWithServerDef(EagerContext* context,
                                               &curr_remote_workers));
     // No need to check the cast here, since `ListRemoteWorkers` already checks
     // if the server is a GRPC server or not.
-    grpc_server = dynamic_cast<GrpcServer*>(context->GetServer());
-    LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
+    server = context->GetServer();
+    LOG_AND_RETURN_IF_ERROR(server->UpdateServerDef(server_def));
     LOG_AND_RETURN_IF_ERROR(
-        ListRemoteWorkers(grpc_server, worker_name, &remote_workers));
+        ListRemoteWorkers(server, worker_name, &remote_workers));
   }
 
   uint64 context_id = context->GetContextId();
@@ -612,12 +608,12 @@ Status UpdateContextWithServerDef(EagerContext* context,
     // Make master eager context accessible by local eager service, which might
     // receive send tensor requests from remote workers.
     LOG_AND_RETURN_IF_ERROR(
-        grpc_server->AddMasterEagerContextToEagerService(context_id, context));
+        server->AddMasterEagerContextToEagerService(context_id, context));
   }
 
   std::unique_ptr<eager::EagerClientCache> remote_eager_workers;
   LOG_AND_RETURN_IF_ERROR(
-      grpc_server->master_env()->worker_cache->GetEagerClientCache(
+      server->master_env()->worker_cache->GetEagerClientCache(
           &remote_eager_workers));
 
   // For cluster update, use a status group to aggregate statuses from
@@ -647,9 +643,9 @@ Status UpdateContextWithServerDef(EagerContext* context,
   std::unique_ptr<DynamicDeviceMgr> new_remote_device_mgr;
   DynamicDeviceMgr* remote_device_mgr = nullptr;
   if (reset_context) {
-    LOG_AND_RETURN_IF_ERROR(GetAllRemoteDevices(
-        remote_workers, grpc_server->master_env()->worker_cache,
-        &new_remote_device_mgr));
+    LOG_AND_RETURN_IF_ERROR(
+        GetAllRemoteDevices(remote_workers, server->master_env()->worker_cache,
+                            &new_remote_device_mgr));
     remote_device_mgr = new_remote_device_mgr.get();
   } else {
     // NOTE(b/143914772): Potential memory leak if rendezvous has pending
@@ -691,16 +687,15 @@ Status UpdateContextWithServerDef(EagerContext* context,
       }
     }
     sg.Update(RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr));
-    sg.Update(AddRemoteDevicesToMgr(added_workers,
-                                    grpc_server->master_env()->worker_cache,
-                                    remote_device_mgr));
+    sg.Update(AddRemoteDevicesToMgr(
+        added_workers, server->master_env()->worker_cache, remote_device_mgr));
   }
 
   std::vector<DeviceAttributes> cluster_device_attributes;
   remote_device_mgr->ListDeviceAttributes(&cluster_device_attributes);
 
   std::vector<DeviceAttributes> local_device_attributes;
-  grpc_server->worker_env()->device_mgr->ListDeviceAttributes(
+  server->worker_env()->device_mgr->ListDeviceAttributes(
       &local_device_attributes);
 
   // This request make sure that we can create Rendezvous properly between
@@ -765,15 +760,14 @@ Status UpdateContextWithServerDef(EagerContext* context,
   auto session_name = strings::StrCat("eager_", context_id);
   if (reset_context) {
     RemoteRendezvous* r =
-        grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
-    auto* device_mgr = grpc_server->worker_env()->device_mgr;
+        server->worker_env()->rendezvous_mgr->Find(context_id);
+    auto* device_mgr = server->worker_env()->device_mgr;
     std::shared_ptr<WorkerSession> worker_session;
+    LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
+        session_name, server_def, base_request.cluster_device_attributes(),
+        true));
     LOG_AND_RETURN_IF_ERROR(
-        grpc_server->worker_env()->session_mgr->CreateSession(
-            session_name, server_def, base_request.cluster_device_attributes(),
-            true));
-    LOG_AND_RETURN_IF_ERROR(
-        grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
+        server->worker_env()->session_mgr->WorkerSessionForSession(
             session_name, &worker_session));
 
     // Initialize remote tensor communication based on worker session.
@@ -785,16 +779,16 @@ Status UpdateContextWithServerDef(EagerContext* context,
         /*is_master=*/true, context);
 
     LOG_AND_RETURN_IF_ERROR(context->InitializeRemoteMaster(
-        std::move(new_server), grpc_server->worker_env(), worker_session,
+        std::move(new_server), server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
         remote_workers, context_id, r, device_mgr, keep_alive_secs, cluster_flr,
         std::move(remote_mgr)));
 
     // NOTE: We start the server after all other initialization, because the
     // GrpcServer cannot be destroyed after it is started.
-    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+    LOG_AND_RETURN_IF_ERROR(server->Start());
   } else {
-    sg.Update(grpc_server->worker_env()->session_mgr->UpdateSession(
+    sg.Update(server->worker_env()->session_mgr->UpdateSession(
         session_name, server_def, base_request.cluster_device_attributes(),
         /*isolate_session_state=*/true));
     sg.Update(context->UpdateRemoteMaster(context_id,
@@ -852,17 +846,17 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
     }                                                 \
   } while (0);
 
-  GrpcServer* grpc_server = dynamic_cast<GrpcServer*>(context_->GetServer());
-  if (grpc_server == nullptr) {
+  ServerInterface* server = context_->GetServer();
+  if (server == nullptr) {
     std::unique_ptr<ServerInterface> new_server;
     LOG_AND_RETURN_IF_ERROR(NewServer(server_def, &new_server));
-    grpc_server = dynamic_cast<GrpcServer*>(new_server.get());
-    if (grpc_server == nullptr) {
+    server = new_server.get();
+    if (server == nullptr) {
       LOG_AND_RETURN_IF_ERROR(errors::Internal(
           "Currently, TF eager runtime only supports GrpcServer."));
     }
     auto worker_cache =
-        grpc_server->worker_env()->session_mgr->LegacySession()->worker_cache();
+        server->worker_env()->session_mgr->LegacySession()->worker_cache();
     const auto& config = server_def.default_session_config();
     const bool enable_coordination =
         !config.experimental().coordination_service().empty();
@@ -880,25 +874,23 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         coordination_service_ =
             CoordinationServiceInterface::EnableCoordinationService(
                 config.experimental().coordination_service(),
-                grpc_server->worker_env(), server_def,
-                std::move(service_cache));
+                server->worker_env(), server_def, std::move(service_cache));
       }
-      LOG_AND_RETURN_IF_ERROR(grpc_server->SetCoordinationServiceAgentInstance(
+      LOG_AND_RETURN_IF_ERROR(server->SetCoordinationServiceAgentInstance(
           coordination_service_agent_.get()));
     }
-    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+    LOG_AND_RETURN_IF_ERROR(server->Start());
     if (server_def.default_session_config()
             .experimental()
             .fetch_remote_devices_in_multi_client()) {
       auto session_name = strings::StrCat("eager_", context_->GetContextId());
       std::shared_ptr<WorkerSession> worker_session;
+      LOG_AND_RETURN_IF_ERROR(server->worker_env()->session_mgr->CreateSession(
+          session_name, server_def, true));
       LOG_AND_RETURN_IF_ERROR(
-          grpc_server->worker_env()->session_mgr->CreateSession(
-              session_name, server_def, true));
-      LOG_AND_RETURN_IF_ERROR(
-          grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
+          server->worker_env()->session_mgr->WorkerSessionForSession(
               session_name, &worker_session));
-      context_->SetWorkerEnv(grpc_server->worker_env(), worker_session);
+      context_->SetWorkerEnv(server->worker_env(), worker_session);
     }
 
     if (enable_coordination) {
@@ -907,7 +899,7 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       LOG_AND_RETURN_IF_ERROR(
           worker_cache->GetCoordinationClientCache(&agent_cache));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-          grpc_server->worker_env(), server_def, std::move(agent_cache),
+          server->worker_env(), server_def, std::move(agent_cache),
           [this](Status s) {
             context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
           }));
@@ -916,13 +908,13 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
     }
 
     LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
-        std::move(new_server), grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr.get()));
+        std::move(new_server), server->worker_env()->device_mgr,
+        server->worker_env()->collective_executor_mgr.get()));
   } else {
-    LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
+    LOG_AND_RETURN_IF_ERROR(server->UpdateServerDef(server_def));
     LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
-        /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
-        grpc_server->worker_env()->collective_executor_mgr.get()));
+        /*new_server=*/nullptr, server->worker_env()->device_mgr,
+        server->worker_env()->collective_executor_mgr.get()));
   }
 
   if (server_def.default_session_config()
@@ -940,12 +932,8 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
 Status EagerContextDistributedManager::CheckRemoteAlive(
     const std::string& remote_task_name, bool* is_alive) {
   *is_alive = false;
-  GrpcServer* grpc_server = dynamic_cast<GrpcServer*>(context_->GetServer());
-  if (grpc_server == nullptr) {
-    return errors::Internal("Failed to get eager-compatible server instance.");
-  }
   WorkerInterface* wi =
-      grpc_server->master_env()->worker_cache->GetOrCreateWorker(
+      context_->GetServer()->master_env()->worker_cache->GetOrCreateWorker(
           remote_task_name);
   if (wi == nullptr) {
     return errors::InvalidArgument(
