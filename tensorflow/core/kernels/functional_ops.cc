@@ -367,6 +367,7 @@ class WhileOp : public AsyncOpKernel {
       // Use the non-callback-based implementation when kernels (and function
       // callbacks) execute inline to avoid stack overflow.
       OP_REQUIRES_OK_ASYNC(ctx, DoComputeSync(ctx), done);
+      done();
     } else {
       FHandle cond_handle;
       FHandle body_handle;
