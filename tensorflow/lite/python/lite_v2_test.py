@@ -2687,8 +2687,10 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual(40.0, actual_value)
 
+  @parameterized.named_parameters(('EnableLoweringTensorListOps', True),
+                                  ('DisableLoweringTensorListOps', False))
   @test_util.run_v2_only
-  def testTensorListWithDynamicSize(self):
+  def testTensorListWithDynamicSize(self, lower_tensor_list_ops):
 
     def create_v1_saved_model():
       saved_model_dir = os.path.join(self.get_temp_dir(),
@@ -2714,6 +2716,14 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
     saved_model_dir = create_v1_saved_model()
 
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    if lower_tensor_list_ops:
+      with self.assertRaises(convert.ConverterError) as error:
+        converter.convert()
+      self.assertIn(
+          'Lowering tensor list ops is failed. Please consider using Select '
+          'TF ops and disabling `_experimental_lower_tensor_list_ops` flag in '
+          'the TFLite converter object.', str(error.exception))
+
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
     ]
