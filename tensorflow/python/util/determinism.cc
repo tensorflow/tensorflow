@@ -13,14 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_DETERMINISM_H_
-#define TENSORFLOW_CORE_UTIL_DETERMINISM_H_
+#include "tensorflow/core/util/determinism.h"
 
-namespace tensorflow {
+#include "pybind11/pybind11.h"
 
-bool OpDeterminismRequired();
-void EnableOpDeterminism(bool enabled);
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_UTIL_DETERMINISM_H_
+PYBIND11_MODULE(_pywrap_determinism, m) {
+  m.def("enable", &tensorflow::EnableOpDeterminism);
+  m.def("is_enabled", &tensorflow::OpDeterminismRequired);
+}

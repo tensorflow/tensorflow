@@ -18,13 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -538,7 +537,7 @@ class CropAndResizeOpTestBase(test.TestCase):
               with test_util.device(use_gpu=True):
                 with self.cached_session():
                   # pylint: disable=cell-var-from-loop
-                  if (os.getenv('TF_DETERMINISTIC_OPS', '0') == '1' and
+                  if (config.deterministic_ops_enabled() and
                       test_util.is_gpu_available()):
                     with self.assertRaises(errors_impl.UnimplementedError):
                       gradient_checker_v2.compute_gradient(

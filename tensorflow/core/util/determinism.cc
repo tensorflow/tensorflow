@@ -15,19 +15,38 @@ limitations under the License.
 
 #include "tensorflow/core/util/determinism.h"
 
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
+namespace {
+
+enum class DeterminismState { DISABLED, ENABLED, NOT_SET };
+mutex* determinism_state_mutex = new mutex;
+DeterminismState determinism_state = DeterminismState::NOT_SET;
+
+}  // namespace
+
 bool OpDeterminismRequired() {
-  static bool op_determinism_required = [] {
-    bool deterministic_ops = false;
+  mutex_lock l(*determinism_state_mutex);
+
+  if (determinism_state == DeterminismState::NOT_SET) {
+    bool env_var_set = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
                                                /*default_val=*/false,
-                                               &deterministic_ops));
-    return deterministic_ops;
-  }();
-  return op_determinism_required;
+                                               &env_var_set));
+    determinism_state =
+        env_var_set ? DeterminismState::ENABLED : DeterminismState::DISABLED;
+  }
+
+  return determinism_state == DeterminismState::ENABLED;
+}
+
+void EnableOpDeterminism(bool enabled) {
+  mutex_lock l(*determinism_state_mutex);
+  determinism_state =
+      enabled ? DeterminismState::ENABLED : DeterminismState::DISABLED;
 }
 
 }  // namespace tensorflow

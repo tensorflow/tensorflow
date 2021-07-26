@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -155,13 +156,12 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     stats_->bytes_limit = static_cast<int64>(pool_size);
   }  // If not set, it means we do not compute stats.
 
-  // If in TF_DETERMINISTIC_OPS is set, then make the allocator behave
+  // If op determinism is enabled, then make the allocator behave
   // determistically.
-  bool deterministic_ops = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                             /*default_val=*/false,
-                                             &deterministic_ops));
-  if (deterministic_ops) {
+  // TODO(reedwm): OpDeterminismRequired() should not be used here since op
+  // determinism only is supposed to affect the determinism of op outputs and
+  // side effects.
+  if (OpDeterminismRequired()) {
     int disable = 0;
     if (auto status = cuMemPoolSetAttribute(
             pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_OPPORTUNISTIC, &disable)) {

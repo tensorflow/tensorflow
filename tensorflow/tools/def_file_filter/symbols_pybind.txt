@@ -402,6 +402,10 @@ tensorflow::GetXlaDeviceFlags
 tensorflow::enable_tensor_float_32_execution
 tensorflow::tensor_float_32_execution_enabled
 
+[//tensorflow/core/util:determinism] # determinism
+tensorflow::OpDeterminismRequired
+tensorflow::EnableOpDeterminism
+
 [//tensorflow/compiler/jit:get_compiler_ir] # tfe
 tensorflow::GetCompilerIr
 

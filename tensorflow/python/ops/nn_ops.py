@@ -139,11 +139,11 @@ from __future__ import print_function
 
 import functools
 import numbers
-import os
 
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -3421,19 +3421,6 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
         name=name)
 
 
-def _tf_deterministic_ops():
-  if _tf_deterministic_ops.value is None:
-    tf_deterministic_ops = os.environ.get("TF_DETERMINISTIC_OPS")
-    if tf_deterministic_ops is not None:
-      tf_deterministic_ops = tf_deterministic_ops.lower()
-    _tf_deterministic_ops.value = (
-        tf_deterministic_ops == "true" or tf_deterministic_ops == "1")
-  return _tf_deterministic_ops.value
-
-
-_tf_deterministic_ops.value = None
-
-
 @tf_export("nn.bias_add")
 @dispatch.add_dispatch_support
 def bias_add(value, bias, data_format=None, name=None):
@@ -3479,7 +3466,7 @@ def bias_add(value, bias, data_format=None, name=None):
 
     # TODO(duncanriach): Implement deterministic functionality at CUDA kernel
     #   level.
-    if _tf_deterministic_ops():
+    if config.deterministic_ops_enabled():
       # Note that this code does not implement the same error checks as the
       # pre-existing C++ ops.
       if data_format == "NCHW":
@@ -4060,7 +4047,7 @@ def softmax_cross_entropy_with_logits_v2_helper(
     labels = _flatten_outer_dims(labels)
 
     # Do the actual op computation.
-    if _tf_deterministic_ops():
+    if config.deterministic_ops_enabled():
       log_probs = log_softmax_v2(precise_logits)
       cost = -math_ops.reduce_sum(labels * log_probs, axis=1)
     else:

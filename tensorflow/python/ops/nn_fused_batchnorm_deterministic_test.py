@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -162,15 +161,6 @@ class FusedBatchNormalizationDeterministicTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  # Note that the effect of setting the following environment variable to
-  # 'true' is not tested. Unless we can find a simpler pattern for testing these
-  # environment variables, it would require this file to be made into a base
-  # and then two more test files to be created.
-  #
-  # When deterministic op functionality can be enabled and disabled between test
-  # cases in the same process, then the tests for deterministic op
-  # functionality, for this op and for other ops, will be able to be included in
-  # the same file with the regular tests, simplifying the organization of tests
-  # and test files.
-  os.environ['TF_DETERMINISTIC_OPS'] = '1'
+  # TODO(reedwm): Merge this file with nn_fused_batchnorm_test.py
+  config.enable_deterministic_ops(True)
   test.main()

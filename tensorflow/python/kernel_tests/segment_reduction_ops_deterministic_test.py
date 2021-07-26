@@ -18,9 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.eager import backprop
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -166,9 +165,5 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  # Note that the effect of setting the following environment variable to
-  # 'true' is not tested. Unless we can find a simpler pattern for testing these
-  # environment variables, it would require this file to be made into a base
-  # and then two more test files to be created.
-  os.environ["TF_DETERMINISTIC_OPS"] = "1"
+  config.enable_deterministic_ops(True)
   test.main()

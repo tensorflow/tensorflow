@@ -158,6 +158,17 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_determinism",
+    srcs = ["determinism.cc"],
+    hdrs = ["//tensorflow/core/util:determinism_hdr"],
+    compatible_with = get_compatible_with_portable(),
+    module_name = "_pywrap_determinism",
+    deps = [
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["port_wrapper.cc"],
     hdrs = ["//tensorflow/core/util:port_hdrs"],
@@ -452,6 +463,7 @@ py_library(
     ],
     deps = [
         ":_pywrap_tensor_float_32_execution",
+        ":_pywrap_determinism",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
