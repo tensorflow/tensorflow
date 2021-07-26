@@ -30,7 +30,7 @@ class ErrorCollector {
   using ConverterErrorData = tflite::metrics::ConverterErrorData;
   using ConverterErrorDataSet =
       std::unordered_set<ConverterErrorData, ConverterErrorDataHash,
-                         ConverterErrorDataComparision>;
+                         ConverterErrorDataComparison>;
 
  public:
   const ConverterErrorDataSet &CollectedErrors() { return collected_errors_; }

@@ -49,8 +49,8 @@ struct ConverterErrorDataHash {
   }
 };
 
-// The comparision function for ConverterErrorData.
-struct ConverterErrorDataComparision {
+// The comparison function for ConverterErrorData.
+struct ConverterErrorDataComparison {
   std::size_t operator()(
       const tflite::metrics::ConverterErrorData& a,
       const tflite::metrics::ConverterErrorData& b) const noexcept {
