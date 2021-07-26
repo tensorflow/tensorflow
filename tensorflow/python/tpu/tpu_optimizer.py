@@ -52,17 +52,22 @@ class CrossShardOptimizer(optimizer.Optimizer):
     Raises:
       ValueError: If reduction is not a valid cross-shard reduction.
     """
-    if reduction not in (losses.Reduction.SUM, losses.Reduction.MEAN):
-      raise ValueError("Unsupported reduction: %s." % reduction)
+    accepted_reductions = (losses.Reduction.SUM, losses.Reduction.MEAN)
+    if reduction not in accepted_reductions:
+      raise ValueError(
+          f"Argument `reduction` should be one of {accepted_reductions}. "
+          f"Received: {reduction}")
     if not isinstance(opt, optimizer.Optimizer):
       raise TypeError(
           "CrossShardOptimizer only works with tf.training.Optimizer and not "
-          "Optimizer_v2. If you are using TPUStrategy, OptimizerV2 will sum "
-          "gradients across replicas."
+          f"Keras Optimizer. Received: {opt}. "
+          "If you are using TPUStrategy, "
+          "Keras Optimizer will sum gradients across replicas."
           "If you are using TPUEstimator, you may instead sum your gradients "
-          "with: grads = [tf.compat.v1.tpu.cross_replica_sum(g) for g in grads]"
-          ". If you want to average your gradients, rescale your loss with: "
-          "loss /= global_batch_size")
+          "with:\n"
+          "`grads = [tf.compat.v1.tpu.cross_replica_sum(g) for g in grads]`\n"
+          "If you want to average your gradients, rescale your loss with: "
+          "`loss /= global_batch_size`")
 
     super(CrossShardOptimizer, self).__init__(False, name)
     self._opt = opt
@@ -87,8 +92,9 @@ class CrossShardOptimizer(optimizer.Optimizer):
       return None
     if not (isinstance(group_assignment, list) and
             all(isinstance(i, list) for i in group_assignment)):
-      raise ValueError("group_assignment must be a list of list. Got {}".format(
-          group_assignment))
+      raise ValueError(
+          f"Argument `group_assignment` must be a list of lists. "
+          f"Received: {group_assignment}")
 
     replica_ids = set()
     for g in group_assignment:
@@ -96,17 +102,16 @@ class CrossShardOptimizer(optimizer.Optimizer):
         replica_ids.add(i)
 
     if set(range(num_shards)) != replica_ids:
-      raise ValueError("group_assignment must be a permutation of range({0})."
-                       " Got group_assignment={1}".format(
-                           num_shards, group_assignment))
+      raise ValueError(
+          f"Argument `group_assignment` must be a permutation of "
+          f"range({num_shards}). Received: {group_assignment}")
 
     subgroup_size_list = [len(group) for group in group_assignment]
     if all(subgroup_size_list[0] == size for size in subgroup_size_list):
       return subgroup_size_list[0]
     else:
-      raise ValueError("The size of each subgroup in group_assignment must "
-                       "be equal. Got group_assignment={}".format(
-                           self._group_assignment))
+      raise ValueError("The size of each subgroup in `group_assignment` must "
+                       f"be equal. Received: {group_assignment}")
 
   def compute_gradients(self, loss, var_list=None, **kwargs):
     """Compute gradients of "loss" for the variables in "var_list".
