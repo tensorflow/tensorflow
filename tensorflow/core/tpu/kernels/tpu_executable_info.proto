@@ -84,7 +84,7 @@ message TPUHostTransferProto {
   int64 buffer_offset = 6;
   // Original data type for this host transfer before X64 rewrite.
   xla.PrimitiveType original_type = 7;
-  // If this host transfer is a splitted X64 transfer, sepcifies whether this
+  // If this host transfer is a splitted X64 transfer, specifies whether this
   // transfer is for lower bits.
   bool is_lower_bits = 8;
 }
