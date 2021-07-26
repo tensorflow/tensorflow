@@ -437,6 +437,7 @@ cc_library(
         "ir/tf_traits.h",
     ],
     deps = [
+        ":tensorflow_op_interfaces",
         ":tensorflow_types",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffects",

@@ -330,6 +330,15 @@ Type DropRefType(Type ty);
 // Convenience call for executing both `DropRefType` and `DropSubTypes`.
 Type DropRefAndSubTypes(Type ty);
 
+// Returns a range with just resource type values from the input range
+// preserved.
+template <typename RangeT>
+auto filter_resources(RangeT&& range) {
+  return llvm::make_filter_range(std::forward<RangeT>(range), [](Value val) {
+    return getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>();
+  });
+}
+
 }  // end namespace TF
 }  // end namespace mlir
 

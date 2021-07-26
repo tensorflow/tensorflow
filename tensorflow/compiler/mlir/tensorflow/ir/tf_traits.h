@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -155,6 +156,26 @@ class CwiseBinary : public TraitBase<ConcreteType, CwiseBinary> {};
 // Coefficient-wise unary operation, for example tf.Sqrt operation.
 template <typename ConcreteType>
 class CwiseUnary : public TraitBase<ConcreteType, CwiseUnary> {};
+
+// Indicates that any returned resource is unique.
+template <typename ConcreteType>
+class UniqueResourceAllocation
+    : public TraitBase<ConcreteType, UniqueResourceAllocation> {
+ public:
+  // Implements method required for `ResourceHandleAllocatorInterface`.
+  llvm::SmallVector<mlir::TF::ResourceHandleValueAndId>
+  GetResourceHandleValueAndIdList(
+      llvm::SmallDenseMap<mlir::TF::ResourceHandle, int64_t>&
+          resource_handle_id_map,
+      int64_t& next_id) {
+    llvm::SmallVector<mlir::TF::ResourceHandleValueAndId> resource_vec;
+    for (Value resource :
+         mlir::TF::filter_resources(this->getOperation()->getResults())) {
+      resource_vec.push_back({resource, next_id++});
+    }
+    return resource_vec;
+  }
+};
 
 }  // namespace TF
 }  // namespace OpTrait

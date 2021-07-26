@@ -361,3 +361,16 @@ func @aliasing_through_cluster(%arg0: tensor<32xf32>) {
   }) : () -> !tf_res
   return
 }
+
+// -----
+
+// Tests that ops with trait `TF_UniqueResourceAllocation` are not aliasing.
+
+// CHECK-LABEL: func @unique_resource_allocation
+func @unique_resource_allocation(%arg0: tensor<i32>) {
+  // expected-remark@below {{Result #0, ID 0 : 0}}
+  %stack_handle1 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+  // expected-remark@below {{Result #0, ID 1 : 1}}
+  %stack_handle2 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+  return
+}

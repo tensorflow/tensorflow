@@ -108,6 +108,18 @@ class TF_AllTypesMatch<list<string> names> :
         TF_AllTypesMatchPred<
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
+// This trait indicates that all returned resources are unique for a
+// resource-allocating op (i.e. op with `MemAlloc` side-effect).
+//
+// Note that if the trait is used where this invariant is not true, then this
+// might lead to incorrect execution order, while if not used where it should
+// be, it can only lead to reduced performance due to conservative ordering.
+// Example op where the invariant is not true: `TF_VarHandleOp`.
+def TF_UniqueResourceAllocation: OpTraitList<[
+    TF_ResourceHandleAllocatorInterface,
+    NativeOpTrait<"TF::UniqueResourceAllocation">
+]>;
+
 //===----------------------------------------------------------------------===//
 // Rank/Shape helpers.
 //===----------------------------------------------------------------------===//

@@ -357,7 +357,7 @@ Equivalent to np.angle.
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_AnonymousIteratorOp : TF_Op<"AnonymousIterator", []> {
+def TF_AnonymousIteratorOp : TF_Op<"AnonymousIterator", [TF_UniqueResourceAllocation]> {
   let summary = "A container for an iterator resource.";
 
   let arguments = (ins
@@ -373,7 +373,7 @@ container.}], [TF_DatasetIteratorAlloc]>:$handle
   );
 }
 
-def TF_AnonymousIteratorV2Op : TF_Op<"AnonymousIteratorV2", []> {
+def TF_AnonymousIteratorV2Op : TF_Op<"AnonymousIteratorV2", [TF_UniqueResourceAllocation]> {
   let summary = "A container for an iterator resource.";
 
   let arguments = (ins
@@ -390,7 +390,7 @@ container.}], [TF_DatasetIteratorAlloc]>:$handle,
   );
 }
 
-def TF_AnonymousMemoryCacheOp : TF_Op<"AnonymousMemoryCache", []> {
+def TF_AnonymousMemoryCacheOp : TF_Op<"AnonymousMemoryCache", [TF_UniqueResourceAllocation]> {
   let summary = "";
 
   let arguments = (ins);
@@ -401,7 +401,7 @@ def TF_AnonymousMemoryCacheOp : TF_Op<"AnonymousMemoryCache", []> {
   );
 }
 
-def TF_AnonymousMultiDeviceIteratorOp : TF_Op<"AnonymousMultiDeviceIterator", []> {
+def TF_AnonymousMultiDeviceIteratorOp : TF_Op<"AnonymousMultiDeviceIterator", [TF_UniqueResourceAllocation]> {
   let summary = "A container for a multi device iterator resource.";
 
   let arguments = (ins
@@ -419,7 +419,7 @@ reference to the resource container.}], [TF_DatasetIteratorAlloc]>:$handle,
   );
 }
 
-def TF_AnonymousRandomSeedGeneratorOp : TF_Op<"AnonymousRandomSeedGenerator", []> {
+def TF_AnonymousRandomSeedGeneratorOp : TF_Op<"AnonymousRandomSeedGenerator", [TF_UniqueResourceAllocation]> {
   let summary = "";
 
   let arguments = (ins
@@ -433,7 +433,7 @@ def TF_AnonymousRandomSeedGeneratorOp : TF_Op<"AnonymousRandomSeedGenerator", []
   );
 }
 
-def TF_AnonymousSeedGeneratorOp : TF_Op<"AnonymousSeedGenerator", []> {
+def TF_AnonymousSeedGeneratorOp : TF_Op<"AnonymousSeedGenerator", [TF_UniqueResourceAllocation]> {
   let summary = "";
 
   let arguments = (ins
@@ -15971,7 +15971,7 @@ def TF_StackPushV2Op : TF_Op<"StackPushV2", []> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_StackV2Op : TF_Op<"StackV2", []> {
+def TF_StackV2Op : TF_Op<"StackV2", [TF_UniqueResourceAllocation]> {
   let summary = "A stack that produces elements in first-in last-out order.";
 
   let arguments = (ins
