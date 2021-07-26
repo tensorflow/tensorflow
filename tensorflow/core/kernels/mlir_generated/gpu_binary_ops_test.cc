@@ -1106,6 +1106,23 @@ GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Double, double, double, baseline_sub,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/Int64, int64_t, int64_t, baseline_sub,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/UInt32, uint32_t, uint32_t,
+                       baseline_sub,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Sub, /*test_name=*/UInt64, uint64_t, uint64_t,
+                       baseline_sub,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+
+TEST_F(BinaryOpsTest, SubUint32SpecialCases) {
+  TestEqualShapes<uint32_t, uint32_t, uint32_t, uint32_t>(
+      "Sub", /*shape=*/{20},
+      test::InputAsVector<uint32_t>(
+          {std::numeric_limits<uint32_t>::max(), 0u, 0u, 2u}),
+      test::InputAsVector<uint32_t>({std::numeric_limits<uint32_t>::max(),
+                                     std::numeric_limits<uint32_t>::max(), 1u,
+                                     1u}),
+      baseline_sub, test::OpsTestConfig().ExpectStrictlyEqual());
+}
 
 /// Test `tf.Xlogy`.
 
