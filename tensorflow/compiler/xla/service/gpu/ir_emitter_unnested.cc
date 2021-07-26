@@ -1088,7 +1088,8 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
       inputs.push_back(bias.value());
     }
 
-    if (IsBefThunkEnabled()) {
+    if (IsBefThunkEnabled() && op.lhs_stride() && op.rhs_stride()) {
+      // TODO(loreno): TFRT support for zero-strided gemm calls
       return CreateBefThunk(GetThunkInfo(op), op, inputs,
                             std::vector<BufferAllocation::Slice>{output});
     }
@@ -1108,6 +1109,8 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     if (gemm_bias_beta.has_value()) {
       backend.set_beta(gemm_bias_beta.value());
     }
+    backend.set_lhs_stride(op.lhs_stride());
+    backend.set_rhs_stride(op.rhs_stride());
 
     auto& dims = *backend.mutable_dot_dimension_numbers();
     auto mlir_dims = op.dot_dimension_numbers();

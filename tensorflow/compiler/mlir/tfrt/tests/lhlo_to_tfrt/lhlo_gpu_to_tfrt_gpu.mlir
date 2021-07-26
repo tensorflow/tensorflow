@@ -44,7 +44,9 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>)
        rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
        alpha_real = 0.5,
        alpha_imag = 0.0,
-       batch_size = 1}
+       batch_size = 1,
+       lhs_stride = 20,
+       rhs_stride = 20}
     : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
 
   // CHECK-NOT: cast
@@ -92,7 +94,9 @@ func @gemm_batch(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x
        rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
        alpha_real = 0.5,
        alpha_imag = 0.0,
-       batch_size = 42}
+       batch_size = 42,
+       lhs_stride = 20,
+       rhs_stride = 20}
     : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
 
   // CHECK-NOT: cast
@@ -139,7 +143,9 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
        alpha_real = 0.5,
        alpha_imag = 0.0,
        beta = 1.0,
-       batch_size = 1}
+       batch_size = 1,
+       lhs_stride = 20,
+       rhs_stride = 20}
     : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>, memref<5x5xf32>) -> ()
 
   // CHECK-NOT: cast
@@ -165,7 +171,9 @@ func @two_ops(%memref: memref<4x4xf32>) {
        rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
        alpha_real = 3.14159274,
        alpha_imag = 0.0,
-       batch_size = 1}
+       batch_size = 1,
+       lhs_stride = 16,
+       rhs_stride = 16}
     : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
 
   // CHECK: tfrt.constant.f32 2.71828175
@@ -177,7 +185,9 @@ func @two_ops(%memref: memref<4x4xf32>) {
        rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
        alpha_real = 2.71828175,
        alpha_imag = 0.0,
-       batch_size = 1}
+       batch_size = 1,
+       lhs_stride = 16,
+       rhs_stride = 16}
     : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
 
   // CHECK-NOT: cast
@@ -210,7 +220,9 @@ func @async(%memref: memref<4x4xf32>) {
          rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
          alpha_real = 0.5,
          alpha_imag = 0.0,
-         batch_size = 1}
+         batch_size = 1,
+         lhs_stride = 16,
+         rhs_stride = 16}
       : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
     // CHECK: %[[e1:.*]] = tfrt_gpu.event.create
     // CHECK: %[[ch3:.*]] = tfrt_gpu.event.record %[[e1]], %[[s0]], %[[ch2]]
@@ -234,7 +246,9 @@ func @async(%memref: memref<4x4xf32>) {
          rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
          alpha_real = 0.5,
          alpha_imag = 0.0,
-         batch_size = 1}
+         batch_size = 1,
+         lhs_stride = 16,
+         rhs_stride = 16}
       : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
     // CHECK: %[[e3:.*]] = tfrt_gpu.event.create
     // CHECK: %[[ch6:.*]] = tfrt_gpu.event.record %[[e3]], %[[s1]], %[[ch5]]
@@ -257,7 +271,9 @@ func @async(%memref: memref<4x4xf32>) {
        rhs_contracting_dimensions = dense<[0]> : tensor<1xi64>},
        alpha_real = 0.5,
        alpha_imag = 0.0,
-       batch_size = 1}
+       batch_size = 1,
+       lhs_stride = 16,
+       rhs_stride = 16}
     : (memref<4x4xf32>, memref<4x4xf32>, memref<4x4xf32>) -> ()
 
   // CHECK: tfrt.return %[[ch8]] : !tfrt.chain
