@@ -27,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+#include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
+#endif
+
 namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
@@ -115,7 +119,9 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   // Register all the symbols.
   bind("_mlir_ciface_tf_alloc", &_mlir_ciface_tf_alloc);
   bind("_mlir_ciface_tf_dealloc", &_mlir_ciface_tf_dealloc);
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
   bind("_mlir_ciface_tf_launch_kernel", &_mlir_ciface_tf_launch_kernel);
+#endif
   bind("_mlir_ciface_tf_report_error", &_mlir_ciface_tf_report_error);
 
   return symbol_map;

@@ -157,8 +157,10 @@ cc_library(
     srcs = ["tf_framework_c_interface.cc"],
     hdrs = ["tf_framework_c_interface.h"],
     compatible_with = get_compatible_with_cloud(),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":kernel_creator",
+        ":tf_gpu_runtime_wrappers",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -172,11 +174,12 @@ cc_library(
 
 cc_library(
     name = "tf_gpu_runtime_wrappers",
+    hdrs = ["tf_gpu_runtime_wrappers.h"],
     deps = if_cuda_is_configured([
         ":tf_cuda_runtime_wrappers",
     ]) + if_rocm_is_configured([
         ":tf_rocm_runtime_wrappers",
-    ]),
+    ]) + ["@llvm-project//mlir:mlir_runner_utils"],
 )
 
 cc_library(
