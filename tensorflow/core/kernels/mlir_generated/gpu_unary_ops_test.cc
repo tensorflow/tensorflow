@@ -53,7 +53,7 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     test::OpsTestConfig().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
+    Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64_t>(), std::abs,
     test::OpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Acos`.
@@ -542,7 +542,7 @@ T baseline_inv(T x) {
 }
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Inv, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64>(), baseline_inv,
+    Inv, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64_t>(), baseline_inv,
     test::OpsTestConfig().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST(Inv, DT_FLOAT, DT_FLOAT, baseline_inv,
@@ -794,7 +794,7 @@ T baseline_reciprocal(T x) {
 }
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Reciprocal, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64>(),
+    Reciprocal, DT_INT64, DT_INT64, test::DefaultInputNonZero<int64_t>(),
     baseline_reciprocal, test::OpsTestConfig().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST(Reciprocal, DT_FLOAT, DT_FLOAT, baseline_reciprocal,
