@@ -97,6 +97,13 @@ tensorflow/tools/ci_build/ci_build.sh PI-PYTHON38 \
   tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
 ```
 
+### Cross build for aarch64 Python 3.9
+
+```sh
+tensorflow/tools/ci_build/ci_build.sh PI-PYTHON39 \
+  tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh aarch64
+```
+
 ### Native build for Windows
 
 ```sh
