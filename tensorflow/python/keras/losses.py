@@ -1789,11 +1789,11 @@ def binary_crossentropy(y_true,
   Standalone usage:
 
   >>> y_true = [[0, 1], [0, 0]]
-  >>> y_pred = [[0.6, 0.4], [0.4, 0.6]]
+  >>> y_pred = [[0.6, 0.9], [0.9, 0.9]]
   >>> loss = tf.keras.losses.binary_crossentropy(y_true, y_pred)
   >>> assert loss.shape == (2,)
   >>> loss.numpy()
-  array([0.916 , 0.714], dtype=float32)
+  array([0.5108255 2.302584], dtype=float32)
 
   Args:
     y_true: Ground truth values. shape = `[batch_size, d0, .. dN]`.
