@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
@@ -69,8 +71,7 @@ uint64 ParseNumBytesFromMemcpyDetail(absl::string_view memcpy_detail) {
 }  // namespace
 
 StepEvents ConvertHostThreadsXLineToStepEvents(
-    const XLineVisitor& line, bool use_device_step_events,
-    const StepEvents& device_step_events) {
+    const XLineVisitor& line, const StepEvents* device_step_events) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64_t correlation_id = -1;
@@ -95,9 +96,8 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
     // doesn't have a device and that the group_id (i.e. step number) already
     // appears on the device. This will filter out all cpu events that do not
     // correspond to any steps executed on the device.
-    if (use_device_step_events &&
-        device_step_events.find(group_id) == device_step_events.end())
-      return;
+    bool has_device = (device_step_events != nullptr);
+    if (has_device && !device_step_events->contains(group_id)) return;
     if (IsExplicitHostStepMarker(event.Name())) {
       result[group_id].AddMarker(
           StepMarker(StepMarkerType::kExplicitHostStepMarker, event.Name(),
@@ -108,10 +108,9 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
           StepMarker(StepMarkerType::kImplicitHostStepMarker, event.Name(),
                      event.GetTimespan()));
     } else if (IsRealCpuCompute(event.Name())) {
-      result[group_id].AddEvent(
-          EventTypeSpan(ClassifyCpuEvent(event.Name(), correlation_id,
-                                         use_device_step_events),
-                        event.GetTimespan()));
+      result[group_id].AddEvent(EventTypeSpan(
+          ClassifyCpuEvent(event.Name(), correlation_id, has_device),
+          event.GetTimespan()));
     }
     if (!step_name.empty()) {
       result[group_id].SetStepName(std::string(step_name));
@@ -121,16 +120,15 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
 }
 
 StepEvents ConvertHostThreadsXPlaneToStepEvents(
-    const XPlane& host_trace, bool use_device_step_events,
-    const StepEvents& device_step_events) {
-  StepEvents result;
+    const XPlane& host_trace, const StepEvents* device_step_events) {
+  StepEvents host_step_events;
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&host_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
-    CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
-                          line, use_device_step_events, device_step_events),
-                      &result);
+    StepEvents thread_step_events =
+        ConvertHostThreadsXLineToStepEvents(line, device_step_events);
+    CombineStepEvents(thread_step_events, &host_step_events);
   });
-  return result;
+  return host_step_events;
 }
 
 StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
@@ -205,20 +203,22 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const uint64 device_id,
 }
 
 StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
-  StepEvents result;
+  StepEvents device_step_events;
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     int64_t line_id = line.Id();
     if (line_id == kThreadIdStepInfo) {
-      CombineStepEvents(ConvertDeviceStepInfoToStepMarkers(line), &result);
+      StepEvents step_marker_events = ConvertDeviceStepInfoToStepMarkers(line);
+      CombineStepEvents(step_marker_events, &device_step_events);
     } else if (IsDerivedThreadId(line_id)) {
       return;
     } else {
-      CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(plane.Id(), line),
-                        &result);
+      StepEvents stream_step_events =
+          ConvertDeviceTraceXLineToStepEvents(plane.Id(), line);
+      CombineStepEvents(stream_step_events, &device_step_events);
     }
   });
-  return result;
+  return device_step_events;
 }
 
 }  // namespace profiler
