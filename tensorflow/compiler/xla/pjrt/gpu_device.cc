@@ -466,9 +466,9 @@ GpuDevice::GpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state,
                      std::string device_kind, std::string device_vendor,
                      int node_id)
-    : device_vendor_(std::move(device_vendor)),
-      PjRtStreamExecutorDevice(id, std::move(local_device_state),
-                               std::move(device_kind), node_id) {}
+    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                               std::move(device_kind), node_id),
+      device_vendor_(std::move(device_vendor)) {}
 
 absl::string_view GpuDevice::device_vendor() { return device_vendor_; }
 
