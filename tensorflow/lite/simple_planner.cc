@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/simple_memory_arena.h"
 
 namespace tflite {
 
