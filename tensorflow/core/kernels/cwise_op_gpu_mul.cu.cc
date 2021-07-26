@@ -20,7 +20,8 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-DEFINE_BINARY5(mul, Eigen::half, int8, int16, int32, int64);
+DEFINE_BINARY8(mul, Eigen::half, int8, int16, int64, uint8, uint16, uint32,
+               uint64);
 #endif
 
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
@@ -29,7 +30,6 @@ DEFINE_BINARY5(mul_no_nan, Eigen::half, float, double, complex64, complex128);
 
 // TODO(b/179783573): Also disable the float, double and complex kernels.
 DEFINE_BINARY4(mul, float, double, complex64, complex128);
-DEFINE_BINARY4(mul, uint8, uint32, uint16, uint64);
 }  // namespace functor
 }  // namespace tensorflow
 

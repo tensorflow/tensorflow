@@ -33,8 +33,6 @@ REGISTER(BinaryOp, CPU, "Mul", functor::mul, int32);
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "Mul", functor::mul, Eigen::half, float, double,
           uint8);
-#else
-REGISTER(BinaryOp, GPU, "Mul", functor::mul, uint8);
 #endif
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

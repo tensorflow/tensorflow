@@ -1006,6 +1006,7 @@ gpu_kernel_library(
         "c128",
         "i8",
         "i16",
+        "i32",
         "i64",
     ],
     # For complex MulOp kernels, we don't use unrolling, it would only cause
