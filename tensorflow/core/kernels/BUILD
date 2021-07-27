@@ -1337,9 +1337,11 @@ tf_kernel_library(
         "where_op_gpu_impl_7.cu.cc",
         "where_op_gpu_impl_8.cu.cc",
     ],
-    deps = if_cuda_or_rocm([
+    deps = if_cuda([
                "//tensorflow/core/util:cuda_solvers",
-           ]) + [":gpu_prim_hdrs"] +
+           ]) + if_rocm([
+	       "//tensorflow/core/util:rocm_solvers",
+	   ]) + [":gpu_prim_hdrs"] +
            ARRAY_DEPS,
 )
 
@@ -3493,7 +3495,10 @@ tf_kernel_library(
     prefix = "segment_reduction_ops",
     deps = MATH_DEPS + if_cuda_or_rocm([
         ":gpu_prim_helpers",
+    ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
     ]),
 )
 

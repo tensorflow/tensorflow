@@ -29,13 +29,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h" // Fore ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/util/cuda_solvers.h"  // For ScratchSpace
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-#include "tensorflow/core/util/rocm_solvers.h"
 #endif
 
 namespace tensorflow {

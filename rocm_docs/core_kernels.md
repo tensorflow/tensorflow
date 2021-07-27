@@ -185,7 +185,7 @@ Kernels under tensorflow/core/kernels
 |   O    |        | cuda_device_array.h
 |   O    |        | cuda_device_array_gpu.h
 |   X    |cuSOLVER| cuda_solvers.cc
-|   T    |cuSOLVER| cuda_solvers.h
+|   T    |cuSOLVER| gpu_solvers.h
 |   O    |        | cudnn_pooling_gpu.cc
 |   O    |        | cudnn_pooling_gpu.h
 |   O    |        | cudnn_rnn_ops.cc

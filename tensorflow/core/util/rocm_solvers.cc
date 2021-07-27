@@ -14,7 +14,7 @@
    ==============================================================================
 */
 #if TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/rocm_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 #include <complex>
 #include <unordered_map>
@@ -51,8 +51,8 @@ inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
   return stream->ThenMemcpy(&wrapped_dst, src, bytes).ok();
 }
 
-struct ROCmSolverHandles {
-  explicit ROCmSolverHandles(GpuExecutor* parent, hipStream_t stream) {
+struct GpuSolverHandles {
+  explicit GpuSolverHandles(GpuExecutor* parent, hipStream_t stream) {
     parent_ = parent;
     ScopedActivateExecutorContext sac{parent_};
     CHECK(wrap::rocblas_create_handle(&rocm_blas_handle) ==
@@ -63,7 +63,7 @@ struct ROCmSolverHandles {
         << "Failed to set rocBlas stream.";
   }
 
-  ~ROCmSolverHandles() {
+  ~GpuSolverHandles() {
     ScopedActivateExecutorContext sac{parent_};
     CHECK(wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
@@ -74,7 +74,7 @@ struct ROCmSolverHandles {
 };
 
 using HandleMap =
-    std::unordered_map<hipStream_t, std::unique_ptr<ROCmSolverHandles>>;
+    std::unordered_map<hipStream_t, std::unique_ptr<GpuSolverHandles>>;
 
 // Returns a singleton map used for storing initialized handles for each unique
 // gpu stream.
@@ -87,7 +87,7 @@ static mutex handle_map_mutex(LINKER_INITIALIZED);
 
 }  // namespace
 
-ROCmSolver::ROCmSolver(OpKernelContext* context) : context_(context) {
+GpuSolver::GpuSolver(OpKernelContext* context) : context_(context) {
   mutex_lock lock(handle_map_mutex);
   GpuExecutor* gpu_executor = static_cast<GpuExecutor*>(
       context->op_device_context()->stream()->parent()->implementation());
@@ -101,26 +101,26 @@ ROCmSolver::ROCmSolver(OpKernelContext* context) : context_(context) {
   HandleMap* handle_map = CHECK_NOTNULL(GetHandleMapSingleton());
   auto it = handle_map->find(hip_stream_);
   if (it == handle_map->end()) {
-    LOG(INFO) << "Creating ROCmSolver handles for stream " << hip_stream_;
+    LOG(INFO) << "Creating GpuSolver handles for stream " << hip_stream_;
     // Previously unseen Gpu stream. Initialize a set of Gpu solver library
     // handles for it.
-    std::unique_ptr<ROCmSolverHandles> new_handles(
-        new ROCmSolverHandles(gpu_executor, hip_stream_));
+    std::unique_ptr<GpuSolverHandles> new_handles(
+        new GpuSolverHandles(gpu_executor, hip_stream_));
     it = handle_map->insert(std::make_pair(hip_stream_, std::move(new_handles)))
              .first;
   }
   rocm_blas_handle_ = it->second->rocm_blas_handle;
 }
 
-ROCmSolver::~ROCmSolver() {
+GpuSolver::~GpuSolver() {
   for (auto tensor_ref : scratch_tensor_refs_) {
     tensor_ref.Unref();
   }
 }
 
 // Static 
-void ROCmSolver::CheckLapackInfoAndDeleteSolverAsync(
-    std::unique_ptr<ROCmSolver> solver,
+void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
+    std::unique_ptr<GpuSolver> solver,
     const std::vector<DeviceLapackInfo>& dev_lapack_infos,
     std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
         info_checker_callback) {
@@ -148,7 +148,7 @@ void ROCmSolver::CheckLapackInfoAndDeleteSolverAsync(
     auto* stream = solver->context()->op_device_context()->stream();
     auto wrapped_info_checker_callback = 
         [stream](
-            ROCmSolver* solver,
+            GpuSolver* solver,
             std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
                 info_checker_callback,
             std::vector<HostLapackInfo> host_lapack_infos) {
@@ -191,8 +191,8 @@ void ROCmSolver::CheckLapackInfoAndDeleteSolverAsync(
 }
 
 // static
-void ROCmSolver::CheckLapackInfoAndDeleteSolverAsync(
-    std::unique_ptr<ROCmSolver> solver,
+void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
+    std::unique_ptr<GpuSolver> solver,
     const std::vector<DeviceLapackInfo>& dev_lapack_info,
     AsyncOpKernel::DoneCallback done) {
     OpKernelContext* context = solver->context();
@@ -235,7 +235,7 @@ void ROCmSolver::CheckLapackInfoAndDeleteSolverAsync(
 
 #define GETRF_INSTANCE(Scalar, type_prefix)                                   \
   template <>                                                                 \
-  Status ROCmSolver::getrf<Scalar>(int m, int n, Scalar* A, int lda,          \
+  Status GpuSolver::Getrf<Scalar>(int m, int n, Scalar* A, int lda,          \
                                    int* dev_pivots, int* dev_lapack_info) {   \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
@@ -249,7 +249,7 @@ TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
 
 #define GETRS_INSTANCE(Scalar, type_prefix)                                   \
   template <>                                                                 \
-  Status ROCmSolver::getrs<Scalar>(rocblas_operation trans, int n, int nrhs,  \
+  Status GpuSolver::Getrs<Scalar>(rocblas_operation trans, int n, int nrhs,  \
                                    Scalar* A, int lda, const int* dev_pivots, \
                                    Scalar* B, int ldb) {                      \
     mutex_lock lock(handle_map_mutex);                                        \
@@ -264,7 +264,7 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
 
 #define GETRF_BATCHED_INSTANCE(Scalar, type_prefix)                           \
   template <>                                                                 \
-  Status ROCmSolver::getrf_batched<Scalar>(                                   \
+  Status GpuSolver::GetrfBatched<Scalar>(                                   \
                                    int m, int n, Scalar** A, int lda,         \
                                    int* dev_pivots, rocblas_stride stride,    \
                                    DeviceLapackInfo* dev_info,                \
@@ -290,7 +290,7 @@ TF_CALL_LAPACK_TYPES(GETRF_BATCHED_INSTANCE);
 
 #define GETRS_BATCHED_INSTANCE(Scalar, type_prefix)                               \
   template <>                                                                     \
-  Status ROCmSolver::getrs_batched<Scalar>(                                       \
+  Status GpuSolver::GetrsBatched<Scalar>(                                       \
       const rocblas_operation trans, int n, int nrhs, Scalar** A, int lda,        \
       int* dev_pivots, rocblas_stride stride, Scalar** B, const int ldb,          \
       const int batch_size) {                                                     \
@@ -321,10 +321,10 @@ TF_CALL_LAPACK_TYPES(GETRF_BATCHED_INSTANCE);
 
 TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);
 
-// Allocates a temporary tensor. The ROCmSolver object maintains a
+// Allocates a temporary tensor. The GpuSolver object maintains a
 // TensorReference to the underlying Tensor to prevent it from being deallocated
 // prematurely.
-Status ROCmSolver::allocate_scoped_tensor(DataType type,
+Status GpuSolver::allocate_scoped_tensor(DataType type,
                                           const TensorShape& shape,
                                           Tensor* out_temp) {
   const Status status = context_->allocate_temp(type, shape, out_temp);
@@ -334,7 +334,7 @@ Status ROCmSolver::allocate_scoped_tensor(DataType type,
   return status;
 }
 
-Status ROCmSolver::forward_input_or_allocate_scoped_tensor(
+Status GpuSolver::forward_input_or_allocate_scoped_tensor(
     gtl::ArraySlice<int> candidate_input_indices, DataType type,
     const TensorShape& shape, Tensor* out_temp) {
   const Status status = context_->forward_input_or_allocate_temp(
@@ -368,7 +368,7 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
 
 #define TRSM_INSTANCE(Scalar, type_prefix)                                    \
   template <>                                                                 \
-  Status ROCmSolver::Trsm<Scalar>(                                            \
+  Status GpuSolver::Trsm<Scalar>(                                            \
       rocblas_side side, rocblas_fill uplo, rocblas_operation trans,          \
       rocblas_diagonal diag, int m, int n,                                    \
       const Scalar* alpha, /* host or device pointer */                       \
