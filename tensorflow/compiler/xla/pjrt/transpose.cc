@@ -933,63 +933,14 @@ void TransposePlan::Initialize() {
   ComputeStrides(elem_size_in_bytes_, b_dims_, b_tiling_, ldb_, ldb_tile_);
 
   const int pos_stride1a = ndim - 1;
-  inner_kernel_is_memcpy_ = (permutation_[ndim - 1] == pos_stride1a);
+  const int pos_stride1b_in_a = permutation_.back();
+  inner_kernel_is_memcpy_ = (pos_stride1b_in_a == pos_stride1a);
 
   loop_order_.reserve(ndim);
   for (int i = 0; i < ndim; ++i) {
     loop_order_.push_back(Loop{i, /*tile_interior=*/false});
     if (a_tiling_[i] != 1 || b_tiling_[inverse_permutation[i]] != 1) {
       loop_order_.push_back(Loop{i, /*tile_interior=*/true});
-    }
-  }
-  // Loop order heuristic: try to make loops with small strides innermost.
-  auto cost = [&](const Loop& l) -> double {
-    if (inner_kernel_is_memcpy_ && l.dim_in_a == pos_stride1a) {
-      return l.tile_interior ? -2 : -1;
-    }
-    int64_t a_stride = (l.tile_interior && a_is_tiled_) ? lda_tile_[l.dim_in_a]
-                                                        : lda_[l.dim_in_a];
-    int b_dim = inverse_permutation[l.dim_in_a];
-    int64_t b_stride =
-        (l.tile_interior && b_is_tiled_) ? ldb_tile_[b_dim] : ldb_[b_dim];
-    // Add a small penalty to the input strides: given the choice between
-    // consecutive writes and consecutive reads, we would prefer consecutive
-    // writes.
-    double penalty = 1.01;
-    return a_stride * penalty + b_stride;
-  };
-  absl::c_stable_sort(loop_order_, [&](const Loop& a, const Loop& b) {
-    return std::make_tuple(inner_kernel_is_memcpy_ && a.tile_interior,
-                           -cost(a)) <
-           std::make_tuple(inner_kernel_is_memcpy_ && b.tile_interior,
-                           -cost(b));
-  });
-  // It is a required invariant of the loop order that tile interiors always
-  // appear after the corresponding tile exterior. This is a consequence of the
-  // heuristic above, because
-
-  if (inner_kernel_is_memcpy_) {
-    // The stride-1 loop must be innermost.
-    CHECK_EQ(loop_order_.back().dim_in_a, ndim - 1);
-  } else {
-    switch (elem_size_in_bytes_) {
-      case 1:
-        inner_block_elems_ = 16;
-        break;
-      case 2:
-        inner_block_elems_ = 8;
-        break;
-      case 4:
-        inner_block_elems_ = 8;
-        break;
-      case 8:
-        inner_block_elems_ = 4;
-        break;
-      case 16:
-        inner_block_elems_ = 4;
-        break;
-      default:
-        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
     }
   }
 
@@ -1016,20 +967,91 @@ void TransposePlan::Initialize() {
     outer_block_elems_a_ = -1;
     outer_block_elems_b_ = -1;
   } else {
+    // What are the smallest and largest block sizes for which we have a
+    // vectorized kernel for this element size?
+    int min_inner_block_elems;
+    int max_inner_block_elems;
+    switch (elem_size_in_bytes_) {
+      case 1:
+        min_inner_block_elems = 4;
+        max_inner_block_elems = 16;
+        break;
+      case 2:
+        min_inner_block_elems = 8;
+        max_inner_block_elems = 8;
+        break;
+      case 4:
+        min_inner_block_elems = 4;
+        max_inner_block_elems = 8;
+        break;
+      case 8:
+        min_inner_block_elems = 2;
+        max_inner_block_elems = 4;
+        break;
+      case 16:
+        min_inner_block_elems = 1;
+        max_inner_block_elems = 1;
+        break;
+      default:
+        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
+    }
+    inner_block_elems_ = max_inner_block_elems;
     while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
       inner_block_elems_ /= 2;
-      outer_block_elems_a_ *= 2;
-      outer_block_elems_b_ *= 2;
     }
-    while (outer_block_elems_a_ > 1 &&
-           inner_block_elems_ * outer_block_elems_a_ > a_stride1_size) {
-      outer_block_elems_a_ /= 2;
+    if (inner_block_elems_ < min_inner_block_elems) {
+      // Size is smaller than our smallest vectorized kernel. Use the scalar
+      // path.
+      inner_block_elems_ = 1;
     }
-    while (outer_block_elems_b_ > 1 &&
-           inner_block_elems_ * outer_block_elems_b_ > b_stride1_size) {
-      outer_block_elems_b_ /= 2;
-    }
+    outer_block_elems_a_ = FloorOfRatio<int64_t>(
+        std::min<int64_t>(16, a_stride1_size), inner_block_elems_);
+    outer_block_elems_b_ = FloorOfRatio<int64_t>(
+        std::min<int64_t>(16, b_stride1_size), inner_block_elems_);
   }
+
+  // Loop order heuristic: try to make loops with small strides innermost.
+  auto cost = [&](const Loop& l) -> double {
+    // If the inner kernel is a memcpy make sure the innermost dimension is the
+    // stride 1 dimensions. This is a requirement of the kernel.
+    if (inner_kernel_is_memcpy_ && l.dim_in_a == pos_stride1a) {
+      return l.tile_interior ? -2 : -1;
+    }
+    int64_t a_stride = (l.tile_interior && a_is_tiled_) ? lda_tile_[l.dim_in_a]
+                                                        : lda_[l.dim_in_a];
+    bool is_inner_dim_in_a =
+        (!a_is_tiled_ || l.tile_interior) && (l.dim_in_a == pos_stride1a);
+
+    if (!inner_kernel_is_memcpy_ && is_inner_dim_in_a) {
+      a_stride *= inner_block_elems_ * outer_block_elems_a_;
+    }
+    int b_dim = inverse_permutation[l.dim_in_a];
+    int64_t b_stride =
+        (l.tile_interior && b_is_tiled_) ? ldb_tile_[b_dim] : ldb_[b_dim];
+    bool is_inner_dim_in_b =
+        (!b_is_tiled_ || l.tile_interior) && (l.dim_in_a == pos_stride1b_in_a);
+    if (!inner_kernel_is_memcpy_ && is_inner_dim_in_b) {
+      b_stride *= inner_block_elems_ * outer_block_elems_b_;
+    }
+    // Add a small penalty to the input strides: given the choice between
+    // consecutive writes and consecutive reads, we would prefer consecutive
+    // writes.
+    double penalty = 1.01;
+    return std::min<double>(a_stride * penalty, b_stride);
+  };
+  absl::c_stable_sort(loop_order_, [&](const Loop& a, const Loop& b) {
+    return std::make_tuple(inner_kernel_is_memcpy_ && a.tile_interior,
+                           -cost(a)) <
+           std::make_tuple(inner_kernel_is_memcpy_ && b.tile_interior,
+                           -cost(b));
+  });
+  // It is a required invariant of the loop order that tile interiors always
+  // appear after the corresponding tile exterior. This is a consequence of the
+  // heuristic above, because the tile interior must have smaller strides in
+  // both input and output.
+
+  // The stride-1 loop must be innermost for a memcpy loop.
+  CHECK(!inner_kernel_is_memcpy_ || loop_order_.back().dim_in_a == ndim - 1);
 
   loop_parallelism_ = ChooseParallelizationStrategy(inverse_permutation);
   int num_threads =
