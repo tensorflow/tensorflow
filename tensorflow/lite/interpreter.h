@@ -351,8 +351,8 @@ class Interpreter {
   /// Returns the input tensor identified by 'signature_input_name' in the
   /// signature identified by 'signature_key'.
   /// Returns nullptr if not found.
-  TfLiteTensor* input_tensor_by_signature_name(const char* signature_input_name,
-                                               const char* signature_key) {
+  TfLiteTensor* input_tensor_by_signature(const char* signature_input_name,
+                                          const char* signature_key) {
     const int tensor_index = GetTensorIndexFromSignatureDefName(
         signature_input_name, signature_key, /*is_input=*/true);
     return tensor_index == -1 ? nullptr : tensor(tensor_index);
@@ -362,7 +362,7 @@ class Interpreter {
   /// Returns the output tensor identified by 'signature_output_name' in the
   /// signature identified by 'signature_key'.
   /// Returns nullptr if not found.
-  const TfLiteTensor* output_tensor_by_signature_name(
+  const TfLiteTensor* output_tensor_by_signature(
       const char* signature_output_name, const char* signature_key) const {
     const int tensor_index = GetTensorIndexFromSignatureDefName(
         signature_output_name, signature_key, /*is_input=*/false);

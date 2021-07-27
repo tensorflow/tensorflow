@@ -1955,25 +1955,23 @@ TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
             kTfLiteOk);
   ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
 
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
-                  "Input1", kMethodName) != nullptr);
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
-                  "Input2", kMethodName) != nullptr);
-  EXPECT_TRUE(interpreter_.output_tensor_by_signature_name(
-                  "Output1", kMethodName) != nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input1", kMethodName) !=
+              nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input2", kMethodName) !=
+              nullptr);
+  EXPECT_TRUE(interpreter_.output_tensor_by_signature("Output1", kMethodName) !=
+              nullptr);
 
   // Invalid tensor
-  EXPECT_EQ(interpreter_.input_tensor_by_signature_name("Input3", kMethodName),
+  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input3", kMethodName),
             nullptr);
-  EXPECT_EQ(interpreter_.output_tensor_by_signature_name("Input3", kMethodName),
+  EXPECT_EQ(interpreter_.output_tensor_by_signature("Input3", kMethodName),
             nullptr);
   // Invalid method
-  EXPECT_EQ(
-      interpreter_.input_tensor_by_signature_name("Input1", "InvalidMethod"),
-      nullptr);
-  EXPECT_EQ(
-      interpreter_.output_tensor_by_signature_name("Output1", "InvalidMethod"),
-      nullptr);
+  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input1", "InvalidMethod"),
+            nullptr);
+  EXPECT_EQ(interpreter_.output_tensor_by_signature("Output1", "InvalidMethod"),
+            nullptr);
 }
 
 }  // namespace
