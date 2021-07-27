@@ -71,9 +71,19 @@ func @i64() -> tensor<4xi64> {
   return %0 : tensor<4xi64>
 }
 
-// TODO(krzysd) Add a test for strings. This isn't too urgent, since they use
-// the same sort of opaque round-trip we get for complex64, but it might be good
-// to check
+func @string() -> tensor<2x2x!tf.string> {
+  // CHECK-LABEL: @string
+  // CHECK: value = dense<{{\[\["1", "12"\], \["123", "1234"\]\]}}> : tensor<2x2x!tf.string>
+  %0 = "tfl.pseudo_const"() { value = dense<[["1", "12"], ["123", "1234"]]> : tensor<2x2x!tf.string> } : () -> tensor<2x2x!tf.string>
+  return %0 : tensor<2x2x!tf.string>
+}
+
+func @string_norank() -> tensor<!tf.string> {
+  // CHECK-LABEL: @string_norank
+  // CHECK: value = dense<"test"> : tensor<!tf.string>
+  %0 = "tfl.pseudo_const"() { value = dense<"test"> : tensor<!tf.string> } : () -> tensor<!tf.string>
+  return %0 : tensor<!tf.string>
+}
 
 func @uint8() -> tensor<4xui8> {
   // CHECK-LABEL: @uint8

@@ -77,6 +77,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/string_util.h"
 
 using llvm::ArrayRef;
 using mlir::Builder;
@@ -357,6 +358,14 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
   shape->set_unknown_rank(false);
   for (auto dim : tensor.shape) {
     shape->add_dim()->set_size(int64_t{dim});
+  }
+  // TensorFlow Lite uses tflite::DynamicBufer to encode vector of strings.
+  if (tensor.type == tflite::TensorType_STRING) {
+    for (int i = 0; i < tflite::GetStringCount(buffer.data()); ++i) {
+      tflite::StringRef str = tflite::GetString(buffer.data(), i);
+      ret.add_string_val(str.str, str.len);
+    }
+    return ret;
   }
   std::string content;
   content.assign(reinterpret_cast<const char*>(buffer.data()), buffer.size());
