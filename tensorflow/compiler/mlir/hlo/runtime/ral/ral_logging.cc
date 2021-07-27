@@ -152,6 +152,10 @@ void LogMessage::GenerateLogMessage() {
           line_, str().c_str());
 }
 
+std::string LogMessage::GetFilterStringForTesting(int min_log_level) {
+  return (severity_ >= min_log_level) ? str() : "";
+}
+
 int LogMessage::MinVLogLevel() {
   static int min_vlog_level = MinVLogLevelFromEnv();
   return min_vlog_level;

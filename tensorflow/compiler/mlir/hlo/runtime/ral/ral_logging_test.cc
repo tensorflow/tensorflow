@@ -20,15 +20,22 @@ limitations under the License.
 
 namespace testing {
 
+using ::mlir::disc_ral::ERROR;
+using ::mlir::disc_ral::FATAL;
+using ::mlir::disc_ral::INFO;
+using ::mlir::disc_ral::WARNING;
+using ::mlir::disc_ral::internal::LogMessage;
+
 TEST(Logging, Log) {
-  DISC_LOG(INFO) << "Hello";
-  DISC_LOG(INFO) << "Another log message";
-  DISC_LOG(ERROR) << "Error message";
-  DISC_VLOG(1) << "A VLOG message";
-  DISC_VLOG(2) << "A higher VLOG message";
-  if (DISC_VLOG_IS_ON(1)) {
-    DISC_VLOG(1) << "A DISC_VLOG_IS_ON message";
-  }
+  EXPECT_TRUE(DISC_VLOG_IS_ON(0));
+  EXPECT_FALSE(DISC_VLOG_IS_ON(1));
+
+  LogMessage logger(__FILE__, __LINE__, ERROR);
+  logger << "Hello";
+  EXPECT_TRUE(logger.GetFilterStringForTesting(INFO) == "Hello");
+  EXPECT_TRUE(logger.GetFilterStringForTesting(WARNING) == "Hello");
+  EXPECT_TRUE(logger.GetFilterStringForTesting(ERROR) == "Hello");
+  EXPECT_TRUE(logger.GetFilterStringForTesting(FATAL) == "");
 }
 
 }  // namespace testing

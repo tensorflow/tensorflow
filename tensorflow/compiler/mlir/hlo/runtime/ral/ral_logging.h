@@ -30,8 +30,8 @@ namespace disc_ral {
 // tensorflow/core/platform/default/logging.h
 //
 // We re-implement it here because we do not want to rely
-// on TensorFlow data structures, and hence we can move
-// corresponding implementations to llvm repo. easily in case necessary.
+// on TensorFlow data structures, and hence we can easily integrate this
+// part of code to targeting environments (e.g. TF, PyTorch).
 
 // --------------------------------------------------------------------
 
@@ -69,6 +69,10 @@ class LogMessage : public std::basic_ostringstream<char> {
   // call site to avoid repeated lookups. This routine performs a hash-map
   // access against the VLOG-ing specification provided by the env var.
   static bool VmoduleActivated(const char* fname, int level);
+
+  // Testing only. Returns output string if severity of this logger is larger
+  // than or equal to `min_log_level`.
+  std::string GetFilterStringForTesting(int min_log_level);
 
  protected:
   void GenerateLogMessage();
