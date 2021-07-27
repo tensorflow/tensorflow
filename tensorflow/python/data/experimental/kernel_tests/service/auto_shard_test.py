@@ -510,12 +510,12 @@ class AutoShardTest(data_service_test_base.TestBase,
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
-    distributed_dataset = self.make_distributed_dataset(
+    dataset = self.make_distributed_dataset(
         dataset,
         cluster=cluster,
         processing_mode=sharding_policy,
         target_workers="LOCAL")
-    self.getDatasetOutput(distributed_dataset, requires_initialization=True)
+    self.getDatasetOutput(dataset, requires_initialization=True)
 
 
 if __name__ == "__main__":
