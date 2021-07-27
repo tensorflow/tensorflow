@@ -97,6 +97,7 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       num_workers = strategy.num_workers
       runner = strategy.runner
       share_gpu = strategy.share_gpu
+      num_ps = strategy.num_ps
       if "has_chief" in kwargs and kwargs["has_chief"] != has_chief:
         raise ValueError(
             "both has_chief and strategy specified but are not compatible")
@@ -108,6 +109,7 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       num_workers = kwargs.get("num_workers", 1)
       runner = kwargs.get("runner", None)
       share_gpu = kwargs.get("share_gpu", True)
+      num_ps = kwargs.get("num_ps", 0)
 
     # Always set cluster parameters if they're requested. So that generate()
     # works when there's no startegy in the combinations.
@@ -120,6 +122,8 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       update["runner"] = runner
     if "share_gpu" in requested_parameters:
       update["share_gpu"] = share_gpu
+    if "num_ps" in requested_parameters:
+      update["num_ps"] = num_ps
     return update
 
 
@@ -282,6 +286,7 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
+               num_ps=0,
                share_gpu=True,
                pool_runner_fn=None,
                no_xla=False):
@@ -298,6 +303,7 @@ class NamedDistribution(object):
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
       num_workers: The number of workers that the strategy requires.
+      num_ps: The number of parameter servers.
       share_gpu: Whether to share GPUs among workers.
       pool_runner_fn: An optional callable that returns a MultiProcessPoolRunner
         to run the test.
@@ -312,6 +318,7 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self.num_ps = num_ps
     self.share_gpu = share_gpu
     self._pool_runner_fn = pool_runner_fn
     self.no_xla = no_xla
@@ -525,8 +532,13 @@ def _multi_worker_test(test_method):
     arguments.
   """
 
-  def decorator(self, has_chief, num_workers, share_gpu, runner, **kwargs):
-    if _num_total_workers(has_chief, num_workers) == 1 or _running_in_worker:
+  def decorator(self, has_chief, num_workers, num_ps, share_gpu, runner,
+                **kwargs):
+    if _num_total_workers(has_chief,
+                          num_workers) == 1 or _running_in_worker or (
+                              # Use in-process cluster for PS combinations
+                              # when XLA is enabled.
+                              test_util.is_xla_enabled() and num_ps > 0):
       # We're in worker process or the test is for single worker. Either case we
       # execute the test method directly instead of spawning subprocesses.
 
@@ -563,10 +575,14 @@ def _multi_worker_test(test_method):
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
           num_workers=num_workers,
-          num_ps=0,
+          num_ps=num_ps,
           has_eval=False)
       ephemeral_runner = multi_process_runner.MultiProcessRunner(
-          _test_runner, cluster_spec, share_gpu=share_gpu, args=(test_id, _env))
+          _test_runner,
+          cluster_spec,
+          share_gpu=share_gpu,
+          args=(test_id, _env),
+          dependence_on_chief=has_chief)
       ephemeral_runner.start()
       results = ephemeral_runner.join().return_value
 
@@ -585,8 +601,9 @@ def _multi_worker_test(test_method):
       self.skipTest(skip_reason)
 
   argspec = tf_inspect.getfullargspec(test_method)
-  decorator_args = (argspec.args or
-                    []) + ["has_chief", "num_workers", "share_gpu", "runner"]
+  decorator_args = (argspec.args or []) + [
+      "has_chief", "num_workers", "num_ps", "share_gpu", "runner"
+  ]
   decorator_argspec = argspec._replace(args=decorator_args)
   return tf_decorator.make_decorator(
       test_method, decorator, decorator_argspec=decorator_argspec)
