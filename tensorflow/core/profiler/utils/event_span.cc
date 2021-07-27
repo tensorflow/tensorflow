@@ -119,14 +119,6 @@ class PriorityTracker {
   }
 };
 
-void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
-  dst->AppendMarkers(src.Markers());
-  dst->AppendEvents(src.Events());
-  dst->AppendCollectives(src.Collectives());
-  dst->AggregateDeviceMemoryTransfers(src.DeviceMemoryTransfers());
-  if (dst->StepName().empty()) dst->SetStepName(src.StepName());
-}
-
 constexpr int kNumGenericEventTypes = GenericEventType::kLastGenericEventType -
                                       GenericEventType::kFirstGenericEventType +
                                       1;
@@ -235,7 +227,7 @@ void CombineStepEvents(const StepEvents& src, StepEvents* dst) {
     int64_t step_id = step_details.first;
     const StepDetails& src_details = step_details.second;
     StepDetails* dst_details = &(*dst)[step_id];
-    CombineStepDetails(src_details, dst_details);
+    dst_details->Combine(src_details);
   }
 }
 
@@ -262,15 +254,8 @@ StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
   for (const auto& step_events : overlapped_step_events) {
     const auto& step_id = step_events.first;
     const auto& step_details = step_events.second;
-    *non_overlapped_step_events[step_id].MutableMarkers() =
-        step_details.Markers();
-    *non_overlapped_step_events[step_id].MutableEvents() =
-        ToNonOverlappedEvents(step_details.Events());
-    *non_overlapped_step_events[step_id].MutableCollectives() =
-        step_details.Collectives();
-    *non_overlapped_step_events[step_id].MutableDeviceMemoryTransfers() =
-        step_details.DeviceMemoryTransfers();
-    non_overlapped_step_events[step_id].SetStepName(step_details.StepName());
+    non_overlapped_step_events.try_emplace(step_id,
+                                           step_details.ToNonOverlapped());
   }
   return non_overlapped_step_events;
 }
@@ -278,21 +263,6 @@ StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
 void StepDetails::AddMarker(const StepMarker& m) { markers_.push_back(m); }
 
 void StepDetails::AddEvent(const EventTypeSpan& e) { events_.push_back(e); }
-
-void StepDetails::AppendMarkers(const std::vector<StepMarker>& other_markers) {
-  markers_.insert(markers_.end(), other_markers.begin(), other_markers.end());
-}
-
-void StepDetails::AppendEvents(const std::vector<EventTypeSpan>& other_events) {
-  events_.insert(events_.end(), other_events.begin(), other_events.end());
-}
-
-void StepDetails::AppendCollectives(
-    const absl::flat_hash_map<uint32, AllReduceDbResult>& collectives) {
-  for (const auto& it : collectives) {
-    collectives_[it.first] = it.second;
-  }
-}
 
 void StepDetails::AggregateDeviceMemoryTransfers(
     const std::vector<DeviceMemoryTransfer> device_memory_transfers) {
@@ -365,6 +335,25 @@ Timespan StepDetails::StepTime() const {
     return max_host_step_time;
   }
   return max_device_step_time;
+}
+
+StepDetails StepDetails::ToNonOverlapped() const {
+  StepDetails non_overlapped_step_details;
+  non_overlapped_step_details.markers_ = markers_;
+  non_overlapped_step_details.events_ = ToNonOverlappedEvents(events_);
+  non_overlapped_step_details.collectives_ = collectives_;
+  non_overlapped_step_details.device_memory_transfers_ =
+      device_memory_transfers_;
+  non_overlapped_step_details.step_name_ = step_name_;
+  return non_overlapped_step_details;
+}
+
+void StepDetails::Combine(const StepDetails& other) {
+  markers_.insert(markers_.end(), other.markers_.begin(), other.markers_.end());
+  events_.insert(events_.end(), other.events_.begin(), other.events_.end());
+  collectives_.insert(other.collectives_.begin(), other.collectives_.end());
+  AggregateDeviceMemoryTransfers(other.device_memory_transfers_);
+  if (step_name_.empty()) step_name_ = other.step_name_;
 }
 
 std::string StepDetails::DebugString() const {
