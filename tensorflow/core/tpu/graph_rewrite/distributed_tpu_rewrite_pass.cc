@@ -459,8 +459,8 @@ class TensorDevicePlacer {
   // by the user to a given device.
   void ReportDeviceAssigned(int64_t device, int64_t index) {
     if (device >= index_nodes_.size()) {
-      LOG(DFATAL) << "Sharding assignment is out of bounds. Check that the "
-                     "number of nodes is properly set.";
+      LOG(FATAL) << "Sharding assignment is out of bounds. "  // Crash OK
+                    "Check that the number of nodes is properly set.";
     }
     DeviceNode* node = &index_nodes_.at(device);
     node->size += sizes_.at(index);
