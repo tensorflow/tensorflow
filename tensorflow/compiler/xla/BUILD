@@ -570,6 +570,7 @@ cc_library(
     name = "array",
     srcs = ["array.cc"],
     hdrs = ["array.h"],
+    visibility = [":friends"],
     deps = [
         ":status",
         ":types",

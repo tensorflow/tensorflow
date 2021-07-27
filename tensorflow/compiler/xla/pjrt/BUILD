@@ -15,6 +15,7 @@ package_group(
     name = "friends",
     includes = [
         "//tensorflow:internal",
+        "//tensorflow/compiler/xla:friends",
     ],
     packages = [
         "//third_party/py/jax/...",
@@ -317,6 +318,7 @@ cc_library(
     srcs = ["gpu_device.cc"],
     hdrs = ["gpu_device.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]),
+    visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
         "@com_google_absl//absl/base:core_headers",
