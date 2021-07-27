@@ -37,6 +37,7 @@ limitations under the License.
 #include "tfrt/support/string_util.h"
 #include "tfrt/tensor/tensor_metadata.h"
 #include "tfrt/tensor/tensor_shape.h"
+#include "tfrt/tracing/tracing.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_passes.h"
@@ -264,6 +265,8 @@ static void ExecuteImpl(Executable& executable,
                         RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results,
                         const ExecutionContext& exec_ctx) {
+  TFRT_TRACE_SCOPE(Default, StrCat("tf_cpurt.Execute: @", executable.name()));
+
   // Keep track of memory address to tensor mapping for result conversion.
   auto ctx = std::make_unique<TensorflowConversionContext>(operands.size());
   for (auto& t : operands)
