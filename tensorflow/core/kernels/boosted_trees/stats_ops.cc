@@ -51,6 +51,16 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
     // node_id_range
     const Tensor* node_id_range_t;
     OP_REQUIRES_OK(context, context->input("node_id_range", &node_id_range_t));
+    OP_REQUIRES(
+        context, node_id_range_t->dims() == 1,
+        errors::InvalidArgument("node_id_range must be a rank 1 tensor, but "
+                                "given node_id_range has dims of ",
+                                node_id_range_t->dims()));
+    OP_REQUIRES(context, node_id_range_t->dim_size(0) == 2,
+                errors::InvalidArgument(
+                    "node_id_range must be a rank 1 tensor with shape=[2], but "
+                    "given node_id_range has shape ",
+                    node_id_range_t->dim_size(0), " on its first dim"));
     const auto node_id_range = node_id_range_t->vec<int32>();
     const int32_t node_id_first = node_id_range(0);  // inclusive
     const int32_t node_id_last = node_id_range(1);   // exclusive
@@ -570,6 +580,16 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
     const Tensor* node_id_range_t;
     OP_REQUIRES_OK(context, context->input("node_id_range", &node_id_range_t));
     const auto node_id_range = node_id_range_t->vec<int32>();
+    OP_REQUIRES(
+        context, node_id_range_t->dims() == 1,
+        errors::InvalidArgument("node_id_range must be a rank 1 tensor, but "
+                                "given node_id_range has dims of ",
+                                node_id_range_t->dims()));
+    OP_REQUIRES(context, node_id_range_t->dim_size(0) == 2,
+                errors::InvalidArgument(
+                    "node_id_range must be a rank 1 tensor with shape=[2], but "
+                    "given node_id_range has shape ",
+                    node_id_range_t->dim_size(0), " on its first dim"));
     const int32_t node_id_first = node_id_range(0);  // Inclusive.
     const int32_t node_id_last = node_id_range(1);   // Exclusive.
 
