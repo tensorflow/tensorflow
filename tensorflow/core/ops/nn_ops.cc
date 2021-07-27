@@ -2369,20 +2369,6 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklSoftmax")
-    .Input("logits: T")
-    .Input("mkl_logits: uint8")
-    .Output("softmax: T")
-    .Output("mkl_softmax: uint8")
-    .Attr("T: {bfloat16, half, float, double}")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
-    })
-    .Doc(R"doc(
-MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
-linear gradients for Relu operation.
-)doc");
-
 REGISTER_OP("_MklTanh")
     .Input("features: T")
     .Input("mkl_features: uint8")
