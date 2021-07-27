@@ -36,7 +36,8 @@ The tf.data service provides the following benefits:
 ...         dispatcher_address=dispatcher_address))
 >>> dataset = tf.data.Dataset.range(10)
 >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
-...     processing_mode="parallel_epochs", service=dispatcher.target))
+...     processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
+...     service=dispatcher.target))
 >>> print(list(dataset.as_numpy_iterator()))
 [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -102,7 +103,7 @@ dataset = ...  # Define your dataset here.
 # Move dataset processing from the local machine to the tf.data service
 dataset = dataset.apply(
     tf.data.experimental.service.distribute(
-        processing_mode="parallel_epochs",
+        processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
         service=FLAGS.tf_data_service_address,
         job_name="shared_job"))
 # Any transformations added after `distribute` will be run on the local machine.
@@ -133,7 +134,7 @@ dataset_id = tf.data.experimental.service.register_dataset(
 per_worker_datasets = {}
 for worker in workers:
   per_worker_datasets[worker] = tf.data.experimental.service.from_dataset_id(
-      processing_mode="parallel_epochs",
+      processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
       job_name="shared_job")
@@ -150,6 +151,10 @@ independently by each of the tf.data service workers. For this reason, it is
 important to shuffle data (e.g. filenames) non-deterministically, so that each
 worker will process the elements of the dataset in a different order. This mode
 can be used to distribute datasets that aren't splittable.
+
+If a worker is added or restarted during ShardingPolicy.OFF processing, the
+worker will instantiate a new copy of the dataset and begin producing data from
+the beginning.
 
 #### Dynamic Sharding
 
@@ -177,21 +182,33 @@ dataset = dataset.apply(
 The `from_tensor_slices` will be run on the dispatcher, while the `interleave`,
 `map`, and `batch` will be run on tf.data service workers. The workers will pull
 filenames from the dispatcher for processing. To process a dataset with
-distributed epoch mode, the dataset must have a splittable source, and all of
-its transformations must be compatible with splitting. While most source and
-transformations support splitting, there are exceptions, such as `zip` or
-`sample_from_datasets`. Please file a Github issue if you would like to use
-distributed epoch processing for a currently unsupported dataset source or
-transformation.
+dynamic sharding, the dataset must have a splittable source, and all of
+its transformations must be compatible with splitting. While most sources and
+transformations support splitting, there are exceptions, such as custom datasets
+which may not implement the splitting API. Please file a Github issue if you
+would like to use distributed epoch processing for a currently unsupported
+dataset source or transformation.
+
+If no workers are restarted during training, dynamic sharding mode will visit
+every example exactly once. If workers are restarted during training, the splits
+they were processing will not be fully visited. The dispatcher maintains a
+cursor through the dataset's splits. Assuming fault tolerance is enabled (See
+"Fault Tolerance" below), the dispatcher will store cursor state in write-ahead
+logs so that the cursor can be restored in case the dispatcher is restarted
+mid-training. This provides an at-most-once visitation guarantee in the presence
+of server restarts.
 
 #### Static Sharding
 
 The following are static sharding policies. The semantics are similar to
 `tf.data.experimental.AutoShardPolicy`. These policies require:
 
-  * The tf.data service cluster has a fixed size, and you need to specify the
-     workers in DispatcherConfig.
+  * The tf.data service cluster is configured with a fixed list of workers
+    in DispatcherConfig.
   * Each client only reads from the local tf.data service worker.
+
+If a worker is restarted while performing static sharding, the worker will
+begin processing its shard again from the beginning.
 
 FILE: Shards by input files (i.e. each worker will get a fixed set of files to
 process). When this option is selected, make sure that there is at least as
@@ -220,10 +237,11 @@ by the tf.data service, using one or more data consumers. Jobs are created when
 iterating over datasets that read from tf.data service. The data produced by a
 job is determined by (1) dataset associated with the job and (2) the job's
 processing mode. For example, if a job is created for the dataset
-`Dataset.range(5)`, and the processing mode is `"parallel_epochs"`, each tf.data
-worker will produce the elements `{0, 1, 2, 3, 4}` for the job, resulting in the
+`Dataset.range(5)`, and the processing mode is `ShardingPolicy.OFF`, each
+tf.data worker will produce the elements `{0, 1, 2, 3, 4}` for the job,
+resulting in the
 job producing `5 * num_workers` elements. If the processing mode is
-`"distributed_epoch"`, the job will only produce `5` elements.
+`ShardingPolicy.DYNAMIC`, the job will only produce `5` elements.
 
 One or more consumers can consume data from a job. By default, jobs are
 "anonymous", meaning that only the consumer which created the job can read from
@@ -244,22 +262,6 @@ WorkerServers may be freely restarted, added, or removed during training. At
 startup, workers will register with the dispatcher and begin processing all
 outstanding jobs from the beginning.
 
-### Visitation Guarantees
-
-If no workers are restarted during training, "distributed_epoch" mode will visit
-every example exactly once. If workers are restarted during training, the splits
-they were processing will not be fully visited. The dispatcher maintains a
-cursor through the dataset's splits. Assuming fault tolerance is enabled (See
-"Fault Tolerance" above), the dispatcher will store cursor state in write-ahead
-logs so that the cursor can be restored in case the dispatcher is restarted
-mid-training. This provides an at-most-once visitation guarantee in the presence
-of server restarts.
-
-"parallel_epochs" mode provides no visitation guarantees. It is expected that
-the dataset will contain random shuffling, so added or restarted workers will
-instantiate a new copy of the dataset and begin producing data from the
-beginning.
-
 ### Usage with tf.distribute
 
 tf.distribute is the TensorFlow API for distributed training. There are
@@ -271,7 +273,7 @@ examples for each.
 
 In general we recommend using
 `tf.data.experimental.service.{register_dataset,from_dataset_id}` over
-`tf.data.experimental.sevice.distribute` for two reasons:
+`tf.data.experimental.service.distribute` for two reasons:
 
 - The dataset only needs to be constructed and optimized once, instead of once
   per worker. This can significantly reduce startup time, because the current
@@ -296,7 +298,7 @@ dataset_id = tf.data.experimental.service.register_dataset(
     service=FLAGS.tf_data_service_address,
     dataset=dataset)
 dataset = tf.data.experimental.service.from_dataset_id(
-    processing_mode="parallel_epochs",
+    processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
     service=FLAGS.tf_data_service_address,
     dataset_id=dataset_id,
     job_name="shared_job")
@@ -321,7 +323,7 @@ dataset_id = tf.data.experimental.service.register_dataset(
 def new_dataset_fn(input_context):
   del input_context
   return tf.data.experimental.service.from_dataset_id(
-      processing_mode="parallel_epochs",
+      processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
       job_name="shared_job")
@@ -343,7 +345,7 @@ dataset_id = tf.data.experimental.service.register_dataset(
 def new_dataset_fn(input_context):
   del input_context
   return tf.data.experimental.service.from_dataset_id(
-      processing_mode="parallel_epochs",
+      processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
       service=FLAGS.tf_data_service_address,
       dataset_id=dataset_id,
       job_name="shared_job")
