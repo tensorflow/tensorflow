@@ -14,7 +14,7 @@
 # ==============================================================================
 
 import enum
-from typing import Any, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type, TypeVar, Union, overload
 
 import numpy as np
 
@@ -30,7 +30,7 @@ _Status = Any
 _Dtype = Any
 _XlaOpMetadata = Any
 
-_T = TypeVar("T")
+_T = TypeVar("_T")
 
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
@@ -271,16 +271,19 @@ class TpuDevice(Device):
   core_on_chip: int
   def __repr__(self) -> str: ...
 
-class GpuAllocatorConfig:
-  class Kind(enum.IntEnum):
+class _GpuAllocatorKind(enum.IntEnum):
     DEFAULT: int
     PLATFORM: int
     BFC: int
     CUDA_ASYNC: int
 
+class GpuAllocatorConfig:
+  # TODO(b/194673104): Remove once pytype correctly resolves a nested enum.
+  Kind = _GpuAllocatorKind
+
   def __init__(
       self,
-      kind: Kind = ...,
+      kind: _GpuAllocatorKind = ...,
       memory_fraction: float = ...,
       preallocate: bool = ...) -> None: ...
 
@@ -343,7 +346,7 @@ def get_interpreter_client() -> Client: ...
 def get_gpu_client(
     asynchronous: bool = ...,
     allocator_config: GpuAllocatorConfig = ...,
-    distributed_client: DistributedRuntimeClient = ...,
+    distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...) -> Client:...
 def get_tpu_client(max_inflight_computations: int = ...) -> Client: ...
 
@@ -361,7 +364,7 @@ class DeviceArray(DeviceArrayBase):
   dtype: np.dtype
   size: int
   ndim: int
-  _value: np.array
+  _value: np.ndarray
   def copy_to_device(self, dst_device: Device) -> DeviceArray: ...
   def on_device_size_in_bytes(self) -> int: ...
   def delete(self) -> None: ...

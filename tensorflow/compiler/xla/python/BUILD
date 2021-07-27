@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_library")
+
 package(
     default_visibility = [
         "//learning/pathways/data_parallel/jax:__subpackages__",
@@ -14,12 +17,15 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+pytype_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = [":xla_extension"],
+    deps = [
+        ":xla_extension",
+        "@absl_py//absl/logging",
+    ],
 )
 
 cc_library(

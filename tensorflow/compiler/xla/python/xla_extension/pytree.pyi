@@ -15,7 +15,7 @@
 
 from typing import Any, Callable, Hashable, Iterable, List, Optional, Sequence, Tuple, Type, TypeVar
 
-_T = TypeVar("T")
+_T = TypeVar("_T")
 
 def flatten(
     tree: Any,
