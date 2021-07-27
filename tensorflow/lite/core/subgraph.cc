@@ -692,6 +692,8 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
 TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
                                      size_t dims_size, size_t* bytes) {
   TF_LITE_ENSURE(&context_, bytes != nullptr);
+  // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
+  // 'count' as 1.
   size_t count = 1;
   for (int k = 0; k < dims_size; k++) {
     size_t old_count = count;
