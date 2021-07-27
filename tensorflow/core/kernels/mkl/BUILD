@@ -506,3 +506,15 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
     ] + MKL_TEST_DEPS,
 )
+
+tf_cc_test_mkl(
+    name = "onednn_nn_ops_benchamrk",
+    size = "small",
+    srcs = ["onednn_nn_ops_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core/kernels:softmax_op",
+        "//tensorflow/core/kernels/mkl:mkl_softmax_op",
+    ] + MKL_TEST_DEPS,
+)

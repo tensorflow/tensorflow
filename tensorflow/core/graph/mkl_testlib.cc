@@ -36,6 +36,15 @@ Node* oneDNNMatmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
   return ret;
 }
 
+Node* oneDNNSoftmax(Graph* g, Node* input) {
+  Node* ret = nullptr;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_MklSoftmax")
+                  .Input(input)
+                  .Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 }  // namespace graph
 }  // namespace test
 }  // namespace tensorflow
