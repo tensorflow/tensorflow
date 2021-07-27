@@ -20,6 +20,17 @@ func @test_conv2d(%arg0: tensor<1x32x32x8xf32>, %arg1: tensor<16x1x1x8xf32>) -> 
 
 // -----
 
+// CHECK-LABEL: test_conv2d_dynamic
+// CHECK: "tosa.conv2d"
+// CHECK-SAME: tensor<?x32x32x16xf32>
+func @test_conv2d_dynamic(%arg0: tensor<?x32x32x8xf32>, %arg1: tensor<16x1x1x8xf32>) -> tensor<?x?x?x?xf32> {
+  %cst = constant dense<0.000000e+00> : tensor<16xf32>
+  %0 = "tfl.conv_2d"(%arg0, %arg1, %cst)  {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<?x32x32x8xf32>, tensor<16x1x1x8xf32>, tensor<16xf32>) -> tensor<?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_conv2d_bias
 // CHECK: %[[VAR0:.*]] = "tosa.conv2d"(%arg0, %arg1, %arg2) {dilation = [1, 1], pad = [0, 0, 0, 0], stride = [1, 1]}
 func @test_conv2d_bias(%arg0: tensor<1x32x32x8xf32>, %cst: tensor<16x1x1x8xf32>, %cst_0: tensor<16xf32>) -> tensor<1x32x32x16xf32> {
@@ -72,11 +83,30 @@ func @test_depthwise_conv2d_bias_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f
 
 // -----
 
+// CHECK-LABEL: test_depthwise_conv2d_bias_inferred
+func @test_depthwise_conv2d_bias_inferred(%arg0: tensor<?x32x32x8xf32>, %arg1 : tensor<1x1x1x16xf32>, %arg2 : tensor<16xf32>) -> tensor<?x?x?x?xf32> {
+  // CHECK: tosa.depthwise_conv2d
+  // CHECK-SAME: tensor<?x32x32x16xf32>
+  %2 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %arg2) {depth_multiplier = 2 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<?x32x32x8xf32>, tensor<1x1x1x16xf32>, tensor<16xf32>) -> tensor<?x?x?x?xf32>
+  return %2 : tensor<?x?x?x?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_add
 // CHECK: %[[VAR0:.*]] = "tosa.add"(%arg0, %arg1)
 func @test_add(%arg0: tensor<13x21x1xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.add"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_add_unranked
+// CHECK: %[[VAR0:.*]] = "tosa.add"(%arg0, %arg1)
+func @test_add_unranked(%arg0: tensor<13x21x1xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %0 = "tfl.add"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x1xf32>, tensor<13x21x3xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // -----
@@ -90,11 +120,29 @@ func @test_sub(%arg0: tensor<1x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<
 
 // -----
 
+// CHECK-LABEL: test_sub_unranked
+// CHECK: %[[VAR0:.*]] = "tosa.sub"(%arg0, %arg1)
+func @test_sub_unranked(%arg0: tensor<1x21x3xf32>, %arg1: tensor<1x1x1xf32>) -> tensor<*xf32> {
+  %0 = "tfl.sub"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<1x21x3xf32>, tensor<1x1x1xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_mul
 // CHECK: %[[VAR0:.*]] = "tosa.mul"(%arg0, %arg1) {shift = 0 : i32}
 func @test_mul(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.mul"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xf32>, tensor<13x1x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_mul_unranked
+// CHECK: %[[VAR0:.*]] = "tosa.mul"(%arg0, %arg1) {shift = 0 : i32}
+func @test_mul_unranked(%arg0: tensor<13x21x3xf32>, %arg1: tensor<1x1x1xf32>) -> tensor<*xf32> {
+  %0 = "tfl.mul"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xf32>, tensor<1x1x1xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // -----
@@ -143,20 +191,21 @@ func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<1
 
 // -----
 
-// CHECK-LABEL: test_relu
-// CHECK: %[[VAR0:.*]] = "tosa.clamp"(%arg0) {max_fp = 3.40282347E+38 : f32, max_int = 2147483647 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
-func @test_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %0 = "tfl.relu"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
-  return %0 : tensor<13x21x3xf32>
-}
-
-// -----
-
 // CHECK-LABEL: test_relu6
 // CHECK: %[[VAR0:.*]] = "tosa.clamp"(%arg0) {max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
 func @test_relu6(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.relu6"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_relu6_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.clamp"(%arg0) {max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = 0.000000e+00 : f32, min_int = 0 : i64}
+// CHECK-SAME: -> tensor<?x21x3xf32>
+func @test_relu6_dynamic(%arg0: tensor<?x21x3xf32>) -> tensor<?x?x?xf32> {
+  %0 = "tfl.relu6"(%arg0) : (tensor<?x21x3xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
 }
 
 // -----
@@ -290,11 +339,31 @@ func @test_max(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x1xf32>) -> tensor
 
 // -----
 
+// CHECK-LABEL: test_max_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.maximum"(%arg0, %arg1)
+// CHECK-SAME: -> tensor<13x21x?xf32>
+func @test_max_dynamic(%arg0: tensor<13x1x?xf32>, %arg1: tensor<13x21x1xf32>) -> tensor<?x?x?xf32> {
+  %0 = "tfl.maximum"(%arg0, %arg1) : (tensor<13x1x?xf32>, tensor<13x21x1xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_pow
 // CHECK: %[[VAR0:.*]] = "tosa.pow"(%arg0, %arg1)
 func @test_pow(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x1xf32>) -> tensor<13x21x3xf32> {
   %0 = "tfl.pow"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<13x21x1xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pow_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.pow"(%arg0, %arg1)
+// CHECK-SAME: -> tensor<13x21x3xf32>
+func @test_pow_dynamic(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x1xf32>) -> tensor<?x?x?xf32> {
+  %0 = "tfl.pow"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<13x21x1xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
 }
 
 // -----
@@ -399,8 +468,7 @@ func @test_greater(%arg0: tensor<13x21x1xf32>, %arg1: tensor<13x21x3xf32>) -> te
 // -----
 
 // CHECK-LABEL: test_less
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.greater_equal"(%arg0, %arg1)
-// CHECK: %[[VAR1:.*]] = "tosa.logical_not"(%[[VAR0]])
+// CHECK: %[[VAR0:.*]] = "tosa.greater"(%arg1, %arg0)
 func @test_less(%arg0: tensor<13x1x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3xi1> {
   %0 = "tfl.less"(%arg0, %arg1) : (tensor<13x1x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi1>
   return %0 : tensor<13x21x3xi1>
@@ -408,12 +476,31 @@ func @test_less(%arg0: tensor<13x1x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor
 
 // -----
 
+// CHECK-LABEL: test_less_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.greater"(%arg1, %arg0)
+// CHECK-SAME: -> tensor<13x?x3xi1>
+func @test_less_dynamic(%arg0: tensor<13x1x3xf32>, %arg1: tensor<13x?x3xf32>) -> tensor<13x?x3xi1> {
+  %0 = "tfl.less"(%arg0, %arg1) : (tensor<13x1x3xf32>, tensor<13x?x3xf32>) -> tensor<13x?x3xi1>
+  return %0 : tensor<13x?x3xi1>
+}
+
+// -----
+
 // CHECK-LABEL: test_less_equal
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.greater"(%arg0, %arg1)
-// CHECK: %[[VAR1:.*]] = "tosa.logical_not"(%[[VAR0]])
+// CHECK: %[[VAR0:.*]] = "tosa.greater_equal"(%arg1, %arg0)
 func @test_less_equal(%arg0: tensor<13x21x3xf32>, %arg1: tensor<1x21x3xf32>) -> tensor<13x21x3xi1> {
   %0 = "tfl.less_equal"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<1x21x3xf32>) -> tensor<13x21x3xi1>
   return %0 : tensor<13x21x3xi1>
+}
+
+// -----
+
+// CHECK-LABEL: test_less_equal_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.greater_equal"(%arg1, %arg0)
+// CHECK-SAME: -> tensor<13x?x3xi1>
+func @test_less_equal_dynamic(%arg0: tensor<13x1x3xf32>, %arg1: tensor<13x?x3xf32>) -> tensor<13x?x3xi1> {
+  %0 = "tfl.less_equal"(%arg0, %arg1) : (tensor<13x1x3xf32>, tensor<13x?x3xf32>) -> tensor<13x?x3xi1>
+  return %0 : tensor<13x?x3xi1>
 }
 
 // -----
@@ -427,11 +514,29 @@ func @test_avg_pool2d(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x32x32x8xf32> {
 
 // -----
 
+// CHECK-LABEL: test_avg_pool2d_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.avg_pool2d"(%arg0) {kernel = [1, 1], pad = [0, 0, 0, 0], stride = [1, 1]}
+func @test_avg_pool2d_dynamic(%arg0: tensor<?x32x32x8xf32>) -> tensor<?x32x32x8xf32> {
+  %0 = "tfl.average_pool_2d"(%arg0)  {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<?x32x32x8xf32>) -> tensor<?x32x32x8xf32>
+  return %0 : tensor<?x32x32x8xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_max_pool2d
 // CHECK: %[[VAR0:.*]] = "tosa.max_pool2d"(%arg0) {kernel = [1, 1], pad = [0, 0, 0, 0], stride = [1, 1]}
 func @test_max_pool2d(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x32x32x8xf32> {
   %0 = "tfl.max_pool_2d"(%arg0)  {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<1x32x32x8xf32>) -> tensor<1x32x32x8xf32>
   return %0 : tensor<1x32x32x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_max_pool2d_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.max_pool2d"(%arg0) {kernel = [1, 1], pad = [0, 0, 0, 0], stride = [1, 1]}
+func @test_max_pool2d_dynamic(%arg0: tensor<?x32x32x8xf32>) -> tensor<?x32x32x8xf32> {
+  %0 = "tfl.max_pool_2d"(%arg0)  {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<?x32x32x8xf32>) -> tensor<?x32x32x8xf32>
+  return %0 : tensor<?x32x32x8xf32>
 }
 
 // -----
@@ -446,6 +551,16 @@ func @test_reshape(%arg0: tensor<13x21x3xf32>) -> tensor<1x819xf32> {
 
 // -----
 
+// CHECK-LABEL: test_reshape_dynamic
+// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, -1]}
+func @test_reshape_dynamic(%arg0: tensor<13x21x3xf32>) -> tensor<?x?xf32> {
+  %cst = constant dense<[1, -1]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_transpose
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>}
 // CHECK: %[[VAR1:.*]] = "tosa.transpose"(%arg0, %[[VAR0]])
@@ -453,6 +568,17 @@ func @test_transpose(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21xf32> {
   %cst = constant dense<[2, 0, 1]> : tensor<3xi32>
   %0 = "tfl.transpose"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21xf32>
   return %0 : tensor<3x13x21xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_transpose
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>}
+// CHECK: %[[VAR1:.*]] = "tosa.transpose"(%arg0, %[[VAR0]])
+func @test_transpose(%arg0: tensor<13x?x3xf32>) -> tensor<3x13x?xf32> {
+  %cst = constant dense<[2, 0, 1]> : tensor<3xi32>
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<13x?x3xf32>, tensor<3xi32>) -> tensor<3x13x?xf32>
+  return %0 : tensor<3x13x?xf32>
 }
 
 // -----
