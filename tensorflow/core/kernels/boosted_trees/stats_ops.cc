@@ -1025,6 +1025,13 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
       const int32 feature_dim = stats_summary_indices(idx, 1);
       const int32 bucket_id = stats_summary_indices(idx, 2);
       const int32 stat_dim = stats_summary_indices(idx, 3);
+      OP_REQUIRES(context, stat_dim < stats_dims,
+                  errors::InvalidArgument(
+                      "Stat dim, the sum of logits dim and hessian dim in "
+                      "stats_summary_indices, cannot be greater than stats "
+                      "dims, the last value in stats_summary_shape, which was ",
+                      stats_dims, ". At index (", idx,
+                      ", 4), stats_summary_indices contains value ", stat_dim));
       std::pair<FeatureMapIterator, bool> const& f_insert_result = f_map.insert(
           FeatureMapIterator::value_type(feature_dim, BucketMap()));
       auto& b_map = f_insert_result.first->second;
