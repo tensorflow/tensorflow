@@ -613,6 +613,26 @@ func @transpose(%arg0: tensor<2x3x9x5xi32>) -> tensor<3x2x5x9xi32> {
 
 // -----
 
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3, d2)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @transpose_dynamic
+func @transpose_dynamic(%arg0: tensor<?x?x9x?xi32>) -> tensor<?x?x?x9xi32> {
+  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>}
+        : (tensor<?x?x9x?xi32>) -> tensor<?x?x?x9xi32>
+  return %0 : tensor<?x?x?x9xi32>
+}
+// CHECK: %[[C0:.*]] = constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.dim %arg0, %[[C0]] : tensor<?x?x9x?xi32>
+// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.dim %arg0, %[[C1]] : tensor<?x?x9x?xi32>
+// CHECK: %[[C3:.*]] = constant 3 : index
+// CHECK: %[[D3:.*]] = tensor.dim %arg0, %[[C3]] : tensor<?x?x9x?xi32>
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D1]], %[[D0]], %[[D3]], 9] : tensor<?x?x?x9xi32>
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-SAME: ins(%arg0 : tensor<?x?x9x?xi32>) outs(%[[INIT]] : tensor<?x?x?x9xi32>)
+
+// -----
+
 // CHECK-LABEL: func @reshape_0D_1D
 func @reshape_0D_1D(%arg0: tensor<i32>) -> tensor<1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>
