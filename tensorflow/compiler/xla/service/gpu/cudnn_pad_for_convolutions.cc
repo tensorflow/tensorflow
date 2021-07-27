@@ -26,17 +26,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// We won't pad a conv if doing so increases the total number of bytes in the
-// lhs, rhs, or result by more than this amount.
-//
-// TODO(jlebar): This number was tuned experimentally.  It represents a
-// compromise on our current benchmarks; it speeds some up significantly, and
-// doesn't slow any down.  But we can observe by changing this value that
-// there's additional room for speedups.  Achieving those speedups without
-// also slowing other things down will likely require a more sophisticated
-// heuristic, possibly some form of auto-tuning.
-static constexpr double kMaxBytesTouchedIncrease = 1.35;
-
 // Creates and returns an HLO that zero-pads one or more dimensions in the given
 // instruction so that its shape is equal to the given shape.
 //
@@ -102,6 +91,9 @@ static Status PadConv(HloCustomCallInstruction* conv,
   auto* new_conv =
       add(conv->CloneWithNewOperands(new_conv_shape, new_operands));
 
+  VLOG(2) << "Padded features of " << conv->ToString() << ", replaced with "
+          << new_conv->ToString();
+
   // Slice the new conv result if necessary, keeping in mind that new_conv
   // has tuple shape (new_result_shape, u8[0]).
   if (!ShapeUtil::Equal(result_shape, new_result_shape)) {
@@ -120,8 +112,6 @@ static Status PadConv(HloCustomCallInstruction* conv,
         add(HloInstruction::CreateTuple({sliced_result, empty_temp_buffer}));
   }
 
-  VLOG(2) << "Padded features of " << conv->ToString() << ", replaced with "
-          << new_conv->ToString();
   return conv->parent()->ReplaceInstruction(conv, new_conv);
 }
 
@@ -240,6 +230,17 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     pad_dim(new_filter_shape, dnums.kernel_input_feature_dimension());
     pad_dim(new_filter_shape, dnums.kernel_output_feature_dimension());
     pad_dim(new_output_shape, dnums.output_feature_dimension());
+
+    // We won't pad a conv if doing so increases the total number of bytes in
+    // the lhs, rhs, or result by more than this amount.
+    //
+    // TODO(jlebar): This number was tuned experimentally.  It represents a
+    // compromise on our current benchmarks; it speeds some up significantly,
+    // and doesn't slow any down.  But we can observe by changing this value
+    // that there's additional room for speedups.  Achieving those speedups
+    // without also slowing other things down will likely require a more
+    // sophisticated heuristic, possibly some form of auto-tuning.
+    static constexpr double kMaxBytesTouchedIncrease = 1.35;
 
     // Check that padding wouldn't increase the total bytes read/written by this
     // operation too much.
@@ -390,14 +391,29 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
       default:
         CHECK(false);
     }
+
+    // We won't pad a conv if doing so increases the total number of bytes in
+    // the lhs, rhs, or result by more than this amount.
+    //
+    // TODO(jlebar): This number was tuned experimentally, but without much
+    // experimental evidence.
+    static constexpr double kMaxBytesTouchedIncrease = 2.5;
+
+    // It's always OK to pad up to this many bytes, even if it increases us
+    // beyond the kMaxBytesTouchedIncrease factor.  This handles padding very
+    // small vectors, like the bias vector of fused convs (which is just one
+    // float per batch).
+    static constexpr int64 kAlwaysOkToPadBytes = 4096;
+
     // Check that padding wouldn't increase the total bytes read/written by this
     // operation too much.
     auto check_size_increase = [&](const Shape& old_shape,
                                    const Shape& new_shape) {
       int64_t old_bytes = ShapeUtil::ByteSizeOf(old_shape);
       int64_t new_bytes = ShapeUtil::ByteSizeOf(new_shape);
-      if (new_bytes <= old_bytes * kMaxBytesTouchedIncrease) {
-        return;
+      if (new_bytes <= old_bytes * kMaxBytesTouchedIncrease ||
+          new_bytes <= kAlwaysOkToPadBytes) {
+        return true;
       }
       VLOG(3)
           << "Not padding convolution; doing so would change input / result "
@@ -406,12 +422,18 @@ static StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
           << ShapeUtil::HumanString(new_shape) << ", a size increase of "
           << new_bytes / static_cast<double>(old_bytes) << "x > "
           << kMaxBytesTouchedIncrease << "x: " << conv->ToString();
+      return false;
     };
 
     for (int64_t i = 0; i < conv->operand_count(); ++i) {
-      check_size_increase(conv->operand(i)->shape(), new_input_shapes[i]);
+      if (!check_size_increase(conv->operand(i)->shape(),
+                               new_input_shapes[i])) {
+        return false;
+      }
     }
-    check_size_increase(result_shape, new_result_shape);
+    if (!check_size_increase(result_shape, new_result_shape)) {
+      return false;
+    }
   }
 
   bool changed = false;

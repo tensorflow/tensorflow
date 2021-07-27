@@ -259,7 +259,7 @@ TEST_F(CudnnPadForConvolutionsTest, PadInt8To32OnSm75) {
           m::Op())));
 }
 
-TEST_F(CudnnPadForConvolutionsTest, NoPadInt8To32OnSm75) {
+TEST_F(CudnnPadForConvolutionsTest, NoPadInt8To32OnSm70) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
 
@@ -280,6 +280,21 @@ TEST_F(CudnnPadForConvolutionsTest, NoPadInt8To32OnSm75) {
               kCudnnConvForwardCallTarget, m::Parameter(0),
               m::Pad(m::Parameter(1), m::Op()).WithShape(S8, {2, 2, 40, 44})))),
           m::Op())));
+}
+
+TEST_F(CudnnPadForConvolutionsTest, NoPadToInt8x32ExcessiveBlowup) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    input = s8[128,4,48,48] parameter(0)
+    filter = s8[64,4,3,3] parameter(1)
+    ROOT result = (f32[128,64,48,48], u8[0]) custom-call(input, filter),
+                  window={size=3x3}, dim_labels=bf01_io01->bf01,
+                  custom_call_target="__cudnn$convForward"
+  })")
+                    .ValueOrDie();
+  EXPECT_FALSE(CudnnPadForConvolutions({7, 5}).Run(module.get()).ValueOrDie());
 }
 
 TEST_F(CudnnPadForConvolutionsTest, PadInt8x4To32) {
