@@ -135,7 +135,7 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
 // following by iterating over the linked Node data structure.
 template <typename T, int inner_bs>
 void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
-               int outer_bs_b, TransposePlan::Node const* node) {
+               int outer_bs_b, TransposePlan::Node const* __restrict node) {
   DVLOG(10) << "Transpose " << outer_bs_a << " " << outer_bs_b;
   DCHECK_GT(outer_bs_a, 0);
   DCHECK_GT(outer_bs_b, 0);
@@ -258,23 +258,75 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
 
 template <typename T>
 void TransposeConstStride1(const char* __restrict a, char* __restrict b,
-                           TransposePlan::Node const* node) {
-  a += node->start * node->lda;
-  b += node->start * node->ldb;
-  if (node->is_inner_dim_in_a) {
-    DCHECK(node->is_inner_dim_in_b);
+                           TransposePlan::Node const* __restrict node) {
+  a += node[0].start * node[0].lda;
+  b += node[0].start * node[0].ldb;
+  if (node[0].is_inner_dim_in_a) {
     int64_t num_bytes = (node->end - node->start) * sizeof(T);
     std::memcpy(b, a, num_bytes);
-  } else {
-    DCHECK(!node->is_inner_dim_in_b);
-    TransposePlan::Node const* next = node + 1;
-    for (int64_t i = node->start; i < node->end; ++i) {
-      TransposeConstStride1<T>(a, b, next);
-      a += node->lda;
-      b += node->ldb;
+  } else if (node[1].is_inner_dim_in_a) {
+    int64_t offset_a = node[1].start * node[1].lda;
+    int64_t offset_b = node[1].start * node[1].ldb;
+    int64_t num_bytes = (node[1].end - node[1].start) * sizeof(T);
+    a += offset_a;
+    b += offset_b;
+    for (int64_t i = node[0].start; i < node[0].end; ++i) {
+      std::memcpy(b, a, num_bytes);
+      a += node[0].lda;
+      b += node[0].ldb;
     }
-    if (node->trailing_tile_next_node_inc) {
-      TransposeConstStride1<T>(a, b, node + node->trailing_tile_next_node_inc);
+    if (node[0].trailing_tile_next_node_inc) {
+      TransposeConstStride1<T>(a - offset_a, b - offset_b,
+                               node + node[0].trailing_tile_next_node_inc);
+    }
+  } else if (node[2].is_inner_dim_in_a) {
+    int64_t num_bytes = (node[2].end - node[2].start) * sizeof(T);
+    int64_t offset_a1 = node[1].start * node[1].lda;
+    int64_t offset_b1 = node[1].start * node[1].ldb;
+    int64_t offset_a2 = node[2].start * node[2].lda;
+    int64_t offset_b2 = node[2].start * node[2].ldb;
+    a += offset_a1 + offset_a2;
+    b += offset_b1 + offset_b2;
+    for (int64_t i = node[0].start; i < node[0].end; ++i) {
+      const char* a1 = a;
+      char* b1 = b;
+      for (int64_t j = node[1].start; j < node[1].end; ++j) {
+        std::memcpy(b1, a1, num_bytes);
+        a1 += node[1].lda;
+        b1 += node[1].ldb;
+      }
+      if (node[1].trailing_tile_next_node_inc) {
+        TransposeConstStride1<T>(
+            a1 - offset_a2, b1 - offset_b2,
+            &node[1] + node[1].trailing_tile_next_node_inc);
+      }
+      a += node[0].lda;
+      b += node[0].ldb;
+    }
+    if (node[0].trailing_tile_next_node_inc) {
+      TransposeConstStride1<T>(a - offset_a1 - offset_a2,
+                               b - offset_b1 - offset_b2,
+                               node + node[0].trailing_tile_next_node_inc);
+    }
+  } else {
+    for (int64_t i = node[0].start; i < node[0].end; ++i) {
+      const char* a1 = a + node[1].start * node[1].lda;
+      char* b1 = b + node[1].start * node[1].ldb;
+      for (int64_t j = node[1].start; j < node[1].end; ++j) {
+        TransposeConstStride1<T>(a1, b1, node + 2);
+        a1 += node[1].lda;
+        b1 += node[1].ldb;
+      }
+      if (node[1].trailing_tile_next_node_inc) {
+        TransposeConstStride1<T>(
+            a1, b1, &node[1] + node[1].trailing_tile_next_node_inc);
+      }
+      a += node[0].lda;
+      b += node[0].ldb;
+    }
+    if (node[0].trailing_tile_next_node_inc) {
+      TransposeConstStride1<T>(a, b,
+                               node + node[0].trailing_tile_next_node_inc);
     }
   }
 }
