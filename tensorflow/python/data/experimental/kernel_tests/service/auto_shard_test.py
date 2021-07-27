@@ -501,12 +501,12 @@ class AutoShardTest(data_service_test_base.TestBase,
       _ = _make_service_cluster(
           num_workers=5, local_shard_index=1, worker_addresses=worker_addresses)
 
-  # TODO(b/186023347): Use Lint to keep the policies in sync.
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(sharding_policy=list(ShardingPolicy))))
   def testEnumerateShardingPolicies(self, sharding_policy):
+    """Verifies tf.data service handles every sharding policy with no errors."""
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)

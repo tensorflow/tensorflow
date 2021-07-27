@@ -45,11 +45,14 @@ class AutoShardPolicy(enum.IntEnum):
   HINT: Looks for the presence of `shard(SHARD_HINT, ...)` which is treated as a
   placeholder to replace with `shard(num_workers, worker_index)`.
   """
+
+  # LINT.IfChange
   OFF = -1
   AUTO = 0
   FILE = 1
   DATA = 2
   HINT = 3
+  # LINT.ThenChange(//tensorflow/python/data/experimental/ops/data_service_ops.py:tf_data_service_sharding_policy)
 
   @classmethod
   def _to_proto(cls, obj):

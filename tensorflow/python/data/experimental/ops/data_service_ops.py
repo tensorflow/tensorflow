@@ -89,12 +89,14 @@ class ShardingPolicy(enum.IntEnum):
   placeholder to replace with `shard(num_workers, worker_index)`.
   """
 
+  # LINT.IfChange(tf_data_service_sharding_policy)
   OFF = 0
   DYNAMIC = 1
   FILE = 2
   DATA = 3
   FILE_OR_DATA = 4
   HINT = 5
+  # LINT.ThenChange()
 
   def _to_proto(self):
     """Converts the policy to ProcessingModeDef proto enum."""
