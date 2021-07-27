@@ -159,12 +159,11 @@ def get_gradients_through_dummy_table_variables(tpu_embedding):
         gradient is not None for gradient in table_gradients)
 
   if not gradients_found:
-    raise ValueError(
+    logging.warn(
         'All tables have undefined gradients: this is probably because the '
         'model asked TPUEmbedding to compute activations that were not used. '
         'If all TPUEmbedding features have stop_gradients, consider using the '
-        'INFERENCE mode instead.'
-    )
+        'INFERENCE mode instead.')
 
   feature_to_gradient_dict = collections.OrderedDict()
   for table_id, table in enumerate(tpu_embedding.table_to_config_dict):
