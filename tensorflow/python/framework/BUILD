@@ -1139,6 +1139,7 @@ py_library(
         ":tensor_shape",
         ":tensor_spec",
         ":type_spec",
+        "//tensorflow/python:composite_tensor_ops",
     ],
 )
 
