@@ -4242,6 +4242,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
           << "\nfilter_data.opaque() = " << filter_data.opaque()
           << "\nconv.handle() = " << conv.handle()
           << "\nalgo = " << algo_desc.algo_id()
+          << ", tensor_ops_enabled=" << algo_desc.tensor_ops_enabled()
           << "\nscratch.opaque() = " << scratch.opaque()
           << "\nscratch.size() = " << scratch.size()
           << "\nside_input_scale = " << side_input_scale
@@ -4287,6 +4288,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
     VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo_desc)
+            << ", tensor_ops_enabled=" << algo_desc.tensor_ops_enabled()
             << ", workspace_size=" << scratch.size() << " -> "
             << ToString(status) << " in " << timer->GetElapsedMilliseconds()
             << "ms";
