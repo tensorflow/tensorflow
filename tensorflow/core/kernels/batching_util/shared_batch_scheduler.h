@@ -346,6 +346,10 @@ class Queue {
   // currently schedulable.
   bool IsOpenBatchSchedulable() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Same as SchedulingCapacity(), but assumes the caller already holds a
+  // lock on 'mu_'.
+  size_t SchedulingCapacityInternal() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   const typename SharedBatchScheduler<TaskType>::QueueOptions options_;
 
   // The environment to use.
@@ -697,13 +701,7 @@ Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
 
     DCHECK(!closed_);
 
-    const int num_new_batches_schedulable =
-        options_.max_enqueued_batches - batches_.size();
-    const int open_batch_capacity =
-        max_execution_batch_size - batches_.back()->size();
-    const int scheduling_capacity =
-        (num_new_batches_schedulable * max_execution_batch_size) +
-        open_batch_capacity;
+    const size_t scheduling_capacity = SchedulingCapacityInternal();
 
     // The scenario when concurrent incoming batches arrives and use up all
     // queue capacity isn't covered by unit test.
@@ -776,6 +774,11 @@ size_t Queue<TaskType>::NumEnqueuedTasks() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacity() const {
   mutex_lock l(mu_);
+  return SchedulingCapacityInternal();
+}
+
+template <typename TaskType>
+size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   const int num_new_batches_schedulable =
       options_.max_enqueued_batches - batches_.size();
   const int open_batch_capacity =
