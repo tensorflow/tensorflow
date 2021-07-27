@@ -24,12 +24,10 @@ import sys
 from absl.testing import parameterized
 
 from tensorflow.core.framework import dataset_options_pb2
-from tensorflow.python.data.experimental.ops import distribute_options
-from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import testing
-from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
@@ -47,17 +45,17 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsDefault(self):
     ds = dataset_ops.Dataset.range(0)
-    self.assertEqual(dataset_ops.Options(), ds.options())
+    self.assertEqual(options_lib.Options(), ds.options())
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsOnce(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     ds = dataset_ops.Dataset.range(0).with_options(options).cache()
     self.assertEqual(options, ds.options())
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceSame(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.autotune = True
     ds = dataset_ops.Dataset.range(0).with_options(options).with_options(
         options)
@@ -65,9 +63,9 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceDifferentOptions(self):
-    options1 = dataset_ops.Options()
+    options1 = options_lib.Options()
     options1.experimental_optimization.autotune = True
-    options2 = dataset_ops.Options()
+    options2 = options_lib.Options()
     options2.experimental_deterministic = False
     ds = dataset_ops.Dataset.range(0)
     ds = ds.with_options(options1)
@@ -82,9 +80,9 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     if sys.version_info >= (3, 8) and platform.system() == "Windows":
       # TODO(b/165013260): Fix this
       self.skipTest("Test is currently broken on Windows with Python 3.8")
-    options1 = dataset_ops.Options()
+    options1 = options_lib.Options()
     options1.experimental_optimization.autotune = False
-    options2 = dataset_ops.Options()
+    options2 = options_lib.Options()
     options2.experimental_optimization.autotune = True
     ds = dataset_ops.Dataset.range(0)
     ds = ds.with_options(options1)
@@ -93,9 +91,9 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsMergeOptionsFromMultipleInputs(self):
-    options1 = dataset_ops.Options()
+    options1 = options_lib.Options()
     options1.experimental_optimization.autotune = True
-    options2 = dataset_ops.Options()
+    options2 = options_lib.Options()
     options2.experimental_deterministic = True
     ds1 = dataset_ops.Dataset.range(0).with_options(options1)
     ds2 = dataset_ops.Dataset.range(0).with_options(options2)
@@ -106,21 +104,21 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsHaveDefaults(self):
-    options1 = dataset_ops.Options()
-    options2 = dataset_ops.Options()
+    options1 = options_lib.Options()
+    options2 = options_lib.Options()
     self.assertIsNot(options1.experimental_optimization,
                      options2.experimental_optimization)
     self.assertIsNot(options1.threading, options2.threading)
     self.assertEqual(options1.experimental_optimization,
-                     optimization_options.OptimizationOptions())
-    self.assertEqual(options1.threading, threading_options.ThreadingOptions())
+                     options_lib.OptimizationOptions())
+    self.assertEqual(options1.threading, options_lib.ThreadingOptions())
 
   @combinations.generate(test_base.default_test_combinations())
   def testMutatingOptionsRaiseValueError(self):
     ds = dataset_ops.Dataset.range(0)
-    options1 = dataset_ops.Options()
+    options1 = options_lib.Options()
     options1.experimental_slack = True
-    options2 = dataset_ops.Options()
+    options2 = options_lib.Options()
     options2.experimental_optimization.autotune = True
     ds = ds.with_options(options1)
     ds = ds.map(lambda x: 2 * x)
@@ -140,12 +138,12 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsProtoRoundTrip(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_deterministic = True
     options.experimental_external_state_policy = (
-        distribute_options.ExternalStatePolicy.FAIL)
+        options_lib.ExternalStatePolicy.FAIL)
     options.experimental_distribute.auto_shard_policy = (
-        distribute_options.AutoShardPolicy.DATA)
+        options_lib.AutoShardPolicy.DATA)
     options.experimental_distribute.num_devices = 1000
     options.experimental_optimization.apply_default_optimizations = True
     options.experimental_optimization.autotune = True
@@ -164,22 +162,22 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.threading.max_intra_op_parallelism = 30
     options.threading.private_threadpool_size = 40
     pb = options._to_proto()
-    result = dataset_ops.Options()
+    result = options_lib.Options()
     result._from_proto(pb)
     self.assertEqual(options, result)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsProtoDefaultValuesRoundTrip(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     pb = options._to_proto()
-    result = dataset_ops.Options()
+    result = options_lib.Options()
     result._from_proto(pb)
     self.assertEqual(options, result)
 
   @combinations.generate(test_base.default_test_combinations())
   def testProtoOptionsDefaultValuesRoundTrip(self):
     pb = dataset_options_pb2.Options()
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options._from_proto(pb)
     result = options._to_proto()
     expected_pb = dataset_options_pb2.Options()
@@ -193,7 +191,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testThreadingOptionsBackwardCompatibility(self):
-    opts = dataset_ops.Options()
+    opts = options_lib.Options()
     opts.threading.max_intra_op_parallelism = 20
     self.assertEqual(opts.experimental_threading.max_intra_op_parallelism, 20)
     opts.experimental_threading.private_threadpool_size = 80
@@ -201,12 +199,12 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testExperimentalThreadingOptionsOverride(self):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     self.assertEqual(options.threading, options.experimental_threading)
     options.threading.max_intra_op_parallelism = 20
     options.experimental_threading.max_intra_op_parallelism = 40
     pb = options._to_proto()
-    result = dataset_ops.Options()
+    result = options_lib.Options()
     result._from_proto(pb)
     self.assertEqual(result.experimental_threading.max_intra_op_parallelism,
                      result.threading.max_intra_op_parallelism)
@@ -220,7 +218,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     dataset = dataset_ops.Dataset.range(5)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
     dataset = fn(dataset)
@@ -233,7 +231,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     @def_function.function
     def fn(dataset):
-      options = dataset_ops.Options()
+      options = options_lib.Options()
       options.experimental_slack = True
       dataset = dataset.with_options(options)
       dataset = dataset.map(lambda x: 10 * x)
@@ -248,7 +246,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsPersistenceGraphRoundTrip(self):
     dataset = dataset_ops.Dataset.range(5)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_slack = True
     options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
@@ -264,7 +262,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.combine(map_parallelization=[True, False])))
   def testOptionsGraphRoundTripOptimization(self, map_parallelization):
     dataset = dataset_ops.Dataset.range(6)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.map_parallelization = (
         map_parallelization)
     dataset = dataset.with_options(options)

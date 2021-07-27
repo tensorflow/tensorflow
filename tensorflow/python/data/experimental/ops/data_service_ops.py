@@ -25,11 +25,12 @@ from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
-from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops.options import AutoShardPolicy
+from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -940,7 +941,7 @@ def _from_dataset_id(processing_mode,
 
   # Disable autosharding for shared jobs.
   if job_name is not None:
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
     dataset = dataset.with_options(options)
   return dataset

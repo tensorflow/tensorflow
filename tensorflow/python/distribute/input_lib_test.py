@@ -25,9 +25,10 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import data_service_ops
-from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops.options import AutoShardPolicy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -946,7 +947,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
     self.assertIsNotNone(cr)
     id_in_cluster = multi_worker_util.id_in_cluster(cr.cluster_spec(),
                                                     cr.task_type, cr.task_id)
-    ds_option = dataset_ops.Options()
+    ds_option = options_lib.Options()
     ds_option.experimental_distribute.auto_shard_policy = auto_shard_policy
     dataset_fn = (
         lambda _: dataset_ops.Dataset.range(4).with_options(ds_option))
@@ -1319,7 +1320,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       # `dataset` defines the per-worker dataset and will not be further
       # sharded. Each worker will see a dataset that is
       # tf.data.Dataset.range(12).batch(8).rebatch(...).
-      options = dataset_ops.Options()
+      options = options_lib.Options()
       options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
       dataset = dataset.with_options(options)
       return dataset
@@ -1387,7 +1388,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       # `dataset` defines the per-worker dataset and will not be further
       # sharded. Each worker will see a dataset that is equivalent to
       # tf.data.Dataset.range(12).batch(8).rebatch(...).
-      options = dataset_ops.Options()
+      options = options_lib.Options()
       options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
       dataset = dataset.with_options(options)
       return dataset
@@ -1440,7 +1441,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       # `dataset` defines the per-worker dataset and will not be further
       # sharded. Each worker will see a dataset that is
       # tf.data.Dataset.range(12).batch(8).rebatch(...).
-      options = dataset_ops.Options()
+      options = options_lib.Options()
       options.experimental_distribute.auto_shard_policy = auto_shard_policy
       dataset = dataset.with_options(options)
       return dataset

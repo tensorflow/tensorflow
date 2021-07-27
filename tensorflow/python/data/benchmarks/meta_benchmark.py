@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.platform import test
 
@@ -37,7 +38,7 @@ class MetaBenchmark(test.Benchmark):
   def setup_fast_dataset(self):
     self.num_reps = 15
     self.iters = 100000
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     return dataset_ops.Dataset.range(10000**2).with_options(options)
 

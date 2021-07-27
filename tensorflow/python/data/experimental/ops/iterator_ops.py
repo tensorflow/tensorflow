@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_management
@@ -30,14 +30,14 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 def _convert_external_state_policy_to_enum(external_state_policy):
-  if isinstance(external_state_policy, distribute_options.ExternalStatePolicy):
+  if isinstance(external_state_policy, options_lib.ExternalStatePolicy):
     return external_state_policy
   if external_state_policy == "warn":
-    return distribute_options.ExternalStatePolicy.WARN
+    return options_lib.ExternalStatePolicy.WARN
   if external_state_policy == "ignore":
-    return distribute_options.ExternalStatePolicy.IGNORE
+    return options_lib.ExternalStatePolicy.IGNORE
   if external_state_policy == "fail":
-    return distribute_options.ExternalStatePolicy.FAIL
+    return options_lib.ExternalStatePolicy.FAIL
   raise ValueError(
       "Failed to convert {} to an instance of ExternalStatePolicy."
       "Supported values include: 'warn', 'ignore' and 'fail'".format(

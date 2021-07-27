@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -267,7 +268,7 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.batch(
           batch_size=6, num_parallel_calls=2,
           deterministic=local_determinism).unbatch()
-      opts = dataset_ops.Options()
+      opts = options_lib.Options()
       opts.experimental_deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset

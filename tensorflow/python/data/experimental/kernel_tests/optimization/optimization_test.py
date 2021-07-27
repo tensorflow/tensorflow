@@ -29,6 +29,7 @@ from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -107,7 +108,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptimizationStatefulFunction(self):
     dataset = dataset_ops.Dataset.range(
         10).map(lambda _: random_ops.random_uniform([])).batch(10)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     get_next = self.getNext(dataset)
@@ -118,7 +119,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptimizationLargeInputFromTensor(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
     dataset = dataset_ops.Dataset.from_tensors(input_t)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_initializable_iterator(dataset)
@@ -134,7 +135,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptimizationLargeInputFromTensorSlices(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
     dataset = dataset_ops.Dataset.from_tensor_slices(input_t)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_initializable_iterator(dataset)
@@ -157,7 +158,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.range(1)
     dataset = dataset.flat_map(flat_map_fn)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.noop_elimination = True
     dataset = dataset.with_options(options)
@@ -177,7 +178,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(1)
     dataset = dataset.flat_map(flat_map_fn)
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_batch_fusion = True
     dataset = dataset.with_options(options)
@@ -204,7 +205,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: x + 1, num_parallel_calls=-1)
     dataset = dataset.prefetch(buffer_size=1)
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.autotune = autotune
     options.experimental_optimization.autotune_buffers = autotune_buffers
     dataset = dataset.with_options(options)
@@ -228,7 +229,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.apply(testing.assert_next(["Map"]))
     dataset = dataset.map(lambda x: x + 1)
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     if autotune is not None:
       options.experimental_optimization.autotune = autotune
     if map_parallelization is not None:
@@ -259,7 +260,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: x + 1)
     for buffer_size in second_buffer_sizes:
       dataset = dataset.prefetch(buffer_size=buffer_size)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.autotune = autotune
     options.experimental_optimization.autotune_buffers = autotune_buffers
     dataset = dataset.with_options(options)
@@ -276,7 +277,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     assign_op = variable.assign_add(1)
     unoptimized_dataset = dataset_fn(variable)
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.map_and_batch_fusion = True

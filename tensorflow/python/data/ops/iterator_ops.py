@@ -23,8 +23,8 @@ import warnings
 
 import six
 
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import optional_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
@@ -931,7 +931,7 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
       self,
       iterator_resource,
       name,
-      external_state_policy=distribute_options.ExternalStatePolicy.FAIL):
+      external_state_policy=options_lib.ExternalStatePolicy.FAIL):
     serialized_iterator = gen_dataset_ops.serialize_iterator(
         iterator_resource, external_state_policy=external_state_policy.value)
     specs = [

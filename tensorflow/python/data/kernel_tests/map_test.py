@@ -31,6 +31,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -1289,7 +1290,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           map_function,
           num_parallel_calls=2,
           deterministic=local_determinism)
-      opts = dataset_ops.Options()
+      opts = options_lib.Options()
       opts.experimental_deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset

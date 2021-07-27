@@ -20,13 +20,13 @@ from __future__ import print_function
 import os
 
 from absl.testing import parameterized
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -569,9 +569,9 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(
         lambda x: script_ops.eager_py_func(fn, [x], dtypes.int64))
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_external_state_policy = (
-        distribute_options.ExternalStatePolicy.WARN)
+        options_lib.ExternalStatePolicy.WARN)
     dataset = dataset.with_options(options)
 
     iterator = iter(dataset)

@@ -25,7 +25,6 @@ import threading
 import warnings
 import weakref
 
-from absl import logging
 import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
@@ -33,12 +32,9 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.data.experimental.ops import distribute_options
-from tensorflow.python.data.experimental.ops import optimization_options
-from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
@@ -219,7 +215,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     self._graph_attr = ops.get_default_graph()
 
     # Initialize the options for this dataset and its inputs.
-    self._options_attr = Options()
+    self._options_attr = options_lib.Options()
     for input_dataset in self._inputs():
       input_options = None
       if isinstance(input_dataset, DatasetV1):
@@ -254,7 +250,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       self,
       allow_stateful=None,
       strip_device_assignment=None,
-      external_state_policy=distribute_options.ExternalStatePolicy.WARN):
+      external_state_policy=options_lib.ExternalStatePolicy.WARN):
     """Produces serialized graph representation of the dataset.
 
     Args:
@@ -301,7 +297,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     with context.eager_mode(), ops.device("CPU"):
       # pylint: disable=protected-access
       graph_def = graph_pb2.GraphDef().FromString(
-          self._as_serialized_graph(external_state_policy=distribute_options
+          self._as_serialized_graph(external_state_policy=options_lib
                                     .ExternalStatePolicy.FAIL).numpy())
     output_node_name = None
     for node in graph_def.node:
@@ -354,7 +350,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   @classmethod
   def _options_tensor_to_options(cls, serialized_options):
     """Converts options tensor to tf.data.Options object."""
-    options = Options()
+    options = options_lib.Options()
     if tensor_util.constant_value(serialized_options) is not None:
       pb = dataset_options_pb2.Options.FromString(tensor_util.constant_value(
           serialized_options))
@@ -385,7 +381,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     if DEBUG_MODE:
       # Disable autotuning and static optimizations that could introduce
       # parallelism or asynchrony.
-      options = Options()
+      options = options_lib.Options()
       options.experimental_optimization.autotune = False
       options.experimental_optimization.map_and_batch_fusion = False
       options.experimental_optimization.map_parallelization = False
@@ -3638,153 +3634,6 @@ def get_legacy_output_types(dataset_or_iterator):
   return nest.map_structure(
       lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
       get_structure(dataset_or_iterator))
-
-
-@tf_export("data.Options")
-class Options(options_lib.OptionsBase):
-  """Represents options for `tf.data.Dataset`.
-
-  A `tf.data.Options` object can be, for instance, used to control which static
-  optimizations to apply to the input pipeline graph or whether to use
-  performance modeling to dynamically tune the parallelism of operations such as
-  `tf.data.Dataset.map` or `tf.data.Dataset.interleave`.
-
-  The options are set for the entire dataset and are carried over to datasets
-  created through tf.data transformations.
-
-  The options can be set by constructing an `Options` object and using the
-  `tf.data.Dataset.with_options(options)` transformation, which returns a
-  dataset with the options set.
-
-  >>> dataset = tf.data.Dataset.range(42)
-  >>> options = tf.data.Options()
-  >>> options.experimental_deterministic = False
-  >>> dataset = dataset.with_options(options)
-  >>> print(dataset.options().experimental_deterministic)
-  False
-
-  Note: A known limitation of the `tf.data.Options` implementation is that the
-  options are not preserved across tf.function boundaries. In particular, to
-  set options for a dataset that is iterated within a tf.function, the options
-  need to be set within the same tf.function.
-  """
-
-  experimental_deterministic = options_lib.create_option(
-      name="experimental_deterministic",
-      ty=bool,
-      docstring=
-      "Whether the outputs need to be produced in deterministic order. If None,"
-      " defaults to True.")
-
-  experimental_distribute = options_lib.create_option(
-      name="experimental_distribute",
-      ty=distribute_options.DistributeOptions,
-      docstring=
-      "The distribution strategy options associated with the dataset. See "
-      "`tf.data.experimental.DistributeOptions` for more details.",
-      default_factory=distribute_options.DistributeOptions)
-
-  experimental_optimization = options_lib.create_option(
-      name="experimental_optimization",
-      ty=optimization_options.OptimizationOptions,
-      docstring=
-      "The optimization options associated with the dataset. See "
-      "`tf.data.experimental.OptimizationOptions` for more details.",
-      default_factory=optimization_options.OptimizationOptions)
-
-  experimental_slack = options_lib.create_option(
-      name="experimental_slack",
-      ty=bool,
-      docstring="Whether to introduce 'slack' in the last `prefetch` of the "
-      "input pipeline, if it exists. This may reduce CPU contention with "
-      "accelerator host-side activity at the start of a step. The slack "
-      "frequency is determined by the number of devices attached to this "
-      "input pipeline. If None, defaults to False.")
-
-  experimental_external_state_policy = options_lib.create_option(
-      name="experimental_external_state_policy",
-      ty=distribute_options.ExternalStatePolicy,
-      docstring="This option can be used to override the default policy for "
-      "how to handle external state when serializing a dataset or "
-      "checkpointing its iterator. There are three settings available - "
-      "IGNORE: External state is ignored without a warning; WARN: External "
-      "state is ignored and a warning is logged; FAIL: External state results "
-      "in an error.")
-
-  threading = options_lib.create_option(
-      name="threading",
-      ty=threading_options.ThreadingOptions,
-      docstring="The threading options associated with the dataset. See "
-      "`tf.data.ThreadingOptions` for more details.",
-      default_factory=threading_options.ThreadingOptions)
-
-  def __getattr__(self, name):
-    if name == "experimental_threading":
-      logging.warning("options.experimental_threading is deprecated. "
-                      "Use options.threading instead.")
-      return getattr(self, "threading")
-    else:
-      raise AttributeError("Attribute %s not found." % name)
-
-  def __setattr__(self, name, value):
-    if name == "experimental_threading":
-      logging.warning("options.experimental_threading is deprecated. "
-                      "Use options.threading instead.")
-      super(Options, self).__setattr__("threading", value)
-    else:
-      super(Options, self).__setattr__(name, value)
-
-  def _to_proto(self):
-    pb = dataset_options_pb2.Options()
-    if self.experimental_deterministic is not None:
-      pb.deterministic = self.experimental_deterministic
-    pb.distribute_options.CopyFrom(self.experimental_distribute._to_proto())  # pylint: disable=protected-access
-    if self.experimental_external_state_policy is not None:
-      pb.external_state_policy = (
-          distribute_options.ExternalStatePolicy._to_proto(  # pylint: disable=protected-access
-              self.experimental_external_state_policy))
-    pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
-    if self.experimental_slack is not None:
-      pb.slack = self.experimental_slack
-    pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
-    return pb
-
-  def _from_proto(self, pb):
-    if pb.WhichOneof("optional_deterministic") is not None:
-      self.experimental_deterministic = pb.deterministic
-    self.experimental_distribute._from_proto(pb.distribute_options)  # pylint: disable=protected-access
-    if pb.WhichOneof("optional_external_state_policy") is not None:
-      self.experimental_external_state_policy = (
-          distribute_options.ExternalStatePolicy._from_proto(  # pylint: disable=protected-access
-              pb.external_state_policy))
-    self.experimental_optimization._from_proto(pb.optimization_options)  # pylint: disable=protected-access
-    if pb.WhichOneof("optional_slack") is not None:
-      self.experimental_slack = pb.slack
-    self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
-
-  def _set_mutable(self, mutable):
-    """Change the mutability value to `mutable` on this options and children."""
-    # pylint: disable=protected-access
-    object.__setattr__(self, "_mutable", mutable)
-    self.experimental_distribute._set_mutable(mutable)
-    self.experimental_optimization._set_mutable(mutable)
-    self.threading._set_mutable(mutable)
-
-  def merge(self, options):
-    """Merges itself with the given `tf.data.Options`.
-
-    If this object and the `options` to merge set an option differently, a
-    warning is generated and this object's value is updated with the `options`
-    object's value.
-
-    Args:
-      options: a `tf.data.Options` to merge with
-
-    Returns:
-      New `tf.data.Options` object which is the result of merging self with
-      the input `tf.data.Options`.
-    """
-    return options_lib.merge_options(self, options)
 
 
 class DatasetSource(DatasetV2):

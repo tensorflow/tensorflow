@@ -1,6 +1,6 @@
 path: "tensorflow.data.experimental.ThreadingOptions"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.experimental.ops.threading_options.ThreadingOptions\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.options.ThreadingOptions\'>"
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {

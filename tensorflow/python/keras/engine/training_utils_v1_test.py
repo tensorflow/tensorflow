@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -127,7 +128,7 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
           cycle_length=1), True),
       ('Map', lambda: dataset_ops.Dataset.range(5).map(lambda x: x)),
       ('Options',
-       lambda: dataset_ops.Dataset.range(5).with_options(dataset_ops.Options())
+       lambda: dataset_ops.Dataset.range(5).with_options(options_lib.Options())
       ),
       ('PaddedBatch', lambda: dataset_ops.Dataset.range(5).padded_batch(2, [])),
       ('ParallelInterleave', lambda: dataset_ops.Dataset.range(5).interleave(
