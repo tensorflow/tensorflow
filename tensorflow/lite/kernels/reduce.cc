@@ -355,10 +355,6 @@ TfLiteStatus EvalMeanReferenceOps(TfLiteContext* context,
   op_params.axis_count = num_axis;
   ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
   const TfLiteTensor* input = op_context.input;
-  // Return early when input shape has zero dim.
-  for (int i = 0; i < input->dims->size; ++i) {
-    if (input->dims->data[i] == 0) return kTfLiteOk;
-  }
 
   // TODO(b/139102329): Handle all the cases in the combined reference
   // method.
@@ -413,6 +409,43 @@ TfLiteStatus EvalMeanReferenceOps(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+template <typename T>
+void InitializeMeanOutputTyped(TfLiteTensor* output) {
+  RuntimeShape output_shape = GetTensorShape(output);
+  const size_t flat_size = output_shape.FlatSize();
+  T* output_data = GetTensorData<T>(output);
+  T nan_value = std::numeric_limits<T>::quiet_NaN();
+  for (int idx = 0; idx < flat_size; ++idx) {
+    *output_data++ = nan_value;
+  }
+}
+
+TfLiteStatus InitializeMeanOutput(TfLiteTensor* output) {
+  switch (output->type) {
+    case kTfLiteFloat32:
+      InitializeMeanOutputTyped<float>(output);
+      break;
+    case kTfLiteInt32:
+      InitializeMeanOutputTyped<int>(output);
+      break;
+    case kTfLiteInt64:
+      InitializeMeanOutputTyped<int64_t>(output);
+      break;
+    case kTfLiteUInt8:
+      InitializeMeanOutputTyped<uint8_t>(output);
+      break;
+    case kTfLiteInt8:
+      InitializeMeanOutputTyped<int8_t>(output);
+      break;
+    case kTfLiteInt16:
+      InitializeMeanOutputTyped<int16_t>(output);
+      break;
+    default:
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
@@ -436,10 +469,12 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeTempAccum(context, &op_context, temp_sum));
   }
 
-  // Return early when input shape has zero dim.
+  // Return early when input is empty.
   const TfLiteTensor* input = op_context.input;
-  for (int i = 0; i < input->dims->size; ++i) {
-    if (input->dims->data[i] == 0) return kTfLiteOk;
+  RuntimeShape input_shape = GetTensorShape(input);
+  if (input_shape.FlatSize() == 0) {
+    TF_LITE_ENSURE_OK(context, InitializeMeanOutput(op_context.output));
+    return kTfLiteOk;
   }
 
   if (kernel_type == kGenericOptimized) {
@@ -454,7 +489,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
              (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
           optimized_integer_ops::Mean(
-              op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+              op_params, input_shape, GetTensorData<int8_t>(input),
               input->params.zero_point, input->params.scale,
               GetTensorShape(op_context.output),
               GetTensorData<int8_t>(op_context.output),
@@ -472,7 +507,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
              (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
-          optimized_ops::Mean(op_params, GetTensorShape(input),
+          optimized_ops::Mean(op_params, input_shape,
                               GetTensorData<uint8_t>(input),
                               input->params.zero_point, input->params.scale,
                               GetTensorShape(op_context.output),
@@ -505,8 +540,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
           op_params.axis_count == 2 &&
           ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
            (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
-        reference_ops::Mean(op_params, GetTensorShape(input),
-                            GetTensorData<float>(input),
+        reference_ops::Mean(op_params, input_shape, GetTensorData<float>(input),
                             GetTensorShape(op_context.output),
                             GetTensorData<float>(op_context.output));
       } else {
@@ -590,11 +624,6 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
   }
 
   const TfLiteTensor* input = op_context->input;
-  // Return early when input shape has zero dim.
-  for (int i = 0; i < input->dims->size; ++i) {
-    if (input->dims->data[i] == 0) return kTfLiteOk;
-  }
-
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
       input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, input->params.scale,
@@ -742,10 +771,6 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
       TF_LITE_ENSURE_OK(context,
                         ResizeTempAccum(context, &op_context, temp_sum));
-    }
-    // Return early when input shape has zero dim.
-    for (int i = 0; i < input->dims->size; ++i) {
-      if (input->dims->data[i] == 0) return kTfLiteOk;
     }
 
     if (input->type == kTfLiteUInt8) {

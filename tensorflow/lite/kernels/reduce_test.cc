@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <vector>
 
@@ -1565,6 +1567,121 @@ TEST(DynamicAllOpTest, Scalar) {
   std::vector<int> axis = {0};
   m.SetAxis(axis);
   m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false}));
+}
+
+TEST(ConstInt32MinOpTest, EmptyInputButScalarOutput) {
+  MinOpConstModel m({TensorType_INT32, {0}}, {TensorType_INT32, {}}, {1}, {0},
+                    false);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({2147483647}));
+}
+
+TEST(ConstInt32MaxOpTest, EmptyInputButScalarOutput) {
+  MaxOpConstModel m({TensorType_INT32, {0}}, {TensorType_INT32, {}}, {1}, {0},
+                    false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({-2147483648}));
+}
+
+TEST(ConstInt32ProdOpTest, EmptyInputButScalarOutput) {
+  ProdOpConstModel m({TensorType_INT32, {0}}, {TensorType_INT32, {}}, {1}, {0},
+                     false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({1}));
+}
+
+TEST(ConstInt32SumOpTest, EmptyInputButScalarOutput) {
+  SumOpConstModel m({TensorType_INT32, {0}}, {TensorType_INT32, {}}, {1}, {0},
+                    false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({0}));
+}
+
+TEST(ConstInt32MeanOpTest, EmptyInputButScalarOutput) {
+  MeanOpConstModel m({TensorType_INT32, {0}}, {TensorType_INT32, {}}, {1}, {0},
+                     false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput<int32_t>(),
+              ElementsAreArray({std::numeric_limits<int32_t>::quiet_NaN()}));
+}
+
+TEST(ConstFloatMinOpTest, EmptyInputButScalarOutput) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MinOpConstModel m({TensorType_FLOAT32, {0}}, {TensorType_FLOAT32, {}}, {1},
+                    {0}, false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear({std::numeric_limits<float>::max()})));
+}
+
+TEST(ConstFloatMaxOpTest, EmptyInputButScalarOutput) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MaxOpConstModel m({TensorType_FLOAT32, {0}}, {TensorType_FLOAT32, {}}, {1},
+                    {0}, false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear({-std::numeric_limits<float>::max()})));
+}
+
+TEST(ConstFloatProdOpTest, EmptyInputButScalarOutput) {
+  ProdOpConstModel m({TensorType_FLOAT32, {0}}, {TensorType_FLOAT32, {}}, {1},
+                     {0}, false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({1.0})));
+}
+
+TEST(ConstFloatSumOpTest, EmptyInputButScalarOutput) {
+  SumOpConstModel m({TensorType_FLOAT32, {0}}, {TensorType_FLOAT32, {}}, {1},
+                    {0}, false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({0.0})));
+}
+
+TEST(ConstFloatMeanOpTest, EmptyInputButScalarOutput) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  MeanOpConstModel m({TensorType_FLOAT32, {0}}, {TensorType_FLOAT32, {}}, {1},
+                     {0}, false);
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  auto output_data = m.GetOutput<float>();
+  EXPECT_TRUE(std::all_of(output_data.begin(), output_data.end(),
+                          [](float value) { return std::isnan(value); }));
+}
+
+TEST(ConstAllOpTest, EmptyInputButScalarOutputKeepDim) {
+  AllOpConstModel m({TensorType_BOOL, {0}}, {TensorType_BOOL, {}}, {1}, {0},
+                    true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true}));
+}
+
+TEST(ConstAnyOpTest, EmptyInputButScalarOutputKeepDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  AnyOpConstModel m({TensorType_BOOL, {0}}, {TensorType_BOOL, {}}, {1}, {0},
+                    true);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false}));
