@@ -153,6 +153,12 @@ class XlaCompilationCache : public ResourceBase {
                          const XlaCompiler::CompilationResult& result,
                          std::unique_ptr<xla::LocalExecutable>* executable);
 
+  // Determines whether the cluster should be compiled.
+  bool ShouldCompileCluster(CompileMode compile_mode, bool is_megamorphic,
+                            bool is_first_execution,
+                            int64_t current_request_count,
+                            const NameAttrList& function);
+
   xla::LocalClient* const client_;
   const DeviceType device_type_;
 
