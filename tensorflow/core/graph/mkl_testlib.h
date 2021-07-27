@@ -28,6 +28,8 @@ namespace graph {
 Node* oneDNNMatmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
                    bool transpose_b);
 
+Node* oneDNNSoftmax(Graph* g, Node* input);
+
 }  // namespace graph
 }  // namespace test
 }  // namespace tensorflow
