@@ -115,6 +115,10 @@ This release contains contributions from many people at Google, as well as:
       `while_loop`'s `parallel_iterations` value to 1, which is consistent with
       prior behavior.
 
+* `tf.keras`:
+  * The `trainable` argument when creating a Keras Layer must now be a boolean
+    (previously there was no validation and `None` values were allowed).
+
 ## Major Features and Improvements
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
