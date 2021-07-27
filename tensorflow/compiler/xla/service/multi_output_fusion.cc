@@ -52,7 +52,8 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
       if (!IsFusible(instruction)) {
         continue;
       }
-      all_fusion_candidates_.push_back(instruction);
+      all_fusion_candidates_.emplace_back(instruction,
+                                          reachability_->GetIndex(instruction));
 
       std::vector<HloInstruction*> candidates;
       absl::flat_hash_set<HloInstruction*> candidates_set;
@@ -164,17 +165,12 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
           base->shape(), HloInstruction::FusionKind::kLoop, base));
 
   // Update candidate_ and all_fusion_candidates_.
-  int64_t index;
-  if (candidates_index_.contains(input_fusion)) {
-    index = candidates_index_[input_fusion];
-  } else {
-    index = candidates_.size();
-    InsertOrDie(&candidates_index_, input_fusion, index);
-    candidates_.emplace_back(input_fusion);
-    all_fusion_candidates_.push_back(input_fusion);
-  }
-
+  int64_t index = candidates_.size();
+  InsertOrDie(&candidates_index_, input_fusion, index);
+  candidates_.emplace_back(input_fusion);
   reachability_->Replace(base, input_fusion);
+  all_fusion_candidates_.emplace_back(input_fusion,
+                                      reachability_->GetIndex(input_fusion));
   TF_CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
   return input_fusion;
 }
@@ -365,15 +361,17 @@ void MultiOutputFusion::RecomputeReachability() {
 
 void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
-    absl::Span<HloInstruction* const> instrs_to_update,
+    absl::Span<const std::pair<HloInstruction*, HloReachabilityMap::Index>>
+        instrs_to_update,
     const std::function<bool(HloInstruction*)>& skip) {
   auto instr1_i = reachability_->GetIndex(instr1);
   auto instr2_i = reachability_->GetIndex(instr2);
-  for (auto instr : instrs_to_update) {
+  for (auto& instr_and_index : instrs_to_update) {
+    HloInstruction* instr = instr_and_index.first;
     if (skip != nullptr && skip(instr)) {
       continue;
     }
-    auto instr_i = reachability_->GetIndex(instr);
+    auto instr_i = instr_and_index.second;
     bool instr2_instr = reachability_->IsReachable(instr2_i, instr_i);
     bool instr1_instr = reachability_->IsReachable(instr1_i, instr_i);
     if (instr2_instr && instr1_instr) {
@@ -381,10 +379,10 @@ void MultiOutputFusion::UpdateReachability(
       continue;
     }
     if (instr2_instr) {
-      reachability_->FastSetReachabilityToUnion({instr, instr1}, instr);
+      reachability_->FastSetReachabilityToUnion({instr_i, instr1_i}, instr_i);
     }
     if (reachability_->IsReachable(instr1_i, instr_i)) {
-      reachability_->FastSetReachabilityToUnion({instr, instr2}, instr);
+      reachability_->FastSetReachabilityToUnion({instr_i, instr2_i}, instr_i);
     }
   }
 }
