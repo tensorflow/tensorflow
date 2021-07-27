@@ -667,11 +667,6 @@ def tf_additional_core_deps():
             "//tensorflow/core/platform/cloud:gcs_file_system",
         ],
     }) + select({
-        clean_dep("//tensorflow:no_hdfs_support"): [],
-        "//conditions:default": [
-            clean_dep("//tensorflow/core/platform/hadoop:hadoop_file_system"),
-        ],
-    }) + select({
         clean_dep("//tensorflow:no_aws_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
