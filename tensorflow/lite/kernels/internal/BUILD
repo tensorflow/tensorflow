@@ -1184,4 +1184,4 @@ genrule(
     visibility = ["//visibility:private"],
 )
 
-tflite_portable_test_suite_combined(combine_conditions = {"deps": ["//testing/base/public:gunit_main"]})
+tflite_portable_test_suite_combined(combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]})

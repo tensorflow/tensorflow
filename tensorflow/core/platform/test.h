@@ -39,14 +39,12 @@ limitations under the License.
 //
 // The advantages of using gmock matchers instead of self defined matchers are
 // better error messages, more maintainable tests and more test coverage.
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
-#include "testing/base/public/gmock.h"  // IWYU pragma: export
-#else
+#if !defined(PLATFORM_GOOGLE) && !defined(PLATFORM_GOOGLE_ANDROID)
 #include <gmock/gmock-generated-matchers.h>
 #include <gmock/gmock-matchers.h>
 #include <gmock/gmock-more-matchers.h>
-#include <gmock/gmock.h>
 #endif
+#include <gmock/gmock.h>
 
 namespace tensorflow {
 namespace testing {
