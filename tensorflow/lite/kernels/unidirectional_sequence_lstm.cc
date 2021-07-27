@@ -62,8 +62,12 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
       context,
       GetOutputSafe(context, node, lstm::full::kOutputTensor, &output_tensor));
 
+  TF_LITE_ENSURE(context,
+                 cell_state->quantization.type != kTfLiteNoQuantization);
   auto* cell_state_params =
       static_cast<TfLiteAffineQuantization*>(cell_state->quantization.params);
+  TF_LITE_ENSURE(context,
+                 output_tensor->quantization.type != kTfLiteNoQuantization);
   auto* proj_params = static_cast<TfLiteAffineQuantization*>(
       output_tensor->quantization.params);
   if (cell_clip > 0.0) {
@@ -160,6 +164,8 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
       TfLiteTensor* intermediate;
       TF_LITE_ENSURE_OK(context,
                         GetIntermediatesSafe(context, node, i, &intermediate));
+      TF_LITE_ENSURE(context,
+                     intermediate->quantization.type != kTfLiteNoQuantization);
       auto* params = static_cast<TfLiteAffineQuantization*>(
           intermediate->quantization.params);
       intermediate_scale.push_back(params->scale->data[0]);
@@ -174,6 +180,7 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
   // is ignored.
   TfLiteTensor* hidden;
   TF_LITE_ENSURE_OK(context, GetIntermediatesSafe(context, node, 4, &hidden));
+  TF_LITE_ENSURE(context, hidden->quantization.type != kTfLiteNoQuantization);
   auto* hidden_params =
       static_cast<TfLiteAffineQuantization*>(hidden->quantization.params);
   intermediate_scale.push_back(hidden_params->scale->data[0]);
@@ -760,6 +767,8 @@ TfLiteStatus PopulatePrecomputedZPTimesWeightsWithBias(TfLiteContext* context,
 
   const TfLiteTensor* intermediate =
       &context->tensors[node->intermediates->data[4]];
+  TF_LITE_ENSURE(context,
+                 intermediate->quantization.type != kTfLiteNoQuantization);
   const auto* params =
       static_cast<TfLiteAffineQuantization*>(intermediate->quantization.params);
   const int32_t hidden_zp = params->zero_point->data[0];
