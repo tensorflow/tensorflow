@@ -195,8 +195,9 @@ struct TfrtPipelineOptions
   ListOption<std::string> auto_fusion_oplist{
       *this, "auto-fusion-oplist",
       llvm::cl::desc("A list of Tensorflow operations to cluster together for "
-                     "JIT compilation. Use 'all' to enable clustering for all "
-                     "operations supported by the clustering policy."),
+                     "JIT compilation. Alternatively use 'tier1', ..., 'all' "
+                     "to allow clustering for all operations included in the "
+                     "given clustering tier."),
       llvm::cl::MiscFlags::CommaSeparated};
 
   Option<int> auto_fusion_min_cluster_size{

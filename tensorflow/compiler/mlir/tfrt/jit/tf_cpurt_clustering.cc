@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_clustering.h"
 
+#include <functional>
+#include <utility>
+
 #include "tfrt/cpu/jit/cpurt_support.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -663,29 +666,41 @@ class StridedSliceOpClusteringPolicy
 
 }  // namespace
 
-void populateTfCpurtClusteringPolicies(ClusteringPolicySet& policies) {
-  policies.Add<BroadcastToOpClusteringPolicy,   //
-               CwiseBinaryOpClusteringPolicy,   //
-               CwiseUnaryOpClusteringPolicy,    //
-               CwiseTernaryOpClusteringPolicy,  //
-               ConcatV2OpClusteringPolicy,      //
-               ExpandDimsOpClusteringPolicy,    //
-               FillOpClusteringPolicy,          //
-               FusedMatMulOpClusteringPolicy,   //
-               MatMulOpClusteringPolicy,        //
-               PackOpClusteringPolicy,          //
-               RangeOpClusteringPolicy,         //
-               ReductionOpClusteringPolicy,     //
-               ReshapeOpClusteringPolicy,       //
-               ShapeOpClusteringPolicy,         //
-               SoftmaxOpClusteringPolicy,       //
-               StopGradientOpClusteringPolicy,  //
-               StridedSliceOpClusteringPolicy,  //
-               TransposeOpClusteringPolicy>();
+void populateTfCpurtClusteringPolicies(ClusteringPolicySet& policies,
+                                       CpurtClusteringTier tier) {
+  // Returns true if the given cpurt compilation tier is enabled.
+  auto is_enabled = [&](CpurtClusteringTier requested) -> bool {
+    return static_cast<uint8_t>(requested) <= static_cast<uint8_t>(tier);
+  };
+
+  if (is_enabled(CpurtClusteringTier::kTier1)) {
+    policies.Add<CwiseBinaryOpClusteringPolicy,   //
+                 CwiseUnaryOpClusteringPolicy,    //
+                 CwiseTernaryOpClusteringPolicy,  //
+                 StopGradientOpClusteringPolicy,  //
+                 TransposeOpClusteringPolicy>();
+  }
+
+  if (is_enabled(CpurtClusteringTier::kAll)) {
+    policies.Add<BroadcastToOpClusteringPolicy,  //
+                 ConcatV2OpClusteringPolicy,     //
+                 ExpandDimsOpClusteringPolicy,   //
+                 FillOpClusteringPolicy,         //
+                 FusedMatMulOpClusteringPolicy,  //
+                 MatMulOpClusteringPolicy,       //
+                 PackOpClusteringPolicy,         //
+                 RangeOpClusteringPolicy,        //
+                 ReductionOpClusteringPolicy,    //
+                 ReshapeOpClusteringPolicy,      //
+                 ShapeOpClusteringPolicy,        //
+                 SoftmaxOpClusteringPolicy,      //
+                 StridedSliceOpClusteringPolicy>();
+  }
 }
 
-void populateTfCpurtConstraintsPolicies(ClusteringPolicySet& policies) {
-  populateTfCpurtClusteringPolicies(policies);
+void populateTfCpurtConstraintsPolicies(ClusteringPolicySet& policies,
+                                        CpurtClusteringTier tier) {
+  populateTfCpurtClusteringPolicies(policies, tier);
   policies.Add<ConstOpClusteringPolicy>();
 }
 
