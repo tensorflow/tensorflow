@@ -68,6 +68,9 @@ constexpr char kRelu6[] = "RELU6";
 constexpr char kRelu1[] = "RELU_N1_TO_1";
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
+  if (axis.getNumElements() == 0) {
+    return false;
+  }
   if (sq_op.getType().cast<ShapedType>().getRank() - 1 ==
           *axis.getValues<int>().begin() ||
       *axis.getValues<int>().begin() == -1) {
