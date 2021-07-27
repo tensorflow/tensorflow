@@ -5316,10 +5316,6 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
 
   constexpr int unroll_factor = 1;
 
-  std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(auto kernel_thunk,
-                      BuildKernelThunk(fusion, GetThunkInfo(op), &ir_arrays));
-
   TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.region(),
                                                           /*is_fusion=*/true));
@@ -5330,6 +5326,10 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
                           {unroll_factor}));
+
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(auto kernel_thunk,
+                      BuildKernelThunk(fusion, GetThunkInfo(op), &ir_arrays));
   SetThunkLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                            ir_emitter_context_->llvm_module());
 
