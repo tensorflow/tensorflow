@@ -1286,11 +1286,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     if not enable_resource_variables:
       with self.assertRaises(convert.ConverterError) as error:
         tflite_model = converter.convert()
-      self.assertEqual(
+      self.assertIn(
           'Variable constant folding is failed. Please consider using enabling '
           '`experimental_enable_resource_variables` flag in the TFLite '
-          'converter object. For example, '
-          'converter.experimental_enable_resource_variables = True',
+          'converter object.',
           str(error.exception))
       return
 
