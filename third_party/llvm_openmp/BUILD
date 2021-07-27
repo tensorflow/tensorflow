@@ -7,7 +7,7 @@ load(
     "if_windows",
 )
 load(
-    "@org_tensorflow//third_party/llvm:llvm.bzl",
+    "@org_tensorflow//third_party/llvm_openmp:cmake_vars.bzl",
     "cmake_var_string",
     "expand_cmake_vars",
 )
