@@ -67,8 +67,10 @@ message AdagradParameters {
 // accum(new) = accum(old) + grad^2
 // mom_accum(new) = momentum * mom_accum(old) + accum(new)^(-1.0 / exponent)
 // update = use_nesterov ?
-//          momentum * mom_accum(new) + rsqrt(accum(new)) : mom_accum(new)
+//          momentum * mom_accum(new) + accum(new)^(-1.0 / exponent) :
+//          mom_accum(new)
 // var(new) = var(old) - lr * grad * update
+// Algorithm described in https://arxiv.org/abs/2002.11803.
 message AdagradMomentumParameters {
   float momentum = 1;
   bool use_nesterov = 2;
