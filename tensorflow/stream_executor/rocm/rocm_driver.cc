@@ -352,6 +352,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 /* static */ port::Status GpuDriver::CreateContext(
     int device_ordinal, hipDevice_t device, const DeviceOptions& device_options,
     GpuContext** context) {
+  // TODO(hanbinyoon): Create a real context, i.e., by calling hipCtxCreate().
   *context = new GpuContext(device_ordinal);
   return port::Status::OK();
 }
@@ -360,6 +361,11 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return;
   }
   delete context;
+}
+
+/* static */ hipCtx_t GpuDriver::GetContextHandle(GpuContext* context) {
+  // TODO(hanbinyoon): Return a real context.
+  return nullptr;
 }
 
 /* static */ port::Status GpuDriver::FuncGetAttribute(
