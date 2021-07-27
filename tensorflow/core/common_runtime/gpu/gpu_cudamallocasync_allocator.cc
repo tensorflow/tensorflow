@@ -314,6 +314,8 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
 }
 void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  if (ptr == nullptr)
+    return;
   if (auto result = cuMemFreeAsync(reinterpret_cast<const CUdeviceptr&>(ptr),
                                    cuda_stream_)) {
     if (result == CUDA_ERROR_DEINITIALIZED) {
