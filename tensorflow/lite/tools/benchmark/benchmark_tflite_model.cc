@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -113,11 +114,10 @@ class InterpreterStatePrinter : public BenchmarkListener {
 };
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
-  std::vector<std::string> results;
-  if (!util::SplitAndParse(str, delim, &results)) {
-    results.clear();
+  if (str.empty()) {
+    return {};
   }
-  return results;
+  return absl::StrSplit(str, delim);
 }
 
 int GetNumElements(const TfLiteIntArray* dim_array) {
