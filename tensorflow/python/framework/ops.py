@@ -6126,6 +6126,16 @@ def reset_default_graph():
   result in undefined
   behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
   after calling this function will result in undefined behavior.
+
+  @compatibility(TF2)
+  `reset_default_graph` does not work with either eager execution or
+  `tf.function`, and you should not invoke it directly. To migrate code that
+  uses Graph-related functions to TF2, rewrite the code without them. See the
+  [migration guide](https://www.tensorflow.org/guide/migrate) for more
+  description about the behavior and semantic changes between Tensorflow 1 and
+  Tensorflow 2.
+  @end_compatibility
+
   Raises:
     AssertionError: If this function is called within a nested graph.
   """
@@ -6148,6 +6158,15 @@ def get_default_graph():
   create a new thread, and wish to use the default graph in that
   thread, you must explicitly add a `with g.as_default():` in that
   thread's function.
+
+  @compatibility(TF2)
+  `get_default_graph` does not work with either eager execution or
+  `tf.function`, and you should not invoke it directly. To migrate code that
+  uses Graph-related functions to TF2, rewrite the code without them. See the
+  [migration guide](https://www.tensorflow.org/guide/migrate) for more
+  description about the behavior and semantic changes between Tensorflow 1 and
+  Tensorflow 2.
+  @end_compatibility
 
   Returns:
     The default `Graph` being used in the current thread.
