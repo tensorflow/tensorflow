@@ -533,6 +533,10 @@ class UnicodeEncodeOp : public OpKernel {
     const Tensor& input_splits = context->input(1);
     const auto input_splits_flat = input_splits.flat<SPLITS_TYPE>();
 
+    OP_REQUIRES(
+        context, input_splits.NumElements() > 0,
+        errors::InvalidArgument("Input_splits should contain elements, but "
+                                "given input_values has 0 elements"));
     // Operation will treat first argument in input_splits as if it were zero
     // regardless of its actual value since splits should begin with zero and
     // end with the length of the input values vector.
