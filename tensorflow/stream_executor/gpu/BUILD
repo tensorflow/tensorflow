@@ -66,6 +66,11 @@ cc_library(
 cc_library(
     name = "gpu_driver_header",
     hdrs = ["gpu_driver.h"],
+    visibility = [
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/core/util/autotune_maps:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
     deps = [
         ":gpu_types_header",
         "//tensorflow/stream_executor:device_options",
