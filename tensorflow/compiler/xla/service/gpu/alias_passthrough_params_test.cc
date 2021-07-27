@@ -77,6 +77,7 @@ TEST_F(AliasPassthroughParamsTest, PresetAliases) {
 
   EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).ValueOrDie());
   const auto& alias_result = module->input_output_alias_config();
+  // Assert that an alias p1 -> p1 is established by `AliasPassthroughParams`.
   EXPECT_EQ(1, alias_result.GetAliasedParameter({2})->parameter_number);
   EXPECT_FALSE(alias_result.OutputHasAlias({0}));
 }
