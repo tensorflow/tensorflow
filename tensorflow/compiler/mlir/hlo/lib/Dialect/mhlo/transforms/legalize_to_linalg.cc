@@ -117,7 +117,7 @@ SmallVector<Value, 2> ExtractDynamicSizes(OpBuilder& b, Location loc,
     }
   }
   if (permutation)
-    dyn_sizes = applyPermuationMap(permutation, makeArrayRef(dyn_sizes));
+    dyn_sizes = applyPermutationMap(permutation, makeArrayRef(dyn_sizes));
   llvm::erase_value(dyn_sizes, nullptr);  // Strip out placeholders.
   return dyn_sizes;
 }

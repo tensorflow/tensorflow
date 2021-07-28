@@ -105,6 +105,7 @@ DECL_CONVERT_OP(Fill);
 DECL_CONVERT_OP(Elu);
 DECL_CONVERT_OP(Softmax);
 DECL_CONVERT_OP(LogSoftmax);
+DECL_CONVERT_OP(Sqrt);
 DECL_CONVERT_OP(ReduceAny);
 DECL_CONVERT_OP(ReduceMax);
 DECL_CONVERT_OP(ReduceMin);
@@ -1797,6 +1798,18 @@ LogicalResult ConvertTFLSoftmaxOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLSqrtOp::matchAndRewrite(
+    Operation* op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const {
+  auto tfl_softmax_op = cast<TFL::SqrtOp>(op);
+  auto rsqrt = rewriter.create<tosa::RsqrtOp>(
+      op->getLoc(), tfl_softmax_op.getType(), operands.front());
+
+  rewriter.replaceOpWithNewOp<tosa::ReciprocalOp>(op, rsqrt.getType(), rsqrt);
+
+  return success();
+}
+
 LogicalResult ConvertTFLLogSoftmaxOp::matchAndRewrite(
     Operation* op, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const {
@@ -3014,6 +3027,7 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLElu);
   DEF_PATTERN_INSERT(TFLSoftmax);
   DEF_PATTERN_INSERT(TFLLogSoftmax);
+  DEF_PATTERN_INSERT(TFLSqrt);
   DEF_PATTERN_INSERT(TFLReduceAny);
   DEF_PATTERN_INSERT(TFLReduceMax);
   DEF_PATTERN_INSERT(TFLReduceMin);

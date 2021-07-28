@@ -607,7 +607,7 @@ cc_binary(
     ],
 )
 
-# Dynamlic library with the MLIR Conversions Python extension.
+# Dynamic library with the MLIR Conversions Python extension.
 cc_binary(
     name = "_mlirConversions.so",
     srcs = ["lib/Bindings/Python/Conversions/Conversions.cpp"],
@@ -627,7 +627,7 @@ cc_binary(
     ],
 )
 
-# Dynamlic library with the MLIR Transforms Python extension.
+# Dynamic library with the MLIR Transforms Python extension.
 cc_binary(
     name = "_mlirTransforms.so",
     srcs = ["lib/Bindings/Python/Transforms/Transforms.cpp"],
