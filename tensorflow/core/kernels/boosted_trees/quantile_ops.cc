@@ -116,6 +116,9 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
     const Tensor* num_streams_t;
     OP_REQUIRES_OK(context, context->input(kNumStreamsName, &num_streams_t));
     int64 num_streams = num_streams_t->scalar<int64>()();
+    OP_REQUIRES(context, num_streams >= 0,
+                errors::InvalidArgument(
+                    "Num_streams input cannot be a negative integer"));
 
     auto result =
         new QuantileStreamResource(epsilon, max_elements_, num_streams);
