@@ -13,6 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,relative-beyond-top-level
+"""MLIR Dialect for mhlo operations."""
+
+# pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
 from ._mhlo_ops_gen import *
-# pylint: enable=wildcard-import,relative-beyond-top-level
+
+
+def register_mhlo_dialect(context, load=True):
+  from .._cext_loader import load_extension
+  ext = load_extension("_mlirHlo")
+  ext.register_mhlo_dialect(context, load=load)
