@@ -1010,6 +1010,10 @@ def tflite_combine_cc_tests(
            r["includes"] or r["linkopts"] or r["additional_linker_inputs"]:
             continue
 
+        # We only consider a single-src-file unit test.
+        if len(r["srcs"]) > 1:
+            continue
+
         dep_attr = r["deps"]
         if type(dep_attr) != type(()) and type(dep_attr) != type([]):
             # Attributes based on select() is not supported for simplicity.
