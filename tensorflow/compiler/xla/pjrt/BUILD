@@ -2,6 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -317,7 +318,7 @@ cc_library(
     name = "gpu_device",
     srcs = ["gpu_device.cc"],
     hdrs = ["gpu_device.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
+    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
@@ -333,10 +334,13 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/stream_executor/cuda:cuda_activation_header",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ] + if_nccl([":nccl_plugin"]),
+    ] + if_cuda([
+        "//tensorflow/stream_executor/cuda:cuda_activation_header"
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rocm_headers"
+    ]) + if_nccl([":nccl_plugin"]),
 )
 
 # We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,

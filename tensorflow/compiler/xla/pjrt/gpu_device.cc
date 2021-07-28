@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif  // TENSORFLOW_USE_ROCM
+
 #ifdef NCCL_ENABLED
 #include "third_party/nccl/nccl.h"
 #endif  // NCCL_ENABLED
@@ -166,13 +170,17 @@ class GpuClient : public xla::PjRtStreamExecutorClient {
       int num_replicas, int num_partitions) const override;
 
   absl::string_view platform_version() const override {
-#if defined(CUDART_VERSION)
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)
+#if TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)  // rocm
+    // TF_ROCM_VERSION fomrat may change in future. Use it
+    // cautiously
+    return "rocm " STRINGIFY(TF_ROCM_VERSION);
+#elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
     return "cuda " STRINGIFY(CUDART_VERSION);
-#else   // defined(CUDART_VERSION)
+#else
     return "<unknown>";
-#endif  // defined(CUDART_VERSION)
+#endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
   }
 };
 
