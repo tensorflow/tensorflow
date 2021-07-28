@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pmap_lib.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -236,14 +238,16 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   py::object handled_args = cache_entry->handle_args(arg_list);
+  // The Python shard_args returns `[num_args, num_devices]`.
   py::list list_of_list_of_buffers = py::cast<py::list>(handled_args);
 
   arguments.keep_alive_objects.push_back(
       py::cast<py::object>(list_of_list_of_buffers));
-  // Should be `[num_devices x num_args]`.
+  // arg_buffers is `[num_args x num_devices]`.
   std::vector<std::vector<xla::PyBuffer::object>> arg_buffers;
-  arg_buffers.reserve(list_of_list_of_buffers.size());
-  for (int i = 0; i < list_of_list_of_buffers.size(); ++i) {
+  const int num_args = list_of_list_of_buffers.size();
+  arg_buffers.reserve(num_args);
+  for (int i = 0; i < num_args; ++i) {
     std::vector<xla::PyBuffer::object> buffers;
     buffers.reserve(py::cast<py::list>(list_of_list_of_buffers[i]).size());
     for (auto& buf : list_of_list_of_buffers[i]) {
@@ -252,6 +256,10 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
     arg_buffers.push_back(std::move(buffers));
   }
 
+  // TODO(jblespiau): `ExecuteShardedOnLocalDevices` performs an inversion of
+  // the [args, num_devices] axis. When moving shard_args to C++, we can prevent
+  // this by calling Execute directly.
+  // A vector of [num_outputs, num_devices].
   std::vector<std::vector<xla::PyBuffer::object>> outputs = ValueOrThrow(
       cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
 
