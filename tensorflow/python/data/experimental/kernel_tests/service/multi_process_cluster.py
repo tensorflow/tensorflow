@@ -33,9 +33,7 @@ class _RemoteWorkerProcess(multi_process_lib.Process):
     self._dispatcher_address = dispatcher_address
     self._pipe_writer = pipe_writer
 
-  # `run` is hidden in multi_process_lib.py. It is assigned with a decorated
-  # `run` that runs the process in `absl.app.run`.
-  def run(self):  # pylint: disable=method-hidden
+  def run(self):
     self.start_worker()
 
   def start_worker(self):
