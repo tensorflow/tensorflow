@@ -867,6 +867,14 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
       return failure();
     }
 
+    // Make sure that the fused bias will be a 1D tensor.
+    if (isa<TFL::DepthwiseConv2DOp>(mul_op_lhs)) {
+      auto gamma_shape = gamma.getType().cast<ShapedType>();
+      if (!gamma_shape.hasRank() || gamma_shape.getRank() != 1) {
+        return failure();
+      }
+    }
+
     // Rewrite filter constant. Since the folder of TFL::MulOp couldn't
     // broadcast the operands, TF::MulOp is used to fold the constant.
     auto new_filter =

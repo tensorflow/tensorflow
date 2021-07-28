@@ -2795,3 +2795,13 @@ func @select_v2_with_dynamic_shape_not_from_broadcast_args(%arg0: tensor<8x7x6x5
   %2 = "tfl.select_v2"(%arg0, %0, %1) : (tensor<8x7x6x5x?x3x2x1xi1>, tensor<8x7x6x5x?x3x2x1xf32>, tensor<8x7x6x5x?x3x2x1xf32>) -> tensor<8x7x6x5x?x3x2x1xf32>
   return %2 : tensor<8x7x6x5x?x3x2x1xf32>
 }
+
+// -----
+
+func @depthwise_conv_2D_invalid_bias(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
+  %w = constant dense<127.0> : tensor<32x3x3x3xf32>
+  %b = constant dense<0.0> : tensor<32x1xf32>
+  // expected-error @+1 {{'tfl.depthwise_conv_2d' op operand #2 must be 1D tensor of any type values or none type, but got 'tensor<32x1xf32>'}}
+  %dc = "tfl.depthwise_conv_2d"(%arg0, %w, %b) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32x1xf32>) -> tensor<1x112x112x32xf32>
+  return %dc : tensor<1x112x112x32xf32>
+}

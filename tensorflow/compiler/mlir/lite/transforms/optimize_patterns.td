@@ -42,6 +42,11 @@ class HasRankAtMost<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
+// Checks if the value has rank 'n'.
+class HasRank<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() == " # n>>;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -119,6 +124,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w,
       $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasRank<1> $value),
      (HasOneUse $output)]>;
    def FuseBinaryOpWithTransposeConv#binaryOp : Pat<
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
@@ -178,6 +184,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
       $h_factor, $w_factor, $act_fn, $padding, $stride_h,
       $stride_w, $multiplier),
     [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasRank<1> $value),
      (HasOneUse $output)]>;
   def FuseMulOrDivWithConv#BinaryOp : Pat<
     (BinaryOp (TFL_Conv2DOp:$conv_output $input,
@@ -242,13 +249,6 @@ def eliminate_dq_q_pairs : Pat<
   (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt),
   (replaceWithValue $in),
   [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
-
-
-
-
-// Checks if the operand has rank == n
-class OperandHasRank<int n> : Constraint<
-  CPred<"$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
 // Matching HardSwish
 def MatchHardSwishPattern1 : Pat<
@@ -965,5 +965,5 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
       $filter,
       (ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}"> ))),
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
-   (OperandHasRank<1> $indices),  // lookup isn't implemented for any other rank
+   (HasRank<1> $indices),  // lookup isn't implemented for any other rank
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
