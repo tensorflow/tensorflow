@@ -3736,5 +3736,20 @@ ENTRY InferUnaryShape {
       ShapeUtil::MakeScalarShape(F32)));
 }
 
+TEST_F(HloParserTest, CheckAliasPassthroughParams) {
+  const char* const hlo_string = R"(
+HloModule TestModule, alias_passthrough_params=true
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_TRUE(result.ValueOrDie()->config().alias_passthrough_params());
+}
+
 }  // namespace
 }  // namespace xla

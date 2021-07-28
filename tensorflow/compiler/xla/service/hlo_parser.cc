@@ -827,11 +827,14 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
 
   absl::optional<bool> is_scheduled;
   absl::optional<AliasingData> aliasing_data;
+  absl::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
                                  &aliasing_data};
+  attrs["alias_passthrough_params"] = {/*required=*/false, AttrTy::kBool,
+                                       &alias_passthrough_params};
   if (!ParseAttributes(attrs)) {
     return false;
   }
@@ -842,6 +845,11 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
 
   if (is_scheduled.has_value() && *is_scheduled) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
+  }
+  if (alias_passthrough_params.has_value() && *alias_passthrough_params) {
+    HloModuleConfig config = module->config();
+    config.set_alias_passthrough_params(true);
+    module->set_config(config);
   }
   if (aliasing_data) {
     HloInputOutputAliasConfig alias_config(module->result_shape());
