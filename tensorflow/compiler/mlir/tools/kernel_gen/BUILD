@@ -72,6 +72,7 @@ cc_library(
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
         "@llvm-project//mlir:Parser",

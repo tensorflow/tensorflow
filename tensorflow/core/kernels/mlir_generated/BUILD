@@ -1509,6 +1509,8 @@ cpu_kernel_library(
         "f64",
         "i32",
         "i64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "4",
 )
