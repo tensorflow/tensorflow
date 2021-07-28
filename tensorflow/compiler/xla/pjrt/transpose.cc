@@ -893,16 +893,21 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     // fastest-varying (smallest strides).
     std::vector<int64_t> dim_order(ndim);
     absl::c_iota(dim_order, 0);
-    absl::c_stable_sort(dim_order, [&](int i, int j) {
-      int64_t stride_i = input_strides_in_bytes.at(i);
-      int64_t stride_j = input_strides_in_bytes.at(j);
+
+    auto cost = [&](int k) {
+      int64_t stride = input_strides_in_bytes.at(k);
       // If there is a dimension with size equal to the element size, sort it
       // last. This ensures that we place any stride-1 dimension last.
-      if (stride_i != elem_size_in_bytes && stride_j == elem_size_in_bytes) {
-        return true;
-      }
-      return stride_i > stride_j;
-    });
+      bool is_stride1 = stride == elem_size_in_bytes;
+      // If there are multiple stride-1 dimensions, we'd prefer the one that
+      // matches the stride-1 dimension of the output.
+      // Failing that, we'd just prefer the largest stride-1 dimension last.
+      bool is_trailing_dim_in_b = permutation.back() == k;
+      return std::make_tuple(is_stride1, -stride, is_trailing_dim_in_b,
+                             dims[k]);
+    };
+    absl::c_stable_sort(dim_order,
+                        [&cost](int i, int j) { return cost(i) < cost(j); });
     // dim_order maps new input dim -> old input dim, we need its inverse to
     // compute the new permutation.
     auto inv_dim_order = InversePermutation(dim_order);
