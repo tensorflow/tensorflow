@@ -14,7 +14,6 @@ load(
     "if_cuda_or_rocm",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
 load(
@@ -71,7 +70,6 @@ cc_library(
     name = "base_op",
     srcs = ["base_op.cc"],
     hdrs = ["base_op.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -85,14 +83,12 @@ cc_library(
 cc_library(
     name = "base_gpu_op",
     hdrs = ["base_gpu_op.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [":base_op"],
 )
 
 cc_library(
     name = "base_cpu_op",
     hdrs = ["base_cpu_op.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [":base_op"],
 )
 
