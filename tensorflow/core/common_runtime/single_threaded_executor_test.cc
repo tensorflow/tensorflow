@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <functional>
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -23,13 +26,17 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -39,6 +46,26 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
+
+class MockOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void SetCompute(std::function<void(OpKernelContext*)> compute) {
+    compute_ = std::move(compute);
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES(ctx, compute_ != nullptr,
+                errors::FailedPrecondition("Compute() is not set"));
+    compute_(ctx);
+  }
+
+ private:
+  std::function<void(OpKernelContext* ctx)> compute_;
+};
+REGISTER_OP("Mock").Input("x: float").Output("y: float").SetIsStateful();
+REGISTER_KERNEL_BUILDER(Name("Mock").Device(DEVICE_CPU), MockOp);
 
 class ExecutorTest : public ::testing::Test {
  protected:
@@ -53,15 +80,21 @@ class ExecutorTest : public ::testing::Test {
   }
 
   // Resets executor_ with a new executor based on a graph 'gdef'.
-  void Create(std::unique_ptr<const Graph> graph) {
+  void Create(std::unique_ptr<const Graph> graph,
+              std::function<void(OpKernelContext*)> mock_fn = nullptr) {
     const int version = graph->versions().producer();
     LocalExecutorParams params;
     params.device = device_.get();
     params.create_kernel =
-        [this, version](const std::shared_ptr<const NodeProperties>& props,
-                        OpKernel** kernel) {
-          return CreateNonCachedKernel(device_.get(), nullptr, props, version,
-                                       kernel);
+        [this, mock_fn = std::move(mock_fn), version](
+            const std::shared_ptr<const NodeProperties>& props,
+            OpKernel** kernel) {
+          TF_RETURN_IF_ERROR(CreateNonCachedKernel(device_.get(), nullptr,
+                                                   props, version, kernel));
+          if ((*kernel)->type_string_view() == "Mock") {
+            down_cast<MockOp*>(*kernel)->SetCompute(mock_fn);
+          }
+          return Status::OK();
         };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
@@ -84,6 +117,33 @@ class ExecutorTest : public ::testing::Test {
     args.call_frame = call_frame;
     args.runner = runner_;
     return exec_->Run(args);
+  }
+
+  void TestContext(Executor::Args args,
+                   std::function<void(OpKernelContext*)> test_fn) {
+    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    Node* arg = test::graph::Arg(g.get(), 0, DT_FLOAT);
+    Node* tmp;
+    TF_ASSERT_OK(NodeBuilder(g->NewName("n"), "Mock")
+                     .Input(arg)
+                     .Finalize(g.get(), &tmp));
+    auto ret = test::graph::Retval(g.get(), 0, tmp);
+    g->AddControlEdge(arg, ret);
+    FixupSourceAndSinkEdges(g.get());
+
+    bool mock_called = false;
+    Create(std::move(g), [&](OpKernelContext* ctx) {
+      mock_called = true;
+      ctx->set_output(0, ctx->input(0));
+      test_fn(ctx);
+    });
+
+    FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
+    TF_ASSERT_OK(call_frame.SetArgs({Tensor(DT_FLOAT, {0})}));
+    args.call_frame = &call_frame;
+    args.runner = runner_;
+    TF_ASSERT_OK(exec_->Run(args));
+    EXPECT_TRUE(mock_called);
   }
 
   std::unique_ptr<Device> device_;
@@ -114,6 +174,26 @@ Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
                                                  name, FrameAndIter(0, 0)),
                            &result));
   return result;
+}
+
+TEST_F(ExecutorTest, UserIntraOpThreadPool) {
+  class DummyThreadPool : public thread::ThreadPoolInterface {
+   public:
+    void Schedule(std::function<void()> fn) override { fn(); }
+    int NumThreads() const override { return 1; }
+    int CurrentThreadId() const override { return -1; }
+  };
+  DummyThreadPool dummy_thread_pool;
+
+  Executor::Args args;
+  args.user_intra_op_threadpool = &dummy_thread_pool;
+
+  TestContext(args, [&](OpKernelContext* ctx) {
+    EXPECT_EQ(ctx->device()
+                  ->tensorflow_cpu_worker_threads()
+                  ->workers->AsEigenThreadPool(),
+              &dummy_thread_pool);
+  });
 }
 
 TEST_F(ExecutorTest, SimpleAdd) {
