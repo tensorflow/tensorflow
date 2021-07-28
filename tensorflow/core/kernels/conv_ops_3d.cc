@@ -36,7 +36,6 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 using stream_executor::dnn::DimIndex;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
