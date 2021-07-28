@@ -36,7 +36,9 @@
     `tf.debugging.disable_traceback_filtering()`, and can be re-enabled via
     `tf.debugging.enable_traceback_filtering()`. If you are debugging a
     TensorFlow-internal issue (e.g. to prepare a TensorFlow PR), make sure
-    to disable traceback filtering.
+    to disable traceback filtering. You can check whether this feature is
+    currently enabled by calling
+    `tf.debugging.is_traceback_filtering_enabled()`.
 
     Note that this feature is only available with Python 3.7 or higher.
 
