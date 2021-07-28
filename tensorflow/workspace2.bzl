@@ -429,7 +429,7 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "F",
+        name = "gast_archive",
         build_file = "//third_party:gast.BUILD",
         sha256 = "40feb7b8b8434785585ab224d1568b857edb18297e5a3047f1ba012bc83b42c1",
         strip_prefix = "gast-0.4.0",
