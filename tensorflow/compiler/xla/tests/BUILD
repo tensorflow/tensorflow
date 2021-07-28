@@ -1616,35 +1616,35 @@ xla_test(
     deps = [":test_macros_header"],
 )
 
-# b/194731834
-# xla_test(
-#     name = "select_and_scatter_test",
-#     timeout = "long",
-#     srcs = ["select_and_scatter_test.cc"],
-#     tags = [
-#         "nozapfhahn",
-#         "optonly",
-#     ],
-#     deps = [
-#         ":test_macros_header",
-#         "//tensorflow/compiler/xla:array2d",
-#         "//tensorflow/compiler/xla:literal",
-#         "//tensorflow/compiler/xla:reference_util",
-#         "//tensorflow/compiler/xla:shape_util",
-#         "//tensorflow/compiler/xla:status_macros",
-#         "//tensorflow/compiler/xla:xla_data_proto_cc",
-#         "//tensorflow/compiler/xla/client:local_client",
-#         "//tensorflow/compiler/xla/client:padding",
-#         "//tensorflow/compiler/xla/client:xla_builder",
-#         "//tensorflow/compiler/xla/client:xla_computation",
-#         "//tensorflow/compiler/xla/client/lib:arithmetic",
-#         "//tensorflow/compiler/xla/tests:client_library_test_base",
-#         "//tensorflow/compiler/xla/tests:literal_test_util",
-#         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-#         "//tensorflow/core:lib",
-#         "//tensorflow/core:test",
-#     ],
-# )
+xla_test(
+    name = "select_and_scatter_test",
+    timeout = "long",
+    srcs = ["select_and_scatter_test.cc"],
+    tags = [
+        "nomac",  # b/194731834
+        "nozapfhahn",
+        "optonly",
+    ],
+    deps = [
+        ":test_macros_header",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
 
 xla_test(
     name = "copy_test",
