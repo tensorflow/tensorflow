@@ -34,7 +34,8 @@ def ResNet50V2(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax'):
+    classifier_activation='softmax',
+    **kwargs):
   """Instantiates the ResNet50V2 architecture."""
   def stack_fn(x):
     x = resnet.stack2(x, 64, 3, name='conv2')
@@ -53,7 +54,8 @@ def ResNet50V2(
       input_shape,
       pooling,
       classes,
-      classifier_activation=classifier_activation)
+      classifier_activation=classifier_activation,
+      **kwargs)
 
 
 @keras_export('keras.applications.resnet_v2.ResNet101V2',
@@ -65,7 +67,8 @@ def ResNet101V2(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax'):
+    classifier_activation='softmax',
+    **kwargs):
   """Instantiates the ResNet101V2 architecture."""
   def stack_fn(x):
     x = resnet.stack2(x, 64, 3, name='conv2')
@@ -84,7 +87,8 @@ def ResNet101V2(
       input_shape,
       pooling,
       classes,
-      classifier_activation=classifier_activation)
+      classifier_activation=classifier_activation,
+      **kwargs)
 
 
 @keras_export('keras.applications.resnet_v2.ResNet152V2',
@@ -96,7 +100,8 @@ def ResNet152V2(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax'):
+    classifier_activation='softmax',
+    **kwargs):
   """Instantiates the ResNet152V2 architecture."""
   def stack_fn(x):
     x = resnet.stack2(x, 64, 3, name='conv2')
@@ -115,7 +120,8 @@ def ResNet152V2(
       input_shape,
       pooling,
       classes,
-      classifier_activation=classifier_activation)
+      classifier_activation=classifier_activation,
+      **kwargs)
 
 
 @keras_export('keras.applications.resnet_v2.preprocess_input')
