@@ -71,7 +71,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
-    VLOG(3) << "Input: " << hlo->ToString();
+    VLOG(5) << "Input: " << hlo->ToString();
 
     HloInstruction *input = hlo->mutable_operand(0);
     HloInstruction *initial_value = hlo->mutable_operand(1);
@@ -91,7 +91,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // Case (1): batched dimension does not fit.
     if (reduce_batch_dimension &&
         input_shape.dimensions(0) > kBatchedAtomicFreeBound) {
-      VLOG(1) << "Splitting batched dimension reduce into a separate reduction";
+      VLOG(2) << "Splitting batched dimension reduce into a separate reduction";
+      VLOG(1) << "Input: " << hlo->ToString();
       return RewriteBatchDimensionLargerThanTile(hlo, reduction_dimensions,
                                                  reduced_input_dimension,
                                                  input_shape, input);
@@ -108,6 +109,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       return Status::OK();
     }
 
+    VLOG(1) << "Input: " << hlo->ToString();
     int64_t reduced_dim_size = input_shape.dimensions(reduced_input_dimension);
     VLOG(3) << "reduced_dim_size = " << reduced_dim_size;
 
@@ -135,7 +137,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
           padded_shape, input, initial_value, padding_config));
     }();
 
-    VLOG(1) << "Generated padding: " << padded->ToString();
+    VLOG(2) << "Generated padding: " << padded->ToString();
     std::vector<int64> reshaped_dimensions;
     for (int64_t dim_idx = 0; dim_idx < padded->shape().dimensions_size();
          dim_idx++) {
@@ -151,7 +153,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         ShapeUtil::MakeShape(input_shape.element_type(), reshaped_dimensions);
     HloInstruction *reshaped_padded_input = hlo->parent()->AddInstruction(
         HloInstruction::CreateBitcast(reshaped_shape, padded));
-    VLOG(1) << "Generated reshape: " << reshaped_padded_input->ToString();
+    VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
 
     std::vector<int64> inner_reduce_dimensions = reshaped_dimensions;
     int64_t inner_reduced_dimension = is_row_reduction
