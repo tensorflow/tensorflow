@@ -1098,6 +1098,8 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__, "distribute_dataset").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._experimental_distribute_dataset(dataset, options)  # pylint: disable=protected-access
 
@@ -1173,6 +1175,9 @@ class StrategyBase(object):
     Returns:
       A `tf.distribute.DistributedDataset`.
     """
+    distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__,
+        "distribute_datasets_from_function").increase_by(1)
     # pylint: enable=line-too-long
     return self._extended._distribute_datasets_from_function(  # pylint: disable=protected-access
         dataset_fn, options)
@@ -3841,3 +3846,6 @@ distribution_strategy_replica_gauge = monitoring.IntGauge(
     "/tensorflow/api/distribution_strategy/replica",
     "Gauge to track the number of replica each distribution strategy used.",
     "CountType")
+distribution_strategy_input_api_counter = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/input_api",
+    "Counter to track the usage of the input APIs", "strategy", "api")
