@@ -1921,6 +1921,17 @@ ENTRY Computation {
 
 )"
     },
+// custom-call with unknown dim labels.
+{
+"CustomCallWithUnknownDimLabels",
+R"(HloModule CustomCallWithUnknownDimLabels
+
+ENTRY Computation {
+  ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=?b01f_0?1io->b01?f, custom_call_target="target"
+}
+
+)"
+    },
 // is_scheduled=true attribute
 {
 "ScheduledModule",
