@@ -85,6 +85,8 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
 
   let constructor = "tensorflow::CreateTfCpurtClusteringPass()";
 
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
+
   let options = [
    Option<"min_cluster_size", "min-cluster-size", "int" , /*default=*/"1",
           "Do not form clusters smaller of the given size.">,
