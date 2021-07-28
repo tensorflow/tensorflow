@@ -158,10 +158,19 @@ class DeviceBase {
     int gpu_id = -1;
   };
 
-  // Does not take ownership.
-  void set_tensorflow_gpu_device_info(GpuDeviceInfo* g) {
-    gpu_device_info_ = g;
+  stream_executor::Stream* get_gpu_device_info_stream() {
+    if (gpu_device_info_) {
+      return gpu_device_info_->stream;
+    }
+    return nullptr;
   }
+
+  void set_gpu_device_info_stream(stream_executor::Stream* s) {
+    gpu_device_info_->stream = s;
+  }
+
+  // Does not take ownership.
+  void set_tensorflow_gpu_device_info(GpuDeviceInfo* g);
 
   virtual const GpuDeviceInfo* tensorflow_gpu_device_info() const {
     return gpu_device_info_;

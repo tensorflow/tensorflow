@@ -241,6 +241,21 @@ class CudnnSupport : public dnn::DnnSupport {
       CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
+  bool GetBatchNormalizationReserveSpaceSize(Stream* stream,
+                                             dnn::DataType input_data_type,
+                                             const dnn::BatchDescriptor& x_desc,
+                                             size_t* reserve_size_in_bytes,
+                                             dnn::ActivationMode mode,
+                                             bool apply_side_input) override;
+
+  bool GetBatchNormalizationWorkspaceSize(
+      Stream* stream, dnn::DataType input_data_type,
+      dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc,
+      size_t* workspace_size_in_bytes,
+      stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
+      bool apply_side_input, bool apply_side_input_backprop) override;
+
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<float>& x,
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
@@ -564,6 +579,19 @@ class CudnnSupport : public dnn::DnnSupport {
 
   // Provides access to the cuDNN handle.
   std::unique_ptr<class CudnnAccess> cudnn_;
+
+  port::Status GetBatchNormalizationReserveSpaceSizeImpl(
+      Stream* stream, dnn::DataType input_data_type,
+      const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
+      dnn::ActivationMode mode, bool apply_side_input);
+
+  port::Status GetBatchNormalizationWorkspaceSizeImpl(
+      Stream* stream, dnn::DataType input_data_type,
+      dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc,
+      size_t* workspace_size_in_bytes,
+      stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
+      bool apply_side_input, bool apply_side_input_backprop);
 
   template <class T, class U>
   port::Status DoBatchNormalizationForwardImpl(

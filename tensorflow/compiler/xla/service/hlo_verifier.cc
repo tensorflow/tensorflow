@@ -1373,12 +1373,21 @@ Status ShapeVerifier::HandleRecvDone(HloInstruction* recv_done) {
 
 Status ShapeVerifier::HandleBatchNormTraining(
     HloInstruction* batch_norm_training) {
+  auto num_outputs = batch_norm_training->shape().tuple_shapes_size();
+  size_t reserve_space_size = 0;
+  bool use_reserve_space = num_outputs == 4;
+  if (use_reserve_space) {
+    CHECK_EQ(batch_norm_training->shape().tuple_shapes(3).dimensions_size(), 1);
+    reserve_space_size =
+        batch_norm_training->shape().tuple_shapes(3).dimensions(0);
+  }
   return CheckShape(batch_norm_training,
                     ShapeInference::InferBatchNormTrainingShape(
                         batch_norm_training->operand(0)->shape(),
                         batch_norm_training->operand(1)->shape(),
                         batch_norm_training->operand(2)->shape(),
-                        batch_norm_training->feature_index()));
+                        batch_norm_training->feature_index(),
+                        reserve_space_size, use_reserve_space));
 }
 
 Status ShapeVerifier::HandleBatchNormInference(

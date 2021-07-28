@@ -85,6 +85,12 @@ void DeviceBase::set_eigen_cpu_device(Eigen::ThreadPoolDevice* d) {
   }
 }
 
+void DeviceBase::set_tensorflow_gpu_device_info(GpuDeviceInfo* g) {
+  VLOG(1) << "GpuDeviceInfo is SET ";
+  VLOG(1) << "Stream set to: " << g->stream << " Device: " << this;
+  gpu_device_info_ = g;
+}
+
 const Eigen::ThreadPoolDevice* DeviceBase::eigen_cpu_device() {
   // Based on GetPerThreadMaxParallelism(), we return a different
   // pre-allocated Eigen::ThreadPoolDevice. All these ThreadPoolDevice

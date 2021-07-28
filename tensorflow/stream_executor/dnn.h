@@ -50,6 +50,12 @@ class HostBuffer;
 class Stream;
 class ScratchAllocator;
 
+// Enum for batchnorm kind
+enum class BatchNormalizationKind {
+  kBatchnormForward,
+  kBatchnormBackward,
+};
+
 namespace dnn {
 
 // Specifies an index to use when accessing specific spatial dimensions.
@@ -1045,6 +1051,19 @@ class DnnSupport {
         "DnnSupport::GetVersion not implemented on this platform.");
   }
 
+  virtual bool GetBatchNormalizationReserveSpaceSize(
+      Stream* stream, dnn::DataType input_data_type,
+      const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
+      dnn::ActivationMode mode, bool apply_side_input);
+
+  virtual bool GetBatchNormalizationWorkspaceSize(
+      Stream* stream, dnn::DataType input_data_type,
+      dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc,
+      size_t* workspace_size_in_bytes,
+      stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
+      bool apply_side_input, bool apply_side_input_backprop);
+
   // Performs a single-precision forward batch normalization operation onto
   // the stream.
   //
@@ -1080,7 +1099,8 @@ class DnnSupport {
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
       const DeviceMemory<float>& estimated_mean,
       const DeviceMemory<float>& estimated_variance,
-      const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<Eigen::half>& side_input,
+      const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<float>* y,

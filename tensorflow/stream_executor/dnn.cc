@@ -48,6 +48,23 @@ std::string AlgorithmDesc::ToString() const {
   }
 }
 
+bool DnnSupport::GetBatchNormalizationReserveSpaceSize(
+    Stream* stream, dnn::DataType input_data_type,
+    const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
+    dnn::ActivationMode mode, bool apply_side_input) {
+  return false;
+}
+
+bool DnnSupport::GetBatchNormalizationWorkspaceSize(
+    Stream* stream, dnn::DataType input_data_type,
+    dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc,
+    size_t* workspace_size_in_bytes,
+    stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
+    bool apply_side_input, bool apply_side_input_backprop) {
+  return false;
+}
+
 bool DnnSupport::GetConvolveAlgorithms(
     CudaComputeCapability cuda_compute_capability,
     std::vector<AlgorithmDesc>* out_algorithms) {

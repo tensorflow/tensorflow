@@ -148,7 +148,18 @@ std::string ToString(cudnnStatus_t status) {
                           ">");
   }
 }
-
+#if CUDNN_VERSION >= 7402
+cudnnBatchNormOps_t GetBNOps(bool side_input,
+                             dnn::ActivationMode activation_mode) {
+  if (!side_input) {
+    return activation_mode == dnn::ActivationMode::kNone
+               ? CUDNN_BATCHNORM_OPS_BN
+               : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
+  } else {
+    return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
+  }
+}
+#endif
 // RAII wrapper for all calls to cuDNN with a cuDNN handle argument.
 //
 // See CudnnAccess::GetHandle() for details.
@@ -589,6 +600,8 @@ class CudnnTensorDescriptor {
                    << DataLayoutString(batch_descriptor.layout());
         break;
     }
+    VLOG(1) << "Creating TensorDescriptor for Batch Descriptor "
+            << batch_descriptor.ToString();
   }
 
   cudnnTensorDescriptor_t handle() const { return handle_.get(); }
@@ -807,7 +820,7 @@ class CudnnConvolutionDescriptor {
         data_type));
 
 #if CUDNN_MAJOR >= 7
-    VLOG(2) << "Requesting grouped convolution: "
+    VLOG(3) << "Requesting grouped convolution: "
             << convolution_descriptor.group_count();
     CHECK_CUDNN_OK(cudnnSetConvolutionGroupCount(
         handle_.get(), convolution_descriptor.group_count()));
@@ -1827,13 +1840,26 @@ port::StatusOr<DeviceMemory<uint8>> CreateRnnWorkspace(
 }
 
 #if CUDNN_VERSION >= 7402
-port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
-    Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
+port::StatusOr<size_t> GetBatchNormalizationReserveSpaceSizeInternal(
+    const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
+    const cudnnBatchNormOps_t& bn_ops,
+    const cudnnActivationDescriptor_t& activation_desc,
+    const CudnnTensorDescriptor& x_descriptor) {
+  size_t reserve_space_size_in_bytes = 0;
+  RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
+      /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
+      /*activationDesc=*/activation_desc,
+      /*xDesc=*/x_descriptor.handle(),
+      /*sizeInBytes=*/&reserve_space_size_in_bytes));
+  return reserve_space_size_in_bytes;
+}
+
+port::StatusOr<size_t> GetBatchNormForwardWorkspaceSizeInternal(
+    const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
     const cudnnActivationDescriptor_t& activation_desc,
     const CudnnTensorDescriptor& x_descriptor,
-    const CudnnTensorDescriptor& scale_offset_descriptor,
-    ScratchAllocator* workspace_allocator) {
+    const CudnnTensorDescriptor& scale_offset_descriptor) {
   // Query the workspace size.
   size_t workspace_size_in_bytes = 0;
   RETURN_IF_CUDNN_ERROR(
@@ -1844,6 +1870,42 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
           /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
           /*activationDesc=*/activation_desc,
           /*sizeInBytes=*/&workspace_size_in_bytes));
+  return workspace_size_in_bytes;
+}
+
+port::StatusOr<size_t> GetBatchNormBackwardWorkspaceSizeInternal(
+    const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
+    const cudnnBatchNormOps_t& bn_ops,
+    const cudnnActivationDescriptor_t& activation_desc,
+    const CudnnTensorDescriptor& x_descriptor,
+    const CudnnTensorDescriptor& scale_offset_descriptor) {
+  // Query the workspace size.
+  size_t workspace_size_in_bytes = 0;
+  RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationBackwardExWorkspaceSize(
+      /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
+      /*xDesc=*/x_descriptor.handle(),
+      /*yDesc=*/x_descriptor.handle(),
+      /*dyDesc=*/x_descriptor.handle(),
+      /*dzDesc=*/x_descriptor.handle(),
+      /*dxDesc=*/x_descriptor.handle(),
+      /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
+      /*activationDesc=*/activation_desc,
+      /*sizeInBytes=*/&workspace_size_in_bytes));
+  return workspace_size_in_bytes;
+}
+
+port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
+    Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
+    const cudnnBatchNormOps_t& bn_ops,
+    const cudnnActivationDescriptor_t& activation_desc,
+    const CudnnTensorDescriptor& x_descriptor,
+    const CudnnTensorDescriptor& scale_offset_descriptor,
+    ScratchAllocator* workspace_allocator) {
+  size_t workspace_size_in_bytes;
+  SE_ASSIGN_OR_RETURN(workspace_size_in_bytes,
+                      GetBatchNormForwardWorkspaceSizeInternal(
+                          cudnn, mode, bn_ops, activation_desc, x_descriptor,
+                          scale_offset_descriptor));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
@@ -1854,20 +1916,16 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
 port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
     const cudnnBatchNormOps_t& bn_ops,
+    const cudnnActivationDescriptor_t& activation_desc,
     const CudnnTensorDescriptor& x_descriptor,
     const CudnnTensorDescriptor& scale_offset_descriptor,
     ScratchAllocator* workspace_allocator) {
   // Query the workspace size.
   size_t workspace_size_in_bytes = 0;
-  RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationBackwardExWorkspaceSize(
-      /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-      /*xDesc=*/x_descriptor.handle(),
-      /*yDesc=*/x_descriptor.handle(),
-      /*dyDesc=*/x_descriptor.handle(),
-      /*dzDesc=*/nullptr,
-      /*dxDesc=*/x_descriptor.handle(),
-      /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
-      /*activationDesc=*/nullptr, /*sizeInBytes=*/&workspace_size_in_bytes));
+  SE_ASSIGN_OR_RETURN(workspace_size_in_bytes,
+                      GetBatchNormBackwardWorkspaceSizeInternal(
+                          cudnn, mode, bn_ops, activation_desc, x_descriptor,
+                          scale_offset_descriptor));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
@@ -4796,12 +4854,118 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   return true;
 }
 
+// This function used to query reserve space size in bytes. This function can be
+// called via stream executor during compilation. Note one use case for this is
+// when the reserve space gets queried by the tf2xla bridge.
+bool CudnnSupport::GetBatchNormalizationReserveSpaceSize(
+    Stream* stream, dnn::DataType input_data_type,
+    const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
+    dnn::ActivationMode mode, bool apply_side_input) {
+  return IsStatusOk(GetBatchNormalizationReserveSpaceSizeImpl(
+                        stream, input_data_type, x_desc, reserve_size_in_bytes,
+                        mode, apply_side_input),
+                    /*report error*/ true);
+}
+
+port::Status CudnnSupport::GetBatchNormalizationReserveSpaceSizeImpl(
+    Stream* stream, dnn::DataType input_data_type,
+    const dnn::BatchDescriptor& x_desc, size_t* reserve_size_in_bytes,
+    dnn::ActivationMode activation_mode, bool apply_side_input) {
+  cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
+#if CUDNN_VERSION >= 7000
+  if (BatchnormSpatialPersistentEnabled()) {
+    mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
+  }
+#endif
+#if CUDNN_VERSION >= 7402
+  CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
+
+  const cudnnBatchNormOps_t bn_ops =
+      GetBNOps(apply_side_input, activation_mode);
+  CudnnActivationDescriptor activation_desc(
+      activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
+  SE_ASSIGN_OR_RETURN(
+      *reserve_size_in_bytes,
+      GetBatchNormalizationReserveSpaceSizeInternal(
+          cudnn, mode, bn_ops, activation_desc.handle(), x_descriptor));
+#endif
+  return port::Status::OK();
+}
+
+// This function used to query workspace (scratch space) size in bytes. One of
+// the use of this function during the compilation process is when it gets
+// called via the stream executor from cudnn_conv_rewriter.
+bool CudnnSupport::GetBatchNormalizationWorkspaceSize(
+    Stream* stream, dnn::DataType input_data_type,
+    dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc,
+    size_t* workspace_size_in_bytes,
+    stream_executor::BatchNormalizationKind kind, dnn::ActivationMode mode,
+    bool apply_side_input, bool apply_side_input_backprop) {
+  return IsStatusOk(GetBatchNormalizationWorkspaceSizeImpl(
+                        stream, input_data_type, scale_data_type, x_desc,
+                        scale_offset_desc, workspace_size_in_bytes, kind, mode,
+                        apply_side_input, apply_side_input_backprop),
+                    /*report error*/ true);
+}
+
+port::Status CudnnSupport::GetBatchNormalizationWorkspaceSizeImpl(
+    Stream* stream, dnn::DataType input_data_type,
+    dnn::DataType scale_data_type, const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc,
+    size_t* workspace_size_in_bytes,
+    stream_executor::BatchNormalizationKind kind,
+    dnn::ActivationMode activation_mode, bool apply_side_input,
+    bool apply_side_input_backprop) {
+  cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
+#if CUDNN_VERSION >= 7000
+  if (BatchnormSpatialPersistentEnabled()) {
+    mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
+  }
+#endif
+#if CUDNN_VERSION >= 7402
+  CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
+  CudnnTensorDescriptor scale_offset_descriptor(
+      scale_offset_desc, ToCudnnDataType(scale_data_type));
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
+
+  const cudnnBatchNormOps_t bn_ops_fwd =
+      GetBNOps(apply_side_input, activation_mode);
+  const cudnnBatchNormOps_t bn_ops_bwd =
+      GetBNOps(apply_side_input_backprop, activation_mode);
+  CudnnActivationDescriptor activation_desc(
+      activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
+  switch (kind) {
+    case stream_executor::BatchNormalizationKind::kBatchnormForward: {
+      SE_ASSIGN_OR_RETURN(*workspace_size_in_bytes,
+                          GetBatchNormForwardWorkspaceSizeInternal(
+                              cudnn, mode, bn_ops_fwd, activation_desc.handle(),
+                              x_descriptor, scale_offset_descriptor));
+      break;
+    }
+    case stream_executor::BatchNormalizationKind::kBatchnormBackward: {
+      SE_ASSIGN_OR_RETURN(*workspace_size_in_bytes,
+                          GetBatchNormBackwardWorkspaceSizeInternal(
+                              cudnn, mode, bn_ops_bwd, activation_desc.handle(),
+                              x_descriptor, scale_offset_descriptor));
+      break;
+    }
+    default:
+      return port::InternalError(
+          absl::StrCat("Unexpected batchnorm kind ", static_cast<int>(kind)));
+  }
+#endif
+  return port::Status::OK();
+}
+
 bool CudnnSupport::DoBatchNormalizationForward(
     Stream* stream, const DeviceMemory<float>& x,
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
     const DeviceMemory<float>& estimated_variance,
-    const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
+    const DeviceMemory<Eigen::half>& side_input,
+    const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
     dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
@@ -4873,39 +5037,29 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
   DeviceMemory<uint8> reserve_space;
 
 #if CUDNN_VERSION >= 7402
-  const auto get_bn_ops = [&]() -> cudnnBatchNormOps_t {
-    if (side_input.is_null()) {
-      return activation_mode == dnn::ActivationMode::kNone
-                 ? CUDNN_BATCHNORM_OPS_BN
-                 : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
-    } else {
-      return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
-    }
-  };
-  const cudnnBatchNormOps_t bn_ops = get_bn_ops();
-
+  const cudnnBatchNormOps_t bn_ops =
+      GetBNOps(!side_input.is_null(), activation_mode);
   // We use Nan propagation to be consistent with CudnnSupport::DoActivate(...).
   CudnnActivationDescriptor activation_desc(
       activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
-
-  if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
+  if (workspace_allocator != nullptr) {
     SE_ASSIGN_OR_RETURN(
         workspace,
         CreateBatchNormForwardWorkspace(
             stream, cudnn, mode, bn_ops, activation_desc.handle(), x_descriptor,
-            scale_offset_descriptor, workspace_allocator))
-    if (is_training) {
-      size_t reserve_space_size_in_bytes = 0;
-      RETURN_IF_CUDNN_ERROR(
-          cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
-              /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-              /*activationDesc=*/activation_desc.handle(),
-              /*xDesc=*/x_descriptor.handle(),
-              /*sizeInBytes=*/&reserve_space_size_in_bytes));
-      SE_ASSIGN_OR_RETURN(reserve_space, reserve_space_allocator->AllocateBytes(
-                                             reserve_space_size_in_bytes));
-    }
+            scale_offset_descriptor, workspace_allocator));
   }
+  if (reserve_space_allocator != nullptr && is_training) {
+    size_t reserve_space_size_in_bytes = 0;
+    RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
+        /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
+        /*activationDesc=*/activation_desc.handle(),
+        /*xDesc=*/x_descriptor.handle(),
+        /*sizeInBytes=*/&reserve_space_size_in_bytes));
+    SE_ASSIGN_OR_RETURN(reserve_space, reserve_space_allocator->AllocateBytes(
+                                           reserve_space_size_in_bytes));
+  }
+
 #endif
 
   auto check_no_side_input_or_activation = [&]() -> port::Status {
@@ -4941,8 +5095,16 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
 
     bool called = false;
 #if CUDNN_VERSION >= 7402
-    if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
+    if (reserve_space_allocator != nullptr || workspace_allocator != nullptr) {
       called = true;
+      VLOG(2) << "Batchnorm Forward workspace ptr: " << workspace.opaque()
+              << " Size: " << workspace.size();
+      if (is_training) {
+        VLOG(2) << "Batchnorm Forward training reserve space ptr: "
+                << reserve_space.opaque() << " Size: " << reserve_space.size()
+                << "\n";
+      }
+
       RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTrainingEx(
           /*handle=*/cudnn.handle(),
           /*mode=*/mode,
@@ -5053,13 +5215,38 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 
   bool called = false;
 #if CUDNN_VERSION >= 7402
-  if (reserve_space_data != nullptr && workspace_allocator != nullptr) {
+  if (reserve_space_data != nullptr || workspace_allocator != nullptr) {
     called = true;
-    const cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
-                        CreateBatchNormBackwardWorkspace(
-                            stream, cudnn, mode, bn_ops, x_descriptor,
-                            scale_offset_descriptor, workspace_allocator))
+    const auto get_bn_ops = [&]() -> cudnnBatchNormOps_t {
+      if (side_input_backprop->is_null()) {
+        return activation_mode == dnn::ActivationMode::kNone
+                   ? CUDNN_BATCHNORM_OPS_BN
+                   : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
+      } else {
+        return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
+      }
+    };
+    const cudnnBatchNormOps_t bn_ops = get_bn_ops();
+
+    // We use Nan propagation to be consistent with
+    // CudnnSupport::DoActivate(...).
+    CudnnActivationDescriptor activation_desc(
+        activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
+    DeviceMemory<uint8> workspace;
+    if (workspace_allocator != nullptr) {
+      SE_ASSIGN_OR_RETURN(
+          workspace,
+          CreateBatchNormBackwardWorkspace(
+              stream, cudnn, mode, bn_ops, activation_desc.handle(),
+              x_descriptor, scale_offset_descriptor, workspace_allocator))
+    }
+
+    VLOG(2) << "Batchnorm Backward workspace ptr: " << workspace.opaque()
+            << " Size: " << workspace.size();
+    VLOG(2) << "Batchnorm Backward reserve space ptr: "
+            << reserve_space_data->opaque()
+            << " Size: " << reserve_space_data->size();
+
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackwardEx(
         /*handle=*/cudnn.handle(),
         /*mode=*/mode,

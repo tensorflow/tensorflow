@@ -95,7 +95,10 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
   auto offset = ConstantR1<bfloat16>(
       &builder, {static_cast<bfloat16>(1.0f), static_cast<bfloat16>(2.0f)});
 
-  BatchNormTraining(operand, scale, offset, /*epsilon=*/0.001, kFeatureIndex);
+  XlaOp side_input;
+
+  BatchNormTraining(operand, scale, offset, side_input, /*epsilon=*/0.001,
+                    kFeatureIndex, 0, true, false);
 
   auto expected = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR4<bfloat16>(
@@ -107,7 +110,8 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
        LiteralUtil::CreateR1<bfloat16>(
            {static_cast<bfloat16>(4), static_cast<bfloat16>(5)}),
        LiteralUtil::CreateR1<bfloat16>(
-           {static_cast<bfloat16>(5), static_cast<bfloat16>(5)})});
+           {static_cast<bfloat16>(5), static_cast<bfloat16>(5)}),
+       LiteralUtil::CreateR1<uint8>({})});
 
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.01, 0.02));
 }
@@ -137,7 +141,9 @@ XLA_TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormGrad)) {
        {{{static_cast<bfloat16>(5.f)}, {static_cast<bfloat16>(6.f)}},
         {{static_cast<bfloat16>(7.f)}, {static_cast<bfloat16>(8.f)}}}});
 
-  BatchNormGrad(operand, scale, mean, var, grad_output,
+  auto reserve_space = ConstantR1<uint8>(&builder, {});
+
+  BatchNormGrad(operand, scale, mean, var, grad_output, reserve_space,
                 /*epsilon=*/0.0, kFeatureIndex);
 
   auto expected = LiteralUtil::MakeTupleFromSlices(
