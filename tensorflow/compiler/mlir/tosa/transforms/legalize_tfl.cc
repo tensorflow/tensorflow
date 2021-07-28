@@ -2949,13 +2949,14 @@ static bool isIllegalType(Type type) {
   return false;
 }
 
-class TosaConversionTarget : public ConversionTarget {
- public:
-  using ConversionTarget::ConversionTarget;
+void LegalizeTFL::runOnFunction() {
+  QuantTypeConverter converter;
+  ConversionTarget target(getContext());
 
- protected:
+  target.addIllegalDialect<TFL::TensorFlowLiteDialect>();
+  target.addIllegalDialect<quant::QuantizationDialect>();
   // Operations are legal if they don't contain any illegal type.
-  bool isDynamicallyLegal(Operation* op) const override {
+  target.markUnknownOpDynamicallyLegal([](Operation* op) {
     if (auto constantOp = dyn_cast<ConstantOp>(op)) {
       return constantOp.getType().isa<NoneType>();
     }
@@ -2974,16 +2975,7 @@ class TosaConversionTarget : public ConversionTarget {
       if (type && isIllegalType(type)) return false;
     }
     return true;
-  }
-};
-
-void LegalizeTFL::runOnFunction() {
-  QuantTypeConverter converter;
-  TosaConversionTarget target(getContext());
-
-  target.addIllegalDialect<TFL::TensorFlowLiteDialect>();
-  target.addIllegalDialect<quant::QuantizationDialect>();
-  target.markUnknownOpDynamicallyLegal();
+  });
 
   auto* ctx = &getContext();
   auto func = getFunction();
