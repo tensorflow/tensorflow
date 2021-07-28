@@ -29,5 +29,6 @@ filegroup(
         "//tensorflow/compiler/mlir/tfrt:lhlo-tfrt-opt",
         "//tensorflow/compiler/mlir/tfrt:tf-tfrt-opt",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )

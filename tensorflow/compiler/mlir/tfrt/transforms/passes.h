@@ -61,6 +61,11 @@ CreateRemoveTfIfConstArgsPass();
 // operands.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateMergeTfIfOpsPass();
 
+// Create a pass to deduplicate the function invoked by tf.BatchFunction with
+// the same shared_name.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;

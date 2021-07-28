@@ -2103,6 +2103,11 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   // Merge non-side-effecting tf.If ops if their operands are the same.
   pm.addPass(tfrt_compiler::CreateMergeTfIfOpsPass());
 
+  // Deduplicate functions invoked by tf.BatchFunction with the same
+  // shared_name
+  pm.addPass(
+      tfrt_compiler::CreateDeduplicateFunctionsInovkedByBatchFunctionPass());
+
   // Apply standard optimization after optimizing control flow ops.
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());

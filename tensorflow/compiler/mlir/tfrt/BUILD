@@ -326,6 +326,7 @@ cc_library(
     name = "tf_to_tfrt",
     srcs = [
         "transforms/cross_device_transfer.cc",
+        "transforms/deduplicate_batch_function.cc",
         "transforms/insert_tensor_copy.cc",
         "transforms/lower_saved_model.cc",
         "transforms/merge_tf_if_ops.cc",
@@ -361,6 +362,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:tstring",
