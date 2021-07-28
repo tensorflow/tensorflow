@@ -155,7 +155,7 @@ Eigen::DSizes<Eigen::DenseIndex, 3> GetSliceIndices(
   subscript[1] =
       ((index / num_partitions[2]) % num_partitions[1]) * slice_shape[1];
   subscript[0] =
-      (index / (num_partitions[2] * num_partitions[1])) * slice_shape[2];
+      (index / (num_partitions[2] * num_partitions[1])) * slice_shape[0];
   return subscript;
 }
 
