@@ -588,8 +588,8 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
                     "given node_id_range has shape ",
                     node_id_range_t->dim_size(0), " on its first dim"));
     const auto node_id_range = node_id_range_t->vec<int32>();
-    const int32_t node_id_first = node_id_range(0);  // Inclusive.
-    const int32_t node_id_last = node_id_range(1);   // Exclusive.
+    const int32 node_id_first = node_id_range(0);  // Inclusive.
+    const int32 node_id_last = node_id_range(1);   // Exclusive.
 
     // Get stats_summaries_list.
     OpInputList stats_summaries_list;
