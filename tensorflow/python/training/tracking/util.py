@@ -1285,16 +1285,22 @@ class TrackableSaver(object):
 
     When building a graph, restorations are added to the graph but not run.
 
-    To disallow deferred loading, assert immediately that all checkpointed
-    variables have been matched to variable objects:
+    ```python
+    saver = Saver(root)
+    saver.restore(path)
+    ```
+
+    To ensure that loading is complete and no more assignments will take place
+    you can use the `assert_consumed()` method of the status object returned
+    by the `restore` call.
+
+    The assert will raise an exception unless every object was matched and all
+    checkpointed values have a matching variable object.
 
     ```python
     saver = Saver(root)
     saver.restore(path).assert_consumed()
     ```
-
-    An exception will be raised unless every object was matched and its
-    variables already exist.
 
     When graph building, `assert_consumed()` indicates that all of the restore
     ops which will be created for this checkpoint have been created. They can be
@@ -1744,18 +1750,22 @@ class CheckpointV1(tracking.AutoTrackable):
     When graph building, restoration ops are added to the graph but not run
     immediately.
 
+    ```python
+    checkpoint = tf.train.Checkpoint( ... )
+    checkpoint.restore(path)
+    ```
+
     To ensure that loading is complete and no more assignments will take place,
-    use the `assert_consumed()` method of the status object returned by
-    `restore`:
+    you can use the `assert_consumed()` method of the status object returned by
+    `restore`.
+    The assert will raise an exception if any Python objects in the dependency
+    graph were not found in the checkpoint, or if any checkpointed values do not
+    have a matching Python object:
 
     ```python
     checkpoint = tf.train.Checkpoint( ... )
     checkpoint.restore(path).assert_consumed()
     ```
-
-    An exception will be raised if any Python objects in the dependency graph
-    were not found in the checkpoint, or if any checkpointed values do not have
-    a matching Python object.
 
     When graph building, `assert_consumed()` indicates that all of the restore
     ops that will be created for this checkpoint have been created. They can be
@@ -2248,6 +2258,15 @@ class Checkpoint(tracking.AutoTrackable):
     corresponding object in the checkpoint (the restore request will queue in
     any trackable object waiting for the expected dependency to be added).
 
+    ```python
+    checkpoint = tf.train.Checkpoint( ... )
+    checkpoint.restore(path)
+
+    # You can additionally pass options to restore():
+    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    checkpoint.restore(path, options=options)
+    ```
+
     To ensure that loading is complete and no more assignments will take place,
     use the `assert_consumed()` method of the status object returned by
     `restore()`:
@@ -2261,7 +2280,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.restore(path, options=options).assert_consumed()
     ```
 
-    An exception will be raised if any Python objects in the dependency graph
+    The assert will raise an error if any Python objects in the dependency graph
     were not found in the checkpoint, or if any checkpointed values do not have
     a matching Python object.
 
