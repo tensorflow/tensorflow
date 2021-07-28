@@ -229,7 +229,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   private Interpreter(NativeInterpreterWrapperExperimental wrapper) {
     super(wrapper);
     wrapperExperimental = wrapper;
-    signatureNameList = getSignatureDefNames();
+    signatureKeyList = getSignatureKeys();
   }
 
   /**
@@ -253,14 +253,14 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
       @NonNull Map<String, Object> outputs,
       String signatureKey) {
     checkNotClosed();
-    if (signatureKey == null && signatureNameList.length == 1) {
-      signatureKey = signatureNameList[0];
+    if (signatureKey == null && signatureKeyList.length == 1) {
+      signatureKey = signatureKeyList[0];
     }
     if (signatureKey == null) {
       throw new IllegalArgumentException(
           "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
               + " model has a single Signature. Available Signatures: "
-              + Arrays.toString(signatureNameList));
+              + Arrays.toString(signatureKeyList));
     }
     wrapper.runSignature(inputs, outputs, signatureKey);
   }
@@ -291,14 +291,14 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    */
   public Tensor getInputTensorFromSignature(String inputName, String signatureKey) {
     checkNotClosed();
-    if (signatureKey == null && signatureNameList.length == 1) {
-      signatureKey = signatureNameList[0];
+    if (signatureKey == null && signatureKeyList.length == 1) {
+      signatureKey = signatureKeyList[0];
     }
     if (signatureKey == null) {
       throw new IllegalArgumentException(
           "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
               + " model has a single Signature. Available Signatures: "
-              + Arrays.toString(signatureNameList));
+              + Arrays.toString(signatureKeyList));
     }
     return wrapper.getInputTensor(inputName, signatureKey);
   }
@@ -308,9 +308,9 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    *
    * <p>WARNING: This is an experimental API and subject to change.
    */
-  public String[] getSignatureDefNames() {
+  public String[] getSignatureKeys() {
     checkNotClosed();
-    return wrapper.getSignatureDefNames();
+    return wrapper.getSignatureKeys();
   }
 
   /**
@@ -353,14 +353,14 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    */
   public Tensor getOutputTensorFromSignature(String outputName, String signatureKey) {
     checkNotClosed();
-    if (signatureKey == null && signatureNameList.length == 1) {
-      signatureKey = signatureNameList[0];
+    if (signatureKey == null && signatureKeyList.length == 1) {
+      signatureKey = signatureKeyList[0];
     }
     if (signatureKey == null) {
       throw new IllegalArgumentException(
           "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
               + " model has a single Signature. Available Signatures: "
-              + Arrays.toString(signatureNameList));
+              + Arrays.toString(signatureKeyList));
     }
     return wrapper.getOutputTensor(outputName, signatureKey);
   }
@@ -398,5 +398,5 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   NativeInterpreterWrapperExperimental wrapperExperimental;
-  String[] signatureNameList;
+  String[] signatureKeyList;
 }

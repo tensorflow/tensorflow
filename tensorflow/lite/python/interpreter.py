@@ -703,51 +703,6 @@ class Interpreter(object):
     """
     return self._interpreter.GetSignatureDefs()
 
-  def _set_input_tensor(self, input_name, value, signature_key=None):
-    """Sets the value of the input tensor.
-
-    Input tensor is identified by `input_name` in the SignatureDef identified
-    by `signature_key`.
-    If the model has a single SignatureDef then you can pass None as
-    `signature_key`.
-
-    Note this copies data in `value`.
-
-    Example,
-    ```
-    input_data = np.array([1.2, 1.4], np.float32)
-    signatures = interpreter._get_full_signature_list()
-    print(signatures)
-    # {
-    #   'add': {'inputs': {'x': 1, 'y': 0}, 'outputs': {'output_0': 4}}
-    # }
-    interpreter._set_input_tensor(input_name='x', value=input_data,
-    signature_key='add_fn')
-    ```
-
-    Args:
-      input_name: Name of the output tensor in the SignatureDef.
-      value: Value of tensor to set as a numpy array.
-      signature_key: The signature key for the SignatureDef, it can be None
-        if and only if the model has a single SignatureDef. Default value is
-        None.
-
-    Raises:
-      ValueError: If the interpreter could not set the tensor. Or
-      if `signature_key` is None and model doesn't have a single
-      Signature.
-    """
-    if signature_key is None:
-      if len(self._signature_defs) != 1:
-        raise ValueError(
-            'SignatureDef signature_key is None and model has {0} Signatures. '
-            'None is only allowed when the model has 1 SignatureDef'.format(
-                len(self._signature_defs)))
-      else:
-        signature_key = next(iter(self._signature_defs))
-    self._interpreter.SetInputTensorFromSignatureDefName(
-        input_name, signature_key, value)
-
   def get_signature_runner(self, signature_key=None):
     """Gets callable for inference of specific SignatureDef.
 

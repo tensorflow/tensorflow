@@ -353,7 +353,7 @@ class Interpreter {
   /// Returns nullptr if not found.
   TfLiteTensor* input_tensor_by_signature(const char* signature_input_name,
                                           const char* signature_key) {
-    const int tensor_index = GetTensorIndexFromSignatureDefName(
+    const int tensor_index = GetTensorIndexFromSignature(
         signature_input_name, signature_key, /*is_input=*/true);
     return tensor_index == -1 ? nullptr : tensor(tensor_index);
   }
@@ -364,7 +364,7 @@ class Interpreter {
   /// Returns nullptr if not found.
   const TfLiteTensor* output_tensor_by_signature(
       const char* signature_output_name, const char* signature_key) const {
-    const int tensor_index = GetTensorIndexFromSignatureDefName(
+    const int tensor_index = GetTensorIndexFromSignature(
         signature_output_name, signature_key, /*is_input=*/false);
     return tensor_index == -1 ? nullptr : tensor(tensor_index);
   }
@@ -706,9 +706,9 @@ class Interpreter {
   // If 'is_input' is true then the tensor is checked in input tensors,
   // otherwise it will be checked in output tensors.
   // Returns -1 if the tensor is not found.
-  int GetTensorIndexFromSignatureDefName(const char* signature_tensor_name,
-                                         const char* signature_key,
-                                         bool is_input) const {
+  int GetTensorIndexFromSignature(const char* signature_tensor_name,
+                                  const char* signature_key,
+                                  bool is_input) const {
     // Iterate directly and don't use other methods to avoid extra allocation.
     for (const auto& signature : signature_defs_) {
       if (signature.signature_key != signature_key) continue;
