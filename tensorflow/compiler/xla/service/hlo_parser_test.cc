@@ -2968,6 +2968,20 @@ TEST_F(HloParserTest, ParseShardingPartialReplication) {
       original);
 }
 
+TEST_F(HloParserTest, ParseShardingSubGroup) {
+  const string original =
+      "{devices=[2,2,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 "
+      "last_tile_dims={replicated, manual}}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  Array<int64> tile_assignment({2, 2, 2, 2});
+  tile_assignment.FillIota(0);
+  std::vector<OpSharding::Type> sharding_types = {OpSharding::REPLICATED,
+                                                  OpSharding::MANUAL};
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, sharding_types).ToString(),
+            original);
+}
+
 TEST_F(HloParserTest, ParseFrontendAttributes) {
   const string original =
       R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";
