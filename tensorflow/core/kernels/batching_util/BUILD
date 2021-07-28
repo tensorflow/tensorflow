@@ -198,6 +198,7 @@ tf_cc_test(
     ],
     deps = [
         ":basic_batch_scheduler",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
