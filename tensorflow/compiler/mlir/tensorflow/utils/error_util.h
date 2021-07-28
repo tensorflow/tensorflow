@@ -38,9 +38,12 @@ class StatusScopedDiagnosticHandler : public SourceMgrDiagnosticHandler {
  public:
   // Constructs a diagnostic handler in a context. If propagate is true, then
   // diagnostics reported are also propagated back to the original diagnostic
-  // handler.
+  // handler.  If filter_stack is true, a reduced stack will be produced.
+
   explicit StatusScopedDiagnosticHandler(MLIRContext* context,
-                                         bool propagate = false);
+                                         bool propagate = false,
+                                         bool filter_stack = false);
+
   // On destruction error consumption is verified.
   ~StatusScopedDiagnosticHandler();
 
