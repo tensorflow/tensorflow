@@ -30,6 +30,7 @@ limitations under the License.
 
 // TODO(ccrusius): Move all value objects into `impl`. Currently only values
 // that do not reference TaggedValue are there.
+#include "tensorflow/cc/experimental/libtf/impl/scalars.h"
 #include "tensorflow/cc/experimental/libtf/impl/string.h"
 
 namespace tf {
@@ -42,8 +43,6 @@ class Tuple;
 template <class T>
 // TODO(ccrusius): Use absl::Hash specializations instead.
 class TaggedValueHash;
-using Float32 = float;
-using Int64 = int64_t;
 using List = std::vector<TaggedValue>;
 using ListPtr = std::shared_ptr<List>;
 using Dict =
@@ -122,6 +121,8 @@ class TaggedValue final {
                        tensorflow::DataType dtype)
       : type_(TENSOR_SPEC), data_(shape, dtype) {}
   explicit TaggedValue(Func f32) : type_(FUNC), data_(f32) {}
+  explicit TaggedValue(float f32) : type_(FLOAT32), data_(Float32(f32)) {}
+  explicit TaggedValue(int64_t i64) : type_(INT64), data_(Int64(i64)) {}
   explicit TaggedValue(Float32 f32) : type_(FLOAT32), data_(f32) {}
   explicit TaggedValue(Int64 i64) : type_(INT64), data_(i64) {}
   explicit TaggedValue(const char* s) : type_(STRING), data_(s) {}
@@ -206,17 +207,9 @@ class TaggedValue final {
   }
   ~TaggedValue() { destroy(); }
 
-  Int64& i64() {
-    assert(type_ == INT64);
-    return data_.i64;
-  }
   const Int64& i64() const {
     assert(type_ == INT64);
     return data_.i64;
-  }
-  Float32& f32() {
-    assert(type_ == FLOAT32);
-    return data_.f32;
   }
   const Float32& f32() const {
     assert(type_ == FLOAT32);

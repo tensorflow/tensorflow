@@ -17,6 +17,24 @@ package(
 )
 
 cc_library(
+    name = "scalars",
+    hdrs = [
+        "scalars.h",
+    ],
+)
+
+tf_cc_test(
+    name = "scalars_test",
+    size = "small",
+    srcs = ["scalars_test.cc"],
+    deps = [
+        ":scalars",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "string",
     srcs = [
         "string.cc",

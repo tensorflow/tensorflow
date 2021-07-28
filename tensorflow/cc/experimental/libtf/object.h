@@ -175,8 +175,7 @@ class Integer final : public Handle {
  public:
   explicit Integer(Handle h) : Handle(h.value_) {}
   explicit Integer(int64_t i) : Handle(TaggedValue(i)) {}
-  int64_t& get() { return value_.i64(); }
-  const int64_t& get() const { return value_.i64(); }
+  int64_t get() const { return value_.i64().get(); }
 
  private:
   // Private since it is in general unsafe.
@@ -189,8 +188,7 @@ class Float final : public Handle {
  public:
   explicit Float(Handle h) : Handle(h.value_) {}
   explicit Float(float i) : Handle(TaggedValue(i)) {}
-  float& get() { return value_.f32(); }
-  const float& get() const { return value_.f32(); }
+  float get() const { return value_.f32().get(); }
 
  private:
   // Private since it is in general unsafe.

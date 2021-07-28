@@ -103,7 +103,8 @@ TaggedValue MakeScalarTensor(TaggedValue self, TaggedValue val) {
   TaggedValue ctx_capsule = (self.dict())[TaggedValue("context")];
   AbstractContext* ctx = static_cast<AbstractContext*>(ctx_capsule.capsule());
   AbstractTensorHandle* x_raw = nullptr;
-  Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx, val.f32(), &x_raw);
+  Status s =
+      TestScalarTensorHandle<float, TF_FLOAT>(ctx, val.f32().get(), &x_raw);
   if (!s.ok()) return TaggedValue::None();
   return TaggedValue(impl::TaggedValueTensor(x_raw, false));
 }
