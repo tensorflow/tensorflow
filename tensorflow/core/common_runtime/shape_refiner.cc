@@ -135,7 +135,7 @@ Status ShapeRefiner::InferShapesForFunctionSubNode(
         TF_RETURN_IF_ERROR(
             outer_context->MakeShapeFromShapeProto(proto, &handle));
         copied_shapes_and_types.push_back(
-            ShapeAndType(handle, shape_and_type.dtype, shape_and_type.specialized_type));
+            ShapeAndType(handle, shape_and_type.dtype, shape_and_type.type));
       }
 
       outer_context->set_output_handle_shapes_and_types(
