@@ -2,7 +2,6 @@
 #   GPU-specific components in XLA service implementation.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -75,6 +74,7 @@ cc_library(
     name = "gpu_executable_run_options",
     srcs = ["gpu_executable_run_options.cc"],
     hdrs = ["gpu_executable_run_options.h"],
+    compatible_with = get_compatible_with_cloud(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:statusor",
@@ -113,6 +113,7 @@ cc_library(
     hdrs = [
         "launch_dimensions.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":gpu_device_info",
         "//tensorflow/compiler/xla:shape_util",
@@ -205,6 +206,7 @@ cc_library(
     name = "target_util",
     srcs = ["target_util.cc"],
     hdrs = ["target_util.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -219,6 +221,7 @@ cc_library(
 cc_library(
     name = "gpu_device_info",
     hdrs = ["gpu_device_info.h"],
+    compatible_with = get_compatible_with_cloud(),
 )
 
 cc_library(
@@ -311,6 +314,7 @@ cc_library(
     name = "parallel_loop_emitter",
     srcs = ["parallel_loop_emitter.cc"],
     hdrs = ["parallel_loop_emitter.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":launch_dimensions",
         ":target_util",
@@ -440,6 +444,7 @@ tf_cuda_library(
         "nccl_collective_permute_thunk.h",
         "nccl_collective_thunk.h",
     ],
+    compatible_with = [],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_nccl(["-DGOOGLE_XCCL=1"]),
     deps = [
         ":buffer_allocations",
@@ -720,6 +725,7 @@ cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":gpu_device_info",
         ":target_util",
@@ -2287,7 +2293,6 @@ cc_library(
 
 gentbl_cc_library(
     name = "xla_thunks_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-op-decls"],

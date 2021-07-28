@@ -1156,7 +1156,8 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_plugin",
+    name = "gpu_plugin_impl",
+    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -1169,6 +1170,15 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
     ]) + internal_cuda_deps(),
+)
+
+cc_library(
+    name = "gpu_plugin_stub",
+)
+
+alias(
+    name = "gpu_plugin",
+    actual = if_libtpu("gpu_plugin_stub", "gpu_plugin_impl"),
 )
 
 cc_library(
