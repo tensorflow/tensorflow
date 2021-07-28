@@ -1917,7 +1917,7 @@ TEST_F(InterpreterTest, SingleSignature_get_signatures) {
   const char kSignatureDefKey[] = "test_key";
   BuildSignature(kMethodName, kSignatureDefKey, {{"Input1", 0}, {"Input2", 1}},
                  {{"Output1", 5}});
-  auto results = interpreter_.signature_def_names();
+  auto results = interpreter_.signature_keys();
   ASSERT_EQ(1, results.size());
   EXPECT_EQ(kMethodName, *results[0]);
 }

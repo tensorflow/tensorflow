@@ -343,7 +343,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureDefNames(
                    "SignatureDef names.");
     return nullptr;
   }
-  const auto& signature_defs = interpreter->signature_def_names();
+  const auto& signature_defs = interpreter->signature_keys();
   jobjectArray names = static_cast<jobjectArray>(env->NewObjectArray(
       signature_defs.size(), string_class, env->NewStringUTF("")));
   for (int i = 0; i < signature_defs.size(); ++i) {

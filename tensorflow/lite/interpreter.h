@@ -294,10 +294,10 @@ class Interpreter {
   }
 
   /// WARNING: Experimental interface, subject to change
-  /// Returns list of all names of different method signatures defined
-  /// in the model.
+  /// Returns list of all keys of different method signatures defined in the
+  /// model.
   /// Note, pointers returned have lifetime same as the Interpreter object.
-  std::vector<const std::string*> signature_def_names() const {
+  std::vector<const std::string*> signature_keys() const {
     std::vector<const std::string*> signature_keys;
     signature_keys.reserve(signature_defs_.size());
     for (const auto& sig_def : signature_defs_) {
