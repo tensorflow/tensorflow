@@ -12,23 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/cc/experimental/libtf/value.h"
+#include "tensorflow/cc/experimental/libtf/impl/string.h"
 
-#include <string>
-#include <unordered_set>
+#include "tensorflow/core/platform/test.h"
 
 namespace tf {
 namespace libtf {
 namespace impl {
 
-const char* InternString(const char* s) {
-  static auto* table = new std::unordered_set<std::string>;
-  auto it = table->find(s);
-  if (it != table->end()) {
-    return it->c_str();
-  }
-  auto ret = table->insert(s);
-  return ret.first->c_str();
+TEST(StringTest, TestBasicInterning) {
+  String s1("foo");
+  String s2("foo");
+  EXPECT_EQ(&s1.str(), &s2.str());
+}
+
+TEST(StringTest, TestIOStream) {
+  String s("foo");
+  std::stringstream stream;
+  stream << s;
+  ASSERT_EQ(stream.str(), "foo");
 }
 
 }  // namespace impl

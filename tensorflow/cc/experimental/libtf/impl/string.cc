@@ -12,18 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// C++ API for TensorFlow, implementation file.
-#include "tensorflow/cc/experimental/libtf/object.h"
+#include "tensorflow/cc/experimental/libtf/impl/string.h"
 
-#include <type_traits>
+#include <unordered_set>
+
+// It is important for the container below to not invalidate pointers to
+// elements when elements are inserted, because the String class stores such
+// pointers. This rules out, for example, absl::flat_hash_set.
+using StringTable = std::unordered_set<std::string>;
 
 namespace tf {
 namespace libtf {
+namespace impl {
 
-const String& Object::ParentKey() {
-  static const String* key = new String("__parent__");
-  return *key;
+String::String(const char* s) {
+  static StringTable* table = new StringTable;
+  value_ = &*table->insert(s).first;
 }
 
+}  // namespace impl
 }  // namespace libtf
 }  // namespace tf

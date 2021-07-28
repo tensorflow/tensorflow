@@ -18,15 +18,19 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/intrusive_ptr.h"
 #include "tensorflow/core/platform/statusor.h"
+
+// TODO(ccrusius): Move all value objects into `impl`. Currently only values
+// that do not reference TaggedValue are there.
+#include "tensorflow/cc/experimental/libtf/impl/string.h"
 
 namespace tf {
 namespace libtf {
@@ -36,14 +40,14 @@ class None {};
 class TaggedValue;
 class Tuple;
 template <class T>
+// TODO(ccrusius): Use absl::Hash specializations instead.
 class TaggedValueHash;
 using Float32 = float;
 using Int64 = int64_t;
-using String = const char*;
 using List = std::vector<TaggedValue>;
 using ListPtr = std::shared_ptr<List>;
 using Dict =
-    std::unordered_map<TaggedValue, TaggedValue, TaggedValueHash<TaggedValue>>;
+    absl::flat_hash_map<TaggedValue, TaggedValue, TaggedValueHash<TaggedValue>>;
 using DictPtr = std::shared_ptr<Dict>;
 using TuplePtr = std::shared_ptr<Tuple>;
 using Func =
@@ -71,9 +75,6 @@ template <>
 struct TaggedValueHash<Tuple> {
   size_t operator()(const Tuple& t) const;
 };
-
-// Intern a string `s` into char* that is unique per sequence of characters.
-const char* InternString(const char* s);
 
 // Identity template
 template <class T>
@@ -223,7 +224,7 @@ class TaggedValue final {
   }
   const char* s() const {
     assert(type_ == STRING);
-    return data_.s;
+    return data_.s.str().c_str();
   }
   impl::List& list() {
     assert(type_ == LIST);
@@ -427,7 +428,7 @@ class TaggedValue final {
     explicit Data() {}
     explicit Data(Float32 f32) : f32(f32) {}
     explicit Data(Int64 i64) : i64(i64) {}
-    explicit Data(const char* s) : s(InternString(s)) {}
+    explicit Data(const char* s) : s(String(s)) {}
     explicit Data(Func fn) : func(fn) {}
     explicit Data(TaggedValueTensor tensor_in) {
       new (&tensor) TaggedValueTensor(std::move(tensor_in));
@@ -438,7 +439,7 @@ class TaggedValue final {
     ~Data() {}
     Float32 f32;
     Int64 i64;
-    const char* s;
+    String s;
     Func func;
     // TODO(aselle): look at tensorflow thing
     std::shared_ptr<impl::Dict> dict;
@@ -487,7 +488,6 @@ inline size_t TaggedValueHash<Tuple>::operator()(const Tuple& t) const {
 
 class TaggedValueHashVisitor {
  public:
-  size_t operator()(const char* v) { return reinterpret_cast<size_t>(v); }
   size_t operator()(const None& v) { return 38383827; }
   size_t operator()(const TaggedValueTensor& v) {
     assert(false);
@@ -522,7 +522,7 @@ class TaggedValueHashVisitor {
   }
   template <class T>
   size_t operator()(const T& t) {
-    return std::hash<T>()(t);
+    return absl::Hash<T>()(t);
   }
 };
 

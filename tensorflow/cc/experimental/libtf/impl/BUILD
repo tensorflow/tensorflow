@@ -1,0 +1,38 @@
+# libtf implementation details.
+
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
+package(
+    default_visibility = [
+        "//tensorflow/cc/experimental/libtf:__subpackages__",
+    ],
+    licenses = ["notice"],
+)
+
+cc_library(
+    name = "string",
+    srcs = [
+        "string.cc",
+    ],
+    hdrs = [
+        "string.h",
+    ],
+)
+
+tf_cc_test(
+    name = "string_test",
+    size = "small",
+    srcs = ["string_test.cc"],
+    deps = [
+        ":string",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)

@@ -106,7 +106,7 @@ class Object : public Handle {
  public:
   Object() : Handle(TaggedValue::Dict()) {}
 
-  static const String* parent_;
+  static const String& ParentKey();
 
   // Get a object member attribute named `key`. Does lookup in referenced
   // object named "__parent__" if key not found locally.
@@ -119,7 +119,7 @@ class Object : public Handle {
       return Cast<T>(Handle(it->second));
     } else {
       // Lookup in object stored by reference in attribute  "__parent__".
-      auto it_class = dict.find(parent_->value_);
+      auto it_class = dict.find(ParentKey().value_);
       if (it_class != dict.end()) {
         auto& class_dict_maybe = it_class->second;
         if (class_dict_maybe.type() == TaggedValue::DICT) {

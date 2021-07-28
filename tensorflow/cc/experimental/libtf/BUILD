@@ -22,7 +22,6 @@ cc_library(
     name = "libtf",
     srcs = [
         "object.cc",
-        "value.cc",
     ],
     hdrs = [
         "object.h",
@@ -32,12 +31,14 @@ cc_library(
     deps = [
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/cc/experimental/libtf/impl:string",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:intrusive_ptr",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
