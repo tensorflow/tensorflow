@@ -15,55 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 
-#include <cstdint>
 #include <memory>
-#include <string>
 
 #include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/unimplemented_operation_parser.h"
 
 namespace tflite {
 namespace gpu {
-namespace {
-
-class UnimplementedCustomOperationParser : public TFLiteOperationParser {
- public:
-  explicit UnimplementedCustomOperationParser(absl::string_view op_name)
-      : op_name_(op_name) {}
-
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    return absl::UnimplementedError(op_name_);
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    return absl::UnimplementedError(op_name_);
-  }
-
- private:
-  std::string op_name_;
-};
-
-}  // namespace
 
 std::unique_ptr<TFLiteOperationParser> NewCustomOperationParser(
     absl::string_view op_name) {
-  return absl::make_unique<UnimplementedCustomOperationParser>(op_name);
-}
-
-absl::Status ParseCustomAttributes(absl::string_view op_name, int version,
-                                   const void* data, uint32_t data_size,
-                                   absl::any* attr, BHWC* output_shape) {
-  return absl::UnimplementedError(absl::StrCat(
-      "Attributes parsing is not enabled for ", op_name, " operation."));
+  return absl::make_unique<UnimplementedOperationParser>(op_name);
 }
 
 }  // namespace gpu
