@@ -257,10 +257,9 @@ tf_kernel_library(
         "gpu_op_squared_difference.cc",
         "gpu_op_sub.cc",
         "gpu_op_xdivy.cc",
+        "gpu_op_xlog1py.cc",
         "gpu_op_xlogy.cc",
         "gpu_op_zeta.cc",
-    ]) + if_mlir_generated_experimental_kernels_enabled([
-        "gpu_op_xlog1py.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -294,11 +293,10 @@ tf_kernel_library(
         ":gpu_squared_difference_kernels",
         ":gpu_sub_kernels",
         ":gpu_xdivy_kernels",
+        ":gpu_xlog1py_kernels",
         ":gpu_xlogy_kernels",
         ":gpu_zeta_kernels",
         "//third_party/eigen3",
-    ]) + if_mlir_generated_experimental_kernels_enabled([
-        ":gpu_xlog1py_kernels",
     ]),
 )
 
