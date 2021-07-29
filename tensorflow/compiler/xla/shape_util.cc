@@ -1779,4 +1779,18 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
          HigherPrecisionElementType(from, to) == to.element_type();
 }
 
+/*static*/
+Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
+  TF_RET_CHECK(shape.IsArray());
+  TF_RET_CHECK(shape.has_layout());
+  TF_RET_CHECK(shape.dimensions_size() == strides.size());
+
+  int64_t stride = ByteSizeOfPrimitiveType(shape.element_type());
+  for (int i : shape.layout().minor_to_major()) {
+    strides.at(i) = stride;
+    stride *= shape.dimensions(i);
+  }
+  return Status::OK();
+}
+
 }  // namespace xla

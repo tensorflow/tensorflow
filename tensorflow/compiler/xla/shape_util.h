@@ -799,6 +799,11 @@ class ShapeUtil {
   // element type of shape `to`.
   static bool ElementCanUpcast(const Shape& from, const Shape& to);
 
+  // Computes byte strides of an array shape `shape`. `shape` must have a
+  // layout. Ignores tiling. `strides` must have size equal to the number of
+  // dimensions of `shape`.
+  static Status ByteStrides(const Shape& shape, absl::Span<int64_t> strides);
+
  private:
   // Fills *shape. Returns true on success.
   // REQUIRES: *shape is empty.

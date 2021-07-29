@@ -87,6 +87,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -497,6 +498,8 @@ void TransposePlan::Execute(
     absl::BlockingCounter counter(nodes_.size());
     for (absl::Span<Node const> nodes : nodes_) {
       schedule_work([&, nodes]() {
+        tensorflow::profiler::TraceMe traceme("Transpose::Execute",
+                                              /*level=*/2);
         execute_by_type(nodes);
         counter.DecrementCount();
       });
@@ -1148,12 +1151,7 @@ void TransposePlan::Initialize() {
   }
 
   // Loop order heuristic: try to make loops with small strides innermost.
-  auto cost = [&](const Loop& l) -> double {
-    // If the inner kernel is a memcpy make sure the innermost dimension is the
-    // stride 1 dimensions. This is a requirement of the kernel.
-    if (inner_kernel_is_memcpy_ && l.dim_in_a == pos_stride1a) {
-      return l.tile_interior ? -2 : -1;
-    }
+  auto cost = [&](const Loop& l) {
     int64_t a_stride = (l.tile_interior && a_is_tiled_) ? lda_tile_[l.dim_in_a]
                                                         : lda_[l.dim_in_a];
     bool is_inner_dim_in_a =
@@ -1174,13 +1172,19 @@ void TransposePlan::Initialize() {
     // consecutive writes and consecutive reads, we would prefer consecutive
     // writes.
     double penalty = 1.01;
-    return std::min<double>(a_stride * penalty, b_stride);
+
+    // If the inner kernel is a memcpy make sure the innermost loop is the
+    // stride-1 dimension. This is a requirement of the memcpy kernel.
+    bool dim_must_go_last =
+        inner_kernel_is_memcpy_ && l.dim_in_a == pos_stride1a &&
+        (l.tile_interior ||
+         (a_tiling_[l.dim_in_a] == 1 && b_tiling_[b_dim] == 1));
+    return std::make_tuple(dim_must_go_last,
+                           inner_kernel_is_memcpy_ && l.tile_interior,
+                           -std::min<double>(a_stride * penalty, b_stride));
   };
   absl::c_stable_sort(loop_order_, [&](const Loop& a, const Loop& b) {
-    return std::make_tuple(inner_kernel_is_memcpy_ && a.tile_interior,
-                           -cost(a)) <
-           std::make_tuple(inner_kernel_is_memcpy_ && b.tile_interior,
-                           -cost(b));
+    return cost(a) < cost(b);
   });
   // It is a required invariant of the loop order that tile interiors always
   // appear after the corresponding tile exterior. This is a consequence of the
@@ -1188,7 +1192,8 @@ void TransposePlan::Initialize() {
   // both input and output.
 
   // The stride-1 loop must be innermost for a memcpy loop.
-  CHECK(!inner_kernel_is_memcpy_ || loop_order_.back().dim_in_a == ndim - 1);
+  DCHECK(!inner_kernel_is_memcpy_ || loop_order_.back().dim_in_a == ndim - 1)
+      << ToString();
 
   loop_parallelism_ = ChooseParallelizationStrategy(inverse_permutation);
   int num_threads =
