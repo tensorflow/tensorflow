@@ -12,21 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tfrt/core_runtime/core_runtime.h"
-#include "tfrt/core_runtime/core_runtime_op.h"
-#include "tfrt/core_runtime/execute_op_impl.h"
-#include "tfrt/core_runtime/op_attrs.h"
-#include "tfrt/core_runtime/tensor_handle.h"
-#include "tfrt/host_context/attribute_utils.h"
-#include "tfrt/host_context/execution_context.h"
-#include "tfrt/host_context/function.h"
-#include "tfrt/host_context/host_buffer.h"
-#include "tfrt/host_context/host_context.h"
-#include "tfrt/host_context/kernel_utils.h"
-#include "tfrt/tensor/dense_host_tensor.h"
-#include "tfrt/tensor/dense_host_tensor_view.h"
-#include "tfrt/tensor/tensor_metadata.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
+#include "tfrt/core_runtime/core_runtime_op.h"  // from @tf_runtime
+#include "tfrt/core_runtime/execute_op_impl.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
+#include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/function.h"  // from @tf_runtime
+#include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor_view.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

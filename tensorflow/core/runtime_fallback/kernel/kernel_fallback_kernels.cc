@@ -16,21 +16,21 @@ limitations under the License.
 // TFRT kernels for calling directly into current TF kernels, bypassing the
 // current TF runtime.
 
-#include "tfrt/core_runtime/op_attrs.h"
-#include "tfrt/cpu/core_runtime/cpu_op_handler.h"
-#include "tfrt/host_context/execution_context.h"
-#include "tfrt/host_context/host_context.h"
-#include "tfrt/host_context/kernel_frame.h"
-#include "tfrt/host_context/kernel_utils.h"
-#include "tfrt/tensor/dense_host_tensor.h"
-#include "tfrt/tensor/scalar_host_tensor.h"
-#include "tfrt/tensor/string_host_tensor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/runtime_fallback/kernel/attr_util.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_op_handler.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
+#include "tfrt/cpu/core_runtime/cpu_op_handler.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_frame.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 

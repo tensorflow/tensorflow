@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/tfrt_op_kernel.h"
 
-#include "tfrt/host_context/async_value.h"
-#include "tfrt/host_context/kernel_frame.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "llvm/Support/raw_ostream.h"
@@ -24,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/kernel/attr_util.h"
+#include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_frame.h"  // from @tf_runtime
 
 namespace tensorflow {
 

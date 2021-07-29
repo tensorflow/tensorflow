@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 
-#include "tfrt/tensor/dense_host_tensor.h"
-#include "tfrt/tensor/tensor_metadata.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -24,6 +22,8 @@ limitations under the License.
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
 
 namespace tensorflow {

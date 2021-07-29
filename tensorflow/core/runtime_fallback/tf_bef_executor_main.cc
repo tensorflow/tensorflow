@@ -18,12 +18,12 @@ limitations under the License.
 //
 // This is allowed to link against Tensorflow libraries.
 
-#include "tfrt/bef_executor_driver/bef_executor_driver.h"
 #include "absl/strings/str_split.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/runtime_fallback/bef_executor_flags.h"
 #include "tensorflow/core/runtime_fallback/util/fallback_test_util.h"
+#include "tfrt/bef_executor_driver/bef_executor_driver.h"  // from @tf_runtime
 
 int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);

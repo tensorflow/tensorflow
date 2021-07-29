@@ -21,9 +21,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "tfrt/core_runtime/core_runtime.h"
-#include "tfrt/core_runtime/op_handler.h"
-#include "tfrt/host_context/execution_context.h"
+#include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_handler.h"  // from @tf_runtime
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

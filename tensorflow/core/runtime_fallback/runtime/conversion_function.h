@@ -19,7 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_CONVERSION_FUNCTION_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_CONVERSION_FUNCTION_H_
 
-#include "tfrt/support/forward_decls.h"
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tfrt {
 

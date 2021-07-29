@@ -31,16 +31,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/RegionUtils.h"
-#include "tfrt/basic_kernels/opdefs/basic_kernels.h"
-#include "tfrt/basic_kernels/opdefs/tfrt_base.h"
-#include "tfrt/basic_kernels/opdefs/types.h"
-#include "tfrt/core_runtime/opdefs/attributes.h"
-#include "tfrt/core_runtime/opdefs/core_runtime.h"
-#include "tfrt/core_runtime/opdefs/types.h"
-#include "tfrt/cpu/jit/opdefs/cpurt_ops.h"
-#include "tfrt/distributed_runtime/opdefs/kernels.h"
-#include "tfrt/distributed_runtime/opdefs/types.h"
-#include "tfrt/test_kernels/opdefs/test_kernels.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -66,7 +56,16 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
+#include "tfrt/cpu/jit/opdefs/cpurt_ops.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
+#include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
+#include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
+#include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
+#include "tfrt/core_runtime/opdefs/core_runtime.h"  // from @tf_runtime
+#include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
+#include "tfrt/distributed_runtime/opdefs/kernels.h"  // from @tf_runtime
+#include "tfrt/distributed_runtime/opdefs/types.h"  // from @tf_runtime
+#include "tfrt/test_kernels/opdefs/test_kernels.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace {

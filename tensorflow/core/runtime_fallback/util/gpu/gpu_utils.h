@@ -18,11 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_GPU_GPU_UTILS_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_GPU_GPU_UTILS_H_
 
-#include "tfrt/tensor/tensor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tfrt/gpu/device/gpu_config.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

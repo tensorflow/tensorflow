@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_gpu_allocator.h"
 
-#include "tfrt/support/ref_count.h"
-#include "tfrt/support/string_util.h"
 #include "llvm/Support/Errc.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/support/ref_count.h"  // from @tf_runtime
+#include "tfrt/support/string_util.h"  // from @tf_runtime
 
 namespace tensorflow {
 

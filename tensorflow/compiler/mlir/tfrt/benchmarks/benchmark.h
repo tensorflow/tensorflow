@@ -18,11 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "tfrt/cpu/jit/cpurt.h"
-#include "tfrt/dtype/dtype.h"
-#include "tfrt/host_context/host_context.h"
-#include "tfrt/tensor/dense_host_tensor.h"
-#include "tfrt/tensor/tensor_shape.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -30,6 +25,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_passes.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
 
 namespace tensorflow {
 

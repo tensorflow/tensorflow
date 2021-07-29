@@ -17,8 +17,8 @@
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Pass/Pass.h"
-#include "tfrt/basic_kernels/opdefs/tfrt_base.h"
-#include "tfrt/gpu/kernels/gpu_ops.h"
+#include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
+#include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 
 namespace tensorflow {
 

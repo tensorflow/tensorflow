@@ -14,17 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_op_handler.h"
 
-#include "tfrt/core_runtime/dispatch_utils.h"
-#include "tfrt/core_runtime/op_invocation.h"
-#include "tfrt/core_runtime/op_metadata_function.h"
-#include "tfrt/tensor/string_host_tensor.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
+#include "tfrt/core_runtime/dispatch_utils.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_invocation.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_metadata_function.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

@@ -19,9 +19,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
-#include "tfrt/compiler/opdefs/tfrt_op_interfaces.h"
-#include "tfrt/compiler/opdefs/tfrt_traits.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
+#include "tfrt/compiler/opdefs/tfrt_op_interfaces.h"  // from @tf_runtime
+#include "tfrt/compiler/opdefs/tfrt_traits.h"  // from @tf_runtime
 
 namespace mlir {
 namespace tf_cpurt {

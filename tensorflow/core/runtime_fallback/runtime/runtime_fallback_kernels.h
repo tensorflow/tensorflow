@@ -21,15 +21,15 @@ limitations under the License.
 
 #include <memory>
 
-#include "tfrt/core_runtime/op_attrs.h"
-#include "tfrt/host_context/async_value.h"
-#include "tfrt/host_context/chain.h"
-#include "tfrt/host_context/execution_context.h"
-#include "tfrt/host_context/shared_context.h"
-#include "tfrt/tensor/tensor.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
+#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/shared_context.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

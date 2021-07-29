@@ -17,13 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
 
-#include "tfrt/host_context/async_value_ref.h"
-#include "tfrt/host_context/host_context.h"
-#include "tfrt/support/error_util.h"
-#include "tfrt/tensor/conversion_registry.h"
-#include "tfrt/tensor/dense_host_tensor.h"
-#include "tfrt/tensor/string_host_tensor.h"
-#include "tfrt/tensor/tensor_metadata.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/c/tensor_interface.h"
@@ -36,8 +29,15 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
+#include "tfrt/tensor/conversion_registry.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
+#include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {

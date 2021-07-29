@@ -20,14 +20,14 @@ limitations under the License.
 #include <typeinfo>
 #include <vector>
 
-#include "tfrt/core_runtime/op_attrs.h"
-#include "tfrt/host_context/kernel_utils.h"
 #include "llvm/ADT/StringMap.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 #include "tensorflow/core/util/padding.h"
+#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
 
 namespace tensorflow {
 

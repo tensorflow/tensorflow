@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tfrt/host_context/kernel_registry.h"
+#include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt {

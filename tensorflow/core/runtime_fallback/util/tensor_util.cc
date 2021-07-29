@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 
-#include "tfrt/support/error_util.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
+#include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
