@@ -1188,7 +1188,7 @@ class ConvertGatherV2OpDynamic : public OpRewritePattern<TF::GatherV2Op> {
       }
     }
     Value slice_sizes_value = rewriter.create<tensor::FromElementsOp>(
-        loc, rewriter.getI32Type(), slice_sizes_vals);
+        loc, indices_ty.getElementType(), slice_sizes_vals);
     // offset_dims
     SmallVector<int64_t, 4> offset_dims;
     for (int64_t dim_idx = 0; dim_idx < params_rank; dim_idx++) {
