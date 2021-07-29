@@ -61,7 +61,6 @@ struct TensorSpec {
 // A capsule holds a pointer and a destructor for the pointer (i.e. a generic
 // shared_ptr to void with a custom deleter).
 using Capsule = std::shared_ptr<void>;
-using WeakCapsule = std::weak_ptr<void>;
 using TaggedValueTensor =
     tensorflow::core::IntrusivePtr<tensorflow::AbstractTensorHandle>;
 
@@ -97,7 +96,6 @@ class TaggedValue final {
     TENSOR = 8,
     TENSOR_SPEC = 9,
     CAPSULE = 10,
-    WEAK_CAPSULE = 11,
   };
   TaggedValue() : type_(NONE), data_() {}
 
@@ -175,22 +173,6 @@ class TaggedValue final {
     new (&v.data_.capsule) T(data, deleter);
     return v;
   }
-  static TaggedValue WeakCapsule(TaggedValue capsule) {
-    TaggedValue v;
-    v.type_ = WEAK_CAPSULE;
-    using T = decltype(v.data_.weak_capsule);
-    switch (capsule.type_) {
-      case CAPSULE:
-        new (&v.data_.weak_capsule) T(capsule.data_.capsule);
-        break;
-      case WEAK_CAPSULE:
-        new (&v.data_.weak_capsule) T(capsule.data_.weak_capsule);
-        break;
-      default:
-        return v = TaggedValue::None();
-    }
-    return v;
-  }
   // Destroy tagged union properly. Shared pointers in unions must be explicitly
   // deleted.
   void destroy() {
@@ -264,13 +246,6 @@ class TaggedValue final {
     assert(type_ == CAPSULE);
     return data_.capsule.get();
   }
-  std::shared_ptr<void> weak_capsule() const {
-    // Instead of making this function, allow the user to access the weak
-    // capsule by constructing a strong capsule again with a static constructor
-    // by taking the weak capsule as a tagged value.
-    assert(type_ == WEAK_CAPSULE);
-    return data_.weak_capsule.lock();
-  }
 
   Type type() const { return type_; }
 
@@ -310,8 +285,6 @@ class TaggedValue final {
         return data_.tensor_spec == o.data_.tensor_spec;
       case CAPSULE:
         return data_.capsule.get() == o.data_.capsule.get();
-      case WEAK_CAPSULE:
-        return data_.weak_capsule.lock() == o.data_.weak_capsule.lock();
       case NONE:
         return true;
     }
@@ -340,8 +313,6 @@ class TaggedValue final {
         return visitor(data_.tensor_spec);
       case CAPSULE:
         return visitor(data_.capsule);
-      case WEAK_CAPSULE:
-        return visitor(data_.weak_capsule);
       case NONE:
         return visitor(data_.none);
     }
@@ -370,8 +341,6 @@ class TaggedValue final {
         return visitor(data_.tensor_spec);
       case CAPSULE:
         return visitor(data_.capsule);
-      case WEAK_CAPSULE:
-        return visitor(data_.weak_capsule);
       case NONE:
         return visitor(data_.none);
     }
@@ -439,7 +408,6 @@ class TaggedValue final {
     std::shared_ptr<impl::List> list;
     std::shared_ptr<impl::Tuple> tuple;
     impl::Capsule capsule;
-    impl::WeakCapsule weak_capsule;
     TaggedValueTensor tensor;
     impl::None none;
     TensorSpec tensor_spec;
@@ -499,9 +467,6 @@ class TaggedValueHashVisitor {
     return 0;
   }
   size_t operator()(const Capsule& t) { return std::hash<Capsule>()(t); }
-  size_t operator()(const WeakCapsule& t) {
-    return std::hash<Capsule>()(t.lock());
-  }
   size_t operator()(const Func& t) {
     assert(false);
     return 0;
@@ -541,7 +506,6 @@ inline size_t TaggedValueHash<TaggedValue>::operator()(
 template <class T>
 class GetHelper {};
 TF_TAG_MATCH(impl::Capsule, TaggedValue::CAPSULE, data_.capsule);
-TF_TAG_MATCH(impl::WeakCapsule, TaggedValue::WEAK_CAPSULE, data_.weak_capsule);
 TF_TAG_MATCH(impl::Float32, TaggedValue::FLOAT32, data_.f32);
 TF_TAG_MATCH(impl::Int64, TaggedValue::INT64, data_.i64);
 TF_TAG_MATCH(impl::ListPtr, TaggedValue::LIST, data_.list);

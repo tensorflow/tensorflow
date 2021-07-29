@@ -71,10 +71,6 @@ class TaggedValueIOStreamVisitor {
     o_ << "Capsule(" << x.get() << ")";
     return o_;
   }
-  std::ostream& operator()(const WeakCapsule& x) {
-    o_ << "WeakCapsule(" << x.lock().get() << ")";
-    return o_;
-  }
   std::ostream& operator()(const Func& x) {
     o_ << "Func";
     return o_;
