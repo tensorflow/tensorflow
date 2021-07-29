@@ -681,6 +681,35 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "lift_tflite_flex_ops",
+    srcs = [
+        "transforms/lift_tflite_flex_ops.cc",
+    ],
+    hdrs = [
+        "transforms/lift_tflite_flex_ops.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_attr",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@flatbuffers",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+    # The library contains a static initialization of a pass registration.
+    alwayslink = 1,
+)
+
 filegroup(
     name = "generated_op_quant_spec_getters",
     srcs = [
