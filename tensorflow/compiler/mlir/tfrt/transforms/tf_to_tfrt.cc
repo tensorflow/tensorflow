@@ -2152,12 +2152,30 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
       mlir::TF::CreateTensorDeviceCopyConversionPass());
 
   // Outline auto-fusion clusters into tf_device.cluster_operations and then
-  // build tf_cpurt.fallback.execute operations from them. We currently support
-  // only tfrt fallback tensors as operands, so we disable these passes if
-  // we can have native ops after lowering.
+  // convert them to functions. We currently support only tfrt fallback tensors
+  // as operands, so we disable these passes if we can have native ops after
+  // lowering.
   if (!options.enable_native_ops) {
     pm.addNestedPass<mlir::FuncOp>(CreateTfCpurtClusteringPass(
         options.auto_fusion_oplist, options.auto_fusion_min_cluster_size));
+
+    // Sink small constants into the outlined clusters to reduce the number of
+    // arguments for each of the execute operations.
+    auto is_compilable_const = [](mlir::tf_device::ClusterOp cluster,
+                                  mlir::ElementsAttr value) -> bool {
+      // Ensure that cluster was formed for TFRT JIT compilation.
+      auto policy = cluster->getAttr("policy").dyn_cast_or_null<StringAttr>();
+      if (!policy || policy.getValue() != "tfrt.auto-fusion") return false;
+
+      // Check that TF->CPURT compiler supports constant compilation.
+      return mlir::succeeded(IsCompilableConstant(value));
+    };
+
+    pm.addNestedPass<mlir::FuncOp>(
+        mlir::TFDevice::CreateClusterConstantSinkingPass(is_compilable_const));
+
+    // Outline formed JIT compiled device clusters into function.
+    pm.addPass(CreateOutlineCpuRtClustersPass());
   }
 
   // Rewriter operation sequences to device specific fusions.
@@ -2181,24 +2199,6 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
 void CreateTfExecutorToTfrtPipelineHelper(mlir::OpPassManager &pm,
                                           const TfrtPipelineOptions &options) {
   CreateTFExecutorToTFPipeline(pm, options);
-
-  // Sink small integer constants into the outlined clusters. They typically
-  // correspond to reduction dimensions, transpose permutations, and other
-  // values that are required for TF->CPURT compilation.
-  auto is_compilable_const = [](mlir::tf_device::ClusterOp cluster,
-                                mlir::ElementsAttr value) -> bool {
-    // Ensure that cluster was formed for TFRT JIT compilation.
-    auto policy = cluster->getAttr("policy").dyn_cast_or_null<StringAttr>();
-    if (!policy || policy.getValue() != "tfrt.auto-fusion") return false;
-
-    // Check that TF->CPURT compiler supports constant compilation.
-    return mlir::succeeded(IsCompilableConstant(value));
-  };
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::TFDevice::CreateClusterConstantSinkingPass(is_compilable_const));
-
-  // Outline formed JIT compiled device clusters into function.
-  pm.addPass(CreateOutlineCpuRtClustersPass());
 
   pm.addPass(CreateTfToTfrtConversionPass(options));
 

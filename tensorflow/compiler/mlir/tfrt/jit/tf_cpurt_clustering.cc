@@ -710,7 +710,7 @@ void populateTfCpurtConstraintsPolicies(ClusteringPolicySet& policies,
 
 mlir::LogicalResult IsCompilableConstant(mlir::ElementsAttr value) {
   return success(value.getNumElements() <= 16 &&
-                 value.getType().getElementType().isIntOrIndex());
+                 value.getType().getElementType().isIntOrIndexOrFloat());
 }
 
 mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
