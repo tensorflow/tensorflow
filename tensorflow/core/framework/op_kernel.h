@@ -669,7 +669,7 @@ class OpKernelContext {
     bool* outputs_required_array = nullptr;
 
     // For access to distributed coordination service.
-    CoordinationServiceAgent* coordination_service_agent;
+    CoordinationServiceAgent* coordination_service_agent = nullptr;
   };
 
   // params must outlive the OpKernelContext.
