@@ -105,6 +105,11 @@ This release contains contributions from many people at Google, as well as:
   copy and will be removed in future release (2.7). Please remove any imports
   to `tensorflow.python.keras` and replace them with public tf.keras API instead.
 
+*  Modular File System Migration
+   * S3 and HDFS file system supports have been migrated to modular file systems
+     and is now available in https://github.com/tensorflow/io. The tensorflow-io
+     python package should be installed for S3 and HDFS support with tensorflow.
+
 *<DOCUMENT BREAKING CHANGES HERE>
 *<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
