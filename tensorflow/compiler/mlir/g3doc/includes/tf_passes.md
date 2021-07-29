@@ -500,7 +500,6 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} 
   tf_device.return
 }
 ```
-
 ### `-tf-shape-inference`: Simple Shape Inference on TensorFlow Dialect
 
 #### Options
@@ -736,18 +735,14 @@ func @outside_compilation() -> tensor<f32> {
   return %0 : tensor<f32>
 }
 ```
-
 ### `-tf-tpu-host-computation-expansion`: Expands host computation before and after TPU computation.
-
-This pass expands outside compilation attributes to Identity/Cast ops at the
-head of TPU computation if it's only used by outside compiled ops.
-
+This pass expands outside compilation attributes to Identity/Cast ops
+at the head of TPU computation if it's only used by outside compiled ops.
 ### `-tf-tpu-merge-variables-with-execute`: Merges device variable reads and updates into TPU execute ops
-
 This pass finds on-device resource variable reads and updates surrounding a
-`tf.TPUExecute` op and merges them into a `tf.TPUExecuteAndUpdateVariables` op.
-This allows the TPU execution to perform more efficient in-place variable
-updates.
+`tf.TPUExecute` op and merges them into a `tf.TPUExecuteAndUpdateVariables`
+op. This allows the TPU execution to perform more efficient in-place
+variable updates.
 
 For example,
 
@@ -760,7 +755,7 @@ For example,
 
 will be transformed into
 
-~~~mlir
+```mlir
   %2 = "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %compile)
     { device_var_reads_indices = [0, 1],
       device_var_updates_indices = [0, -1] }
@@ -789,7 +784,7 @@ func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %a
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (!rtype, !rtype) -> !rtype
   return %ri : !rtype
 }
-~~~
+```
 
 will be transformed into:
 
@@ -802,9 +797,7 @@ func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %a
   return %pi : !rtype
 }
 ```
-
 ### `-tf-tpu-resource-partition`: Partitions unpartitioned resource read/write to partitioned resource variables.
-
 This pass creates individual resource reads/writes from the unpartitioned
 resource variable (from `tf.TPUPartitionedInput`) to individual partitioned
 resource variables (`tf.TPUPartitionedInput` operands). As resource op
@@ -846,9 +839,7 @@ func @computation(%arg0: tensor<i32>) -> tensor<i32> {
   return %arg0: tensor<i32>
 }
 ```
-
 ### `-tf-tpu-resource-read-for-write`: Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes with no reads
-
 This pass materializes `tf.ReadVariableOp` inputs to an outlined TPU computation
 for resource variables where only writes are present so later in the pipeline
 such resource variables can be fused with generated `tf.TPUExecute` ops, which
@@ -886,15 +877,13 @@ func @cluster(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
   return %identity : tensor<i32>
 }
 ```
-
 ### `-tf-tpu-rewrite`: Rewrites a `tf_device.cluster_func` on TPUs into TPU runtime operations.
-
-This pass rewrites a `tf_device.cluster_func` operation into a sequence of
-`tf._TPUCompileMlir` and `tf.TPUExecute` operations. `tf._TPUCompileMlir`
-contains a MLIR module that is functionally equivalent to the function
-referenced by `tf_device.cluster_func`. This makes the module to be jit-compiled
-and executed on TPU. If it is not possible to rewrite the operation or device
-assignment fails, a failure will be returned.
+This pass rewrites a `tf_device.cluster_func` operation into a sequence of `tf._TPUCompileMlir`
+and `tf.TPUExecute` operations. `tf._TPUCompileMlir` contains a MLIR module that is
+functionally equivalent to the function referenced by `tf_device.cluster_func`.
+This makes the module to be jit-compiled and executed on TPU.
+If it is not possible to rewrite the operation or device assignment fails,
+a failure will be returned.
 
 Note, many parameters to the `tf_device.cluster_func` are ommited in this
 and following examples.
@@ -999,12 +988,9 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   return %1 : tensor<8xi32>
 }
 ```
-
 ### `-tf-tpu-space-to-depth-pass`: Applies automatic space to depth transform for the first or frontier convolutions consume host inputs on TPU.
-
-Automatic space to depth transform is done by adding space to depth transform op
-after host input and applying space to depth transform for the first convolution
-and its backprop filter on TPU.
+Automatic space to depth transform is done by adding space to depth transform op after host input
+and applying space to depth transform for the first convolution and its backprop filter on TPU.
 
 For example, original program:
 
