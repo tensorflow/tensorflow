@@ -1506,6 +1506,11 @@ Status Converter::BuildCudaEngine(
   }
 #endif
 
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+  builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+  VLOG(1) << "Setting sparsity for TensorRT8!";
+#endif
+
   if (precision_mode_ == TrtPrecisionMode::FP16) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
   } else if (precision_mode_ == TrtPrecisionMode::INT8) {
