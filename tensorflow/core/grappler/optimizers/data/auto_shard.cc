@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -130,7 +131,8 @@ constexpr std::array<const char*, 5> kUnshardableSourceDatasetOps = {
 
 Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
                      int64_t index, AutoShardPolicy policy,
-                     int64_t num_replicas, GraphDef* output);
+                     int64_t num_replicas, GraphDef* output,
+                     AutoShardPolicy* policy_applied);
 
 template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,
@@ -667,7 +669,9 @@ Status ShardByHint(const NodeDef& sink_node, int64_t num_workers, int64_t index,
 
 Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
                      int64_t index, AutoShardPolicy policy,
-                     int64_t num_replicas, GraphDef* output) {
+                     int64_t num_replicas, GraphDef* output,
+                     AutoShardPolicy* policy_applied) {
+  *policy_applied = policy;
   if (policy == AutoShardPolicy::OFF ||
       (policy == AutoShardPolicy::FILE && num_workers == 1 && index == 0)) {
     return Status::OK();
@@ -697,9 +701,11 @@ Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
                         "as it failed to apply FILE sharding policy because of "
                         "the following reason: "
                      << s.error_message();
+        *policy_applied = AutoShardPolicy::DATA;
         return ShardByData(*sink_node, num_workers, index, num_replicas,
                            &graph);
       }
+      *policy_applied = AutoShardPolicy::FILE;
       return s;
   }
 }
@@ -751,13 +757,23 @@ Status AutoShard::Init(
   return Status::OK();
 }
 
-Status AutoShard::OptimizeAndCollectStats(Cluster* /* cluster */,
+Status AutoShard::OptimizeAndCollectStats(Cluster* cluster,
                                           const GrapplerItem& item,
                                           GraphDef* output,
                                           OptimizationStats* stats) {
   *output = item.graph;
+  AutoShardPolicy policy_applied;
   TF_RETURN_IF_ERROR(OptimizeGraph(item, num_workers_, index_,
-                                   auto_shard_policy_, num_replicas_, output));
+                                   auto_shard_policy_, num_replicas_, output,
+                                   &policy_applied));
+
+  // Only record on the first shard to avoid duplication.
+  if (index_ == 0) {
+    // item.id is always the same so we use the address of the cluster as id.
+    string id = strings::StrCat(reinterpret_cast<uint64>(cluster));
+    metrics::RecordTFDataAutoShard(id, policy_applied, num_workers_,
+                                   num_replicas_);
+  }
   stats->num_changes++;
   return Status::OK();
 }
