@@ -35,7 +35,6 @@ TfLiteRegistration* Register_RANDOM_UNIFORM();
 TfLiteRegistration* Register_RANDOM_UNIFORM_INT();
 TfLiteRegistration* Register_ROLL();
 TfLiteRegistration* Register_SIGN();
-TfLiteRegistration* Register_TABLE();
 
 }  // namespace custom
 }  // namespace ops
