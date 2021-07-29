@@ -853,48 +853,48 @@ class Conv2DTest(test.TestCase):
                                      dtype=dtypes.float32)
 
   @test_util.deprecated_graph_mode_only
+  @test_util.run_cuda_only
   def testInputGradientGroupConv(self):
-    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
+    for data_format in ["NCHW", "NHWC"]:
       for test_input in [True, False]:
-        for (data_format, use_gpu) in GetTestConfigs():
-          self.ConstructAndTestGradient(
-              batch=2,
-              input_rows=5,
-              input_cols=4,
-              filter_rows=3,
-              filter_cols=3,
-              num_groups=2,
-              padding="VALID",
-              in_depth=4,
-              out_depth=6,
-              stride_rows=1,
-              stride_cols=1,
-              test_input=test_input,
-              data_format=data_format,
-              use_gpu=use_gpu,
-              max_err=0.005)
+        self.ConstructAndTestGradient(
+            batch=2,
+            input_rows=5,
+            input_cols=4,
+            filter_rows=3,
+            filter_cols=3,
+            num_groups=2,
+            padding="VALID",
+            in_depth=4,
+            out_depth=6,
+            stride_rows=1,
+            stride_cols=1,
+            test_input=test_input,
+            data_format=data_format,
+            use_gpu=True,
+            max_err=0.005)
 
   @test_util.deprecated_graph_mode_only
+  @test_util.run_cuda_only
   def testFilterGradientGroupConv(self):
-    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
+    for data_format in ["NCHW", "NHWC"]:
       for test_input in [True, False]:
-        for (data_format, use_gpu) in GetTestConfigs():
-          self.ConstructAndTestGradient(
-              batch=2,
-              input_rows=5,
-              input_cols=4,
-              filter_rows=3,
-              filter_cols=3,
-              num_groups=2,
-              padding="VALID",
-              in_depth=4,
-              out_depth=6,
-              stride_rows=1,
-              stride_cols=1,
-              test_input=test_input,
-              data_format=data_format,
-              use_gpu=use_gpu,
-              max_err=0.005)
+        self.ConstructAndTestGradient(
+            batch=2,
+            input_rows=5,
+            input_cols=4,
+            filter_rows=3,
+            filter_cols=3,
+            num_groups=2,
+            padding="VALID",
+            in_depth=4,
+            out_depth=6,
+            stride_rows=1,
+            stride_cols=1,
+            test_input=test_input,
+            data_format=data_format,
+            use_gpu=True,
+            max_err=0.005)
   # TODO(yzhwang): this currently fails.
   # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
   #                   filter_in_sizes=[2, 2, 1, 1],
