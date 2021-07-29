@@ -519,23 +519,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "crash_analysis",
-    srcs = [
-        "crash_analysis.cc",
-    ],
-    hdrs = ["crash_analysis.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        "//tensorflow/core/platform:protobuf",
-    ],
-)
-
 bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["cuda_build_defs.bzl"],
