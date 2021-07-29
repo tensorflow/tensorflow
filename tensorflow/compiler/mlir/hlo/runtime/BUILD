@@ -12,22 +12,12 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//babelfish/device/...",
-        "//learning/brain/experimental/dtensor/...",
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/kernels/...",
-        "//learning/brain/google/xla/mlir/...",
-        "//learning/deepmind/partir/...",
-        "//learning/pathways/data_parallel/tf2xla/...",
-        "//platforms/xla/...",
-        "//third_party/iree/...",
-        "//third_party/mlir_edge/...",
-        "//third_party/py/mlir/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server/...",
+        "//third_party/iree/...",
+        "//third_party/mlir_edge/...",
+        "//third_party/py/mlir/...",
     ],
 )
 
