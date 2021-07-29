@@ -119,13 +119,13 @@ class GpuExecutable : public Executable {
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile);
+      HloExecutionProfile* hlo_execution_profile) override;
 
   using VariantArguments = absl::variant<absl::Span<const ShapedBuffer* const>,
                                          absl::Span<ExecutionInput>>;
   StatusOr<ExecutionOutput> ExecuteAsyncOnStreamImpl(
       const ServiceExecutableRunOptions* run_options,
-      VariantArguments arguments, HloExecutionProfile* hlo_execution_profile);
+      VariantArguments arguments);
 
   absl::Span<const BufferAllocation> GetAllocations() const {
     return allocations_;
@@ -139,8 +139,7 @@ class GpuExecutable : public Executable {
   // GPU execution completes.
   Status ExecuteThunks(const ServiceExecutableRunOptions* run_options,
                        const BufferAllocations& buffer_allocations,
-                       bool block_host_until_done,
-                       HloExecutionProfile* hlo_execution_profile);
+                       bool block_host_until_done);
 
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;

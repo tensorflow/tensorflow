@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -117,8 +116,6 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     PrintBufferContents(params.stream, buffer_args);
   }
 
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
   return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
                                params.stream);
 }

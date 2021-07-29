@@ -65,8 +65,7 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
   return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream,
-                 implements_whole_instruction_, profile_index(),
-                 params.profiler);
+                 implements_whole_instruction_, profile_index());
 }
 
 // This struct contains the metadata of a matrix, e.g., its base address and
@@ -191,7 +190,6 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
                bool implements_whole_instruction,
                absl::optional<int64> profile_index,
-               HloExecutionProfiler *profiler,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
   VLOG(2) << "Executing a GemmThunk";
@@ -292,11 +290,6 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   MatrixDescriptor rhs_matrix = make_descriptor(
       rhs_buffer, rhs_shape, dim_nums.rhs_batch_dimensions_size(),
       rhs_transpose, backend_config.rhs_stride());
-
-  std::unique_ptr<ScopedInstructionProfiler> op_profiler =
-      profiler ? profiler->MakeScopedInstructionProfiler(
-                     implements_whole_instruction ? profile_index : -1)
-               : nullptr;
 
   if (LayoutUtil::Minor(output_shape.layout(), output_row_dim) != 0) {
     std::swap(lhs_matrix, rhs_matrix);
