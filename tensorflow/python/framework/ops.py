@@ -264,9 +264,9 @@ def disable_tensor_equality():
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor", "experimental.numpy.ndarray", v1=["Tensor"])
 class Tensor(internal.NativeObject, core_tf_types.Tensor):
-  """A tensor is a multidimensional array of elements represented by a
+  """A `tf.Tensor` represents a multidimensional array of elements.
 
-  `tf.Tensor` object.  All elements are of a single known data type.
+  All elements are of a single known data type.
 
   When writing a TensorFlow program, the main object that is
   manipulated and passed around is the `tf.Tensor`.
