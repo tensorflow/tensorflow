@@ -515,13 +515,13 @@ TEST_F(GenericLayoutOptimizerTest, DoNotPruneNonAddedCancellableTransposes) {
     auto input = ops::RandomUniform(scope.WithOpName("input"),
                                     DIMS(kBatchSize, kHeight, kWidth, kDepthIn),
                                     DT_FLOAT);
-    // Permuation for source to destination data format.
+    // Permutation for source to destination data format.
     // GPU: NHWC -> NCHW: {0, 3, 1, 2}
     // CPU: NCHW -> NHWC: {0, 2, 3, 1}
     auto input_in_transpose =
         ops::Transpose(scope.WithOpName("input_in_transpose"), input,
                        ops::Const(scope, PERMUTATION_SRC_TO_DST, {4}));
-    // Permuation for destination to source data format.
+    // Permutation for destination to source data format.
     // GPU: NCHW -> NHWC: {0, 2, 3, 1}
     // CPU: NHWC -> NCHW: {0, 3, 1, 2}
     auto input_out_transpose = ops::Transpose(

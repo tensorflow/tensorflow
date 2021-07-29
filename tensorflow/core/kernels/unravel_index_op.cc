@@ -62,7 +62,7 @@ class UnravelIndexOp : public OpKernel {
                                   i));
     }
 
-    // Chek to make sure indices is not out of boundary
+    // Check to make sure indices is not out of boundary
     Eigen::Tensor<Tidx, 0, Eigen::RowMajor> dims_prod_eigen = dims.prod();
     Tidx dims_prod = dims_prod_eigen();
     const Tidx* indices = indices_tensor.flat<Tidx>().data();

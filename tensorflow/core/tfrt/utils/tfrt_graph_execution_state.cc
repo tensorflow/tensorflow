@@ -306,7 +306,7 @@ Status PruneGraphDef(GraphDef& graph_def,
     // If a feed node is a Const, we don't need its inputs at all.
     //
     // TODO(tfrt-devs): Consider a general solution that we could just rewrite
-    // all feed nodes to Placeholde nodes.
+    // all feed nodes to Placeholder nodes.
     if (node->op() == "Const") {
       node->clear_input();
     }

@@ -88,7 +88,7 @@ message InputTimeBreakdown {
   double preprocessing_us = 3;
   // The infeed enqueue time in microseconds.
   double enqueue_us = 4;
-  // This entry is for the situtation where we can't further
+  // This entry is for the situation where we can't further
   // break down the non-enqueue input time (because the input pipeline
   // is not instrumented).
   double unclassified_non_enqueue_us = 5;

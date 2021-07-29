@@ -431,7 +431,7 @@ void SetSummary(CombinedTfDataStats* combined_tf_data_stats) {
   } else {
     combined_tf_data_stats->set_is_input_bound(false);
     combined_tf_data_stats->set_summary(
-        "No tf.data activitiy captured in your profile. If your job uses "
+        "No tf.data activity captured in your profile. If your job uses "
         "tf.data, try to capture a longer profile.");
   }
 }

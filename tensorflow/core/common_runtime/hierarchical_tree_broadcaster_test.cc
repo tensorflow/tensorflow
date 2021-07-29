@@ -44,7 +44,7 @@ namespace tensorflow {
 namespace {
 
 // The test harness won't allow a mixture of fixture and non-fixture
-// tests in one file, so this is a trival fixture for tests that don't
+// tests in one file, so this is a trivial fixture for tests that don't
 // need the heavy-weight HierarchicalTreeBroadcasterTest fixture.
 class TrivialTest : public ::testing::Test {
  protected:

@@ -154,7 +154,7 @@ __global__ void NMSReduce(const int* bitmask, const int bit_mask_len,
 // For each box, compute a bitmask of boxes which has an overlap with given box
 // above threshold.
 //
-// Starting from highes scoring box, mark any box which has IoU>threshold with
+// Starting from highest scoring box, mark any box which has IoU>threshold with
 // given box. Each thread processes a kNmsBoxesPerThread boxes per stride, and
 // each box has bitmask of overlaps of length bit_mask_len.
 //

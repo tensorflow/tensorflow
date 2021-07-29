@@ -337,7 +337,7 @@ Status TensorHandle::CreatePackedHandle(std::vector<TensorHandle*>&& handles,
     return errors::InvalidArgument("Handles should not be empty.");
   }
 
-  // Get the dtype and shape from the fisrt handle since all handles have the
+  // Get the dtype and shape from the first handle since all handles have the
   // same dtype and shape.
   tensorflow::DataType dtype = handles.at(0)->dtype;
   tensorflow::TensorShape shape;

@@ -273,7 +273,7 @@ TEST_P(RunHandlerThreadPoolTest, FindTask) {
   }
 
   {
-    // The thread should search from start range if the currrent index is
+    // The thread should search from start range if the current index is
     // smaller.
     int result = -1;
     run_handler_thread_pool.AddWorkToQueue(

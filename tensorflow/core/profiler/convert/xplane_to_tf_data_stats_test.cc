@@ -289,7 +289,7 @@ TEST(XPlaneToTfDataStatsTest, DeviceInputPipeline) {
             }
           }
         }
-        summary: "No tf.data activitiy captured in your profile. If your job uses tf.data, try to capture a longer profile."
+        summary: "No tf.data activity captured in your profile. If your job uses tf.data, try to capture a longer profile."
       )pb"));
 }
 

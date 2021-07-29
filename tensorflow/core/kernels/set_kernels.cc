@@ -422,7 +422,7 @@ ShapeArray TensorShapeToArray(const TensorShape& t) {
 
 // `ctx` contains set1 and set2 dense tensors.
 // Iterate over groups in set1 and set2, applying `ApplySetOperation` to each,
-// and outputing the result `SparseTensor`. A "group" is a collection of values
+// and outputting the result `SparseTensor`. A "group" is a collection of values
 // with the same first n-1 dimensions in set1 and set2.
 template <typename T>
 void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {

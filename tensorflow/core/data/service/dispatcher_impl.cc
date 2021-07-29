@@ -363,8 +363,8 @@ Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
       job->distributed_epoch_state.value().repetitions[provider_index];
   if (repetition < current_repetition) {
     response->set_end_of_splits(true);
-    VLOG(3) << "Returning end_of_splits since current reptition "
-            << current_repetition << " is greater than the requested reptition "
+    VLOG(3) << "Returning end_of_splits since current repetition "
+            << current_repetition << " is greater than the requested repetition "
             << repetition;
     return Status::OK();
   }

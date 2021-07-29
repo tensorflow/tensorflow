@@ -93,7 +93,7 @@ TEST_F(AllToAllTest, Failure) {
     });
   }
   counter.Wait();
-  // Failures are not gauranteed to propagate since the communication is P2P.
+  // Failures are not guaranteed to propagate since the communication is P2P.
   // One worker can succeed while part of the communication fail.
   EXPECT_GT(num_failures, 0);
 }
