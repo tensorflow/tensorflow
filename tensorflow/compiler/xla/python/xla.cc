@@ -249,6 +249,7 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
@@ -257,12 +258,14 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                             GetTfrtCpuClient(asynchronous));
         return std::make_shared<PyClient>(std::move(client));
       },
       py::arg("asynchronous") = true);
   m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
+    py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                         GetInterpreterClient());
     return std::make_shared<PyClient>(std::move(client));
@@ -272,6 +275,7 @@ PYBIND11_MODULE(xla_extension, m) {
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(
             std::unique_ptr<PjRtClient> client,
             GetGpuClient(asynchronous, allocator_config,
@@ -284,6 +288,7 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def(
       "get_tpu_client",
       [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
+        py::gil_scoped_release gil_release;
         TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
                             GetTpuClient(max_inflight_computations));
         return std::make_shared<PyClient>(std::move(client));
