@@ -63,6 +63,24 @@
         Static sharding (auto-sharding) requires the number of tf.data service
         workers be fixed. Users need to specify the worker addresses in
         `tensorflow.data.experimental.DispatcherConfig`.
+*  Keras:
+  *  `tf.keras.layers.Conv` now includes a public `convolution_op` method.
+      This method can be used to simplify the implementation of Conv subclasses.
+      There are two primary ways to use this new method.  The first is to use the method directly in your own `call` method:
+      ```
+        class StandardizedConv2D(tf.keras.layers.Conv2D):
+          def call(self, inputs):
+            mean, var = tf.nn.moments(self.kernel, axes=[0, 1, 2], keepdims=True)
+            return self.convolution_op(inputs, (self.kernel - mean) / tf.sqrt(var + 1e-10))
+      ```
+      Alternatively, you can override `convolution_op`:
+      ```
+        class StandardizedConv2D(tf.keras.Layer):
+          def convolution_op(self, inputs, kernel):
+            mean, var = tf.nn.moments(kernel, axes=[0, 1, 2], keepdims=True)
+            # Author code uses std + 1e-5
+            return super().convolution_op(inputs, (kernel - mean) / tf.sqrt(var + 1e-10))
+      ```
 
 ## Bug Fixes and Other Changes
 
