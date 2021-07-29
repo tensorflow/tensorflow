@@ -15,14 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/bef_thunk.h"
 
+#include "tensorflow/compiler/xla/service/gpu/tfrt_utils.h"
 #include "tensorflow/core/platform/errors.h"
 
 #if BEF_THUNKS
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
@@ -32,10 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/tfrt/gpu/gpu_shared_context.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
@@ -234,37 +232,6 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
                    std::move(bef_buffer), std::move(bef_file), op));
 }
 
-// Wrap the GPU stream specified in 'params' (initialized by the StreamExecutor)
-// to be passed to BEF functions as AsyncValueRef<GpuStream>.
-static auto CreateGpuStream(const Thunk::ExecuteParams& params) {
-  auto se_gpu_executor = static_cast<stream_executor::gpu::GpuExecutor*>(
-      params.stream->parent()->implementation());
-  auto se_gpu_stream = static_cast<stream_executor::gpu::GpuStream*>(
-      params.stream->implementation());
-  return tfrt::gpu::BorrowedGpuStream(
-      tfrt::gpu::wrapper::Context(se_gpu_executor->gpu_context()->context()),
-      tfrt::gpu::wrapper::Stream(se_gpu_stream->gpu_stream()));
-}
-
-// Wrap the GPU buffer specified in 'slice' to be passed to BEF functions as
-// AsyncValueRef<GpuBuffer>.
-static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
-    const Thunk::ExecuteParams& params, const BufferAllocation::Slice& slice) {
-  se::DeviceMemoryBase data =
-      params.buffer_allocations->GetDeviceAddress(slice);
-  tfrt::gpu::wrapper::Pointer<void> pointer(data.opaque(),
-                                            tfrt::gpu::wrapper::Platform::CUDA);
-  auto allocator =
-      tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
-          pointer);
-  auto buffer =
-      tfrt::gpu::GpuBuffer::Allocate(std::move(allocator), data.size());
-  if (!buffer)
-    return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(buffer.takeError()));
-  return tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuBuffer>(
-      std::move(*buffer));
-}
-
 static Status CreateXcclContext(
     const Thunk::ExecuteParams& params, const NcclCollectiveConfig& xccl_config,
     tfrt::RequestContextBuilder* request_context_builder) {
@@ -356,15 +323,18 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain(exec_ctx.host());
   args.push_back(chain.GetAsyncValue());
-  tfrt::gpu::BorrowedGpuStream stream = CreateGpuStream(params);
-  args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
-                     .GetAsyncValue());
+  TF_ASSIGN_OR_RETURN(auto borrowed_stream, CreateGpuStream(params.stream));
+  args.push_back(
+      static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(*borrowed_stream)
+          .GetAsyncValue());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (auto input : inputs_) {
-    buffers.push_back(CreateGpuBuffer(params, input));
+    auto data = params.buffer_allocations->GetDeviceAddress(input);
+    buffers.push_back(CreateGpuBuffer(&data));
   }
   for (auto output : outputs_) {
-    buffers.push_back(CreateGpuBuffer(params, output));
+    auto data = params.buffer_allocations->GetDeviceAddress(output);
+    buffers.push_back(CreateGpuBuffer(&data));
   }
   for (auto& buffer : buffers) {
     args.push_back(buffer.get());
