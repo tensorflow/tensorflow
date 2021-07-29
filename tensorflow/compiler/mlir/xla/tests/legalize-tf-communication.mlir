@@ -135,7 +135,7 @@ func @host_compute_one_operand_no_results(%arg0: tensor<i32>) {
   "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> ()
 
   // CHECK:      "mhlo.recv"([[SEND_TOKEN]])
-  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf.shape<>} : () -> tensor<i32>
+  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
   return
 }
 
@@ -197,7 +197,7 @@ func @recv_from_host() -> tensor<i32> {
   // CHECK:      [[RECV_TOKEN:%.*]] = "mhlo.get_tuple_element"([[RECV_TUPLE]])
   // CHECK-SAME: index = 1
   // CHECK-SAME: (tuple<tensor<i32>, !mhlo.token>) -> !mhlo.token
-  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf.shape<>} : () -> tensor<i32>
+  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
 
   // CHECK:      return [[RECV_VAL]] : tensor<i32>
   return %0 : tensor<i32>
@@ -399,7 +399,7 @@ func private @callee2() {
   // CHECK-SAME: index = 0
   // CHECK:      [[RECV_TOKEN:%.*]] = "mhlo.get_tuple_element"([[RECV_TUPLE]])
   // CHECK-SAME: index = 1
-  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf.shape<>} : () -> tensor<i32>
+  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
 
   // CHECK:      return [[RECV_TOKEN]]
   return
@@ -439,7 +439,7 @@ func private @callee5() {
   // CHECK-SAME: index = 0
   // CHECK:      [[RECV_TOKEN:%.*]] = "mhlo.get_tuple_element"([[RECV_TUPLE]])
   // CHECK-SAME: index = 1
-  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf.shape<>} : () -> tensor<i32>
+  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
 
   // CHECK:      return [[RECV_TOKEN]]
   return
@@ -1082,6 +1082,6 @@ func private @callee() {
 func @multi_block_func() {
   br ^bb1
 ^bb1:
-  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf.shape<>} : () -> tensor<i32>
+  %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
   return
 }

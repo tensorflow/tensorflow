@@ -45,7 +45,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
 # CHECK:      func {{@[a-zA-Z_0-9]+}}(
 # CHECK-SAME: [[ARG0:%.*]]: tensor<i32>
-# CHECK-SAME: [[ARG1:%.*]]: tensor<!tf.resource
+# CHECK-SAME: [[ARG1:%.*]]: tensor<!tf_type.resource
 # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["key"]
 
 # CHECK-NEXT: [[R0:%.*]] = "tf.Const"()

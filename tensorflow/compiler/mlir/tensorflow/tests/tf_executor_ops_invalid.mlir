@@ -455,14 +455,14 @@ func @invalid_switchN(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> i32 {
 // -----
 
 // Check that if any result is a ref type, then data operand needs to be ref too.
-func @invalid_switchN(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<4x!tf.f32ref> {
+func @invalid_switchN(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<4x!tf_type.f32ref> {
   %fetches = tf_executor.graph {
 
-    %1:3 = "tf_executor._SwitchN"(%arg0, %arg1) {num_outs = 2} : (tensor<4xf32>, tensor<i32>) -> (tensor<4x!tf.f32ref>, tensor<4xf32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor._SwitchN' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf.f32ref>'}}
-    tf_executor.fetch %1#0 : tensor<4x!tf.f32ref>
+    %1:3 = "tf_executor._SwitchN"(%arg0, %arg1) {num_outs = 2} : (tensor<4xf32>, tensor<i32>) -> (tensor<4x!tf_type.f32ref>, tensor<4xf32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor._SwitchN' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf_type.f32ref>'}}
+    tf_executor.fetch %1#0 : tensor<4x!tf_type.f32ref>
   }
-  return %fetches : tensor<4x!tf.f32ref>
+  return %fetches : tensor<4x!tf_type.f32ref>
 }
 
 // -----
@@ -585,37 +585,37 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) -> tensor<8xf32>
 // -----
 
 // Check that merge data inputs of variant type are broadcastable to the output
-func @invalid_merge(%arg0: tensor<*x!tf.variant>, %arg1: tensor<4x!tf.variant>) -> tensor<8x!tf.variant> {
+func @invalid_merge(%arg0: tensor<*x!tf_type.variant>, %arg1: tensor<4x!tf_type.variant>) -> tensor<8x!tf_type.variant> {
   %result = tf_executor.graph {
-    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*x!tf.variant>, tensor<4x!tf.variant>) -> (tensor<8x!tf.variant>, tensor<i32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf.variant>' vs 'tensor<8x!tf.variant>'}}
-    tf_executor.fetch %value : tensor<8x!tf.variant>
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*x!tf_type.variant>, tensor<4x!tf_type.variant>) -> (tensor<8x!tf_type.variant>, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf_type.variant>' vs 'tensor<8x!tf_type.variant>'}}
+    tf_executor.fetch %value : tensor<8x!tf_type.variant>
   }
-  return %result : tensor<8x!tf.variant>
+  return %result : tensor<8x!tf_type.variant>
 }
 
 // -----
 
 // Check that merge data inputs of resource type are broadcastable to the output
-func @invalid_merge(%arg0: tensor<*x!tf.resource>, %arg1: tensor<4x!tf.resource>) -> tensor<8x!tf.resource> {
+func @invalid_merge(%arg0: tensor<*x!tf_type.resource>, %arg1: tensor<4x!tf_type.resource>) -> tensor<8x!tf_type.resource> {
   %result = tf_executor.graph {
-    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*x!tf.resource>, tensor<4x!tf.resource>) -> (tensor<8x!tf.resource>, tensor<i32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf.resource>' vs 'tensor<8x!tf.resource>'}}
-    tf_executor.fetch %value : tensor<8x!tf.resource>
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*x!tf_type.resource>, tensor<4x!tf_type.resource>) -> (tensor<8x!tf_type.resource>, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf_type.resource>' vs 'tensor<8x!tf_type.resource>'}}
+    tf_executor.fetch %value : tensor<8x!tf_type.resource>
   }
-  return %result : tensor<8x!tf.resource>
+  return %result : tensor<8x!tf_type.resource>
 }
 
 // -----
 
 // Check that if result is a ref type, all operands need to be ref too.
-func @invalid_merge(%arg0: tensor<4x!tf.f32ref>, %arg1: tensor<4xf32>) -> tensor<4x!tf.f32ref> {
+func @invalid_merge(%arg0: tensor<4x!tf_type.f32ref>, %arg1: tensor<4xf32>) -> tensor<4x!tf_type.f32ref> {
   %result = tf_executor.graph {
-    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<4x!tf.f32ref>, tensor<4xf32>) -> (tensor<4x!tf.f32ref>, tensor<i32>, !tf_executor.control)
-    // expected-error@-1 {{'tf_executor.Merge' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf.f32ref>'}}
-    tf_executor.fetch %value : tensor<4x!tf.f32ref>
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<4x!tf_type.f32ref>, tensor<4xf32>) -> (tensor<4x!tf_type.f32ref>, tensor<i32>, !tf_executor.control)
+    // expected-error@-1 {{'tf_executor.Merge' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf_type.f32ref>'}}
+    tf_executor.fetch %value : tensor<4x!tf_type.f32ref>
   }
-  return %result : tensor<4x!tf.f32ref>
+  return %result : tensor<4x!tf_type.f32ref>
 }
 
 // -----

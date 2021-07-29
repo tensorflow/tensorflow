@@ -72,12 +72,12 @@ def ResourceOpLiftingPass : Pass<"tf-resource-op-lifting", "ModuleOp"> {
       })
       return
     }
-    func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) {
+    func @while_body(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) {
      %constant = "tf.Const"() ...
      "tf.AssignVariableOp"(%arg0, %constant)
      return %arg0
     }
-    func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) {
+    func @while_cond(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) {
       %read = "tf.ReadVariableOp"(%arg0)
       return %read
     }

@@ -32,18 +32,18 @@ func @func_init() attributes {tf_saved_model.exported_names = ["init"]} {
 // CHECK-SAME: -> (!tfrt.chain, !corert.tensorhandle)
 func @func_basic(
     %arg0: tensor<3x1xf32> {tf_saved_model.index_path = [0]},
-    %arg1: tensor<!tf.resource<tensor<1x3xf32>>> {tf_saved_model.bound_input = @y})
+    %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<3x3xf32> {tf_saved_model.index_path = []})
   attributes {tf_saved_model.exported_names = ["basic"]} {
   // CHECK-NEXT: [[cpu_device:%.*]] = corert.get_op_handler
   // CHECK-SAME: "/device:CPU:0"
 
   // CHECK-NOT: tf.VarHandleOp
-  %handle = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "x"} : () -> tensor<!tf.resource<tensor<3xf32>>>
+  %handle = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<3xf32>>>
   // CHECK-NOT: tf.ReadVariableOp
-  %0 = "tf.ReadVariableOp"(%handle) {_output_shapes = ["tfshape$dim { size: 3 }"], device = "/device:CPU:0", dtype = f32} : (tensor<!tf.resource<tensor<3xf32>>>) -> tensor<3xf32>
+  %0 = "tf.ReadVariableOp"(%handle) {_output_shapes = ["tfshape$dim { size: 3 }"], device = "/device:CPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<3xf32>>>) -> tensor<3xf32>
   // CHECK-NOT: tf.ReadVariableOp
-  %1 = "tf.ReadVariableOp"(%arg1) {_output_shapes = ["tfshape$dim { size: 1 } dim { size: 3 }"], device = "/device:CPU:0", dtype = f32} : (tensor<!tf.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
+  %1 = "tf.ReadVariableOp"(%arg1) {_output_shapes = ["tfshape$dim { size: 1 } dim { size: 3 }"], device = "/device:CPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
 
   // CHECK-NEXT: [[ch:%.*]], [[result:%.*]] = tfrt_fallback_async.get_resource [[in_chain]] {device = "/device:CPU:0", indices = [0]} : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
   // CHECK-NEXT: [[r0_th:%.*]] = corert.executeop([[cpu_device]]) "tf.MatMul"([[arg0_th]], [[arg1_th]])

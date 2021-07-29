@@ -13,33 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TF_ATTRIBUTES
-#define TF_ATTRIBUTES
+#ifndef TF_TYPE_ATTRIBUTES
+#define TF_TYPE_ATTRIBUTES
 
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
+include "tensorflow/core/ir/types/dialect.td"
 
-
-// Base class for TF dialect attributes.
-class TF_Attr<string name> : AttrDef<TF_Dialect, name>;
+// Base class for TFType dialect attributes.
+class TFType_Attr<string name> : AttrDef<TFTypeDialect, name>;
 
 //===----------------------------------------------------------------------===//
 // FuncAttr
 //===----------------------------------------------------------------------===//
 
-def TF_FuncAttr : TF_Attr<"Func"> {
+def TFType_FuncAttr : TFType_Attr<"Func"> {
   let mnemonic = "func";
   let summary = "Models the `AttrValue.value.func` proto attribute value as a "
-    "pair of SymbolRef and DictionaryAttr.";
+    "pair of SymbolRef and DictionaryAttr";
   let description = [{
     This attributes matches the protobuf `AttrValue.value.func` with a
     `SymbolRefAttr`, for the `NameAttrList.name` `string` and a `DictionaryAttr`
     for the `NameAttrList.attr` `map<string, AttrValue>`. It is currently
     printed and parsed for the following format:
 
-      #tf.func<@symbol, {attr = "value"}>
+      #tf_type.func<@symbol, {attr = "value"}>
 
     where the first element is the `SymbolRefAttr` and the second element is the
-    `DictionaryAttr`.  }];
+    `DictionaryAttr`.
+    }];
 
   let parameters = (ins
     "SymbolRefAttr":$name,
@@ -56,10 +56,10 @@ def TF_FuncAttr : TF_Attr<"Func"> {
 // Placeholder
 //===----------------------------------------------------------------------===//
 
-def TF_PlaceholderAttr : TF_Attr<"Placeholder"> {
+def TFType_PlaceholderAttr : TFType_Attr<"Placeholder"> {
   let mnemonic = "placeholder";
-  let summary = "Placeholder attributes are string referring a function "
-    "attribute to be substituted on instantiation.";
+  let summary = "Placeholder attributes are string referring to a function "
+    "attribute to be substituted on instantiation";
   let description = [{
     This is matching the `placeholder` Attribute type in protobuf storage. This
     is just a string, but we need a dedicated type for roundtrip purpose.
@@ -74,11 +74,11 @@ def TF_PlaceholderAttr : TF_Attr<"Placeholder"> {
 // ShapeAttr
 //===----------------------------------------------------------------------===//
 
-def TF_ShapeAttrDef : TF_Attr<"Shape"> {
+def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
   let mnemonic = "shape";
   let returnType = "ShapeAttr";
   let convertFromStorage = "$_self.cast<ShapeAttr>()";
-  let summary = "A shape either unranked or is modelled an array of int64.";
+  let summary = "A shape either unranked or is modelled an array of int64";
   let description = [{
     This attributes matches the `ShapedType` MLIR Type content into an attribute
     value. It contains a flag to indicate if it unranked, and if ranked it
@@ -102,18 +102,35 @@ def TF_ShapeAttrDef : TF_Attr<"Shape"> {
     AttrBuilder<(ins "ShapedType":$shaped_type)>
   ];
   let extraClassDeclaration = [{
-    // Returns true if this shape is ranked and no dimension has unknown size
-    // (ShapedType::kDynamicDim).
+    // Returns true if this shape is ranked and has only known dimensions size.
     bool hasStaticShape() const;
 
+    // Returns true if this shape attribute has a statically known rank.
     bool hasRank() const;
 
-    // If this is ranked, return the rank. Otherwise, abort.
+    // Returns the rank. Aborts if unranked.
     int64_t getRank() const;
 
-    // Return the shape array if ranked.
+    // Returns the shape array if ranked, or None if unranked.
     llvm::Optional<ArrayRef<int64_t>> getValue() const;
   }];
+}
+
+
+//===----------------------------------------------------------------------===//
+// VersionAttr
+//===----------------------------------------------------------------------===//
+
+def TFType_VersionAttr : TFType_Attr<"Version"> {
+  let mnemonic = "version";
+  let returnType = "VersionAttr";
+  let convertFromStorage = "$_self.cast<VersionAttr>()";
+  let summary = "An Attribute describing the version for a TensorFlow Graph";
+  let parameters = (ins
+    "int32_t":$producer,
+    "int32_t":$minConsumer,
+    ArrayRefParameter<"int32_t">:$badConsumers
+  );
 }
 
 #endif

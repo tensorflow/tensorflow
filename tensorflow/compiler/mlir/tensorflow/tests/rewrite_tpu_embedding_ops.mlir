@@ -2,8 +2,8 @@
 
 // CHECK-LABEL: func @recv_tpu_embedding_activations
 func @recv_tpu_embedding_activations() -> (tensor<512x256xf32>) {
-  // CHECK: %[[DATA:.*]] = "tf._RecvTPUEmbeddingDeduplicationData"() {config = {{.*}}} : () -> tensor<!tf.variant>
-  // CHECK: %[[RESULT:.*]] = "tf._RecvTPUEmbeddingActivations"(%[[DATA]]) {config = {{.*}}} : (tensor<!tf.variant>) -> tensor<512x256xf32>
+  // CHECK: %[[DATA:.*]] = "tf._RecvTPUEmbeddingDeduplicationData"() {config = {{.*}}} : () -> tensor<!tf_type.variant>
+  // CHECK: %[[RESULT:.*]] = "tf._RecvTPUEmbeddingActivations"(%[[DATA]]) {config = {{.*}}} : (tensor<!tf_type.variant>) -> tensor<512x256xf32>
   // CHECK: return %[[RESULT]]
   // CHECK-NOT: tf.RecvTPUEmbeddingActivations
   // CHECK-NOT: tf.SendTPUEmbeddingGradients
@@ -14,8 +14,8 @@ func @recv_tpu_embedding_activations() -> (tensor<512x256xf32>) {
 
 // CHECK-LABEL: func @send_tpu_embedding_gradients
 func @send_tpu_embedding_gradients(%arg0: tensor<512x256xf32>) -> () {
-  // CHECK: %[[DATA:.*]] = "tf._RecvTPUEmbeddingDeduplicationData"() {config = {{.*}}} : () -> tensor<!tf.variant>
-  // CHECK: "tf._SendTPUEmbeddingGradients"(%arg0, %[[DATA]]) {config = {{.*}}, operand_segment_sizes = dense<[1, 0, 1]> : vector<3xi32>} : (tensor<512x256xf32>, tensor<!tf.variant>) -> ()
+  // CHECK: %[[DATA:.*]] = "tf._RecvTPUEmbeddingDeduplicationData"() {config = {{.*}}} : () -> tensor<!tf_type.variant>
+  // CHECK: "tf._SendTPUEmbeddingGradients"(%arg0, %[[DATA]]) {config = {{.*}}, operand_segment_sizes = dense<[1, 0, 1]> : vector<3xi32>} : (tensor<512x256xf32>, tensor<!tf_type.variant>) -> ()
   // CHECK-NOT: tf.SendTPUEmbeddingGradients
   // CHECK-NOT: tf.RecvTPUEmbeddingActivations
 

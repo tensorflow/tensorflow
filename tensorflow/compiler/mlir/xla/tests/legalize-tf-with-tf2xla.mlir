@@ -20,9 +20,9 @@ func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-LABEL: not_allowlisted_op
 func @not_allowlisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
   // CHECK: tf.TensorListReserve
-  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x?x?xf32>>>
+  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<?x?x?xf32>>>
   // CHECK: tf.TensorListGetItem
-  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf.variant<tensor<?x?x?xf32>>>, tensor<i32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf_type.variant<tensor<?x?x?xf32>>>, tensor<i32>, tensor<3xi32>) -> tensor<?x?x?xf32>
   return %1 : tensor<?x?x?xf32>
 }
 
@@ -53,12 +53,12 @@ func @tuple_type(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
 }
 
 // CHECK-LABEL: unsupported_dtype
-func @unsupported_dtype(%arg0: tensor<2x!tf.variant>) -> tensor<2x!tf.variant> {
+func @unsupported_dtype(%arg0: tensor<2x!tf_type.variant>) -> tensor<2x!tf_type.variant> {
   // CHECK: tf.AddN
-  // expected-remark@+1 {{unsupported type: tensor<2x!tf.variant>}}
-  %0 = "tf.AddN"(%arg0, %arg0) : (tensor<2x!tf.variant>, tensor<2x!tf.variant>) -> tensor<2x!tf.variant>
+  // expected-remark@+1 {{unsupported type: tensor<2x!tf_type.variant>}}
+  %0 = "tf.AddN"(%arg0, %arg0) : (tensor<2x!tf_type.variant>, tensor<2x!tf_type.variant>) -> tensor<2x!tf_type.variant>
 
-  return %0 : tensor<2x!tf.variant>
+  return %0 : tensor<2x!tf_type.variant>
 }
 
 // CHECK-LABEL: multiple_dialect_ops
@@ -313,7 +313,7 @@ func @ndtri(%input: tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-LABEL: @fake_param
 func @fake_param() -> tensor<4xf32> {
   // CHECK-NOT: tf.FakeParam
-  %0 = "tf.FakeParam"() {shape = #tf.shape<4>} : () -> tensor<4xf32>
+  %0 = "tf.FakeParam"() {shape = #tf_type.shape<4>} : () -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
 

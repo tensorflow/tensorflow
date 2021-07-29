@@ -9,7 +9,7 @@ func @assign_variable() {
   // CHECK-NEXT: tfrt.return [[out_ch]]
 
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
-  %1 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
-  "tf.AssignVariableOp"(%1, %0) {device = "/device:CPU:0"} : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+  %1 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<f32>>>
+  "tf.AssignVariableOp"(%1, %0) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   return
 }

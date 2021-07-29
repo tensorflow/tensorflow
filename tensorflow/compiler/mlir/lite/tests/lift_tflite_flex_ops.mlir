@@ -33,7 +33,7 @@ func @TfTensorArrayV3(%arg0: tensor<i32>) -> tensor<f32> {
   } : (tensor<i32>) -> (tensor<2xi32>, tensor<*xf32>)
 
 // CHECK: "tf.TensorArrayV3"
-// CHECK-SAME: : (tensor<i32>) -> (tensor<2x!tf.resource>, tensor<f32>)
+// CHECK-SAME: : (tensor<i32>) -> (tensor<2x!tf_type.resource>, tensor<f32>)
 
   %1 = "tfl.cast"(%0#1) : (tensor<*xf32>) -> tensor<f32>
   return %1 : tensor<f32>

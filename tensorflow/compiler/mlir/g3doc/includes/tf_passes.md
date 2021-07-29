@@ -484,8 +484,8 @@ tf_device.replicate([%0, %1] as %ri: tensor<*xi32>) {n = 2 : i32} {
 and for resource variables the following
 
 ```mlir
-tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
-  %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
+tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} {
+  %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf_type.resource> -> tensor<*xi32>
   %3 = "tf.Shape"(%2) : (tensor<*xi32>) -> tensor<?xi32>
   tf_device.return
 }
@@ -494,12 +494,13 @@ tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
 gets converted to
 
 ```mlir
-tf_device.replicate([%0, %1] as %ri: tensor<*x!tf.resource>) {n = 2 : i32} {
-  %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf.resource> -> tensor<*xi32>
-  %3 = "tf.VariableShape"(%0) : (tensor<*x!tf.resource>) -> tensor<?xi32>
+tf_device.replicate([%0, %1] as %ri: tensor<*x!tf_type.resource>) {n = 2 : i32} {
+  %2 = "tf.ReadVariableOp"(%ri) : tensor<*x!tf_type.resource> -> tensor<*xi32>
+  %3 = "tf.VariableShape"(%0) : (tensor<*x!tf_type.resource>) -> tensor<?xi32>
   tf_device.return
 }
 ```
+
 ### `-tf-shape-inference`: Simple Shape Inference on TensorFlow Dialect
 
 #### Options
@@ -546,8 +547,8 @@ For example, the TensorList ops in the following function:
 func @main(%arg0: tensor<8x4xf32>) {
   %elem_shape = "tf.Const"() {value = dense<[8, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
-  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<8x4xf32>>>
-  %push = "tf.TensorListPushBack"(%tl, %arg0) : (tensor<!tf.variant<tensor<8x4xf32>>>, tensor<8x4xf32>) -> tensor<!tf.variant<tensor<8x4xf32>>>
+  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<8x4xf32>>>
+  %push = "tf.TensorListPushBack"(%tl, %arg0) : (tensor<!tf_type.variant<tensor<8x4xf32>>>, tensor<8x4xf32>) -> tensor<!tf_type.variant<tensor<8x4xf32>>>
   return
 }
 ```
@@ -716,10 +717,10 @@ a tf_device.cluster with communication ops to send data to/from device/host:
 func @outside_compilation() -> tensor<f32> {
   %0 = "tf_device.parallel_execute"() ( {
     "tf_device.launch"() ( {
-      %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf.string>
-      %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf.string>) -> tensor<f32>
+      %1 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+      %2 = "tf._XlaRecvAtHost"(%1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_args"} : (tensor<3x!tf_type.string>) -> tensor<f32>
       %3 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
-      "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf.string>) -> ()
+      "tf._XlaSendFromHost"(%3, %1) {device_ordinal = 0 : i64, key = "host_compute_channel_0_0_retvals"} : (tensor<f32>, tensor<3x!tf_type.string>) -> ()
       tf_device.return
     }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
     tf_device.return
@@ -735,14 +736,18 @@ func @outside_compilation() -> tensor<f32> {
   return %0 : tensor<f32>
 }
 ```
+
 ### `-tf-tpu-host-computation-expansion`: Expands host computation before and after TPU computation.
-This pass expands outside compilation attributes to Identity/Cast ops
-at the head of TPU computation if it's only used by outside compiled ops.
+
+This pass expands outside compilation attributes to Identity/Cast ops at the
+head of TPU computation if it's only used by outside compiled ops.
+
 ### `-tf-tpu-merge-variables-with-execute`: Merges device variable reads and updates into TPU execute ops
+
 This pass finds on-device resource variable reads and updates surrounding a
-`tf.TPUExecute` op and merges them into a `tf.TPUExecuteAndUpdateVariables`
-op. This allows the TPU execution to perform more efficient in-place
-variable updates.
+`tf.TPUExecute` op and merges them into a `tf.TPUExecuteAndUpdateVariables` op.
+This allows the TPU execution to perform more efficient in-place variable
+updates.
 
 For example,
 
@@ -755,7 +760,7 @@ For example,
 
 will be transformed into
 
-```mlir
+~~~mlir
   %2 = "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %compile)
     { device_var_reads_indices = [0, 1],
       device_var_updates_indices = [0, -1] }
@@ -777,19 +782,19 @@ data and model parallelism in an easier manner.
 For example, the following:
 
 ```mlir
-!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+!rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
 func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
   %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
   %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (!rtype, !rtype) -> !rtype
   return %ri : !rtype
 }
-```
+~~~
 
 will be transformed into:
 
 ```mlir
-!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+!rtype = type tensor<!tf_type.resource<tensor<10x3xf32>>>
 func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
   %ri_0 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
   %ri_1 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
@@ -797,7 +802,9 @@ func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %a
   return %pi : !rtype
 }
 ```
+
 ### `-tf-tpu-resource-partition`: Partitions unpartitioned resource read/write to partitioned resource variables.
+
 This pass creates individual resource reads/writes from the unpartitioned
 resource variable (from `tf.TPUPartitionedInput`) to individual partitioned
 resource variables (`tf.TPUPartitionedInput` operands). As resource op
@@ -808,11 +815,11 @@ on individual resource variable handles per core/device.
 For example, the following:
 
 ```mlir
-func @cluster(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
-  %partitioned_variable = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<i32>>>, tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
-  %read = "tf.ReadVariableOp"(%partitioned_variable) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+func @cluster(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<!tf_type.resource<tensor<i32>>>) {
+  %partitioned_variable = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
+  %read = "tf.ReadVariableOp"(%partitioned_variable) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %computation = "tf_device.cluster_func"(%read) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
-  "tf.AssignVariableOp"(%partitioned_variable, %computation) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+  "tf.AssignVariableOp"(%partitioned_variable, %computation) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   return
 }
 
@@ -824,14 +831,14 @@ func @computation(%arg0: tensor<i32>) -> tensor<i32> {
 will be transformed into:
 
 ```mlir
-func @cluster(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
-  %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
-  %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+func @cluster(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<!tf_type.resource<tensor<i32>>>) {
+  %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %partitioned_input = "tf.TPUPartitionedInput"(%read0, %read1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   %computation = "tf_device.cluster_func"(%partitioned_input) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
   %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
-  "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
-  "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+  "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+  "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   return
 }
 
@@ -839,7 +846,9 @@ func @computation(%arg0: tensor<i32>) -> tensor<i32> {
   return %arg0: tensor<i32>
 }
 ```
+
 ### `-tf-tpu-resource-read-for-write`: Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes with no reads
+
 This pass materializes `tf.ReadVariableOp` inputs to an outlined TPU computation
 for resource variables where only writes are present so later in the pipeline
 such resource variables can be fused with generated `tf.TPUExecute` ops, which
@@ -850,9 +859,9 @@ resource variable uses can be generated currently via packed tensor uses.
 For example, the following:
 
 ```mlir
-func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf.resource<tensor<i32>>>) {
+func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf_type.resource<tensor<i32>>>) {
   %0 = "tf_device.cluster_func"(%value) {func = @cluster} : (tensor<i32>) -> tensor<i32>
-  "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+  "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   return
 }
 
@@ -865,10 +874,10 @@ func @cluster(%arg0: tensor<i32>) -> tensor<i32> {
 will be transformed into:
 
 ```mlir
-func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf.resource<tensor<i32>>>) {
-  %resource_read = "tf.ReadVariableOp"(%resource) : (tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32>
+func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf_type.resource<tensor<i32>>>) {
+  %resource_read = "tf.ReadVariableOp"(%resource) : (tensor<*x!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %0 = "tf_device.cluster_func"(%value, %resource_read) {func = @cluster} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+  "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   return
 }
 
@@ -877,13 +886,15 @@ func @cluster(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
   return %identity : tensor<i32>
 }
 ```
+
 ### `-tf-tpu-rewrite`: Rewrites a `tf_device.cluster_func` on TPUs into TPU runtime operations.
-This pass rewrites a `tf_device.cluster_func` operation into a sequence of `tf._TPUCompileMlir`
-and `tf.TPUExecute` operations. `tf._TPUCompileMlir` contains a MLIR module that is
-functionally equivalent to the function referenced by `tf_device.cluster_func`.
-This makes the module to be jit-compiled and executed on TPU.
-If it is not possible to rewrite the operation or device assignment fails,
-a failure will be returned.
+
+This pass rewrites a `tf_device.cluster_func` operation into a sequence of
+`tf._TPUCompileMlir` and `tf.TPUExecute` operations. `tf._TPUCompileMlir`
+contains a MLIR module that is functionally equivalent to the function
+referenced by `tf_device.cluster_func`. This makes the module to be jit-compiled
+and executed on TPU. If it is not possible to rewrite the operation or device
+assignment fails, a failure will be returned.
 
 Note, many parameters to the `tf_device.cluster_func` are ommited in this
 and following examples.
@@ -901,15 +912,15 @@ will be rewritten as:
 ```mlir
 func @tf_tpu_rewrite(%arg0: tensor<i8>) {
   %0:2 = "tf_device.launch"() ( {
-    %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
-    tf_device.return %compilation_status, %program : tensor<!tf.string>, tensor<3x!tf.string>
-  }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
+    %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+    tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+  }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
   "tf_device.launch"() ( {
-    "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf.string>) -> ()
+    "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf_type.string>) -> ()
     tf_device.return
   }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
   %1 = "tf_device.launch"() ( {
-    %2 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<i8>, tensor<3x!tf.string>) -> tensor<i8>
+    %2 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<i8>, tensor<3x!tf_type.string>) -> tensor<i8>
     tf_device.return %2 : tensor<i8>
   }) {device = "/job:worker/replica:0/task:0/device:TPU:0"} : () -> tensor<i8>
   return
@@ -934,15 +945,15 @@ will be rewritten as:
 func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
   %0:2 = tf_device.replicate([%arg0, %arg1] as %arg2: tensor<i8>) {devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}, n = 2 : i32} {
     %1:2 = "tf_device.launch"() ( {
-      %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
-      tf_device.return %compilation_status, %program : tensor<!tf.string>, tensor<3x!tf.string>
-    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>)
+      %compilation_status, %program = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
+      tf_device.return %compilation_status, %program : tensor<!tf_type.string>, tensor<3x!tf_type.string>
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
     "tf_device.launch"() ( {
-      "tf.TPUCompileSucceededAssert"(%1#0) : (tensor<!tf.string>) -> ()
+      "tf.TPUCompileSucceededAssert"(%1#0) : (tensor<!tf_type.string>) -> ()
       tf_device.return
     }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
     %2 = "tf_device.launch"() ( {
-      %3 = "tf.TPUExecute"(%arg2, %1#1) : (tensor<i8>, tensor<3x!tf.string>) -> tensor<i8>
+      %3 = "tf.TPUExecute"(%arg2, %1#1) : (tensor<i8>, tensor<3x!tf_type.string>) -> tensor<i8>
       tf_device.return %3 : tensor<i8>
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i8>
     tf_device.return %2 : tensor<i8>
@@ -965,22 +976,22 @@ will be rewritten as:
 ```mlir
 func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   %0:3 = "tf_device.launch"() ( {
-    %compilation_status, %program:2 = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>)
-    tf_device.return %compilation_status, %program#0, %program#1 : tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>
-  }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<3x!tf.string>, tensor<3x!tf.string>)
+    %compilation_status, %program:2 = "tf._TPUCompileMlir"() {mlir_module = "<serialized func>"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>)
+    tf_device.return %compilation_status, %program#0, %program#1 : tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>
+  }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>, tensor<3x!tf_type.string>)
   "tf_device.launch"() ( {
-    "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf.string>) -> ()
+    "tf.TPUCompileSucceededAssert"(%0#0) : (tensor<!tf_type.string>) -> ()
     tf_device.return
   }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
   %1 = "tf_device.parallel_execute"() ( {
     %2 = "tf_device.launch"() ( {
-      %3 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<8xi32>, tensor<3x!tf.string>) -> tensor<8xi32>
+      %3 = "tf.TPUExecute"(%arg0, %0#1) : (tensor<8xi32>, tensor<3x!tf_type.string>) -> tensor<8xi32>
       tf_device.return %3 : tensor<8xi32>
     }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> tensor<8xi32>
     tf_device.return %2 : tensor<8xi32>
   },  {
     "tf_device.launch"() ( {
-      "tf.TPUExecute"(%0#2) : (tensor<3x!tf.string>) -> ()
+      "tf.TPUExecute"(%0#2) : (tensor<3x!tf_type.string>) -> ()
       tf_device.return
     }) {device = "/job:localhost/replica:0/task:0/device:TPU:1"} : () -> ()
     tf_device.return
@@ -988,9 +999,12 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   return %1 : tensor<8xi32>
 }
 ```
+
 ### `-tf-tpu-space-to-depth-pass`: Applies automatic space to depth transform for the first or frontier convolutions consume host inputs on TPU.
-Automatic space to depth transform is done by adding space to depth transform op after host input
-and applying space to depth transform for the first convolution and its backprop filter on TPU.
+
+Automatic space to depth transform is done by adding space to depth transform op
+after host input and applying space to depth transform for the first convolution
+and its backprop filter on TPU.
 
 For example, original program:
 

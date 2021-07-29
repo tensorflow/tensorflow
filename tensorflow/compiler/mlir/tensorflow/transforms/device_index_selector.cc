@@ -36,7 +36,7 @@ namespace {
 //  %1 = "tf.DeviceIndex"()
 //          {device = "", device_names = ["CPU", "GPU"]} : () -> tensor<i32>
 //  %4 = "tf.Case"(%1, %arg0, %arg1)
-//          {branches = [@foo, @baz], output_shapes = [#tf.shape<>]} :
+//          {branches = [@foo, @baz], output_shapes = [#tf_type.shape<>]} :
 //            (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
 // ```
 //

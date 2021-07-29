@@ -94,44 +94,44 @@ func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
   return %2, %3 : tensor<i32>, tensor<i32>
 }
 
-func @side_effect_while_cond_lt9(%arg: tensor<!tf.resource<tensor<i32>>>) -> tensor<i1> {
+func @side_effect_while_cond_lt9(%arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i1> {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<9> : tensor<i32>} : () -> tensor<i32>
-  %1 = "tf.ReadVariableOp"(%arg) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+  %1 = "tf.ReadVariableOp"(%arg) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %2 = "tf.Less"(%1, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   return %2 : tensor<i1>
 }
 
-func @side_effect_while_body_add2(%arg: tensor<!tf.resource<tensor<i32>>>) -> (tensor<!tf.resource<tensor<i32>>>) {
+func @side_effect_while_body_add2(%arg: tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<!tf_type.resource<tensor<i32>>>) {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
-  %1 = "tf.ReadVariableOp"(%arg) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+  %1 = "tf.ReadVariableOp"(%arg) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %2 = "tf.Add"(%1, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  "tf.AssignVariableOp"(%arg, %2) {device = "/device:CPU:0"} : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return %arg : tensor<!tf.resource<tensor<i32>>>
+  "tf.AssignVariableOp"(%arg, %2) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
+  return %arg : tensor<!tf_type.resource<tensor<i32>>>
 }
 
 // CHECK-LABEL: func @side_effect_while_test
 func @side_effect_while_test() -> (tensor<i32>) {
-  %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "c", shared_name = "v"} : () -> tensor<!tf.resource<tensor<i32>>>
+  %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "c", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   // CHECK: [[while_res:%.]]:2 = tfrt.while {{%.*}} @"side_effect_while_body_add2/tfrt_body"
   // CHECK: [[out_ch:%.*]], [[res:%.*]] = tfrt_fallback_async.executeop.seq([[while_res]]#0) {{.*}} "tf.ReadVariableOp"
-  %1 = "tf.While"(%0) { cond = @side_effect_while_cond_lt9, body = @side_effect_while_body_add2, is_stateless = false} : (tensor<!tf.resource<tensor<i32>>>) -> (tensor<!tf.resource<tensor<i32>>>)
-  %2 = "tf.ReadVariableOp"(%1) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+  %1 = "tf.While"(%0) { cond = @side_effect_while_cond_lt9, body = @side_effect_while_body_add2, is_stateless = false} : (tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<!tf_type.resource<tensor<i32>>>)
+  %2 = "tf.ReadVariableOp"(%1) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   return %2 : tensor<i32>
 }
 
-func @tensor_array_while_cond(%index: tensor<i32>, %size: tensor<i32>, %flow_0: tensor<f32>, %flow_1: tensor<f32>, %handle_0: tensor<2x!tf.resource<tensor<?x100xf32>>>, %handle_1: tensor<2x!tf.resource<tensor<?x512xf32>>>) -> (tensor<i1>) {
+func @tensor_array_while_cond(%index: tensor<i32>, %size: tensor<i32>, %flow_0: tensor<f32>, %flow_1: tensor<f32>, %handle_0: tensor<2x!tf_type.resource<tensor<?x100xf32>>>, %handle_1: tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i1>) {
   %0 = "tf.Less"(%index, %size) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 
-func @tensor_array_while_body(%index: tensor<i32>, %size: tensor<i32>, %flow_0: tensor<f32>, %flow_1: tensor<f32>, %handle_0: tensor<2x!tf.resource<tensor<?x100xf32>>>, %handle_1: tensor<2x!tf.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<2x!tf.resource<tensor<?x512xf32>>>) {
+func @tensor_array_while_body(%index: tensor<i32>, %size: tensor<i32>, %flow_0: tensor<f32>, %flow_1: tensor<f32>, %handle_0: tensor<2x!tf_type.resource<tensor<?x100xf32>>>, %handle_1: tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>) {
   %cst = "tf.Const"() {value = dense<1.1> : tensor<100x512xf32>} : () -> tensor<100x512xf32>
   %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  %x = "tf.TensorArrayReadV3"(%handle_0, %index, %flow_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<i32>, tensor<f32>) -> tensor<?x100xf32>
+  %x = "tf.TensorArrayReadV3"(%handle_0, %index, %flow_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<i32>, tensor<f32>) -> tensor<?x100xf32>
   %y = "tf.MatMul"(%x, %cst) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<?x100xf32>, tensor<100x512xf32>) -> (tensor<?x512xf32>)
-  %flow_1_out = "tf.TensorArrayWriteV3"(%handle_1, %index, %y, %flow_1) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf.resource<tensor<?x512xf32>>>, tensor<i32>, tensor<?x512xf32>, tensor<f32>) -> tensor<f32>
+  %flow_1_out = "tf.TensorArrayWriteV3"(%handle_1, %index, %y, %flow_1) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<i32>, tensor<?x512xf32>, tensor<f32>) -> tensor<f32>
   %next_index = "tf.AddV2"(%index, %one) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %next_index, %size, %flow_0, %flow_1_out, %handle_0, %handle_1 : tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<2x!tf.resource<tensor<?x512xf32>>>
+  return %next_index, %size, %flow_0, %flow_1_out, %handle_0, %handle_1 : tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>
 }
 
 // CHECK-LABEL: func @tensor_array_while_test
@@ -139,21 +139,21 @@ func @tensor_array_while_body(%index: tensor<i32>, %size: tensor<i32>, %flow_0: 
 func @tensor_array_while_test(%indices: tensor<?xi32>, %input_0: tensor<?x?x?xf32>, %input_1: tensor<?x?x?xf32>) -> (tensor<?x?x512xf32>, tensor<?x?x512xf32>) {
   %index = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
   %size = "tf.Const"() {device = "/device:CPU:0", value = dense<9> : tensor<i32>} : () -> (tensor<i32>)
-  %handle_0, %flow_0 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf.shape<?x100>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/input_0"} : (tensor<i32>) -> (tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<f32>)
-  %handle_1, %flow_1 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf.shape<?x512>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/output_0"} : (tensor<i32>) -> (tensor<2x!tf.resource<tensor<?x512xf32>>>, tensor<f32>)
-  %flow_01 = "tf.TensorArrayScatterV3"(%handle_0, %indices, %input_0, %flow_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<?xi32>, tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
+  %handle_0, %flow_0 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf_type.shape<?x100>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/input_0"} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<f32>)
+  %handle_1, %flow_1 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf_type.shape<?x512>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/output_0"} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<f32>)
+  %flow_01 = "tf.TensorArrayScatterV3"(%handle_0, %indices, %input_0, %flow_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<?xi32>, tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: [[pred_0:%.*]]:2 = tfrt.call @"tensor_array_while_cond/tfrt_predicate"([[in_chain]]
   // CHECK: [[while_res_0:%.*]]:7 = tfrt.while {{%.*}} @"tensor_array_while_body/tfrt_body"([[pred_0]]#0
-  %res_0:6 = "tf.While"(%index, %size, %flow_01, %flow_1, %handle_0, %handle_1) {body = @tensor_array_while_body, cond = @tensor_array_while_cond, device = "", is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<2x!tf.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<2x!tf.resource<tensor<?x512xf32>>>)
-  %output_0 = "tf.TensorArrayGatherV3"(%handle_1, %indices, %res_0#3) {device = "/job:localhost/replica:0/task:0/device:CPU:0", element_shape = #tf.shape<?x512>} : (tensor<2x!tf.resource<tensor<?x512xf32>>>, tensor<?xi32>, tensor<f32>) -> tensor<?x?x512xf32>
+  %res_0:6 = "tf.While"(%index, %size, %flow_01, %flow_1, %handle_0, %handle_1) {body = @tensor_array_while_body, cond = @tensor_array_while_cond, device = "", is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>)
+  %output_0 = "tf.TensorArrayGatherV3"(%handle_1, %indices, %res_0#3) {device = "/job:localhost/replica:0/task:0/device:CPU:0", element_shape = #tf_type.shape<?x512>} : (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<?xi32>, tensor<f32>) -> tensor<?x?x512xf32>
 
-  %handle_2, %flow_2 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf.shape<?x100>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/input_0"} : (tensor<i32>) -> (tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<f32>)
-  %handle_3, %flow_3 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf.shape<?x512>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/output_0"} : (tensor<i32>) -> (tensor<2x!tf.resource<tensor<?x512xf32>>>, tensor<f32>)
-  %flow_21 = "tf.TensorArrayScatterV3"(%handle_2, %indices, %input_1, %flow_2) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<?xi32>, tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
+  %handle_2, %flow_2 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf_type.shape<?x100>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/input_0"} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<f32>)
+  %handle_3, %flow_3 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf_type.shape<?x512>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/output_0"} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<f32>)
+  %flow_21 = "tf.TensorArrayScatterV3"(%handle_2, %indices, %input_1, %flow_2) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<?xi32>, tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: [[pred_1:%.*]]:2 = tfrt.call @"tensor_array_while_cond/tfrt_predicate"([[in_chain]]
   // CHECK: [[while_res_1:%.*]]:7 = tfrt.while {{%.*}} @"tensor_array_while_body/tfrt_body"([[pred_1]]#0
-  %res_1:6 = "tf.While"(%index, %size, %flow_21, %flow_3, %handle_2, %handle_3) {body = @tensor_array_while_body, cond = @tensor_array_while_cond, device = "", is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<2x!tf.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf.resource<tensor<?x100xf32>>>, tensor<2x!tf.resource<tensor<?x512xf32>>>)
-  %output_1 = "tf.TensorArrayGatherV3"(%handle_3, %indices, %res_1#3) {device = "/job:localhost/replica:0/task:0/device:CPU:0", element_shape = #tf.shape<?x512>} : (tensor<2x!tf.resource<tensor<?x512xf32>>>, tensor<?xi32>, tensor<f32>) -> tensor<?x?x512xf32>
+  %res_1:6 = "tf.While"(%index, %size, %flow_21, %flow_3, %handle_2, %handle_3) {body = @tensor_array_while_body, cond = @tensor_array_while_cond, device = "", is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>)
+  %output_1 = "tf.TensorArrayGatherV3"(%handle_3, %indices, %res_1#3) {device = "/job:localhost/replica:0/task:0/device:CPU:0", element_shape = #tf_type.shape<?x512>} : (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<?xi32>, tensor<f32>) -> tensor<?x?x512xf32>
   return %output_0, %output_1 : tensor<?x?x512xf32>, tensor<?x?x512xf32>
 }
 

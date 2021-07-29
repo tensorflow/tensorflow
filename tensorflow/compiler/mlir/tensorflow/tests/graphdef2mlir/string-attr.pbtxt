@@ -1,7 +1,7 @@
 # RUN: tf-mlir-translate -graphdef-to-splatted-mlir %s -o - | FileCheck %s
 
 # CHECK: tf.Const
-# CHECK-SAME: value = dense<""> : tensor<3x!tf.string>
+# CHECK-SAME: value = dense<""> : tensor<3x!tf_type.string>
 
 node {
   name: "save/SaveV2/shape_and_slices"

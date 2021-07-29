@@ -135,24 +135,6 @@ cc_library(
 )
 
 gentbl_cc_library(
-    name = "tensorflow_attributes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        (
-            ["--gen-attrdef-decls"],
-            "ir/tf_attributes.h.inc",
-        ),
-        (
-            ["--gen-attrdef-defs"],
-            "ir/tf_attributes.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/tf_attributes.td",
-    deps = [":tensorflow_ops_td_files"],
-)
-
-gentbl_cc_library(
     name = "tensorflow_all_ops_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -416,15 +398,13 @@ cc_library(
 
 cc_library(
     name = "tensorflow_attributes",
-    srcs = [
-        "ir/tf_attributes.cc",
-    ],
     hdrs = [
         "ir/tf_attributes.h",
         "ir/tf_dialect.h",
     ],
     deps = [
-        ":tensorflow_attributes_inc_gen",
+        ":tensorflow_types",
+        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -462,6 +442,7 @@ cc_library(
         hdrs = [
         ],
         textual_hdrs = [
+            "ir/tf_types.def",
             "ir/tf_all_ops.h.inc",
             "ir/tf_ops_helpers.inc",
             "ir/tfrt_ops.h.inc",
@@ -657,9 +638,6 @@ cc_library(
 
 cc_library(
     name = "tensorflow_types",
-    srcs = [
-        "ir/tf_types.cc",
-    ],
     hdrs = [
         "ir/tf_dialect.h",
         "ir/tf_types.h",
@@ -668,6 +646,7 @@ cc_library(
         "ir/tf_types.def",
     ],
     deps = [
+        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
@@ -1588,8 +1567,15 @@ cc_library(
 
 cc_library(
     name = "convert_type",
-    srcs = ["utils/convert_type.cc"],
-    hdrs = ["utils/convert_type.h"],
+    srcs = [
+        "utils/convert_type.cc",
+    ],
+    hdrs = [
+        "utils/convert_type.h",
+    ],
+    textual_hdrs = [
+        "ir/tf_types.def",
+    ],
     visibility = [
         "//visibility:public",
     ],

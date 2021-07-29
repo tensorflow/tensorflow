@@ -186,7 +186,7 @@ versions {
 # mapped correctly.
 
 # CHECK-LABEL: func @main
-# CHECK-SAME:  (%{{.*}}: tensor<*xf32>, %[[ARG_1:.*]]: tensor<*x!tf.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<*x!tf.resource<tensor<f32>>>)
+# CHECK-SAME:  (%{{.*}}: tensor<*xf32>, %[[ARG_1:.*]]: tensor<*x!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<*x!tf_type.resource<tensor<f32>>>)
 # CHECK-SAME:  control_outputs = "var1_add,var2_add"
 # CHECK-SAME:  inputs = "arg0,arg1,arg2"
 # CHECK-SAME:  outputs = "ret"

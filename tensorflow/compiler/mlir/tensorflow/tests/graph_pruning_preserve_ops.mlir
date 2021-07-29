@@ -22,7 +22,7 @@ func @preserve_unreachable_tpu_compilation_result() {
     // CHECK: "tf.NoOp"
     %1 = tf_executor.island wraps "tf.NoOp"() : () -> ()
     // CHECK: "tf.TPUCompilationResult"
-    %2, %3 = tf_executor.island(%1) wraps "tf.TPUCompilationResult"() : () -> tensor<!tf.string>
+    %2, %3 = tf_executor.island(%1) wraps "tf.TPUCompilationResult"() : () -> tensor<!tf_type.string>
     tf_executor.fetch %0 : !tf_executor.control
   }
   return

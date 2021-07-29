@@ -3041,10 +3041,10 @@ void StructuredValueLinearizer::RecursivelyFindLeaves(
 // For exported functions with bound inputs, rewrite the function
 // signature to match the requirements of tf_saved_model bound input args.
 //
-// The raw imported functions have `tensor<*x!tf.resource>` as the type for
+// The raw imported functions have `tensor<*x!tf_type.resource>` as the type for
 // mutable bound inputs and `tensor<...>` as the type for immutable
 // bound inputs. Here we canonicalize both of them into
-// `tensor<!tf.resource<tensor<...>>>`.
+// `tensor<!tf_type.resource<tensor<...>>>`.
 void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
   for (auto func : module.getOps<mlir::FuncOp>()) {

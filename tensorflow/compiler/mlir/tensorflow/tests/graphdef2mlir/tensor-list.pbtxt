@@ -209,10 +209,10 @@ versions {
 }
 
 # Verify that list element shape and dtype are expected.
-# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*xf32>>>
+# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xf32>>>
 
 # Nested variant type.
-# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
+# CHECK:  tf.TensorListReserve{{.*}}(tensor<2xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*x!tf_type.variant>>>
 
-# CHECK:  tf.TensorListSetItem{{.*}}(tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>, tensor<2x2xf32>) -> tensor<*x!tf.variant>
-# CHECK:  tf.TensorListStack{{.*}}(tensor<*x!tf.variant>, tensor<i32>) -> tensor<*xf32>
+# CHECK:  tf.TensorListSetItem{{.*}}(tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>, tensor<2x2xf32>) -> tensor<*x!tf_type.variant>
+# CHECK:  tf.TensorListStack{{.*}}(tensor<*x!tf_type.variant>, tensor<i32>) -> tensor<*xf32>

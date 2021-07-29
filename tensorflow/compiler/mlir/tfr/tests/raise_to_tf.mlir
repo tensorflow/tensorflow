@@ -8,29 +8,29 @@ tfr.func @tf__const_(!tfr.attr {tfr.name="value", tfr.type="tensor"},
   !tfr.attr {tfr.name="K",tfr.type="dtype"}) -> !tfr.tensor<K> attributes {T, K}
 
 // CHECK-LABEL: decompose_tf_same
-func @decompose_tf_same(%arg0: tensor<1x2x3x4x!tf.string>) -> tensor<1x2x3x4x!tf.string> {
-  %0 = "tfr.cast"(%arg0) : (tensor<1x2x3x4x!tf.string>) -> !tfr.tensor
+func @decompose_tf_same(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
+  %0 = "tfr.cast"(%arg0) : (tensor<1x2x3x4x!tf_type.string>) -> !tfr.tensor
   %1 = tfr.call @tf__risc_same(%0) : (!tfr.tensor) -> !tfr.tensor
-  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<1x2x3x4x!tf.string>
-  return %2 : tensor<1x2x3x4x!tf.string>
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<1x2x3x4x!tf_type.string>
+  return %2 : tensor<1x2x3x4x!tf_type.string>
 
-// CHECK: %[[id:.*]] = "tf.RiscSame"(%arg0) : (tensor<1x2x3x4x!tf.string>) -> tensor<*x!tf.string>
-// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[id]]) {shape = #tf.shape<1x2x3x4>} : (tensor<*x!tf.string>) -> tensor<1x2x3x4x!tf.string>
-// CHECK: return %[[es]] : tensor<1x2x3x4x!tf.string>
+// CHECK: %[[id:.*]] = "tf.RiscSame"(%arg0) : (tensor<1x2x3x4x!tf_type.string>) -> tensor<*x!tf_type.string>
+// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[id]]) {shape = #tf_type.shape<1x2x3x4>} : (tensor<*x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string>
+// CHECK: return %[[es]] : tensor<1x2x3x4x!tf_type.string>
 }
 
 // CHECK-LABEL: decompose_tf_consecutive
-func @decompose_tf_consecutive(%arg0: tensor<1x2x3x4x!tf.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
-  %0 = "tfr.cast"(%arg0) : (tensor<1x2x3x4x!tf.string>) -> !tfr.tensor
+func @decompose_tf_consecutive(%arg0: tensor<1x2x3x4x!tf_type.string>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  %0 = "tfr.cast"(%arg0) : (tensor<1x2x3x4x!tf_type.string>) -> !tfr.tensor
   %1 = "tfr.cast"(%arg2) : (tensor<f32>) -> !tfr.tensor
   %2 = tfr.call @tf__risc_same(%0) : (!tfr.tensor) -> !tfr.tensor
   %3 = tfr.call @tf__risc_same(%1) : (!tfr.tensor) -> !tfr.tensor
   %4 = "tfr.cast"(%3) : (!tfr.tensor) -> tensor<f32>
   return %4 : tensor<f32>
 
-// CHECK: %[[id0:.*]] = "tf.RiscSame"(%arg0) : (tensor<1x2x3x4x!tf.string>) -> tensor<*x!tf.string>
+// CHECK: %[[id0:.*]] = "tf.RiscSame"(%arg0) : (tensor<1x2x3x4x!tf_type.string>) -> tensor<*x!tf_type.string>
 // CHECK: %[[id2:.*]] = "tf.RiscSame"(%arg2) : (tensor<f32>) -> tensor<*xf32>
-// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[id2]]) {shape = #tf.shape<>} : (tensor<*xf32>) -> tensor<f32>
+// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[id2]]) {shape = #tf_type.shape<>} : (tensor<*xf32>) -> tensor<f32>
 // CHECK: return %[[es]] : tensor<f32>
 }
 
@@ -45,7 +45,7 @@ func @decompose_tf_concat_n(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tenso
   return %4 : tensor<3xf32>
 
 // CHECK: %[[concat:.*]] = "tf.RiscConcat"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
-// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[concat]]) {shape = #tf.shape<3>} : (tensor<*xf32>) -> tensor<3xf32>
+// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[concat]]) {shape = #tf_type.shape<3>} : (tensor<*xf32>) -> tensor<3xf32>
 // CHECK: return %[[es]] : tensor<3xf32>
 }
 
@@ -60,7 +60,7 @@ func @decompose_tf_split(%arg0: tensor<3xf32>) -> (tensor<f32>) {
   return %4 : tensor<f32>
 
 // CHECK: %[[split:.*]]:3 = "tf.RiscSplit"(%arg0) {N = 3 : i32} : (tensor<3xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>)
-// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[split]]#0) {shape = #tf.shape<>} : (tensor<*xf32>) -> tensor<f32>
+// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[split]]#0) {shape = #tf_type.shape<>} : (tensor<*xf32>) -> tensor<f32>
 // CHECK: return %[[es]] : tensor<f32>
 }
 
@@ -73,7 +73,7 @@ func @decompose_tf_cast(%arg0: tensor<f32>) -> tensor<i32> {
   return %4 : tensor<i32>
 
 // CHECK: %[[tfcast:.*]] = "tf.RiscCast"(%arg0) {K = i32} : (tensor<f32>) -> tensor<*xi32>
-// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf.shape<>} : (tensor<*xi32>) -> tensor<i32>
+// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf_type.shape<>} : (tensor<*xi32>) -> tensor<i32>
 // CHECK: return %[[es]] : tensor<i32>
 }
 
@@ -98,6 +98,6 @@ func @attribute_propagate(%arg0: tensor<f32>) -> tensor<i32> {
   return %4 : tensor<i32>
 
 // CHECK: %[[tfcast:.*]] = "tf.RiscCast"(%arg0) {K = i32, _tpu_replicate, device = "hello"} : (tensor<f32>) -> tensor<*xi32>
-// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf.shape<>} : (tensor<*xi32>) -> tensor<i32>
+// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf_type.shape<>} : (tensor<*xi32>) -> tensor<i32>
 // CHECK: return %[[es]] : tensor<i32>
 }

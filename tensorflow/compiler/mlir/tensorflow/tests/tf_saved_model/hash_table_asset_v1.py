@@ -31,8 +31,8 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK: "tf_saved_model.asset"() {filename = {{.*}}, sym_name = "[[asset0:__tf_saved_model_asset0_.*]]"}
 
 # CHECK:      func @[[init]]
-# CHECK-SAME: [[ARG0:%.*]]: tensor<!tf.string> {tf_saved_model.bound_input = @[[asset0]]}
-# CHECK-SAME: [[ARG1:%.*]]: tensor<!tf.string> {tf_saved_model.bound_input = @[[asset1]]}
+# CHECK-SAME: [[ARG0:%.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @[[asset0]]}
+# CHECK-SAME: [[ARG1:%.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @[[asset1]]}
 # CHECK-NEXT: [[R0:%.*]] = "tf.HashTableV2"()
 # CHECK-SAME: shared_name = "[[hash_table:.*]]"
 # CHECK-NEXT: "tf.InitializeTableFromTextFileV2"([[R0]], [[ARG0]])

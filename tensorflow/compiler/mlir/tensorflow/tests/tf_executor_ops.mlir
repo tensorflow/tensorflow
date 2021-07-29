@@ -291,33 +291,33 @@ func @merge_one_data_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @merge_with_variant_type
-func @merge_with_variant_type(%arg0: tensor<!tf.variant>, %arg1: tensor<!tf.variant<tensor<4xi32>>>) -> tensor<!tf.variant<tensor<8xf32>>> {
+func @merge_with_variant_type(%arg0: tensor<!tf_type.variant>, %arg1: tensor<!tf_type.variant<tensor<4xi32>>>) -> tensor<!tf_type.variant<tensor<8xf32>>> {
   %result = tf_executor.graph {
 
-// CHECK: tf_executor.Merge{{.*}}(tensor<!tf.variant>, tensor<!tf.variant<tensor<4xi32>>>) -> (tensor<!tf.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
-    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<!tf.variant>, tensor<!tf.variant<tensor<4xi32>>>) -> (tensor<!tf.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
-    tf_executor.fetch %value : tensor<!tf.variant<tensor<8xf32>>>
+// CHECK: tf_executor.Merge{{.*}}(tensor<!tf_type.variant>, tensor<!tf_type.variant<tensor<4xi32>>>) -> (tensor<!tf_type.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<!tf_type.variant>, tensor<!tf_type.variant<tensor<4xi32>>>) -> (tensor<!tf_type.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
+    tf_executor.fetch %value : tensor<!tf_type.variant<tensor<8xf32>>>
   }
-  return %result : tensor<!tf.variant<tensor<8xf32>>>
+  return %result : tensor<!tf_type.variant<tensor<8xf32>>>
 }
 
 // CHECK-LABEL: func @merge_with_resource_type
-func @merge_with_resource_type(%arg0: tensor<!tf.resource>, %arg1: tensor<!tf.resource<tensor<4xi32>>>) -> tensor<!tf.resource<tensor<8xf32>>> {
+func @merge_with_resource_type(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource<tensor<4xi32>>>) -> tensor<!tf_type.resource<tensor<8xf32>>> {
   %result = tf_executor.graph {
 
-// CHECK: tf_executor.Merge{{.*}}(tensor<!tf.resource>, tensor<!tf.resource<tensor<4xi32>>>) -> (tensor<!tf.resource<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
-    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<!tf.resource>, tensor<!tf.resource<tensor<4xi32>>>) -> (tensor<!tf.resource<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
-    tf_executor.fetch %value : tensor<!tf.resource<tensor<8xf32>>>
+// CHECK: tf_executor.Merge{{.*}}(tensor<!tf_type.resource>, tensor<!tf_type.resource<tensor<4xi32>>>) -> (tensor<!tf_type.resource<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<!tf_type.resource>, tensor<!tf_type.resource<tensor<4xi32>>>) -> (tensor<!tf_type.resource<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
+    tf_executor.fetch %value : tensor<!tf_type.resource<tensor<8xf32>>>
   }
-  return %result : tensor<!tf.resource<tensor<8xf32>>>
+  return %result : tensor<!tf_type.resource<tensor<8xf32>>>
 }
 
 // CHECK-LABEL: func @merge_with_ref_type
-func @merge_with_ref_type(%arg0: tensor<4x!tf.f32ref>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+func @merge_with_ref_type(%arg0: tensor<4x!tf_type.f32ref>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %result = tf_executor.graph {
 
-// CHECK: tf_executor.Merge{{.*}}(tensor<4x!tf.f32ref>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
-    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<4x!tf.f32ref>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
+// CHECK: tf_executor.Merge{{.*}}(tensor<4x!tf_type.f32ref>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<4x!tf_type.f32ref>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
     tf_executor.fetch %value : tensor<4xf32>
   }
   return %result : tensor<4xf32>

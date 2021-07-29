@@ -29,8 +29,8 @@ func @set_stateless(%arg: tensor<i32>, %cond: tensor<i1>) -> (tensor<i32>, tenso
 }
 
 func @side_effect_body(%arg: tensor<i32>) -> tensor<i32> {
-  %handle = "tf.VarHandleOp"() { container = "", shared_name = "var" } : () -> tensor<!tf.resource<tensor<i32>>>
-  %0 = "tf.ReadVariableOp"(%handle) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+  %handle = "tf.VarHandleOp"() { container = "", shared_name = "var" } : () -> tensor<!tf_type.resource<tensor<i32>>>
+  %0 = "tf.ReadVariableOp"(%handle) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %1 = "tf.AddV2"(%arg, %0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   return %1 : tensor<i32>
 }
