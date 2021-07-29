@@ -1474,7 +1474,14 @@ cc_library(
         "@zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
-    ] + select({
+    ] + if_static(
+        extra_deps = [],
+        otherwise = [
+            # Make sure one copy of env_impl in case of static build,
+            # leave non-static build untouched to not break existing code.
+            "//tensorflow/core/platform:env_impl",
+        ],
+    ) + select({
         "//tensorflow:fuchsia": [],
         "//conditions:default": ["//tensorflow/core/platform:subprocess"],
     }) + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
@@ -1704,7 +1711,12 @@ tf_cuda_library(
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
-        otherwise = ["@com_google_protobuf//:protobuf_headers"],
+        otherwise = [
+            "@com_google_protobuf//:protobuf_headers",
+            # Make sure one copy of env_impl in case of static build,
+            # leave non-static build untouched to not break existing code.
+            "//tensorflow/core/platform:env_impl",
+        ],
     ),
     alwayslink = 1,
 )
