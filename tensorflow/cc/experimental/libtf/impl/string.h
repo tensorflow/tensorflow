@@ -17,7 +17,8 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include <iosfwd>
+// TODO(ccrusius): Include iosfwd instead and fix Windows problems.
+#include <iostream>
 #include <string>
 
 namespace tf {
