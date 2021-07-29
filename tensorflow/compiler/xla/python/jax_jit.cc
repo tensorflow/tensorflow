@@ -28,9 +28,11 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <algorithm>
 #include <exception>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -132,15 +134,29 @@ std::string CallSignature::DebugString() const {
                                 const xla::PyArgSignature& s) {
     out->append(s.DebugString());
   };
+  std::string thread_local_extra_jit_context_str;
+  if (thread_local_extra_jit_context.has_value()) {
+    thread_local_extra_jit_context_str =
+        py::cast<std::string>(py::str(thread_local_extra_jit_context.value()));
+  } else {
+    thread_local_extra_jit_context_str = "None";
+  }
   return absl::StrFormat(
       "static args (positional + keyword): %s\nstatic arg keyword names: %s\n"
       "dynamic arg signatures (positional + keyword): %s\n"
-      "dynamic arg keyword names: %s\ndynamic arg treedefs: %s\n",
+      "dynamic arg keyword names: %s\ndynamic arg treedefs: %s\n"
+      "device: %p\n"
+      "jax_enable_x64: %d\n"
+      "global_extra_jit_context: %s\n"
+      "thread_local_extra_jit_context: %s\n",
       absl::StrJoin(static_args, ",", py_object_formatter),
       absl::StrJoin(static_arg_names, ",", py_object_formatter),
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_names, ",", py_object_formatter),
-      absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter));
+      absl::StrJoin(dynamic_arg_treedefs, "| ", treedef_formatter),  // new line
+      device, jax_enable_x64,
+      py::cast<std::string>(py::str(global_extra_jit_context)),
+      thread_local_extra_jit_context_str);
 }
 
 bool CallSignature::operator==(const CallSignature& other) const {
