@@ -14,7 +14,7 @@ func @hoist_varhandleop(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]
   attributes {tf_saved_model.exported_names = ["test_hoist_varhandleop"]} {
   // CHECK-NOT: tf.VarHandleOp
   // CHECK-NOT: tf.ReadVariableOp
-  // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {device = "/CPU:0", indices = [0]} : () -> tensor<i32>
+  // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {container = [""], device = "/CPU:0", indices = [0], shared_name = [""]} : () -> tensor<i32>
   // CHECK: [[r:%.*]] = "tf.AddV2"({{.*}}, [[v]]) {device = "/CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: return [[r]]
   %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
@@ -43,7 +43,7 @@ func @hoist_hash_table(%arg: tensor<?x!tf_type.string> {tf_saved_model.index_pat
   attributes {tf_saved_model.exported_names = ["test_hoist_hash_table"]} {
   // CHECK-NOT: tf.HashTableV2
   // CHECK-NOT: tf.LookupTableSizeV2
-  // CHECK: [[v:%.*]]:2 = "tf._TfrtGetResource"() {device = "/job:localhost/replica:0/task:0/device:CPU:0", indices = [0, 1]}
+  // CHECK: [[v:%.*]]:2 = "tf._TfrtGetResource"() {container = ["", ""], device = "/job:localhost/replica:0/task:0/device:CPU:0", indices = [0, 1], shared_name = [{{.*}}, {{.*}}]}
   // CHECK: [[r:%.*]] = "tf.LookupTableFindV2"([[v]]#[[handle_idx]]
   // CHECK: return [[v]]#[[size_idx]], [[r]]
   %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "x", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
@@ -71,7 +71,7 @@ module attributes {tf_saved_model.semantics} {
 func @hoist_const(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_hoist_const"]} {
   // CHECK-NOT: tf.Const
-  // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {device = "/CPU:0", indices = [0]} : () -> tensor<i32>
+  // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {container = [""], device = "/CPU:0", indices = [0], shared_name = [""]} : () -> tensor<i32>
   // CHECK-NEXT: "tf.AddV2"({{.*}}, [[v]]) {device = "/CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: return
   %const = "tf.Const"() {device = "/CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -84,7 +84,7 @@ func @hoist_const(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> 
 func @hoist_const_return(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_hoist_const_return"]} {
   // CHECK-NOT: tf.Const
-  // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {device = "/CPU:0", indices = [1]} : () -> tensor<i32>
+  // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {container = [""], device = "/CPU:0", indices = [1], shared_name = [""]} : () -> tensor<i32>
   // CHECK-NEXT: return [[v]]
   %const = "tf.Const"() {device = "/CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
   return %const : tensor<i32>
@@ -109,7 +109,7 @@ func @hoist_var_read_write() -> (tensor<i32> {tf_saved_model.index_path = ["x"]}
   attributes {tf_saved_model.exported_names = ["test_hoist_var_read_write"]} {
   // CHECK-NOT: tf.Const
   // CHECK-NOT: tf.VarHandleOp
-  // CHECK: [[v:%.*]]:2 = "tf._TfrtGetResource"() {device = "/job:localhost/replica:0/task:0/device:CPU:0", indices = [0, 1]} : () -> ({{.*}})
+  // CHECK: [[v:%.*]]:2 = "tf._TfrtGetResource"() {container = ["", ""], device = "/job:localhost/replica:0/task:0/device:CPU:0", indices = [0, 1], shared_name = [{{.*}}, {{.*}}]} : () -> ({{.*}})
   // CHECK: [[x:%.*]] = "tf.ReadVariableOp"([[v]]#[[handle_idx]]) {device = "/CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   // CHECK-NEXT: "tf.AssignVariable"([[v]]#[[handle_idx]], [[v]]#[[const_idx]]) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   // CHECK-NEXT: [[r:%.*]] = "tf.ReadVariableOp"([[v]]#[[handle_idx]]) {device = "/CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
