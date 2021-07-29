@@ -27,10 +27,10 @@ limitations under the License.
 namespace tensorflow {
 namespace crc32c {
 
-// Return the crc32c of concat(A, data[0,n-1]) where init_crc is the
+// Return the crc32c of concat(A, buf[0,size-1]) where init_crc is the
 // crc32c of some string A.  Extend() is often used to maintain the
 // crc32c of a stream of data.
-extern uint32 Extend(uint32 init_crc, const char* data, size_t n);
+extern uint32 Extend(uint32 init_crc, const char* buf, size_t size);
 
 #if defined(TF_CORD_SUPPORT)
 extern uint32 Extend(uint32 init_crc, const absl::Cord& cord);
