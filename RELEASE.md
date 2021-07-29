@@ -42,6 +42,10 @@
 
     Note that this feature is only available with Python 3.7 or higher.
 
+  * Improve the informativeness of error messages raised by Keras
+    `Layer.__call__()`, by adding the full list of argument values passed to the
+    layer in every exception.
+
 *   TF1 -> TF2 Migration
     * Introduced the `tf.compat.v1.keras.utils.track_tf1_style_variables`
       decorator, which enables using large classes of tf1-style variable_scope,
