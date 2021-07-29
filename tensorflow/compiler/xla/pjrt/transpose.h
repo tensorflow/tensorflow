@@ -76,11 +76,22 @@ class TransposePlan {
   struct Striding {
     absl::Span<int64_t const> strides_in_bytes;
   };
+  enum class Transformation {
+    // Apply no transformations to the data.
+    kNone = 0,
+
+    // Convert doubles into the ef57 extended precision pair-of-floats
+    // representation used on TPU.
+    kF64ToEf57 = 1,
+  };
+
   static StatusOr<std::unique_ptr<TransposePlan>> Create(
       size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
       absl::Span<int64_t const> permutation,
       absl::variant<Tiling, Striding> input_layout = Tiling{},
-      Tiling output_tiling = Tiling{}, int num_threads = 1);
+      Tiling output_tiling = Tiling{},
+      Transformation transformation = Transformation::kNone,
+      int num_threads = 1);
 
   TransposePlan();
   ~TransposePlan();
@@ -148,7 +159,7 @@ class TransposePlan {
   // The signature of ExecuteTyped uses char* pointers because we perform
   // address calculations with strides in bytes; the strides need not be
   // multiples of the element size.
-  template <typename T>
+  template <typename T, Transformation transformation>
   void ExecuteTyped(const char* a, char* b, absl::Span<Node const> nodes) const;
 
   // Number of threads requested.
@@ -215,6 +226,18 @@ class TransposePlan {
   // cache blocking and need not be equal between input and output.
   int outer_block_elems_a_ = 4;
   int outer_block_elems_b_ = 4;
+
+  // Transformations to apply to the input before transposition.
+  // Currently the only supported transformation is EF57 conversion, which is
+  // a pair-of-floats extended precision representation used on TPU. We
+  // support fusing transformations with the transpose for two reasons:
+  // (a) it makes sense to fuse cheap computations with a memory-bandwidth
+  //     bound transformation, and
+  // (b) it allows us to support non-trivial striding.
+  Transformation transformation_;
+
+  // Size of the per-thread scratch buffer. 0 means "no scratch buffer required"
+  int64_t scratch_size_ = 0;
 };
 
 // An LRU cache for transpose plans. Not thread-safe.
@@ -240,6 +263,8 @@ class TransposePlanCache {
       absl::variant<TransposePlan::Tiling, TransposePlan::Striding>
           input_layout = TransposePlan::Tiling{},
       TransposePlan::Tiling output_tiling = TransposePlan::Tiling{},
+      TransposePlan::Transformation transformation =
+          TransposePlan::Transformation::kNone,
       int num_threads = 1);
 
  private:

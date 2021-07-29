@@ -362,7 +362,8 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
         auto plan, TransposePlan::Create(
                        sizeof(T), test.dims, test.permutation,
                        TransposePlan::Tiling{test.input_tiling},
-                       TransposePlan::Tiling{test.output_tiling}, parallelism));
+                       TransposePlan::Tiling{test.output_tiling},
+                       TransposePlan::Transformation::kNone, parallelism));
     VLOG(1) << plan->ToString();
     xla::Array<T> untiled_input(test.dims);
     untiled_input.FillIota(0);
@@ -436,9 +437,10 @@ template <typename T>
 void BM_Transpose(const TransposeTestCase& bm, int parallelism,
                   ::testing::benchmark::State& state) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto plan, TransposePlan::Create(sizeof(T), bm.dims, bm.permutation,
-                                       TransposePlan::Tiling{},
-                                       TransposePlan::Tiling{}, parallelism));
+      auto plan,
+      TransposePlan::Create(sizeof(T), bm.dims, bm.permutation,
+                            TransposePlan::Tiling{}, TransposePlan::Tiling{},
+                            TransposePlan::Transformation::kNone, parallelism));
   Array<T> input(bm.dims);
   input.FillIota(0);
   std::vector<int64> output_dims = Permute(bm.dims, bm.permutation);
