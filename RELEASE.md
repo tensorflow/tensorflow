@@ -9,6 +9,11 @@
 
 * Keras been split into a separate PIP package (`keras`), and its code has been moved to the GitHub repository[keras-team/keras](http://github.com/keras-team/keras). The API endpoints for `tf.keras` stay unchanged, but are now backed by the `keras` PIP package. The existing code in tensorflow/python/keras is a staled copy and will be removed in future release (2.7). Please remove any imports to `tensorflow.python.keras` and replace them with public tf.keras API instead.
 
+*  Modular File System Migration
+   * S3 and HDFS file system supports have been migrated to modular file systems
+     and is now available in https://github.com/tensorflow/io. The tensorflow-io
+     python package should be installed for S3 and HDFS support with tensorflow.
+
 ## Known Caveats
 
 * TF Core:
