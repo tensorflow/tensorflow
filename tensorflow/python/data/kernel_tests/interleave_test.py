@@ -285,7 +285,7 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
             lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
             cycle_length, block_length, num_parallel_calls)
     options = options_lib.Options()
-    options.experimental_deterministic = False
+    options.deterministic = False
     dataset = dataset.with_options(options)
     expected_output = [
         element for element in _interleave(
@@ -351,7 +351,7 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
           num_parallel_calls=10,
           deterministic=local_determinism)
       opts = options_lib.Options()
-      opts.experimental_deterministic = global_determinism
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 

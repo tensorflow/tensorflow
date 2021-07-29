@@ -269,7 +269,7 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
           batch_size=6, num_parallel_calls=2,
           deterministic=local_determinism).unbatch()
       opts = options_lib.Options()
-      opts.experimental_deterministic = global_determinism
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 

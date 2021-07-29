@@ -72,7 +72,10 @@
 *   TF Core:
     *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
     *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
-
+*   `tf.data`:
+    *   Promoting `tf.data.Options.experimental_deterministic` API to
+        `tf.data.Options.deterministic` and deprecating the experimental
+        endpoint.
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

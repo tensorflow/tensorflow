@@ -760,7 +760,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
               interleave_fn, cycle_length=10, sloppy=sloppy))
 
       opts = options_lib.Options()
-      opts.experimental_deterministic = global_determinism
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 

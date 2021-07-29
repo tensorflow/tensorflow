@@ -66,14 +66,14 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options1 = options_lib.Options()
     options1.experimental_optimization.autotune = True
     options2 = options_lib.Options()
-    options2.experimental_deterministic = False
+    options2.deterministic = False
     ds = dataset_ops.Dataset.range(0)
     ds = ds.with_options(options1)
     ds = ds.with_options(options2)
     options = self._get_options(ds)
     self.assertTrue(options.experimental_optimization.autotune)
     # Explicitly check that flag is False since assertFalse allows None
-    self.assertIs(options.experimental_deterministic, False)
+    self.assertIs(options.deterministic, False)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceSameOption(self):
@@ -94,13 +94,13 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options1 = options_lib.Options()
     options1.experimental_optimization.autotune = True
     options2 = options_lib.Options()
-    options2.experimental_deterministic = True
+    options2.deterministic = True
     ds1 = dataset_ops.Dataset.range(0).with_options(options1)
     ds2 = dataset_ops.Dataset.range(0).with_options(options2)
     ds = dataset_ops.Dataset.zip((ds1, ds2))
     options = self._get_options(ds)
     self.assertTrue(options.experimental_optimization.autotune)
-    self.assertTrue(options.experimental_deterministic)
+    self.assertTrue(options.deterministic)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsHaveDefaults(self):
@@ -125,7 +125,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = ds.with_options(options2)
     dataset_options = ds.options()
     with self.assertRaises(ValueError):
-      dataset_options.experimental_deterministic = True
+      dataset_options.deterministic = True
 
   @combinations.generate(test_base.eager_only_combinations())
   def testNestedDataset(self):
@@ -139,7 +139,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsProtoRoundTrip(self):
     options = options_lib.Options()
-    options.experimental_deterministic = True
+    options.deterministic = True
     options.experimental_external_state_policy = (
         options_lib.ExternalStatePolicy.FAIL)
     options.experimental_distribute.auto_shard_policy = (
@@ -208,6 +208,20 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     result._from_proto(pb)
     self.assertEqual(result.experimental_threading.max_intra_op_parallelism,
                      result.threading.max_intra_op_parallelism)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testExperimentalDeterministicOverride(self):
+    options = options_lib.Options()
+    self.assertEqual(options.deterministic, options.experimental_deterministic)
+    options.experimental_deterministic = False
+    pb = options._to_proto()
+    result = options_lib.Options()
+    result._from_proto(pb)
+    self.assertFalse(result.deterministic)
+    self.assertEqual(result.deterministic, result.experimental_deterministic)
+    result.experimental_deterministic = True
+    self.assertTrue(result.deterministic)
+    self.assertEqual(result.deterministic, result.experimental_deterministic)
 
   @combinations.generate(test_base.default_test_combinations())
   def testPersistenceOptionsSetOutsideFunction(self):

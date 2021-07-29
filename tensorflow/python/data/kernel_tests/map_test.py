@@ -1291,7 +1291,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           num_parallel_calls=2,
           deterministic=local_determinism)
       opts = options_lib.Options()
-      opts.experimental_deterministic = global_determinism
+      opts.deterministic = global_determinism
       dataset = dataset.with_options(opts)
       return dataset
 

@@ -412,9 +412,9 @@ class Options(options_lib.OptionsBase):
 
   >>> dataset = tf.data.Dataset.range(42)
   >>> options = tf.data.Options()
-  >>> options.experimental_deterministic = False
+  >>> options.deterministic = False
   >>> dataset = dataset.with_options(options)
-  >>> print(dataset.options().experimental_deterministic)
+  >>> print(dataset.options().deterministic)
   False
 
   Note: A known limitation of the `tf.data.Options` implementation is that the
@@ -423,12 +423,17 @@ class Options(options_lib.OptionsBase):
   need to be set within the same tf.function.
   """
 
-  experimental_deterministic = options_lib.create_option(
-      name="experimental_deterministic",
+  deterministic = options_lib.create_option(
+      name="deterministic",
       ty=bool,
       docstring=
       "Whether the outputs need to be produced in deterministic order. If None,"
       " defaults to True.")
+
+  experimental_deterministic = options_lib.create_option(
+      name="experimental_deterministic",
+      ty=bool,
+      docstring="DEPRECATED. Use `deterministic` instead.")
 
   experimental_distribute = options_lib.create_option(
       name="experimental_distribute",
@@ -437,6 +442,16 @@ class Options(options_lib.OptionsBase):
       "The distribution strategy options associated with the dataset. See "
       "`tf.data.experimental.DistributeOptions` for more details.",
       default_factory=DistributeOptions)
+
+  experimental_external_state_policy = options_lib.create_option(
+      name="experimental_external_state_policy",
+      ty=ExternalStatePolicy,
+      docstring="This option can be used to override the default policy for "
+      "how to handle external state when serializing a dataset or "
+      "checkpointing its iterator. There are three settings available - "
+      "IGNORE: External state is ignored without a warning; WARN: External "
+      "state is ignored and a warning is logged; FAIL: External state results "
+      "in an error.")
 
   experimental_optimization = options_lib.create_option(
       name="experimental_optimization",
@@ -455,15 +470,10 @@ class Options(options_lib.OptionsBase):
       "frequency is determined by the number of devices attached to this "
       "input pipeline. If None, defaults to False.")
 
-  experimental_external_state_policy = options_lib.create_option(
-      name="experimental_external_state_policy",
-      ty=ExternalStatePolicy,
-      docstring="This option can be used to override the default policy for "
-      "how to handle external state when serializing a dataset or "
-      "checkpointing its iterator. There are three settings available - "
-      "IGNORE: External state is ignored without a warning; WARN: External "
-      "state is ignored and a warning is logged; FAIL: External state results "
-      "in an error.")
+  experimental_threading = options_lib.create_option(
+      name="experimental_threading",
+      ty=ThreadingOptions,
+      docstring="DEPRECATED. Use `threading` instead.")
 
   threading = options_lib.create_option(
       name="threading",
@@ -472,26 +482,35 @@ class Options(options_lib.OptionsBase):
       "`tf.data.ThreadingOptions` for more details.",
       default_factory=ThreadingOptions)
 
-  def __getattr__(self, name):
+  def __getattribute__(self, name):
     if name == "experimental_threading":
       logging.warning("options.experimental_threading is deprecated. "
                       "Use options.threading instead.")
       return getattr(self, "threading")
-    else:
-      raise AttributeError("Attribute %s not found." % name)
+    if name == "experimental_deterministic":
+      # TODO(aaudibert): Uncomment after internal uses have been updated.
+      # logging.warning("options.experimental_deterministic is deprecated. "
+      #                 "Use options.deterministic instead.")
+      return getattr(self, "deterministic")
+    return super(Options, self).__getattribute__(name)
 
   def __setattr__(self, name, value):
     if name == "experimental_threading":
       logging.warning("options.experimental_threading is deprecated. "
                       "Use options.threading instead.")
       super(Options, self).__setattr__("threading", value)
+    if name == "experimental_deterministic":
+      # TODO(aaudibert): Uncomment after internal uses have been updated.
+      # logging.warning("options.experimental_deterministic is deprecated. "
+      #                 "Use options.deterministic instead.")
+      super(Options, self).__setattr__("deterministic", value)
     else:
       super(Options, self).__setattr__(name, value)
 
   def _to_proto(self):
     pb = dataset_options_pb2.Options()
-    if self.experimental_deterministic is not None:
-      pb.deterministic = self.experimental_deterministic
+    if self.deterministic is not None:
+      pb.deterministic = self.deterministic
     pb.distribute_options.CopyFrom(self.experimental_distribute._to_proto())  # pylint: disable=protected-access
     if self.experimental_external_state_policy is not None:
       pb.external_state_policy = (
@@ -505,7 +524,7 @@ class Options(options_lib.OptionsBase):
 
   def _from_proto(self, pb):
     if pb.WhichOneof("optional_deterministic") is not None:
-      self.experimental_deterministic = pb.deterministic
+      self.deterministic = pb.deterministic
     self.experimental_distribute._from_proto(pb.distribute_options)  # pylint: disable=protected-access
     if pb.WhichOneof("optional_external_state_policy") is not None:
       self.experimental_external_state_policy = (

@@ -437,7 +437,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       ds = dataset_ops.Dataset.from_tensor_slices(elements)
       ds = ds.interleave(interleave_fn, cycle_length=10, num_parallel_calls=10)
       opts = options_lib.Options()
-      opts.experimental_deterministic = False
+      opts.deterministic = False
       ds = ds.with_options(opts)
       ds = self.make_distributed_dataset(ds, cluster)
       return ds

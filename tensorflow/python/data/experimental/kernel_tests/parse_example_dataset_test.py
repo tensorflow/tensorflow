@@ -1140,7 +1140,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
             deterministic=local_determinism))
 
     opts = options_lib.Options()
-    opts.experimental_deterministic = global_determinism
+    opts.deterministic = global_determinism
     dataset = dataset.with_options(opts)
 
     expected = list(range(num_elements))

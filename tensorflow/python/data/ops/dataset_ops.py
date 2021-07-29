@@ -1561,8 +1561,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         the transformation produces elements. If set to `False`, the
         transformation is allowed to yield elements out of order to trade
         determinism for performance. If not specified, the
-        `tf.data.Options.experimental_deterministic` option
-        (`True` by default) controls the behavior.
+        `tf.data.Options.deterministic` option (`True` by default) controls the
+        behavior.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1844,8 +1844,8 @@ name=None))
         the transformation produces elements. If set to `False`, the
         transformation is allowed to yield elements out of order to trade
         determinism for performance. If not specified, the
-        `tf.data.Options.experimental_deterministic` option
-        (`True` by default) controls the behavior.
+        `tf.data.Options.deterministic` option (`True` by default) controls the
+        behavior.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1998,8 +1998,8 @@ name=None))
         the transformation produces elements. If set to `False`, the
         transformation is allowed to yield elements out of order to trade
         determinism for performance. If not specified, the
-        `tf.data.Options.experimental_deterministic` option
-        (`True` by default) controls the behavior.
+        `tf.data.Options.deterministic` option (`True` by default) controls the
+        behavior.
 
     Returns:
       Dataset: A `Dataset`.
@@ -2495,7 +2495,7 @@ name=None))
     ...                    num_parallel_calls=3)
     >>> options = tf.data.Options()
     >>> # This will make the interleave order non-deterministic.
-    >>> options.experimental_deterministic = False
+    >>> options.deterministic = False
     >>> ds = ds.with_options(options)
 
     Args:
@@ -3327,8 +3327,8 @@ class DatasetV1(DatasetV2):
         boolean controls the order in which the transformation produces
         elements. If set to `False`, the transformation is allowed to yield
         elements out of order to trade determinism for performance. If not
-        specified, the `tf.data.Options.experimental_deterministic` option
-        (`True` by default) controls the behavior.
+        specified, the `tf.data.Options.deterministic` option (`True` by
+        default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.

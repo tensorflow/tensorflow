@@ -573,7 +573,7 @@ def make_csv_dataset_v2(
     dataset = dataset.interleave(
         filename_to_dataset, num_parallel_calls=num_parallel_reads)
     options = options_lib.Options()
-    options.experimental_deterministic = not sloppy
+    options.deterministic = not sloppy
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if num_parallel_reads=1) or in parallel
@@ -1025,7 +1025,7 @@ def make_batched_features_dataset_v2(file_pattern,
         lambda filename: reader(filename, *reader_args),
         num_parallel_calls=reader_num_threads)
     options = options_lib.Options()
-    options.experimental_deterministic = not sloppy_ordering
+    options.deterministic = not sloppy_ordering
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if reader_num_threads=1) or in parallel
