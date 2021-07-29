@@ -58,7 +58,7 @@ bool TryAcquireTpuLock() {
     // loads are ok.
     // TODO(skyewm): we could make per-chip lock files and look at
     // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
-    std::string chips_per_host_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUND");
+    std::string chips_per_host_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
     if (chips_per_host_bounds.empty() || chips_per_host_bounds == "2,2,1") {
       int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
 
