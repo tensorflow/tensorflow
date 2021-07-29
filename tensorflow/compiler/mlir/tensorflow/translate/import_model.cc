@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -106,6 +107,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/crash_analysis.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
@@ -240,7 +242,12 @@ class ImporterBase {
 
   // Prepares converting the graph to an MLIR module. This step removes the
   // backedges of the graph, orders the nodes and infers the shapes.
-  Status PrepareConvert(const Graph& graph);
+  // PrepareConvert needs to ensure that the original `graph` is cloned prior
+  // execution. The cloning procedure relies on the roundtrip through the
+  // GraphDef. Graph to GraphDef def conversion is heavy, in case, `graph_def`
+  // was obtained previously provide it to the PrepareConvert to reuse.
+  Status PrepareConvert(const Graph& graph,
+                        std::unique_ptr<GraphDef> graph_def = nullptr);
 
   // Converts the prepared graph to a Function and adds it to the module. A set
   // of nodes from the graph are given to converted to the arguments and returns
@@ -367,7 +374,7 @@ class ImporterBase {
 
   // Removes backedges from the input graph. The removed edges are added back to
   // to OpBuilder after the remaining graph is converted to the Function.
-  Status RemoveBackedges(const Graph& graph);
+  Status RemoveBackedges();
 
   // Restores backedges removed during shape inference to the final Function.
   Status AddBackedges();
@@ -654,19 +661,7 @@ Status ImporterBase::ConvertDeferredFunctions() {
   return Status::OK();
 }
 
-Status ImporterBase::RemoveBackedges(const Graph& graph) {
-  // TODO(fengliuai): Converting to GraphDef and back is the easiest way to
-  // clone a graph.
-  // TODO(fengliuai): clone the graph without going to graph_def first.
-  GraphDef graph_def;
-  graph.ToGraphDef(&graph_def);
-  graph_ = absl::make_unique<Graph>(graph.flib_def());
-  GraphConstructorOptions opts;
-  opts.allow_internal_ops = true;
-  opts.add_default_attributes = true;
-  TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
-      opts, std::move(graph_def), graph_.get()));
-
+Status ImporterBase::RemoveBackedges() {
   // Remove all the backedges. So the nodes can be added to the shape refiner.
   TF_RETURN_IF_ERROR(back_edge_helper_.Remove(graph_.get()));
   VLOG(1) << "Found " << (back_edge_helper_.RemovedEdges().size())
@@ -1451,11 +1446,24 @@ Status ImporterBase::ConvertFeedsToPlaceholders(
   return Status::OK();
 }
 
-Status ImporterBase::PrepareConvert(const Graph& graph) {
-  VLOG(1) << "Importing: "
-          << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
-                                           &graph_flib_);
-  TF_RETURN_IF_ERROR(RemoveBackedges(graph));
+Status ImporterBase::PrepareConvert(const Graph& graph,
+                                    std::unique_ptr<GraphDef> graph_def) {
+  // TODO(fengliuai): Converting to GraphDef and back is the easiest way to
+  // clone a graph.
+  // TODO(fengliuai): clone the graph without going to graph_def first.
+  if (graph_def == nullptr) {
+    graph_def = std::make_unique<GraphDef>();
+    graph.ToGraphDef(graph_def.get());
+  }
+  graph_ = absl::make_unique<Graph>(graph.flib_def());
+  GraphConstructorOptions opts;
+  opts.allow_internal_ops = true;
+  opts.add_default_attributes = true;
+  TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
+      opts, std::move(*graph_def), graph_.get()));
+
+  TF_RETURN_IF_ERROR(RemoveBackedges());
+
   TF_RETURN_IF_ERROR(CopyStackTraces(graph, graph_.get()));
 
   auto node_name_map = graph_->BuildNodeNameIndex();
@@ -2319,10 +2327,32 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   NameUniquifier function_name_uniquifier(flib_def);
 
+  static int counter = 0;
+  // importer.PrepareConvert below will attemp to clone the original `graph`
+  // via conversion to the graph def first. Convert graph to graph_def here
+  // first and avoid extra copies later.
+  auto graph_def = std::make_unique<GraphDef>();
+  graph.ToGraphDef(graph_def.get());
+
+  const auto* graph_crash_handle = crash_analysis::ReportProtoDataOnCrash(
+      absl::StrCat(counter, "_mlir_import_graph.pbtxt"), *graph_def);
+  const auto* flib_crash_handle = crash_analysis::ReportProtoDataOnCrash(
+      absl::StrCat(counter, "_mlir_import_flib.pbtxt"), flib_def.ToProto());
+  ++counter;
+
+  auto scope_exit = llvm::make_scope_exit([&]() {
+    crash_analysis::RemoveReportData(graph_crash_handle);
+    crash_analysis::RemoveReportData(flib_crash_handle);
+  });
+
+  VLOG(1) << "Importing: "
+          << ::tensorflow::DumpGraphToFile("tf_mlir_importer_base", graph,
+                                           &flib_def);
+
   GraphDefImporter importer(flib_def, debug_info, specs, module.get(),
                             &tf_name_to_mlir_name, &function_name_uniquifier);
 
-  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
+  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph, std::move(graph_def)));
 
   mlir::FunctionType func_type;
   absl::InlinedVector<OutputTensor, 4> arg_nodes;

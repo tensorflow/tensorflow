@@ -98,6 +98,7 @@ exports_files(
         "logging.h",
         "mem.h",
         "mutex.h",
+        "crash_analysis.h",
         "net.h",
         "numa.h",
         "ram_file_system.h",
@@ -185,6 +186,15 @@ cc_library(
         ":platform",
         "@com_google_absl//absl/strings:cord",
     ] + tf_platform_deps("cord"),
+)
+
+cc_library(
+    name = "crash_analysis",
+    hdrs = ["crash_analysis.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("crash_analysis"),
 )
 
 cc_library(
@@ -974,6 +984,7 @@ cc_binary(
         ":cpu_feature_guard",
         ":denormal",
         ":dynamic_annotations",
+        ":crash_analysis",
         ":env_time",
         ":file_statistics",
         ":fingerprint",
@@ -1465,6 +1476,7 @@ filegroup(
         "cord.h",
         "cpu_feature_guard.h",
         "cpu_info.h",
+        "crash_analysis.h",
         "dynamic_annotations.h",
         "env.h",
         "error.h",
