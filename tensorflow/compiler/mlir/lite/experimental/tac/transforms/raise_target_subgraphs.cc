@@ -105,12 +105,6 @@ class RaiseTargetSubgraphsPass
   void RaiseTargetSubgraphsForBlock(Block* block, OpBuilder* builder,
                                     ModuleOp module);
 
-  void CreateNewSubgraphOrUpdate(
-      Operation* op, const InferenceDeviceType& inference_device_type,
-      llvm::SetVector<Operation*>* unprocessed_ops,
-      llvm::DenseMap<int, Subgraph>* subraphs,
-      llvm::DenseMap<Operation*, int>* op_subgraph_mapping);
-
   void ExtractSubgraphToFunc(Subgraph* subgraph, OpBuilder* builder,
                              ModuleOp module);
 
@@ -121,67 +115,6 @@ class RaiseTargetSubgraphsPass
 
   int subgraph_count_ = 0;
 };
-
-// Currently if & only if all inputs (exclude arguments, constant, etc.) of the
-// op belong to the same subgraph, and the op can be considered as part of the
-// graph.
-// since the unprocessed_ops are assumed to be already topologically sorted,
-// we may recursively call this function.
-// We will revisit this logic later.
-void RaiseTargetSubgraphsPass::CreateNewSubgraphOrUpdate(
-    Operation* op, const InferenceDeviceType& inference_device_type,
-    llvm::SetVector<Operation*>* unprocessed_ops,
-    llvm::DenseMap<int, Subgraph>* subraphs,
-    llvm::DenseMap<Operation*, int>* op_subgraph_mapping) {
-  llvm::SetVector<int> input_subgraph_ids;
-  for (auto input : op->getOperands()) {
-    if (IsTFLNonConstQuatnizeOp(input)) {
-      Operation* input_op = input.getDefiningOp();
-
-      // If the input op is generated from a different device, we will skip.
-      auto input_op_device = GetInferenceDeviceTypeForOp(input_op);
-      if (!input_op_device.hasValue()) {
-        input_op->emitError("cannot get hardware or inference type for the op");
-        signalPassFailure();
-      }
-
-      if (!(input_op_device.getValue() == inference_device_type)) continue;
-
-      // If the input has more than one use, we will skip it.
-      // The initiative here is if we have the input has more than one nodes
-      // consume it, it will be very tricky for us to find the correct insertion
-      // point for the call op, there may not be even a legal insertion point.
-      // TODO(renjieliu): May revisit this later.
-      if (!input.hasOneUse()) continue;
-
-      // If the input op is not processed yet, we will need to process that
-      // first (to get the input op's subgraph_id).
-      if (unprocessed_ops->count(input_op) == 1) {
-        unprocessed_ops->remove(input_op);
-        CreateNewSubgraphOrUpdate(input_op, input_op_device.getValue(),
-                                  unprocessed_ops, subraphs,
-                                  op_subgraph_mapping);
-      }
-      // Assume we have got the correct subgraph id for this one.
-      input_subgraph_ids.insert(op_subgraph_mapping->find(input_op)->second);
-    }
-  }
-
-  // This op belongs to the input subgraph.
-  if (input_subgraph_ids.size() == 1) {
-    const int input_graph_id = input_subgraph_ids.front();
-    op_subgraph_mapping->insert({op, input_graph_id});
-    subraphs->find(input_graph_id)->second.all_ops.insert(op);
-  } else {
-    // We need to start a new subgraph.
-    Subgraph new_subgaph;
-    new_subgaph.inference_device_type = inference_device_type;
-    new_subgaph.subgraph_id = subgraph_count_++;
-    new_subgaph.all_ops.insert(op);
-    subraphs->insert({new_subgaph.subgraph_id, new_subgaph});
-    op_subgraph_mapping->insert({op, new_subgaph.subgraph_id});
-  }
-}
 
 // This is to collect input arguments for the given set of ops.
 // See the example:
@@ -396,46 +329,33 @@ void RaiseTargetSubgraphsPass::ExtractSubgraphToFunc(Subgraph* subgraph,
 void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block* block,
                                                             OpBuilder* builder,
                                                             ModuleOp module) {
-  llvm::SetVector<Operation*> unprocessed_ops;
-  block->walk([&](Operation* op) {
+  // This is a very naive implementation:
+  // It will greedily group adjacent ops that have the same inference type to a
+  // subgraph.
+  llvm::DenseMap<int, Subgraph> all_subgraphs;
+  llvm::Optional<InferenceDeviceType> previous_device_type = llvm::None;
+  int current_subgraph_id = -1;
+  for (auto& op : *block) {
     // We only care about TFL dialect.
-    if (IsTFLNonConstQuatnizeOp(op)) {
-      unprocessed_ops.insert(op);
+    if (IsTFLNonConstQuatnizeOp(&op)) {
+      auto current_device_type = GetInferenceDeviceTypeForOp(&op);
+      if (!(current_device_type.hasValue() &&
+            current_device_type == previous_device_type)) {
+        // We should start a new subgraph.
+        Subgraph new_subgraph;
+        new_subgraph.inference_device_type = current_device_type.getValue();
+        new_subgraph.subgraph_id = subgraph_count_++;
+        all_subgraphs.insert({new_subgraph.subgraph_id, new_subgraph});
+        current_subgraph_id = new_subgraph.subgraph_id;
+      }
+      previous_device_type = current_device_type;
+      all_subgraphs.find(current_subgraph_id)->second.all_ops.insert(&op);
     }
-  });
-
-  // Create a new subgraph or add to existing subgrpahs.
-  std::unordered_map<InferenceDeviceType, llvm::DenseMap<int, Subgraph>,
-                     InferenceDeviceType::inference_device_type_hash>
-      all_subgraphs;
-  llvm::DenseMap<Operation*, int> op_subgraph_mapping;
-
-  while (!unprocessed_ops.empty()) {
-    Operation* current = unprocessed_ops.front();
-    unprocessed_ops.remove(current);
-
-    auto current_device = GetInferenceDeviceTypeForOp(current);
-    if (!current_device.hasValue()) {
-      current->emitError("cannot get hardware or inference type for the op");
-      signalPassFailure();
-    }
-
-    auto device_subgraphs_it = all_subgraphs.find(current_device.getValue());
-    if (device_subgraphs_it == all_subgraphs.end()) {
-      auto device_subgraph_insert = all_subgraphs.insert(
-          {current_device.getValue(), llvm::DenseMap<int, Subgraph>()});
-      device_subgraphs_it = device_subgraph_insert.first;
-    }
-    CreateNewSubgraphOrUpdate(current, current_device.getValue(),
-                              &unprocessed_ops, &device_subgraphs_it->second,
-                              &op_subgraph_mapping);
   }
 
   // Create FuncOp & replace with current uses based on those subgraphs.
-  for (auto& device_subgraphs : all_subgraphs) {
-    for (auto& ids_subgraph : device_subgraphs.second) {
-      ExtractSubgraphToFunc(&ids_subgraph.second, builder, module);
-    }
+  for (auto& subgraph : all_subgraphs) {
+    ExtractSubgraphToFunc(&subgraph.second, builder, module);
   }
 }
 
