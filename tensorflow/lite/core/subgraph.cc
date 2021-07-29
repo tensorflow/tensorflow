@@ -1004,12 +1004,11 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
 TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   if (!memory_planner_) {
 #ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
-    memory_planner_.reset(new SimplePlanner(
-        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this))));
+    memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
 #else
-    memory_planner_.reset(new ArenaPlanner(
-        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
-        preserve_all_tensors_, kDefaultTensorAlignment));
+    memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
+                                           preserve_all_tensors_,
+                                           kDefaultTensorAlignment));
 #endif
     memory_planner_->PlanAllocations();
   }
@@ -1753,6 +1752,10 @@ TfLiteStatus Subgraph::PreserveAllTensorsExperimental() {
   }
   preserve_all_tensors_ = true;
   return kTfLiteOk;
+}
+
+std::unique_ptr<GraphInfo> Subgraph::CreateGraphInfo() {
+  return std::unique_ptr<GraphInfo>(new InterpreterInfo(this));
 }
 
 }  // namespace tflite
