@@ -790,21 +790,15 @@ void TransposePlan::BuildPlanNodes(
       } else if (node.is_inner_dim_in_b) {
         node.inc = inner_block_elems_ * outer_block_elems_b_;
       }
+
       int task_id = task_id_at_loop / num_tasks_at_loop;
-      if (partial) {
-        // Only the last task handles the trailing tile.
-        // DCHECK_EQ(task_id, loop_parallelism_[agendum.loop_id] - 1);
-        node.start = 0;
-        node.end = a_dims_[a_dim] % tile_size;
-      } else {
-        int64_t num_iterations = CeilOfRatio(tile_size, node.inc);
-        int64_t num_iterations_per_task = CeilOfRatio<int64_t>(
-            num_iterations, loop_parallelism_[agendum.loop_id]);
-        node.start =
-            std::min(tile_size, task_id * num_iterations_per_task * node.inc);
-        node.end = std::min(tile_size,
-                            (task_id + 1) * num_iterations_per_task * node.inc);
-      }
+      int64_t size = partial ? a_dims_[a_dim] % tile_size : tile_size;
+      int64_t num_iterations = CeilOfRatio(size, node.inc);
+      int64_t num_iterations_per_task = CeilOfRatio<int64_t>(
+          num_iterations, loop_parallelism_[agendum.loop_id]);
+      node.start = std::min(size, task_id * num_iterations_per_task * node.inc);
+      node.end =
+          std::min(size, (task_id + 1) * num_iterations_per_task * node.inc);
       if (!loop_has_trivial_iteration_space(node) ||
           (inner_kernel_is_memcpy_ && node.is_inner_dim_in_a)) {
         nodes.push_back(node);
