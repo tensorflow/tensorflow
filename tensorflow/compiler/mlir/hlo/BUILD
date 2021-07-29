@@ -23,6 +23,7 @@ package_group(
         "//learning/brain/google/xla/mlir/...",
         "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
+        "//platforms/darwinn/tools/mlir_fuzzer/...",
         "//platforms/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
@@ -43,6 +44,11 @@ exports_files([
 
 # Python extension sources.
 exports_files(["python/MlirHloModule.cpp"])
+
+filegroup(
+    name = "hlo_ops_td_filegroup",
+    srcs = glob(["include/mlir-hlo/Dialect/mhlo/IR/*.td"]),
+)
 
 td_library(
     name = "hlo_ops_td_files",

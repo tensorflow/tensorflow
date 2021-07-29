@@ -41,16 +41,6 @@ class HLO_ShapedInterfaceOp<string mnemonic, list<OpTrait> traits> :
     ["reifyReturnTypeShapes"]>]> {
 }
 
-def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
-def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
-def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
-def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
-def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
-    HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
-]> {
-  let cppNamespace = "::mlir::mhlo";
-}
-
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//

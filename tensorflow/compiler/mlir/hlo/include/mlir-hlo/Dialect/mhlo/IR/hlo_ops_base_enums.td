@@ -116,4 +116,14 @@ def HLO_TransposeAttr : StrEnumAttr<"Transpose",
   let cppNamespace = "::mlir::mhlo";
 }
 
+def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
+def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
+def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
+def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
+def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
+    HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
+]> {
+  let cppNamespace = "::mlir::mhlo";
+}
+
 #endif // HLO_OPS_BASE_ENUMS
