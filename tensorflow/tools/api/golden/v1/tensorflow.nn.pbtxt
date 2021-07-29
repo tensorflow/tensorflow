@@ -1,6 +1,10 @@
 path: "tensorflow.nn"
 tf_module {
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "rnn_cell"
     mtype: "<type \'module\'>"
   }

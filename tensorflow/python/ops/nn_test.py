@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import math
 
 from absl.testing import parameterized
@@ -333,214 +334,212 @@ class L2NormalizeTest(test_lib.TestCase):
         self.assertAllClose(y_np, self.evaluate(y_tf))
 
 
-class DropoutTest(test_lib.TestCase):
+DROPOUT_FNS = [
+    ("stateful_v1", nn_ops.dropout),
+    ("stateful_v2", nn_ops.dropout_v2),
+    ("stateless", functools.partial(nn_ops.stateless_dropout, seed=(1, 2))),
+    ("stateless_philox", functools.partial(
+        nn_ops.stateless_dropout, seed=(1, 2), rng_alg="philox"))]
 
-  def testDropout(self):
+
+class DropoutTest(test_lib.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ("_%s_%s_%s" % (case_name, use_noise_shape, keep_prob), dropout_fn,  # pylint: disable=g-complex-comprehension
+       use_noise_shape, keep_prob)
+      for keep_prob in [0.1, 0.5, 0.8]
+      for use_noise_shape in ["no", "concrete", "partial"]
+      for case_name, dropout_fn in DROPOUT_FNS)
+  def testDropout(self, dropout_fn, use_noise_shape, keep_prob):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
     # that it is producing approximately the right number of ones over a large
     # number of samples, based on the keep probability.
-    x_dim = 40
-    y_dim = 30
+    if use_noise_shape == "no":
+      x_dim = 70
+      y_dim = 30
+    else:
+      x_dim = 70 * 30
+      y_dim = 3
     num_iter = 10
-    for keep_prob in [0.1, 0.5, 0.8]:
-      t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, rate=(1 - keep_prob))
-      final_count = 0
-      self.assertEqual([x_dim, y_dim], dropout.get_shape())
-      for _ in xrange(0, num_iter):
-        value = self.evaluate(dropout)
-        final_count += np.count_nonzero(value)
-        # Verifies that there are only two values: 0 and 1/keep_prob.
-        sorted_value = np.unique(np.sort(value))
-        self.assertEqual(0, sorted_value[0])
-        self.assertAllClose(1 / keep_prob, sorted_value[1])
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    if use_noise_shape == "no":
+      noise_shape = None
+    elif use_noise_shape == "concrete":
+      noise_shape = [x_dim, 1]
+    else:
+      noise_shape = [None, 1]
+    dropout = dropout_fn(t, rate=(1 - keep_prob), noise_shape=noise_shape)
+    final_count = 0
+    self.assertEqual([x_dim, y_dim], dropout.get_shape())
+    for _ in xrange(0, num_iter):
+      value = self.evaluate(dropout)
+      final_count += np.count_nonzero(value)
+      # Verifies that there are only two values: 0 and 1/keep_prob.
+      sorted_value = np.unique(np.sort(value))
+      self.assertEqual(0, sorted_value[0])
+      self.assertAllClose(1 / keep_prob, sorted_value[1])
 
-      # Check that we are in the 15% error range
-      expected_count = x_dim * y_dim * keep_prob * num_iter
-      rel_error = math.fabs(final_count - expected_count) / expected_count
-      print(rel_error)
-      self.assertTrue(rel_error < 0.15)
+    # Check that we are in the 15% error range
+    expected_count = x_dim * y_dim * keep_prob * num_iter
+    rel_error = math.fabs(final_count - expected_count) / expected_count
+    self.assertLess(rel_error, 0.15)
 
-  def testShapedDropout(self):
-    # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
-    # that it is producing approximately the right number of ones over a large
-    # number of samples, based on the keep probability. This time with shaped
-    # noise.
-    x_dim = 40 * 30
-    y_dim = 3
-    num_iter = 10
-    for keep_prob in [0.1, 0.5, 0.8]:
-      t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
-      self.assertEqual([x_dim, y_dim], dropout.get_shape())
-      final_count = 0
-      for _ in xrange(0, num_iter):
-        value = self.evaluate(dropout)
-        final_count += np.count_nonzero(value)
-        # Verifies that there are only two values: 0 and 1/keep_prob.
-        sorted_value = np.unique(np.sort(value))
-        self.assertEqual(0, sorted_value[0])
-        self.assertAllClose(1 / keep_prob, sorted_value[1])
-
-      # Check that we are in the 15% error range
-      expected_count = x_dim * y_dim * keep_prob * num_iter
-      rel_error = math.fabs(final_count - expected_count) / expected_count
-      print(rel_error)
-      self.assertTrue(rel_error < 0.15)
-
-  def testShapedDropoutCorrelation(self):
+  @parameterized.named_parameters(
+      ("_%s_%s" % (case_name, keep_prob), dropout_fn, keep_prob)  # pylint: disable=g-complex-comprehension
+      for keep_prob in [0.1, 0.5, 0.8]
+      for case_name, dropout_fn in DROPOUT_FNS)
+  def testShapedDropoutCorrelation(self, dropout_fn, keep_prob):
     # Runs a shaped dropout and tests that the correlations are correct.
     x_dim = 40
     y_dim = 30
     num_iter = 10
-    for keep_prob in [0.1, 0.5, 0.8]:
-      t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
-      self.assertEqual([x_dim, y_dim], dropout.get_shape())
-      for _ in xrange(0, num_iter):
-        value = self.evaluate(dropout)
-        # Verifies that each y column as only one type of activation.
-        for i in xrange(x_dim):
-          sorted_value = np.unique(np.sort(value[i, :]))
-          self.assertEqual(sorted_value.size, 1)
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    dropout = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
+    self.assertEqual([x_dim, y_dim], dropout.get_shape())
+    for _ in xrange(0, num_iter):
+      value = self.evaluate(dropout)
+      # Verifies that each row has only one type of activation.
+      for i in xrange(x_dim):
+        sorted_value = np.unique(np.sort(value[i, :]))
+        self.assertEqual(sorted_value.size, 1)
 
+  @parameterized.named_parameters(
+      ("_%s_%s_%s" % (case_name, keep_prob, use_keep_prob), case_name,  # pylint: disable=g-complex-comprehension
+       dropout_fn, keep_prob, use_keep_prob)
+      for use_keep_prob in [False, True]
+      for keep_prob in [0.1, 0.5, 0.8]
+      for case_name, dropout_fn in DROPOUT_FNS)
   @test_util.run_deprecated_v1
-  def testDropoutPlaceholderKeepProb(self):
+  def testDropoutPlaceholderRateAndKeepProb(self, case_name, dropout_fn,
+                                            keep_prob, use_keep_prob):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
     # that it is producing approximately the right number of ones over a large
     # number of samples, based on the keep probability.
-    x_dim = 40
+    if use_keep_prob and case_name != "stateful_v1":
+      self.skipTest("Only V1 `dropout` has the `keep_prob` argument.")
+    x_dim = 70
     y_dim = 30
     num_iter = 10
-    for keep_prob in [0.1, 0.5, 0.8]:
-      with self.cached_session():
-        t = constant_op.constant(
-            1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-        keep_prob_placeholder = array_ops.placeholder(dtypes.float32)
-        dropout = nn_ops.dropout(t, keep_prob_placeholder)
-        final_count = 0
-        self.assertEqual([x_dim, y_dim], dropout.get_shape())
-        for _ in xrange(0, num_iter):
-          value = dropout.eval(feed_dict={keep_prob_placeholder: keep_prob})
-          final_count += np.count_nonzero(value)
-          # Verifies that there are only two values: 0 and 1/keep_prob.
-          sorted_value = np.unique(np.sort(value))
-          self.assertEqual(0, sorted_value[0])
-          self.assertAllClose(1 / keep_prob, sorted_value[1])
-      # Check that we are in the 15% error range
-      expected_count = x_dim * y_dim * keep_prob * num_iter
-      rel_error = math.fabs(final_count - expected_count) / expected_count
-      print(rel_error)
-      self.assertTrue(rel_error < 0.15)
+    with self.cached_session():
+      t = constant_op.constant(
+          1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+      keep_prob_placeholder = array_ops.placeholder(dtypes.float32)
+      if use_keep_prob:
+        dropout = dropout_fn(t, keep_prob=keep_prob_placeholder)
+      else:
+        dropout = dropout_fn(t, rate=1 - keep_prob_placeholder)
+      final_count = 0
+      self.assertEqual([x_dim, y_dim], dropout.get_shape())
+      for _ in xrange(0, num_iter):
+        value = dropout.eval(feed_dict={keep_prob_placeholder: keep_prob})
+        final_count += np.count_nonzero(value)
+        # Verifies that there are only two values: 0 and 1/keep_prob.
+        sorted_value = np.unique(np.sort(value))
+        self.assertEqual(0, sorted_value[0])
+        self.assertAllClose(1 / keep_prob, sorted_value[1])
+    # Check that we are in the 15% error range
+    expected_count = x_dim * y_dim * keep_prob * num_iter
+    rel_error = math.fabs(final_count - expected_count) / expected_count
+    self.assertLess(rel_error, 0.15)
 
+  @parameterized.named_parameters(
+      ("_%s" % case_name, dropout_fn)
+      for case_name, dropout_fn in DROPOUT_FNS)
   @test_util.run_deprecated_v1
-  def testShapedDropoutUnknownShape(self):
+  def testShapedDropoutUnknownShape(self, dropout_fn):
     x_dim = 40
     y_dim = 30
     keep_prob = 0.5
     x = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-    dropout_x = nn_ops.dropout(
+    dropout_x = dropout_fn(
         x,
         rate=(1 - keep_prob),
         noise_shape=array_ops.placeholder(dtypes.int32))
     self.assertEqual(x.get_shape(), dropout_x.get_shape())
 
-  def testPartialShapedDropout(self):
-    x_dim = 40 * 30
-    y_dim = 3
-    num_iter = 10
-    for keep_prob in [0.1, 0.5, 0.8]:
-      t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      # Set noise_shape=[None, 1] which means [x_dim, 1].
-      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[None, 1])
-      self.assertEqual([x_dim, y_dim], dropout.get_shape())
-      final_count = 0
-      for _ in xrange(0, num_iter):
-        value = self.evaluate(dropout)
-        final_count += np.count_nonzero(value)
-        # Verifies that there are only two values: 0 and 1/keep_prob.
-        sorted_value = np.unique(np.sort(value))
-        self.assertEqual(0, sorted_value[0])
-        self.assertAllClose(1 / keep_prob, sorted_value[1])
-
-      # Check that we are in the 15% error range
-      expected_count = x_dim * y_dim * keep_prob * num_iter
-      rel_error = math.fabs(final_count - expected_count) / expected_count
-      print(rel_error)
-      self.assertTrue(rel_error < 0.15)
-
+  @parameterized.named_parameters(
+      ("_%s_%s" % (case_name, use_keep_prob), case_name, dropout_fn,  # pylint: disable=g-complex-comprehension
+       use_keep_prob)
+      for use_keep_prob in [False, True]
+      for case_name, dropout_fn in DROPOUT_FNS)
   @test_util.run_deprecated_v1
-  def testInvalidKeepProb(self):
+  def testInvalidRateAndKeepProb(self, case_name, dropout_fn, use_keep_prob):
+    if use_keep_prob and case_name != "stateful_v1":
+      self.skipTest("Only V1 `dropout` has the `keep_prob` argument.")
+    if use_keep_prob:
+      fn = lambda x, y: dropout_fn(x, keep_prob=y)
+    else:
+      fn = lambda x, y: dropout_fn(x, rate=y)
     x_dim = 40
     y_dim = 30
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     with self.assertRaises(ValueError):
-      nn_ops.dropout(t, -1.0)
+      fn(t, -1.0)
     with self.assertRaises(ValueError):
-      nn_ops.dropout(t, 1.1)
+      fn(t, 1.1)
     with self.assertRaises(ValueError):
-      nn_ops.dropout(t, [0.0, 1.0])
+      fn(t, [0.0, 1.0])
     with self.assertRaises(ValueError):
-      nn_ops.dropout(t, array_ops.placeholder(dtypes.float64))
+      fn(t, array_ops.placeholder(dtypes.float64))
     with self.assertRaises(ValueError):
-      nn_ops.dropout(t, array_ops.placeholder(dtypes.float32, shape=[2]))
+      fn(t, array_ops.placeholder(dtypes.float32, shape=[2]))
 
-  @test_util.run_deprecated_v1
-  def testInvalidRate(self):
+  @parameterized.named_parameters(
+      ("_%s" % case_name, dropout_fn)
+      for case_name, dropout_fn in DROPOUT_FNS)
+  def testLargeRate(self, dropout_fn):
     x_dim = 40
     y_dim = 30
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-    with self.assertRaises(ValueError):
-      nn_ops.dropout_v2(t, -1.0)
-    with self.assertRaises(ValueError):
-      nn_ops.dropout_v2(t, 1.1)
-    with self.assertRaises(ValueError):
-      nn_ops.dropout_v2(t, [0.0, 1.0])
+    _ = dropout_fn(t, rate=0.9)
 
-  def testLargeRate(self):
-    x_dim = 40
-    y_dim = 30
-    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-    _ = nn_ops.dropout_v2(t, 0.9)
-
-  def testVariableRef(self):
+  @parameterized.named_parameters(
+      ("_%s" % case_name, dropout_fn)
+      for case_name, dropout_fn in DROPOUT_FNS)
+  def testVariableRef(self, dropout_fn):
     x = variable_scope.get_variable("x", shape=[10, 10], dtype=dtypes.float32)
-    _ = nn_ops.dropout(x, keep_prob=0.1)
+    _ = dropout_fn(x, rate=0.1)
 
+  @parameterized.named_parameters(
+      ("_%s" % case_name, dropout_fn)
+      for case_name, dropout_fn in DROPOUT_FNS)
   @test_util.run_deprecated_v1
-  def testShapedDropoutShapeError(self):
+  def testShapedDropoutShapeError(self, dropout_fn):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
     x_dim = 40
     y_dim = 30
     keep_prob = 0.5
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(
+      _ = dropout_fn(
           t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim + 10])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim, 5])
+      _ = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim, 5])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim + 3])
+      _ = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[x_dim + 3])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim])
+      _ = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[x_dim])
     # test that broadcasting proceeds
-    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[y_dim])
-    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, y_dim])
-    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
-    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, 1])
+    _ = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[y_dim])
+    _ = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[1, y_dim])
+    _ = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
+    _ = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[1, 1])
 
-  def testNoDropout(self):
+  @parameterized.named_parameters(
+      ("_%s" % case_name, dropout_fn)
+      for case_name, dropout_fn in DROPOUT_FNS)
+  def testNoDropout(self, dropout_fn):
     x = array_ops.zeros((5,))
-    y = nn_ops.dropout(x, rate=0)
+    y = dropout_fn(x, rate=0)
     self.assertAllEqual(x, y)
 
-    y = nn_ops.dropout_v2(x, rate=0)
-    self.assertAllEqual(x, y)
-
-  def testDropoutWithIntegerInputs(self):
+  @parameterized.named_parameters(
+      ("_%s" % case_name, dropout_fn)
+      for case_name, dropout_fn in DROPOUT_FNS)
+  def testDropoutWithIntegerInputs(self, dropout_fn):
     x = constant_op.constant([1, 1, 1, 1, 1])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(x, 0.5)
+      _ = dropout_fn(x, rate=0.5)
 
 
 @test_util.run_all_without_tensor_float_32(

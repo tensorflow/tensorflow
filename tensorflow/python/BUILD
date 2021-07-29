@@ -1948,6 +1948,7 @@ py_library(
         ":nn_ops_gen",
         ":platform",
         ":random_ops",
+        ":stateless_random_ops",
         ":variables",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:graph_util",

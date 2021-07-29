@@ -67,6 +67,7 @@
 *<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
     *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
+    *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
 
 ## Thanks to our Contributors
 
