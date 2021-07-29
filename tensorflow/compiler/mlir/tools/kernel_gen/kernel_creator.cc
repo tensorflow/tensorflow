@@ -279,6 +279,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
   pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
+  // Remove UnrealizedConversionCastOps and TensorLoadOps.
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Find candidates for buffer reuse. This is only successful if buffer size
   // equality can be determined based on `linalg.generic` operations.
   pm.addNestedPass<mlir::FuncOp>(
