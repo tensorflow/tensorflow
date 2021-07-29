@@ -62,8 +62,9 @@ class ShardedDeviceArray:
   device_buffers: List[Any]
 
 class PmapFunction:
-   def __call__(self, *args, **kwargs) -> Any: ...
-   __signature__: inspect.Signature
+  def __call__(self, *args, **kwargs) -> Any: ...
+  __signature__: inspect.Signature
+  def _cache_size(self) -> int: ...
 
 def pmap(__fun: Callable[..., Any],
          __cache_miss: Callable[..., Any],

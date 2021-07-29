@@ -358,6 +358,8 @@ void BuildPmapSubmodule(pybind11::module& m) {
                                                                "PmapFunction");
   cfun.def("__call__", &PmapFunction::Call);
   cfun.def_property_readonly("__signature__", &PmapFunction::PythonSignature);
+  // All private members are only for testing/debugging purposes
+  cfun.def("_cache_size", &PmapFunction::cache_size);
 
   pmap_lib.def(
       "pmap",
