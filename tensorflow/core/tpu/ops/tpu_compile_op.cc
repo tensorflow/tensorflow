@@ -34,8 +34,7 @@ REGISTER_OP("_TPUCompileMlir")
     .Output("program: num_computations * string")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       int num_computations;
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(c->attrs(), "num_computations", &num_computations));
+      TF_RETURN_IF_ERROR(c->GetAttr("num_computations", &num_computations));
       // Compilation status.
       c->set_output(0, c->Scalar());
       // Programs.
@@ -94,8 +93,7 @@ REGISTER_OP("TPUCompile")
     .Output("may_modify_variables: num_computations * bool")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       int num_computations;
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(c->attrs(), "num_computations", &num_computations));
+      TF_RETURN_IF_ERROR(c->GetAttr("num_computations", &num_computations));
       // Compilation status.
       c->set_output(0, c->Scalar());
       // Programs.
