@@ -1,4 +1,7 @@
-// RUN: tfr-opt %s -tfr-decompose -verify-diagnostics -split-input-file | FileCheck %s
+// RUN: tfr-opt %s -tfr-decompose -verify-diagnostics | FileCheck %s
+
+// Definitions for ops that are being used in the tests.
+// ex) tf.MyOp refers to tfr.func @tf__my_op
 
 // CHECK-LABEL: @tf__fake_no_op
 tfr.func @tf__fake_no_op(%arg0: !tfr.tensor) -> !tfr.tensor {
@@ -48,7 +51,14 @@ tfr.func @tf__my_max_pool(%input_: !tfr.tensor, %stride_w: i64{tfr.name="stride_
 // CHECK: tf__max_pool
 }
 
-//------------------------
+// CHECK-LABEL: @tf__cast_float
+tfr.func @tf__cast_float(%input_: !tfr.tensor, %out_type: !tfr.attr{tfr.name="out_type"}) -> (!tfr.tensor) {
+  %false = constant false
+  %cast = tfr.call @tf__cast(%input_, %out_type, %false) : (!tfr.tensor, !tfr.attr, i1) -> (!tfr.tensor)
+  tfr.return %cast : !tfr.tensor
+}
+
+// end op definitions
 
 // CHECK-LABEL: decompose_tf_no_op
 func @decompose_tf_no_op(%arg0: tensor<1x2x3x4x!tf_type.string>) -> tensor<1x2x3x4x!tf_type.string> {
@@ -268,4 +278,12 @@ func @decompose_quant_rescale(%arg0: tensor<2xi32>) -> !tfr.tensor {
 // CHECK: %[[recentered:.*]] = tfr.call @tf__add(%[[rounded]], %[[zp_cast]]) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor
 // CHECK: %[[cast_i32:.*]] = tfr.call @tf__cast(%[[recentered]], %[[i32]], %false) : (!tfr.tensor, !tfr.attr, i1) -> !tfr.tensor
 // CHECK: return %[[cast_i32]] : !tfr.tensor
+}
+
+// CHECK-LABEL: decompose_output_type
+func @decompose_output_type(%arg0: tensor<2xf32>) -> tensor<2xi32> {
+  %0 = "tf.CastFloat"(%arg0) : (tensor<2xf32>) -> tensor<2xi32>
+  return %0: tensor<2xi32>
+// CHECK: %[[i32:.*]] = tfr.constant i32 -> !tfr.attr
+// CHECK: tfr.call @tf__cast(%[[casted_arg:.*]], %[[i32]], %false) : (!tfr.tensor, !tfr.attr, i1) -> !tfr.tensor
 }
