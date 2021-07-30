@@ -52,6 +52,7 @@ _TF_CURRENT_BAZEL_VERSION = None
 _TF_MIN_BAZEL_VERSION = '3.7.2'
 _TF_MAX_BAZEL_VERSION = '4.1.0'
 
+
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
 ]
