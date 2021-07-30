@@ -2339,9 +2339,10 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   const auto* graph_crash_handle = crash_analysis::ReportProtoDataOnCrash(
       absl::StrCat(current_file_prefix, "_mlir_import_graph.pbtxt"),
       *graph_def);
+  auto reachable_flib = flib_def.ReachableDefinitions(*graph_def);
   const auto* flib_crash_handle = crash_analysis::ReportProtoDataOnCrash(
       absl::StrCat(current_file_prefix, "_mlir_import_flib.pbtxt"),
-      flib_def.ToProto());
+      reachable_flib.ToProto());
 
   auto scope_exit = llvm::make_scope_exit([&]() {
     crash_analysis::RemoveReportData(graph_crash_handle);
