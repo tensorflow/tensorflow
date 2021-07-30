@@ -12,18 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/cc/experimental/libtf/impl/string.h"
+// Specializations of ostream::operator<< for API values. These are defined here
+// so that they don't need to be linked in executables that need to be kept
+// small (and don't use the functionality).
+#include <iostream>
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/cc/experimental/libtf/impl/string.h"
 
 namespace tf {
 namespace libtf {
 namespace impl {
 
-TEST(StringTest, TestBasicInterning) {
-  String s1("foo");
-  String s2("foo");
-  EXPECT_EQ(&s1.str(), &s2.str());
+std::ostream& operator<<(std::ostream& o, const String& str) {
+  return o << str.str();
 }
 
 }  // namespace impl

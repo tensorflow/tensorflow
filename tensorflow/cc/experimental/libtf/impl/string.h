@@ -15,10 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_IMPL_STRING_H_
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_IMPL_STRING_H_
 
-#include <stddef.h>
-
-// TODO(ccrusius): Include iosfwd instead and fix Windows problems.
-#include <iostream>
+#include <iosfwd>
 #include <string>
 
 namespace tf {
@@ -33,18 +30,16 @@ namespace impl {
 class String final {
  public:
   /** Interning constructor.
-   * This constructor interns the given string value.
+   * Interns the given string value.
    */
   explicit String(const char* s);
 
   String() : String("") {}
   String(const String& s) : value_(s.value_) {}
 
-  /** Equality operator.
-   * This is the same as the default equality operator, which works because
-   * we're interning all strings. It is specified here so we are explicit about
-   * it. We're not saying "= default;" because we can't use C++20 features yet.
-   */
+  // This is the same as the default equality operator, which works because
+  // we're interning all strings. It is specified here so we are explicit about
+  // it. We're not saying "= default;" because we can't use C++20 features yet.
   bool operator==(const String& other) const { return value_ == other.value_; }
 
   const std::string& str() const { return *value_; }
@@ -60,9 +55,11 @@ class String final {
   const std::string* value_;
 };
 
-inline std::ostream& operator<<(std::ostream& o, const String& str) {
-  return o << str.str();
-}
+// This is defined in the `iostream.cc` file in this directory. It is not
+// defined inline here because the `iosfwd` header does not provide enough
+// functionality (in Windows), and we don't want to include `iostream` to avoid
+// increasing the binary size.
+std::ostream& operator<<(std::ostream& o, const String& str);
 
 }  // namespace impl
 }  // namespace libtf
