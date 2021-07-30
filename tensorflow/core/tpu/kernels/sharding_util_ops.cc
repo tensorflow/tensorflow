@@ -424,7 +424,7 @@ class XlaSplitNDBaseOp : public OpKernel {
           non_padded_slice_shape.AddDim(0);
           slice_paddings[dim] = {0, output_slice_shape_dsizes[dim]};
           ++num_complete_pad_dims;
-        } else if (slice_indices[dim] + output_slice_shape_dsizes[dim] >=
+        } else if (slice_indices[dim] + output_slice_shape_dsizes[dim] >
                    dim_size) {
           // Partial padding.
           non_padded_slice_shape.AddDim(dim_size - slice_indices[dim]);
@@ -705,7 +705,7 @@ class XlaConcatNDBaseOp : public OpKernel {
           slice_indices[dim] = dim_size;
           non_padded_slice_shape.AddDim(0);
           ++num_complete_pad_dims;
-        } else if (slice_indices[dim] + slice_shape_dsizes[dim] >= dim_size) {
+        } else if (slice_indices[dim] + slice_shape_dsizes[dim] > dim_size) {
           // Partial padding.
           non_padded_slice_shape.AddDim(dim_size - slice_indices[dim]);
           ++num_partial_pad_dims;
