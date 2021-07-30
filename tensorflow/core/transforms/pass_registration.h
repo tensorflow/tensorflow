@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Support/MlirOptMain.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/types/dialect.h"
+#ifndef TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
+#define TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
 
-int main(int argc, char **argv) {
-  mlir::DialectRegistry registry;
-  mlir::registerCanonicalizerPass();
-  registry.insert<mlir::tf_type::TFTypeDialect, mlir::tfg::TFGraphDialect>();
-  return failed(
-      mlir::MlirOptMain(argc, argv, "TFGraph IR Test Driver", registry));
-}
+#include <memory>
+
+#include "tensorflow/core/transforms/toposort/toposort_pass.h"
+
+namespace mlir {
+namespace tfg {
+/// Generate the code for registering passes for command-line parsing.
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/core/transforms/passes.h.inc"
+}  // namespace tfg
+}  // namespace mlir
+
+#endif  // TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_

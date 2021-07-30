@@ -13,15 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Support/MlirOptMain.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/types/dialect.h"
+#ifndef TENSORFLOW_CORE_TRANSFORMS_TOPOSORT_H_
+#define TENSORFLOW_CORE_TRANSFORMS_TOPOSORT_H_
 
-int main(int argc, char **argv) {
-  mlir::DialectRegistry registry;
-  mlir::registerCanonicalizerPass();
-  registry.insert<mlir::tf_type::TFTypeDialect, mlir::tfg::TFGraphDialect>();
-  return failed(
-      mlir::MlirOptMain(argc, argv, "TFGraph IR Test Driver", registry));
-}
+#include <memory>
+
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+
+namespace mlir {
+namespace tfg {
+
+// Sort topologically (following SSA defs-uses edges) the given block.
+// The sort is stable.
+void SortTopologically(Block *block);
+
+// Programmatically create a pass that topologically sort graphs.
+std::unique_ptr<Pass> CreateTopoSortPass();
+
+}  // namespace tfg
+}  // namespace mlir
+
+#endif  // TENSORFLOW_CORE_TRANSFORMS_TOPOSORT_H_

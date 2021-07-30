@@ -17,11 +17,13 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/transforms/pass_registration.h"
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerCanonicalizerPass();
-  registry.insert<mlir::tf_type::TFTypeDialect, mlir::tfg::TFGraphDialect>();
+  mlir::tfg::registerTFGraphPasses();
+  registry.insert<mlir::tfg::TFGraphDialect, mlir::tf_type::TFTypeDialect>();
   return failed(
-      mlir::MlirOptMain(argc, argv, "TFGraph IR Test Driver", registry));
+      mlir::MlirOptMain(argc, argv, "TFGraph Transforms Driver", registry));
 }

@@ -13,15 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Support/MlirOptMain.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/core/ir/dialect.h"
+#ifndef TENSORFLOW_CORE_IR_DIALECT_H_
+#define TENSORFLOW_CORE_IR_DIALECT_H_
+
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/core/ir/types/dialect.h"
 
-int main(int argc, char **argv) {
-  mlir::DialectRegistry registry;
-  mlir::registerCanonicalizerPass();
-  registry.insert<mlir::tf_type::TFTypeDialect, mlir::tfg::TFGraphDialect>();
-  return failed(
-      mlir::MlirOptMain(argc, argv, "TFGraph IR Test Driver", registry));
-}
+namespace mlir {
+namespace tfg {
+// Include all the TensorFlow types directly in the TFG namespace.
+using namespace mlir::tf_type;  // NOLINT
+}  // namespace tfg
+}  // namespace mlir
+// Dialect main class is defined in ODS, we include it here.
+#include "tensorflow/core/ir/dialect.h.inc"
+
+#endif  // TENSORFLOW_CORE_IR_DIALECT_H_
