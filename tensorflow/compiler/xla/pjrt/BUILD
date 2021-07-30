@@ -337,9 +337,9 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_cuda([
-        "//tensorflow/stream_executor/cuda:cuda_activation_header"
+        "//tensorflow/stream_executor/cuda:cuda_activation_header",
     ]) + if_rocm([
-        "@local_config_rocm//rocm:rocm_headers"
+        "@local_config_rocm//rocm:rocm_headers",
     ]) + if_nccl([":nccl_plugin"]),
 )
 
