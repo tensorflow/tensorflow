@@ -930,6 +930,8 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
         errors::InvalidArgument("max_size_per_class must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
     const int max_size_per_class = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_size_per_class > 0,
+                errors::InvalidArgument("max_size_per_class must be positive"));
     // max_total_size: scalar
     const Tensor& max_total_size = context->input(3);
     OP_REQUIRES(
