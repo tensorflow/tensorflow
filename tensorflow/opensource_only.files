@@ -32,6 +32,7 @@ tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl
+tensorflow/lite/ios/BUILD
 tensorflow/lite/java/src/main/native/BUILD
 tensorflow/lite/schema/schema_generated.h
 tensorflow/opensource_only/BUILD
