@@ -23,7 +23,7 @@ namespace tensorflow {
 void MaybeInitializeTPUSystemForTests();
 
 // Returns a process-wide global ResourceMgr.
-ResourceMgr* GetTPUConfigResourceMgr(bool initialize_first = true);
+ResourceMgr* GetTPUConfigResourceMgr();
 
 }  // namespace tensorflow
 

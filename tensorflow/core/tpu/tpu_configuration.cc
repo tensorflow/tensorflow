@@ -31,10 +31,8 @@ ResourceMgr* GetGlobalResourceMgr() {
 void MaybeInitializeTPUSystemForTests() {}
 #endif
 
-ResourceMgr* GetTPUConfigResourceMgr(bool initialize_first) {
-  if (initialize_first) {
-    MaybeInitializeTPUSystemForTests();
-  }
+ResourceMgr* GetTPUConfigResourceMgr() {
+  MaybeInitializeTPUSystemForTests();
 
   // Put all TPU-related state in the global ResourceMgr. This includes the
   // TpuPodState, compilation cache, etc. We don't use the TPU_SYSTEM
