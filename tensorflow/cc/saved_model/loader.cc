@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <unordered_set>
 
-#include "tensorflow/cc/experimental/libexport/util.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/cc/saved_model/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -275,7 +275,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
                       SavedModelBundle* const bundle) {
   SavedModel saved_model_proto;
   if (ReadSavedModel(export_dir, &saved_model_proto).ok()) {
-    std::string version = libexport::GetWriteVersion(saved_model_proto);
+    std::string version = saved_model::GetWriteVersion(saved_model_proto);
     metrics::SavedModelReadApi(kCCLoadLabel, version).IncrementBy(1);
   }
 

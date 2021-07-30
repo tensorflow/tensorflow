@@ -17,6 +17,9 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/metrics.h"
 
 namespace tensorflow {
+namespace saved_model {
+namespace python {
+
 namespace py = pybind11;
 
 void DefineMetricsModule(py::module main_module) {
@@ -83,4 +86,6 @@ void DefineMetricsModule(py::module main_module) {
               "counter for (`api_label`, `write_version`) cell."));
 }
 
+}  // namespace python
+}  // namespace saved_model
 }  // namespace tensorflow

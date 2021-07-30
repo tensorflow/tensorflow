@@ -12,23 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/cc/experimental/libexport/util.h"
 
-#include <string>
+// Defines the 'constants' wrapper submodule.
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#ifndef TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_CONSTANTS_H_
+#define TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_CONSTANTS_H_
+
+#include "pybind11/pybind11.h"
 
 namespace tensorflow {
-namespace libexport {
+namespace saved_model {
+namespace python {
 
-std::string GetWriteVersion(const SavedModel& saved_model) {
-  if (saved_model.meta_graphs_size() == 1 &&
-      saved_model.meta_graphs()[0].has_object_graph_def()) {
-    return "2";
-  }
-  return "1";
-}
+// Wraps the SavedModel constants for exporting to Python.
+void DefineConstantsModule(pybind11::module main_module);
 
-}  // namespace libexport
+}  // namespace python
+}  // namespace saved_model
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_CONSTANTS_H_

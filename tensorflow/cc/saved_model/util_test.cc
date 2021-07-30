@@ -9,7 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/cc/experimental/libexport/util.h"
+#include "tensorflow/cc/saved_model/util.h"
 
 #include <string>
 
@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
 namespace tensorflow {
-namespace libexport {
+namespace saved_model {
 namespace {
 
 TEST(UtilTest, TestGetWriteVersionV2) {
@@ -41,5 +41,5 @@ TEST(UtilTest, TestGetWriteVersionV1) {
 }
 
 }  // namespace
-}  // namespace libexport
+}  // namespace saved_model
 }  // namespace tensorflow

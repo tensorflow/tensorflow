@@ -48,7 +48,7 @@ py_strict_library(
     srcs = ["constants.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/saved_model:pywrap_saved_model",
+        ":pywrap_saved_model",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -76,6 +76,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -85,7 +86,6 @@ py_strict_library(
         "//tensorflow/python:saver",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -99,6 +99,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
+        ":pywrap_saved_model",
         ":signature_def_utils",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -108,7 +109,6 @@ py_strict_library(
         "//tensorflow/python:saver",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -336,6 +336,7 @@ py_strict_library(
         ":builder",
         ":function_serialization",
         ":nested_structure_coder",
+        ":pywrap_saved_model",
         ":revived_types",
         ":save_context",
         ":save_options",
@@ -363,7 +364,6 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -406,6 +406,7 @@ py_library(
         ":load_v1_in_v2",
         ":loader",
         ":nested_structure_coder",
+        ":pywrap_saved_model",
         ":revived_types",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -427,7 +428,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking",
@@ -679,6 +679,7 @@ tf_pybind_cc_library_wrapper(
     name = "pywrap_saved_model_headers",
     visibility = ["//visibility:private"],
     deps = [
+        "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:metrics",
     ],
 )
@@ -687,9 +688,11 @@ tf_python_pybind_extension(
     name = "pywrap_saved_model",
     srcs = [
         "pywrap_saved_model.cc",
+        "pywrap_saved_model_constants.cc",
         "pywrap_saved_model_metrics.cc",
     ],
     hdrs = [
+        "pywrap_saved_model_constants.h",
         "pywrap_saved_model_metrics.h",
     ],
     features = ["-layering_check"],
@@ -697,7 +700,6 @@ tf_python_pybind_extension(
     visibility = ["//tensorflow/python/saved_model:__subpackages__"],
     deps = [
         ":pywrap_saved_model_headers",
-        "//tensorflow/cc/experimental/libexport:constants",
         "//tensorflow/cc/experimental/libexport:save",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",

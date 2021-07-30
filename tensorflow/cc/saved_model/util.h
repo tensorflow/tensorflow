@@ -12,23 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CC_SAVED_MODEL_UTIL_H_
+#define TENSORFLOW_CC_SAVED_MODEL_UTIL_H_
 
-// Defines the 'metrics' wrapper submodule.
+#include <string>
 
-#ifndef TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_
-#define TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_
-
-#include "pybind11/pybind11.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace tensorflow {
 namespace saved_model {
-namespace python {
 
-// Wraps the SM Metrics API methods for exporting to Python.
-void DefineMetricsModule(pybind11::module main_module);
+// Utility functions for SavedModel reading and writing.
 
-}  // namespace python
+// Returns "WriteVersion" ("1" or "2") of the SavedModel protobuf. If the
+// protobuf has exactly one MetaGraphDef, which contains a SavedObjectGraph, it
+// is version 2. Else, the protobuf is version 1.
+//
+// NOTE: The "WriteVersion" does *not* equal the major version of TF.
+std::string GetWriteVersion(const SavedModel& saved_model);
+
 }  // namespace saved_model
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_
+#endif  // TENSORFLOW_CC_SAVED_MODEL_UTIL_H_
