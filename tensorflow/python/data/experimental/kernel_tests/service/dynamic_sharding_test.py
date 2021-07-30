@@ -274,6 +274,23 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, list(range(200)), assert_items_equal=assert_items_equal)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(already_written=[True, False])))
+  def testSnapshot(self, already_written):
+    num_workers = 3
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    ds = dataset_ops.Dataset.range(100)
+    ds = ds.snapshot(self.get_temp_dir())
+    if already_written:
+      # Materialize the snapshot.
+      self.getDatasetOutput(ds)
+
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    error_regex = "Splitting is not implemented for snapshot datasets"
+    with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
+      self.getDatasetOutput(ds)
+
   @combinations.generate(test_base.default_test_combinations())
   def testDistributedDataset(self):
     cluster_1 = data_service_test_base.TestCluster(num_workers=1)
