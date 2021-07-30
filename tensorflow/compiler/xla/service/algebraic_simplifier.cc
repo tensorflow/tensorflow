@@ -4055,6 +4055,60 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
     }
   }
 
+  // Moves the reshape in reshape(dus(...), x, ...)) before dus so that it can
+  // enable other optimizations, e.g., merging with broadcast, and sparse update
+  // (add(x, dus(broadcast(0), y, ...)) -> dus(x, add(ds(x), y), ...)).
+  if (!options_.is_layout_sensitive()) {
+    bool trivial_reshape;
+    std::vector<int64> deleted_dims;
+    std::vector<int64> inserted_dims;
+
+    HloInstruction* dus;
+    HloInstruction* slice;
+    std::tie(trivial_reshape, deleted_dims, inserted_dims) =
+        reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+    // 1-sized dimensions added and removed will be one sized in both the update
+    // slice and the dynamic-update-slice result.
+    if (trivial_reshape &&
+        Match(reshape->mutable_operand(0),
+              m::Op(&dus)
+                  .WithOpcode(HloOpcode::kDynamicUpdateSlice)
+                  .WithOperand(1, m::Op(&slice))) &&
+        !dus->has_sharding() && !dus->operand(0)->has_sharding()) {
+      auto new_operand =
+          computation_->AddInstruction(HloInstruction::CreateReshape(
+              reshape->shape(), dus->mutable_operand(0)));
+      std::vector<int64> new_slice_shape;
+      std::vector<HloInstruction*> new_dus_operands;
+      new_dus_operands.push_back(new_operand);
+      new_dus_operands.push_back(nullptr);
+      auto zero = MakeScalarLike(dus->mutable_operand(2), 0);
+      const Shape& old_slice_shape = dus->operand(1)->shape();
+      for (int64 i = 0; i <= old_slice_shape.rank(); ++i) {
+        if (absl::c_linear_search(deleted_dims, i)) {
+          continue;
+        }
+        while (absl::c_linear_search(inserted_dims, new_slice_shape.size())) {
+          new_slice_shape.push_back(1);
+          new_dus_operands.push_back(zero);
+        }
+        if (i < old_slice_shape.rank()) {
+          new_slice_shape.push_back(old_slice_shape.dimensions(i));
+          new_dus_operands.push_back(dus->mutable_operand(2 + i));
+        }
+      }
+      auto new_slice =
+          computation_->AddInstruction(HloInstruction::CreateReshape(
+              ShapeUtil::MakeShape(old_slice_shape.element_type(),
+                                   new_slice_shape),
+              slice));
+      new_dus_operands[1] = new_slice;
+      auto new_dus =
+          dus->CloneWithNewOperands(reshape->shape(), new_dus_operands);
+      return ReplaceWithNewInstruction(reshape, std::move(new_dus));
+    }
+  }
+
   // Make this a bitcast if possible.
   if (HloInstruction* bitcast_operand =
           BitcastingOperandOfReshapeOrCopyChain(reshape, options_)) {

@@ -5562,6 +5562,43 @@ ENTRY AddBroadcastZeroWithDynamicSlice {
   EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
 }
 
+TEST_F(AlgebraicSimplifierTest, AddDynamicUpdateSliceToAddSlice) {
+  const char* hlo_string = R"(
+HloModule AddDynamicUpdateSliceToAddSlice
+
+ENTRY AddDynamicUpdateSliceToAddSlice {
+  param0 = f32[1,4,12,512,1,1] parameter(0)
+  constant = f32[] constant(0)
+  broadcast = f32[4,12,512] broadcast(constant), dimensions={}
+  param1 = f32[1,12,512] parameter(1)
+  param2 = s32[] parameter(2)
+  constant.1 = s32[] constant(0)
+  dynamic-update-slice = f32[4,12,512] dynamic-update-slice(
+    broadcast, param1, param2, constant.1, constant.1)
+  reshape = f32[1,4,12,512,1,1] reshape(dynamic-update-slice)
+  ROOT add = f32[1,4,12,512,1,1] add(param0, reshape)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite reshape\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite to add slice\n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Parameter(0),
+          m::Add(m::DynamicSlice(m::Parameter(0), m::Constant(),
+                                 m::Parameter(2), m::Constant(), m::Constant(),
+                                 m::Constant(), m::Constant()),
+                 m::Reshape(m::Parameter(1))),
+          m::Constant(), m::Parameter(2), m::Constant(), m::Constant(),
+          m::Constant(), m::Constant())));
+}
+
 TEST_F(AlgebraicSimplifierTest, ScalarMultiplyReduction) {
   const char* hlo_string = R"(
 HloModule ConstScalarMultiply
