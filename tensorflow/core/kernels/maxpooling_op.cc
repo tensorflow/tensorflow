@@ -271,10 +271,6 @@ class MaxPoolingGradOp : public OpKernel {
                 errors::InvalidArgument("tensor_in must be 4-dimensional"));
     OP_REQUIRES(context, tensor_out.dims() == 4,
                 errors::InvalidArgument("tensor_out must be 4-dimensional"));
-    OP_REQUIRES(context, tensor_in.NumElements() > 0,
-                errors::InvalidArgument("tensor_in must not be empty"));
-    OP_REQUIRES(context, tensor_out.NumElements() > 0,
-                errors::InvalidArgument("tensor_out must not be empty"));
     // For maxpooling, out_backprop should have 4 dimensions.
     OP_REQUIRES(context, out_backprop.dims() == 4,
                 errors::InvalidArgument("out_backprop must be 4-dimensional"));
@@ -953,10 +949,6 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    OP_REQUIRES(context, tensor_in.dims() == 4,
-                errors::InvalidArgument("tensor_in must be 4-dimensional"));
-    OP_REQUIRES(context, tensor_in.NumElements() > 0,
-                errors::InvalidArgument("tensor_in must not be empty"));
 
     PoolParameters params{context,
                           ksize_,
