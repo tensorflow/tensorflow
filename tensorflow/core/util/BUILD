@@ -455,14 +455,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:types",
-    ] + if_static(
-        extra_deps = [],
-        otherwise = [
-            # Make sure one copy of env_impl in case of static build,
-            # leave non-static build untouched to not break existing code.
-            "//tensorflow/core/platform:env_impl",
-        ],
-    ),
+    ],
 )
 
 cc_library(

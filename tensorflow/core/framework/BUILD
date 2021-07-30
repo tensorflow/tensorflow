@@ -507,9 +507,6 @@ cc_library(
         ],
         otherwise = [
             "//tensorflow/core:lib",
-            # Make sure one copy of env_impl in case of static build,
-            # leave non-static build untouched to not break existing code.
-            "//tensorflow/core/platform:env_impl",
         ],
     ),
     alwayslink = 1,
