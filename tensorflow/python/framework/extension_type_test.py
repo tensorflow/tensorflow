@@ -55,8 +55,9 @@ class MaskedTensorV1(extension_type.ExtensionType):
 class MaskedTensorV2(extension_type.ExtensionType):
   """Example subclass of ExtensionType, used for testing.
 
-  This version adds methods and properties, and customizes `__repr__` and
-  `__validate__`.  It also adds a `__name__` field, which enables serialization.
+  This version adds methods, classmethod, staticmethod, and properties, and
+  customizes `__repr__` and `__validate__`.  It also adds a `__name__` field,
+  which enables serialization.
   """
   __name__ = 'tf.test.MaskedTensorV2'
 
@@ -77,6 +78,15 @@ class MaskedTensorV2(extension_type.ExtensionType):
   @property
   def dtype(self):
     return self.values.dtype
+
+  @classmethod
+  def from_full_tensor(cls, values):
+    return cls(values, array_ops.ones_like(values, dtype=dtypes.bool))
+
+  # A dummy example to test support of staticmethod
+  @staticmethod
+  def doc_link():
+    return 'http://example.com/masked_tensor'
 
   def __validate__(self):
     self.values.shape.assert_is_compatible_with(self.mask.shape)
@@ -135,6 +145,11 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with self.assertRaisesRegex(AttributeError,
                                   "cannot delete field 'values'"):
         del mt.values
+
+  def testClassAndStaticMethod(self):
+    mt = MaskedTensorV2.from_full_tensor([1, 2, 3, 4])
+    self.assertAllEqual(mt.mask, [True, True, True, True])
+    self.assertEqual(mt.doc_link(), 'http://example.com/masked_tensor')
 
   def testRepr(self):
     values = constant_op.constant([1, 2, 3, 4])

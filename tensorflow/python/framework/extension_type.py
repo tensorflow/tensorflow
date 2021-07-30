@@ -513,8 +513,9 @@ def _check_field_annotations(cls):
   annotations = getattr(cls, '__annotations__', {})
   for (key, value) in cls.__dict__.items():
     if not (key in annotations or callable(value) or key.startswith('_abc_') or
-            key == '_tf_extension_type_fields' or key.startswith('__') and
-            key.endswith('__') or isinstance(value, property)):
+            key == '_tf_extension_type_fields' or
+            key.startswith('__') and key.endswith('__') or
+            isinstance(value, (property, classmethod, staticmethod))):
       raise ValueError('Field %s must have a type annotation' % key)
 
 
