@@ -89,6 +89,7 @@ void CheckQuantized(const TensorData& input,
                     const TensorData& multiplier,
                     std::initializer_list<MultipliersType> multipliers_data,
                     const TensorData& output,
+                    std::initializer_list<int> exp_output_shape,
                     std::initializer_list<float> exp_output_data,
                     float tolerance, TestType test_type) {
   switch (test_type) {
@@ -97,6 +98,7 @@ void CheckQuantized(const TensorData& input,
                                           output);
       m.template QuantizeAndPopulate<InputType>(m.Input(), input_data);
       m.Invoke();
+      EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
       EXPECT_THAT(m.template GetDequantizedOutput<InputType>(),
                   ElementsAreArray(ArrayFloatNear(exp_output_data, tolerance)));
       return;
@@ -106,6 +108,7 @@ void CheckQuantized(const TensorData& input,
       m.QuantizeAndPopulate<InputType>(m.Input(), input_data);
       m.PopulateTensor<MultipliersType>(m.Multiplier(), multipliers_data);
       m.Invoke();
+      EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
       EXPECT_THAT(m.GetDequantizedOutput<InputType>(),
                   ElementsAreArray(ArrayFloatNear(exp_output_data, tolerance)));
       return;
@@ -118,6 +121,7 @@ void Check(const TensorData& input, std::initializer_list<InputType> input_data,
            const TensorData& multiplier,
            std::initializer_list<MultipliersType> multipliers_data,
            const TensorData& output,
+           std::initializer_list<int> exp_output_shape,
            std::initializer_list<InputType> exp_output_data,
            TestType test_type) {
   switch (test_type) {
@@ -126,6 +130,7 @@ void Check(const TensorData& input, std::initializer_list<InputType> input_data,
                                           output);
       m.template PopulateTensor<InputType>(m.Input(), input_data);
       ASSERT_EQ(m.Invoke(), kTfLiteOk);
+      EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
       EXPECT_THAT(m.template GetOutput<InputType>(),
                   ElementsAreArray(exp_output_data));
       return;
@@ -135,6 +140,7 @@ void Check(const TensorData& input, std::initializer_list<InputType> input_data,
       m.PopulateTensor<InputType>(m.Input(), input_data);
       m.PopulateTensor<MultipliersType>(m.Multiplier(), multipliers_data);
       ASSERT_EQ(m.Invoke(), kTfLiteOk);
+      EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
       EXPECT_THAT(m.template GetOutput<InputType>(),
                   ElementsAreArray(exp_output_data));
       return;
@@ -157,7 +163,8 @@ TEST_P(TileTest, Float32Vector) {
       /*input_data=*/{1.0, 2.0, 3.0},
       /*multiplier=*/{TensorType_INT32, {1}},
       /*multipliers_data=*/{2},
-      /*output=*/{TensorType_FLOAT32, {6}},
+      /*output=*/{TensorType_FLOAT32, {}},
+      /*exp_output_shape=*/{6},
       /*exp_output_data=*/
       {1.0, 2.0, 3.0, 1.0, 2.0, 3.0},
       /*test_type=*/GetParam());
@@ -169,7 +176,8 @@ TEST_P(TileTest, Float32Matrix) {
       /*input_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
       /*multiplier=*/{TensorType_INT32, {2}},
       /*multipliers_data=*/{2, 1},
-      /*output=*/{TensorType_FLOAT32, {4, 3}},
+      /*output=*/{TensorType_FLOAT32, {}},
+      /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/
       {11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
       /*test_type=*/GetParam());
@@ -181,7 +189,8 @@ TEST_P(TileTest, Float32HighDimension) {
       /*input_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
       /*multiplier=*/{TensorType_INT32, {3}},
       /*multipliers_data=*/{2, 3, 1},
-      /*output=*/{TensorType_FLOAT32, {2, 6, 3}},
+      /*output=*/{TensorType_FLOAT32, {}},
+      /*exp_output_shape=*/{2, 6, 3},
       /*exp_output_data=*/
       {11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f,
        11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f,
@@ -194,7 +203,8 @@ TEST_P(TileTest, Uint8Matrix) {
                  /*input_data=*/{11, 12, 13, 21, 22, 23},
                  /*multiplier=*/{TensorType_INT32, {2}},
                  /*multipliers_data=*/{2, 1},
-                 /*output=*/{TensorType_UINT8, {4, 3}},
+                 /*output=*/{TensorType_UINT8, {}},
+                 /*exp_output_shape=*/{4, 3},
                  /*exp_output_data=*/
                  {11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
                  /*test_type=*/GetParam());
@@ -207,7 +217,8 @@ TEST_P(TileTest, Int8Matrix) {
       /*input_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
       /*multiplier=*/{TensorType_INT32, {2}},
       /*multipliers_data=*/{2, 1},
-      /*output=*/{TensorType_INT8, {4, 3}, 0.0f, 23.0f},
+      /*output=*/{TensorType_INT8, {}, 0.0f, 23.0f},
+      /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/
       {11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
       /*tolerance=*/kQuantizedTolerance,
@@ -225,7 +236,8 @@ TEST_P(TileTest, Int16Matrix) {
       /*input_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
       /*multiplier=*/{TensorType_INT32, {2}},
       /*multipliers_data=*/{2, 1},
-      /*output=*/{TensorType_INT16, {4, 3}, 23.0f * kMin, 23.0f * kMax},
+      /*output=*/{TensorType_INT16, {}, 23.0f * kMin, 23.0f * kMax},
+      /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/
       {11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
       /*tolerance=*/kQuantizedTolerance,
@@ -238,7 +250,8 @@ TEST_P(TileTest, Int32Matrix) {
       /*input_data=*/{11, 12, 13, 21, 22, 23},
       /*multiplier=*/{TensorType_INT32, {2}},
       /*multipliers_data=*/{2, 1},
-      /*output=*/{TensorType_INT32, {4, 3}},
+      /*output=*/{TensorType_INT32, {}},
+      /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/
       {11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
       /*test_type=*/GetParam());
@@ -250,7 +263,8 @@ TEST_P(TileTest, Int64Matrix) {
       /*input_data=*/{11, 12, 13, 21, 22, 23},
       /*multiplier=*/{TensorType_INT32, {2}},
       /*multipliers_data=*/{2, 1},
-      /*output=*/{TensorType_INT64, {4, 3}},
+      /*output=*/{TensorType_INT64, {}},
+      /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/
       {11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
       /*test_type=*/GetParam());
@@ -262,7 +276,8 @@ TEST_P(TileTest, BooleanMatrix) {
       /*input_data=*/{true, false, false, true, true, false},
       /*multiplier=*/{TensorType_INT32, {2}},
       /*multipliers_data=*/{2, 1},
-      /*output=*/{TensorType_BOOL, {4, 3}},
+      /*output=*/{TensorType_BOOL, {}},
+      /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/
       {true, false, false, true, true, false, true, false, false, true, true,
        false},
@@ -275,7 +290,8 @@ TEST_P(TileTest, Int64Matrix64Multipliers) {
       /*input_data=*/{11, 12, 13, 21, 22, 23},
       /*multiplier=*/{TensorType_INT64, {2}},
       /*multipliers_data=*/{2, 1},
-      /*output=*/{TensorType_INT64, {4, 3}},
+      /*output=*/{TensorType_INT64, {}},
+      /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/
       {11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
       /*test_type=*/GetParam());
@@ -300,7 +316,8 @@ TEST_P(TileTest, StringMatrix) {
       /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},
       /*multiplier=*/{TensorType_INT32, {2}},
       /*multipliers_data=*/{1, 2},
-      /*output=*/{TensorType_STRING, {2, 6}},
+      /*output=*/{TensorType_STRING, {}},
+      /*exp_output_shape=*/{2, 6},
       /*exp_output_data=*/
       {"AA", "AB", "AC", "AA", "AB", "AC", "BA", "BB", "BC", "BA", "BB", "BC"},
       /*test_type=*/GetParam());
@@ -312,7 +329,8 @@ TEST_P(TileTest, StringMatrix64Multipliers) {
       /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},
       /*multiplier=*/{TensorType_INT64, {2}},
       /*multipliers_data=*/{2, 1},
-      /*output=*/{TensorType_STRING, {4, 3}},
+      /*output=*/{TensorType_STRING, {}},
+      /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/
       {"AA", "AB", "AC", "BA", "BB", "BC", "AA", "AB", "AC", "BA", "BB", "BC"},
       /*test_type=*/GetParam());
@@ -324,7 +342,8 @@ TEST_P(TileTest, StringMatrix2) {
       /*input_data=*/{"AA", "AB", "AC", "BA", "BB", "BC"},
       /*multiplier=*/{TensorType_INT32, {3}},
       /*multipliers_data=*/{2, 2, 2},
-      /*output=*/{TensorType_STRING, {6, 4, 2}},
+      /*output=*/{TensorType_STRING, {}},
+      /*exp_output_shape=*/{6, 4, 2},
       /*exp_output_data=*/
       {"AA", "AA", "AB", "AB", "AA", "AA", "AB", "AB", "AC", "AC", "BA", "BA",
        "AC", "AC", "BA", "BA", "BB", "BB", "BC", "BC", "BB", "BB", "BC", "BC",
