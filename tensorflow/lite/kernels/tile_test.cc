@@ -334,9 +334,9 @@ TEST_P(TileTest, StringMatrix2) {
 }
 
 TEST(TileTest, TestEmptyInput) {
-  TileOpDynamicModel m({2, 1, 3}, TensorType_INT32, TensorType_INT32);
-  m.SetInput({11, 12, 13, 21, 22, 23});
-  m.SetMultipliers({2, 0, 2});
+  TileOpDynamicModel m({TensorType_INT32, {2, 1, 3}}, {TensorType_INT32, {3}},
+                       {TensorType_INT32, {}});
+  m.PopulateTensor<int32_t>(m.Input(), {11, 12, 13, 21, 22, 23});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 0, 6}));
