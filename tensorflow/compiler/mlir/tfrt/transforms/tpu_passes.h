@@ -28,12 +28,6 @@ namespace tensorflow {
 
 class CoreRTConverter;
 
-struct TfrtTpuExecuteOpConversionOptions {
-  bool use_core_selector;
-  bool use_bundled_transfer;
-  bool transfer_result_to_host;
-};
-
 // Registers a set of dialects used in TFRT TPU lowering.
 inline void RegisterTPUDialects(mlir::DialectRegistry *registry) {}
 
@@ -41,8 +35,8 @@ inline void RegisterTPUDialects(mlir::DialectRegistry *registry) {}
 inline void AddTPUTargetDialectAndPatterns(
     mlir::ConversionTarget *target, mlir::OwningRewritePatternList *patterns,
     mlir::MLIRContext *context, CoreRTConverter *corert_converter,
-    const TfrtTpuExecuteOpConversionOptions &tpu_exec_conv_opts,
-    bool tpu_lower_to_fallback) {}
+    bool use_core_selector, bool tpu_lower_to_fallback,
+    bool transfer_result_to_host) {}
 
 // Rewrites specific TF TPU ops to equivalent TF ops in a module.
 inline mlir::LogicalResult RunTPUBackwardCompatConversion(
