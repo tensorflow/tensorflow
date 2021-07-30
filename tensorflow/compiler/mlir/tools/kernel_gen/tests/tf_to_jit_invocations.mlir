@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s -pass-pipeline='func(tf-to-jit-invocation{ \
+// RUN: kernel-gen-opt %s -pass-pipeline='builtin.func(tf-to-jit-invocation{ \
 // RUN:   tile-sizes=1,2,3 unroll-factors=3,2,1 cpu-codegen=false \
 // RUN:   max-supported-rank=32})' | \
 // RUN: FileCheck %s

@@ -648,9 +648,9 @@ func @reshape_0D_1D_unsigned(%arg0: tensor<ui32>) -> tensor<1xui32> {
 }
 // CHECK-LABEL: func @reshape_0D_1D_unsigned
 // CHECK-SAME:    %[[ARG_UNSIGNED:[a-zA-Z0-9_]*]]
-// CHECK:         %[[ARG_SIGNLESS:.*]] = unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<ui32> to tensor<i32>
+// CHECK:         %[[ARG_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<ui32> to tensor<i32>
 // CHECK:         %[[RET_SIGNLESS:.*]] = linalg.tensor_expand_shape %[[ARG_SIGNLESS]] [] : tensor<i32> into tensor<1xi32>
-// CHECK:         %[[RET_UNSIGNED:.*]] = unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<1xi32> to tensor<1xui32>
+// CHECK:         %[[RET_UNSIGNED:.*]] = builtin.unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<1xi32> to tensor<1xui32>
 // CHECK:         return %[[RET_UNSIGNED]] : tensor<1xui32>
 
 // -----
@@ -670,9 +670,9 @@ func @reshape_1D_0D_unsigned(%arg0: tensor<1xui32>) -> tensor<ui32> {
 }
 // CHECK-LABEL: func @reshape_1D_0D_unsigned
 // CHECK-SAME:    %[[ARG_UNSIGNED:[a-zA-Z0-9_]*]]
-// CHECK:         %[[ARG_SIGNLESS:.*]] = unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<1xui32> to tensor<1xi32>
+// CHECK:         %[[ARG_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[ARG_UNSIGNED]] : tensor<1xui32> to tensor<1xi32>
 // CHECK:         %[[RET_SIGNLESS:.*]] = linalg.tensor_collapse_shape %[[ARG_SIGNLESS]] [] : tensor<1xi32> into tensor<i32>
-// CHECK:         %[[RET_UNSIGNED:.*]] = unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<i32> to tensor<ui32>
+// CHECK:         %[[RET_UNSIGNED:.*]] = builtin.unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<i32> to tensor<ui32>
 // CHECK:         return %[[RET_UNSIGNED]] : tensor<ui32>
 
 // -----
@@ -1352,14 +1352,14 @@ func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>, %cst: tensor<ui32>) -> t
   } : (tensor<ui32>, tensor<1xindex>) -> tensor<?xui32>
   return %result : tensor<?xui32>
 }
-// CHECK: [[CST:%.*]] = unrealized_conversion_cast [[CSTARG]] : tensor<ui32> to tensor<i32>
+// CHECK: [[CST:%.*]] = builtin.unrealized_conversion_cast [[CSTARG]] : tensor<ui32> to tensor<i32>
 // CHECK: [[INIT:%.*]] = linalg.init_tensor
 // CHECK: [[GENERIC:%.*]] = linalg.generic
 // CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-SAME: ins([[CST]] : tensor<i32>) outs([[INIT]] : tensor<?xi32>)
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: i32, %[[RESULT:.*]]: i32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : i32
-// CHECK: [[RES:%.*]] = unrealized_conversion_cast [[GENERIC]] : tensor<?xi32> to tensor<?xui32>
+// CHECK: [[RES:%.*]] = builtin.unrealized_conversion_cast [[GENERIC]] : tensor<?xi32> to tensor<?xui32>
 // CHECK: return [[RES]] : tensor<?xui32>
 
 // -----
@@ -2113,7 +2113,7 @@ func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, %star
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[SIGNLESS_ARG0:.*]] = unrealized_conversion_cast %[[ARG0]] : tensor<3x4xui32> to tensor<3x4xi32>
+// CHECK:         %[[SIGNLESS_ARG0:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<3x4xui32> to tensor<3x4xi32>
 // CHECK:         %[[C0:.*]] = constant 0 : i64
 // CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG1]][] : tensor<i64>
 // CHECK:         %[[UB1:.*]] = constant 2 : i64
@@ -2173,8 +2173,8 @@ func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: tensor<2
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[SIGNLESS_TARGET:.*]] = unrealized_conversion_cast %[[ARG0]] : tensor<3x3xui32> to tensor<3x3xi32>
-// CHECK:         %[[SIGNLESS_UPDATE:.*]] = unrealized_conversion_cast %[[ARG1]] : tensor<2x2xui32> to tensor<2x2xi32>
+// CHECK:         %[[SIGNLESS_TARGET:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<3x3xui32> to tensor<3x3xi32>
+// CHECK:         %[[SIGNLESS_UPDATE:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<2x2xui32> to tensor<2x2xi32>
 // CHECK:         %[[C0:.*]] = constant 0 : i32
 // CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
 // CHECK:         %[[UB1:.*]] = constant 1 : i32
@@ -2193,7 +2193,7 @@ func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: tensor<2
 // CHECK:         %[[SIGNLESS_RES:.*]] = tensor.insert_slice %[[SIGNLESS_UPDATE]] into %[[SIGNLESS_TARGET]]
 // CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
-// CHECK:         %[[RES:.*]] = unrealized_conversion_cast %[[SIGNLESS_RES]] : tensor<3x3xi32> to tensor<3x3xui32>
+// CHECK:         %[[RES:.*]] = builtin.unrealized_conversion_cast %[[SIGNLESS_RES]] : tensor<3x3xi32> to tensor<3x3xui32>
 // CHECK:         return %[[RES]] : tensor<3x3xui32>
 
 // -----
@@ -2803,7 +2803,7 @@ func @torch_index_select_unsigned(%arg0: tensor<5x1x5xui32>,
 //      CHECK: func @torch_index_select_unsigned
 // CHECK-SAME:   %[[INPUT:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[INDEX:[a-zA-Z0-9_]*]]
-//      CHECK:   %[[INPUT_SIGNLESS:.*]] = unrealized_conversion_cast %[[INPUT]] : tensor<5x1x5xui32> to tensor<5x1x5xi32>
+//      CHECK:   %[[INPUT_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[INPUT]] : tensor<5x1x5xui32> to tensor<5x1x5xi32>
 //      CHECK:   %[[RES:.+]] = linalg.generic {
 // CHECK-SAME:     indexing_maps
 // CHECK-SAME:     #[[MAP0]], #[[MAP1]]
@@ -2815,7 +2815,7 @@ func @torch_index_select_unsigned(%arg0: tensor<5x1x5xui32>,
 //      CHECK:     %[[K:.+]] = linalg.index 2
 //      CHECK:     %[[VAL2:.+]] = tensor.extract %[[INPUT_SIGNLESS]][%[[CAST]], %[[J]], %[[K]]] : tensor<5x1x5xi32>
 //      CHECK:     linalg.yield %[[VAL2]] : i32
-//      CHECK:   %[[RES_UNSIGNED:.+]] = unrealized_conversion_cast %[[RES]] : tensor<2x1x5xi32> to tensor<2x1x5xui32>
+//      CHECK:   %[[RES_UNSIGNED:.+]] = builtin.unrealized_conversion_cast %[[RES]] : tensor<2x1x5xi32> to tensor<2x1x5xui32>
 //      CHECK:   return %[[RES_UNSIGNED]]
 
 // -----
@@ -2977,9 +2977,9 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK-SAME:   %[[A_UNSIGNED:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[B_UNSIGNED:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[C_UNSIGNED:[a-zA-Z0-9_]*]]
-// CHECK-DAG:      %[[A_SIGNLESS:.*]] = unrealized_conversion_cast %[[A_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
-// CHECK-DAG:      %[[B_SIGNLESS:.*]] = unrealized_conversion_cast %[[B_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
-// CHECK-DAG:      %[[C_SIGNLESS:.*]] = unrealized_conversion_cast %[[C_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
+// CHECK-DAG:      %[[A_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[A_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
+// CHECK-DAG:      %[[B_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[B_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
+// CHECK-DAG:      %[[C_SIGNLESS:.*]] = builtin.unrealized_conversion_cast %[[C_UNSIGNED]] : tensor<?x?xui32> to tensor<?x?xi32>
 // CHECK:          %[[VAL_3:.*]] = constant 0 : index
 // CHECK:          %[[VAL_4:.*]] = constant 0 : index
 // CHECK:          %[[VAL_5:.*]] = tensor.dim %[[A_SIGNLESS]], %[[VAL_4]] : tensor<?x?xi32>
@@ -3023,7 +3023,7 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 // CHECK:            }
 // CHECK:            linalg.yield %[[VAL_36:.*]] : i32
 // CHECK:          } -> tensor<?x?xi32>
-// CHECK:          %[[RET_UNSIGNED:.*]] = unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<?x?xi32> to tensor<?x?xui32>
+// CHECK:          %[[RET_UNSIGNED:.*]] = builtin.unrealized_conversion_cast %[[RET_SIGNLESS]] : tensor<?x?xi32> to tensor<?x?xui32>
 // CHECK:          return %[[RET_UNSIGNED]] : tensor<?x?xui32>
 // CHECK:        }
 func @concatenate_unsigned(%a: tensor<?x?xui32>, %b: tensor<?x?xui32>, %c: tensor<?x?xui32>) -> tensor<?x?xui32> {

@@ -1,4 +1,4 @@
-// RUN: tf-opt -pass-pipeline='func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: tf-opt -pass-pipeline='builtin.func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
 
 // Checks that tfl.reshape shape operand is converted to a vector if it is possible
 func @reshape_vector_shape(tensor<4x4x4xf32>) -> tensor<16x4xf32> {

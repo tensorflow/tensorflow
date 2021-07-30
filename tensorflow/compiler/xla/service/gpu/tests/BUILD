@@ -720,6 +720,7 @@ glob_lit_tests(
         "no_pip",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = ["execute_memzero_thunk.mlir"],
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
@@ -736,23 +737,23 @@ filegroup(
     testonly = True,
     data = [
         ":hlo_to_llvm_ir",
-        ":xla-thunks-opt",
+        # ":xla-thunks-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )
 
 # Binary with only the thunks dialect registered, for testing purposes.
-tf_cc_binary(
-    name = "xla-thunks-opt",
-    srcs = ["xla_thunks_opt.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/xla/service/gpu:xla_thunks_ops",
-        "//tensorflow/core:lib",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Shape",
-    ],
-)
+# tf_cc_binary(
+#    name = "xla-thunks-opt",
+#    srcs = ["xla_thunks_opt.cc"],
+#    deps = [
+#        "@llvm-project//mlir:AllPassesAndDialects",
+#        "@llvm-project//mlir:MlirOptLib",
+#        "@llvm-project//mlir:Shape",
+#        "//tensorflow/compiler/mlir:init_mlir",
+#        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+#        "//tensorflow/compiler/mlir/tensorflow",
+#        "//tensorflow/compiler/xla/service/gpu:xla_thunks_ops",
+#        "//tensorflow/core:lib",
+#    ],
+#)

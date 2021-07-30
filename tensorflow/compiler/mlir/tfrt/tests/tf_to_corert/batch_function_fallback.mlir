@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -pass-pipeline='func(tf-tensor-device-copy),tf-to-tfrt' %s | FileCheck %s --dump-input=fail
+// RUN: tf-tfrt-opt -pass-pipeline='builtin.func(tf-tensor-device-copy),tf-to-tfrt' %s | FileCheck %s --dump-input=fail
 
 func private @batched_function(%arg0: tensor<1x3xf32> {tf._user_specified_name = "0"}, %arg1: tensor<*x!tf_type.resource>) -> tensor<1x3xf32> attributes {tf._input_shapes = [#tf_type.shape<1x3>, #tf_type.shape<*>], tf.signature.is_stateful} {
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/device:CPU:0"} : (tensor<*x!tf_type.resource>) -> tensor<1x3xf32>

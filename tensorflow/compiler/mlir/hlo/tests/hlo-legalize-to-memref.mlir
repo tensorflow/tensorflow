@@ -58,7 +58,7 @@ func @dyn_broadcast_unsigned(%operand: tensor<?x?xui32>) -> tensor<?x?x?xui32> {
 
 // CHECK: %[[SHAPE:.*]] = tensor.from_elements
 // CHECK: %[[OPERAND:.*]] = memref.buffer_cast %[[ARG]]
-// CHECK: %[[COPERAND:.*]] = unrealized_conversion_cast %[[OPERAND]] : memref<?x?xui32> to memref<?x?xi32>
+// CHECK: %[[COPERAND:.*]] = builtin.unrealized_conversion_cast %[[OPERAND]] : memref<?x?xui32> to memref<?x?xi32>
 
 // CHECK: %[[C0:.*]] = constant 0 : index
 // CHECK: %[[C1:.*]] = constant 1 : index
@@ -83,7 +83,7 @@ func @dyn_broadcast_unsigned(%operand: tensor<?x?xui32>) -> tensor<?x?x?xui32> {
 // CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref.reinterpret_cast %[[COPERAND]] to offset: [0], sizes: [%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]], strides: [%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xi32> to memref<?x?x?xi32, #map>
 // CHECK: %[[ALLOC:.*]] = memref.alloc
 // CHECK: memref.copy %[[TRANSFORMED_MEMREF]], %[[ALLOC]] : memref<?x?x?xi32, #map> to memref<?x?x?xi32>
-// CHECK: %[[CALLOC:.*]] = unrealized_conversion_cast %[[ALLOC]] : memref<?x?x?xi32> to memref<?x?x?xui32>
+// CHECK: %[[CALLOC:.*]] = builtin.unrealized_conversion_cast %[[ALLOC]] : memref<?x?x?xi32> to memref<?x?x?xui32>
 
 // CHECK: %[[RESULT:.*]] = memref.tensor_load %[[CALLOC]]
 
@@ -103,10 +103,10 @@ func @dyn_reshape_unsigned(%operand: tensor<?x?xui32>) -> tensor<?x?x?xui32> {
 // CHECK: %[[SHAPE:.*]] = tensor.from_elements
 // CHECK: %[[OPERAND:.*]] = memref.buffer_cast %[[ARG]]
 // CHECK: %[[BSHAPE:.*]] = memref.buffer_cast %[[SHAPE]]
-// CHECK: %[[COPERAND:.*]] = unrealized_conversion_cast %[[OPERAND]] : memref<?x?xui32> to memref<?x?xi32>
+// CHECK: %[[COPERAND:.*]] = builtin.unrealized_conversion_cast %[[OPERAND]] : memref<?x?xui32> to memref<?x?xi32>
 
 // CHECK: %[[RESHAPED:.*]] = memref.reshape %[[COPERAND]](%[[BSHAPE]]) : (memref<?x?xi32>, memref<3xi64>) -> memref<?x?x?xi32>
-// CHECK: %[[RESULT:.*]] = unrealized_conversion_cast %[[RESHAPED]] : memref<?x?x?xi32> to memref<?x?x?xui32>
+// CHECK: %[[RESULT:.*]] = builtin.unrealized_conversion_cast %[[RESHAPED]] : memref<?x?x?xi32> to memref<?x?x?xui32>
 // CHECK: %[[TRESULT:.*]] = memref.tensor_load %[[RESULT]] : memref<?x?x?xui32>
 // CHECK: return %[[TRESULT]]
 
@@ -120,8 +120,8 @@ func @reshape_unsigned(%operand: tensor<*xui32>) -> tensor<4x3xui32> {
 }
 
 // CHECK: %[[OPERAND:.*]] = memref.buffer_cast %[[ARG]]
-// CHECK: %[[COPERAND:.*]] = unrealized_conversion_cast %[[OPERAND]] : memref<*xui32> to memref<*xi32>
+// CHECK: %[[COPERAND:.*]] = builtin.unrealized_conversion_cast %[[OPERAND]] : memref<*xui32> to memref<*xi32>
 // CHECK: %[[RESHAPED:.*]] = memref.cast %[[COPERAND]] : memref<*xi32> to memref<4x3xi32>
-// CHECK: %[[RESULT:.*]] = unrealized_conversion_cast %[[RESHAPED]] : memref<4x3xi32> to memref<4x3xui32>
+// CHECK: %[[RESULT:.*]] = builtin.unrealized_conversion_cast %[[RESHAPED]] : memref<4x3xi32> to memref<4x3xui32>
 // CHECK: %[[TRESULT:.*]] = memref.tensor_load %[[RESULT]] : memref<4x3xui32>
 // CHECK: return %[[TRESULT]]
