@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/cc/experimental/libexport/metrics.h"
+#include "tensorflow/cc/saved_model/metrics.h"
 
 #include <string>
 
 #include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace tensorflow {
-namespace libexport {
 namespace metrics {
 
 namespace {
@@ -53,22 +52,23 @@ auto* saved_model_read_api = monitoring::Counter<2>::New(
 
 }  // namespace
 
-monitoring::CounterCell& Write() {
+monitoring::CounterCell& SavedModelWrite() {
   return *saved_model_write_counter->GetCell();
 }
 
-monitoring::CounterCell& Read() { return *saved_model_read_counter->GetCell(); }
+monitoring::CounterCell& SavedModelRead() {
+  return *saved_model_read_counter->GetCell();
+}
 
-monitoring::CounterCell& WriteApi(const std::string& api_label,
-                                  const std::string& write_version) {
+monitoring::CounterCell& SavedModelWriteApi(const std::string& api_label,
+                                            const std::string& write_version) {
   return *saved_model_write_api->GetCell(api_label, write_version);
 }
 
-monitoring::CounterCell& ReadApi(const std::string& api_label,
-                                 const std::string& write_version) {
+monitoring::CounterCell& SavedModelReadApi(const std::string& api_label,
+                                           const std::string& write_version) {
   return *saved_model_read_api->GetCell(api_label, write_version);
 }
 
 }  // namespace metrics
-}  // namespace libexport
 }  // namespace tensorflow

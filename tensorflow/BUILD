@@ -954,7 +954,7 @@ tf_cc_shared_object(
         "//tensorflow/c:logging",
         "//tensorflow/c:ops",
         "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/cc/experimental/libexport:metrics_impl",
+        "//tensorflow/cc/saved_model:metrics_impl",
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",

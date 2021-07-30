@@ -7,6 +7,12 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+
 package(
     # TODO(drpng): change that to //third_party/tensorflow:internal
     # when we have migrated all users.
@@ -42,7 +48,7 @@ py_strict_library(
     srcs = ["constants.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -79,7 +85,7 @@ py_strict_library(
         "//tensorflow/python:saver",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -102,7 +108,7 @@ py_strict_library(
         "//tensorflow/python:saver",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -357,7 +363,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -421,7 +427,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking",
@@ -455,7 +461,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager:wrap_function",
-        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training/tracking",
     ],
@@ -664,7 +670,45 @@ tf_py_test(
     name = "metrics_test",
     srcs = ["metrics_test.py"],
     deps = [
+        ":pywrap_saved_model",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/saved_model/experimental:pywrap_libexport",
+    ],
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "pywrap_saved_model_headers",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/cc/saved_model:metrics",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "pywrap_saved_model",
+    srcs = [
+        "pywrap_saved_model.cc",
+        "pywrap_saved_model_metrics.cc",
+    ],
+    hdrs = [
+        "pywrap_saved_model_metrics.h",
+    ],
+    features = ["-layering_check"],
+    module_name = "pywrap_saved_model",
+    visibility = ["//tensorflow/python/saved_model:__subpackages__"],
+    deps = [
+        ":pywrap_saved_model_headers",
+        "//tensorflow/cc/experimental/libexport:constants",
+        "//tensorflow/cc/experimental/libexport:save",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "pywrap_saved_model_metrics_test",
+    srcs = ["pywrap_saved_model_metrics_test.py"],
+    deps = [
+        ":pywrap_saved_model",
+        "//tensorflow/python/eager:test",
     ],
 )

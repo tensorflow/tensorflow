@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines the 'metrics' submodule.
+// Defines the 'metrics' wrapper submodule.
 
-#ifndef TENSORFLOW_PYTHON_SAVED_MODEL_EXPERIMENTAL_PYWRAP_LIBEXPORT_METRICS_H_
-#define TENSORFLOW_PYTHON_SAVED_MODEL_EXPERIMENTAL_PYWRAP_LIBEXPORT_METRICS_H_
+#ifndef TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_
+#define TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_
 
 #include "pybind11/pybind11.h"
 
@@ -27,4 +27,4 @@ void DefineMetricsModule(pybind11::module main_module);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_SAVED_MODEL_EXPERIMENTAL_PYWRAP_LIBEXPORT_METRICS_H_
+#endif  // TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_

@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines the pywrap_libexport module. In order to have only one dynamically-
-// linked shared object, all SavedModel C++ APIs must be added here.
+// Defines the pywrap_saved_model module. In order to have only one dynamically-
+// linked shared object, all SavedModel python bindings should be added here.
 
 #include "pybind11/pybind11.h"
 #include "tensorflow/cc/experimental/libexport/constants.h"
 #include "tensorflow/cc/experimental/libexport/save.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/saved_model/experimental/pywrap_libexport_metrics.h"
+#include "tensorflow/python/saved_model/pywrap_saved_model_metrics.h"
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(pywrap_libexport, m) {
-  m.doc() = "TensorFlow exporter Python bindings";
+PYBIND11_MODULE(pywrap_saved_model, m) {
+  m.doc() = "TensorFlow SavedModel Python bindings";
 
   m.attr("ASSETS_DIRECTORY") = py::str(tensorflow::libexport::kAssetsDirectory);
 

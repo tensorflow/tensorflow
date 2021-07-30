@@ -15,7 +15,7 @@
 """Tests for SavedModel metrics Python bindings."""
 
 from tensorflow.python.eager import test
-from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 
 
 class MetricsTest(test.TestCase):

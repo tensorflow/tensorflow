@@ -52,6 +52,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
+from tensorflow.python.saved_model import pywrap_saved_model
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
@@ -60,8 +61,7 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
-from tensorflow.python.saved_model.experimental import pywrap_libexport
-from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_object_util
@@ -837,11 +837,11 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     # signature. The collection is for compatibility with older loader APIs;
     # only one will be executed.
     meta_graph_def.collection_def[
-        pywrap_libexport.MAIN_OP_KEY].node_list.value.append(init_op.name)
+        pywrap_saved_model.MAIN_OP_KEY].node_list.value.append(init_op.name)
     meta_graph_def.signature_def[
-        pywrap_libexport.INIT_OP_SIGNATURE_KEY].CopyFrom(
+        pywrap_saved_model.INIT_OP_SIGNATURE_KEY].CopyFrom(
             signature_def_utils.op_signature_def(
-                init_op, pywrap_libexport.INIT_OP_SIGNATURE_KEY))
+                init_op, pywrap_saved_model.INIT_OP_SIGNATURE_KEY))
 
   # Saving an object-based checkpoint again gathers variables. We need to do the
   # gathering from the eager context so Optimizers save the right set of
@@ -1004,7 +1004,7 @@ def _export_debug_info(exported_graph, export_dir):
   file_io.atomic_write_string_to_file(
       os.path.join(
           utils_impl.get_or_create_debug_dir(export_dir),
-          pywrap_libexport.DEBUG_INFO_FILENAME_PB),
+          pywrap_saved_model.DEBUG_INFO_FILENAME_PB),
       graph_debug_info.SerializeToString(deterministic=True))
 
 
@@ -1227,7 +1227,7 @@ def save_and_return_nodes(obj,
   _, exported_graph, object_saver, asset_info, saved_nodes, node_paths = (
       _build_meta_graph(obj, signatures, options, meta_graph_def))
   saved_model.saved_model_schema_version = (
-      pywrap_libexport.SAVED_MODEL_SCHEMA_VERSION)
+      pywrap_saved_model.SAVED_MODEL_SCHEMA_VERSION)
 
   # Write the checkpoint, copy assets into the assets directory, and write out
   # the SavedModel proto itself.
@@ -1253,13 +1253,13 @@ def save_and_return_nodes(obj,
           "to the io_device such as '/job:localhost'."
       )
 
-  # We will slowly migrate code in this function to pywrap_libexport.Save
+  # We will slowly migrate code in this function to pywrap_saved_model.Save
   # as we build up the C++ API.
-  pywrap_libexport.Save(export_dir)
+  pywrap_saved_model.Save(export_dir)
 
   path = os.path.join(
       compat.as_str(export_dir),
-      compat.as_str(pywrap_libexport.SAVED_MODEL_FILENAME_PB))
+      compat.as_str(pywrap_saved_model.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(
       path, saved_model.SerializeToString(deterministic=True))
   # Save debug info, if requested.

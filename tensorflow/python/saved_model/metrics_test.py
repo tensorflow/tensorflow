@@ -30,7 +30,7 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
-from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training.tracking import tracking
 
 

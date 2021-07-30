@@ -13,36 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/cc/experimental/libexport/metrics.h"
+#include "tensorflow/cc/saved_model/metrics.h"
 
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-namespace libexport {
 namespace metrics {
 // The value of the cells for each metric persists across tests.
 
 TEST(MetricsTest, TestWrite) {
-  EXPECT_EQ(WriteApi("foo", "1").value(), 0);
-  WriteApi("foo", "1").IncrementBy(1);
-  EXPECT_EQ(WriteApi("foo", "1").value(), 1);
+  EXPECT_EQ(SavedModelWriteApi("foo", "1").value(), 0);
+  SavedModelWriteApi("foo", "1").IncrementBy(1);
+  EXPECT_EQ(SavedModelWriteApi("foo", "1").value(), 1);
 
-  EXPECT_EQ(Write().value(), 0);
-  Write().IncrementBy(1);
-  EXPECT_EQ(Write().value(), 1);
+  EXPECT_EQ(SavedModelWrite().value(), 0);
+  SavedModelWrite().IncrementBy(1);
+  EXPECT_EQ(SavedModelWrite().value(), 1);
 }
 
 TEST(MetricsTest, TestRead) {
-  ReadApi("bar", "2").IncrementBy(1);
-  EXPECT_EQ(ReadApi("bar", "2").value(), 1);
-  Read().IncrementBy(1);
-  EXPECT_EQ(Read().value(), 1);
+  SavedModelReadApi("bar", "2").IncrementBy(1);
+  EXPECT_EQ(SavedModelReadApi("bar", "2").value(), 1);
+  SavedModelRead().IncrementBy(1);
+  EXPECT_EQ(SavedModelRead().value(), 1);
 
-  ReadApi("baz", "2").IncrementBy(1);
-  EXPECT_EQ(ReadApi("baz", "2").value(), 1);
-  Read().IncrementBy(1);
-  EXPECT_EQ(Read().value(), 2);
+  SavedModelReadApi("baz", "2").IncrementBy(1);
+  EXPECT_EQ(SavedModelReadApi("baz", "2").value(), 1);
+  SavedModelRead().IncrementBy(1);
+  EXPECT_EQ(SavedModelRead().value(), 2);
 }
 }  // namespace metrics
-}  // namespace libexport
 }  // namespace tensorflow

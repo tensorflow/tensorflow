@@ -120,13 +120,13 @@ cc_library(
         ":loader_util",
         ":reader",
     ] + if_not_mobile([
+        ":metrics",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
-        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/cc/experimental/libexport:util",
     ]),
     alwayslink = 1,
@@ -138,7 +138,7 @@ cc_library(
     hdrs = ["bundle_v2.h"],
     deps = [
         ":constants",
-        "//tensorflow/cc/experimental/libexport:metrics",
+        ":metrics",
         "//tensorflow/cc/experimental/libexport:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -168,7 +168,7 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         ":bundle_v2",
-        "//tensorflow/cc/experimental/libexport:metrics",
+        ":metrics",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -187,10 +187,10 @@ tf_cc_test(
     deps = [
         ":constants",
         ":loader",
+        ":metrics",
         ":reader",
         ":signature_constants",
         ":tag_constants",
-        "//tensorflow/cc/experimental/libexport:metrics",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
@@ -296,4 +296,46 @@ exports_files(
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
     ]),
+)
+
+# Linked directly into ":tensorflow_framework".
+cc_library(
+    name = "metrics_impl",
+    srcs = [
+        "metrics.cc",
+        "metrics.h",
+    ],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    visibility = [
+        "//tensorflow/cc/saved_model:__subpackages__",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/saved_model:__subpackages__",
+    ],
+    deps = if_static([
+        ":metrics_impl",
+    ]) + ["//tensorflow/core:lib"],
+)
+
+tf_cc_test(
+    name = "metrics_test",
+    size = "small",
+    srcs = ["metrics_test.cc"],
+    deps = [
+        ":metrics",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )

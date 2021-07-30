@@ -47,7 +47,7 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.saved_model.experimental.pywrap_libexport import metrics
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
