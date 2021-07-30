@@ -189,18 +189,21 @@ StatusOr<std::string> TpuExecutable::Serialize() const {
 }
 
 StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
-    absl::string_view serialized, std::unique_ptr<HloModule> hlo_module) {
+    absl::string_view serialized) {
   SE_Executable* se_executable;
-  XLA_HloModule c_module = ApiConverter::ToC(*hlo_module);
-  auto cleanup =
-      xla::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
   StatusHelper status;
   ExecutorApiFn()->TpuExecutable_DeserializeFn(
       serialized.size(), reinterpret_cast<const uint8_t*>(serialized.data()),
-      &c_module, &se_executable, status.c_status);
+      &se_executable, status.c_status);
   if (!status.ok()) {
     return status.status();
   }
+  XLA_HloModule c_module =
+      ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executable);
+  auto cleanup_c_module =
+      xla::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                      ApiConverter::FromC(c_module));
   return absl::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));
 }
 

@@ -230,8 +230,7 @@ class PjRtClient {
   // SerializeExecutable(). `serialized` must have been produced by a client of
   // the same platform and version as this one.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
-      CompileOptions options) = 0;
+      absl::string_view serialized, CompileOptions options) = 0;
 
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(

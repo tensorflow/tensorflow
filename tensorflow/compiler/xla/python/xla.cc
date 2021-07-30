@@ -237,7 +237,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("serialize_executable", &PyClient::SerializeExecutable)
-      .def("deserialize_executable", &PyClient::DeserializeExecutable)
+      .def("deserialize_executable",
+           py::overload_cast<const std::string&, CompileOptions>(
+               &PyClient::DeserializeExecutable))
+      // TODO(skyewm): remove when jax stop providing hlo_module
+      .def("deserialize_executable",
+           py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
+                             CompileOptions>(&PyClient::DeserializeExecutable))
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)

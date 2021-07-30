@@ -183,8 +183,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
-      CompileOptions options) override {
+      absl::string_view serialized, CompileOptions options) override {
     return Unimplemented("DeserializeExecutable not implemented on %s",
                          platform_name());
   }
