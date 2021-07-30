@@ -108,6 +108,21 @@ cc_library(
     alwayslink = True,
 )
 
+tf_cc_test(
+    name = "profiler_factory_test",
+    srcs = ["profiler_factory_test.cc"],
+    deps = [
+        ":profiler_factory",
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
