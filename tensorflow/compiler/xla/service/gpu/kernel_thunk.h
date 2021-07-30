@@ -48,14 +48,14 @@ class KernelThunk : public Thunk {
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
   KernelThunk(ThunkInfo thunk_info,
               absl::Span<const BufferAllocation* const> args,
-              const string& kernel_name);
+              const string& kernel_name,
+              const LaunchDimensions& launch_dimensions);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
 
   std::string ToStringExtra(int indent) const override;
   const string& kernel_name() const { return kernel_name_; }
-  void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
@@ -69,8 +69,7 @@ class KernelThunk : public Thunk {
   const string kernel_name_;
 
   // The thread and block dimension used to launch the kernel.
-  // Will be set by IrEmitterUnnested.
-  LaunchDimensions launch_dimensions_;
+  const LaunchDimensions launch_dimensions_;
 
   mutable tensorflow::mutex mutex_;
 

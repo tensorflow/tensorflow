@@ -34,10 +34,12 @@ namespace gpu {
 
 KernelThunk::KernelThunk(ThunkInfo thunk_info,
                          absl::Span<const BufferAllocation* const> args,
-                         const string& kernel_name)
+                         const string& kernel_name,
+                         const LaunchDimensions& launch_dimensions)
     : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),
-      kernel_name_(kernel_name) {}
+      kernel_name_(kernel_name),
+      launch_dimensions_(launch_dimensions) {}
 
 std::string KernelThunk::ToStringExtra(int indent) const {
   return " ,kernel = " + kernel_name_;
@@ -63,11 +65,6 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
   }
 
   return Status::OK();
-}
-
-void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
-  tensorflow::mutex_lock lock(mutex_);
-  launch_dimensions_ = launch_dims;
 }
 
 static void PrintBufferContents(
