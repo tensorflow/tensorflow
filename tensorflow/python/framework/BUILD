@@ -1131,6 +1131,7 @@ py_library(
     name = "extension_type",
     srcs = ["extension_type.py"],
     srcs_version = "PY3",
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":extension_type_field",
