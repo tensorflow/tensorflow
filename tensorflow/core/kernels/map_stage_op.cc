@@ -527,6 +527,8 @@ class MapStageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES_OK(ctx, ctx->input_list("values", &values_tensor));
+    OP_REQUIRES(ctx, key_tensor->NumElements() > 0,
+                errors::InvalidArgument("key must not be empty"));
 
     // Create copy for insertion into Staging Area
     Tensor key(*key_tensor);
