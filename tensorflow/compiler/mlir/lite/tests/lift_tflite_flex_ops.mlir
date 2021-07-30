@@ -39,3 +39,30 @@ func @TfTensorArrayV3(%arg0: tensor<i32>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
+// CHECK-LABEL: TfParseExample
+func @TfParseExample(%arg0: tensor<1x!tf_type.string>) -> (tensor<1x1x!tf_type.string>, tensor<1x1x!tf_type.string>) {
+  %0 = "tfl.pseudo_const"() {value = dense<["image/encoded", "image/text"]> : tensor<2x!tf_type.string>} : () -> tensor<2x!tf_type.string>
+  %1 = "tfl.pseudo_const"() {value = dense<"image/encoded"> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+  %2 = "tfl.pseudo_const"() {value = dense<"image/text"> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+  %3 = "tfl.pseudo_const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+  %4:2 = "tfl.custom"(%arg0, %0, %1, %2, %3, %3) {
+    custom_code = "FlexParseExample",
+    custom_option = opaque<"tfl", "0x0C50617273654578616D706C65008D120C50617273654578616D706C651A001A001A001A001A001A002A0C0A064E64656E7365120218022A1E0A0C64656E73655F736861706573120E0A0C3A04120208013A04120208012A120A0C7370617273655F747970657312020A002A0D0A074E737061727365120218002A100A065464656E736512060A0432020707320E0A0C50617273654578616D706C6500029D901414042801"> : tensor<165xi8>
+  } : (
+    tensor<1x!tf_type.string>, tensor<2x!tf_type.string>, tensor<1x!tf_type.string>,
+    tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>
+  ) -> (tensor<1x1x!tf_type.string>, tensor<1x1x!tf_type.string>)
+  return %4#0, %4#1 : tensor<1x1x!tf_type.string>, tensor<1x1x!tf_type.string>
+// CHECK: "tf.ParseExample"(
+// CHECK-SAME: operand_segment_sizes = dense<[1, 1, 0, 2, 2]> : vector<5xi32>, result_segment_sizes = dense<[0, 0, 0, 2]>
+}
+
+// CHECK-LABEL: FailureOnInvalidOp
+func @FailureOnInvalidOp(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>) -> tensor<4xf64> {
+  // expected-error@+1 can't find registered TF op for Nop
+  %0 = "tfl.custom"(%arg0, %arg1) {
+    custom_code = "FlexNop",
+    custom_option = opaque<"tfl", "0x034E6F70001412034E6F701A001A002A070A015412023002320000021B171414042801"> : tensor<35xi8>
+  } : (tensor<4xf64>, tensor<4xf64>) -> tensor<4xf64>
+  return %0 : tensor<4xf64>
+}
