@@ -1628,8 +1628,8 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
             axis=0)
         outputs.append(
             array_ops.scatter_nd(
-                inp.indices, array_ops.gather(table.read_value(),
-                                              truncated_inp.values),
+                truncated_inp.indices,
+                array_ops.gather(table.read_value(), truncated_inp.values),
                 dense_output_shape))
       else:
         inp_rank = inp.dense_shape.get_shape()[0]
