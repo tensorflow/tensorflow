@@ -460,8 +460,6 @@ void TransposePlan::Execute(
 
   const char* ac = static_cast<const char*>(a);
   char* bc = static_cast<char*>(b);
-  DCHECK((ac + elem_size_in_bytes_ * num_elems_ <= b ||
-          bc + elem_size_in_bytes_ * num_elems_ <= a));
 
   auto execute_by_type = [&](absl::Span<Node const> nodes) {
     switch (elem_size_in_bytes_) {
@@ -938,12 +936,6 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
           "and %d",
           dims.size(), input_strides_in_bytes.size());
     }
-    if (absl::c_find_if(input_strides_in_bytes, is_negative) !=
-        input_strides_in_bytes.end()) {
-      return InvalidArgument(
-          "input_strides_in_bytes must be non-negative, got %s",
-          absl::StrJoin(dims, ","));
-    }
     plan->original_a_strides_.resize(ndim);
     absl::c_copy(input_strides_in_bytes, plan->original_a_strides_.begin());
     // Sort the dimensions from slowest-varying (largest strides) to
@@ -967,7 +959,7 @@ StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
           (is_stride1 && transformation == Transformation::kF64ToEf57 &&
            dims[k] == 2);
 
-      return std::make_tuple(is_stride1, -stride, ef57_even,
+      return std::make_tuple(is_stride1, -std::abs(stride), ef57_even,
                              is_trailing_dim_in_b, dims[k]);
     };
     absl::c_stable_sort(dim_order,
@@ -1152,8 +1144,9 @@ void TransposePlan::Initialize() {
 
   // Loop order heuristic: try to make loops with small strides innermost.
   auto cost = [&](const Loop& l) {
-    int64_t a_stride = (l.tile_interior && a_is_tiled_) ? lda_tile_[l.dim_in_a]
-                                                        : lda_[l.dim_in_a];
+    int64_t a_stride =
+        std::abs((l.tile_interior && a_is_tiled_) ? lda_tile_[l.dim_in_a]
+                                                  : lda_[l.dim_in_a]);
     bool is_inner_dim_in_a =
         (!a_is_tiled_ || l.tile_interior) && (l.dim_in_a == pos_stride1a);
 

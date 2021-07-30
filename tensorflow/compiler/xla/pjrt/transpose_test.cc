@@ -397,6 +397,43 @@ TEST_P(TransposeTest, ParallelTransposeInt32) { TestTranspose<int32>(16); }
 INSTANTIATE_TEST_SUITE_P(TransposeTestInstance, TransposeTest,
                          ::testing::ValuesIn(GetTransposeTestCases()));
 
+TEST(TransposeTest, NegativeStrides1D) {
+  int64_t n = 10;
+  std::vector<int32_t> input(n);
+  std::vector<int32_t> output(n);
+  std::vector<int32_t> expected(n);
+  absl::c_iota(input, int32_t{7});
+  std::iota(expected.rbegin(), expected.rend(), 7);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto plan, TransposePlan::Create(
+                     sizeof(int32_t), {n}, /*permutation=*/{0},
+                     TransposePlan::Striding{{-int64_t{sizeof(int32_t)}}}));
+  plan->Execute(input.data() + (n - 1), output.data());
+  EXPECT_EQ(expected, output);
+}
+
+TEST(TransposeTest, NegativeStrides2D) {
+  xla::Array<int16_t> input = {
+      {1, 2, 3, 4},
+      {5, 6, 7, 8},
+      {9, 10, 11, 12},
+  };
+  xla::Array<int16_t> expected = {
+      {4, 8, 12},
+      {3, 7, 11},
+      {2, 6, 10},
+      {1, 5, 9},
+  };
+  xla::Array<int16_t> output({4, 3});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto plan, TransposePlan::Create(
+                     sizeof(int16_t), {3, 4}, /*permutation=*/{1, 0},
+                     TransposePlan::Striding{
+                         {4 * sizeof(int16_t), -int64_t{sizeof(int16_t)}}}));
+  plan->Execute(input.data() + 3, output.data());
+  EXPECT_EQ(expected, output);
+}
+
 static std::vector<TransposeTestCase> BenchmarkCases() {
   return std::vector<TransposeTestCase>{
       TransposeTestCase(/*dims=*/{256, 256},
