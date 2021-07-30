@@ -308,7 +308,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   }
 
 #if !defined(IS_MOBILE_PLATFORM)
-  const auto config = request->server_def().default_session_config();
+  const auto& config = request->server_def().default_session_config();
   const bool enable_coordination =
       !config.experimental().coordination_service().empty();
   if (enable_coordination) {
