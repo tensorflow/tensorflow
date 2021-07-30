@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for distributed_epoch processing mode."""
+"""Tests for dynamic sharding."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,8 +21,8 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -31,16 +31,21 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class DistributedEpochTest(data_service_test_base.TestBase,
-                           parameterized.TestCase):
+class DynamicShardingTest(data_service_test_base.TestBase,
+                          parameterized.TestCase):
+
+  def _make_dynamic_sharding_dataset(self, dataset, cluster):
+    return self.make_distributed_dataset(
+        dataset,
+        cluster,
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
 
   @combinations.generate(test_base.default_test_combinations())
   def testBasic(self):
     cluster = data_service_test_base.TestCluster(num_workers=2)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
 
@@ -49,8 +54,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=2)
     vals = [5, 1, 2, 4]
     ds = dataset_ops.Dataset.from_tensor_slices(vals)
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     self.assertDatasetProduces(ds, vals, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -59,8 +63,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     elements = [1, 5, 0]
     ds = dataset_ops.Dataset.from_tensor_slices(elements)
     ds = ds.interleave(lambda x: dataset_ops.Dataset.from_tensor_slices([x]))
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     self.assertDatasetProduces(ds, elements, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -71,8 +74,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     ds = ds.interleave(
         lambda x: dataset_ops.Dataset.from_tensor_slices([x]),
         num_parallel_calls=dataset_ops.AUTOTUNE)
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     self.assertDatasetProduces(ds, elements, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -81,8 +83,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     elements = [1, 5, 0]
     ds = dataset_ops.Dataset.from_tensor_slices(elements)
     ds = ds.flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices([x]))
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     self.assertDatasetProduces(ds, elements, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -91,8 +92,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     num_repeats = 5
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).repeat(num_repeats)
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     self.assertDatasetProduces(
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
 
@@ -102,8 +102,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     num_elements = 20
     elements_to_read = 1000
     ds = dataset_ops.Dataset.range(num_elements).repeat()
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     get_next = self.getNext(ds)
     results = {}
     for _ in range(elements_to_read):
@@ -122,8 +121,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     # the first repetition.
     num_elements = 1
     ds = dataset_ops.Dataset.range(num_elements).repeat()
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     get_next = self.getNext(ds)
     for _ in range(20):
       self.assertEqual(self.evaluate(get_next()), 0)
@@ -141,8 +139,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).shuffle(num_elements).repeat(
         num_repeats)
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     self.assertDatasetProduces(
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
 
@@ -153,8 +150,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     a = dataset_ops.Dataset.range(num_elements)
 
     ds = dataset_ops.Dataset.zip((a, a))
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
 
     self.assertDatasetProduces(
         ds, list(zip(range(num_elements), range(num_elements))))
@@ -167,8 +163,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
 
     ds = dataset_ops.Dataset.zip((a, a))
     ds = dataset_ops.Dataset.zip((a, a, ds, a))
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
 
     b = list(range(10))
     self.assertDatasetProduces(ds, list(zip(b, b, zip(b, b), b)))
@@ -183,8 +178,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     b = dataset_ops.Dataset.range(larger_num_elements)
 
     ds = dataset_ops.Dataset.zip((a, b))
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
 
     self.assertDatasetProduces(
         ds, list(zip(range(smaller_num_elements), range(smaller_num_elements))))
@@ -198,8 +192,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     b = dataset_ops.Dataset.range(larger_num_elements)
 
     ds = dataset_ops.Dataset.zip((a, b))
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
 
     # Cannot assert specific elements because the range datasets are split
     # nondeterministically and may not line up.
@@ -213,8 +206,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
         lambda x: math_ops.equal(x % 10, 0))
 
     ds = dataset_ops.Dataset.zip((a, b))
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
 
     self.assertLen(self.getDatasetOutput(ds), 10)
 
@@ -225,8 +217,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     b = dataset_ops.Dataset.range(10).repeat(10)
 
     ds = dataset_ops.Dataset.zip((a, b))
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
 
     self.assertLen(self.getDatasetOutput(ds), 50)
 
@@ -242,8 +233,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     ds = interleave_ops.sample_from_datasets(
         [dataset_ops.Dataset.from_tensors(i).repeat() for i in range(classes)],
         weights)
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     ds = ds.take(num_samples)
 
     freqs = np.zeros([classes])
@@ -263,8 +253,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     choice_array = np.random.randint(3, size=(15,), dtype=np.int64)
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
     ds = interleave_ops.choose_from_datasets(datasets, choice_dataset)
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
     expected = [words[i] for i in choice_array]
 
     assert_items_equal = (num_workers > 1)
@@ -279,8 +268,7 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     a = dataset_ops.Dataset.range(100)
     b = dataset_ops.Dataset.range(100, 200)
     ds = a.concatenate(b)
-    ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
 
     assert_items_equal = (num_workers > 1)
     self.assertDatasetProduces(
@@ -295,10 +283,9 @@ class DistributedEpochTest(data_service_test_base.TestBase,
     numbers = [1 * i for i in range(num_sizes)] * size_repeats
     ds = dataset_ops.Dataset.from_tensor_slices(numbers)
     ds = self.make_distributed_dataset(
-        ds, cluster_1, processing_mode="parallel_epochs")
+        ds, cluster_1, processing_mode=data_service_ops.ShardingPolicy.OFF)
     ds = ds.map(lambda x: x + 1)
-    ds = self.make_distributed_dataset(
-        ds, cluster_2, processing_mode="distributed_epoch")
+    ds = self._make_dynamic_sharding_dataset(ds, cluster_2)
 
     error_regex = ("Cannot create split providers for dataset " +
                    "of type DataServiceDataset")
@@ -306,12 +293,12 @@ class DistributedEpochTest(data_service_test_base.TestBase,
       self.getDatasetOutput(ds)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDynamicShardingPolicy(self):
+  def testDistributedEpoch(self):
     cluster = data_service_test_base.TestCluster(num_workers=2)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
     ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode=ShardingPolicy.DYNAMIC)
+        ds, cluster, processing_mode="distributed_epoch")
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
 
