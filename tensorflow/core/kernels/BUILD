@@ -3916,6 +3916,7 @@ tf_kernel_library(
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/core/util/autotune_maps:conv_parameters",
     ]),
 )
 
