@@ -476,6 +476,11 @@ void HloComputation::ComputeInstructionPostOrder(
 HloComputation::ChannelDependencyGroup
 HloComputation::ComputeChannelDependencies() const {
   ChannelDependencyGroup channel_dependency_group;
+  if (parent() && parent()->config().has_static_device_assignment() &&
+      (parent()->config().static_device_assignment().computation_count() == 1 ||
+       parent()->config().use_spmd_partitioning())) {
+    return channel_dependency_group;
+  }
   for (const auto& instruction : instructions_) {
     switch (instruction->opcode()) {
       case HloOpcode::kSend:
