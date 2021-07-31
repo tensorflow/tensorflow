@@ -53,6 +53,7 @@ class BoostedTreesCreateEnsembleOp : public OpKernel {
     if (!result->InitFromSerialized(
             tree_ensemble_serialized_t->scalar<tstring>()(), stamp_token)) {
       result->Unref();
+      result.release();  // Needed due to the `->Unref` above, to prevent UAF
       OP_REQUIRES(
           context, false,
           errors::InvalidArgument("Unable to parse tree ensemble proto."));
