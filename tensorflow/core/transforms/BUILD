@@ -42,9 +42,42 @@ cc_library(
 )
 
 cc_library(
+    name = "GraphToFunc",
+    srcs = ["graph_to_func/graph_to_func.cc"],
+    hdrs = ["graph_to_func/graph_to_func.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir:OpWrapper",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "GraphToFuncPass",
+    srcs = ["graph_to_func/graph_to_func_pass.cc"],
+    hdrs = ["graph_to_func/graph_to_func_pass.h"],
+    deps = [
+        ":GraphToFunc",
+        ":PassIncGen",
+        "//tensorflow/core/ir:Dialect",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "PassRegistration",
     hdrs = ["pass_registration.h"],
     deps = [
+        ":GraphToFuncPass",
         ":PassIncGen",
         ":TopoSortPass",
     ],

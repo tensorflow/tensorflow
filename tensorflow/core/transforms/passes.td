@@ -29,3 +29,25 @@ def TopoSort : Pass<"tfg-toposort"> {
   // A constructor must be provided to specify how to create a default instance.
   let constructor = "CreateTopoSortPass()";
 }
+
+def GraphToFunc : Pass<"tfg-lift-graph-to-func", "ModuleOp"> {
+  let summary = "Turns a graph into a function.";
+  let description = [{
+    This pass takes a list of feeds and fetches and turns the graph into a
+    function.
+  }];
+  // A constructor must be provided to specify how to create a default instance.
+  let constructor = "CreateGraphToFuncPass()";
+  let options = [
+   ListOption<"feeds_", "feeds", "std::string",
+              "Comma separated list of ops that will be turned into arguments.",
+              "llvm::cl::MiscFlags::CommaSeparated">,
+   ListOption<"fetches_", "fetches", "std::string",
+              "Comma separated list of ops that will be turned into results.",
+              "llvm::cl::MiscFlags::CommaSeparated">,
+   ListOption<"control_rets_", "control_rets", "std::string",
+              "Comma separated list of ops that will be turned into control "
+              "returned.",
+              "llvm::cl::MiscFlags::CommaSeparated">
+  ];
+}

@@ -13,20 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
-#define TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
+#ifndef TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
+#define TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
 
 #include <memory>
 
-#include "tensorflow/core/transforms/graph_to_func/graph_to_func_pass.h"
-#include "tensorflow/core/transforms/toposort/toposort_pass.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace tfg {
-/// Generate the code for registering passes for command-line parsing.
-#define GEN_PASS_REGISTRATION
-#include "tensorflow/core/transforms/passes.h.inc"
+
+// Returns a pass that runs on a Module and expects to find a single GraphOp
+// to transform into a function. The provided feeds and fetches are used to form
+// the function arguments and returned values.
+std::unique_ptr<Pass> CreateGraphToFuncPass(ArrayRef<std::string> feeds = {},
+                                            ArrayRef<std::string> fetches = {});
+
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
+#endif  // TENSORFLOW_CORE_MLIR_TRANSFORMS_GRAPH_TO_FUNC_PASS_H_
