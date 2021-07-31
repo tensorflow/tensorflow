@@ -124,8 +124,11 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       if (dataset()->num_shards_ == kShardHint) {
         return errors::FailedPrecondition(
             "`tf.data.Dataset.shard(SHARD_HINT, ...)` can only be used in "
-            "combiantion with "
-            "`tf.distribute.Strategy.experimental_distribute_dataset()`.");
+            "`tf.distribute.Strategy.experimental_distribute_dataset()` with "
+            "`tf.data.experimental.AutoShardPolicy.HINT` policy, or tf.data "
+            "service with "
+            "`tf.data.experimental.service.ShardingPolicy.HINT` processing "
+            "mode.");
       }
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }

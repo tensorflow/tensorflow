@@ -113,6 +113,27 @@ class AutoShardTest(data_service_test_base.TestBase,
         target_workers="LOCAL")
     self.assertDatasetProduces(dataset, list(range(20)))
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              sharding_policy=[ShardingPolicy.OFF, ShardingPolicy.FILE_OR_DATA
+                              ])))
+  def testRangeDataset_ShardHintUsedInWrongShardingPolicy(
+      self, sharding_policy):
+    cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
+    dataset = dataset_ops.Dataset.range(20)
+    dataset = dataset.shard(distribute.SHARD_HINT, distribute.SHARD_HINT)
+    dataset = self.make_distributed_dataset(
+        dataset,
+        cluster=cluster,
+        processing_mode=sharding_policy,
+        target_workers="LOCAL")
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "tf.data service with "
+        "`tf.data.experimental.service.ShardingPolicy.HINT` processing mode."):
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
   @combinations.generate(test_base.default_test_combinations())
   def testRangeDataset_NoShard(self):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
