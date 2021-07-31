@@ -281,6 +281,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
 
 def load(export_dir, tags):
   """Load a v1-style SavedModel as an object."""
-  metrics.IncrementReadApi(_LOAD_V1_V2_LABEL, write_version="1")
+  metrics.IncrementReadApi(_LOAD_V1_V2_LABEL)
   loader = _EagerSavedModelLoader(export_dir)
-  return loader.load(tags=tags)
+  result = loader.load(tags=tags)
+  metrics.IncrementRead(write_version="1")
+  return result

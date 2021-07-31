@@ -273,11 +273,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
                       SavedModelBundle* const bundle) {
-  SavedModel saved_model_proto;
-  if (ReadSavedModel(export_dir, &saved_model_proto).ok()) {
-    std::string version = saved_model::GetWriteVersion(saved_model_proto);
-    metrics::SavedModelReadApi(kCCLoadLabel, version).IncrementBy(1);
-  }
+  metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
 
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();
@@ -296,7 +292,6 @@ Status LoadSavedModel(const SessionOptions& session_options,
   }
   load_latency->GetCell(export_dir)
       ->IncrementBy(GetLatencyMicroseconds(start_microseconds));
-  metrics::SavedModelRead().IncrementBy(1);
   return status;
 }
 

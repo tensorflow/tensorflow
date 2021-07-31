@@ -98,17 +98,17 @@ TEST_F(BundleV2Test, LoadsCyclicModule) {
 
 TEST_F(BundleV2Test, UpdatesMetrics) {
   const string kCCLoadBundleV2Label = "cc_load_bundle_v2";
-  const int read_count = metrics::SavedModelRead().value();
+  const int read_count = metrics::SavedModelRead("2").value();
   const int api_count =
-      metrics::SavedModelReadApi(kCCLoadBundleV2Label, "2").value();
+      metrics::SavedModelReadApi(kCCLoadBundleV2Label).value();
   const string export_dir = io::JoinPath(
       testing::TensorFlowSrcRoot(), kTestData, "VarsAndArithmeticObjectGraph");
 
   SavedModelV2Bundle bundle;
   TF_ASSERT_OK(SavedModelV2Bundle::Load(export_dir, &bundle));
 
-  EXPECT_EQ(metrics::SavedModelRead().value(), read_count + 1);
-  EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadBundleV2Label, "2").value(),
+  EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count + 1);
+  EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadBundleV2Label).value(),
             api_count + 1);
 }
 

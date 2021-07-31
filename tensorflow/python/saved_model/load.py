@@ -861,7 +861,6 @@ def load(export_dir, tags=None, options=None):
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
   result = load_internal(export_dir, tags, options)["root"]
-  metrics.IncrementRead()
   return result
 
 
@@ -878,7 +877,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
 
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
-    metrics.IncrementReadApi(_LOAD_V2_LABEL, write_version="2")
+    metrics.IncrementReadApi(_LOAD_V2_LABEL)
     meta_graph_def = saved_model_proto.meta_graphs[0]
     # tensor_content field contains raw bytes in litle endian format
     # which causes problems when loaded on big-endian systems
@@ -914,6 +913,7 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
+    metrics.IncrementRead(write_version="2")
   else:
     if filters:
       raise ValueError("SavedModels saved from Tensorflow V1 or Estimator (any "

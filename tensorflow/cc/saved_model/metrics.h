@@ -22,30 +22,26 @@ namespace tensorflow {
 namespace metrics {
 
 // Returns "/tensorflow/core/saved_model/write/count" cell. This metric
-// has 0 fields and should be incremented when a SavedModel has been
-// successfully written.
-monitoring::CounterCell& SavedModelWrite();
+// has 1 field "write_version", which is equal to the
+// `tensorflow::libexport::GetWriteVersion` of the protobuf and should be
+// incremented when a SavedModel has been successfully written.
+monitoring::CounterCell& SavedModelWrite(const std::string& write_version);
 
 // Returns "/tensorflow/core/saved_model/read/count" cell. This metric
-// has 0 fields and should be incremented when a SavedModel has been
-// successfully read.
-monitoring::CounterCell& SavedModelRead();
+// has 1 field "write_version", which is equal to the
+// `tensorflow::libexport::GetWriteVersion` of the protobuf, and should be
+// incremented when a SavedModel has been successfully read.
+monitoring::CounterCell& SavedModelRead(const std::string& write_version);
 
-// Returns "/tensorflow/core/saved_model/write/api" cell belonging to fields
-// (api_label, write_version). The "api_label" field corresponds to a SavedModel
-// write API, and the "write_version" field is equal to
-// tensorflow::libexport::GetWriteVersion of the protobuf. The cell for (foo, #)
-// should be incremented when the write API `foo` is called.
-monitoring::CounterCell& SavedModelWriteApi(const std::string& api_label,
-                                            const std::string& write_version);
+// Returns "/tensorflow/core/saved_model/write/api" cell. This metric has 1
+// field "api_label" which corresponds to a SavedModel write API. The cell for
+// `foo` should be incremented when the write API `foo` is called.
+monitoring::CounterCell& SavedModelWriteApi(const std::string& api_label);
 
-// Returns "/tensorflow/core/saved_model/read/api" cell belonging to fields
-// (api_label, write_version). The "api_label" field corresponds to a SavedModel
-// read API, and the "write_version" field is equal to
-// tensorflow::libexport::GetWriteVersion of the protobuf. The cell for (foo, #)
-// should be incremented when the read API `foo` is called.
-monitoring::CounterCell& SavedModelReadApi(const std::string& api_label,
-                                           const std::string& write_version);
+// Returns "/tensorflow/core/saved_model/read/api" cell. This metric has 1
+// field "api_label" which corresponds to a SavedModel read API. The cell for
+// `foo` should be incremented when the read API `foo` is called.
+monitoring::CounterCell& SavedModelReadApi(const std::string& api_label);
 
 }  // namespace metrics
 }  // namespace tensorflow

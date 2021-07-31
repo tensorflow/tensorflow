@@ -1189,9 +1189,9 @@ def save(obj, export_dir, signatures=None, options=None):
   @end_compatibility
   """
   # pylint: enable=line-too-long
-  metrics.IncrementWriteApi(_SAVE_V2_LABEL, write_version="2")
+  metrics.IncrementWriteApi(_SAVE_V2_LABEL)
   save_and_return_nodes(obj, export_dir, signatures, options)
-  metrics.IncrementWrite()
+  metrics.IncrementWrite(write_version="2")
 
 
 def save_and_return_nodes(obj,
