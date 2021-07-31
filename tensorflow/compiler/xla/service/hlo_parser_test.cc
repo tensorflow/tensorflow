@@ -1108,6 +1108,18 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 
 )"
 },
+// CustomCall that returns a status.
+{
+"CustomCallWithStatusReturningVersion",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_STATUS_RETURNING
+}
+
+)"
+},
 // Parse c64 literal
 {
 "ParseC64Literal",
@@ -3355,6 +3367,34 @@ ENTRY %CustomCallIncompatibleOperandConstraints (p0: f32[42,2,3], p1: f32[123,4]
   ExpectHasSubstr(
       ParseAndReturnUnverifiedModule(original).status().error_message(),
       "operand 1 is not compatible with operand shape");
+}
+
+TEST_F(HloParserTest, CustomCallWithNonexistentVersion) {
+  const string original = R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_THAT_DOESNT_EXIST
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Unknown API version");
+}
+
+TEST_F(HloParserTest, CustomCallWithUnspecifiedVersion) {
+  const string original = R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_UNSPECIFIED
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Invalid API version");
 }
 
 TEST_F(HloParserTest, AllowShapeWhitespace) {

@@ -6276,7 +6276,11 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
         op.getLoc(), op.getType(), op.input(),
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
-        /*backend_config=*/rewriter.getStringAttr(""));
+        /*backend_config=*/rewriter.getStringAttr(""),
+        /*api_version=*/
+        mhlo::CustomCallApiVersionAttr::get(
+            rewriter.getContext(),
+            mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL));
     custom_call->setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult(0));
 

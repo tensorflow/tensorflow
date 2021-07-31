@@ -49,6 +49,27 @@ def HLO_FftTypeAttr : StrEnumAttr<"FftType",
 }
 
 //===----------------------------------------------------------------------===//
+// Custom call enum definitions.
+//===----------------------------------------------------------------------===//
+
+// TODO(b/189822916): Remove this enum when all clients are migrated to the
+// status-returning API.
+def HLO_CUSTOM_CALL_API_VERISON_UNSPECIFIED :
+    I32EnumAttrCase<"API_VERSION_UNSPECIFIED", 0>;
+def HLO_CUSTOM_CALL_API_VERSION_ORIGINAL :
+    I32EnumAttrCase<"API_VERSION_ORIGINAL", 1>;
+def HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING :
+    I32EnumAttrCase<"API_VERSION_STATUS_RETURNING", 2>;
+def HLO_CustomCallApiVersionAttr :
+    I32EnumAttr<"CustomCallApiVersion", "Custom call API version", [
+        HLO_CUSTOM_CALL_API_VERISON_UNSPECIFIED,
+        HLO_CUSTOM_CALL_API_VERSION_ORIGINAL,
+        HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING
+    ]> {
+  let cppNamespace = "::mlir::mhlo";
+}
+
+//===----------------------------------------------------------------------===//
 // Comparison op definitions.
 //===----------------------------------------------------------------------===//
 

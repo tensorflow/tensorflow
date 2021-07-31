@@ -742,10 +742,15 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   }
 
   auto custom_call = CreateOpWithoutAttrs<lmhlo::CustomCallOp>(instr, operands);
+  TF_ASSIGN_OR_RETURN(
+      auto mlir_api_version,
+      ConvertCustomCallApiVersion(custom_call_instr->api_version()));
   custom_call.call_target_nameAttr(
       builder_.getStringAttr(custom_call_instr->custom_call_target()));
   custom_call.backend_configAttr(
       builder_.getStringAttr(custom_call_instr->opaque()));
+  custom_call.api_versionAttr(mhlo::CustomCallApiVersionAttr::get(
+      builder_.getContext(), mlir_api_version));
   const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
                                static_cast<int32_t>(num_results)};
   custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),

@@ -40,8 +40,37 @@ enum CustomCallSchedule {
   SCHEDULE_EARLIEST = 2;
 }
 
+// The version of the API used by the custom call function. The signatures for
+// each version are given below.
+// TODO(b/189822916): Remove this enum when all clients are migrated to the
+// status-returning API.
+enum CustomCallApiVersion {
+  API_VERSION_UNSPECIFIED = 0;
+
+  // The first version of the API, with the following signatures:
+  //
+  // CPU:
+  //   void do_custom_call(void* out, const void** in)
+  //
+  // GPU:
+  //   void do_custom_call(CUstream stream, void** buffers,
+  //                       const char* opaque, size_t opaque_len);
+  API_VERSION_ORIGINAL = 1;
+
+  // When the ability to return success/failure status was added:
+  //
+  // CPU: Unimplemented
+  //
+  // GPU:
+  //   void do_custom_call(CUstream stream, void** buffers,
+  //                       const char* opaque, size_t opaque_len,
+  //                       XlaCustomCallStatus* status);
+  //
+  API_VERSION_STATUS_RETURNING = 2;
+}
+
 // Serialization of HloInstruction.
-// Next ID: 77
+// Next ID: 78
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -272,6 +301,12 @@ message HloInstructionProto {
 
   // If a convolution is dynamic, a dynamic padding type will be specified.
   xla.PaddingType padding_type = 75;
+
+  // The API version used by the custom call function. This field is only
+  // present for custom-call.
+  // TODO(b/189822916): Remove this field when all clients are migrated to the
+  // status-returning API.
+  CustomCallApiVersion custom_call_api_version = 77;
 }
 
 // Serialization of HloComputation.

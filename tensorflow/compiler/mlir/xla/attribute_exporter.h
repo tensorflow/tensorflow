@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -43,6 +44,9 @@ StatusOr<std::vector<std::pair<int64, int64>>> ConvertNx2Attribute(
 StatusOr<FftType> ConvertFftType(llvm::StringRef type_string);
 StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string);
+
+StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
+    mlir::mhlo::CustomCallApiVersion api_version);
 
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_

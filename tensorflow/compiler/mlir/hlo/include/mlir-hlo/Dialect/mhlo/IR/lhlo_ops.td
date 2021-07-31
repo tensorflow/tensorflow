@@ -621,6 +621,11 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
     DefaultValuedAttr<StrAttr, "">:$backend_config,
+    // TODO(b/189822916): Remove this field when all clients are migrated to
+    // the status-returning API.
+    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
+                      "mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
+                      $api_version,
     OptionalAttr<CustomCallTargetArgMapping>:$target_arg_mapping
   );
   let verifier = [{ return Verify(*this); }];
