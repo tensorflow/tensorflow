@@ -667,6 +667,11 @@ class ResourceGatherOp : public OpKernel {
     OP_REQUIRES(
         c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
         errors::InvalidArgument("params must be at least 1 dimensional"));
+    OP_REQUIRES(
+        c, params.shape().dims() >= batch_dims_,
+        errors::InvalidArgument("params must have at least ", batch_dims_,
+                                " (batch_dims) dimensions but it has shape ",
+                                params.shape().DebugString()));
 
     // Check that we have enough index space
     const int64 N = indices.NumElements();
