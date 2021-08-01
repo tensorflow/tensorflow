@@ -37,6 +37,9 @@ add_mlir_library(ChloPasses
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRChloLegalizeToHloIncGen
+  MLIRMhloPassIncGen
+  MLIRLmhloPassIncGen
+  MLIRDiscRalPassIncGen
 
   LINK_COMPONENTS
   Core
