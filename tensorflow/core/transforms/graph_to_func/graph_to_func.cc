@@ -34,6 +34,12 @@ using tensorflow::errors::InvalidArgument;
 namespace mlir {
 namespace tfg {
 
+// TODO(jpienaar): Move to helper header/this shouldn't be needed once we
+// upgrade to C++17.
+static inline absl::string_view ToStringView(llvm::StringRef ref) {
+  return {ref.data(), ref.size()};
+}
+
 static std::string OpResultToSlotName(OpResult value) {
   return (TFOp(*value.getDefiningOp()).name() + ":" +
           Twine(value.cast<OpResult>().getResultNumber()))
@@ -153,18 +159,17 @@ Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,
   for (const auto &feed_info : feeds_to_position) {
     if (!feeds[feed_info.second])
       return InvalidArgument("Can't find feed: '",
-                             tensorflow::StringPiece(feed_info.first), "'");
+                             ToStringView(feed_info.first), "'");
   }
   for (const auto &fetch_info : fetches_to_position) {
     if (!fetches[fetch_info.second])
       return InvalidArgument("Can't find fetch: '",
-                             tensorflow::StringPiece(fetch_info.first), "'");
+                             ToStringView(fetch_info.first), "'");
   }
   for (const auto &control_ret_info : control_rets_to_position) {
     if (!control_rets[control_ret_info.second])
       return InvalidArgument("Can't find control rets: '",
-                             tensorflow::StringPiece(control_ret_info.first),
-                             "'");
+                             ToStringView(control_ret_info.first), "'");
   }
 
   return GraphToFunc(graph, feeds, fetches, control_rets, name);
