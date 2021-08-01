@@ -699,6 +699,10 @@ class Context(object):
           "Coordination service must be enabled at program startup time.")
     self._coordination_service = service_type
 
+  @property
+  def coordination_service(self):
+    return self._coordination_service
+
   def set_config_key_value(self, key, value):
     ensure_initialized()
     pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
