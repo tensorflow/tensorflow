@@ -28,7 +28,3 @@ def is_remote_path(_):
 
 def get_appendable_file_encoding():
   return ''
-
-
-def coordination_service_type(_):
-  return None
