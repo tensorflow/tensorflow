@@ -279,6 +279,7 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
     I64ArrayAttr:$tileSizes,
     I64ArrayAttr:$unrollFactors,
     I64Attr:$maxSupportedRank,
+    BoolAttr:$enableFtz,
     BoolAttr:$cpuCodegen
   );
   let results = (outs TFFramework_JITCallableType:$result);

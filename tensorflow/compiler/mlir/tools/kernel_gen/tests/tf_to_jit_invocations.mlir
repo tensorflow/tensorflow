@@ -1,5 +1,6 @@
 // RUN: kernel-gen-opt %s --tf-to-jit-invocation="tile-sizes=1,2,3 \
-// RUN:   unroll-factors=3,2,1 max-supported-rank=32 cpu-codegen=false" | \
+// RUN:   unroll-factors=3,2,1 max-supported-rank=32 enable-ftz=false \
+// RUN:   cpu-codegen=false" | \
 // RUN: FileCheck %s
 
 // CHECK-LABEL: @rint
@@ -20,6 +21,7 @@ func @rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-SAME: "
   // CHECK-SAME: {
   // CHECK-SAME:   cpuCodegen = false
+  // CHECK-SAME:   enableFtz = false
   // CHECK-SAME:   maxSupportedRank = 32 : i64
   // CHECK-SAME:   tileSizes = [1, 2, 3]
   // CHECK-SAME:   unrollFactors = [3, 2, 1]

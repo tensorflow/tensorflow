@@ -82,7 +82,7 @@ func @jit_compile(%ctx : !tf_framework.op_kernel_context)
 func @jit_compile_from_str_wo_ctx() -> !tf_framework.jit_callable {
   %callable = tf_framework.jit_compile_from_str "placeholder" {
       tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
-      cpuCodegen = false }
+      enableFtz = false, cpuCodegen = false }
   return %callable : !tf_framework.jit_callable
 }
 
@@ -91,7 +91,7 @@ func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable {
   %callable = tf_framework.jit_compile_from_str %ctx , "placeholder" {
       tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
-      cpuCodegen = false }
+      enableFtz = false, cpuCodegen = false }
   return %callable : !tf_framework.jit_callable
 }
 

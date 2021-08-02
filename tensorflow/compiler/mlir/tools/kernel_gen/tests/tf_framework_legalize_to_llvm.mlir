@@ -169,7 +169,7 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: llvm.return %[[RES]]
   %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
       tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
-      cpuCodegen = false }
+      enableFtz = false, cpuCodegen = false }
   return %0 : !tf_framework.jit_callable
 }
 
