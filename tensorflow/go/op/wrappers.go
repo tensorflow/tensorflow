@@ -15870,6 +15870,32 @@ func TanhGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Computes inverse hyperbolic tangent of x element-wise.
+//
+//   Given an input tensor, this function computes inverse hyperbolic tangent
+//   for every element in the tensor. Input range is `[-1,1]` and output range is
+//   `[-inf, inf]`. If input is `-1`, output will be `-inf` and if the
+//   input is `1`, output will be `inf`. Values outside the range will have
+//   `nan` as output.
+//
+//   ```python
+//   x = tf.constant([-float("inf"), -1, -0.5, 1, 0, 0.5, 10, float("inf")])
+//   tf.math.atanh(x) ==> [nan -inf -0.54930615 inf  0. 0.54930615 nan nan]
+//   ```
+func Atanh(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Atanh",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Serializes the tree ensemble to a proto.
 //
 // Arguments:
@@ -27843,32 +27869,6 @@ func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataTyp
 	return components
 }
 
-// Computes inverse hyperbolic tangent of x element-wise.
-//
-//   Given an input tensor, this function computes inverse hyperbolic tangent
-//   for every element in the tensor. Input range is `[-1,1]` and output range is
-//   `[-inf, inf]`. If input is `-1`, output will be `-inf` and if the
-//   input is `1`, output will be `inf`. Values outside the range will have
-//   `nan` as output.
-//
-//   ```python
-//   x = tf.constant([-float("inf"), -1, -0.5, 1, 0, 0.5, 10, float("inf")])
-//   tf.math.atanh(x) ==> [nan -inf -0.54930615 inf  0. 0.54930615 nan nan]
-//   ```
-func Atanh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Atanh",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // FusedBatchNormAttr is an optional argument to FusedBatchNorm.
 type FusedBatchNormAttr func(optionalAttr)
 
@@ -33240,6 +33240,64 @@ func StatsAggregatorSetSummaryWriter(scope *Scope, stats_aggregator tf.Output, s
 	return scope.AddOperation(opspec)
 }
 
+// Generate a glob pattern matching all sharded file names.
+func ShardedFilespec(scope *Scope, basename tf.Output, num_shards tf.Output) (filename tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ShardedFilespec",
+		Input: []tf.Input{
+			basename, num_shards,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// XlaRngBitGeneratorAttr is an optional argument to XlaRngBitGenerator.
+type XlaRngBitGeneratorAttr func(optionalAttr)
+
+// XlaRngBitGeneratorDtype sets the optional dtype attribute to value.
+//
+// value: The type of the tensor.
+// If not specified, defaults to DT_UINT64
+func XlaRngBitGeneratorDtype(value tf.DataType) XlaRngBitGeneratorAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Stateless PRNG bit generator.
+//
+// Wraps the XLA RngBitGenerator operator, documented at
+//  https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
+//
+// Arguments:
+//	algorithm: The PRNG algorithm to use, one of
+// tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.
+//	initial_state: Initial state for the PRNG algorithm. For THREEFRY, it should be
+// a u64[2] and for PHILOX a u64[3].
+//	shape: The output shape of the generated data.
+func XlaRngBitGenerator(scope *Scope, algorithm tf.Output, initial_state tf.Output, shape tf.Output, optional ...XlaRngBitGeneratorAttr) (output_key tf.Output, output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaRngBitGenerator",
+		Input: []tf.Input{
+			algorithm, initial_state, shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Pop the element at the top of the stack.
 //
 // Arguments:
@@ -36916,21 +36974,6 @@ func TensorArrayGradWithShape(scope *Scope, handle tf.Output, flow_in tf.Output,
 	return op.Output(0), op.Output(1)
 }
 
-// Generate a glob pattern matching all sharded file names.
-func ShardedFilespec(scope *Scope, basename tf.Output, num_shards tf.Output) (filename tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ShardedFilespec",
-		Input: []tf.Input{
-			basename, num_shards,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // ResourceApplyCenteredRMSPropAttr is an optional argument to ResourceApplyCenteredRMSProp.
 type ResourceApplyCenteredRMSPropAttr func(optionalAttr)
 
@@ -38735,203 +38778,6 @@ func BoostedTreesCreateQuantileStreamResource(scope *Scope, quantile_stream_reso
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Concatenates quantized tensors along one dimension.
-//
-// Arguments:
-//	concat_dim: 0-D.  The dimension along which to concatenate.  Must be in the
-// range [0, rank(values)).
-//	values: The `N` Tensors to concatenate. Their ranks and types must match,
-// and their sizes must match in all dimensions except `concat_dim`.
-//	input_mins: The minimum scalar values for each of the input tensors.
-//	input_maxes: The maximum scalar values for each of the input tensors.
-//
-// Returns:
-//	output: A `Tensor` with the concatenation of values stacked along the
-// `concat_dim` dimension.  This tensor's shape matches that of `values` except
-// in `concat_dim` where it has the sum of the sizes.
-//	output_min: The float value that the minimum quantized output value represents.
-//	output_max: The float value that the maximum quantized output value represents.
-func QuantizedConcat(scope *Scope, concat_dim tf.Output, values []tf.Output, input_mins []tf.Output, input_maxes []tf.Output) (output tf.Output, output_min tf.Output, output_max tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "QuantizedConcat",
-		Input: []tf.Input{
-			concat_dim, tf.OutputList(values), tf.OutputList(input_mins), tf.OutputList(input_maxes),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Returns the batched diagonal part of a batched tensor.
-//
-// Returns a tensor with the `k[0]`-th to `k[1]`-th diagonals of the batched
-// `input`.
-//
-// Assume `input` has `r` dimensions `[I, J, ..., L, M, N]`.
-// Let `max_diag_len` be the maximum length among all diagonals to be extracted,
-// `max_diag_len = min(M + min(k[1], 0), N + min(-k[0], 0))`
-// Let `num_diags` be the number of diagonals to extract,
-// `num_diags = k[1] - k[0] + 1`.
-//
-// If `num_diags == 1`, the output tensor is of rank `r - 1` with shape
-// `[I, J, ..., L, max_diag_len]` and values:
-//
-// ```
-// diagonal[i, j, ..., l, n]
-//   = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
-//     padding_value                 ; otherwise.
-// ```
-// where `y = max(-k[1], 0)`, `x = max(k[1], 0)`.
-//
-// Otherwise, the output tensor has rank `r` with dimensions
-// `[I, J, ..., L, num_diags, max_diag_len]` with values:
-//
-// ```
-// diagonal[i, j, ..., l, m, n]
-//   = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
-//     padding_value                 ; otherwise.
-// ```
-// where `d = k[1] - m`, `y = max(-d, 0)`, and `x = max(d, 0)`.
-//
-// The input must be at least a matrix.
-//
-// For example:
-//
-// ```
-// input = np.array([[[1, 2, 3, 4],  # Input shape: (2, 3, 4)
-//                    [5, 6, 7, 8],
-//                    [9, 8, 7, 6]],
-//                   [[5, 4, 3, 2],
-//                    [1, 2, 3, 4],
-//                    [5, 6, 7, 8]]])
-//
-// # A main diagonal from each batch.
-// tf.matrix_diag_part(input) ==> [[1, 6, 7],  # Output shape: (2, 3)
-//                                 [5, 2, 7]]
-//
-// # A superdiagonal from each batch.
-// tf.matrix_diag_part(input, k = 1)
-//   ==> [[2, 7, 6],  # Output shape: (2, 3)
-//        [4, 3, 8]]
-//
-// # A tridiagonal band from each batch.
-// tf.matrix_diag_part(input, k = (-1, 1))
-//   ==> [[[2, 7, 6],  # Output shape: (2, 3, 3)
-//         [1, 6, 7],
-//         [5, 8, 0]],
-//        [[4, 3, 8],
-//         [5, 2, 7],
-//         [1, 6, 0]]]
-//
-// # Padding value = 9
-// tf.matrix_diag_part(input, k = (1, 3), padding_value = 9)
-//   ==> [[[4, 9, 9],  # Output shape: (2, 3, 3)
-//         [3, 8, 9],
-//         [2, 7, 6]],
-//        [[2, 9, 9],
-//         [3, 4, 9],
-//         [4, 3, 8]]]
-// ```
-//
-// Arguments:
-//	input: Rank `r` tensor where `r >= 2`.
-//	k: Diagonal offset(s). Positive value means superdiagonal, 0 refers to the main
-// diagonal, and negative value means subdiagonals. `k` can be a single integer
-// (for a single diagonal) or a pair of integers specifying the low and high ends
-// of a matrix band. `k[0]` must not be larger than `k[1]`.
-//	padding_value: The value to fill the area outside the specified diagonal band with.
-// Default is 0.
-//
-// Returns The extracted diagonal(s).
-func MatrixDiagPartV2(scope *Scope, input tf.Output, k tf.Output, padding_value tf.Output) (diagonal tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixDiagPartV2",
-		Input: []tf.Input{
-			input, k, padding_value,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// OrderedMapPeekAttr is an optional argument to OrderedMapPeek.
-type OrderedMapPeekAttr func(optionalAttr)
-
-// OrderedMapPeekCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func OrderedMapPeekCapacity(value int64) OrderedMapPeekAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// OrderedMapPeekMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func OrderedMapPeekMemoryLimit(value int64) OrderedMapPeekAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// OrderedMapPeekContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func OrderedMapPeekContainer(value string) OrderedMapPeekAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// OrderedMapPeekSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func OrderedMapPeekSharedName(value string) OrderedMapPeekAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op peeks at the values at the specified key.  If the
-//
-// underlying container does not contain this key
-// this op will block until it does.   This Op is optimized for
-// performance.
-func OrderedMapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...OrderedMapPeekAttr) (values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "OrderedMapPeek",
-		Input: []tf.Input{
-			key, indices,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("OrderedMapPeek", err)
-		return
-	}
-	return values
 }
 
 // FakeQuantWithMinMaxArgsGradientAttr is an optional argument to FakeQuantWithMinMaxArgsGradient.
@@ -42719,6 +42565,131 @@ func FIFOQueueV2(scope *Scope, component_types []tf.DataType, optional ...FIFOQu
 	return op.Output(0)
 }
 
+// Returns the batched diagonal part of a batched tensor.
+//
+// Returns a tensor with the `k[0]`-th to `k[1]`-th diagonals of the batched
+// `input`.
+//
+// Assume `input` has `r` dimensions `[I, J, ..., L, M, N]`.
+// Let `max_diag_len` be the maximum length among all diagonals to be extracted,
+// `max_diag_len = min(M + min(k[1], 0), N + min(-k[0], 0))`
+// Let `num_diags` be the number of diagonals to extract,
+// `num_diags = k[1] - k[0] + 1`.
+//
+// If `num_diags == 1`, the output tensor is of rank `r - 1` with shape
+// `[I, J, ..., L, max_diag_len]` and values:
+//
+// ```
+// diagonal[i, j, ..., l, n]
+//   = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
+//     padding_value                 ; otherwise.
+// ```
+// where `y = max(-k[1], 0)`, `x = max(k[1], 0)`.
+//
+// Otherwise, the output tensor has rank `r` with dimensions
+// `[I, J, ..., L, num_diags, max_diag_len]` with values:
+//
+// ```
+// diagonal[i, j, ..., l, m, n]
+//   = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
+//     padding_value                 ; otherwise.
+// ```
+// where `d = k[1] - m`, `y = max(-d, 0)`, and `x = max(d, 0)`.
+//
+// The input must be at least a matrix.
+//
+// For example:
+//
+// ```
+// input = np.array([[[1, 2, 3, 4],  # Input shape: (2, 3, 4)
+//                    [5, 6, 7, 8],
+//                    [9, 8, 7, 6]],
+//                   [[5, 4, 3, 2],
+//                    [1, 2, 3, 4],
+//                    [5, 6, 7, 8]]])
+//
+// # A main diagonal from each batch.
+// tf.matrix_diag_part(input) ==> [[1, 6, 7],  # Output shape: (2, 3)
+//                                 [5, 2, 7]]
+//
+// # A superdiagonal from each batch.
+// tf.matrix_diag_part(input, k = 1)
+//   ==> [[2, 7, 6],  # Output shape: (2, 3)
+//        [4, 3, 8]]
+//
+// # A tridiagonal band from each batch.
+// tf.matrix_diag_part(input, k = (-1, 1))
+//   ==> [[[2, 7, 6],  # Output shape: (2, 3, 3)
+//         [1, 6, 7],
+//         [5, 8, 0]],
+//        [[4, 3, 8],
+//         [5, 2, 7],
+//         [1, 6, 0]]]
+//
+// # Padding value = 9
+// tf.matrix_diag_part(input, k = (1, 3), padding_value = 9)
+//   ==> [[[4, 9, 9],  # Output shape: (2, 3, 3)
+//         [3, 8, 9],
+//         [2, 7, 6]],
+//        [[2, 9, 9],
+//         [3, 4, 9],
+//         [4, 3, 8]]]
+// ```
+//
+// Arguments:
+//	input: Rank `r` tensor where `r >= 2`.
+//	k: Diagonal offset(s). Positive value means superdiagonal, 0 refers to the main
+// diagonal, and negative value means subdiagonals. `k` can be a single integer
+// (for a single diagonal) or a pair of integers specifying the low and high ends
+// of a matrix band. `k[0]` must not be larger than `k[1]`.
+//	padding_value: The value to fill the area outside the specified diagonal band with.
+// Default is 0.
+//
+// Returns The extracted diagonal(s).
+func MatrixDiagPartV2(scope *Scope, input tf.Output, k tf.Output, padding_value tf.Output) (diagonal tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixDiagPartV2",
+		Input: []tf.Input{
+			input, k, padding_value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Concatenates quantized tensors along one dimension.
+//
+// Arguments:
+//	concat_dim: 0-D.  The dimension along which to concatenate.  Must be in the
+// range [0, rank(values)).
+//	values: The `N` Tensors to concatenate. Their ranks and types must match,
+// and their sizes must match in all dimensions except `concat_dim`.
+//	input_mins: The minimum scalar values for each of the input tensors.
+//	input_maxes: The maximum scalar values for each of the input tensors.
+//
+// Returns:
+//	output: A `Tensor` with the concatenation of values stacked along the
+// `concat_dim` dimension.  This tensor's shape matches that of `values` except
+// in `concat_dim` where it has the sum of the sizes.
+//	output_min: The float value that the minimum quantized output value represents.
+//	output_max: The float value that the maximum quantized output value represents.
+func QuantizedConcat(scope *Scope, concat_dim tf.Output, values []tf.Output, input_mins []tf.Output, input_maxes []tf.Output) (output tf.Output, output_min tf.Output, output_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedConcat",
+		Input: []tf.Input{
+			concat_dim, tf.OutputList(values), tf.OutputList(input_mins), tf.OutputList(input_maxes),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // QuantizeAndDequantizeV4GradAttr is an optional argument to QuantizeAndDequantizeV4Grad.
 type QuantizeAndDequantizeV4GradAttr func(optionalAttr)
 
@@ -43340,6 +43311,48 @@ func BoostedTreesCalculateBestGainsPerFeature(scope *Scope, node_id_range tf.Out
 	return node_ids_list, gains_list, thresholds_list, left_node_contribs_list, right_node_contribs_list
 }
 
+// Computes offsets of concat inputs within its output.
+//
+// For example:
+//
+// ```
+// # 'x' is [2, 2, 7]
+// # 'y' is [2, 3, 7]
+// # 'z' is [2, 5, 7]
+// concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
+// ```
+//
+// This is typically used by gradient computations for a concat operation.
+//
+// Arguments:
+//	concat_dim: The dimension along which to concatenate.
+//	shape: The `N` int32 vectors representing shape of tensors being concatenated.
+//
+// Returns The `N` int32 vectors representing the starting offset
+// of input tensors within the concatenated output.
+func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConcatOffset",
+		Input: []tf.Input{
+			concat_dim, tf.OutputList(shape),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if offset, idx, err = makeOutputList(op, idx, "offset"); err != nil {
+		scope.UpdateErr("ConcatOffset", err)
+		return
+	}
+	return offset
+}
+
 // Wraps the XLA DotGeneral operator, documented at
 //
 //  https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
@@ -43414,48 +43427,6 @@ func ConcatV2(scope *Scope, values []tf.Output, axis tf.Output) (output tf.Outpu
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Computes offsets of concat inputs within its output.
-//
-// For example:
-//
-// ```
-// # 'x' is [2, 2, 7]
-// # 'y' is [2, 3, 7]
-// # 'z' is [2, 5, 7]
-// concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
-// ```
-//
-// This is typically used by gradient computations for a concat operation.
-//
-// Arguments:
-//	concat_dim: The dimension along which to concatenate.
-//	shape: The `N` int32 vectors representing shape of tensors being concatenated.
-//
-// Returns The `N` int32 vectors representing the starting offset
-// of input tensors within the concatenated output.
-func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ConcatOffset",
-		Input: []tf.Input{
-			concat_dim, tf.OutputList(shape),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if offset, idx, err = makeOutputList(op, idx, "offset"); err != nil {
-		scope.UpdateErr("ConcatOffset", err)
-		return
-	}
-	return offset
 }
 
 // Creates a dataset that changes the batch size.
@@ -46512,330 +46483,6 @@ func SparseReorder(scope *Scope, input_indices tf.Output, input_values tf.Output
 	return op.Output(0), op.Output(1)
 }
 
-// Creates a dataset that emits the outputs of `input_dataset` `count` times.
-//
-// Arguments:
-//
-//	count: A scalar representing the number of times that `input_dataset` should
-// be repeated. A value of `-1` indicates that it should be repeated infinitely.
-//
-//
-func RepeatDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "RepeatDataset",
-		Input: []tf.Input{
-			input_dataset, count,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Converts a dense tensor to a (possibly batched) CSRSparseMatrix.
-//
-// Arguments:
-//	dense_input: A Dense tensor.
-//	indices: Indices of nonzero elements.
-//
-// Returns A (possibly batched) CSRSparseMatrix.
-func DenseToCSRSparseMatrix(scope *Scope, dense_input tf.Output, indices tf.Output) (sparse_output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DenseToCSRSparseMatrix",
-		Input: []tf.Input{
-			dense_input, indices,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a tensor filled with a scalar value.
-//
-// This operation creates a tensor of shape `dims` and fills it with `value`.
-//
-// For example:
-//
-// ```
-// # Output tensor has shape [2, 3].
-// fill([2, 3], 9) ==> [[9, 9, 9]
-//                      [9, 9, 9]]
-// ```
-//
-// `tf.fill` differs from `tf.constant` in a few ways:
-//
-// *   `tf.fill` only supports scalar contents, whereas `tf.constant` supports
-//     Tensor values.
-// *   `tf.fill` creates an Op in the computation graph that constructs the actual
-//     Tensor value at runtime. This is in contrast to `tf.constant` which embeds
-//     the entire Tensor into the graph with a `Const` node.
-// *   Because `tf.fill` evaluates at graph runtime, it supports dynamic shapes
-//     based on other runtime Tensors, unlike `tf.constant`.
-//
-// Arguments:
-//	dims: 1-D. Represents the shape of the output tensor.
-//	value: 0-D (scalar). Value to fill the returned tensor.
-//
-// @compatibility(numpy)
-// Equivalent to np.full
-// @end_compatibility
-func Fill(scope *Scope, dims tf.Output, value tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Fill",
-		Input: []tf.Input{
-			dims, value,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Sends `input` to all devices that are connected to the output.
-//
-// Sends `input` to all devices that are connected to the output.
-//
-// The graph should be constructed so that all ops connected to the output have a
-// valid device assignment, and the op itself is assigned one of these devices.
-//
-// input: The input to the broadcast.
-// output: The same as input.
-// shape: The shape of the input tensor.
-//
-func NcclBroadcast(scope *Scope, input tf.Output, shape tf.Shape) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"shape": shape}
-	opspec := tf.OpSpec{
-		Type: "NcclBroadcast",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes cos of x element-wise.
-//
-//   Given an input tensor, this function computes cosine of every
-//   element in the tensor. Input range is `(-inf, inf)` and
-//   output range is `[-1,1]`. If input lies outside the boundary, `nan`
-//   is returned.
-//
-//   ```python
-//   x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 200, 10000, float("inf")])
-//   tf.math.cos(x) ==> [nan -0.91113025 0.87758255 0.5403023 0.36235774 0.48718765 -0.95215535 nan]
-//   ```
-func Cos(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Cos",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Pads a tensor.
-//
-// This operation pads `input` according to the `paddings` and `constant_values`
-// you specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is
-// the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
-// how many padding values to add before the contents of `input` in that dimension,
-// and `paddings[D, 1]` indicates how many padding values to add after the contents
-// of `input` in that dimension. `constant_values` is a scalar tensor of the same
-// type as `input` that indicates the value to use for padding `input`.
-//
-// The padded size of each dimension D of the output is:
-//
-// `paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
-//
-// For example:
-//
-// ```
-// # 't' is [[1, 1], [2, 2]]
-// # 'paddings' is [[1, 1], [2, 2]]
-// # 'constant_values' is 0
-// # rank of 't' is 2
-// pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
-//                       [0, 0, 1, 1, 0, 0]
-//                       [0, 0, 2, 2, 0, 0]
-//                       [0, 0, 0, 0, 0, 0]]
-// ```
-func PadV2(scope *Scope, input tf.Output, paddings tf.Output, constant_values tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "PadV2",
-		Input: []tf.Input{
-			input, paddings, constant_values,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// QueueEnqueueManyV2Attr is an optional argument to QueueEnqueueManyV2.
-type QueueEnqueueManyV2Attr func(optionalAttr)
-
-// QueueEnqueueManyV2TimeoutMs sets the optional timeout_ms attribute to value.
-//
-// value: If the queue is too full, this operation will block for up
-// to timeout_ms milliseconds.
-// Note: This option is not supported yet.
-// If not specified, defaults to -1
-func QueueEnqueueManyV2TimeoutMs(value int64) QueueEnqueueManyV2Attr {
-	return func(m optionalAttr) {
-		m["timeout_ms"] = value
-	}
-}
-
-// Enqueues zero or more tuples of one or more tensors in the given queue.
-//
-// This operation slices each component tensor along the 0th dimension to
-// make multiple queue elements. All of the tuple components must have the
-// same size in the 0th dimension.
-//
-// The components input has k elements, which correspond to the components of
-// tuples stored in the given queue.
-//
-// N.B. If the queue is full, this operation will block until the given
-// elements have been enqueued (or 'timeout_ms' elapses, if specified).
-//
-// Arguments:
-//	handle: The handle to a queue.
-//	components: One or more tensors from which the enqueued tensors should
-// be taken.
-//
-// Returns the created operation.
-func QueueEnqueueManyV2(scope *Scope, handle tf.Output, components []tf.Output, optional ...QueueEnqueueManyV2Attr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QueueEnqueueManyV2",
-		Input: []tf.Input{
-			handle, tf.OutputList(components),
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Computes inverse hyperbolic sine of x element-wise.
-//
-//   Given an input tensor, this function computes inverse hyperbolic sine
-//   for every element in the tensor. Both input and output has a range of
-//   `[-inf, inf]`.
-//
-//   ```python
-//   x = tf.constant([-float("inf"), -2, -0.5, 1, 1.2, 200, 10000, float("inf")])
-//   tf.math.asinh(x) ==> [-inf -1.4436355 -0.4812118 0.8813736 1.0159732 5.991471 9.903487 inf]
-//   ```
-func Asinh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Asinh",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Looks up keys in a table, outputs the corresponding values.
-//
-// The tensor `keys` must of the same type as the keys of the table.
-// The output `values` is of the type of the table values.
-//
-// The scalar `default_value` is the value output for keys not present in the
-// table. It must also be of the same type as the table values.
-//
-// Arguments:
-//	table_handle: Handle to the table.
-//	keys: Any shape.  Keys to look up.
-//
-//
-// Returns Same shape as `keys`.  Values found in the table, or `default_values`
-// for missing keys.
-func LookupTableFindV2(scope *Scope, table_handle tf.Output, keys tf.Output, default_value tf.Output) (values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LookupTableFindV2",
-		Input: []tf.Input{
-			table_handle, keys, default_value,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ShapeAttr is an optional argument to Shape.
-type ShapeAttr func(optionalAttr)
-
-// ShapeOutType sets the optional out_type attribute to value.
-// If not specified, defaults to DT_INT32
-func ShapeOutType(value tf.DataType) ShapeAttr {
-	return func(m optionalAttr) {
-		m["out_type"] = value
-	}
-}
-
-// Returns the shape of a tensor.
-//
-// This operation returns a 1-D integer tensor representing the shape of `input`.
-//
-// For example:
-//
-// ```
-// # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
-// shape(t) ==> [2, 2, 3]
-// ```
-func Shape(scope *Scope, input tf.Output, optional ...ShapeAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Shape",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Inverse 3D fast Fourier transform.
 //
 // Computes the inverse 3-dimensional discrete Fourier transform over the
@@ -47370,6 +47017,59 @@ func CheckNumerics(scope *Scope, tensor tf.Output, message string) (output tf.Ou
 	return op.Output(0)
 }
 
+// Looks up keys in a table, outputs the corresponding values.
+//
+// The tensor `keys` must of the same type as the keys of the table.
+// The output `values` is of the type of the table values.
+//
+// The scalar `default_value` is the value output for keys not present in the
+// table. It must also be of the same type as the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//
+//
+// Returns Same shape as `keys`.  Values found in the table, or `default_values`
+// for missing keys.
+func LookupTableFindV2(scope *Scope, table_handle tf.Output, keys tf.Output, default_value tf.Output) (values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableFindV2",
+		Input: []tf.Input{
+			table_handle, keys, default_value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes inverse hyperbolic sine of x element-wise.
+//
+//   Given an input tensor, this function computes inverse hyperbolic sine
+//   for every element in the tensor. Both input and output has a range of
+//   `[-inf, inf]`.
+//
+//   ```python
+//   x = tf.constant([-float("inf"), -2, -0.5, 1, 1.2, 200, 10000, float("inf")])
+//   tf.math.asinh(x) ==> [-inf -1.4436355 -0.4812118 0.8813736 1.0159732 5.991471 9.903487 inf]
+//   ```
+func Asinh(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Asinh",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Wraps the XLA DynamicSlice operator, documented at
 //
 //  https://www.tensorflow.org/performance/xla/operation_semantics#dynamicslice
@@ -47660,6 +47360,277 @@ func Snapshot(scope *Scope, input tf.Output) (output tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Creates a dataset that emits the outputs of `input_dataset` `count` times.
+//
+// Arguments:
+//
+//	count: A scalar representing the number of times that `input_dataset` should
+// be repeated. A value of `-1` indicates that it should be repeated infinitely.
+//
+//
+func RepeatDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "RepeatDataset",
+		Input: []tf.Input{
+			input_dataset, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Converts a dense tensor to a (possibly batched) CSRSparseMatrix.
+//
+// Arguments:
+//	dense_input: A Dense tensor.
+//	indices: Indices of nonzero elements.
+//
+// Returns A (possibly batched) CSRSparseMatrix.
+func DenseToCSRSparseMatrix(scope *Scope, dense_input tf.Output, indices tf.Output) (sparse_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DenseToCSRSparseMatrix",
+		Input: []tf.Input{
+			dense_input, indices,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a tensor filled with a scalar value.
+//
+// This operation creates a tensor of shape `dims` and fills it with `value`.
+//
+// For example:
+//
+// ```
+// # Output tensor has shape [2, 3].
+// fill([2, 3], 9) ==> [[9, 9, 9]
+//                      [9, 9, 9]]
+// ```
+//
+// `tf.fill` differs from `tf.constant` in a few ways:
+//
+// *   `tf.fill` only supports scalar contents, whereas `tf.constant` supports
+//     Tensor values.
+// *   `tf.fill` creates an Op in the computation graph that constructs the actual
+//     Tensor value at runtime. This is in contrast to `tf.constant` which embeds
+//     the entire Tensor into the graph with a `Const` node.
+// *   Because `tf.fill` evaluates at graph runtime, it supports dynamic shapes
+//     based on other runtime Tensors, unlike `tf.constant`.
+//
+// Arguments:
+//	dims: 1-D. Represents the shape of the output tensor.
+//	value: 0-D (scalar). Value to fill the returned tensor.
+//
+// @compatibility(numpy)
+// Equivalent to np.full
+// @end_compatibility
+func Fill(scope *Scope, dims tf.Output, value tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Fill",
+		Input: []tf.Input{
+			dims, value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Sends `input` to all devices that are connected to the output.
+//
+// Sends `input` to all devices that are connected to the output.
+//
+// The graph should be constructed so that all ops connected to the output have a
+// valid device assignment, and the op itself is assigned one of these devices.
+//
+// input: The input to the broadcast.
+// output: The same as input.
+// shape: The shape of the input tensor.
+//
+func NcclBroadcast(scope *Scope, input tf.Output, shape tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"shape": shape}
+	opspec := tf.OpSpec{
+		Type: "NcclBroadcast",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes cos of x element-wise.
+//
+//   Given an input tensor, this function computes cosine of every
+//   element in the tensor. Input range is `(-inf, inf)` and
+//   output range is `[-1,1]`. If input lies outside the boundary, `nan`
+//   is returned.
+//
+//   ```python
+//   x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 200, 10000, float("inf")])
+//   tf.math.cos(x) ==> [nan -0.91113025 0.87758255 0.5403023 0.36235774 0.48718765 -0.95215535 nan]
+//   ```
+func Cos(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Cos",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Pads a tensor.
+//
+// This operation pads `input` according to the `paddings` and `constant_values`
+// you specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is
+// the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+// how many padding values to add before the contents of `input` in that dimension,
+// and `paddings[D, 1]` indicates how many padding values to add after the contents
+// of `input` in that dimension. `constant_values` is a scalar tensor of the same
+// type as `input` that indicates the value to use for padding `input`.
+//
+// The padded size of each dimension D of the output is:
+//
+// `paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+//
+// For example:
+//
+// ```
+// # 't' is [[1, 1], [2, 2]]
+// # 'paddings' is [[1, 1], [2, 2]]
+// # 'constant_values' is 0
+// # rank of 't' is 2
+// pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
+//                       [0, 0, 1, 1, 0, 0]
+//                       [0, 0, 2, 2, 0, 0]
+//                       [0, 0, 0, 0, 0, 0]]
+// ```
+func PadV2(scope *Scope, input tf.Output, paddings tf.Output, constant_values tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "PadV2",
+		Input: []tf.Input{
+			input, paddings, constant_values,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ShapeAttr is an optional argument to Shape.
+type ShapeAttr func(optionalAttr)
+
+// ShapeOutType sets the optional out_type attribute to value.
+// If not specified, defaults to DT_INT32
+func ShapeOutType(value tf.DataType) ShapeAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// Returns the shape of a tensor.
+//
+// This operation returns a 1-D integer tensor representing the shape of `input`.
+//
+// For example:
+//
+// ```
+// # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+// shape(t) ==> [2, 2, 3]
+// ```
+func Shape(scope *Scope, input tf.Output, optional ...ShapeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Shape",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// QueueEnqueueManyV2Attr is an optional argument to QueueEnqueueManyV2.
+type QueueEnqueueManyV2Attr func(optionalAttr)
+
+// QueueEnqueueManyV2TimeoutMs sets the optional timeout_ms attribute to value.
+//
+// value: If the queue is too full, this operation will block for up
+// to timeout_ms milliseconds.
+// Note: This option is not supported yet.
+// If not specified, defaults to -1
+func QueueEnqueueManyV2TimeoutMs(value int64) QueueEnqueueManyV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_ms"] = value
+	}
+}
+
+// Enqueues zero or more tuples of one or more tensors in the given queue.
+//
+// This operation slices each component tensor along the 0th dimension to
+// make multiple queue elements. All of the tuple components must have the
+// same size in the 0th dimension.
+//
+// The components input has k elements, which correspond to the components of
+// tuples stored in the given queue.
+//
+// N.B. If the queue is full, this operation will block until the given
+// elements have been enqueued (or 'timeout_ms' elapses, if specified).
+//
+// Arguments:
+//	handle: The handle to a queue.
+//	components: One or more tensors from which the enqueued tensors should
+// be taken.
+//
+// Returns the created operation.
+func QueueEnqueueManyV2(scope *Scope, handle tf.Output, components []tf.Output, optional ...QueueEnqueueManyV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QueueEnqueueManyV2",
+		Input: []tf.Input{
+			handle, tf.OutputList(components),
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // AbortAttr is an optional argument to Abort.
@@ -48730,6 +48701,78 @@ func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_
 	return op.Output(0)
 }
 
+// OrderedMapPeekAttr is an optional argument to OrderedMapPeek.
+type OrderedMapPeekAttr func(optionalAttr)
+
+// OrderedMapPeekCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func OrderedMapPeekCapacity(value int64) OrderedMapPeekAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// OrderedMapPeekMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func OrderedMapPeekMemoryLimit(value int64) OrderedMapPeekAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// OrderedMapPeekContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func OrderedMapPeekContainer(value string) OrderedMapPeekAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// OrderedMapPeekSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func OrderedMapPeekSharedName(value string) OrderedMapPeekAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op peeks at the values at the specified key.  If the
+//
+// underlying container does not contain this key
+// this op will block until it does.   This Op is optimized for
+// performance.
+func OrderedMapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...OrderedMapPeekAttr) (values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "OrderedMapPeek",
+		Input: []tf.Input{
+			key, indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("OrderedMapPeek", err)
+		return
+	}
+	return values
+}
+
 // DecodeRawAttr is an optional argument to DecodeRaw.
 type DecodeRawAttr func(optionalAttr)
 
@@ -49228,113 +49271,6 @@ func NonMaxSuppressionV5(scope *Scope, boxes tf.Output, scores tf.Output, max_ou
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// QueueEnqueueV2Attr is an optional argument to QueueEnqueueV2.
-type QueueEnqueueV2Attr func(optionalAttr)
-
-// QueueEnqueueV2TimeoutMs sets the optional timeout_ms attribute to value.
-//
-// value: If the queue is full, this operation will block for up to
-// timeout_ms milliseconds.
-// Note: This option is not supported yet.
-// If not specified, defaults to -1
-func QueueEnqueueV2TimeoutMs(value int64) QueueEnqueueV2Attr {
-	return func(m optionalAttr) {
-		m["timeout_ms"] = value
-	}
-}
-
-// Enqueues a tuple of one or more tensors in the given queue.
-//
-// The components input has k elements, which correspond to the components of
-// tuples stored in the given queue.
-//
-// N.B. If the queue is full, this operation will block until the given
-// element has been enqueued (or 'timeout_ms' elapses, if specified).
-//
-// Arguments:
-//	handle: The handle to a queue.
-//	components: One or more tensors from which the enqueued tensors should be taken.
-//
-// Returns the created operation.
-func QueueEnqueueV2(scope *Scope, handle tf.Output, components []tf.Output, optional ...QueueEnqueueV2Attr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QueueEnqueueV2",
-		Input: []tf.Input{
-			handle, tf.OutputList(components),
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-//     Subtracts `v` into specified rows of `x`.
-//
-//     Computes y = x; y[i, :] -= v; return y.
-//
-// Arguments:
-//	x: A `Tensor` of type T.
-//	i: A vector. Indices into the left-most dimension of `x`.
-//	v: A `Tensor` of type T. Same dimension sizes as x except the first dimension, which must be the same as i's size.
-//
-// Returns A `Tensor` of type T. An alias of `x`. The content of `y` is undefined if there are duplicates in `i`.
-func InplaceSub(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "InplaceSub",
-		Input: []tf.Input{
-			x, i, v,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// BoostedTreesQuantileStreamResourceHandleOpAttr is an optional argument to BoostedTreesQuantileStreamResourceHandleOp.
-type BoostedTreesQuantileStreamResourceHandleOpAttr func(optionalAttr)
-
-// BoostedTreesQuantileStreamResourceHandleOpContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func BoostedTreesQuantileStreamResourceHandleOpContainer(value string) BoostedTreesQuantileStreamResourceHandleOpAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// BoostedTreesQuantileStreamResourceHandleOpSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func BoostedTreesQuantileStreamResourceHandleOpSharedName(value string) BoostedTreesQuantileStreamResourceHandleOpAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Creates a handle to a BoostedTreesQuantileStreamResource.
-func BoostedTreesQuantileStreamResourceHandleOp(scope *Scope, optional ...BoostedTreesQuantileStreamResourceHandleOpAttr) (resource tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "BoostedTreesQuantileStreamResourceHandleOp",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // LogUniformCandidateSamplerAttr is an optional argument to LogUniformCandidateSampler.
@@ -49976,6 +49912,27 @@ func InplaceAdd(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Outpu
 	return op.Output(0)
 }
 
+// An op used by XLA SPMD partitioner to switch from manual partitioning to
+//
+// automatic partitioning. It converts the shard-shaped, manually partitioned input
+// into full-shaped tensor to be partitioned automatically with the same sharding
+// used by manual partitioning.
+func XlaSpmdShardToFullShape(scope *Scope, input tf.Output, manual_sharding string, full_shape tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"manual_sharding": manual_sharding, "full_shape": full_shape}
+	opspec := tf.OpSpec{
+		Type: "XlaSpmdShardToFullShape",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Updates the table to associates keys with values.
 //
 // The tensor `keys` must be of the same type as the keys of the table.
@@ -50404,6 +50361,113 @@ func XlaGather(scope *Scope, operand tf.Output, start_indices tf.Output, slice_s
 			operand, start_indices, slice_sizes,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// QueueEnqueueV2Attr is an optional argument to QueueEnqueueV2.
+type QueueEnqueueV2Attr func(optionalAttr)
+
+// QueueEnqueueV2TimeoutMs sets the optional timeout_ms attribute to value.
+//
+// value: If the queue is full, this operation will block for up to
+// timeout_ms milliseconds.
+// Note: This option is not supported yet.
+// If not specified, defaults to -1
+func QueueEnqueueV2TimeoutMs(value int64) QueueEnqueueV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_ms"] = value
+	}
+}
+
+// Enqueues a tuple of one or more tensors in the given queue.
+//
+// The components input has k elements, which correspond to the components of
+// tuples stored in the given queue.
+//
+// N.B. If the queue is full, this operation will block until the given
+// element has been enqueued (or 'timeout_ms' elapses, if specified).
+//
+// Arguments:
+//	handle: The handle to a queue.
+//	components: One or more tensors from which the enqueued tensors should be taken.
+//
+// Returns the created operation.
+func QueueEnqueueV2(scope *Scope, handle tf.Output, components []tf.Output, optional ...QueueEnqueueV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QueueEnqueueV2",
+		Input: []tf.Input{
+			handle, tf.OutputList(components),
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// BoostedTreesQuantileStreamResourceHandleOpAttr is an optional argument to BoostedTreesQuantileStreamResourceHandleOp.
+type BoostedTreesQuantileStreamResourceHandleOpAttr func(optionalAttr)
+
+// BoostedTreesQuantileStreamResourceHandleOpContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func BoostedTreesQuantileStreamResourceHandleOpContainer(value string) BoostedTreesQuantileStreamResourceHandleOpAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// BoostedTreesQuantileStreamResourceHandleOpSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func BoostedTreesQuantileStreamResourceHandleOpSharedName(value string) BoostedTreesQuantileStreamResourceHandleOpAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Creates a handle to a BoostedTreesQuantileStreamResource.
+func BoostedTreesQuantileStreamResourceHandleOp(scope *Scope, optional ...BoostedTreesQuantileStreamResourceHandleOpAttr) (resource tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesQuantileStreamResourceHandleOp",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+//     Subtracts `v` into specified rows of `x`.
+//
+//     Computes y = x; y[i, :] -= v; return y.
+//
+// Arguments:
+//	x: A `Tensor` of type T.
+//	i: A vector. Indices into the left-most dimension of `x`.
+//	v: A `Tensor` of type T. Same dimension sizes as x except the first dimension, which must be the same as i's size.
+//
+// Returns A `Tensor` of type T. An alias of `x`. The content of `y` is undefined if there are duplicates in `i`.
+func InplaceSub(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InplaceSub",
+		Input: []tf.Input{
+			x, i, v,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -51039,27 +51103,6 @@ func CollectiveGatherV2(scope *Scope, input tf.Output, group_size tf.Output, gro
 		Type: "CollectiveGatherV2",
 		Input: []tf.Input{
 			input, group_size, group_key, instance_key, tf.OutputList(ordering_token),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// An op used by XLA SPMD partitioner to switch from manual partitioning to
-//
-// automatic partitioning. It converts the shard-shaped, manually partitioned input
-// into full-shaped tensor to be partitioned automatically with the same sharding
-// used by manual partitioning.
-func XlaSpmdShardToFullShape(scope *Scope, input tf.Output, manual_sharding string, full_shape tf.Shape) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"manual_sharding": manual_sharding, "full_shape": full_shape}
-	opspec := tf.OpSpec{
-		Type: "XlaSpmdShardToFullShape",
-		Input: []tf.Input{
-			input,
 		},
 		Attrs: attrs,
 	}
