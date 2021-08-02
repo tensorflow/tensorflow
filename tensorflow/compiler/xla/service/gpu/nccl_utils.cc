@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 namespace xla {
 namespace gpu {
@@ -232,37 +231,6 @@ StatusOr<std::unique_ptr<NcclClique>> CreateNcclClique(
   return std::make_unique<NcclClique>(std::move(comms_by_device_ordinal));
 }
 
-struct NcclCliqueParticipantData : public ParticipantData {
-  // For running in StreamExecutor. To be deprecated after transitioning to
-  // TFRT.
-  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
-                            int64_t device_ordinal, se::Stream* stream)
-      : ParticipantData(rendezvous_key),
-        device_ordinal(device_ordinal),
-        stream(stream) {}
-
-  // For running in TFRT.
-  NcclCliqueParticipantData(const RendezvousKey& rendezvous_key,
-                            se::gpu::GpuContextHandle context)
-      : ParticipantData(rendezvous_key), stream(nullptr), context(context) {}
-
-  int64 device_ordinal;
-  se::Stream* stream;
-  se::gpu::GpuContextHandle context;
-
-  std::string ToString() const override {
-    if (stream != nullptr) {
-      return absl::StrFormat(
-          "NcclCliqueParticipantData{rendezvous_key=%s, "
-          "device_ordinal=%d, stream=%p}",
-          rendezvous_key.ToString(), device_ordinal, stream);
-    }
-    return absl::StrFormat(
-        "NcclCliqueParticipantData{rendezvous_key=%s, context=%p}",
-        rendezvous_key.ToString(), context);
-  }
-};
-
 class NcclCliqueRendezvous
     : public Rendezvous<NcclCliqueParticipantData, LockedNcclClique> {
  public:
@@ -389,25 +357,24 @@ void NcclCliqueMap::ForEach(
 }
 
 StatusOr<LockedNcclClique> AcquireNcclClique(
-    const RendezvousKey& rendezvous_key, int local_device_ordinal,
-    se::Stream* stream, const std::vector<LocalParticipant>& local_participants,
+    const NcclCliqueParticipantData& participant,
+    const std::vector<LocalParticipant>& local_participants,
     const NcclUniqueIdCallback* callback) {
-  VLOG(2) << "Rendezvous key: " << rendezvous_key.ToString()
+  VLOG(2) << "Rendezvous key: " << participant.rendezvous_key.ToString()
           << ", local participants: "
           << LocalParticipantsToString(local_participants);
 
   static auto& rendezvous_map =
       *new RefcountingHashMap<RendezvousKey, NcclCliqueRendezvous>();
 
-  NcclCliqueParticipantData participant(rendezvous_key, local_device_ordinal,
-                                        stream);
   return NcclCliqueRendezvous::SubmitParticipant(
       /*rendezvous_getter=*/
-      [&] {
+      [&, participant] {
         return rendezvous_map.GetOrCreateIfAbsent(
-            rendezvous_key, [&](const RendezvousKey& rendezvous_key) {
+            participant.rendezvous_key,
+            [&](const RendezvousKey& rendezvous_key) {
               return std::make_unique<NcclCliqueRendezvous>(
-                  rendezvous_key, local_participants, callback);
+                  participant.rendezvous_key, local_participants, callback);
             });
       },
       participant);
