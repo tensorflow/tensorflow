@@ -178,15 +178,6 @@ struct PackJITCompileOpPattern
                           tmp_module_builder.getUnitAttr());
     jit_function->setAttr(kEmitCInterfaceAttrName,
                           tmp_module_builder.getUnitAttr());
-    jit_function->setAttr("tile_sizes",
-                          tmp_module_builder.getI64ArrayAttr(tile_sizes));
-    jit_function->setAttr("unroll_factors",
-                          tmp_module_builder.getI64ArrayAttr(unroll_factors));
-    jit_function->setAttr(
-        "max_supported_rank",
-        tmp_module_builder.getI64IntegerAttr(max_supported_rank));
-    jit_function->setAttr("cpu_codegen",
-                          tmp_module_builder.getBoolAttr(cpu_codegen));
     jit_function.getBody().takeBody(op.getBodyRegion());
     tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
     tmp_module_builder.create<ReturnOp>(loc, yield_op.result());
@@ -199,7 +190,11 @@ struct PackJITCompileOpPattern
 
     // Finally, create the new JIT compile op.
     rewriter.replaceOpWithNewOp<tf_framework::JITCompileFromStrOp>(
-        op, op->getResultTypes(), op.ctx(), rewriter.getStringAttr(code));
+        op, op->getResultTypes(), op.ctx(), rewriter.getStringAttr(code),
+        rewriter.getI64ArrayAttr(tile_sizes),
+        rewriter.getI64ArrayAttr(unroll_factors),
+        rewriter.getI64IntegerAttr(max_supported_rank),
+        rewriter.getBoolAttr(cpu_codegen));
 
     return success();
   }
@@ -249,13 +244,9 @@ void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
                                        llvm::ArrayRef<int64_t> unroll_factors,
                                        int64_t max_supported_rank,
                                        bool cpu_codegen) {
-  // clang-format off
-  patterns->insert<
-      TFToJITInvocationsPattern>(ctx);
-  patterns->insert<
-      PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors,
-                               max_supported_rank, cpu_codegen);
-  // clang-format on
+  patterns->insert<TFToJITInvocationsPattern>(ctx);
+  patterns->insert<PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors,
+                                            max_supported_rank, cpu_codegen);
 }
 
 std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(

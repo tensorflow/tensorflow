@@ -1,6 +1,5 @@
-// RUN: kernel-gen-opt %s -pass-pipeline='builtin.func(tf-to-jit-invocation{ \
-// RUN:   tile-sizes=1,2,3 unroll-factors=3,2,1 cpu-codegen=false \
-// RUN:   max-supported-rank=32})' | \
+// RUN: kernel-gen-opt %s --tf-to-jit-invocation="tile-sizes=1,2,3 \
+// RUN:   unroll-factors=3,2,1 max-supported-rank=32 cpu-codegen=false" | \
 // RUN: FileCheck %s
 
 // CHECK-LABEL: @rint
@@ -10,12 +9,8 @@ func @rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-SAME: "
   // CHECK-SAME: module {
   // CHECK-SAME: func @main(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {
-  // CHECK-DAG:   llvm.emit_c_interface,
-  // CHECK-DAG:   tf_entry
-  // CHECK-DAG:   max_supported_rank = 32 : i64
-  // CHECK-DAG:   tile_sizes = [1, 2, 3]
-  // CHECK-DAG:   unroll_factors = [3, 2, 1]
-  // CHECK-DAG:   cpu_codegen = false
+  // CHECK-SAME:   llvm.emit_c_interface,
+  // CHECK-SAME:   tf_entry
   // CHECK-SAME: } {
   // CHECK-SAME: %0 = \22tf.Tanh\22(%arg0)
   // CHECK-SAME: %1 = \22tf.Rint\22(%0)
@@ -23,6 +18,12 @@ func @rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-SAME: }
   // CHECK-SAME: }
   // CHECK-SAME: "
+  // CHECK-SAME: {
+  // CHECK-SAME:   cpuCodegen = false
+  // CHECK-SAME:   maxSupportedRank = 32 : i64
+  // CHECK-SAME:   tileSizes = [1, 2, 3]
+  // CHECK-SAME:   unrollFactors = [3, 2, 1]
+  // CHECK-SAME: }
   // CHECK: %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG]])
   // CHECK: return %[[RES]]
   %0 = "tf.Tanh"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
