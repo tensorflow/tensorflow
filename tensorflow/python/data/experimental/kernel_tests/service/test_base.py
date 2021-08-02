@@ -35,10 +35,6 @@ NO_WORK_DIR = ""
 TEST_HEARTBEAT_INTERVAL_MS = 100
 TEST_DISPATCHER_TIMEOUT_MS = 1000
 PROTOCOL = "grpc"
-# Some clusters may take a long time to shut down due to blocked outstanding
-# RPCs. We store the clusters here so that they are destroyed at end of process
-# instead of slowing down unit tests.
-GLOBAL_CLUSTERS = set()
 
 
 def all_cluster_configurations():
