@@ -27,13 +27,14 @@ namespace tensorflow {
 // This can serve as a hashtable key, where the value might be the autotuned
 // algorithm we choose for the conv.
 //
-// All of the data in this class is stored in the ConvParametersProto, so it can
-// be easily serialized (for the purposes of ahead-of-time autotuning).
+// All of the data in this class other than the device_id is stored in the
+// ConvParametersProto, so it can be easily serialized (for the purposes of
+// ahead-of-time autotuning).
 //
-// Note: The device_id (in the dense range 0, 1, ...) passed to the constructor
-// is translated into a "device model" string that's stored in the proto.  This
-// means that if GPUs X and Y are of the same model, two otherwise identical
-// ConvParameters with different device_ids X and Y will compare equal.
+// When using the cudnn frontend API, two autotuning results for two different
+// GPUs of the same model are not interchangeable, because an autotuning result
+// includes a cudnn execution plan, which is tied to the GPU.  As a result, we
+// need to create separate ConvParameters objects for them.
 class ConvParameters {
  public:
   ConvParameters(int64_t batch, int64_t in_depths, absl::Span<const int64_t> in,
@@ -47,7 +48,7 @@ class ConvParameters {
                  stream_executor::dnn::ActivationMode activation_mode =
                      stream_executor::dnn::ActivationMode::kNone);
 
-  explicit ConvParameters(const ConvParametersProto& proto);
+  ConvParameters(int device_id, const ConvParametersProto& proto);
 
   bool operator==(const ConvParameters& other) const;
 
@@ -61,8 +62,9 @@ class ConvParameters {
   const ConvParametersProto& proto() const { return proto_; }
 
  private:
-  uint64 hash_code_;
+  int device_id_;
   ConvParametersProto proto_;
+  uint64 hash_code_;
 };
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

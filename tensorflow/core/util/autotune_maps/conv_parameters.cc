@@ -90,7 +90,7 @@ string DeviceIdToIdentifier(int device_id) {
   }
 }
 
-uint64 ComputeHash(const ConvParametersProto& proto) {
+uint64 ComputeHash(int device_id, const ConvParametersProto& proto) {
   string proto_serialized_string;
   // Use scope to make sure StringOutputStream is destroyed so that contents
   // have been fully written to proto_serialized_string.
@@ -102,7 +102,7 @@ uint64 ComputeHash(const ConvParametersProto& proto) {
     stream.SetSerializationDeterministic(true);
     proto.SerializeToCodedStream(&stream);
   }
-  return Hash64(proto_serialized_string);
+  return Hash64Combine(device_id, Hash64(proto_serialized_string));
 }
 }  // namespace
 
@@ -113,7 +113,8 @@ ConvParameters::ConvParameters(
     const absl::Span<const int64_t> stride,
     const absl::Span<const int64_t> padding, DataType dtype, int device_id,
     int group_count, bool has_side_input,
-    stream_executor::dnn::ActivationMode activation_mode) {
+    stream_executor::dnn::ActivationMode activation_mode)
+    : device_id_(device_id) {
   proto_.set_batch(batch);
   proto_.set_in_depths(in_depths);
   *proto_.mutable_in() = {in.begin(), in.end()};
@@ -128,16 +129,17 @@ ConvParameters::ConvParameters(
   proto_.mutable_fusion()->set_has_side_input(has_side_input);
   proto_.mutable_fusion()->set_activation_mode(activation_mode);
   proto_.set_device_identifier(DeviceIdToIdentifier(device_id));
-  hash_code_ = ComputeHash(proto_);
+  hash_code_ = ComputeHash(device_id_, proto_);
 }
 
-ConvParameters::ConvParameters(const ConvParametersProto& proto)
-    : proto_(proto) {
-  hash_code_ = ComputeHash(proto_);
-}
+ConvParameters::ConvParameters(int device_id, const ConvParametersProto& proto)
+    : device_id_(device_id),
+      proto_(proto),
+      hash_code_(ComputeHash(device_id, proto_)) {}
 
 bool ConvParameters::operator==(const ConvParameters& other) const {
-  return MessageDifferencer::Equals(this->proto_, other.proto_);
+  return device_id_ == other.device_id_ &&
+         MessageDifferencer::Equals(this->proto_, other.proto_);
 }
 
 string ConvParameters::ToString() const { return proto_.DebugString(); }
