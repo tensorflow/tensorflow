@@ -156,7 +156,7 @@ func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr<i8>, !llvm.ptr<i8>, i64, i1, i1) -> !llvm.ptr<i8>
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr<i8>, !llvm.ptr<i8>, i64, !llvm.ptr<i64>, i64, !llvm.ptr<i64>, i64, i1, i1) -> !llvm.ptr<i8>
 // CHECK: llvm.mlir.global internal constant @[[CODE:jit_module_code_[0-9]+]]("placeholder")
 
 // CHECK: @jit_compile_from_str(%[[CTX:.*]]: !llvm.ptr<i8>)
@@ -165,10 +165,39 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: %[[ADDR:.*]] = llvm.mlir.addressof @[[CODE]]
   // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : index)
   // CHECK: %[[CODE_PTR:.*]] = llvm.getelementptr %[[ADDR]][%[[C0]], %[[C0]]]
+
+  // Create stack-allocated array for the tile sizes.
+  // CHECK: %[[NUM_TILE_SIZES:.*]] = llvm.mlir.constant(3 : i64)
+  // CHECK: %[[TILE_SIZES:.*]] = llvm.alloca %[[NUM_TILE_SIZES]] x i64
+  // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : i64)
+  // CHECK: %[[PTR:.*]] = llvm.getelementptr %[[TILE_SIZES]][%[[C0]]]
+  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64)
+  // CHECK: llvm.store %[[C1]], %[[PTR]]
+  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64)
+  // CHECK: %[[PTR:.*]] = llvm.getelementptr %[[TILE_SIZES]][%[[C1]]]
+  // CHECK: %[[C2:.*]] = llvm.mlir.constant(2 : i64)
+  // CHECK: llvm.store %[[C2]], %[[PTR]]
+  // CHECK: %[[C2:.*]] = llvm.mlir.constant(2 : i64)
+  // CHECK: %[[PTR:.*]] = llvm.getelementptr %[[TILE_SIZES]][%[[C2]]]
+  // CHECK: %[[C3:.*]] = llvm.mlir.constant(3 : i64)
+  // CHECK: llvm.store %[[C3]], %[[PTR]]
+
+  // Create stack-allocated array for the unroll factors.
+  // CHECK: %[[NUM_UNROLL_FACTORS:.*]] = llvm.mlir.constant(1 : i64) : i64
+  // CHECK: %[[UNROLL_FACTORS:.*]] = llvm.alloca %[[NUM_UNROLL_FACTORS]] x i64
+  // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : i64)
+  // CHECK: %[[PTR:.*]] = llvm.getelementptr %[[UNROLL_FACTORS]][%[[C0]]]
+  // CHECK: %[[C4:.*]] = llvm.mlir.constant(4 : i64)
+  // CHECK: llvm.store %[[C4]], %[[PTR]]
+
   // CHECK: %[[MAX_RANK:.*]] = llvm.mlir.constant(3 : i64)
   // CHECK: %[[ENABLE_FTZ:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[CPU_CODEGEN:.*]] = llvm.mlir.constant(false)
-  // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile(%[[CTX]], %[[CODE_PTR]], %[[MAX_RANK]], %[[ENABLE_FTZ]], %[[CPU_CODEGEN]])
+  // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile
+  // CHECK-SAME: %[[CTX]], %[[CODE_PTR]],
+  // CHECK-SAME: %[[NUM_TILE_SIZES]], %[[TILE_SIZES]],
+  // CHECK-SAME: %[[NUM_UNROLL_FACTORS]], %[[UNROLL_FACTORS]],
+  // CHECK-SAME: %[[MAX_RANK]], %[[ENABLE_FTZ]], %[[CPU_CODEGEN]]
   // CHECK: llvm.return %[[RES]]
   %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
       tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,

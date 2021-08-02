@@ -91,6 +91,42 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
  protected:
   virtual StringRef GetFuncName() const = 0;
   virtual Type GetFuncType() const = 0;
+
+  std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
+      Location loc, unsigned int integer_width, llvm::Optional<ArrayAttr> attr,
+      ConversionPatternRewriter *rewriter) const {
+    Type int_type = rewriter->getIntegerType(integer_width);
+    Type llvm_ptr_type = LLVM::LLVMPointerType::get(int_type);
+
+    // If the attribute is missing or empty, set the element count to 0 and
+    // return NULL.
+    if (!attr.hasValue() || attr.getValue().empty()) {
+      Value zero = rewriter->create<LLVM::ConstantOp>(
+          loc, int_type, rewriter->getIntegerAttr(int_type, 0));
+      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, llvm_ptr_type);
+      return std::make_pair(zero, null_ptr);
+    }
+
+    // Allocate array to store the elements.
+    auto &array_attr = attr.getValue();
+    Value array_size = rewriter->create<LLVM::ConstantOp>(
+        loc, int_type, rewriter->getIntegerAttr(int_type, array_attr.size()));
+    Value array_ptr = rewriter->create<LLVM::AllocaOp>(
+        loc, llvm_ptr_type, array_size, /*alignment=*/0);
+
+    for (auto &dim : llvm::enumerate(array_attr)) {
+      Value index = rewriter->create<LLVM::ConstantOp>(
+          loc, int_type, rewriter->getIntegerAttr(int_type, dim.index()));
+      Value elem_ptr =
+          rewriter->create<LLVM::GEPOp>(loc, llvm_ptr_type, array_ptr, index);
+      Value elem = rewriter->create<LLVM::ConstantOp>(
+          loc, int_type,
+          rewriter->getIntegerAttr(int_type,
+                                   dim.value().cast<IntegerAttr>().getInt()));
+      rewriter->create<LLVM::StoreOp>(loc, elem, elem_ptr);
+    }
+    return std::make_pair(array_size, array_ptr);
+  }
 };
 
 class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
@@ -128,8 +164,9 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
                                        : -1));
 
     // Convert `candidate_input_indices`.
-    auto candidates_count_and_ptr = ConvertI32ArrayAttrToStackAllocatedArray(
-        loc, tf_alloc_op.input_indices(), &rewriter);
+    auto candidates_count_and_ptr =
+        ConvertIntegerArrayAttrToStackAllocatedArray(
+            loc, /*integer_width=*/32, tf_alloc_op.input_indices(), &rewriter);
 
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
@@ -204,42 +241,6 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     }
     return memref_desc;
   }
-
-  std::pair<Value, Value> ConvertI32ArrayAttrToStackAllocatedArray(
-      Location loc, llvm::Optional<ArrayAttr> attr,
-      ConversionPatternRewriter *rewriter) const {
-    Type llvm_i32_type = IntegerType::get(getDialect().getContext(), 32);
-    Type llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
-
-    // If the attribute is missing or empty, set the element count to 0 and
-    // return NULL.
-    if (!attr.hasValue() || attr.getValue().empty()) {
-      Value zero = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type, rewriter->getI32IntegerAttr(0));
-      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, llvm_i32_ptr_type);
-      return std::make_pair(zero, null_ptr);
-    }
-
-    // Allocate array to store the elements.
-    auto &array_attr = attr.getValue();
-    Value array_size = rewriter->create<LLVM::ConstantOp>(
-        loc, llvm_i32_type, rewriter->getI32IntegerAttr(array_attr.size()));
-    Value array_ptr = rewriter->create<LLVM::AllocaOp>(
-        loc, llvm_i32_ptr_type, array_size, /*alignment=*/0);
-
-    for (auto &dim : llvm::enumerate(array_attr)) {
-      Value index = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type, rewriter->getI32IntegerAttr(dim.index()));
-      Value elem_ptr = rewriter->create<LLVM::GEPOp>(loc, llvm_i32_ptr_type,
-                                                     array_ptr, index);
-      Value elem = rewriter->create<LLVM::ConstantOp>(
-          loc, llvm_i32_type,
-          rewriter->getI32IntegerAttr(
-              dim.value().cast<IntegerAttr>().getInt()));
-      rewriter->create<LLVM::StoreOp>(loc, elem, elem_ptr);
-    }
-    return std::make_pair(array_size, array_ptr);
-  }
 };
 
 class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
@@ -285,6 +286,12 @@ class JITCompileFromStrOpConverter
     auto loc = op.getLoc();
     Value jit_module_code = CreateOrFindGlobalStringConstant(
         loc, rewriter, kJITCodeGlobalBaseName, op.code());
+    std::pair<Value, Value> tile_sizes =
+        ConvertIntegerArrayAttrToStackAllocatedArray(loc, /*integer_width=*/64,
+                                                     op.tileSizes(), &rewriter);
+    std::pair<Value, Value> unroll_factors =
+        ConvertIntegerArrayAttrToStackAllocatedArray(
+            loc, /*integer_width=*/64, op.unrollFactors(), &rewriter);
     Value max_supported_rank = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI64Type(), op.maxSupportedRankAttr());
     Value enable_ftz = rewriter.create<LLVM::ConstantOp>(
@@ -295,6 +302,8 @@ class JITCompileFromStrOpConverter
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
         llvm::makeArrayRef({transformed.ctx(), jit_module_code,
+                            tile_sizes.first, tile_sizes.second,
+                            unroll_factors.first, unroll_factors.second,
                             max_supported_rank, enable_ftz, cpu_codegen}));
     return success();
   }
@@ -306,9 +315,17 @@ class JITCompileFromStrOpConverter
     auto i8_ptr_ty =
         LLVM::LLVMPointerType::get(IntegerType::get(getContext(), 8));
     auto i64_ty = IntegerType::get(getContext(), 64);
+    Type i64_ptr_ty = LLVM::LLVMPointerType::get(i64_ty);
     auto i1_ty = IntegerType::get(getContext(), 1);
     return LLVM::LLVMFunctionType::get(
-        getVoidPtrType(), {getVoidPtrType(), i8_ptr_ty, i64_ty, i1_ty, i1_ty});
+        getVoidPtrType(), {getVoidPtrType(), /*char* code*/ i8_ptr_ty,
+                           /*int64_t num_tile_sizes*/ i64_ty,
+                           /*int64_t* tile_sizes_ptr*/ i64_ptr_ty,
+                           /*int64_t num_unroll_factors*/ i64_ty,
+                           /*int64_t* unroll_factors_ptr*/ i64_ptr_ty,
+                           /*int64_t max_supported_rank*/ i64_ty,
+                           /*bool enable_ftz*/ i1_ty,
+                           /*bool cpu_codegen*/ i1_ty});
   }
 };
 
