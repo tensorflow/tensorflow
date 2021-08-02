@@ -826,6 +826,7 @@ cc_library(
     testonly = True,
     hdrs = ["test_benchmark.h"],
     deps = [
+        "@com_google_benchmark//:benchmark",
         ":platform",
     ] + tf_platform_deps("test_benchmark"),
 )
@@ -1063,7 +1064,6 @@ cc_library(
         ":stacktrace_handler",
         ":test",
         ":test_benchmark",
-        "//tensorflow/core/platform/default/build_config:test_main",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
