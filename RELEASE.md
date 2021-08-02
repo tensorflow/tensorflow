@@ -91,12 +91,15 @@
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
 *   TF Core:
-    *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
-    *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
+    * Random number generation (RNG) system
+        *   Added argument `alg` to `tf.random.stateless_*` functions to explicitly select the RNG algorithm.
+        *   Added `tf.nn.experimental.stateless_dropout`, a stateless version of `tf.nn.dropout`.
+        *   `tf.random.Generator` now can be created inside the scope of `tf.distribute.experimental.CentralStorageStrategy`.
 *   `tf.data`:
     *   Promoting `tf.data.Options.experimental_deterministic` API to
         `tf.data.Options.deterministic` and deprecating the experimental
         endpoint.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
@@ -249,7 +252,7 @@ This release contains contributions from many people at Google, as well as:
         collective. This parallelizes work on CPU and speeds up the collective
         performance. Default behavior is unchanged.
     *   Add an option `perturb_singular` to `tf.linalg.tridiagonal_solve` that
-        allows solving linear systems with a numerically singular tridiagonal 
+        allows solving linear systems with a numerically singular tridiagonal
         matrix, e.g. for use in inverse iteration.
     *   Added `tf.linalg.eigh_tridiagonal` that computes the eigenvalues of a
         Hermitian tridiagonal matrix.

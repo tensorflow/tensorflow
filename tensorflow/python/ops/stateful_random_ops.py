@@ -427,9 +427,8 @@ class Generator(tracking.AutoTrackable):
       assert alg is not None and state is not None
       if ds_context.has_strategy():
         strat_name = type(ds_context.get_strategy()).__name__
-        # TODO(b/174610856): Support CentralStorageStrategy and
-        #   ParameterServerStrategy.
-        if "CentralStorage" in strat_name or "ParameterServer" in strat_name:
+        # TODO(b/174610856): Support ParameterServerStrategy.
+        if "ParameterServer" in strat_name:
           raise ValueError("%s is not supported yet" % strat_name)
       alg = stateless_random_ops.convert_alg_to_int(alg)
       if isinstance(state, variables.Variable):
@@ -567,7 +566,12 @@ class Generator(tracking.AutoTrackable):
           # Code that operates on all replicas of a variable cannot be saved
           # without retracing.
           values_util.mark_as_unsaveable()
+        if (ds_context.in_cross_replica_context() or
+            "CentralStorage" in type(self._distribution_strategy).__name__):
           # In cross-replica context we need to use strategy.extended.update.
+          # In CentralStorageStrategy we also need to use
+          # strategy.extended.update (even for replica context),
+          # because variable updates here must be within merge_call.
           return ds_context.get_strategy().extended.update(
               self.state, update_fn)
     return update_fn(self.state)
