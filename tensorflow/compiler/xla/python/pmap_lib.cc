@@ -198,8 +198,9 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   // Get dynamic argument signatures.
+  const bool jax_enable_x64 = GetEnableX64();
   for (py::handle arg : arguments.flat_dynamic_args) {
-    auto signature_or_error = xla::PyArgSignatureOfValue(arg, GetEnableX64());
+    auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
     if (!signature_or_error.ok()) {
       return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
     }
