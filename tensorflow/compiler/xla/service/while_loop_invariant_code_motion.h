@@ -35,17 +35,29 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   // Setting `hoist_constants` to false can be help if LICM is run in the mid
   // level HLO pipeline because hoisting constants out of while loop bodies can
   // break optimizations like constant folding.
-  // Setting `hoist_non_constants` to false can be used to hoist only constants.
-  // If provided, `hoist_size_inflation_ratio` will forbid hoisting instructions
-  // where the ratio of the size of the output(s) to the input(s) is larger than
-  // hoist_size_inflation_ratio. This is useful on platforms on which it's
-  // important to prevent blow-ups in memory size.
+  //
+  // Setting `hoist_other` and `hoist_reshapes` to false can be used to hoist
+  // only constants. If provided, `hoist_size_inflation_ratio` will forbid
+  // hoisting instructions where the ratio of the size of the output(s) to the
+  // input(s) is larger than hoist_size_inflation_ratio. This is useful on
+  // platforms on which it's important to prevent blow-ups in memory size.
+  //
+  // If `hoist_reshapes` is true, then reshapes are allowed to be hoisted out of
+  // while loop body by themselves. Otherwise, they are only hoisted out if they
+  // enable other non-trivial computations to be hoisted out.
+  //
+  // Setting `hoist_reshapes` to false can be useful when LICM is run in the
+  // mid level HLO pipeline because the reshapes will often get fused with
+  // consumer instructions, and won't cost anything if not hoisted. However,
+  // any stand alone reshapes after fusion will benefit from hoisting.
   explicit WhileLoopInvariantCodeMotion(
-      bool hoist_constants = false, bool hoist_non_constants = true,
+      bool hoist_constants = false, bool hoist_reshapes = false,
+      bool hoist_other = true,
       absl::optional<float> hoist_size_inflation_ratio = absl::nullopt,
       ShapeSizeFunction shape_size_function = ShapeUtil::ByteSizeOfElements)
       : hoist_constants_(hoist_constants),
-        hoist_non_constants_(hoist_non_constants),
+        hoist_reshapes_(hoist_reshapes),
+        hoist_other_(hoist_other),
         hoist_size_inflation_ratio_(hoist_size_inflation_ratio),
         shape_size_function_(shape_size_function) {}
   ~WhileLoopInvariantCodeMotion() override = default;
@@ -61,7 +73,8 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
       HloInstruction* while_instr);
 
   bool hoist_constants_;
-  bool hoist_non_constants_;
+  bool hoist_reshapes_;
+  bool hoist_other_;
   absl::optional<float> hoist_size_inflation_ratio_;
   ShapeSizeFunction shape_size_function_;
 };
