@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""keras python module.
+"""
+The official Keras Python module
 
-Importing from tensorflow.python.estimator is unsupported
-and will soon break!
+Importing from tensorflow.python.estimator is unsupported and will soon break!
 """
 # pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
 
