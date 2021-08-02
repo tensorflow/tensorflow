@@ -19481,6 +19481,31 @@ def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect, TF_NoConstantFold]>
   // constant folded at the compile time.
 }
 
+def TF_XlaRngBitGeneratorOp : TF_Op<"XlaRngBitGenerator", [NoSideEffect]> {
+  let summary = "Stateless PRNG bit generator.";
+
+  let description = [{
+Wraps the XLA RngBitGenerator operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Int32Tensor, [{The PRNG algorithm to use, one of
+tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.}]>:$algorithm,
+    Arg<TF_Uint64Tensor, [{Initial state for the PRNG algorithm. For THREEFRY, it should be
+a u64[2] and for PHILOX a u64[3].}]>:$initial_state,
+    Arg<TF_I32OrI64Tensor, [{The output shape of the generated data.}]>:$shape
+  );
+
+  let results = (outs
+    TF_Uint64Tensor:$output_key,
+    TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<1>;
+}
+
 def TF_XlaScatterOp : TF_Op<"XlaScatter", [NoSideEffect]> {
   let summary = "Wraps the XLA Scatter operator documented at";
 

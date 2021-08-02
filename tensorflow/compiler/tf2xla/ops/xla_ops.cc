@@ -807,6 +807,39 @@ window_strides: the inter-window strides
 padding: the padding to apply at the start and end of each input dimensions
 )doc");
 
+REGISTER_OP("XlaRngBitGenerator")
+    .Input("algorithm: int32")
+    .Input("initial_state: uint64")
+    .Input("shape: Tshape")
+    .Output("output_key: uint64")
+    .Output("output: dtype")
+    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle algorithm;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &algorithm));
+      shape_inference::ShapeHandle initial_state;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &initial_state));
+
+      c->set_output(0, initial_state);
+      shape_inference::ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output));
+      c->set_output(1, output);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Stateless PRNG bit generator.
+Wraps the XLA RngBitGenerator operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#rngbitgenerator.
+
+algorithm: The PRNG algorithm to use, one of
+  tf.random.Algorithm.{PHILOX, THREEFRY, AUTO_SELECT}.
+initial_state: Initial state for the PRNG algorithm. For THREEFRY, it should be
+  a u64[2] and for PHILOX a u64[3].
+shape: The output shape of the generated data.
+dtype: The type of the tensor.
+)doc");
+
 REGISTER_OP("XlaSelectAndScatter")
     .Input("operand: T")
     .Input("window_dimensions: Tindices")

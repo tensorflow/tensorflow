@@ -121,6 +121,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
   supported_ops->insert(
       OperationName(TF::XlaReduceWindowOp::getOperationName(), context));
   supported_ops->insert(
+      OperationName(TF::XlaRngBitGeneratorOp::getOperationName(), context));
+  supported_ops->insert(
       OperationName(TF::XlaScatterOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaSelectAndScatterOp::getOperationName(), context));
