@@ -1560,6 +1560,25 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "expand_hlo_tuples",
+    srcs = [
+        "lib/Dialect/mhlo/transforms/expand_hlo_tuples.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":pass_details",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
     name = "pass_details",
     hdrs = [
         "include/mlir-hlo/Dialect/mhlo/transforms/PassDetail.h",
@@ -1627,6 +1646,7 @@ cc_library(
         ":broadcast_propagation",
         ":buffer_reuse",
         ":chlo_legalize_to_hlo",
+        ":expand_hlo_tuples",
         ":hlo_legalize_to_lhlo",
         ":hlo_legalize_to_memref",
         ":input_inline_fusion",
