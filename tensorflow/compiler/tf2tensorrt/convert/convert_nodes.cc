@@ -559,7 +559,6 @@ Status CreateScalarConstant(
   TF_RETURN_IF_ERROR(weights.SetValues(value));
   *tensor = params->converter->CreateConstantLayer(weights, dims);
   TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
-  params->converter->ProvideQuantizationRange(tensor, value, value);
   return Status::OK();
 }
 
@@ -1157,6 +1156,10 @@ const std::set<string>* TrtNodeValidator::quantize_ops = new std::set<string>{
     "FakeQuantWithMinMaxArgs",
 };
 
+bool IsQuantizeAndDequantizeOp(const Node* node) {
+  return TrtNodeValidator::quantize_ops->count(node->def().op()) != 0;
+}
+
 TrtNodeValidator::TrtNodeValidator(
     const grappler::GraphProperties& graph_properties,
     TrtPrecisionMode precision_mode, bool use_calibration,
@@ -1409,9 +1412,7 @@ Status Converter::RenameAndMarkOutputTensors(
       TFTRT_RETURN_ERROR_IF_NULLPTR(
           layer, StrCat("Output Copy for ", tensor->getName()));
       SetLayerName(layer, tensor->getName(), "shuffle", output_index);
-      ITensorProxyPtr output_tensor = layer->getOutput(0);
-      MarkQuantizationRangesAsInferrable(&tensor, &output_tensor);
-      tensor = output_tensor;
+      tensor = layer->getOutput(0);
     }
     tensor->setName(output.dest_node_name.c_str());
     network()->markOutput(*tensor->trt_tensor());
@@ -1628,8 +1629,6 @@ Status Converter::TransposeTensor(ITensorProxyPtr input_tensor,
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Transpose");
   SetLayerName(layer, node_def, sub_op_name);
 
-  ITensorProxyPtr shuffle_tensor = layer->getOutput(0);
-  MarkQuantizationRangesAsInferrable(&input_tensor, &shuffle_tensor);
   nvinfer1::Permutation permutation;
   if (use_implicit_batch_) {
     for (int32_t i = 0; i < dims.nbDims; ++i) {
@@ -1777,48 +1776,13 @@ Status PrepareTensorForShape(Converter* converter,
       converter->SetLayerName(layer, node_def, "shuffle", op_instance,
                               origin_node_name);
       layer->setReshapeDimensions(dims);
-      ITensorProxyPtr input_tensor = input.tensor();
-      ITensorProxyPtr output_tensor = layer->getOutput(0);
-      converter->MarkQuantizationRangesAsInferrable(&input_tensor,
-                                                    &output_tensor);
-      *tensor = output_tensor;
+      *tensor = layer->getOutput(0);
     }
   } else {
     *tensor = converter->CreateConstantLayer(input.weights(), dims);
     TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, "TF-TRT Internal Reshape");
-    if (converter->precision_mode() == TrtPrecisionMode::INT8 &&
-        !converter->use_calibration()) {
-      // If we are in int8 mode and not calibrating, we need to explicitly set a
-      // quantization range for the output tensor of the IConstantLayer. Here we
-      // set the range to [min(weights), max(weights)].
-      float min_range = 0.0f;
-      float max_range = 0.0f;
-      TF_RETURN_IF_ERROR(
-          converter->GetWeightRange(input.weights(), &min_range, &max_range));
-      // Avoid setting range to 0 because TRT will throw an error. If the
-      // weights are zero then the range doesn't matter: using 127.0f should
-      // ensure the quantized weight will be exactly zero.
-      if (min_range == 0.0f && max_range == 0.0f) {
-        min_range = -127.0f;
-        max_range = 127.0f;
-      }
-      converter->ProvideQuantizationRange(tensor, min_range, max_range);
-    }
   }
   return Status::OK();
-}
-
-void Converter::MarkQuantizationRangesAsInferrable(ITensorProxyPtr* input,
-                                                   ITensorProxyPtr* output) {
-  if ((*input)->is_trt_tensor()) {
-    quantization_infer_.push_back(
-        {(*input)->trt_tensor(), (*output)->trt_tensor()});
-    quantization_infer_.push_back(
-        {(*output)->trt_tensor(), (*input)->trt_tensor()});
-  } else if ((*input)->is_simple_tensor()) {
-    quantization_infer_proxy_.push_back({input, output});
-    quantization_infer_proxy_.push_back({output, input});
-  }
 }
 
 void Converter::ProvideQuantizationRange(ITensorProxyPtr* tensor,
@@ -1866,8 +1830,6 @@ bool IsAdd(const nvinfer1::ILayer* layer) {
 void Converter::MaybeApplyQuantizationRanges() {
   if (precision_mode() != TrtPrecisionMode::INT8) return;
 
-  // Infer ranges across marked ops.
-  PropagateQuantizationRanges();
   // Apply ranges.
   for (auto pair : quantization_ranges_) {
     nvinfer1::ITensor* tensor = pair.first;
@@ -1884,68 +1846,6 @@ void Converter::MaybeApplyQuantizationRanges() {
     // TODO(laigd): if 'tensor' already has a range set which doesn't match
     // 'range', it should report error.
     tensor->setDynamicRange(-range, range);
-  }
-
-  if (use_calibration()) return;
-}
-
-void Converter::PropagateQuantizationRanges() {
-  // Propagate ranges across edges in quantization_infer_ until no new
-  // information is added.
-  // Note: this function modifies quantization_infer_, it might be better to
-  // modify a copy instead if we for some reason need quantization_infer_
-  // later.
-  bool information_added = true;
-  while (information_added) {
-    // Propogate for real tensors.
-    information_added = false;
-    for (auto it = quantization_infer_.begin();
-         it != quantization_infer_.end();) {
-      auto input_tensor_range = quantization_ranges_.find(it->first);
-      auto output_tensor_range = quantization_ranges_.find(it->second);
-      if (input_tensor_range != quantization_ranges_.end() &&
-          output_tensor_range == quantization_ranges_.end()) {
-        // Input has range but output doesn't: copy range
-        // TODO(laigd): consider reporting error if it a different range is
-        // already set.
-        quantization_ranges_[it->second] = input_tensor_range->second;
-        information_added = true;
-        VLOG(1) << "Copy quantization range: " << it->first->getName() << " -> "
-                << it->second->getName();
-      }
-      // We can remove edges when the output range is known
-      if (quantization_ranges_.find(it->second) != quantization_ranges_.end()) {
-        it = quantization_infer_.erase(it);
-      } else {
-        ++it;
-      }
-    }
-    // Propogate for proxy.
-    information_added = false;
-    for (auto it = quantization_infer_proxy_.begin();
-         it != quantization_infer_proxy_.end();) {
-      auto input_tensor_range = quantization_ranges_proxy_.find(it->first);
-      auto output_tensor_range = quantization_ranges_proxy_.find(it->second);
-      if (input_tensor_range != quantization_ranges_proxy_.end() &&
-          output_tensor_range == quantization_ranges_proxy_.end()) {
-        // Input has range but output doesn't: copy range
-        // TODO(laigd): consider reporting error if it a different range is
-        // already set.
-        quantization_ranges_proxy_[it->second] = input_tensor_range->second;
-        information_added = true;
-        VLOG(1) << "Copy quantization range: " << (*it->first)->getName()
-                << " -> " << (*it->second)->getName();
-        std::cout << "Copy quantization range: " << (*it->first)->getName()
-                  << " -> " << (*it->second)->getName();
-      }
-      // We can remove edges when the output range is known
-      if (quantization_ranges_proxy_.find(it->second) !=
-          quantization_ranges_proxy_.end()) {
-        it = quantization_infer_proxy_.erase(it);
-      } else {
-        ++it;
-      }
-    }
   }
 }
 
@@ -2184,11 +2084,8 @@ Status Conv2DPaddingHelper(OpConverterParams* params, const TFAttrs& attrs,
         nvinfer1::DimsHW((*padding)[0].second, (*padding)[1].second));
     TFTRT_RETURN_ERROR_IF_NULLPTR(pad_layer, params->node_def.name());
     params->converter->SetLayerName(pad_layer, params->node_def, "pad");
-    ITensorProxyPtr output_tensor = pad_layer->getOutput(0);
-    params->converter->MarkQuantizationRangesAsInferrable(&tensor,
-                                                          &output_tensor);
+    tensor = pad_layer->getOutput(0);
     *padding = {{0, 0}, {0, 0}};
-    tensor = output_tensor;
   }
   *padded_tensor = tensor;
   return Status::OK();
@@ -2532,11 +2429,7 @@ Status ConvertDynamicReshape(OpConverterParams* params) {
   VLOG(2) << "ConvertReshape setInput (1) "
           << DebugString(inputs.at(1).tensor()->getDimensions());
   layer->setInput(1, *inputs.at(1).tensor()->trt_tensor());
-  ITensorProxyPtr in_tensor = input_tensor.tensor();
-  ITensorProxyPtr out_tensor = layer->getOutput(0);
-  params->converter->MarkQuantizationRangesAsInferrable(&in_tensor,
-                                                        &out_tensor);
-  params->outputs->push_back(TRT_TensorOrWeights(out_tensor));
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 }
 
@@ -3410,9 +3303,6 @@ Status ConvertPool3D(OpConverterParams* params) {
   nvinfer1::IPoolingLayer* layer = params->converter->network()->addPoolingNd(
       *tensor->trt_tensor(), type, ksize);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-  params->converter->MarkQuantizationRangesAsInferrable(&tensor,
-                                                        &output_tensor);
 
   layer->setStrideNd(stride);
   // VALID padding is the default TRT behavior.
@@ -3422,6 +3312,7 @@ Status ConvertPool3D(OpConverterParams* params) {
   }
   params->converter->SetLayerName(layer, node_def, "pooling");
 
+  ITensorProxyPtr output_tensor = layer->getOutput(0);
   if (data_format == "NDHWC") {
     // NCDHW => NDHWC
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
@@ -3623,11 +3514,6 @@ Status ConvertPool(OpConverterParams* params) {
   nvinfer1::IPoolingLayer* layer = params->converter->network()->addPooling(
       *tensor->trt_tensor(), type, ksize);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  // TODO(tmorris): Average pooling may not be entirely safe to infer
-  // quantization range through (at least forwards - backwards should be fine).
-  // Max pooling is okay.
-  ITensorProxyPtr out_tensor = layer->getOutput(0);
-  params->converter->MarkQuantizationRangesAsInferrable(&tensor, &out_tensor);
 
   layer->setStride(stride);
   // VALID padding is the default TRT behavior.
@@ -3705,10 +3591,7 @@ Status ConvertClipByValue(OpConverterParams* params) {
   layer->setBeta(clip_value_max);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def, "activation");
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-  params->converter->ProvideQuantizationRange(&output_tensor, clip_value_min,
-                                              clip_value_max);
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 }
 
@@ -3757,16 +3640,7 @@ Status ConvertActivation(OpConverterParams* params) {
     layer->setAlpha(1.0f);
     layer->setBeta(1.0f);
   }
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-  // Set quantization range for output when known.
-  if (node_def.op() == "Sigmoid") {
-    params->converter->ProvideQuantizationRange(&output_tensor, 0.0f, 1.0f);
-  } else if (node_def.op() == "Tanh") {
-    params->converter->ProvideQuantizationRange(&output_tensor, -1.0f, 1.0f);
-  } else if (node_def.op() == "Softsign") {
-    params->converter->ProvideQuantizationRange(&output_tensor, -1.0f, 1.0f);
-  }
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 }
 
@@ -3847,9 +3721,7 @@ Status ConvertRelu6(OpConverterParams* params) {
   layer->setAlpha(0.0f);
   layer->setBeta(6.0f);
   params->converter->SetLayerName(layer, node_def, "activation");
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-  params->converter->ProvideQuantizationRange(&output_tensor, 0.0f, 6.0f);
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 }
 
@@ -3891,8 +3763,6 @@ Status ConvertBiasAddInt8WithoutCalibration(OpConverterParams* params) {
     TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
     params->converter->SetLayerName(shuffle_layer, node_def, "shuffle",
                                     /*op_instance=*/0);
-    ITensorProxyPtr out_tensor = shuffle_layer->getOutput(0);
-    params->converter->MarkQuantizationRangesAsInferrable(&tensor, &out_tensor);
 
     // NOTE(laigd): for some reason we need to apply the reshape
     // unconditionally. The default shape has nbDims==-1 and it seems the
@@ -3908,7 +3778,7 @@ Status ConvertBiasAddInt8WithoutCalibration(OpConverterParams* params) {
     if (channel_index != 0) {
       shuffle_layer->setFirstTranspose(permutation);
     }
-    tensor = out_tensor;
+    tensor = shuffle_layer->getOutput(0);
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
@@ -3947,10 +3817,7 @@ Status ConvertBiasAddInt8WithoutCalibration(OpConverterParams* params) {
     if (channel_index != 0) {
       shuffle_layer->setSecondTranspose(permutation);
     }
-    ITensorProxyPtr shuffle_tensor = shuffle_layer->getOutput(0);
-    params->converter->MarkQuantizationRangesAsInferrable(&output_tensor,
-                                                          &shuffle_tensor);
-    output_tensor = shuffle_tensor;
+    output_tensor = shuffle_layer->getOutput(0);
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -4256,7 +4123,7 @@ Status ConvertBinary(OpConverterParams* params) {
       params->use_implicit_batch, &broadcasted_dims_l, &broadcasted_dims_r));
   ITensorProxyPtr tensor_l = nullptr;
   ITensorProxyPtr tensor_r = nullptr;
-  // This will also convert constants to tensors, and set quantization ranges.
+  // This will also convert constants to tensors.
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, operand_l, broadcasted_dims_l, params->validation_only,
       &tensor_l, node_def, /*op_instance=*/0));
@@ -4284,23 +4151,6 @@ Status ConvertRsqrt(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
 
-  // TODO(tmorris): params->converter is null during validation. Allow
-  // precision_mode and use_calibration to be accessed during validation and
-  // include this check in validation.
-  // We will need a quantization range for intermediate tensor if not using
-  // calibration.
-  //
-  //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
-  //                     ^
-  //               need range here
-  if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
-      !params->converter->use_calibration()) {
-    return errors::Unimplemented(
-        "Intermediate quantization range cannot be determined without"
-        " calibration for Rsqrt, consider replacing with "
-        "Sqrt -> FakeQuant -> Reciprocal ops, at ",
-        node_def.name());
-  }
   // Start conversion.
   ITensorProxyPtr tensor = inputs.at(0).tensor();
   // Sqrt
@@ -4366,21 +4216,6 @@ Status ConvertUnary(OpConverterParams* params) {
   params->converter->SetLayerName(layer, node_def);
   ITensorProxyPtr output_tensor = layer->getOutput(0);
 
-  // Set quantization ranges.
-  if (node_def.op() == "Sin" || node_def.op() == "Cos") {
-    params->converter->ProvideQuantizationRange(&output_tensor, -1.0f, 1.0f);
-  } else if (node_def.op() == "Asin" || node_def.op() == "Atan") {
-    params->converter->ProvideQuantizationRange(&output_tensor, -M_PI_2,
-                                                M_PI_2);
-  } else if (node_def.op() == "Acos") {
-    params->converter->ProvideQuantizationRange(&output_tensor, 0.0f, M_PI);
-  } else if (node_def.op() == "Neg" || node_def.op() == "Abs") {
-    // Neg and Abs will have same range as input since TRT uses symmetric
-    // quantization.
-    // TODO(tmorris): Should we infer ranges for Ceil and Floor as well?
-    params->converter->MarkQuantizationRangesAsInferrable(&tensor,
-                                                          &output_tensor);
-  }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -4710,8 +4545,6 @@ Status ConvertPad(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
   ITensorProxyPtr output_tensor = layer->getOutput(0);
-  params->converter->MarkQuantizationRangesAsInferrable(&tensor,
-                                                        &output_tensor);
 
   if (transposed_pad) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
@@ -6086,8 +5919,6 @@ Status ConvertSoftmax(OpConverterParams* params) {
   layer->setAxes(1 << (num_trt_dims - 1));
 
   ITensorProxyPtr output_tensor = layer->getOutput(0);
-  // Quantization range for SoftMax is always (0, 1)
-  params->converter->ProvideQuantizationRange(&output_tensor, 0.0f, 1.0f);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -6479,14 +6310,7 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
     second_shuffle->setSecondTranspose(layout_transpose);
   }
 
-  ITensorProxyPtr input_tensor = inputs.at(0).tensor();
-  ITensorProxyPtr first_shuffle_tensor = first_shuffle->getOutput(0);
-  ITensorProxyPtr second_shuffle_tensor = second_shuffle->getOutput(0);
-  params->converter->MarkQuantizationRangesAsInferrable(&input_tensor,
-                                                        &first_shuffle_tensor);
-  params->converter->MarkQuantizationRangesAsInferrable(&first_shuffle_tensor,
-                                                        &second_shuffle_tensor);
-  params->outputs->push_back(TRT_TensorOrWeights(second_shuffle_tensor));
+  params->outputs->push_back(TRT_TensorOrWeights(second_shuffle->getOutput(0)));
   return Status::OK();
 }
 
@@ -6926,9 +6750,7 @@ static void RegisterValidatableOpConverters(
   (*registration)["Transpose"] = ConvertTranspose;
   (*registration)["Unpack"] = ConvertUnpack;
   (*registration)["_CopyFromHostToGpu"] = ConvertIdentity;
-  for (auto quantization_op_type :
-       {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
-        "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxArgs"}) {
+  for (auto quantization_op_type : *TrtNodeValidator::quantize_ops) {
     (*registration)[quantization_op_type] = ConvertQuantize;
   }
   for (const auto& binary_op_pair : *BinaryOperationMap()) {
