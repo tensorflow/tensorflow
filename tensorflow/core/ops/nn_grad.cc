@@ -145,10 +145,10 @@ Status DropoutGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"dx: T"},
       // Attr defs
-      {"T: {half, float, double}", "seed: int"},
+      {"T: {half, float, double}", "seed1: int", "seed2: int"},
       // Nodes
       {
-        {{"dx"}, "DropoutGrad", {"dy", "rate", "noise_shape", "seed"},
+        {{"dx"}, "DropoutGrad", {"dy", "rate", "noise_shape", "seed1", "seed2"},
          /*Attrs=*/{{"T", "$T"}}}
       });
   // clang-format on

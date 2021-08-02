@@ -139,6 +139,7 @@ from __future__ import print_function
 
 import functools
 import numbers
+import os
 
 import numpy as np
 
@@ -5531,9 +5532,18 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
        (x.dtype == dtypes.float64 or x.dtype == dtypes.float32 \
         or x.dtype == dtypes.float16) and def_dropout != "1" \
         and not is_in_XLA_context and null_noise_shape:
+      seed = uniform_sampler.keywords['seed']
       if seed is None:
-        seed = 0
-      out, _ = gen_nn_ops.dropout(x, rate, noise_shape=noise_shape, seed=seed)
+        seed1 = 0
+        seed2 = 0
+      else:
+        if type(seed) is int:
+          seed1 = seed
+          seed2 = 0
+        else:
+          seed1 = seed[0]
+          seed2 = seed[1]
+      out, _ = gen_nn_ops.dropout(x, rate, noise_shape=noise_shape, seed1=seed1, seed2=seed2)
       return out
 
     # Sample a uniform distribution on [0.0, 1.0) and select values larger
