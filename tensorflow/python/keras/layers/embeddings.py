@@ -71,7 +71,7 @@ class Embedding(Layer):
       vocabulary + 1).
     input_length: Length of input sequences, when it is constant.
       This argument is required if you are going to connect
-      `Flatten` then `Dense` layers upstream
+      `Flatten` then `Dense` layers downstream
       (without it, the shape of the dense outputs cannot be computed).
 
   Input shape:
