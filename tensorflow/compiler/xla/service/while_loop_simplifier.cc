@@ -37,6 +37,21 @@ namespace m = match;
 using absl::optional;
 using hlo_query::ContainsInstrWithOpcode;
 
+// A helper function that copy the raw JSON-encoded backend config from the old
+// while op to the new one.
+void CopyBackendConfig(HloInstruction* old_while_op,
+                       HloInstruction* new_while_op) {
+  new_while_op->set_raw_backend_config_string(
+      old_while_op->raw_backend_config_string());
+}
+
+// A helper function that copy the frontend attributes from the old while op to
+// the new one.
+void CopyFrontendAttributes(HloInstruction* old_while_op,
+                            HloInstruction* new_while_op) {
+  new_while_op->add_frontend_attributes(old_while_op->frontend_attributes());
+}
+
 // This is a utility function that removes the given tuple indices from the
 // while loop init, body, and condition. The final shape returned is still the
 // same as before.
@@ -162,6 +177,8 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       new_while_init));
+  CopyBackendConfig(while_op, new_while_op);
+  CopyFrontendAttributes(while_op, new_while_op);
 
   // Create a tuple op that recreates the output of the old while op.  That is,
   // we transform to
@@ -629,14 +646,15 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   // Create the final while loop, and add any new instructions created to
   // `computation`.
   new_instrs.clear();
+  auto* new_while_op = computation->AddInstruction(HloInstruction::CreateWhile(
+      new_while_shape,
+      module->AddEmbeddedComputation(std::move(new_while_cond)),
+      module->AddEmbeddedComputation(std::move(new_while_body)),
+      add_new_instr(remove_constant_elems(while_init))));
+  CopyBackendConfig(while_op, new_while_op);
+  CopyFrontendAttributes(while_op, new_while_op);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-      while_op,
-      add_constant_elems(
-          computation->AddInstruction(HloInstruction::CreateWhile(
-              new_while_shape,
-              module->AddEmbeddedComputation(std::move(new_while_cond)),
-              module->AddEmbeddedComputation(std::move(new_while_body)),
-              add_new_instr(remove_constant_elems(while_init)))))));
+      while_op, add_constant_elems(new_while_op)));
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
   }
@@ -689,7 +707,11 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
 
   // Transform while loops with static trip count of 1 into a call op, then
   // inline the call.
-  if (trip_count && *trip_count == 1) {
+  const auto& attrs = while_op->frontend_attributes().map();
+  bool skip_trip_count_one_simplification =
+      attrs.contains("skip-simplify-while-loops/trip-count-one") &&
+      (attrs.at("skip-simplify-while-loops/trip-count-one") == "true");
+  if (trip_count && *trip_count == 1 && !skip_trip_count_one_simplification) {
     // Do not simplify the loop away when there is a side-effectful op,
     // otherwise the infeed op may not inherit the data dependency from
     // the while loop.
@@ -954,12 +976,15 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   // Create the final while loop, and add any new instructions created to
   // `computation`.
   new_instrs.clear();
-  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-      while_op, nested(computation->AddInstruction(HloInstruction::CreateWhile(
-                    flattened_shape,
-                    module->AddEmbeddedComputation(std::move(new_while_cond)),
-                    module->AddEmbeddedComputation(std::move(new_while_body)),
-                    computation->AddInstruction(flattened(while_init)))))));
+  auto* new_while_op = computation->AddInstruction(HloInstruction::CreateWhile(
+      flattened_shape,
+      module->AddEmbeddedComputation(std::move(new_while_cond)),
+      module->AddEmbeddedComputation(std::move(new_while_body)),
+      computation->AddInstruction(flattened(while_init))));
+  CopyBackendConfig(while_op, new_while_op);
+  CopyFrontendAttributes(while_op, new_while_op);
+  TF_RETURN_IF_ERROR(
+      computation->ReplaceWithNewInstruction(while_op, nested(new_while_op)));
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
   }
@@ -1195,6 +1220,8 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       get_new_while_init(while_init)));
+  CopyBackendConfig(while_op, new_while);
+  CopyFrontendAttributes(while_op, new_while);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, convert_to_old_form(new_while)));
   for (auto& instr : new_instrs) {
