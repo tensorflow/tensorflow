@@ -120,7 +120,24 @@ class Zeros(Initializer):
 @tf_export(v1=["initializers.ones", "ones_initializer"])
 @deprecation.deprecated_endpoints("initializers.ones", "ones_initializer")
 class Ones(Initializer):
-  """Initializer that generates tensors initialized to 1."""
+  """Initializer that generates tensors initialized to 1.
+
+  @compatibility(TF2)
+  This API is compatible with TF2 behavior and `tf.function`, and can be
+  migrated immediately with `tf.keras.initializers.ones`.
+
+  Before:
+  >>> initializer = tf.compat.v1.keras.initializers.ones()
+  >>> initializer((1, 1))
+  <tf.Tensor: shape=(1, 1), dtype=float32, numpy=array([[1.]], dtype=float32)>
+
+  After:
+  >>> initializer = tf.keras.initializers.ones()
+  >>> initializer((1, 1))
+  <tf.Tensor: shape=(1, 1), dtype=float32, numpy=array([[1.]], dtype=float32)>
+
+  @end_compatibility
+  """
 
   @deprecated_args(None,
                    "Call initializer instance with the dtype argument instead "
