@@ -285,6 +285,43 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
                            first_op_after);
 }
 
+// Returns all functions that can be reached from TPUPartitionedCall ops.
+SmallPtrSet<Operation*, 16> FindTPUPartitionedCallReachableFunctions(
+    ModuleOp module) {
+  SymbolTableCollection table;
+  SymbolUserMap symbol_map(table, module);
+  llvm::DenseMap<FuncOp, llvm::DenseSet<FuncOp>> caller_callee_map;
+  // Creates work queue for determining reachability below.
+  std::queue<FuncOp> function_worklist;
+
+  for (auto func : module.getOps<FuncOp>()) {
+    for (auto user : symbol_map.getUsers(func)) {
+      // Populates work queue with func ops called from TPUPartionedCall.
+      if (llvm::isa<TF::TPUPartitionedCallOp>(user)) {
+        function_worklist.push(func);
+      }
+      // Populates caller to called func map.
+      if (FuncOp caller = user->getParentOfType<FuncOp>()) {
+        caller_callee_map[caller].insert(func);
+      }
+    }
+  }
+
+  // Determines reached ops starting from TPUPartionedCall ops
+  // and iteratively descending through called ops.
+  SmallPtrSet<Operation*, 16> reachable_functions;
+  while (!function_worklist.empty()) {
+    FuncOp caller = function_worklist.front();
+    function_worklist.pop();
+    if (reachable_functions.insert(caller).second) {
+      for (auto callee : caller_callee_map[caller]) {
+        function_worklist.push(callee);
+      }
+    }
+  }
+  return reachable_functions;
+}
+
 void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   SymbolTable symbol_table(getOperation());
 
@@ -319,7 +356,14 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
     return false;
   };
 
+  // Populates skip set with functions reachable from TPUPartionedCall ops.
+  const auto functions_to_skip =
+      FindTPUPartitionedCallReachableFunctions(getOperation());
   for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
+    if (functions_to_skip.contains(func_op)) {
+      continue;
+    }
+
     func_op.walk([&](GraphOp graph) {
       Block& graph_body = graph.GetBody();
 
