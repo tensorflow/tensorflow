@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
 #endif
 
