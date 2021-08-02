@@ -177,6 +177,10 @@ class TestCluster(object):
     # pylint: disable=protected-access
     self.dispatcher._stop()
 
+  def stop_workers(self):
+    for worker in self.workers:
+      worker.stop()
+
   # pylint: disable=protected-access
   def restart_dispatcher(self):
     """Stops `dispatcher` and creates a new dispatcher with the same port.
