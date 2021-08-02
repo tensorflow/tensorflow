@@ -178,7 +178,7 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
 // CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_execute(!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<i8>, i64, !llvm.ptr<i8>)
 
 // CHECK:      @jit_execute
-// CHECK-SAME: (%[[CTX:.*]]: !llvm.ptr<i8>, %[[RES:.*]]: !llvm.ptr<i8>, %[[RANK:.*]]: i64, %[[ARG_DESCR:.*]]: !llvm.ptr<i8>)
+// CHECK-SAME: (%[[CTX:.*]]: !llvm.ptr<i8>, %[[CALLABLE:.*]]: !llvm.ptr<i8>, %[[RANK:.*]]: i64, %[[ARG_DESCR:.*]]: !llvm.ptr<i8>)
 func @jit_execute(%ctx: !tf_framework.op_kernel_context,
     %callable : !tf_framework.jit_callable, %arg : memref<*xf32>)
     -> memref<*xf32> {
@@ -190,7 +190,7 @@ func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: %[[RESULT_PTR_:.*]] = llvm.bitcast %[[RESULT_PTR]]
   // CHECK: %[[RANK:.*]] = llvm.extractvalue %[[ARG]][0]
   // CHECK: %[[ARG_DESCR:.*]] = llvm.extractvalue %[[ARG]][1]
-  // CHECK: llvm.call @_mlir_ciface_tf_jit_execute(%arg0, %arg1, %[[RESULT_PTR_]], %[[RANK]], %[[ARG_DESCR]])
+  // CHECK: llvm.call @_mlir_ciface_tf_jit_execute(%[[CTX]], %[[CALLABLE]], %[[RESULT_PTR_]], %[[RANK]], %[[ARG_DESCR]])
   // CHECK: %[[RESULT:.*]] = llvm.load %[[RESULT_PTR]]
 
   // Copy unranked memref descriptor to stack-allocated memory.
