@@ -790,23 +790,31 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
                                   segment_offsets_ptr, weights_ptr));
     }
 
-    // Sort indices and permute segments.
-    Tensor sorted_indices;
-    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<Index>::value,
-                                                   TensorShape({nouter}),
-                                                   &sorted_indices));
-    Index* sorted_indices_ptr = sorted_indices.flat<Index>().data();
-    Tensor sorted_segment;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<SegmentId>::value,
-                                TensorShape({nouter}), &sorted_segment));
-    SegmentId* sorted_segment_ptr = sorted_segment.flat<SegmentId>().data();
-    OP_REQUIRES_OK(context, GpuRadixSort(context, nouter,
-                                         /*keys_in=*/indices_vec.data(),
-                                         /*keys_out=*/sorted_indices_ptr,
-                                         /*indices_in=*/segment_vec.data(),
-                                         /*indices_out=*/sorted_segment_ptr,
-                                         /*num_bits=*/Log2Ceiling64(noutput)));
+    const Index* sorted_indices_ptr = indices_vec.data();
+    const SegmentId* sorted_segment_ptr = segment_vec.data();
+    Tensor tmp_sorted_indices;
+    Tensor tmp_sorted_segment;
+    if (noutput > 1) {
+      // Sort indices and permute segments.
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<Index>::value,
+                                  TensorShape({nouter}), &tmp_sorted_indices));
+      Index* tmp_sorted_indices_ptr = tmp_sorted_indices.flat<Index>().data();
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DataTypeToEnum<SegmentId>::value,
+                                  TensorShape({nouter}), &tmp_sorted_segment));
+      SegmentId* tmp_sorted_segment_ptr =
+          tmp_sorted_segment.flat<SegmentId>().data();
+      OP_REQUIRES_OK(context,
+                     GpuRadixSort(context, nouter,
+                                  /*keys_in=*/indices_vec.data(),
+                                  /*keys_out=*/tmp_sorted_indices_ptr,
+                                  /*indices_in=*/segment_vec.data(),
+                                  /*indices_out=*/tmp_sorted_segment_ptr,
+                                  /*num_bits=*/Log2Ceiling64(noutput)));
+      sorted_indices_ptr = tmp_sorted_indices_ptr;
+      sorted_segment_ptr = tmp_sorted_segment_ptr;
+    }
 
     // Compute the gradient using a weighted SegmentReduceGPU with the segment
     // IDs and indices swapped.
