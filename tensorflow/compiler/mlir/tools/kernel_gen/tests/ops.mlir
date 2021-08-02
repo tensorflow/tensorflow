@@ -107,7 +107,7 @@ func @jit_execute_wo_ctx(%callable : !tf_framework.jit_callable,
 func @jit_execute(%ctx : !tf_framework.op_kernel_context,
     %callable : !tf_framework.jit_callable, %arg : tensor<2x?xf32>)
     -> tensor<2x?xf32> {
-  %0 = tf_framework.jit_execute ctx = %ctx, %callable(%arg)
+  %0 = tf_framework.jit_execute ctx(%ctx) %callable(%arg)
       : tensor<2x?xf32> -> tensor<2x?xf32>
   return %0 : tensor<2x?xf32>
 }

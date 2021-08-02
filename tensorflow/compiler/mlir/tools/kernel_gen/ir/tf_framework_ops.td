@@ -323,7 +323,7 @@ def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
   ];
 
   let assemblyFormat = [{
-    (`ctx` `=` $ctx^ `,`)? $callable `(` $operands `)` attr-dict
+    (`ctx` `(` $ctx^ `)`)? $callable `(` $operands `)` attr-dict
         `:` type($operands) `->` type($results)
   }];
 }

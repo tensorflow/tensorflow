@@ -221,7 +221,7 @@ func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: %[[T1:.*]] = llvm.insertvalue %[[RANK]], %[[T0]][0]
   // CHECK: %[[RESULT:.*]] = llvm.insertvalue %[[HEAP_RESUKT_DESCR]], %[[T1]][1]
   // CHECK: llvm.return %[[RESULT]]
-  %0 = tf_framework.jit_execute ctx = %ctx, %callable(%arg)
+  %0 = tf_framework.jit_execute ctx(%ctx) %callable(%arg)
       : memref<*xf32> -> memref<*xf32>
   return %0 : memref<*xf32>
 }
