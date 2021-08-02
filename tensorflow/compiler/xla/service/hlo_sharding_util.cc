@@ -35,7 +35,7 @@ namespace xla {
 namespace hlo_sharding_util {
 
 bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
-  CHECK_EQ(lhs.IsTuple(), rhs.IsTuple());
+  CHECK_EQ(lhs.IsTuple(), rhs.IsTuple()) << lhs << " <> " << rhs;
   if (lhs.IsTuple()) {
     // For tuples we consider lhs to have a better sharding if none of the
     // elements are worse and at least one element is better then in rhs
