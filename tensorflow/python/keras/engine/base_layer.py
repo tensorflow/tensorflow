@@ -1591,7 +1591,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     x = tf.keras.layers.Dense(10)(inputs)
     outputs = tf.keras.layers.Dense(1)(x)
     model = tf.keras.Model(inputs, outputs)
-    model.add_metric(math_ops.reduce_sum(x), name='metric_1')
+    model.add_metric(tf.reduce_sum(x), name='metric_1')
     ```
 
     Note: Calling `add_metric()` with the result of a metric object on a
