@@ -26,6 +26,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import random_seed
@@ -36,6 +37,60 @@ from tensorflow.python.ops import image_grad_test_base as test_base
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+
+
+class ResizeNearestNeighborOpDeterminismExceptionsTest(test.TestCase,
+                                                       parameterized.TestCase):
+  """Test d9m-unimplemented exceptions from ResizeNearestNeighborOpGrad.
+
+  Test that tf.errors.UnimplementedError is thrown, as appropriate, by the
+  GPU-specific code-path through ResizeNearestNeighborOpGrad when deterministic
+  ops are enabled.
+
+  This test assumes that image_grad_test.py runs equivalent test cases when
+  deterministic ops are not enabled and will therefore detect erroneous
+  exception throwing in those cases.
+  """
+
+  @parameterized.parameters(
+      {
+          'align_corners': False,
+          'half_pixel_centers': False,
+          'data_type': dtypes.float16
+      }, {
+          'align_corners': False,
+          'half_pixel_centers': False,
+          'data_type': dtypes.float32
+      }, {
+          'align_corners': False,
+          'half_pixel_centers': False,
+          'data_type': dtypes.float64
+      }, {
+          'align_corners': True,
+          'half_pixel_centers': False,
+          'data_type': dtypes.float32
+      }, {
+          'align_corners': False,
+          'half_pixel_centers': True,
+          'data_type': dtypes.float32
+      })
+  @test_util.run_gpu_only
+  @test_util.run_all_in_graph_and_eager_modes
+  def testExceptionThrowing(self, align_corners, half_pixel_centers, data_type):
+    with self.session(), test_util.force_gpu():
+      input_image = array_ops.zeros((1, 2, 2, 1), dtype=data_type)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_image)
+        output_image = image_ops.resize_nearest_neighbor(
+            input_image, (3, 3),
+            align_corners=align_corners,
+            half_pixel_centers=half_pixel_centers)
+      with self.assertRaisesRegex(
+          errors.UnimplementedError,
+          'A deterministic GPU implementation of ResizeNearestNeighborGrad' +
+          ' is not currently available.'):
+        gradient = tape.gradient(output_image, input_image)
+        self.evaluate(gradient)
 
 
 class ResizeBilinearOpDeterministicTest(test_base.ResizeBilinearOpTestBase):
