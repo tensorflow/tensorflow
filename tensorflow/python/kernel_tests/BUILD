@@ -1007,6 +1007,7 @@ cuda_py_test(
     name = "segment_reduction_ops_deterministic_test",
     size = "small",
     srcs = ["segment_reduction_ops_deterministic_test.py"],
+    tags = ["no_cuda_asan"],  # b/195247538
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
