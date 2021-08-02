@@ -1887,6 +1887,38 @@ filegroup(
     ],
 )
 
+cc_library(
+    name = "cost_measurement",
+    hdrs = ["cost_measurement.h"],
+    visibility = ["//visibility:public"],
+    deps = ["@com_google_absl//absl/time"],
+)
+
+cc_library(
+    name = "cost_measurement_registry",
+    srcs = ["cost_measurement_registry.cc"],
+    hdrs = ["cost_measurement_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_measurement",
+        "//tensorflow/core:tflite_portable_logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "no_op_cost_measurement",
+    srcs = ["no_op_cost_measurement.cc"],
+    hdrs = ["no_op_cost_measurement.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_measurement_registry",
+    ],
+    alwayslink = 1,
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -2890,5 +2922,26 @@ tf_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_measurement_registry_test",
+    srcs = ["cost_measurement_registry_test.cc"],
+    deps = [
+        ":cost_measurement_registry",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "no_op_cost_measurement_test",
+    srcs = ["no_op_cost_measurement_test.cc"],
+    deps = [
+        ":no_op_cost_measurement",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
