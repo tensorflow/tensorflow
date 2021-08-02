@@ -14,41 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark.h"
 
-#include <fcntl.h>
-#ifndef _WIN32
-#include <dlfcn.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#endif  // !_WIN32
+#include <unistd.h>
 
-#include <algorithm>
-#include <cstddef>
-#include <cstdlib>
-#include <fstream>
-#include <functional>
-#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/proto_to_flatbuffer.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_float_validation_model.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-
-#ifdef __ANDROID__
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_validator_runner_so_for_tests.h"
-#endif  // __ANDROID__
 
 namespace tflite {
 namespace acceleration {
@@ -71,29 +53,15 @@ TEST(BasicMiniBenchmarkTest, EmptySettings) {
 class MiniBenchmarkTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    should_perform_test_ = true;
-#ifdef __ANDROID__
-    AndroidInfo android_info;
-    auto status = RequestAndroidInfo(&android_info);
-    ASSERT_TRUE(status.ok());
-    if (android_info.is_emulator) {
-      should_perform_test_ = false;
-      return;
+    MiniBenchmarkTestHelper helper;
+    should_perform_test_ = helper.should_perform_test();
+
+    if (should_perform_test_) {
+      mobilenet_model_path_ = MiniBenchmarkTestHelper::DumpToTempFile(
+          "mobilenet_float_with_validation.tflite",
+          g_tflite_acceleration_embedded_mobilenet_float_validation_model,
+          g_tflite_acceleration_embedded_mobilenet_float_validation_model_len);
     }
-
-    WriteFile("librunner_main.so", g_tflite_acceleration_embedded_runner,
-              g_tflite_acceleration_embedded_runner_len);
-    std::string validator_runner_so_path = WriteFile(
-        "libvalidator_runner_so_for_tests.so",
-        g_tflite_acceleration_embedded_validator_runner_so_for_tests,
-        g_tflite_acceleration_embedded_validator_runner_so_for_tests_len);
-    LoadEntryPointModule(validator_runner_so_path);
-#endif
-
-    mobilenet_model_path_ = WriteFile(
-        "mobilenet_float_with_validation.tflite",
-        g_tflite_acceleration_embedded_mobilenet_float_validation_model,
-        g_tflite_acceleration_embedded_mobilenet_float_validation_model_len);
   }
 
   void SetupBenchmark(proto::Delegate delegate, const std::string& model_path,
@@ -147,35 +115,6 @@ class MiniBenchmarkTest : public ::testing::Test {
   flatbuffers::FlatBufferBuilder settings_buffer_;
   // Simply a reference to settings_buffer_ for convenience.
   const MinibenchmarkSettings* settings_;
-
- private:
-  // TODO(b/181571324): Factor out the following as common test helper functions
-  // and use them across mini-benchmark-related tests.
-  void* LoadEntryPointModule(const std::string& module_path) {
-#ifndef _WIN32
-    void* module =
-        dlopen(module_path.c_str(), RTLD_NOW | RTLD_GLOBAL | RTLD_NODELETE);
-    EXPECT_NE(nullptr, module) << dlerror();
-    return module;
-#else   // _WIN32
-    return nullptr;
-#endif  // !_WIN32
-  }
-
-  std::string WriteFile(const std::string& filename, const unsigned char* data,
-                        size_t length) {
-    std::string dir = ::testing::TempDir() + "tflite/mini_benchmark";
-    system((std::string("mkdir -p ") + dir).c_str());
-    std::string path = dir + "/" + filename;
-    (void)unlink(path.c_str());
-    std::string contents(reinterpret_cast<const char*>(data), length);
-    std::ofstream f(path, std::ios::binary);
-    EXPECT_TRUE(f.is_open());
-    f << contents;
-    f.close();
-    EXPECT_EQ(0, chmod(path.c_str(), 0500));
-    return path;
-  }
 };
 
 TEST_F(MiniBenchmarkTest, OnlyCPUSettings) {
