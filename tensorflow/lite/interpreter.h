@@ -365,9 +365,12 @@ class Interpreter {
   /// Returns nullptr if not found.
   TfLiteTensor* input_tensor_by_signature(const char* signature_input_name,
                                           const char* signature_key) {
+    const int subgraph_index = GetSubgraphIndexFromSignature(signature_key);
+    if (subgraph_index == -1) return nullptr;
     const int tensor_index = GetTensorIndexFromSignature(
         signature_input_name, signature_key, /*is_input=*/true);
-    return tensor_index == -1 ? nullptr : tensor(tensor_index);
+    if (tensor_index == -1) return nullptr;
+    return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
   /// WARNING: Experimental interface, subject to change
@@ -376,9 +379,12 @@ class Interpreter {
   /// Returns nullptr if not found.
   const TfLiteTensor* output_tensor_by_signature(
       const char* signature_output_name, const char* signature_key) const {
+    const int subgraph_index = GetSubgraphIndexFromSignature(signature_key);
+    if (subgraph_index == -1) return nullptr;
     const int tensor_index = GetTensorIndexFromSignature(
         signature_output_name, signature_key, /*is_input=*/false);
-    return tensor_index == -1 ? nullptr : tensor(tensor_index);
+    if (tensor_index == -1) return nullptr;
+    return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
   /// Return a mutable pointer to the given input tensor. The given index must

@@ -50,13 +50,14 @@ class InterpreterTest : public ::testing::Test {
 
   bool HasDelegates() { return interpreter_.HasDelegates(); }
 
-  void BuildSignature(const std::string& signature_key, const std::string& key,
+  void BuildSignature(const std::string& signature_key,
                       const std::map<std::string, uint32_t>& inputs,
                       const std::map<std::string, uint32_t>& outputs) {
     internal::SignatureDef signature;
     signature.inputs = inputs;
     signature.outputs = outputs;
     signature.signature_key = signature_key;
+    signature.subgraph_index = 0;
     interpreter_.SetSignatureDef({signature});
   }
 
