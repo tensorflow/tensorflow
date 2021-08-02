@@ -707,7 +707,7 @@ static Queue* GetOrCreateQueue(bool split) {
 void BM_QueueSchedule(::testing::benchmark::State& state) {
   Queue* queue = GetOrCreateQueue(/*split=*/state.range(1));
 
-  const string label = strings::StrCat(state.num_threads(), "-Threads",
+  const string label = strings::StrCat(state.threads, "-Threads",
                                        state.range(1) ? "-Split" : "-NoSplit");
   state.SetLabel(label);
   for (auto s : state) {
