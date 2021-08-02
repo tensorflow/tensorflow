@@ -265,7 +265,7 @@ inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
       // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
       input2_data_reset = input2_data_ptr;
     }
-  } else {
+  } else if (input1_data_ptr != nullptr) {
     // Special case of y4 == 1, in which the innermost loop is a single
     // element and can be combined with the next (y3) as an inner broadcast.
     //
