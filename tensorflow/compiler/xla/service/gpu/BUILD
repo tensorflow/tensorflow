@@ -40,7 +40,6 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -1255,6 +1254,7 @@ tf_cc_test(
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
@@ -1520,12 +1520,12 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/types:optional",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Support",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
@@ -1534,18 +1534,19 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:llvm_compiler",
-        "//tensorflow/compiler/xla/service:tuple_simplifier",
-        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/core/platform:cuda_libdevice_path",
+        "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:cuda_libdevice_path",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/gpu:asm_compiler",
-        "@llvm-project//llvm:IRReader",
-        "@llvm-project//llvm:Support",
+        "//tensorflow/stream_executor:stream_executor_headers",
     ]) + ["//tensorflow/stream_executor/gpu:gpu_driver_header"],
 )
 
