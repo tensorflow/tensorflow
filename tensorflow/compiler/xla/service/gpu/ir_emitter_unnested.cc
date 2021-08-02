@@ -3592,39 +3592,18 @@ void IrEmitterUnnested::EmitTile(
   IrArray::Index source_idx =
       tile_origin_index.AddOffsetToDim(start_offset_x, kDimX, &b_);
 
-  auto ceil_of_ratio = [&](llvm::Value* a, llvm::Value* b) {
-    return b_.CreateUDiv(b_.CreateAdd(b_.CreateAdd(a, b), constant(-1)), b);
-  };
-
   // True iff all threads always execute all instructions in the tiling
   // dimension X.
   bool x_tile_fits =
       mapping_scheme.GetDimsInElems()[kDimX] % tile_size_x == 0 &&
       mapping_scheme.GetRowContiguous();
 
-  // The outer loop below is simply doing:
-  //
-  // for (int y_loc=thread_id_y; y_loc<tile_height; y_loc+=num_threads_y)
-  //
-  //
-  // However, in order to avoid an LLVM optimization triggering the ptxas bug,
-  // we write this loop in a convoluted way:
-  //
-  // y_bound = ceil_of_ratio(tile_height - thread_id_y, num_threads_y)
-  // for (int y_indvar=0; y_indvar<y_bound; y_indvar+=1)
-  //    y_loc = thread_id_y + y_indvar * num_threads_y
-  //
-  // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
-  // workaround.
   ksl->For(
       loop_name + "_y_in_tile",
-      /*start=*/constant(0),
+      /*start=*/thread_id_info.thread_id_y,
       /*end=*/
-      ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
-                    num_threads_y),
-      /*step=*/constant(1), [&](llvm::Value* y_indvar) {
-        llvm::Value* y_loc = b_.CreateAdd(
-            thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
+      tile_height,
+      /*step=*/num_threads_y, [&](llvm::Value* y_loc) {
         auto unroll_inner_tile_loop = [&](bool check_x_tile_bounds) {
           return UnrollInnerTileLoop(check_x_tile_bounds, x_num_steps, step_x,
                                      vector_size, loop_name, ksl,
