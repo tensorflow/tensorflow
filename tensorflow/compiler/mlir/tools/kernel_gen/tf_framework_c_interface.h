@@ -34,7 +34,8 @@ extern "C" MLIR_RUNNERUTILS_EXPORT void _mlir_ciface_tf_report_error(
     void* op_kernel_ctx, int32_t error_code, char* msg);
 
 extern "C" MLIR_RUNNERUTILS_EXPORT void* _mlir_ciface_tf_jit_compile(
-    void* op_kernel_ctx, char* code);
+    void* op_kernel_ctx, char* code, int64_t max_supported_rank,
+    bool enable_ftz, bool cpu_codegen);
 
 extern "C" MLIR_RUNNERUTILS_EXPORT void _mlir_ciface_tf_jit_execute(
     void* op_kernel_ctx, void* callable, void* result, int64_t arg_rank,

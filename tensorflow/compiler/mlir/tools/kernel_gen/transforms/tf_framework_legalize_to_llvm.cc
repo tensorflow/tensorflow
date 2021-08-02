@@ -282,12 +282,20 @@ class JITCompileFromStrOpConverter
       ConversionPatternRewriter &rewriter) const override {
     JITCompileFromStrOp::Adaptor transformed(operands);
     if (transformed.ctx() == nullptr) return failure();
+    auto loc = op.getLoc();
     Value jit_module_code = CreateOrFindGlobalStringConstant(
-        op.getLoc(), rewriter, kJITCodeGlobalBaseName, op.code());
+        loc, rewriter, kJITCodeGlobalBaseName, op.code());
+    Value max_supported_rank = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI64Type(), op.maxSupportedRankAttr());
+    Value enable_ftz = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI1Type(), op.enableFtzAttr());
+    Value cpu_codegen = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI1Type(), op.cpuCodegenAttr());
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
-        llvm::makeArrayRef({transformed.ctx(), jit_module_code}));
+        llvm::makeArrayRef({transformed.ctx(), jit_module_code,
+                            max_supported_rank, enable_ftz, cpu_codegen}));
     return success();
   }
 
@@ -295,10 +303,12 @@ class JITCompileFromStrOpConverter
   StringRef GetFuncName() const override { return kCInterfaceJITCompile; }
 
   Type GetFuncType() const override {
-    auto i8_ptr_type =
+    auto i8_ptr_ty =
         LLVM::LLVMPointerType::get(IntegerType::get(getContext(), 8));
-    return LLVM::LLVMFunctionType::get(getVoidPtrType(),
-                                       {getVoidPtrType(), i8_ptr_type});
+    auto i64_ty = IntegerType::get(getContext(), 64);
+    auto i1_ty = IntegerType::get(getContext(), 1);
+    return LLVM::LLVMFunctionType::get(
+        getVoidPtrType(), {getVoidPtrType(), i8_ptr_ty, i64_ty, i1_ty, i1_ty});
   }
 };
 

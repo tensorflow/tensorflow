@@ -130,16 +130,13 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
 }
 
 llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
-    const std::string code) {
+    const std::string code, int64_t max_supported_rank, bool enable_ftz,
+    bool cpu_codegen) {
   // For now, use some default parameters.
   // TODO(frgossen): Propagate these parameters through the JIT invocation.
   llvm::SmallVector<std::string, 4> architectures = {"sm_60", "sm_70", "sm_75"};
   llvm::SmallVector<int64_t, 1> tile_sizes = {1024};
   llvm::SmallVector<int64_t, 1> unroll_factors = {4};
-  int64_t max_supported_rank = 5;
-  bool enable_ftz = false;
-  bool cpu_codegen = false;
-  bool jit_compile = false;
 
   // Create the kernel.
   mlir::MLIRContext context;
@@ -147,7 +144,8 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
       tensorflow::kernel_gen::GenerateKernelForTfCode(
           context, code, architectures, tile_sizes, unroll_factors,
           max_supported_rank, /*embed_memref_prints=*/false,
-          /*print_ptx=*/false, enable_ftz, cpu_codegen, jit_compile);
+          /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz, cpu_codegen,
+          /*jit_compile=*/false);
   if (!status_or_module.ok()) return nullptr;
   mlir::OwningModuleRef module = std::move(status_or_module.ValueOrDie());
 
@@ -170,7 +168,10 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
 
 }  // namespace
 
-extern "C" void* _mlir_ciface_tf_jit_compile(void* op_kernel_ctx, char* code) {
+extern "C" void* _mlir_ciface_tf_jit_compile(void* op_kernel_ctx, char* code,
+                                             int64_t max_supported_rank,
+                                             bool enable_ftz,
+                                             bool cpu_codegen) {
   // Get the resource manager.
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   tensorflow::ResourceMgr* rm = ctx->resource_manager();
@@ -192,8 +193,9 @@ extern "C" void* _mlir_ciface_tf_jit_compile(void* op_kernel_ctx, char* code) {
   }
 
   // Lookup or compile the execution module.
-  ExecutionEngine* engine =
-      jit_cache->LookupOrCompile(code, [&]() { return Compile(code); });
+  ExecutionEngine* engine = jit_cache->LookupOrCompile(code, [&]() {
+    return Compile(code, max_supported_rank, enable_ftz, cpu_codegen);
+  });
   if (engine == nullptr) {
     ReportError(op_kernel_ctx, ErrorCode::UNKNOWN, "JIT compilation failed.");
     return nullptr;
