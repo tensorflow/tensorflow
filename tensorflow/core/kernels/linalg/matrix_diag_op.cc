@@ -89,7 +89,10 @@ class MatrixDiagPartOp : public OpKernel {
           upper_diag_index = diag_index.flat<int32>()(1);
         }
       }
-      padding_value = context->input(2).flat<T>()(0);
+      const Tensor& padding_in = context->input(2);
+      OP_REQUIRES(context, padding_in.NumElements() == 1,
+                  errors::InvalidArgument("Padding must be scalar."));
+      padding_value = padding_in.flat<T>()(0);
     }
     const TensorShape& input_shape = input.shape();
 
