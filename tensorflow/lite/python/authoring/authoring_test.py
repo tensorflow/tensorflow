@@ -38,6 +38,9 @@ class TFLiteAuthoringTest(tf.test.TestCase):
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
+    # Check the op location ends with filename of the this test.
+    self.assertIn("authoring_test.py", log_messages[-1])
+
   def test_simple_cosh_raises_CompatibilityError(self):
     @authoring.compatible(raise_exception=True)
     @tf.function(input_signature=[

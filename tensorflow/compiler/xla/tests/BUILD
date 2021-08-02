@@ -1626,6 +1626,7 @@ xla_test(
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
     tags = [
+        "nomac",  # b/194731834
         "nozapfhahn",
         "optonly",
     ],

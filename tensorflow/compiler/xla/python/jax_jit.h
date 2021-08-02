@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -61,7 +63,10 @@ struct CallSignature {
   // Static keyword argument names. Interned, and sorted by keyword name.
   std::vector<pybind11::object> static_arg_names;
 
-  xla::PjRtDevice* device;
+  // For JIT, we need this in the key because computation follows the data, so
+  // we may have multiple executables depending on the devices the data is on.
+  // This is not the case for PMAP, and is set to `nullptr`.
+  xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
 
   // Opaque additional context that should be included as part of the cache key.

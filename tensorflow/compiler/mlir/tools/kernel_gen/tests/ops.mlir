@@ -80,14 +80,18 @@ func @jit_compile(%ctx : !tf_framework.op_kernel_context)
 
 // CHECK-LABEL: func @jit_compile_from_str_wo_ctx
 func @jit_compile_from_str_wo_ctx() -> !tf_framework.jit_callable {
-  %callable = tf_framework.jit_compile_from_str "lalala"
+  %callable = tf_framework.jit_compile_from_str "placeholder" {
+      tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
+      enableFtz = false, cpuCodegen = false }
   return %callable : !tf_framework.jit_callable
 }
 
 // CHECK-LABEL: func @jit_compile_from_str
 func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable {
-  %callable = tf_framework.jit_compile_from_str %ctx , "syntax error for later"
+  %callable = tf_framework.jit_compile_from_str %ctx , "placeholder" {
+      tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
+      enableFtz = false, cpuCodegen = false }
   return %callable : !tf_framework.jit_callable
 }
 

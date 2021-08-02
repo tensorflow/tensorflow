@@ -230,8 +230,7 @@ class PjRtClient {
   // SerializeExecutable(). `serialized` must have been produced by a client of
   // the same platform and version as this one.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
-      CompileOptions options) = 0;
+      absl::string_view serialized, CompileOptions options) = 0;
 
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
@@ -357,10 +356,19 @@ class PjRtClient {
     // kImmutableUntilTransferCompletes.
     kZeroCopy,
   };
+
   // on_done_with_host_buffer is optional and may be null.
   // on_done_with_host_buffer will be called iff an OK status is returned.
+  //
+  // `data` points to the backing array of the host buffer. Caution:
+  // `byte_strides` are allowed to be negative, in which case `data` may need
+  // to point to the interior of the buffer, not necessarily its start.
+  //
+  // If byte_strides is omitted, the array is assumed to have a dense layout
+  // with dimensions in major-to-minor order.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, const Shape& shape,
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      absl::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 

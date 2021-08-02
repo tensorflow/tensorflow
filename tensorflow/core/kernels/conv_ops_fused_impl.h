@@ -61,6 +61,7 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
@@ -303,50 +304,13 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
 #if GOOGLE_CUDA
 
-// Encapsulate the default shape information that is used by the convolution
-// operation, and add an activation mode for the fusion.
-class FusedConvParameters : public ConvParameters {
- public:
-  FusedConvParameters(const ConvParameters& base,
-                      const se::dnn::ActivationMode activation_mode)
-      : ConvParameters(base), activation_mode_(activation_mode) {}
-
-  string ToString() const {
-    return absl::StrCat(ConvParameters::ToString(), ", ", activation_mode_);
-  }
-
- private:
-  friend bool operator==(const FusedConvParameters& lhs,
-                         const FusedConvParameters& rhs);
-
-  using ParameterDataType =
-      std::tuple<ConvParameters::ParameterDataType, se::dnn::ActivationMode>;
-
-  ParameterDataType get_data_as_tuple() const {
-    return std::make_tuple(ConvParameters::get_data_as_tuple(),
-                           activation_mode_);
-  }
-
-  se::dnn::ActivationMode activation_mode_;
-};
-
-inline bool operator==(const FusedConvParameters& lhs,
-                       const FusedConvParameters& rhs) {
-  return lhs.get_data_as_tuple() == rhs.get_data_as_tuple();
-}
-
-inline bool operator!=(const FusedConvParameters& lhs,
-                       const FusedConvParameters& rhs) {
-  return !(lhs == rhs);
-}
-
 // A dummy type to group forward convolution autotune results together.
 struct FusedConvAutoTuneGroup {
   static string name() { return "FusedConv"; }
 };
 
 using AutoTuneFusedConv =
-    AutoTuneSingleton<FusedConvAutoTuneGroup, FusedConvParameters,
+    AutoTuneSingleton<FusedConvAutoTuneGroup, ConvParameters,
                       se::dnn::AlgorithmConfig>;
 
 inline int64 ConvolveScratchSize() {
@@ -363,8 +327,7 @@ inline int64 ConvolveScratchSize() {
 // TODO(ezhulenev): Move it to conv_ops_gpu.h and share with conv_ops.cc.
 template <typename T, typename ConvLaunch, typename LogFunc>
 Status FindBestConvolveAlgorithm(
-    const FusedConvParameters& params,
-    const se::dnn::BatchDescriptor& input_desc,
+    const ConvParameters& params, const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& bias_desc,
     const se::dnn::BatchDescriptor& output_desc,
@@ -693,26 +656,27 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
-    FusedConvParameters conv_parameters = {
-        {in_batch,                      // batch
-         in_depths,                     // in_depths
-         {{in_rows,                     // in_rows
-           in_cols}},                   // in_cols
-         FORMAT_NCHW,                   // compute_data_format
-         out_depths,                    // out_depths
-         {{patch_rows,                  // filter_rows
-           patch_cols,                  // filter_cols
-           patch_depths}},              // filter_depths
-         {{dimensions.dilation_rows,    // dilation_rows
-           dimensions.dilation_cols}},  // dilation_cols
-         {{dimensions.stride_rows,      // stride_rows
-           dimensions.stride_cols}},    // stride_cols
-         {{common_padding_rows,         // padding_rows
-           common_padding_cols}},       // padding_cols
-         dtype,                         // tensor datatype
-         device_id,                     // device_id
-         conv_desc.group_count()},
-        dnn_activation_mode  // activation_mode
+    ConvParameters conv_parameters = {
+        in_batch,                      // batch
+        in_depths,                     // in_depths
+        {{in_rows,                     // in_rows
+          in_cols}},                   // in_cols
+        FORMAT_NCHW,                   // compute_data_format
+        out_depths,                    // out_depths
+        {{patch_rows,                  // filter_rows
+          patch_cols,                  // filter_cols
+          patch_depths}},              // filter_depths
+        {{dimensions.dilation_rows,    // dilation_rows
+          dimensions.dilation_cols}},  // dilation_cols
+        {{dimensions.stride_rows,      // stride_rows
+          dimensions.stride_cols}},    // stride_cols
+        {{common_padding_rows,         // padding_rows
+          common_padding_cols}},       // padding_cols
+        dtype,                         // tensor datatype
+        device_id,                     // device_id
+        conv_desc.group_count(),
+        /*has_side_input=*/false,  // this op doesn't support side inputs.
+        dnn_activation_mode        // activation_mode
     };
 
     constexpr double kConvInputScale = 1.0;

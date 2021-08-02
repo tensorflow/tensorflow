@@ -446,13 +446,10 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
                                         Operation* op, Value output_val,
                                         Value input_lhs_val,
                                         Value input_rhs_val) {
-  RankedTensorType input_lhs_type =
-      input_lhs_val.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType input_rhs_type =
-      input_rhs_val.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType output_type =
-      output_val.getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
+  ShapedType input_lhs_type = input_lhs_val.getType().dyn_cast<ShapedType>();
+  ShapedType input_rhs_type = input_rhs_val.getType().dyn_cast<ShapedType>();
+  ShapedType output_type = output_val.getType().dyn_cast<ShapedType>();
+  // Not a shaped tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return llvm::None;
 
   bool input_lhs_is_qtype =
@@ -472,8 +469,7 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
 
   Value output;
   if (output_is_qtype) {
-    RankedTensorType rescale_type =
-        RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
+    ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
     auto input_lhs_qtype = input_lhs_type.getElementType()
                                .cast<mlir::quant::UniformQuantizedType>();
     auto input_rhs_qtype = input_rhs_type.getElementType()
@@ -516,14 +512,14 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
                                                  Value x, Value y) {
   // Squared-difference is (x-y)*(x-y).
   // This lowering calculates the difference and multiplies.
-  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
+  ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
     op->emitOpError("SquaredDifference: result not ranked tensor type");
     return llvm::None;
   }
 
-  RankedTensorType x_type = x.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType y_type = y.getType().dyn_cast<RankedTensorType>();
+  ShapedType x_type = x.getType().dyn_cast<ShapedType>();
+  ShapedType y_type = y.getType().dyn_cast<ShapedType>();
   if (!x_type || !y_type) {
     op->emitOpError("SquaredDifference: inputs not ranked tensor type");
     return llvm::None;
@@ -540,15 +536,15 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
                                      Value result, Value input) {
   // Implements banker's rounding by calculating floor(input + 0.5).
-  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
+  ShapedType result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type) {
-    op->emitOpError("Round: result not ranked tensor type");
+    op->emitOpError("Round: result not shaped tensor type");
     return llvm::None;
   }
 
-  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = input.getType().dyn_cast<ShapedType>();
   if (!input_type) {
-    op->emitOpError("Round: input not ranked tensor type");
+    op->emitOpError("Round: input not shaped tensor type");
     return llvm::None;
   }
 
@@ -2255,8 +2251,7 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
                                              Operation* op, Value input_value,
                                              StringAttr fused_activation_fn) {
-  RankedTensorType input_type =
-      input_value.getType().dyn_cast<RankedTensorType>();
+  ShapedType input_type = input_value.getType().dyn_cast<ShapedType>();
   if (!input_type) return llvm::None;
 
   bool input_is_qtype =

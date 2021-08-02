@@ -112,9 +112,6 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
-
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
 

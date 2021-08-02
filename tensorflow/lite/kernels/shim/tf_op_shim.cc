@@ -149,8 +149,7 @@ ConstTensorViewOr TfShapeInferenceContext::GetInputTensor(const int idx) const {
 
 absl::StatusOr<AttrValue> TfShapeInferenceContext::GetAttr(
     const std::string& attr_name) const {
-  const tensorflow::AttrSlice& attrs = context_->attrs();
-  const auto* tf_attr_value = attrs.Find(attr_name);
+  const auto* tf_attr_value = context_->GetAttr(attr_name);
   if (tf_attr_value == nullptr)
     return absl::InvalidArgumentError(
         absl::StrCat("Non-existent attribute: ", attr_name));

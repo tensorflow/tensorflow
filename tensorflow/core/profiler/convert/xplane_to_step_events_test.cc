@@ -84,8 +84,8 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
       ConvertDeviceTraceXPlaneToStepEvents(*device_plane);
   EXPECT_EQ(device_step_events.size(), 1);
   EXPECT_EQ(device_step_events[0].Events().size(), 1);
-  StepEvents host_step_events = ConvertHostThreadsXPlaneToStepEvents(
-      *host_plane, true, device_step_events);
+  StepEvents host_step_events =
+      ConvertHostThreadsXPlaneToStepEvents(*host_plane, &device_step_events);
   // Should contain only the step which is also present on the device.
   EXPECT_EQ(host_step_events.size(), 1);
   // TraceContext should be added as a step marker.

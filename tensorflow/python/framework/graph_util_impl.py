@@ -32,6 +32,8 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
+tf_export(v1=["GraphDef"])(graph_pb2.GraphDef)
+
 # A normal import here would generate circular dependencies.
 convert_to_constants = lazy_loader.LazyLoader(
     "convert_to_constants", globals(),
@@ -63,6 +65,44 @@ _CONTROL_FLOW_OP_NAMES_OR_IDENTITY = [
 def _is_variable_op(op):
   """Returns true if 'op' refers to a Variable node."""
   return op in _VARIABLE_OPS
+
+# GraphDef protobuf docstring.
+graph_pb2.GraphDef.__doc__ = """\
+A protobuf containing the graph of operations.
+
+@compatibility(TF2)
+This API is not available in TensorFlow 2.x.
+
+You should not need to use `GraphDef`s directly in TF2. To load `GraphDef`s in
+TF2, use SavedModel. The SavedModel contains the `GraphDef`.
+
+Before:
+
+```python
+with tf.io.gfile.GFile('/tmp/graph.pb', 'rb') as f:
+  graph_def = tf.compat.v1.GraphDef()
+  graph_def.ParseFromString(f.read())
+```
+
+After:
+
+```python
+tf.saved_model.load('/tmp/saved_model')
+```
+
+If you would like to create a `GraphDef` in TF2, use `tf.function` and
+`get_concrete_function`.
+
+>>> @tf.function
+>>> def f(x):
+>>>   return x
+>>>
+>>> graph_def = f.get_concrete_function(1.).graph.as_graph_def()
+>>> print(graph_def)
+
+@end_compatibility
+
+"""
 
 
 @deprecation.deprecated(

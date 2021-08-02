@@ -35,29 +35,46 @@ HloReachabilityMap::HloReachabilityMap(
 bool HloReachabilityMap::SetReachabilityToUnion(
     absl::Span<const HloInstruction* const> inputs,
     const HloInstruction* instruction) {
-  BitVector& bit_vector = GetBitVector(instruction);
+  Index index = GetIndex(instruction);
+  BitVector& bit_vector = GetBitVector(index);
   tmp_bit_vector_ = bit_vector;
-  SetReachabilityToUnionHelper(inputs, instruction, &bit_vector);
+  SetReachabilityToUnionHelper(inputs, index);
   return bit_vector != tmp_bit_vector_;
 }
 
 void HloReachabilityMap::FastSetReachabilityToUnion(
     absl::Span<const HloInstruction* const> inputs,
     const HloInstruction* instruction) {
-  SetReachabilityToUnionHelper(inputs, instruction, &GetBitVector(instruction));
+  Index index = GetIndex(instruction);
+  SetReachabilityToUnionHelper(inputs, index);
+}
+
+void HloReachabilityMap::FastSetReachabilityToUnion(
+    absl::Span<const Index> input_indices, Index index) {
+  SetReachabilityToUnionHelper(input_indices, index);
 }
 
 void HloReachabilityMap::SetReachabilityToUnionHelper(
-    absl::Span<const HloInstruction* const> inputs,
-    const HloInstruction* instruction, BitVector* bit_vector) {
-  // If instruction is part of inputs, don't reset the bit_vector.
-  if (!absl::c_linear_search(inputs, instruction)) {
-    bit_vector->SetToZero();
-  }
-  bit_vector->Set(GetIndex(instruction).v);
+    absl::Span<const HloInstruction* const> inputs, Index index) {
+  absl::InlinedVector<Index, 16> input_indices;
+  input_indices.reserve(inputs.size());
   for (const HloInstruction* input : inputs) {
-    if (input != instruction) {
-      bit_vector->OrWith(GetBitVector(input));
+    input_indices.push_back(GetIndex(input));
+  }
+  SetReachabilityToUnionHelper(input_indices, index);
+}
+
+void HloReachabilityMap::SetReachabilityToUnionHelper(
+    absl::Span<const Index> input_indices, Index index) {
+  BitVector& bit_vector = GetBitVector(index);
+  // If instruction is part of inputs, don't reset the bit_vector.
+  if (!absl::c_linear_search(input_indices, index)) {
+    bit_vector.SetToZero();
+  }
+  bit_vector.Set(index.v);
+  for (Index input_index : input_indices) {
+    if (input_index != index) {
+      bit_vector.OrWith(GetBitVector(input_index));
     }
   }
 }

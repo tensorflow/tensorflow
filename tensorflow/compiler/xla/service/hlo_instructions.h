@@ -1481,26 +1481,30 @@ class HloCustomCallInstruction : public HloInstruction {
  public:
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
-                           absl::string_view custom_call_target, string opaque);
+                           absl::string_view custom_call_target, string opaque,
+                           CustomCallApiVersion api_version);
 
   // Constructor for a custom call with constrained layout. 'shape' and
   // 'operands_with_layout' must all have layouts.
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
                            absl::string_view custom_call_target, string opaque,
-                           absl::Span<const Shape> operand_shapes_with_layout);
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           CustomCallApiVersion api_version);
 
   // Constructor for a custom call with a to_apply computation.
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
                            HloComputation* to_apply,
-                           absl::string_view custom_call_target, string opaque);
+                           absl::string_view custom_call_target, string opaque,
+                           CustomCallApiVersion api_version);
 
   // Constructor for a custom call with multiple computations.
   HloCustomCallInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloComputation* const> called_computations,
-      absl::string_view custom_call_target, string opaque);
+      absl::string_view custom_call_target, string opaque,
+      CustomCallApiVersion api_version);
 
   const Window& window() const override {
     CHECK(window_ != nullptr);
@@ -1589,6 +1593,10 @@ class HloCustomCallInstruction : public HloInstruction {
   CustomCallSchedule custom_call_schedule() const {
     return custom_call_schedule_;
   }
+  void set_api_version(CustomCallApiVersion api_version) {
+    api_version_ = api_version;
+  }
+  CustomCallApiVersion api_version() const { return api_version_; }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -1629,6 +1637,10 @@ class HloCustomCallInstruction : public HloInstruction {
   absl::optional<Literal> literal_;
   // A custom-call schedule hint.
   CustomCallSchedule custom_call_schedule_;
+  // The version of the API used by the custom call function.
+  // TODO(b/189822916): Remove this field when all clients are migrated to the
+  // status-returning API.
+  CustomCallApiVersion api_version_;
 };
 
 class HloPadInstruction : public HloInstruction {

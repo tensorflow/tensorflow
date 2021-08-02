@@ -7,7 +7,7 @@ load(
     "if_windows",
 )
 load(
-    "@org_tensorflow//third_party/llvm:llvm.bzl",
+    "@org_tensorflow//third_party/llvm_openmp:cmake_vars.bzl",
     "cmake_var_string",
     "expand_cmake_vars",
 )
@@ -25,6 +25,15 @@ package(
 )
 
 exports_files(["LICENSE.txt"])
+
+py_binary(
+    name = "expand_cmake_vars",
+    srcs = ["expand_cmake_vars.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "@llvm_openmp//:__subpackages__",
+    ],
+)
 
 kmp_i18n_os_type = select({
     "@org_tensorflow//tensorflow:windows": "win",

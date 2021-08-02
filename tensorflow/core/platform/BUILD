@@ -98,6 +98,7 @@ exports_files(
         "logging.h",
         "mem.h",
         "mutex.h",
+        "crash_analysis.h",
         "net.h",
         "numa.h",
         "ram_file_system.h",
@@ -185,6 +186,15 @@ cc_library(
         ":platform",
         "@com_google_absl//absl/strings:cord",
     ] + tf_platform_deps("cord"),
+)
+
+cc_library(
+    name = "crash_analysis",
+    hdrs = ["crash_analysis.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("crash_analysis"),
 )
 
 cc_library(
@@ -816,6 +826,7 @@ cc_library(
     testonly = True,
     hdrs = ["test_benchmark.h"],
     deps = [
+        "@com_google_benchmark//:benchmark",
         ":platform",
     ] + tf_platform_deps("test_benchmark"),
 )
@@ -974,6 +985,7 @@ cc_binary(
         ":cpu_feature_guard",
         ":denormal",
         ":dynamic_annotations",
+        ":crash_analysis",
         ":env_time",
         ":file_statistics",
         ":fingerprint",
@@ -1052,7 +1064,6 @@ cc_library(
         ":stacktrace_handler",
         ":test",
         ":test_benchmark",
-        "//tensorflow/core/platform/default/build_config:test_main",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -1281,6 +1292,21 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "errors_test",
+    size = "small",
+    srcs = ["errors_test.cc"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
     name = "fake_python_env_test",
     size = "small",
     srcs = ["fake_python_env_test.cc"],
@@ -1465,6 +1491,7 @@ filegroup(
         "cord.h",
         "cpu_feature_guard.h",
         "cpu_info.h",
+        "crash_analysis.h",
         "dynamic_annotations.h",
         "env.h",
         "error.h",

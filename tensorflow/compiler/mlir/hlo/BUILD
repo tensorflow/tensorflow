@@ -23,6 +23,7 @@ package_group(
         "//learning/brain/google/xla/mlir/...",
         "//learning/deepmind/partir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
+        "//platforms/darwinn/tools/mlir_fuzzer/...",
         "//platforms/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
@@ -36,30 +37,34 @@ package_group(
 )
 
 exports_files([
+    "include/mlir-hlo/Dialect/mhlo/IR/clo_ops.td",
     "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     "include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td",
 ])
 
+# Python extension sources.
+exports_files(["python/MlirHloModule.cpp"])
+
+filegroup(
+    name = "hlo_ops_td_filegroup",
+    srcs = glob(["include/mlir-hlo/Dialect/mhlo/IR/*.td"]),
+)
+
 td_library(
     name = "hlo_ops_td_files",
-    srcs = glob(["include/mlir-hlo/Dialect/mhlo/IR/*.td"]) + [
-        # TODO(gcmn): These should be encapsulate in a td_library.
-        "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/CopyOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/ViewLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeOps.td",
-    ],
+    srcs = glob(["include/mlir-hlo/Dialect/mhlo/IR/*.td"]),
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     deps = [
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:CopyOpInterfaceTdFiles",
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:LoopLikeInterfaceTdFiles",
         "@llvm-project//mlir:MemRefOpsTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:ShapeOpsTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -502,6 +507,7 @@ cc_library(
     deps = [
         ":hlo_ops_base_enums_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1730,6 +1736,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "CAPI",
+    srcs = [
+        "lib/CAPI/Dialects.cpp",
+    ],
+    hdrs = [
+        "include/mlir-hlo-c/Dialects.h",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//mlir:CAPIIR",
+    ],
+)
+
 cc_binary(
     name = "mlir-hlo-opt",
     srcs = [
@@ -1772,11 +1792,29 @@ gentbl_filegroup(
                 "-gen-python-op-bindings",
                 "-bind-dialect=mhlo",
             ],
-            "python/_mhlo_ops_gen.py",
+            "python/mlir/dialects/_mhlo_ops_gen.py",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "python/MhloOps.td",
+    td_file = "python/mlir/dialects/MhloOps.td",
+    deps = [
+        ":MhloOpsPyTdFiles",
+    ],
+)
+
+gentbl_filegroup(
+    name = "ChloOpsPyGen",
+    tbl_outs = [
+        (
+            [
+                "-gen-python-op-bindings",
+                "-bind-dialect=chlo",
+            ],
+            "python/mlir/dialects/_chlo_ops_gen.py",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "python/mlir/dialects/ChloOps.td",
     deps = [
         ":MhloOpsPyTdFiles",
     ],
@@ -1785,7 +1823,9 @@ gentbl_filegroup(
 filegroup(
     name = "MhloOpsPyFiles",
     srcs = [
-        "python/mhlo.py",
+        "python/mlir/dialects/chlo.py",
+        "python/mlir/dialects/mhlo.py",
+        ":ChloOpsPyGen",
         ":MhloOpsPyGen",
     ],
 )

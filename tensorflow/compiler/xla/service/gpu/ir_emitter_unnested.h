@@ -568,15 +568,18 @@ class IrEmitterUnnested : public IrEmitter {
   std::unique_ptr<KernelThunk> BuildKernelThunkImpl(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
       absl::Span<const BufferSlice> slices,
-      std::vector<llvm_ir::IrArray>* ir_arrays);
+      std::vector<llvm_ir::IrArray>* ir_arrays,
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunk(
       mlir::Operation* op, mlir::ValueRange operands,
-      Thunk::ThunkInfo thunk_info, std::vector<llvm_ir::IrArray>* ir_arrays);
+      Thunk::ThunkInfo thunk_info, std::vector<llvm_ir::IrArray>* ir_arrays,
+      const LaunchDimensions& launch_dimensions);
 
   StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunk(
       mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-      std::vector<llvm_ir::IrArray>* ir_arrays);
+      std::vector<llvm_ir::IrArray>* ir_arrays,
+      const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.

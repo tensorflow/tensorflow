@@ -168,7 +168,7 @@ struct JITCompileFromStrOpConverter
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
     rewriter.replaceOpWithNewOp<JITCompileFromStrOp>(
-        op, rewriter.getType<JITCallableType>(), *ctx, op.code());
+        op, rewriter.getType<JITCallableType>(), *ctx, op->getAttrs());
     return success();
   }
 };

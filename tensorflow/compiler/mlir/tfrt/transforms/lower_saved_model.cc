@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <deque>
+#include <tuple>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -39,6 +42,10 @@ namespace {
 constexpr char kCpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
 
+// Tuple storing {device, container, shared_name} attributes in that order.
+using ResourceKey =
+    std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef>;
+
 bool IsSessionInitializer(mlir::FuncOp op) {
   auto session_initializer_op = mlir::tf_saved_model::GetSessionInitializerOp(
       op->getParentOfType<mlir::ModuleOp>());
@@ -52,8 +59,7 @@ bool IsSessionInitializer(mlir::FuncOp op) {
   return false;
 }
 
-std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
-    mlir::Operation *op) {
+ResourceKey GetResourceKey(mlir::Operation *op) {
   llvm::StringRef device;
   if (auto attr = op->getAttrOfType<mlir::StringAttr>("device")) {
     device = attr.getValue();
@@ -83,21 +89,28 @@ struct HoistInfo {
   // `hoisted_values` is to keep all values that are produced by hoisted ops
   // but used by non-hoisted ops. These values will be replaced by results of
   // tf._TfrtGetResource op. The index of each value in this array will be the
-  // index used in tf._TfrtGetResource and tf._TfrtSetResource op.
-  llvm::SmallVector<mlir::Value, 4> hoisted_values;
+  // index used in tf._TfrtGetResource and tf._TfrtSetResource op. This also
+  // stores the ResourceKey which has the shared_name and container attributes
+  // used by later resource alias analysis and side effect analysis passes.
+  llvm::SmallVector<std::pair<mlir::Value, ResourceKey>, 4> hoisted_values;
 };
 
-void ReplaceHoistedValues(llvm::ArrayRef<mlir::Value> hoisted_values,
-                          mlir::OpBuilder &builder) {
+void ReplaceHoistedValues(
+    llvm::ArrayRef<std::pair<mlir::Value, ResourceKey>> hoisted_values,
+    mlir::OpBuilder &builder) {
+  struct HoistedValueInfo {
+    llvm::SmallVector<mlir::Value, 4> hoisted_values;
+    llvm::SmallVector<int64_t, 4> indices;
+    llvm::SmallVector<llvm::StringRef, 4> shared_names;
+    llvm::SmallVector<llvm::StringRef, 4> containers;
+  };
   // Rearrange the hoisted values by each function and each device.
-  llvm::DenseMap<mlir::Block *,
-                 llvm::StringMap<std::pair<llvm::SmallVector<mlir::Value, 4>,
-                                           llvm::SmallVector<int64_t, 4>>>>
+  llvm::DenseMap<mlir::Block *, llvm::StringMap<HoistedValueInfo>>
       hoisted_values_by_block_device;
 
   // Find a block where to place tf._TfrtGetResource operation. We do not place
   // get resource operations inside the `tf_device.cluster` operations, because
-  // these blocks are intented for later on-device compilation. Insert resource
+  // these blocks are intended for later on-device compilation. Insert resource
   // reads to the closest block outside of the `tf_device.cluster` operation.
   auto hoist_into_block = [](mlir::Value value) -> mlir::Block * {
     mlir::Operation *cluster_op =
@@ -106,11 +119,13 @@ void ReplaceHoistedValues(llvm::ArrayRef<mlir::Value> hoisted_values,
   };
 
   for (auto iter : llvm::enumerate(hoisted_values)) {
-    auto value = iter.value();
+    auto value = iter.value().first;
+    auto container = std::get<1>(iter.value().second);
+    auto shared_name = std::get<2>(iter.value().second);
     auto index = iter.index();
     auto &device_map = hoisted_values_by_block_device[hoist_into_block(value)];
 
-    assert(value.getDefiningOp() && "hosited values must not be arguments.");
+    assert(value.getDefiningOp() && "hoisted values must not be arguments.");
     llvm::StringRef device = kCpuDeviceName;
     if (auto device_attr =
             value.getDefiningOp()->getAttrOfType<mlir::StringAttr>("device")) {
@@ -119,8 +134,10 @@ void ReplaceHoistedValues(llvm::ArrayRef<mlir::Value> hoisted_values,
 
     auto &item = device_map[device];
 
-    item.first.push_back(value);
-    item.second.push_back(index);
+    item.hoisted_values.push_back(value);
+    item.indices.push_back(index);
+    item.shared_names.push_back(shared_name);
+    item.containers.push_back(container);
   }
 
   // Create tf._TfrtGetResource op for each function and device.
@@ -131,12 +148,16 @@ void ReplaceHoistedValues(llvm::ArrayRef<mlir::Value> hoisted_values,
     builder.setInsertionPointToStart(block);
     for (const auto &device_iter : device_map) {
       llvm::StringRef device = device_iter.getKey();
-      mlir::ValueRange old_values = device_iter.getValue().first;
-      const auto &indices = device_iter.getValue().second;
+      mlir::ValueRange old_values = device_iter.getValue().hoisted_values;
+      const auto &indices = device_iter.getValue().indices;
+      const auto &shared_name_arr = device_iter.getValue().shared_names;
+      const auto &container_arr = device_iter.getValue().containers;
 
       auto get_resource_op = builder.create<mlir::TF::_TfrtGetResourceOp>(
           block->getParentOp()->getLoc(), old_values.getTypes(),
-          builder.getI64ArrayAttr(indices));
+          builder.getI64ArrayAttr(indices),
+          builder.getStrArrayAttr(shared_name_arr),
+          builder.getStrArrayAttr(container_arr));
       get_resource_op->setAttr("device", builder.getStringAttr(device));
 
       auto new_values = get_resource_op.results();
@@ -155,8 +176,7 @@ bool OnlyHasReadEffect(mlir::Operation *op) {
   return interface.onlyHasEffect<mlir::MemoryEffects::Read>();
 }
 
-bool CanHoist(const llvm::DenseSet<std::tuple<llvm::StringRef, llvm::StringRef,
-                                              llvm::StringRef>> &read_only_vars,
+bool CanHoist(const llvm::DenseSet<ResourceKey> &read_only_vars,
               mlir::Operation *op) {
   // return ops should not be hoisted.
   if (op->mightHaveTrait<mlir::OpTrait::IsTerminator>()) return false;
@@ -192,9 +212,7 @@ bool CanHoist(const llvm::DenseSet<std::tuple<llvm::StringRef, llvm::StringRef,
 }
 
 void HoistInvariantOpsInFunction(
-    mlir::FuncOp func,
-    const llvm::DenseSet<std::tuple<llvm::StringRef, llvm::StringRef,
-                                    llvm::StringRef>> &read_only_vars,
+    mlir::FuncOp func, const llvm::DenseSet<ResourceKey> &read_only_vars,
     const mlir::TF::SideEffectAnalysis::Info &side_effect_analysis,
     mlir::OpBuilder &builder, HoistInfo &module_hoist_info) {
   // Keep the hoisted ops in this function.
@@ -260,7 +278,8 @@ void HoistInvariantOpsInFunction(
                       [&hoists](mlir::Operation *user) {
                         return hoists.count(user) == 0;
                       })) {
-        module_hoist_info.hoisted_values.push_back(result);
+        module_hoist_info.hoisted_values.push_back(
+            {result, GetResourceKey(op)});
       }
     }
   }
@@ -268,8 +287,7 @@ void HoistInvariantOpsInFunction(
 
 void HoistInvariantOps(mlir::ModuleOp module) {
   // Find all resources used in non-init functions.
-  llvm::DenseMap<std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef>,
-                 llvm::SmallVector<mlir::Operation *, 4>>
+  llvm::DenseMap<ResourceKey, llvm::SmallVector<mlir::Operation *, 4>>
       resources;
   module.walk([&](mlir::Operation *op) {
     if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::HashTableV2Op>(op)) {
@@ -279,8 +297,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     }
   });
 
-  llvm::DenseSet<std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef>>
-      read_only_vars;
+  llvm::DenseSet<ResourceKey> read_only_vars;
   for (const auto &iter : resources) {
     const auto &key = iter.first;
     const auto &vars = iter.second;
@@ -316,7 +333,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
 
   // Create tf._TfrtSetResource ops in the init function.
   for (auto iter : llvm::enumerate(module_hoist_info.hoisted_values)) {
-    mlir::Value value = iter.value();
+    mlir::Value value = iter.value().first;
     int64_t index = iter.index();
 
     auto new_value = module_hoist_info.value_mapping.lookup(value);

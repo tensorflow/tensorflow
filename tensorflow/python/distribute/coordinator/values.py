@@ -25,8 +25,8 @@ from __future__ import print_function
 import enum
 import threading
 
-from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function

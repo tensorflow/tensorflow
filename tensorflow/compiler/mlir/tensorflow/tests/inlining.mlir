@@ -113,8 +113,8 @@ func @inline_into_island() -> (tensor<2xi32>, tensor<2xi32>) {
 
 func private @simple_callee_var() -> tensor<2xi32>  {
   %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
-  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf.resource<tensor<2xi32>>>
-  "tf.AssignVariableOp"(%0, %cst) {device = ""} : (tensor<!tf.resource<tensor<2xi32>>>, tensor<2xi32>) -> ()
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<2xi32>>>
+  "tf.AssignVariableOp"(%0, %cst) {device = ""} : (tensor<!tf_type.resource<tensor<2xi32>>>, tensor<2xi32>) -> ()
   return %cst : tensor<2xi32>
 }
 

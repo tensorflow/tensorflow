@@ -223,11 +223,11 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:distribute_options",
         "//tensorflow/python/data/experimental/ops:error_ops",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//third_party/py/numpy",
     ],
 )

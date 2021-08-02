@@ -75,7 +75,7 @@ RANDOM_SEED = 342
 TF_TYPE_INFO = {
     tf.float32: (np.float32, "FLOAT"),
     tf.float16: (np.float16, "FLOAT"),
-    tf.float64: (np.double, "FLOAT64"),
+    tf.float64: (np.float64, "FLOAT64"),
     tf.int32: (np.int32, "INT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
     tf.int16: (np.int16, "QUANTIZED_INT16"),

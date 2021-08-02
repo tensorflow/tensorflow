@@ -151,7 +151,8 @@ class InvertPermutationOp : public XlaOpKernel {
                     std::numeric_limits<T>::max(), " elements"));
 
     auto e = ctx->InputExpression(0);
-    auto tensor_or_status = e.ResolveConstant(ctx->compiler()->client());
+    auto* client = ctx->compiler() ? ctx->compiler()->client() : nullptr;
+    auto tensor_or_status = e.ResolveConstant(client);
     OP_REQUIRES_OK(ctx, tensor_or_status.status());
     // If the input is a constant, we also want the output to be a constant.
     // Some models rely on the result of InvertPermutation being a constant.

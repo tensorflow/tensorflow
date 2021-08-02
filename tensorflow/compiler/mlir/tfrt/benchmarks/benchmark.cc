@@ -18,10 +18,10 @@ limitations under the License.
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/FileUtilities.h"
-#include "tfrt/host_context/concurrent_work_queue.h"
-#include "tfrt/host_context/host_allocator.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 
 namespace tensorflow {
 

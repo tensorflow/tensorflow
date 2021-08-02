@@ -1392,8 +1392,7 @@ void LowerStaticTensorListPass::runOnOperation() {
   };
 
   ConversionTarget target(*context);
-  target.addDynamicallyLegalDialect<TF::TensorFlowDialect>(
-      llvm::Optional<ConversionTarget::DynamicLegalityCallbackFn>(is_legal));
+  target.addDynamicallyLegalDialect<TF::TensorFlowDialect>(is_legal);
   target.addIllegalOp<TF::EmptyTensorListOp, TF::TensorListFromTensorOp,
                       TF::TensorListGetItemOp, TF::TensorListLengthOp,
                       TF::TensorListPushBackOp, TF::TensorListReserveOp,

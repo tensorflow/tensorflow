@@ -24,9 +24,9 @@ import random
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import cardinality
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
@@ -369,12 +369,12 @@ class TensorLikeDataAdapter(DataAdapter):
 
     # Default optimizations are disabled to avoid the overhead of (unnecessary)
     # input pipeline graph serialization and deserialization
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     if self._shuffle:
       # See b/141490660 for more details.
       options.experimental_external_state_policy = (
-          distribute_options.ExternalStatePolicy.IGNORE)
+          options_lib.ExternalStatePolicy.IGNORE)
     dataset = dataset.with_options(options)
     return dataset
 

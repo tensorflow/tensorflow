@@ -152,7 +152,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // Operations with unsupported data type operands/results are not clustered.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
-  func @call(%arg0: tensor<?x?x!tf.string>) -> (tensor<?x?x!tf.string>)
+  func @call(%arg0: tensor<?x?x!tf_type.string>) -> (tensor<?x?x!tf_type.string>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
@@ -166,9 +166,9 @@ module attributes {tf.versions = {producer = 462 : i32}} {
         : () -> tensor<2xi32>
       %out, %out_ctl =
         tf_executor.island wraps "tf.Transpose"(%arg0, %perm) {device = ""}
-        : (tensor<?x?x!tf.string>, tensor<2xi32>) -> tensor<?x?x!tf.string>
-      tf_executor.fetch %out: tensor<?x?x!tf.string>
+        : (tensor<?x?x!tf_type.string>, tensor<2xi32>) -> tensor<?x?x!tf_type.string>
+      tf_executor.fetch %out: tensor<?x?x!tf_type.string>
     }
-    return %0 : tensor<?x?x!tf.string>
+    return %0 : tensor<?x?x!tf_type.string>
   }
 }

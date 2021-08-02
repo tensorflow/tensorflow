@@ -380,6 +380,11 @@ Status Examples::Initialize(OpKernelContext* const context,
   const Tensor* example_labels_t;
   TF_RETURN_IF_ERROR(context->input("example_labels", &example_labels_t));
   auto example_labels = example_labels_t->flat<float>();
+  if (example_labels.size() != num_examples) {
+    return errors::InvalidArgument("Expected ", num_examples,
+                                   " example labels but got ",
+                                   example_labels.size());
+  }
 
   OpInputList dense_features_inputs;
   TF_RETURN_IF_ERROR(

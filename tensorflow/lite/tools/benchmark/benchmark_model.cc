@@ -64,8 +64,8 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
       << "Note: as the benchmark tool itself affects memory footprint, the "
          "following is only APPROXIMATE to the actual memory footprint of the "
          "model at runtime. Take the information at your discretion.";
-  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
-                   << init_mem_usage.max_rss_kb / 1024.0
+  TFLITE_LOG(INFO) << "Memory footprint delta from the start of the tool(MB): "
+                   << "init=" << init_mem_usage.max_rss_kb / 1024.0
                    << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
 }
 

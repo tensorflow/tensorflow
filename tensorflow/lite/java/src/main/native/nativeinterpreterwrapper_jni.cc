@@ -328,10 +328,10 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_hasUnresolvedFlexOp(
 }
 
 JNIEXPORT jobjectArray JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureDefNames(
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureKeys(
     JNIEnv* env, jclass clazz, jlong handle) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-  TFLITE_LOG(tflite::TFLITE_LOG_WARNING, "Not supported: getSignatureDefNames");
+  TFLITE_LOG(tflite::TFLITE_LOG_WARNING, "Not supported: getSignatureKeys");
   return nullptr;
 #else
   Interpreter* interpreter = convertLongToInterpreter(env, handle);
@@ -340,17 +340,17 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureDefNames(
   if (string_class == nullptr) {
     ThrowException(env, tflite::jni::kUnsupportedOperationException,
                    "Internal error: Can not find java/lang/String class to get "
-                   "SignatureDef names.");
+                   "SignatureDef keys.");
     return nullptr;
   }
-  const auto& signature_defs = interpreter->signature_def_names();
-  jobjectArray names = static_cast<jobjectArray>(env->NewObjectArray(
-      signature_defs.size(), string_class, env->NewStringUTF("")));
-  for (int i = 0; i < signature_defs.size(); ++i) {
-    env->SetObjectArrayElement(names, i,
-                               env->NewStringUTF(signature_defs[i]->c_str()));
+  const auto& signature_keys = interpreter->signature_keys();
+  jobjectArray keys = static_cast<jobjectArray>(env->NewObjectArray(
+      signature_keys.size(), string_class, env->NewStringUTF("")));
+  for (int i = 0; i < signature_keys.size(); ++i) {
+    env->SetObjectArrayElement(keys, i,
+                               env->NewStringUTF(signature_keys[i]->c_str()));
   }
-  return names;
+  return keys;
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 

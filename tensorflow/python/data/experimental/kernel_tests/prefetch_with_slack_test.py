@@ -23,6 +23,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -39,7 +40,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     """Determines slack_period based on num devices attached to iterator."""
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.prefetch(1)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -59,7 +60,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     """Defaults to slack period of 1 without iterator."""
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.prefetch(1)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(10))
@@ -70,7 +71,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.prefetch(1)
     dataset = dataset.map(lambda x: x + 1)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(1, 11))
@@ -79,7 +80,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testNoErrorWithoutPrefetch(self):
     """The rewrite should not fail if there is no prefetch() in the pipeline."""
     dataset = dataset_ops.Dataset.range(10)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(10))
@@ -90,7 +91,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.prefetch(1)
     dataset = dataset.flat_map(dataset_ops.Dataset.from_tensors)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(10))

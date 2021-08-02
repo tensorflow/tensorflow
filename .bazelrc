@@ -644,5 +644,3 @@ build:experimental_enable_bef_thunk --@rules_cuda//cuda:enable_cuda
 build:experimental_enable_bef_thunk --nocheck_visibility
 build:experimental_enable_bef_thunk --incompatible_strict_action_env
 build:experimental_enable_bef_thunk --config=monolithic
-
-build --verbose_failures

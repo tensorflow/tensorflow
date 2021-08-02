@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
+#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
@@ -294,10 +295,10 @@ class Interpreter {
   }
 
   /// WARNING: Experimental interface, subject to change
-  /// Returns list of all names of different method signatures defined
-  /// in the model.
+  /// Returns list of all keys of different method signatures defined in the
+  /// model.
   /// Note, pointers returned have lifetime same as the Interpreter object.
-  std::vector<const std::string*> signature_def_names() const {
+  std::vector<const std::string*> signature_keys() const {
     std::vector<const std::string*> signature_keys;
     signature_keys.reserve(signature_defs_.size());
     for (const auto& sig_def : signature_defs_) {
@@ -305,6 +306,17 @@ class Interpreter {
     }
     return signature_keys;
   }
+
+  /// WARNING: Experimental interface, subject to change
+  /// Returns a pointer to the SignatureRunner instance to run the part of the
+  /// graph identified by a SignatureDef. The nullptr is returned if the given
+  /// signature key is not valid.
+  /// If you need to specify delegates, you have to do that before calling this
+  /// function. This function will additionally apply default delegates. Thus,
+  /// applying delegates after that might lead to undesirable behaviors.
+  /// Note, the pointed instance has lifetime same as the Interpreter object
+  /// and the SignatureRunner class is *not* thread-safe.
+  SignatureRunner* GetSignatureRunner(const char* signature_key);
 
   /// WARNING: Experimental interface, subject to change
   // Return the subgraph index that corresponds to a SignatureDef, defined by
@@ -351,22 +363,28 @@ class Interpreter {
   /// Returns the input tensor identified by 'signature_input_name' in the
   /// signature identified by 'signature_key'.
   /// Returns nullptr if not found.
-  TfLiteTensor* input_tensor_by_signature_name(const char* signature_input_name,
-                                               const char* signature_key) {
-    const int tensor_index = GetTensorIndexFromSignatureDefName(
+  TfLiteTensor* input_tensor_by_signature(const char* signature_input_name,
+                                          const char* signature_key) {
+    const int subgraph_index = GetSubgraphIndexFromSignature(signature_key);
+    if (subgraph_index == -1) return nullptr;
+    const int tensor_index = GetTensorIndexFromSignature(
         signature_input_name, signature_key, /*is_input=*/true);
-    return tensor_index == -1 ? nullptr : tensor(tensor_index);
+    if (tensor_index == -1) return nullptr;
+    return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
   /// WARNING: Experimental interface, subject to change
   /// Returns the output tensor identified by 'signature_output_name' in the
   /// signature identified by 'signature_key'.
   /// Returns nullptr if not found.
-  const TfLiteTensor* output_tensor_by_signature_name(
+  const TfLiteTensor* output_tensor_by_signature(
       const char* signature_output_name, const char* signature_key) const {
-    const int tensor_index = GetTensorIndexFromSignatureDefName(
+    const int subgraph_index = GetSubgraphIndexFromSignature(signature_key);
+    if (subgraph_index == -1) return nullptr;
+    const int tensor_index = GetTensorIndexFromSignature(
         signature_output_name, signature_key, /*is_input=*/false);
-    return tensor_index == -1 ? nullptr : tensor(tensor_index);
+    if (tensor_index == -1) return nullptr;
+    return subgraph(subgraph_index)->tensor(tensor_index);
   }
 
   /// Return a mutable pointer to the given input tensor. The given index must
@@ -706,9 +724,9 @@ class Interpreter {
   // If 'is_input' is true then the tensor is checked in input tensors,
   // otherwise it will be checked in output tensors.
   // Returns -1 if the tensor is not found.
-  int GetTensorIndexFromSignatureDefName(const char* signature_tensor_name,
-                                         const char* signature_key,
-                                         bool is_input) const {
+  int GetTensorIndexFromSignature(const char* signature_tensor_name,
+                                  const char* signature_key,
+                                  bool is_input) const {
     // Iterate directly and don't use other methods to avoid extra allocation.
     for (const auto& signature : signature_defs_) {
       if (signature.signature_key != signature_key) continue;
@@ -809,9 +827,13 @@ class Interpreter {
   // delegates have been applied and doesn't need to be applied again.
   std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
 
-  // List of signature def mapping inputs/output to tensor ids.
-  // We just keep track of tensor index.
+  // List of SignatureDefs obtained from the model.
   std::vector<internal::SignatureDef> signature_defs_;
+
+  // Map of signature key to its corresponding SignatureRunner object.
+  // A SignatureRunner is basically a wrapper of the Subgraph corresponding to
+  // its SignatureDef.
+  std::map<std::string, SignatureRunner> signature_runner_map_;
 
   // Model metadata stored as mapping of name (key) to buffer (value).
   // Data is mapped from the Metadata in TFLite flatbuffer model.

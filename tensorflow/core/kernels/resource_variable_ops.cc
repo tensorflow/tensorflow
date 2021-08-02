@@ -660,6 +660,11 @@ class ResourceGatherOp : public OpKernel {
     OP_REQUIRES(
         c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
         errors::InvalidArgument("params must be at least 1 dimensional"));
+    OP_REQUIRES(
+        c, params.shape().dims() >= batch_dims_,
+        errors::InvalidArgument("params must have at least ", batch_dims_,
+                                " (batch_dims) dimensions but it has shape ",
+                                params.shape().DebugString()));
 
     // Check that we have enough index space
     const int64_t N = indices.NumElements();
@@ -705,7 +710,8 @@ class ResourceGatherOp : public OpKernel {
         copy_functor(c->eigen_device<Device>(), tmp_indices.flat<Index>(),
                      indices.flat<Index>());
 
-        AddBatchOffsets(&tmp_indices, params);
+        AddBatchOffsets(c, &tmp_indices, params);
+        if (!c->status().ok()) return;
         op_indices = &tmp_indices;
       }
 
@@ -737,11 +743,17 @@ class ResourceGatherOp : public OpKernel {
   // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
   // If indexing into a params dimension of size 4, then the indices will become
   // [0, 1, 2, 4, 5, 6]
-  void AddBatchOffsets(Tensor* indices, const Tensor& params) {
+  void AddBatchOffsets(OpKernelContext* ctx, Tensor* indices,
+                       const Tensor& params) {
     int64_t batch_size = 1;  // The size of all batch dimensions.
     for (int idx = 0; idx < batch_dims_; ++idx) {
       batch_size *= params.dim_size(idx);
     }
+    OP_REQUIRES(
+        ctx, batch_size != 0,
+        errors::InvalidArgument(
+            "Inner size of indices would result in batch_size of 0 and a ",
+            "division by 0 in the implementation. This is illegal"));
 
     auto indices_flat = indices->flat<Index>();
     int64_t const index_inner_size = indices->NumElements() / batch_size;

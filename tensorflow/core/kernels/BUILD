@@ -3505,7 +3505,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS + if_cuda_or_rocm([
+    deps = MATH_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+    ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
         "//tensorflow/core/util:cuda_solvers",
     ]),
@@ -3924,6 +3926,7 @@ tf_kernel_library(
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/core/util/autotune_maps:conv_parameters",
     ]),
 )
 
@@ -4082,6 +4085,7 @@ tf_kernel_library(
         ":fill_functor",
         ":redux_functor",
         ":transpose_functor",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda([
         "//tensorflow/core/platform:stream_executor",
     ]),
@@ -4188,7 +4192,7 @@ tf_kernel_library(
     name = "xent_op",
     gpu_copts = tf_disable_ptxas_warning_flags(),
     prefix = "xent_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
 )
 
 tf_kernel_library(
@@ -4831,6 +4835,7 @@ tf_kernel_library(
         ":fill_functor",
         "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/util:determinism_for_kernels",
     ],
 )
 
@@ -4853,6 +4858,7 @@ tf_kernel_library(
         "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
@@ -6778,6 +6784,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:image_resizer_state",
         "//third_party/eigen3",
         "@gemmlowp",

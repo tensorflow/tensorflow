@@ -553,7 +553,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
           ])
 
   @parameterized.named_parameters(
-      ('_WithoutLoweringToSavedModel', False, 'keras/engine/functional.py'),
+      ('_WithoutLoweringToSavedModel', False, None),
       ('_WithLoweringToSavedModel', True,
        'tensorflow/lite/python/metrics_nonportable_test.py'))
   def test_location_from_keras_model(self, lower_to_saved_model,
@@ -576,7 +576,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     self.convert_and_check_location_info(
         converter,
         converter_error_data_pb2.ConverterErrorData.CALLSITELOC,
-        expected_sources=[expected_source])
+        expected_sources=[expected_source] if expected_source else None)
 
 
 if __name__ == '__main__':

@@ -462,6 +462,7 @@ class TFLiteConverterBase(object):
     self._collected_converter_params = {}
     self._experimental_disable_batchmatmul_unfold = False
     self._experimental_lower_tensor_list_ops = True
+    self._experimental_unfold_large_splat_constant = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -541,14 +542,24 @@ class TFLiteConverterBase(object):
       {key str: val}
     """
     args = {
-        "input_format": constants.TENSORFLOW_GRAPHDEF,
-        "allow_custom_ops": self.allow_custom_ops,
-        "debug_info": self._debug_info,
-        "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_new_converter,
-        "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
-        "unfold_batchmatmul": not self._experimental_disable_batchmatmul_unfold,
-        "lower_tensor_list_ops": self._experimental_lower_tensor_list_ops,
+        "input_format":
+            constants.TENSORFLOW_GRAPHDEF,
+        "allow_custom_ops":
+            self.allow_custom_ops,
+        "debug_info":
+            self._debug_info,
+        "target_ops":
+            self.target_spec.supported_ops,
+        "enable_mlir_converter":
+            self.experimental_new_converter,
+        "select_user_tf_ops":
+            self.target_spec.experimental_select_user_tf_ops,
+        "unfold_batchmatmul":
+            not self._experimental_disable_batchmatmul_unfold,
+        "lower_tensor_list_ops":
+            self._experimental_lower_tensor_list_ops,
+        "unfold_large_splat_constant":
+            self._experimental_unfold_large_splat_constant,
     }
 
     if self.saved_model_dir:

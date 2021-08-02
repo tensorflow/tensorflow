@@ -93,6 +93,16 @@ def disable_v2_behavior():
   TensorFlow 1.x and 2.x to behave as intended for 1.x.
 
   User can call this function to disable 2.x behavior during complex migrations.
+
+  @compatibility(TF2)
+  Using this function indicates that your software is not compatible
+  with eager execution and `tf.function` in TF2.
+
+  To migrate to TF2, rewrite your code to be compatible with eager execution.
+  Please refer to the [migration guide]
+  (https://www.tensorflow.org/guide/migrate) for additional resource on the
+  topic.
+  @end_compatibility
   """
   _v2_behavior_usage_gauge.get_cell("disable").set(True)
   tf2.disable()

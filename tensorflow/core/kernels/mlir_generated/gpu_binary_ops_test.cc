@@ -752,6 +752,17 @@ GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Int16, int16_t, int16_t, baseline_mul,
                        test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/Int64, int64_t, int64_t, baseline_mul,
                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/UInt8, uint8_t, uint8_t, baseline_mul,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/UInt16, uint16_t, uint16_t,
+                       baseline_mul,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/UInt32, uint32_t, uint32_t,
+                       baseline_mul,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS(Mul, /*test_name=*/UInt64, uint64_t, uint64_t,
+                       baseline_mul,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // The following tests don't work with Eigen kernels if the Eigen kernels are
 // compiled with nvcc.

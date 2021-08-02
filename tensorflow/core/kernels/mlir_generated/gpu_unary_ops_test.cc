@@ -837,9 +837,9 @@ T baseline_rint(T x) {
 }
 
 #if defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-GENERATE_DEFAULT_TEST_2(Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
-                        baseline_rint,
-                        test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_2(
+    Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, baseline_rint,
+    test::OpsTestConfig().ExpectStrictlyEqual().JITCompilation())
 #endif
 
 GENERATE_DEFAULT_TEST(Rint, DT_FLOAT, DT_FLOAT, baseline_rint,

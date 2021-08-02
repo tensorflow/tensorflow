@@ -30,7 +30,8 @@ ln -sf /usr/bin/python${PYTHON_VERSION} /usr/local/bin/python${PYTHON_VERSION}
 apt-get install -y libpython${PYTHON_VERSION}-dev:armhf
 apt-get install -y libpython${PYTHON_VERSION}-dev:arm64
 
-if [[ "${PYTHON_VERSION}" == "3.8" ]]; then
+SPLIT_VERSION=(`echo ${PYTHON_VERSION} | tr -s '.' ' '`)
+if [[ SPLIT_VERSION[0] -eq 3 ]] && [[ SPLIT_VERSION[1] -ge 8 ]]; then
   apt-get install -y python${PYTHON_VERSION}-distutils
 fi
 

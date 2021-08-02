@@ -1,5 +1,3 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
@@ -74,6 +72,7 @@ cc_library(
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
         "@llvm-project//mlir:Parser",
@@ -156,19 +155,30 @@ cc_library(
     name = "tf_framework_c_interface",
     srcs = ["tf_framework_c_interface.cc"],
     hdrs = ["tf_framework_c_interface.h"],
-    compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":kernel_creator",
         ":tf_gpu_runtime_wrappers",
+        ":tf_jit_cache",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:framework",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_runner_utils",
+    ],
+)
+
+cc_library(
+    name = "tf_jit_cache",
+    srcs = ["tf_jit_cache.cc"],
+    hdrs = ["tf_jit_cache.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//mlir:ExecutionEngine",
     ],
 )
 

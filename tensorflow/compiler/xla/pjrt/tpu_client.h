@@ -74,8 +74,7 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
       const PjRtExecutable& executable) const override;
 
   StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module,
-      CompileOptions options) override;
+      absl::string_view serialized, CompileOptions options) override;
 
  private:
   const std::string platform_version_;

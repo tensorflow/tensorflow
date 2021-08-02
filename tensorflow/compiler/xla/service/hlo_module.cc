@@ -249,6 +249,9 @@ string HloModule::ToString(const HloPrintOptions& options) const {
   if (!serialized_aliasing.empty()) {
     s << absl::StrFormat(", input_output_alias={ %s }", serialized_aliasing);
   }
+  if (config_.alias_passthrough_params()) {
+    s << ", alias_passthrough_params=true";
+  }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()

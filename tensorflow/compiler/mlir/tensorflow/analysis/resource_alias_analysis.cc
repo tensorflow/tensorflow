@@ -238,6 +238,22 @@ namespace {
 
 constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 
+bool IsResourceAllocatingOp(Operation* op) {
+  auto mem_interface = dyn_cast<MemoryEffectOpInterface>(op);
+  if (!mem_interface) return false;
+
+  for (Value value : filter_resources(op->getResults())) {
+    llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
+    mem_interface.getEffectsOnValue(value, effects);
+    for (auto& effect_instance : effects) {
+      if (isa<MemoryEffects::Allocate>(effect_instance.getEffect())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 constexpr int64_t ResourceAliasAnalysisInfo::kUnknownResourceId;
@@ -362,48 +378,18 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
         Value body_result = body_info.GetValue(result.getResultNumber());
         PropagateInputToOutput(body_result, result);
       }
-    } else if (auto mem_interface = dyn_cast<MemoryEffectOpInterface>(op)) {
-      if (mem_interface.hasNoEffect()) {
-        // Assign unknown ID for all results since we don't know if a resource
-        // is allocated here.
-        assign_unknown_id_to_all(op->getResults());
-        return WalkResult::advance();
-      }
-      // In general, we can't rule out the possibility that two calls of a
-      // resource-allocating op return a handle to the same resource, so we
-      // conservatively assume that the allocated resource is not unique.
-      bool allocated_resource_is_unique = false;
-      if (auto shared_name =
-              op->getAttrOfType<mlir::StringAttr>("shared_name")) {
-        if (shared_name &&
-            (shared_name.getValue().empty() ||
-             IsResourceHandleAnonymous(shared_name.getValue()))) {
-          // For a resource-allocating op with empty or anonymous `shared_name`
-          // attribute we can assume that the resource being created is unique
-          // (see `ContainerInfo::Init` for details).
-          allocated_resource_is_unique = true;
-        }
-      }
-      for (Value value : filter_resources(op->getResults())) {
-        llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
-        mem_interface.getEffectsOnValue(value, effects);
-        for (auto& effect_instance : effects) {
-          if (isa<MemoryEffects::Allocate>(effect_instance.getEffect()) &&
-              allocated_resource_is_unique) {
-            // This result value is a handle to a unique allocated resource, so
-            // assign unique ID.
-            AddValueUniqueIDMapping(value, next_unique_id++);
-          } else {
-            // Assign unknown ID for other result values since we don't know if
-            // this value is a handle to an allocated resource and whether it is
-            // unique.
-            AddValueUniqueIDMapping(value, kUnknownResourceId);
-          }
-        }
-      }
     } else {
-      // Assign unknown ID for all results since we don't know if a resource is
-      // allocated here.
+      if (IsResourceAllocatingOp(op)) {
+        // Don't log this by default to avoid logfile noise, it is currently
+        // expected that we have some such cases.
+        VLOG(1) << "Warning: resource-allocating op "
+                << op->getName().getStringRef().str()
+                << " is treated conservatively in resource alias analysis "
+                   "because it doesn't use `ResourceHandleAllocatorInterface` "
+                   "or any derived trait";
+      }
+      // Assign unknown ID for all results since we don't know if a new resource
+      // is allocated here.
       assign_unknown_id_to_all(op->getResults());
     }
     return WalkResult::advance();

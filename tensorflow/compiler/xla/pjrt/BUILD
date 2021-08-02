@@ -15,6 +15,7 @@ package_group(
     name = "friends",
     includes = [
         "//tensorflow:internal",
+        "//tensorflow/compiler/xla:friends",
     ],
     packages = [
         "//third_party/py/jax/...",
@@ -196,6 +197,7 @@ cc_library(
         ":metrics",
         ":pjrt_client",
         ":tracked_device_buffer",
+        ":transpose",
         ":utils",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
@@ -317,6 +319,7 @@ cc_library(
     srcs = ["gpu_device.cc"],
     hdrs = ["gpu_device.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]),
+    visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
         "@com_google_absl//absl/base:core_headers",
@@ -393,6 +396,7 @@ cc_library(
         ":pjrt_client",
         ":semaphore",
         ":tracked_tfrt_cpu_device_buffer",
+        ":transpose",
         ":utils",
         ":worker_thread",
         "//tensorflow/compiler/xla:literal",
@@ -459,10 +463,15 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 

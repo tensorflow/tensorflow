@@ -100,7 +100,8 @@ class MultiOutputFusion : public HloModulePass {
   // Update the reachability map after fusing instr1 and instr2.
   void UpdateReachability(
       HloInstruction* instr1, HloInstruction* instr2,
-      absl::Span<HloInstruction* const> instrs_to_update,
+      absl::Span<const std::pair<HloInstruction*, HloReachabilityMap::Index>>
+          instrs_to_update,
       const std::function<bool(HloInstruction*)>& skip = nullptr);
 
   // Hook for multi-output fusion along producer-consumer edges.
@@ -202,8 +203,10 @@ class MultiOutputFusion : public HloModulePass {
   // The reachability map of current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;
 
-  // This stores all the candidate instructions in current computation.
-  std::vector<HloInstruction*> all_fusion_candidates_;
+  // This stores all the candidate instructions and their indices within
+  // reachability_ in current computation.
+  std::vector<std::pair<HloInstruction*, HloReachabilityMap::Index>>
+      all_fusion_candidates_;
 
   // Computation for the pass.
   HloComputation* computation_;

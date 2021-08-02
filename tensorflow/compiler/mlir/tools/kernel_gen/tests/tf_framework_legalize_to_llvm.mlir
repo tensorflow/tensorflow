@@ -167,7 +167,9 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: %[[CODE_PTR:.*]] = llvm.getelementptr %[[ADDR]][%[[C0]], %[[C0]]]
   // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile(%[[CTX]], %[[CODE_PTR]])
   // CHECK: llvm.return %[[RES]]
-  %0 = tf_framework.jit_compile_from_str %ctx, "placeholder"
+  %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
+      tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
+      enableFtz = false, cpuCodegen = false }
   return %0 : !tf_framework.jit_callable
 }
 

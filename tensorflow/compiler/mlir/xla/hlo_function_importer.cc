@@ -333,6 +333,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCustomCall: {
       auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+      TF_ASSIGN_OR_RETURN(
+          auto mlir_api_version,
+          ConvertCustomCallApiVersion(custom_call->api_version()));
       attributes.push_back(builder_->getNamedAttr(
           "call_target_name",
           builder_->getStringAttr(custom_call->custom_call_target())));
@@ -342,6 +345,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "backend_config",
           builder_->getStringAttr(custom_call->raw_backend_config_string())));
+      attributes.push_back(builder_->getNamedAttr(
+          "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
+                             builder_->getContext(), mlir_api_version)));
       MakeAndReturn(CustomCallOp);
     }
     case HloOpcode::kCompare: {

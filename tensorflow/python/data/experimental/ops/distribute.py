@@ -19,8 +19,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops.options import ExternalStatePolicy
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

@@ -364,7 +364,6 @@ TFTPU_CAPI_EXPORT void TpuExecutableSerialize_FreeHandle(
 
 TFTPU_CAPI_EXPORT void TpuExecutable_Deserialize(int serialized_size,
                                                  const uint8_t* serialized,
-                                                 XLA_HloModule* hlo_module,
                                                  SE_Executable** executable,
                                                  TF_Status* status);
 

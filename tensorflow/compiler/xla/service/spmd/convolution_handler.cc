@@ -1029,7 +1029,8 @@ Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
       [&](HloInstruction* lhs_hlo, HloInstruction* rhs_hlo,
           spmd::SpmdBuilder* b,
           const Window& conv_window) -> StatusOr<HloInstruction*> {
-    if (dims_info.conv_spatial_dims.empty()) {
+    if (dims_info.conv_spatial_dims.empty() &&
+        hlo->feature_group_count() == 1 && hlo->batch_group_count() == 1) {
       TF_ASSIGN_OR_RETURN(
           auto sharded_conv,
           dot_as_convolution_util::CreateShardedConvForDotGeneralConvolution(

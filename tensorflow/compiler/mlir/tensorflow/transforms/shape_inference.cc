@@ -85,11 +85,11 @@ namespace {
 // is always more refined (i.e. has more static information) than `lhs`
 // This method will actually merge the information contained in the
 // types, it is capable of refining:
-//   tensor<!tf.variant<tensor<?x8xf32>>>
+//   tensor<!tf_type.variant<tensor<?x8xf32>>>
 // and:
-//   tensor<!tf.variant<tensor<10x?xf32>>>
+//   tensor<!tf_type.variant<tensor<10x?xf32>>>
 // into:
-//   tensor<!tf.variant<tensor<10x8xf32>>>
+//   tensor<!tf_type.variant<tensor<10x8xf32>>>
 //
 // In case of inconsistencies (rank disagreement for example), it returns `lhs`.
 Type TypeMeet(Type lhs, Type rhs) {
@@ -142,7 +142,7 @@ Type TypeMeet(Type lhs, Type rhs) {
   // Look for resource or variant element type and ensure we refine the subtype.
   // We only support a single subtype at the moment, we won't handle something
   // like:
-  //   tensor<!tf.variant<tensor<10xf32>, tensor<8xf32>>
+  //   tensor<!tf_type.variant<tensor<10xf32>, tensor<8xf32>>
   if (rhs_element_type_with_subtype &&
       rhs_element_type_with_subtype.GetSubtypes().size() == 1) {
     auto lhs_element_type_with_subtype =
@@ -160,9 +160,9 @@ Type TypeMeet(Type lhs, Type rhs) {
     } else {
       // Recurse on the subtypes in the variant/resource. Basically if the input
       // were:
-      //   tensor<!tf.variant<tensor<?x8xf32>>>
+      //   tensor<!tf_type.variant<tensor<?x8xf32>>>
       // and:
-      //   tensor<!tf.variant<tensor<10x8xf32>>>
+      //   tensor<!tf_type.variant<tensor<10x8xf32>>>
       // we'll try here to refine tensor<?x8xf32> with tensor<10x8xf32>.
       auto refined_subtype =
           TypeMeet(lhs_element_type_with_subtype.GetSubtypes().front(),

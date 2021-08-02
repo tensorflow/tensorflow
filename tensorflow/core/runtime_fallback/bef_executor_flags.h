@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TFRT_GOOGLE_BEF_EXECUTOR_DRIVER_FLAGS_H_
 #define TFRT_GOOGLE_BEF_EXECUTOR_DRIVER_FLAGS_H_
 
-#include "tfrt/bef_executor_driver/bef_executor_driver.h"
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
+#include "tfrt/bef_executor_driver/bef_executor_driver.h"  // from @tf_runtime
 
 namespace tfrt {
 ABSL_CONST_INIT extern const char kDefaultInputFilename[];

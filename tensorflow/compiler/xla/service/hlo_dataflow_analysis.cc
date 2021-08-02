@@ -1311,6 +1311,18 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // CopyDone consumes a tuple produced by CopyStart and produces an
           // element. Its output aliases its input tuple element {0}.
           break;
+        case HloOpcode::kAllGatherStart:
+          // AllGatherStart produces a tuple of
+          // {aliased operand, destination buffer}.
+          define_value_at(/*index=*/{});
+          define_value_at(/*index=*/{1});
+          break;
+        case HloOpcode::kAllGatherDone:
+          // AllGatherDone's output aliases its input tuple element {1}.
+          if (instruction->shape().IsTuple()) {
+            define_value_at(/*index=*/{});
+          }
+          break;
         case HloOpcode::kAllReduceStart:
           // AllReduceStart produces a tuple of
           // {aliased operand, destination buffer}.
@@ -1550,6 +1562,7 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   return opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
          opcode == HloOpcode::kCopyStart ||
          opcode == HloOpcode::kAllReduceStart ||
+         opcode == HloOpcode::kAllGatherStart ||
          opcode == HloOpcode::kCollectivePermuteStart;
 }
 
@@ -1558,6 +1571,7 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   return opcode == HloOpcode::kSendDone || opcode == HloOpcode::kRecvDone ||
          opcode == HloOpcode::kCopyDone ||
          opcode == HloOpcode::kAllReduceDone ||
+         opcode == HloOpcode::kAllGatherDone ||
          opcode == HloOpcode::kCollectivePermuteDone;
 }
 

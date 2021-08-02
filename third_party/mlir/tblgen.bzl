@@ -100,8 +100,21 @@ def _td_library_impl(ctx):
         _resolve_includes(ctx, ctx.attr.includes),
         ctx.attr.deps,
     )
+
+    # Note that we include srcs in runfiles. A td_library doesn't compile to
+    # produce an output: it's just a depset of source files and include
+    # directories. So if it is needed for execution of some rule (likely
+    # something running tblgen as a test action), the files needed are the same
+    # as the source files.
+    # Note: not using merge_all, as that is not available in Bazel 4.0
+    runfiles = ctx.runfiles(ctx.files.srcs)
+    for src in ctx.attr.srcs:
+        runfiles = runfiles.merge(src[DefaultInfo].default_runfiles)
+    for dep in ctx.attr.deps:
+        runfiles = runfiles.merge(dep[DefaultInfo].default_runfiles)
+
     return [
-        DefaultInfo(files = trans_srcs),
+        DefaultInfo(files = trans_srcs, runfiles = runfiles),
         TdInfo(
             transitive_sources = trans_srcs,
             transitive_includes = trans_includes,
@@ -224,11 +237,6 @@ gentbl_rule = rule(
 def _gentbl_test_impl(ctx):
     td_file = ctx.file.td_file
 
-    trans_srcs = _get_transitive_srcs(
-        ctx.files.td_srcs + [td_file],
-        ctx.attr.deps,
-    )
-
     # Note that we have two types of includes here. The deprecated ones expanded
     # only by "_prefix_roots" are already relative to the execution root, i.e.
     # may contain an `external/<workspace_name>` prefix if the current workspace
@@ -256,18 +264,26 @@ def _gentbl_test_impl(ctx):
         is_executable = True,
     )
 
+    # Note: not using merge_all, as that is not available in Bazel 4.0
+    runfiles = ctx.runfiles(
+        files = [ctx.executable.tblgen],
+        transitive_files = _get_transitive_srcs(
+            ctx.files.td_srcs + [td_file],
+            ctx.attr.deps,
+        ),
+    )
+    for src in ctx.attr.td_srcs:
+        runfiles = runfiles.merge(src[DefaultInfo].default_runfiles)
+    for dep in ctx.attr.deps:
+        runfiles = runfiles.merge(dep[DefaultInfo].default_runfiles)
+
     return [
         coverage_common.instrumented_files_info(
             ctx,
             source_attributes = ["td_file", "td_srcs"],
             dependency_attributes = ["tblgen", "deps"],
         ),
-        DefaultInfo(
-            runfiles = ctx.runfiles(
-                [ctx.executable.tblgen],
-                transitive_files = trans_srcs,
-            ),
-        ),
+        DefaultInfo(runfiles = runfiles),
     ]
 
 gentbl_test = rule(

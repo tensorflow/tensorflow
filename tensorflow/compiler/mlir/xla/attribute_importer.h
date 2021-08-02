@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -48,6 +49,9 @@ mlir::mhlo::ConvDimensionNumbers ConvertConvDimensionNumbers(
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type);
 StatusOr<mlir::mhlo::Transpose> ConvertTranspose(
     TriangularSolveOptions_Transpose transpose);
+
+StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
+    xla::CustomCallApiVersion api_version);
 
 }  // namespace xla
 

@@ -152,12 +152,19 @@ class HloModuleConfig {
   void set_deduplicate_hlo(bool deduplicate_hlo) {
     deduplicate_hlo_ = deduplicate_hlo;
   }
+
+  void set_device_type(const string& device_type) {
+    device_type_ = device_type;
+  }
+
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
 
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
   string compilation_cache_key() const;
+
+  string device_type() const { return device_type_; }
 
   const DebugOptions& debug_options() const { return debug_options_; }
 
@@ -283,6 +290,8 @@ class HloModuleConfig {
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.
   int64 intra_op_parallelism_threads_ = -1;
+
+  string device_type_;
 
   DebugOptions debug_options_;
 

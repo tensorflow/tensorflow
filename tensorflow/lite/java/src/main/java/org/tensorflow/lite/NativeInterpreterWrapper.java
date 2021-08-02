@@ -413,9 +413,9 @@ class NativeInterpreterWrapper implements AutoCloseable {
     return getInputTensor(tensorToInputsIndexes.get(tensorIndex));
   }
 
-  /** Gets the list of SignatureDefs available in the model, if any. */
-  public String[] getSignatureDefNames() {
-    return getSignatureDefNames(interpreterHandle);
+  /** Gets the keys of SignatureDefs available in the model, if any. */
+  public String[] getSignatureKeys() {
+    return getSignatureKeys(interpreterHandle);
   }
 
   /** Gets the list of SignatureDefs inputs for method {@code signatureKey} */
@@ -607,7 +607,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private static native long allocateTensors(
       long interpreterHandle, long errorHandle, int subgraphIndex);
 
-  private static native String[] getSignatureDefNames(long interpreterHandle);
+  private static native String[] getSignatureKeys(long interpreterHandle);
 
   private static native void setCancelled(
       long interpreterHandle, long cancellationFlagHandle, boolean value);

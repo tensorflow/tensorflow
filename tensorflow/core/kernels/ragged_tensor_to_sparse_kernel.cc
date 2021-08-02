@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -38,7 +39,8 @@ class RaggedTensorToSparseOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->input_list("rt_nested_splits", &rt_nested_splits_in));
     const int rt_nested_splits_len = rt_nested_splits_in.size();
-    DCHECK_GT(rt_nested_splits_len, 0);  // Enforced by REGISTER_OP.
+    OP_REQUIRES(context, rt_nested_splits_len > 0,
+                errors::InvalidArgument("rt_nested_splits must be non empty"));
     std::vector<ConstFlatSplits> rt_nested_splits;
     rt_nested_splits.reserve(rt_nested_splits_len);
     for (int i = 0; i < rt_nested_splits_len; ++i) {
@@ -161,6 +163,14 @@ class RaggedTensorToSparseOp : public OpKernel {
       }
       if (rt_nested_splits[i](0) != 0) {
         return InvalidArgument("First value of ragged splits must be 0.");
+      }
+      for (int j = 1; j < rt_nested_splits[i].size(); ++j) {
+        if (rt_nested_splits[i](j) < rt_nested_splits[i](j - 1)) {
+          return InvalidArgument(
+              "Ragged splits should be non decreasing, but we got ",
+              rt_nested_splits[i](j - 1), " followed by ",
+              rt_nested_splits[i](j));
+        }
       }
       if (i > 0) {
         SPLITS_TYPE last_split =

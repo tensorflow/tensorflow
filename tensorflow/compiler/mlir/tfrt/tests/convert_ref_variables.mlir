@@ -10,9 +10,9 @@ func @init() {
   // CHECK: [[handle:%.*]] = "tf.VarHandleOp"
   // CHECK-SAME: shared_name = "x"
   // CHECK: "tf.AssignVariableOp"([[handle]], {{%.*}})
-  %0 = "tf.VariableV2"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<!tf.int32ref>
+  %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.int32ref>
   %1 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  %2 = "tf.Assign"(%0, %1) {T = i32, device = "", use_locking = true, validate_shape = true} : (tensor<!tf.int32ref>, tensor<i32>) -> tensor<!tf.int32ref>
+  %2 = "tf.Assign"(%0, %1) {T = i32, device = "", use_locking = true, validate_shape = true} : (tensor<!tf_type.int32ref>, tensor<i32>) -> tensor<!tf_type.int32ref>
   return
 }
 
@@ -23,8 +23,8 @@ func @inference() -> tensor<i32> {
   // CHECK: [[handle:%.*]] = "tf.VarHandleOp"
   // CHECK-SAME: shared_name = "x"
   // CHECK: "tf.ReadVariableOp"([[handle]])
-  %0 = "tf.VariableV2"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<!tf.int32ref>
-  %1 = "tf.Identity"(%0) : (tensor<!tf.int32ref>) -> tensor<i32>
+  %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.int32ref>
+  %1 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
   return %1 : tensor<i32>
 }
 
@@ -44,17 +44,17 @@ func @init() -> tensor<i32> {
   // CHECK-SAME: shared_name = "x"
   // CHECK-NEXT: "tf.AssignVariableOp"([[handle]], [[zero]])
   // CHECK-NEXT: "tf.ReadVariableOp"([[handle]])
-  %1 = "tf.VariableV2"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<!tf.int32ref>
-  %2 = "tf.Assign"(%1, %0) {T = i32, device = "", use_locking = true, validate_shape = true} : (tensor<!tf.int32ref>, tensor<i32>) -> tensor<!tf.int32ref>
-  %3 = "tf.Identity"(%1) : (tensor<!tf.int32ref>) -> tensor<i32>
+  %1 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.int32ref>
+  %2 = "tf.Assign"(%1, %0) {T = i32, device = "", use_locking = true, validate_shape = true} : (tensor<!tf_type.int32ref>, tensor<i32>) -> tensor<!tf_type.int32ref>
+  %3 = "tf.Identity"(%1) : (tensor<!tf_type.int32ref>) -> tensor<i32>
 
   // CHECK: [[one:%.*]] = "tf.Const"
   // CHECK-SAME: dense<1>
   // CHECK-NEXT: "tf.AssignVariableOp"([[handle]], [[one]])
   // CHECK-NEXT: "tf.ReadVariableOp"([[handle]])
   %4 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  %5 = "tf.Assign"(%1, %4) {T = i32, device = "", use_locking = true, validate_shape = true} : (tensor<!tf.int32ref>, tensor<i32>) -> tensor<!tf.int32ref>
-  %6 = "tf.Identity"(%1) : (tensor<!tf.int32ref>) -> tensor<i32>
+  %5 = "tf.Assign"(%1, %4) {T = i32, device = "", use_locking = true, validate_shape = true} : (tensor<!tf_type.int32ref>, tensor<i32>) -> tensor<!tf_type.int32ref>
+  %6 = "tf.Identity"(%1) : (tensor<!tf_type.int32ref>) -> tensor<i32>
 
   return %6 : tensor<i32>
 }
@@ -68,10 +68,10 @@ func @inference() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
   // CHECK: "tf.ReadVariableOp"([[handle]])
   // CHECK: "tf.ReadVariableOp"([[handle]])
   // CHECK: "tf.ReadVariableOp"([[handle]])
-  %0 = "tf.VariableV2"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<!tf.int32ref>
-  %1 = "tf.Identity"(%0) : (tensor<!tf.int32ref>) -> tensor<i32>
-  %2 = "tf.Identity"(%0) : (tensor<!tf.int32ref>) -> tensor<i32>
-  %3 = "tf.Identity"(%0) : (tensor<!tf.int32ref>) -> tensor<i32>
+  %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.int32ref>
+  %1 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
+  %2 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
+  %3 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
   return %1, %2, %3 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
@@ -82,8 +82,8 @@ func @inference() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
 // CHECK-LABEL: @inference
 func @inference() -> tensor<i32> {
   // expected-error @+1 {{unable to convert reference variables with empty shared_names.}}
-  %0 = "tf.VariableV2"() {container = "", shape = #tf.shape<>, shared_name = ""} : () -> tensor<!tf.int32ref>
-  %1 = "tf.Identity"(%0) : (tensor<!tf.int32ref>) -> tensor<i32>
+  %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = ""} : () -> tensor<!tf_type.int32ref>
+  %1 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
   return %1 : tensor<i32>
 }
 
@@ -100,7 +100,7 @@ func @side_effect_free_user() -> tensor<2xi32> {
   // CHECK: "tf.ConcatV2"([[value1]], [[value0]]
   // CHECK-SAME: (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<2xi32>
   %axis = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  %0 = "tf.VariableV2"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<!tf.int32ref>
-  %1 = "tf.ConcatV2"(%0, %0, %axis) : (tensor<!tf.int32ref>, tensor<!tf.int32ref>, tensor<i32>) -> tensor<2xi32>
+  %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.int32ref>
+  %1 = "tf.ConcatV2"(%0, %0, %axis) : (tensor<!tf_type.int32ref>, tensor<!tf_type.int32ref>, tensor<i32>) -> tensor<2xi32>
   return %1 : tensor<2xi32>
 }

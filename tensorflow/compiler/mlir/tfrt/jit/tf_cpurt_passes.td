@@ -85,6 +85,8 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
 
   let constructor = "tensorflow::CreateTfCpurtClusteringPass()";
 
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
+
   let options = [
    Option<"min_cluster_size", "min-cluster-size", "int" , /*default=*/"1",
           "Do not form clusters smaller of the given size.">,
@@ -93,8 +95,8 @@ def Clustering : FunctionPass<"tf-cpurt-clustering"> {
    ListOption<"oplist", "oplist", "std::string",
                "Explicitly allow operations for clustering. Only operations in "
                "this list will be passed to the TF->CPURT clustering policy. "
-               "Use 'all' to enable clustering for all operations supported "
-               "by the clustering policy.",
+               "Alternatively use 'tier1', ..., 'all' to allow clustering for "
+               "all operations included in the given clustering tier.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
 }

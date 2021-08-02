@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tfrt/support/error_util.h"
 #include "tensorflow/core/platform/status.h"
+#include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace tfrt {
 namespace {

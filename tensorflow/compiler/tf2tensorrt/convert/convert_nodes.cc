@@ -1506,6 +1506,11 @@ Status Converter::BuildCudaEngine(
   }
 #endif
 
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+  builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+  VLOG(1) << "Setting sparsity for TensorRT8!";
+#endif
+
   if (precision_mode_ == TrtPrecisionMode::FP16) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
   } else if (precision_mode_ == TrtPrecisionMode::INT8) {
@@ -5262,7 +5267,14 @@ StatusOr<ITensorProxyPtr> ConvertFullyConnectedImpl(OpConverterParams* params,
   TRT_ShapedWeights weights_2D(weights_b);
   if (weights_b.shape_.nbDims > 2) {
     // Combine first nbDims-1 dims into a single dim, e.g. for a 4D tensor we
-    // transform [N, H, W, C] -> [N*H*W, C].
+    // transform [N, H, W, C] -> [N*H*W, C]. This is only valid if all batch
+    // dimensions are 1.
+    if (std::any_of(weights_b.shape_.d,
+                    weights_b.shape_.d + weights_b.shape_.nbDims - 2,
+                    [](int d) { return d != 1; })) {
+      VLOG(2) << "Not FC compatible, B has a batch dim larger than 1";
+      return ITensorProxyPtr(nullptr);
+    }
     int k = weights_b.shape_.d[weights_b.shape_.nbDims - 1];
     nvinfer1::Dims dims{2, {static_cast<int>(weights_b.count() / k), k}};
     TF_RETURN_IF_ERROR(weights_2D.SetShape(dims));

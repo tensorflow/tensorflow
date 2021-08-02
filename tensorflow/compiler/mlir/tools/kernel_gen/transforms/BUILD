@@ -105,7 +105,6 @@ cc_library(
         "vectorization_pass.cc",
     ],
     hdrs = ["passes.h"],
-    compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":bufferize",

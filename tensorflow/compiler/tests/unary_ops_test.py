@@ -28,6 +28,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -1202,6 +1203,28 @@ class UnaryOpsTest(xla_test.XLATestCase):
           equality_test=self.AssertCloseAndSorted,
           rtol=9e-5,
           atol=9e-5)
+
+  def testToBool(self):
+    for dtype in self.numeric_types - self.complex_types:
+      self._assertOpOutputMatchesExpected(
+          gen_functional_ops.to_bool,
+          np.array(5, dtype=dtype),
+          expected=np.array(True))
+
+      self._assertOpOutputMatchesExpected(
+          gen_functional_ops.to_bool,
+          np.array(0, dtype=dtype),
+          expected=np.array(False))
+
+      self._assertOpOutputMatchesExpected(
+          gen_functional_ops.to_bool,
+          np.array([], dtype=dtype),
+          expected=np.array(False))
+
+      self._assertOpOutputMatchesExpected(
+          gen_functional_ops.to_bool,
+          np.array([1, 2, 3], dtype=dtype),
+          expected=np.array(True))
 
 
 if __name__ == "__main__":

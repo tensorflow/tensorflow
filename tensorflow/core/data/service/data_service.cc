@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -44,6 +45,41 @@ bool IsStaticShard(const ProcessingModeDef& processing_mode) {
          processing_mode.sharding_policy() == ProcessingModeDef::DATA ||
          processing_mode.sharding_policy() == ProcessingModeDef::FILE_OR_DATA ||
          processing_mode.sharding_policy() == ProcessingModeDef::HINT;
+}
+
+Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
+  if (!IsNoShard(processing_mode) && !IsDynamicShard(processing_mode) &&
+      !IsStaticShard(processing_mode)) {
+    return errors::Internal(
+        "ProcessingMode ", processing_mode.ShortDebugString(),
+        " does not "
+        "specify a valid sharding policy. Please add the policy to either "
+        "`IsDynamicShard` or `IsStaticShard` (i.e., auto-shard).");
+  }
+  return Status::OK();
+}
+
+StatusOr<AutoShardPolicy> ToAutoShardPolicy(
+    const ProcessingModeDef::ShardingPolicy sharding_policy) {
+  switch (sharding_policy) {
+    case ProcessingModeDef::FILE:
+      return AutoShardPolicy::FILE;
+    case ProcessingModeDef::DATA:
+      return AutoShardPolicy::DATA;
+    case ProcessingModeDef::FILE_OR_DATA:
+      return AutoShardPolicy::AUTO;
+    case ProcessingModeDef::HINT:
+      return AutoShardPolicy::HINT;
+    case ProcessingModeDef::DYNAMIC:
+    case ProcessingModeDef::OFF:
+      return AutoShardPolicy::OFF;
+    default:
+      return errors::Internal(
+          "tf.data service sharding policy ",
+          ProcessingModeDef::ShardingPolicy_Name(sharding_policy),
+          " is not convertible to a valid auto-shard policy. If you're "
+          "defining a new sharding policy, please update the policy mapping.");
+  }
 }
 
 StatusOr<TargetWorkers> ParseTargetWorkers(absl::string_view s) {

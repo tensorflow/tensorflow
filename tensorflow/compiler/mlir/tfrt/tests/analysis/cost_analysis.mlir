@@ -1,33 +1,33 @@
 // RUN: tf-tfrt-opt -tfrt-test-cost-analysis -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: test_cheap_ops_0
-func @test_cheap_ops_0(%arg: tensor<?x!tf.string>) -> (tensor<?x8xf32>) {
+func @test_cheap_ops_0(%arg: tensor<?x!tf_type.string>) -> (tensor<?x8xf32>) {
     // expected-remark@+1 {{Cost: 1}}
     %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
     // expected-remark@+1 {{Cost: 1}}
-    %1 = "tf.Const"() {value = dense<"has_login_page_feature"> : tensor<!tf.string>} : () -> tensor<!tf.string>
+    %1 = "tf.Const"() {value = dense<"has_login_page_feature"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
-    %2 = "tf.Const"() {value = dense<"num_terms_inside_postform"> : tensor<!tf.string>} : () -> tensor<!tf.string>
+    %2 = "tf.Const"() {value = dense<"num_terms_inside_postform"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
-    %3 = "tf.Const"() {value = dense<"num_terms_outside_postform"> : tensor<!tf.string>} : () -> tensor<!tf.string>
+    %3 = "tf.Const"() {value = dense<"num_terms_outside_postform"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
-    %4 = "tf.Const"() {value = dense<"num_terms_outside_postform_without_bp"> : tensor<!tf.string>} : () -> tensor<!tf.string>
+    %4 = "tf.Const"() {value = dense<"num_terms_outside_postform_without_bp"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
-    %5 = "tf.Const"() {value = dense<"password_not_in_bp_area"> : tensor<!tf.string>} : () -> tensor<!tf.string>
+    %5 = "tf.Const"() {value = dense<"password_not_in_bp_area"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
-    %6 = "tf.Const"() {value = dense<"query_params_contains_url"> : tensor<!tf.string>} : () -> tensor<!tf.string>
+    %6 = "tf.Const"() {value = dense<"query_params_contains_url"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
-    %7 = "tf.Const"() {value = dense<"title_with_login_phase"> : tensor<!tf.string>} : () -> tensor<!tf.string>
+    %7 = "tf.Const"() {value = dense<"title_with_login_phase"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
-    %8 = "tf.Const"() {value = dense<"url_contains_login_terms"> : tensor<!tf.string>} : () -> tensor<!tf.string>
+    %8 = "tf.Const"() {value = dense<"url_contains_login_terms"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
-    %9 = "tf.Const"() {value = dense<> : tensor<0x!tf.string>} : () -> tensor<0x!tf.string>
+    %9 = "tf.Const"() {value = dense<> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
     // expected-remark@+1 {{Cost: 1}}
     %10 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     // expected-remark@+1 {{Cost: 1}}
     %11 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
     // expected-remark@+1 {{Cost: 19}}
-    %dense_values:8 = "tf.ParseExample"(%arg, %9, %1, %2, %3, %4, %5, %6, %7, %8, %0, %0, %0, %0, %0, %0, %0, %0) {dense_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>], device = "/job:localhost/replica:0/task:0/device:CPU:0", operand_segment_sizes = dense<[1, 1, 0, 8, 8]> : vector<5xi32>, result_segment_sizes = dense<[0, 0, 0, 8]> : vector<4xi32>} : (tensor<?x!tf.string>, tensor<0x!tf.string>, tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>, tensor<!tf.string>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>) -> (tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>)
+    %dense_values:8 = "tf.ParseExample"(%arg, %9, %1, %2, %3, %4, %5, %6, %7, %8, %0, %0, %0, %0, %0, %0, %0, %0) {dense_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], device = "/job:localhost/replica:0/task:0/device:CPU:0", operand_segment_sizes = dense<[1, 1, 0, 8, 8]> : vector<5xi32>, result_segment_sizes = dense<[0, 0, 0, 8]> : vector<4xi32>} : (tensor<?x!tf_type.string>, tensor<0x!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>, tensor<0xi64>) -> (tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>)
     // expected-remark@+1 {{Cost: 2}}
     %28 = "tf.Cast"(%dense_values#0) {Truncate = false, device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<?xi64>) -> tensor<?xf32>
     // expected-remark@+1 {{Cost: 2}}
@@ -105,9 +105,9 @@ func @test_cheap_ops_1(%arg: tensor<?x8x?x?xf32>) -> (tensor<4xi32>, tensor<?x8x
 // CHECK-LABEL: test_expensive_ops
 func @test_expensive_ops(%arg: tensor<?x512xf32>) -> tensor<?x512xf32> {
     // expected-remark@+1 {{Cost: 1}}
-    %0 = "tf.VarHandleOp"() {allowed_devices = [], container = "", device = "/job:localhost/replica:0/task:0/device:CPU:0", shared_name = "var"} : () -> tensor<!tf.resource<tensor<512x512xf32>>>
+    %0 = "tf.VarHandleOp"() {allowed_devices = [], container = "", device = "/job:localhost/replica:0/task:0/device:CPU:0", shared_name = "var"} : () -> tensor<!tf_type.resource<tensor<512x512xf32>>>
     // expected-remark@+1 {{Cost: 2}}
-    %1 = "tf.ReadVariableOp"(%0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<!tf.resource<tensor<512x512xf32>>>) -> tensor<512x512xf32>
+    %1 = "tf.ReadVariableOp"(%0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.resource<tensor<512x512xf32>>>) -> tensor<512x512xf32>
     // 262657 = 1 + 512 + 512 * 512
     // expected-remark@+1 {{Cost: 262657}}
     %2 = "tf.MatMul"(%arg, %1) {device = "/job:localhost/replica:0/task:0/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<?x512xf32>, tensor<512x512xf32>) -> tensor<?x512xf32>
@@ -116,13 +116,13 @@ func @test_expensive_ops(%arg: tensor<?x512xf32>) -> tensor<?x512xf32> {
 }
 
 // CHECK-LABEL: test_dynamic_shape
-func @test_dynamic_shape(%key: tensor<?x!tf.string>, %value: tensor<8xi64>) -> tensor<*xi1> {
+func @test_dynamic_shape(%key: tensor<?x!tf_type.string>, %value: tensor<8xi64>) -> tensor<*xi1> {
     // expected-remark@+1 {{Cost: 1}}
     %default = "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:CPU:0", value = dense<-1> : tensor<i64>} : () -> tensor<i64>
     // expected-remark@+1 {{Cost: 1}}
-    %0 = "tf.HashTableV2"() {container = "", device = "/job:localhost/replica:0/task:0/device:CPU:0", key_dtype = !tf.string, shared_name = "hash_table", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
+    %0 = "tf.HashTableV2"() {container = "", device = "/job:localhost/replica:0/task:0/device:CPU:0", key_dtype = !tf_type.string, shared_name = "hash_table", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
     // expected-remark@+1 {{Cost: 1024}}
-    %1 = "tf.LookupTableFindV2"(%0, %key, %default) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<!tf.resource>, tensor<?x!tf.string>, tensor<i64>) -> tensor<*xi64>
+    %1 = "tf.LookupTableFindV2"(%0, %key, %default) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.resource>, tensor<?x!tf_type.string>, tensor<i64>) -> tensor<*xi64>
     // 17 = 1 + 8 + 8
     // expected-remark@+1 {{Cost: 17}}
     %2 = "tf.NotEqual"(%1, %value) {device = "/job:localhost/replica:0/task:0/device:CPU:0", incompatible_shape_error = true} : (tensor<*xi64>, tensor<8xi64>) -> tensor<*xi1>

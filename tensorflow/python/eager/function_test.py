@@ -155,6 +155,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
 
+  def testPythonFunctionNotCallable(self):
+    with self.assertRaisesRegex(TypeError, 'is not a callable object'):
+      def_function.function(1)
+
   def testOnExitCallback(self):
     values = []
     def append_1():
@@ -5224,6 +5228,16 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       lazy_capture()
 
+  def testFunctoolsLruCache(self):
+    self.skipTest(
+        "b/194845243: inspect.getfullargspec doesn't unwrap Python decorators.")
+
+    @def_function.function
+    @functools.lru_cache(maxsize=2)
+    def f(a):
+      return 2 * a
+
+    self.assertAllEqual(f(1), array_ops.constant(2))
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

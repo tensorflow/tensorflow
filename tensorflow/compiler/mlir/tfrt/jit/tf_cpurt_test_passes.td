@@ -26,6 +26,8 @@ def TestClustering : FunctionPass<"tf-cpurt-test-clustering"> {
   ];
 
   let constructor = "tensorflow::CreateTestTfCpurtClusteringPass()";
+
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
 def TestClusteringPolicy : FunctionPass<"tf-cpurt-test-clustering-policy"> {

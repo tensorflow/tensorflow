@@ -1913,33 +1913,31 @@ TEST_F(TestLazyDelegateProvider, ApplicationSkipped) {
 }
 
 TEST_F(InterpreterTest, SingleSignature_get_signatures) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
-  BuildSignature(kMethodName, kSignatureDefKey, {{"Input1", 0}, {"Input2", 1}},
+  const char kSignatureKey[] = "test_method";
+  BuildSignature(kSignatureKey, {{"Input1", 0}, {"Input2", 1}},
                  {{"Output1", 5}});
-  auto results = interpreter_.signature_def_names();
+  auto results = interpreter_.signature_keys();
   ASSERT_EQ(1, results.size());
-  EXPECT_EQ(kMethodName, *results[0]);
+  EXPECT_EQ(kSignatureKey, *results[0]);
 }
 
 TEST_F(InterpreterTest, SingleSignature_get_inputs) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
+  const char kSignatureKey[] = "test_method";
   const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
   const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
-  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
-  EXPECT_THAT(interpreter_.signature_inputs(kMethodName), testing::Eq(inputs));
-  EXPECT_THAT(interpreter_.signature_outputs(kMethodName),
+  BuildSignature(kSignatureKey, inputs, outputs);
+  EXPECT_THAT(interpreter_.signature_inputs(kSignatureKey),
+              testing::Eq(inputs));
+  EXPECT_THAT(interpreter_.signature_outputs(kSignatureKey),
               testing::Eq(outputs));
 }
 
 TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
-  const char kMethodName[] = "test_method";
-  const char kSignatureDefKey[] = "test_key";
+  const char kSignatureKey[] = "test_method";
   const std::map<std::string, uint32_t> inputs = {{"Input1", 0}, {"Input2", 1}};
   const std::map<std::string, uint32_t> outputs = {{"Output1", 5}};
 
-  BuildSignature(kMethodName, kSignatureDefKey, inputs, outputs);
+  BuildSignature(kSignatureKey, inputs, outputs);
   ASSERT_EQ(interpreter_.AddTensors(6), kTfLiteOk);
   ASSERT_EQ(interpreter_.SetInputs({0, 1}), kTfLiteOk);
   ASSERT_EQ(interpreter_.SetOutputs({5}), kTfLiteOk);
@@ -1955,25 +1953,23 @@ TEST_F(InterpreterTest, SingleSignature_validate_get_tensor) {
             kTfLiteOk);
   ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
 
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
-                  "Input1", kMethodName) != nullptr);
-  EXPECT_TRUE(interpreter_.input_tensor_by_signature_name(
-                  "Input2", kMethodName) != nullptr);
-  EXPECT_TRUE(interpreter_.output_tensor_by_signature_name(
-                  "Output1", kMethodName) != nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input1", kSignatureKey) !=
+              nullptr);
+  EXPECT_TRUE(interpreter_.input_tensor_by_signature("Input2", kSignatureKey) !=
+              nullptr);
+  EXPECT_TRUE(interpreter_.output_tensor_by_signature(
+                  "Output1", kSignatureKey) != nullptr);
 
   // Invalid tensor
-  EXPECT_EQ(interpreter_.input_tensor_by_signature_name("Input3", kMethodName),
+  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input3", kSignatureKey),
             nullptr);
-  EXPECT_EQ(interpreter_.output_tensor_by_signature_name("Input3", kMethodName),
+  EXPECT_EQ(interpreter_.output_tensor_by_signature("Input3", kSignatureKey),
             nullptr);
   // Invalid method
-  EXPECT_EQ(
-      interpreter_.input_tensor_by_signature_name("Input1", "InvalidMethod"),
-      nullptr);
-  EXPECT_EQ(
-      interpreter_.output_tensor_by_signature_name("Output1", "InvalidMethod"),
-      nullptr);
+  EXPECT_EQ(interpreter_.input_tensor_by_signature("Input1", "InvalidMethod"),
+            nullptr);
+  EXPECT_EQ(interpreter_.output_tensor_by_signature("Output1", "InvalidMethod"),
+            nullptr);
 }
 
 }  // namespace

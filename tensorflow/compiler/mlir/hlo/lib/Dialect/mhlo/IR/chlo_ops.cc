@@ -407,7 +407,7 @@ LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
     MLIRContext*, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr, RegionRange,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  BroadcastSelectOp::Adaptor op(operands);
+  BroadcastSelectOp::Adaptor op(operands.getValues());
   auto pred_type = op.pred().getType().dyn_cast<ShapedType>();
   auto on_true_type = op.on_true().getType().dyn_cast<ShapedType>();
   auto on_false_type = op.on_false().getType().dyn_cast<ShapedType>();

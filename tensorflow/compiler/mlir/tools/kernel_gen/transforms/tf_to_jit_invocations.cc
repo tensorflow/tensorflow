@@ -151,11 +151,13 @@ struct PackJITCompileOpPattern
   explicit PackJITCompileOpPattern(MLIRContext *ctx,
                                    llvm::ArrayRef<int64_t> tile_sizes,
                                    llvm::ArrayRef<int64_t> unroll_factors,
-                                   int64_t max_supported_rank, bool cpu_codegen)
+                                   int64_t max_supported_rank, bool enable_ftz,
+                                   bool cpu_codegen)
       : OpRewritePattern<tf_framework::JITCompileOp>(ctx),
         tile_sizes(tile_sizes),
         unroll_factors(unroll_factors),
         max_supported_rank(max_supported_rank),
+        enable_ftz(enable_ftz),
         cpu_codegen(cpu_codegen) {}
 
   LogicalResult matchAndRewrite(tf_framework::JITCompileOp op,
@@ -178,15 +180,6 @@ struct PackJITCompileOpPattern
                           tmp_module_builder.getUnitAttr());
     jit_function->setAttr(kEmitCInterfaceAttrName,
                           tmp_module_builder.getUnitAttr());
-    jit_function->setAttr("tile_sizes",
-                          tmp_module_builder.getI64ArrayAttr(tile_sizes));
-    jit_function->setAttr("unroll_factors",
-                          tmp_module_builder.getI64ArrayAttr(unroll_factors));
-    jit_function->setAttr(
-        "max_supported_rank",
-        tmp_module_builder.getI64IntegerAttr(max_supported_rank));
-    jit_function->setAttr("cpu_codegen",
-                          tmp_module_builder.getBoolAttr(cpu_codegen));
     jit_function.getBody().takeBody(op.getBodyRegion());
     tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
     tmp_module_builder.create<ReturnOp>(loc, yield_op.result());
@@ -199,7 +192,11 @@ struct PackJITCompileOpPattern
 
     // Finally, create the new JIT compile op.
     rewriter.replaceOpWithNewOp<tf_framework::JITCompileFromStrOp>(
-        op, op->getResultTypes(), op.ctx(), rewriter.getStringAttr(code));
+        op, op->getResultTypes(), op.ctx(), rewriter.getStringAttr(code),
+        rewriter.getI64ArrayAttr(tile_sizes),
+        rewriter.getI64ArrayAttr(unroll_factors),
+        rewriter.getI64IntegerAttr(max_supported_rank),
+        rewriter.getBoolAttr(enable_ftz), rewriter.getBoolAttr(cpu_codegen));
 
     return success();
   }
@@ -208,6 +205,7 @@ struct PackJITCompileOpPattern
   llvm::ArrayRef<int64_t> tile_sizes;
   llvm::ArrayRef<int64_t> unroll_factors;
   int64_t max_supported_rank;
+  bool enable_ftz;
   bool cpu_codegen;
 };
 
@@ -221,10 +219,12 @@ struct TFToJITInvocationPass
   }
   explicit TFToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
                                  llvm::ArrayRef<int64_t> unroll_factors,
-                                 int64_t max_supported_rank, bool cpu_codegen) {
+                                 int64_t max_supported_rank, bool enable_ftz,
+                                 bool cpu_codegen) {
     tile_sizes_ = tile_sizes;
     unroll_factors_ = unroll_factors;
     max_supported_rank_ = max_supported_rank;
+    enable_ftz_ = enable_ftz;
     cpu_codegen_ = cpu_codegen;
   }
 
@@ -233,7 +233,7 @@ struct TFToJITInvocationPass
     RewritePatternSet patterns(ctx);
     PopulateTFToJITInvocationPatterns(ctx, &patterns, tile_sizes_,
                                       unroll_factors_, max_supported_rank_,
-                                      cpu_codegen_);
+                                      enable_ftz_, cpu_codegen_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
       return signalPassFailure();
@@ -248,21 +248,18 @@ void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
                                        llvm::ArrayRef<int64_t> tile_sizes,
                                        llvm::ArrayRef<int64_t> unroll_factors,
                                        int64_t max_supported_rank,
-                                       bool cpu_codegen) {
-  // clang-format off
-  patterns->insert<
-      TFToJITInvocationsPattern>(ctx);
-  patterns->insert<
-      PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors,
-                               max_supported_rank, cpu_codegen);
-  // clang-format on
+                                       bool enable_ftz, bool cpu_codegen) {
+  patterns->insert<TFToJITInvocationsPattern>(ctx);
+  patterns->insert<PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors,
+                                            max_supported_rank, enable_ftz,
+                                            cpu_codegen);
 }
 
 std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool cpu_codegen) {
+    int64_t max_supported_rank, bool enable_ftz, bool cpu_codegen) {
   return std::make_unique<TFToJITInvocationPass>(
-      tile_sizes, unroll_factors, max_supported_rank, cpu_codegen);
+      tile_sizes, unroll_factors, max_supported_rank, enable_ftz, cpu_codegen);
 }
 
 }  // namespace transforms
