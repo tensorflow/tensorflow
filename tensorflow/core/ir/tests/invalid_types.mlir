@@ -76,3 +76,10 @@ func private @invalid_type(!tf_type.resource<vector<3xf32>>) -> ()
 // expected-error @+1 {{invalid resource type}}
 func private @invalid_type(!tf_type.resource<tensor<vector<2xf32>>>) -> ()
 
+
+// -----
+
+// expected-error @+2 {{expected 'producer' in tf_type version}}
+// expected-error @+1 {{expected a version attribute}}
+tfg.graph #tf_type.version<> {
+}

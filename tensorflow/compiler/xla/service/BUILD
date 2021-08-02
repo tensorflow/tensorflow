@@ -810,6 +810,7 @@ tf_cc_test(
     name = "hlo_reachability_test",
     srcs = ["hlo_reachability_test.cc"],
     deps = [
+        ":computation_placer",
         ":hlo",
         ":hlo_reachability",
         "//tensorflow/compiler/xla:test",

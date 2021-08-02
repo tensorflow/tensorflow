@@ -729,6 +729,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       custom_call_instr->set_output_to_operand_aliasing(
           std::move(output_to_operand_aliasing));
       custom_call_instr->set_custom_call_schedule(proto.custom_call_schedule());
+      custom_call_instr->set_api_version(proto.custom_call_api_version());
       break;
     }
     case HloOpcode::kPad:
@@ -1753,35 +1754,39 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, string opaque) {
+    absl::string_view custom_call_target, string opaque,
+    CustomCallApiVersion api_version) {
   return absl::make_unique<HloCustomCallInstruction>(
-      shape, operands, custom_call_target, std::move(opaque));
+      shape, operands, custom_call_target, std::move(opaque), api_version);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* to_apply, absl::string_view custom_call_target,
-    string opaque) {
+    string opaque, CustomCallApiVersion api_version) {
   return absl::make_unique<HloCustomCallInstruction>(
-      shape, operands, to_apply, custom_call_target, std::move(opaque));
+      shape, operands, to_apply, custom_call_target, std::move(opaque),
+      api_version);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<HloComputation* const> called_computations,
-    absl::string_view custom_call_target, string opaque) {
+    absl::string_view custom_call_target, string opaque,
+    CustomCallApiVersion api_version) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, called_computations, custom_call_target,
-      std::move(opaque));
+      std::move(opaque), api_version);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target,
-    absl::Span<const Shape> operand_shapes_with_layout, string opaque) {
+    absl::Span<const Shape> operand_shapes_with_layout, string opaque,
+    CustomCallApiVersion api_version) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, custom_call_target, std::move(opaque),
-      operand_shapes_with_layout);
+      operand_shapes_with_layout, api_version);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
@@ -3935,6 +3940,11 @@ static string CustomCallScheduleToString(const CustomCallSchedule& schedule) {
   return absl::AsciiStrToLower(CustomCallSchedule_Name(schedule));
 }
 
+static string CustomCallApiVersionToString(
+    const CustomCallApiVersion& schedule) {
+  return absl::AsciiStrToLower(CustomCallApiVersion_Name(schedule));
+}
+
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
   auto len_required = [](int64_t a, int64_t b, absl::Span<const int64> cs) {
@@ -4059,6 +4069,25 @@ StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown schedule");
+  }
+  return found->second;
+}
+
+StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
+    absl::string_view name) {
+  static const absl::flat_hash_map<string, CustomCallApiVersion>* map = [] {
+    static auto* map = new absl::flat_hash_map<string, CustomCallApiVersion>;
+    for (int i = 0; i < CustomCallApiVersion_ARRAYSIZE; i++) {
+      if (CustomCallApiVersion_IsValid(i)) {
+        auto value = static_cast<CustomCallApiVersion>(i);
+        (*map)[CustomCallApiVersionToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(absl::AsciiStrToLower(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown API version");
   }
   return found->second;
 }

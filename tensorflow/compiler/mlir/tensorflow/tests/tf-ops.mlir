@@ -2823,6 +2823,14 @@ func @testSlice_wrong_output_size(%arg0: tensor<4xi32>) -> tensor<1xi32> {
 
 // -----
 
+func @testSlice_wrong_type(%arg0: tensor<28x1x100xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<1x1x100xi32> {
+  // expected-error @+1 {{failed to verify that input and output must have same element type}}
+  %0 = "tf.Slice"(%arg0, %arg1, %arg2) : (tensor<28x1x100xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x100xi32>
+  return %0 : tensor<1x1x100xi32>
+}
+
+// -----
+
 // Valid StridedSlice operation.
 func @testStridedSlice(%input: tensor<4x8xf32>, %begin: tensor<2xi64>, %end: tensor<2xi64>, %strides: tensor<2xi64>) -> tensor<?x?xf32> {
   %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) : (tensor<4x8xf32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>) -> tensor<?x?xf32>

@@ -1083,20 +1083,23 @@ class HloInstruction {
   // backend-specific interpretation. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      absl::string_view custom_call_target, string opaque = "");
+      absl::string_view custom_call_target, string opaque = "",
+      CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
   // Overload with a to_apply computation.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* to_apply, absl::string_view custom_call_target,
-      string opaque = "");
+      string opaque = "",
+      CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
   // Overload with multiple computations. The called computations can have
   // different function signatures.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloComputation* const> called_computations,
-      absl::string_view custom_call_target, string opaque = "");
+      absl::string_view custom_call_target, string opaque = "",
+      CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
   // Overload which constrains the layouts of the operand and result. 'shape'
   // and 'operand_shapes_with_layout' must have layouts.
@@ -1105,7 +1108,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target,
-      absl::Span<const Shape> operand_shapes_with_layout, string opaque = "");
+      absl::Span<const Shape> operand_shapes_with_layout, string opaque = "",
+      CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
@@ -2286,6 +2290,8 @@ StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
 StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
+StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
+    absl::string_view name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

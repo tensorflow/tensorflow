@@ -240,12 +240,15 @@ class TransposePlan {
   int64_t scratch_size_ = 0;
 };
 
-// An LRU cache for transpose plans. Not thread-safe.
 struct TransposePlanCacheKey;
 
 template <typename H>
 H AbslHashValue(H h, const TransposePlanCacheKey& key);
 
+// An LRU cache for transpose plans. Not thread-safe.
+// Transpose plans aren't cheap to build, but once computed for a particular set
+// of inputs can be cached and reused for arrays. TransposePlanCache implements
+// such a cache.
 class TransposePlanCache {
  public:
   explicit TransposePlanCache(int capacity);

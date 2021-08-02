@@ -21,18 +21,18 @@ from tensorflow.python.saved_model.pywrap_saved_model import metrics
 class MetricsTest(test.TestCase):
 
   def test_increment_write(self):
-    self.assertEqual(metrics.GetWrite(), 0)
-    metrics.IncrementWriteApi("foo", write_version="2")
-    self.assertEqual(metrics.GetWriteApi("foo", write_version="2"), 1)
-    metrics.IncrementWrite()
-    self.assertEqual(metrics.GetWrite(), 1)
+    self.assertEqual(metrics.GetWrite(write_version="1"), 0)
+    metrics.IncrementWriteApi("foo")
+    self.assertEqual(metrics.GetWriteApi("foo"), 1)
+    metrics.IncrementWrite(write_version="1")
+    self.assertEqual(metrics.GetWrite(write_version="1"), 1)
 
   def test_increment_read(self):
-    self.assertEqual(metrics.GetRead(), 0)
-    metrics.IncrementReadApi("bar", write_version="1")
-    self.assertEqual(metrics.GetReadApi("bar", write_version="1"), 1)
-    metrics.IncrementRead()
-    self.assertEqual(metrics.GetRead(), 1)
+    self.assertEqual(metrics.GetRead(write_version="2"), 0)
+    metrics.IncrementReadApi("bar")
+    self.assertEqual(metrics.GetReadApi("bar"), 1)
+    metrics.IncrementRead(write_version="2")
+    self.assertEqual(metrics.GetRead(write_version="2"), 1)
 
 
 if __name__ == "__main__":

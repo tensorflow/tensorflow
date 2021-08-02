@@ -1511,7 +1511,12 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     Variadic<HLO_TensorOrTuple>:$args,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedAttr<StrAttr, "">:$backend_config
+    DefaultValuedAttr<StrAttr, "">:$backend_config,
+    // TODO(b/189822916): Remove this field when all clients are migrated to
+    // the status-returning API.
+    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
+                      "CustomCallApiVersion::API_VERSION_ORIGINAL">:
+                      $api_version
   );
   let results = (outs Variadic<HLO_TensorOrTuple>);
   let hasCustomHLOConverter = 1;
@@ -2297,7 +2302,7 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp 
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
 }
-  
+
 def HLO_PrintOp : HLO_Op<"print", []> {
   let summary = "Print operation";
   let description = [{

@@ -12,27 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_UTIL_H_
-#define TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_UTIL_H_
+#include "tensorflow/cc/saved_model/util.h"
 
 #include <string>
 
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
-namespace libexport {
+namespace saved_model {
 
-// Utility functions for SavedModel reading and writing.
+std::string GetWriteVersion(const SavedModel& saved_model) {
+  if (saved_model.meta_graphs_size() == 1 &&
+      saved_model.meta_graphs()[0].has_object_graph_def()) {
+    return "2";
+  }
+  return "1";
+}
 
-// Returns "WriteVersion" ("1" or "2") of the SavedModel protobuf. If the
-// protobuf has exactly one MetaGraphDef, which contains a SavedObjectGraph, it
-// is version 2. Else, the protobuf is version 1.
-//
-// NOTE: The "WriteVersion" does *not* equal the major version of TF.
-std::string GetWriteVersion(const SavedModel& saved_model);
-
-}  // namespace libexport
+}  // namespace saved_model
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_UTIL_H_

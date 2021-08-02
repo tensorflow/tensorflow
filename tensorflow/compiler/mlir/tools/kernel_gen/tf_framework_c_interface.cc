@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_framework_c_interface.h"
 
-#include "absl/container/flat_hash_map.h"
+#include <string>
+#include <utility>
+
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/TargetSelect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
@@ -23,8 +25,8 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
@@ -119,76 +121,52 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   // Register all the symbols.
   bind("_mlir_ciface_tf_alloc", &_mlir_ciface_tf_alloc);
   bind("_mlir_ciface_tf_dealloc", &_mlir_ciface_tf_dealloc);
+  bind("_mlir_ciface_tf_report_error", &_mlir_ciface_tf_report_error);
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
   bind("_mlir_ciface_tf_launch_kernel", &_mlir_ciface_tf_launch_kernel);
 #endif
-  bind("_mlir_ciface_tf_report_error", &_mlir_ciface_tf_report_error);
 
   return symbol_map;
 }
 
-class JITCache : public tensorflow::ResourceBase {
- public:
-  std::string DebugString() const override { return "JIT cache"; }
+llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
+    const std::string code) {
+  // For now, use some default parameters.
+  // TODO(frgossen): Propagate these parameters through the JIT invocation.
+  llvm::SmallVector<std::string, 4> architectures = {"sm_60", "sm_70", "sm_75"};
+  llvm::SmallVector<int64_t, 1> tile_sizes = {1024};
+  llvm::SmallVector<int64_t, 1> unroll_factors = {4};
+  int64_t max_supported_rank = 5;
+  bool enable_ftz = false;
+  bool cpu_codegen = false;
+  bool jit_compile = false;
 
-  ExecutionEngine* LookupOrCompile(const char* code) {
-    // Check if we already have a compiled module in the cache.
-    std::string key(code);
-    {
-      tensorflow::mutex_lock lock(mu_);
-      if (execution_engine_by_key_.contains(key))
-        return execution_engine_by_key_[key].get();
-    }
+  // Create the kernel.
+  mlir::MLIRContext context;
+  xla::StatusOr<mlir::OwningModuleRef> status_or_module =
+      tensorflow::kernel_gen::GenerateKernelForTfCode(
+          context, code, architectures, tile_sizes, unroll_factors,
+          max_supported_rank, /*embed_memref_prints=*/false,
+          /*print_ptx=*/false, enable_ftz, cpu_codegen, jit_compile);
+  if (!status_or_module.ok()) return nullptr;
+  mlir::OwningModuleRef module = std::move(status_or_module.ValueOrDie());
 
-    // Otherwise, compile the module now.
-    // TODO(frgossen): Propagate these parameters through the JIT invocation.
-    // For now, use some default parameters.
-    llvm::SmallVector<std::string, 4> architectures = {"sm_60", "sm_70",
-                                                       "sm_75"};
-    llvm::SmallVector<int64_t, 1> tile_sizes = {1024};
-    llvm::SmallVector<int64_t, 1> unroll_factors = {4};
-    int64_t max_supported_rank = 5;
-    bool enable_ftz = false;
-    bool cpu_codegen = false;
-    bool jit_compile = false;
+  // Initialize LLVM targets.
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
 
-    // Create the kernel.
-    mlir::MLIRContext context;
-    xla::StatusOr<mlir::OwningModuleRef> status_or_module =
-        tensorflow::kernel_gen::GenerateKernelForTfCode(
-            context, code, architectures, tile_sizes, unroll_factors,
-            max_supported_rank, /*embed_memref_prints=*/false,
-            /*print_ptx=*/false, enable_ftz, cpu_codegen, jit_compile);
-    if (!status_or_module.ok()) return nullptr;
-    mlir::OwningModuleRef module = std::move(status_or_module.ValueOrDie());
+  // Create execution engine with an inner optimization pipeline.
+  auto opt_pipeline = mlir::makeOptimizingTransformer(
+      /*optLevel=*/2, /*sizeLevel=*/0, /*targetMachine=*/nullptr);
+  llvm::Expected<std::unique_ptr<ExecutionEngine>> engine =
+      mlir::ExecutionEngine::create(module.get(), /*llvmModuleBuilder=*/nullptr,
+                                    opt_pipeline);
+  if (!engine) return nullptr;
 
-    // Initialize LLVM targets.
-    llvm::InitializeNativeTarget();
-    llvm::InitializeNativeTargetAsmPrinter();
-
-    // Create execution engine with an inner optimization pipeline.
-    auto opt_pipeline = mlir::makeOptimizingTransformer(
-        /*optLevel=*/2, /*sizeLevel=*/0, /*targetMachine=*/nullptr);
-    llvm::Expected<std::unique_ptr<ExecutionEngine>> expected_engine =
-        mlir::ExecutionEngine::create(
-            module.get(), /*llvmModuleBuilder=*/nullptr, opt_pipeline);
-    if (!expected_engine) return nullptr;
-    std::unique_ptr<ExecutionEngine> engine = std::move(expected_engine.get());
-    engine->registerSymbols(TFFrameworkSymbolMap);
-
-    // Insert the compiled module into our cache and return a raw pointer.
-    {
-      tensorflow::mutex_lock lock(mu_);
-      execution_engine_by_key_[key] = std::move(engine);
-      return execution_engine_by_key_[key].get();
-    }
-  }
-
- private:
-  tensorflow::mutex mu_;
-  absl::flat_hash_map<std::string, std::unique_ptr<ExecutionEngine>>
-      execution_engine_by_key_ TF_GUARDED_BY(mu_);
-};
+  // Finally, register the missing symbols.
+  engine.get()->registerSymbols(TFFrameworkSymbolMap);
+  return engine;
+}
 
 }  // namespace
 
@@ -203,12 +181,9 @@ extern "C" void* _mlir_ciface_tf_jit_compile(void* op_kernel_ctx, char* code) {
 
   // Get the JIT cache.
   JITCache* jit_cache = nullptr;
-  const std::string kJITCacheName = "mlir-jit-cache";
-  auto status = rm->LookupOrCreate<JITCache>(
-      rm->default_container(), kJITCacheName, &jit_cache, [&](JITCache** dst) {
-        *dst = new JITCache;
-        return tensorflow::Status::OK();
-      });
+  auto status = rm->LookupOrCreate<JITCache>(rm->default_container(),
+                                             JITCache::kDefaultResourceName,
+                                             &jit_cache, JITCache::Create);
   tensorflow::core::ScopedUnref jit_cache_ref(jit_cache);
   if (!status.ok()) {
     ReportError(op_kernel_ctx, ErrorCode::UNKNOWN,
@@ -217,7 +192,8 @@ extern "C" void* _mlir_ciface_tf_jit_compile(void* op_kernel_ctx, char* code) {
   }
 
   // Lookup or compile the execution module.
-  ExecutionEngine* engine = jit_cache->LookupOrCompile(code);
+  ExecutionEngine* engine =
+      jit_cache->LookupOrCompile(code, [&]() { return Compile(code); });
   if (engine == nullptr) {
     ReportError(op_kernel_ctx, ErrorCode::UNKNOWN, "JIT compilation failed.");
     return nullptr;

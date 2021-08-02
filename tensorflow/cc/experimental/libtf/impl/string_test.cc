@@ -26,13 +26,6 @@ TEST(StringTest, TestBasicInterning) {
   EXPECT_EQ(&s1.str(), &s2.str());
 }
 
-TEST(StringTest, TestIOStream) {
-  String s("foo");
-  std::stringstream stream;
-  stream << s;
-  ASSERT_EQ(stream.str(), "foo");
-}
-
 }  // namespace impl
 }  // namespace libtf
 }  // namespace tf

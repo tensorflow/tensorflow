@@ -43,7 +43,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 // The pass lifts TFLite Flex custom ops into TF dialect operations.
 // Note: this pass is experimental, so not guaranteed to work with all Flex ops.
@@ -80,13 +84,25 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
     SmallVector<NamedAttribute, 2> attrs;
     std::string parsed_op_name;
+    tensorflow::NodeDef node_def;
     if (failed(ParseCustomOption(op.custom_option().getValue(), op.getLoc(),
-                                 parsed_op_name, attrs))) {
+                                 parsed_op_name, attrs, node_def))) {
       return failure();
     }
     if (parsed_op_name != tf_op_name) {
       return op.emitOpError(
           "TF op names in 'custom_code' and 'custom_option' don't match");
+    }
+    const tensorflow::OpDef* op_def;
+
+    // This will fail only if the op is not a registered TensorFlow op.
+    if (!tensorflow::OpRegistry::Global()
+             ->LookUpOpDef(parsed_op_name, &op_def)
+             .ok()) {
+      op->emitError() << "can't find registered TF op for " << parsed_op_name
+                      << ". Please make sure the op library for "
+                      << parsed_op_name << " is linked properly";
+      return failure();
     }
     op_state.addAttributes(attrs);
 
@@ -121,6 +137,54 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
       flow.setType(scalar_f32_tensor_type);
     }
 
+    // Sets operand_segment_sizes or result_segment_sizes attribute to the op.
+    // Referenced from tensorflow::ImporterBase::CreateOperation
+
+    const auto set_segment_sizes_attr =
+        [&](const tensorflow::NameRangeMap& arg_ranges,
+            const tensorflow::protobuf::RepeatedPtrField<
+                tensorflow::OpDef::ArgDef>& args,
+            llvm::StringRef attr_name) {
+          std::vector<mlir::Attribute> values;
+          values.reserve(args.size());
+          for (const auto& arg : args) {
+            auto range = arg_ranges.at(arg.name());
+            values.push_back(
+                rewriter.getI32IntegerAttr(range.second - range.first));
+          }
+          auto attr_type =
+              mlir::VectorType::get(args.size(), rewriter.getIntegerType(32));
+          auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+          tf_op->setAttr(attr_name, attr_value);
+        };
+    if (tf_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>() ||
+        tf_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+      // The op has multiple variadic operands or results.
+      // Calculate operand and result segment sizes using the OpDef.
+      tensorflow::NameRangeMap input_ranges, output_ranges;
+      // This will fail only if the OpDef is syntactically invalid.
+      if (!NameRangesForNode(node_def, *op_def, &input_ranges, &output_ranges)
+               .ok()) {
+        tf_op->emitError("malformed opdef");
+        return failure();
+      }
+      if (tf_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>()) {
+        // Add derived "operand_segment_sizes" attr to the created operation.
+        // TODO(b/146937733): Don't use <void> here.
+        set_segment_sizes_attr(input_ranges, op_def->input_arg(),
+                               mlir::OpTrait::AttrSizedOperandSegments<
+                                   void>::getOperandSegmentSizeAttr());
+      }
+
+      if (tf_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+        // Add derived "result_segment_sizes" attr to the created operation.
+        // TODO(b/146937733): Don't use <void> here.
+        set_segment_sizes_attr(output_ranges, op_def->output_arg(),
+                               mlir::OpTrait::AttrSizedResultSegments<
+                                   void>::getResultSegmentSizeAttr());
+      }
+    }
+
     return success();
   }
 
@@ -129,7 +193,8 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
   // `op_name` and TF dialect MLIR op attributes.
   static LogicalResult ParseCustomOption(
       StringRef custom_options, Location loc, std::string& op_name,
-      SmallVectorImpl<NamedAttribute>& attributes) {
+      SmallVectorImpl<NamedAttribute>& attributes,
+      tensorflow::NodeDef& node_def) {
     // The flexbuffer contains a vector where the first elements is the
     // op name and the second is a serialized NodeDef.
     const flexbuffers::Vector& v =
@@ -138,7 +203,6 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
             custom_options.size())
             .AsVector();
 
-    tensorflow::NodeDef node_def;
     op_name = v[0].AsString().str();
 
     if (!node_def.ParseFromString(v[1].AsString().str())) {
@@ -146,7 +210,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
           loc, "failed to parse 'custom_options' data into a valid NodeDef");
     }
 
-    Builder builder(loc.getContext());
+    OpBuilder builder(loc.getContext());
     for (const auto& name_and_value : node_def.attr()) {
       const std::string& attr_name = name_and_value.first;
       const tensorflow::AttrValue& attr_value = name_and_value.second;

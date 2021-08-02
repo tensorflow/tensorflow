@@ -15,10 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_IMPL_SCALARS_H_
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_IMPL_SCALARS_H_
 
-#include <sys/types.h>
+#include <stdint.h>
 
-// TODO(ccrusius): Include iosfwd instead and fix Windows problems.
-#include <iostream>
+#include <iosfwd>
 #include <utility>
 
 namespace tf {

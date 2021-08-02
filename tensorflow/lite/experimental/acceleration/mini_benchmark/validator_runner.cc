@@ -264,6 +264,19 @@ std::vector<const BenchmarkEvent*> ValidatorRunner::GetSuccessfulResults() {
   return results;
 }
 
+int ValidatorRunner::GetNumCompletedResults() {
+  storage_.Read();
+  int num_results = 0;
+  for (int i = 0; i < storage_.Count(); i++) {
+    const BenchmarkEvent* event = storage_.Get(i);
+    if (event->event_type() == BenchmarkEventType_ERROR ||
+        (event->event_type() == BenchmarkEventType_END && event->result())) {
+      num_results++;
+    }
+  }
+  return num_results;
+}
+
 std::vector<const BenchmarkEvent*> ValidatorRunner::GetAndFlushEventsToLog(
     int64_t timeout_us) {
   std::vector<const BenchmarkEvent*> events;

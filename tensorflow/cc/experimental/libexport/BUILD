@@ -15,15 +15,6 @@ package(
 )
 
 cc_library(
-    name = "constants",
-    srcs = ["constants.cc"],
-    hdrs = ["constants.h"],
-    deps = [
-        "//tensorflow/core/platform:macros",
-    ],
-)
-
-cc_library(
     name = "save",
     srcs = ["save.cc"],
     hdrs = ["save.h"],
@@ -71,28 +62,5 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
-    ],
-)
-
-cc_library(
-    name = "util",
-    srcs = ["util.cc"],
-    hdrs = ["util.h"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
-    ],
-)
-
-tf_cc_test(
-    name = "util_test",
-    size = "small",
-    srcs = ["util_test.cc"],
-    deps = [
-        ":util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )

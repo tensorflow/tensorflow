@@ -347,6 +347,7 @@ class HloParserImpl : public HloParser {
     kAliasing,
     kInstructionAliasing,
     kCustomCallSchedule,
+    kCustomCallApiVersion,
   };
 
   struct AttrConfig {
@@ -493,6 +494,7 @@ class HloParserImpl : public HloParser {
           aliasing_output_operand_pairs);
 
   bool ParseCustomCallSchedule(CustomCallSchedule* result);
+  bool ParseCustomCallApiVersion(CustomCallApiVersion* result);
   bool ParseShapeIndex(ShapeIndex* out);
 
   // Returns true if the current token is the beginning of a shape.
@@ -808,6 +810,23 @@ bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
     return TokenError(
         StrFormat("expects custom-call schedule but sees: %s, error: %s", val,
                   status_or_result.status().error_message()));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
+  VLOG(3) << "ParseCustomCallApiVersion";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects custom-call API version");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToCustomCallApiVersion(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        StrFormat("expects custom-call API version but sees: %s, error: %s",
+                  val, status_or_result.status().error_message()));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();
@@ -2365,6 +2384,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<PaddingType> padding_type;
       optional<std::vector<HloComputation*>> called_computations;
       optional<CustomCallSchedule> custom_call_schedule;
+      optional<CustomCallApiVersion> api_version;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -2402,8 +2422,17 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       attrs["schedule"] = {/*required=*/false, AttrTy::kCustomCallSchedule,
                            &custom_call_schedule};
+      attrs["api_version"] = {/*required=*/false, AttrTy::kCustomCallApiVersion,
+                              &api_version};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
+      }
+
+      if (api_version.has_value() &&
+          *api_version == CustomCallApiVersion::API_VERSION_UNSPECIFIED) {
+        return Error(lexer_.GetLoc(),
+                     StrCat("Invalid API version: ",
+                            CustomCallApiVersion_Name(*api_version)));
       }
       if (operand_layout_constraints.has_value()) {
         if (!LayoutUtil::HasLayout(shape)) {
@@ -2481,6 +2510,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       if (custom_call_schedule.has_value()) {
         custom_call_instr->set_custom_call_schedule(*custom_call_schedule);
+      }
+      if (api_version.has_value()) {
+        custom_call_instr->set_api_version(*api_version);
       }
       if (output_to_operand_aliasing.has_value()) {
         custom_call_instr->set_output_to_operand_aliasing(
@@ -4132,6 +4164,15 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<CustomCallSchedule>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
+      case AttrTy::kCustomCallApiVersion: {
+        CustomCallApiVersion result;
+        if (!ParseCustomCallApiVersion(&result)) {
+          return false;
+        }
+        static_cast<optional<CustomCallApiVersion>*>(attr_out_ptr)
             ->emplace(result);
         return true;
       }

@@ -1292,6 +1292,21 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "errors_test",
+    size = "small",
+    srcs = ["errors_test.cc"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
     name = "fake_python_env_test",
     size = "small",
     srcs = ["fake_python_env_test.cc"],

@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <unordered_set>
 
-#include "tensorflow/cc/experimental/libexport/util.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/cc/saved_model/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -273,11 +273,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
                       SavedModelBundle* const bundle) {
-  SavedModel saved_model_proto;
-  if (ReadSavedModel(export_dir, &saved_model_proto).ok()) {
-    std::string version = libexport::GetWriteVersion(saved_model_proto);
-    metrics::SavedModelReadApi(kCCLoadLabel, version).IncrementBy(1);
-  }
+  metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
 
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();
@@ -296,7 +292,6 @@ Status LoadSavedModel(const SessionOptions& session_options,
   }
   load_latency->GetCell(export_dir)
       ->IncrementBy(GetLatencyMicroseconds(start_microseconds));
-  metrics::SavedModelRead().IncrementBy(1);
   return status;
 }
 

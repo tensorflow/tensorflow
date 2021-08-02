@@ -112,7 +112,9 @@ StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
   }
 
   VLOG(2) << "Applying auto-shard policy "
-          << AutoShardPolicy_Name(auto_shard_policy_);
+          << AutoShardPolicy_Name(auto_shard_policy_)
+          << ". Number of workers: " << num_workers_
+          << "; worker index: " << worker_index_ << ".";
   grappler::AutoShard autoshard;
   tensorflow::RewriterConfig::CustomGraphOptimizer config = GetRewriteConfig();
   TF_RETURN_IF_ERROR(autoshard.Init(&config));

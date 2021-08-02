@@ -73,6 +73,9 @@ class MatrixDiagPartOp : public OpKernel {
                   errors::InvalidArgument(
                       "diag_index must be a scalar or vector, received shape: ",
                       diag_index.shape().DebugString()));
+      OP_REQUIRES(context, diag_index.NumElements() > 0,
+                  errors::InvalidArgument(
+                      "Expected diag_index to have at least 1 element"));
       lower_diag_index = diag_index.flat<int32>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
@@ -179,6 +182,9 @@ class MatrixDiagOp : public OpKernel {
                   errors::InvalidArgument(
                       "diag_index must be a scalar or vector, received shape: ",
                       diag_index.shape().DebugString()));
+      OP_REQUIRES(context, diag_index.NumElements() > 0,
+                  errors::InvalidArgument(
+                      "Expected diag_index to have at least 1 element"));
       lower_diag_index = diag_index.flat<int32>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {

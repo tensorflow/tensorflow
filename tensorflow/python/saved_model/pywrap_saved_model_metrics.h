@@ -21,10 +21,14 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 
 namespace tensorflow {
+namespace saved_model {
+namespace python {
 
 // Wraps the SM Metrics API methods for exporting to Python.
 void DefineMetricsModule(pybind11::module main_module);
 
+}  // namespace python
+}  // namespace saved_model
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_

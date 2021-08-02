@@ -57,6 +57,8 @@ cc_library(
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
+        ":metrics",
+        ":util",
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/tensor_bundle",
@@ -72,6 +74,7 @@ tf_cc_test(
     linkstatic = 1,
     deps = [
         ":constants",
+        ":metrics",
         ":reader",
         ":tag_constants",
         "//tensorflow/core:lib",
@@ -121,13 +124,13 @@ cc_library(
         ":reader",
     ] + if_not_mobile([
         ":metrics",
+        ":util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
-        "//tensorflow/cc/experimental/libexport:util",
     ]),
     alwayslink = 1,
 )
@@ -139,7 +142,8 @@ cc_library(
     deps = [
         ":constants",
         ":metrics",
-        "//tensorflow/cc/experimental/libexport:util",
+        ":reader",
+        ":util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:strcat",
@@ -337,5 +341,28 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "util_test",
+    size = "small",
+    srcs = ["util_test.cc"],
+    deps = [
+        ":util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )

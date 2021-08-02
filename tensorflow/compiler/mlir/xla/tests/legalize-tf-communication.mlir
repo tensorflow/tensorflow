@@ -1046,7 +1046,7 @@ func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ( {
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
-    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'func']}}
+    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'builtin.func']}}
     "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : () -> ()
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
@@ -1061,7 +1061,7 @@ func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ( {
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
-    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'func']}}
+    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'builtin.func']}}
     call @callee() : () -> ()
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
@@ -1078,7 +1078,7 @@ func private @callee() {
 // Tests function with more than one block that is to be rewritten emits an
 // error instead.
 
-// expected-error@+1 {{'func' ops with more than one block are not supported}}
+// expected-error@+1 {{'builtin.func' ops with more than one block are not supported}}
 func @multi_block_func() {
   br ^bb1
 ^bb1:

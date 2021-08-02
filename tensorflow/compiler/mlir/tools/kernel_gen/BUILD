@@ -159,14 +159,26 @@ cc_library(
     deps = [
         ":kernel_creator",
         ":tf_gpu_runtime_wrappers",
+        ":tf_jit_cache",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:framework",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_runner_utils",
+    ],
+)
+
+cc_library(
+    name = "tf_jit_cache",
+    srcs = ["tf_jit_cache.cc"],
+    hdrs = ["tf_jit_cache.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//mlir:ExecutionEngine",
     ],
 )
 

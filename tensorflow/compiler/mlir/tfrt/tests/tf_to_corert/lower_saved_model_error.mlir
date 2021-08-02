@@ -6,7 +6,7 @@ module attributes {tf_saved_model.semantics} {
 
 // Test error handling in a simple scenario.
 
-// expected-error @+1 {{'func' op failed to promote resource variables}}
+// expected-error @+1 {{'builtin.func' op failed to promote resource variables}}
 func @main(
     %arg0: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
@@ -36,7 +36,7 @@ func private @callee(
 
 // Test error handling during recursive processing that involes a call operation.
 
-// expected-error @+1 {{'func' op failed to promote resource variables}}
+// expected-error @+1 {{'builtin.func' op failed to promote resource variables}}
 func @main(
     %arg0: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<i32> {tf_saved_model.index_path = ["r"]})

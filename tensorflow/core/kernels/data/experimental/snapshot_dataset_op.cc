@@ -141,6 +141,12 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
         Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
   }
 
+  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                split_providers) const override {
+    return errors::Unimplemented(
+        "Splitting is not implemented for snapshot datasets.");
+  }
+
   const DataTypeVector& output_dtypes() const override {
     return input_->output_dtypes();
   }
@@ -983,6 +989,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       return absl::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
+    }
+
+    Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                  split_providers) const override {
+      return errors::Unimplemented(
+          "Splitting is not implemented for snapshot datasets.");
     }
 
     const DataTypeVector& output_dtypes() const override {

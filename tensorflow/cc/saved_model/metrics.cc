@@ -24,50 +24,48 @@ namespace metrics {
 
 namespace {
 
-// Counter that tracks total number of SavedModels written.
-auto* saved_model_write_counter = monitoring::Counter<0>::New(
+// Counter that tracks total number and `write_version` of SavedModels written.
+auto* saved_model_write_counter = monitoring::Counter<1>::New(
     "/tensorflow/core/saved_model/write/count",
-    "The number of SavedModels successfully written.");
+    "The number of SavedModels successfully written.", "write_version");
 
-// Counter that tracks total number of SavedModels read.
-auto* saved_model_read_counter = monitoring::Counter<0>::New(
+// Counter that tracks total number and `write_version` of SavedModels read.
+auto* saved_model_read_counter = monitoring::Counter<1>::New(
     "/tensorflow/core/saved_model/read/count",
-    "The number of SavedModels successfully loaded.");
+    "The number of SavedModels successfully loaded.", "write_version");
 
 // Counter that tracks number of calls for each SavedModel write API. Summing
 // across "api_label" is not expected to equal the ".../write/count" cell value
 // because programs can invoke more than one API to save a single SM and
 // because the API may error out before successfully writing a SM.
-auto* saved_model_write_api = monitoring::Counter<2>::New(
+auto* saved_model_write_api = monitoring::Counter<1>::New(
     "/tensorflow/core/saved_model/write/api",
-    "The API used to write the SavedModel.", "api_label", "write_version");
+    "The API used to write the SavedModel.", "api_label");
 
 // Counter that tracks number of calls for each SavedModel read API. Summing
 // across "api_label" is not expected to equal the ".../read/count" cell value
 // because programs can invoke more than one API to load a single SM and
 // because the API may error out before successfully reading a SM.
-auto* saved_model_read_api = monitoring::Counter<2>::New(
+auto* saved_model_read_api = monitoring::Counter<1>::New(
     "/tensorflow/core/saved_model/read/api",
-    "The API used to load the SavedModel.", "api_label", "write_version");
+    "The API used to load the SavedModel.", "api_label");
 
 }  // namespace
 
-monitoring::CounterCell& SavedModelWrite() {
-  return *saved_model_write_counter->GetCell();
+monitoring::CounterCell& SavedModelWrite(const std::string& write_version) {
+  return *saved_model_write_counter->GetCell(write_version);
 }
 
-monitoring::CounterCell& SavedModelRead() {
-  return *saved_model_read_counter->GetCell();
+monitoring::CounterCell& SavedModelRead(const std::string& write_version) {
+  return *saved_model_read_counter->GetCell(write_version);
 }
 
-monitoring::CounterCell& SavedModelWriteApi(const std::string& api_label,
-                                            const std::string& write_version) {
-  return *saved_model_write_api->GetCell(api_label, write_version);
+monitoring::CounterCell& SavedModelWriteApi(const std::string& api_label) {
+  return *saved_model_write_api->GetCell(api_label);
 }
 
-monitoring::CounterCell& SavedModelReadApi(const std::string& api_label,
-                                           const std::string& write_version) {
-  return *saved_model_read_api->GetCell(api_label, write_version);
+monitoring::CounterCell& SavedModelReadApi(const std::string& api_label) {
+  return *saved_model_read_api->GetCell(api_label);
 }
 
 }  // namespace metrics

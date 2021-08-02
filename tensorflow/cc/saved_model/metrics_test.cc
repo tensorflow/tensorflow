@@ -21,26 +21,27 @@ namespace tensorflow {
 namespace metrics {
 // The value of the cells for each metric persists across tests.
 
-TEST(MetricsTest, TestWrite) {
-  EXPECT_EQ(SavedModelWriteApi("foo", "1").value(), 0);
-  SavedModelWriteApi("foo", "1").IncrementBy(1);
-  EXPECT_EQ(SavedModelWriteApi("foo", "1").value(), 1);
+TEST(MetricsTest, TestSavedModelWrite) {
+  EXPECT_EQ(SavedModelWriteApi("foo").value(), 0);
+  SavedModelWriteApi("foo").IncrementBy(1);
+  EXPECT_EQ(SavedModelWriteApi("foo").value(), 1);
 
-  EXPECT_EQ(SavedModelWrite().value(), 0);
-  SavedModelWrite().IncrementBy(1);
-  EXPECT_EQ(SavedModelWrite().value(), 1);
+  EXPECT_EQ(SavedModelWrite("1").value(), 0);
+  SavedModelWrite("1").IncrementBy(1);
+  EXPECT_EQ(SavedModelWrite("1").value(), 1);
 }
 
-TEST(MetricsTest, TestRead) {
-  SavedModelReadApi("bar", "2").IncrementBy(1);
-  EXPECT_EQ(SavedModelReadApi("bar", "2").value(), 1);
-  SavedModelRead().IncrementBy(1);
-  EXPECT_EQ(SavedModelRead().value(), 1);
+TEST(MetricsTest, TestSavedModelRead) {
+  SavedModelReadApi("bar").IncrementBy(1);
+  EXPECT_EQ(SavedModelReadApi("bar").value(), 1);
+  SavedModelRead("2").IncrementBy(1);
+  EXPECT_EQ(SavedModelRead("2").value(), 1);
 
-  SavedModelReadApi("baz", "2").IncrementBy(1);
-  EXPECT_EQ(SavedModelReadApi("baz", "2").value(), 1);
-  SavedModelRead().IncrementBy(1);
-  EXPECT_EQ(SavedModelRead().value(), 2);
+  SavedModelReadApi("baz").IncrementBy(1);
+  EXPECT_EQ(SavedModelReadApi("baz").value(), 1);
+  SavedModelRead("2").IncrementBy(1);
+  EXPECT_EQ(SavedModelRead("2").value(), 2);
 }
+
 }  // namespace metrics
 }  // namespace tensorflow

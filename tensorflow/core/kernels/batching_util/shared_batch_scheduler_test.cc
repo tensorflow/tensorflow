@@ -15,11 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
+#include <memory>
+#include <string>
+#include <thread>  // NOLINT(build/c++11)
+#include <tuple>
+#include <utility>
+
+#include "absl/time/time.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -590,6 +600,133 @@ TEST(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
   }
   stop_teardown.Notify();
 }
+
+#ifdef PLATFORM_GOOGLE
+// This benchmark relies on https://github.com/google/benchmark features,
+// (in particular, `Benchmark::ThreadRange`) not available in open-sourced TF
+//  codebase.
+using Queue = BatchScheduler<FakeTask>;
+
+// Creates QueueOptions based on input parameters.
+// 'split_input_task_func' a function that runs for some time on CPU iff
+// caller sets `enable_large_batch_splitting` to true.
+SharedBatchScheduler<FakeTask>::QueueOptions CreateQueueOptions(
+    size_t max_execution_batch_size, size_t input_batch_size_limit,
+    size_t batch_timeout_micros, bool enable_large_batch_splitting) {
+  SharedBatchScheduler<FakeTask>::QueueOptions queue_options;
+  queue_options.max_enqueued_batches = INT_MAX;  // Unbounded queue.
+  queue_options.max_execution_batch_size = max_execution_batch_size;
+  queue_options.input_batch_size_limit = input_batch_size_limit;
+  queue_options.batch_timeout_micros = batch_timeout_micros;
+  queue_options.enable_large_batch_splitting = enable_large_batch_splitting;
+  if (enable_large_batch_splitting) {
+    queue_options.split_input_task_func =
+        [](std::unique_ptr<FakeTask>* input_task, int open_batch_remaining_slot,
+           int max_batch_size,
+           std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> Status {
+      output_tasks->push_back(std::move(*input_task));
+
+      Notification notify;
+      std::thread busy_waiter([&] {
+        while (!notify.HasBeenNotified()) {
+        }
+      });
+
+      std::thread notifier([&] {
+        Env::Default()->SleepForMicroseconds(1);
+        notify.Notify();
+      });
+      busy_waiter.join();
+      notifier.join();
+      return Status::OK();
+    };
+  }
+  return queue_options;
+}
+
+static std::vector<std::shared_ptr<SharedBatchScheduler<FakeTask>>>*
+    schedulers =
+        new std::vector<std::shared_ptr<SharedBatchScheduler<FakeTask>>>();
+
+// Creates a shared-batch-scheduler and adds it to `schedulers` to keep it
+// alive.
+std::shared_ptr<SharedBatchScheduler<FakeTask>> CreateSharedBatchScheduler() {
+  SharedBatchScheduler<FakeTask>::Options options;
+  options.num_batch_threads = 5;
+
+  std::shared_ptr<SharedBatchScheduler<FakeTask>> shared_batch_scheduler;
+  TF_CHECK_OK(
+      SharedBatchScheduler<FakeTask>::Create(options, &shared_batch_scheduler));
+
+  schedulers->push_back(shared_batch_scheduler);
+  return shared_batch_scheduler;
+}
+
+// Creates a queue with the given `queue_options`.
+//
+// Each queue has its own shared-batch-scheduler with the same parameter, so
+// scheduling behavior are approximately the same.
+//
+// Caller takes ownership of returned queue.
+Queue* CreateQueue(SharedBatchScheduler<FakeTask>::QueueOptions queue_options) {
+  std::shared_ptr<SharedBatchScheduler<FakeTask>> shared_scheduler =
+      CreateSharedBatchScheduler();
+
+  internal::Queue<FakeTask>::ProcessBatchCallback process_batch_callback =
+      [](std::unique_ptr<Batch<FakeTask>> task) {
+        // process_batch_callback is supposed to take ownership of `task`, so
+        // destroys task to free up resources.
+        task.reset();
+      };
+
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_CHECK_OK(shared_scheduler->AddQueue(queue_options, process_batch_callback,
+                                         &queue));
+  return queue.release();
+}
+
+// Returns a queue object based on input parameter; queue objects are guaranteed
+// to be created once and remain valid for the program's lifetime.
+//
+// Queues are created the first time this function is called.
+static Queue* GetOrCreateQueue(bool split) {
+  if (split) {
+    static Queue* queue_with_split = CreateQueue(CreateQueueOptions(
+        64 /* max_execution_batch_size */, 128 /* input_batch_size_limit */,
+        10 /* batch_timeout_micros */,
+        true /* enable_large_batch_splitting */));
+    return queue_with_split;
+  }
+  static Queue* queue_without_split = CreateQueue(CreateQueueOptions(
+      64 /* max_execution_batch_size */, 128 /* input_batch_size_limit */,
+      10 /* batch_timeout_micros */, false /* enable_large_batch_splitting */));
+
+  return queue_without_split;
+}
+
+void BM_QueueSchedule(::testing::benchmark::State& state) {
+  Queue* queue = GetOrCreateQueue(/*split=*/state.range(1));
+
+  const string label = strings::StrCat(state.num_threads(), "-Threads",
+                                       state.range(1) ? "-Split" : "-NoSplit");
+  state.SetLabel(label);
+  for (auto s : state) {
+    for (int i = 0; i < state.range(0); i++) {
+      auto batch_task = std::make_unique<FakeTask>(1);
+
+      auto status = queue->Schedule(&batch_task);
+      tensorflow::testing::DoNotOptimize(status);
+    }
+  }
+}
+
+BENCHMARK(BM_QueueSchedule)
+    ->ThreadRange(1,
+                  port::NumSchedulableCPUs() * tensorflow::port::CPUIDNumSMT())
+    ->ArgPair(10000, true)
+    ->ArgPair(10000, false);
+
+#endif  // PLATFORM_GOOGLE
 
 }  // namespace
 }  // namespace serving

@@ -12,23 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/cc/experimental/libexport/util.h"
 
-#include <string>
+#include "mlir/Support/MlirOptMain.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/transforms/pass_registration.h"
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
-
-namespace tensorflow {
-namespace libexport {
-
-std::string GetWriteVersion(const SavedModel& saved_model) {
-  if (saved_model.meta_graphs_size() == 1 &&
-      saved_model.meta_graphs()[0].has_object_graph_def()) {
-    return "2";
-  }
-  return "1";
+int main(int argc, char **argv) {
+  mlir::DialectRegistry registry;
+  mlir::registerCanonicalizerPass();
+  mlir::tfg::registerTFGraphPasses();
+  registry.insert<mlir::tfg::TFGraphDialect, mlir::tf_type::TFTypeDialect>();
+  return failed(
+      mlir::MlirOptMain(argc, argv, "TFGraph Transforms Driver", registry));
 }
-
-}  // namespace libexport
-}  // namespace tensorflow

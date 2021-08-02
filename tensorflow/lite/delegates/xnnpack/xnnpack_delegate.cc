@@ -2101,6 +2101,15 @@ class Subgraph {
     const int32_t output_channels = filter_tensor.dims->data[0];
     const int32_t input_channels = filter_tensor.dims->data[1];
 
+    if (input_tensor.type != output_tensor.type ||
+        input_tensor.type != filter_tensor.type) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported mixed types in FULLY_CONNECTED operator #%d",
+          node_index);
+      return kTfLiteError;
+    }
+
     if (input_tensor.dims->size == 0) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,

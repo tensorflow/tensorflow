@@ -1,7 +1,7 @@
 // RUN: tf-opt -verify-diagnostics -tf-saved-model-lift-variables-invalid-session-test -split-input-file %s | FileCheck %s --dump-input=fail
 
 // Test case: Invalid session.
-// expected-error @+1 {{'module' op no session provided}}
+// expected-error @+1 {{'builtin.module' op no session provided}}
 module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   func @serving_default(%arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf.resource_name = "dense/kernel"}, %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf.resource_name = "dense/bias"}) -> (tensor<100x50xf32> {tf_saved_model.index_path = ["dense_2"]})

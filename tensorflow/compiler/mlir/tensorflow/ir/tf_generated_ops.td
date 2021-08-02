@@ -14740,7 +14740,11 @@ size(t) ==> 12
   let hasFolder = 1;
 }
 
-def TF_SliceOp : TF_Op<"Slice", [NoSideEffect]> {
+def TF_SliceOp : TF_Op<"Slice", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+                TCresVTEtIsSameAsOp<0, 0>>
+    ]> {
   let summary = "Return a slice from 'input'.";
 
   let description = [{

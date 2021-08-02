@@ -60,17 +60,17 @@ def set_verbosity(level, alsologtostdout=False):
   import os
   import tensorflow as tf
 
-  os.environ['AUTOGRAPH_VERBOSITY'] = 5
+  os.environ['AUTOGRAPH_VERBOSITY'] = '5'
   # Verbosity is now 5
 
   tf.autograph.set_verbosity(0)
   # Verbosity is now 0
 
-  os.environ['AUTOGRAPH_VERBOSITY'] = 1
+  os.environ['AUTOGRAPH_VERBOSITY'] = '1'
   # No effect, because set_verbosity was already called.
   ```
 
-  Logs entries are output to [absl](https://abseil.io)'s 
+  Logs entries are output to [absl](https://abseil.io)'s
   [default output](https://abseil.io/docs/python/guides/logging),
   with `INFO` level.
   Logs can be mirrored to stdout by using the `alsologtostdout` argument.

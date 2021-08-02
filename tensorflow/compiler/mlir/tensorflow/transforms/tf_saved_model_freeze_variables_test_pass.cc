@@ -28,7 +28,7 @@ struct FreezeVariableTestPass
           FreezeVariableTestPass> {
   void runOnOperation() override {
     TF::test_util::FakeSession session;
-    PassManager pass_manager(&getContext(), "module");
+    PassManager pass_manager(&getContext(), "builtin.module");
     pass_manager.addPass(tf_saved_model::CreateFreezeVariablesPass(&session));
     auto status = pass_manager.run(getOperation());
     if (status.failed()) signalPassFailure();

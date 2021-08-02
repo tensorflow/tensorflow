@@ -477,6 +477,7 @@ cc_library(
     hdrs = ["base_unary_ops_test.h"],
     deps = [
         ":base_ops_test",
+        "//tensorflow/compiler/mlir/tools/kernel_gen:tf_jit_cache",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",

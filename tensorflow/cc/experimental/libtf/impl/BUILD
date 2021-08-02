@@ -17,6 +17,29 @@ package(
 )
 
 cc_library(
+    name = "iostream",
+    srcs = [
+        "iostream.cc",
+    ],
+    deps = [
+        ":string",
+    ],
+)
+
+tf_cc_test(
+    name = "iostream_test",
+    size = "small",
+    srcs = ["iostream_test.cc"],
+    deps = [
+        ":iostream",
+        ":scalars",
+        ":string",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "scalars",
     hdrs = [
         "scalars.h",

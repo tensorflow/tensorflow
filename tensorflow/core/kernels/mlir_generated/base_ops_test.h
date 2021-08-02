@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_OPS_TEST_H_
 
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -82,6 +84,7 @@ struct OpsTestConfig {
   double rtol = -1;
   std::string input_attribute = "T";
   std::string output_attribute = "Tout";
+  bool jit_compilation = false;
   OpsTestConfig ExpectStrictlyEqual() {
     OpsTestConfig config = *this;
     config.expect_strictly_equal = true;
@@ -125,6 +128,11 @@ struct OpsTestConfig {
   OpsTestConfig OutputAttribute(const std::string& attr) {
     OpsTestConfig config = *this;
     config.output_attribute = attr;
+    return config;
+  }
+  OpsTestConfig JITCompilation() {
+    OpsTestConfig config = *this;
+    config.jit_compilation = true;
     return config;
   }
 };

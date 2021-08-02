@@ -17,6 +17,9 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/metrics.h"
 
 namespace tensorflow {
+namespace saved_model {
+namespace python {
+
 namespace py = pybind11;
 
 void DefineMetricsModule(py::module main_module) {
@@ -25,62 +28,75 @@ void DefineMetricsModule(py::module main_module) {
   m.doc() = "Python bindings for TensorFlow SavedModel Metrics";
 
   m.def(
-      "IncrementWrite", []() { metrics::SavedModelWrite().IncrementBy(1); },
+      "IncrementWrite",
+      [](const char* write_version) {
+        metrics::SavedModelWrite(write_version).IncrementBy(1);
+      },
+      py::kw_only(), py::arg("write_version"),
       py::doc("Increment the '/tensorflow/core/saved_model/write/count' "
               "counter."));
 
   m.def(
-      "GetWrite", []() { return metrics::SavedModelWrite().value(); },
+      "GetWrite",
+      [](const char* write_version) {
+        return metrics::SavedModelWrite(write_version).value();
+      },
+      py::kw_only(), py::arg("write_version"),
       py::doc("Get value of '/tensorflow/core/saved_model/write/count' "
               "counter."));
 
   m.def(
       "IncrementWriteApi",
-      [](const char* api_label, const char* write_version) {
-        metrics::SavedModelWriteApi(api_label, write_version).IncrementBy(1);
+      [](const char* api_label) {
+        metrics::SavedModelWriteApi(api_label).IncrementBy(1);
       },
-      py::arg("api_label"), py::kw_only(), py::arg("write_version"),
       py::doc("Increment the '/tensorflow/core/saved_model/write/api' "
-              "counter for API with `api_label` that writes a SavedModel "
-              "with the specifed version."));
+              "counter for API with `api_label`"));
 
   m.def(
       "GetWriteApi",
-      [](const char* api_label, const char* write_version) {
-        return metrics::SavedModelWriteApi(api_label, write_version).value();
+      [](const char* api_label) {
+        return metrics::SavedModelWriteApi(api_label).value();
       },
-      py::arg("api_label"), py::kw_only(), py::arg("write_version"),
       py::doc("Get value of '/tensorflow/core/saved_model/write/api' "
-              "counter for (`api_label`, `write_version`) cell."));
+              "counter for `api_label` cell."));
 
   m.def(
-      "IncrementRead", []() { metrics::SavedModelRead().IncrementBy(1); },
+      "IncrementRead",
+      [](const char* write_version) {
+        metrics::SavedModelRead(write_version).IncrementBy(1);
+      },
+      py::kw_only(), py::arg("write_version"),
       py::doc("Increment the '/tensorflow/core/saved_model/read/count' "
-              "counter."));
+              "counter after reading a SavedModel with the specifed "
+              "`write_version`."));
 
   m.def(
-      "GetRead", []() { return metrics::SavedModelRead().value(); },
+      "GetRead",
+      [](const char* write_version) {
+        return metrics::SavedModelRead(write_version).value();
+      },
+      py::kw_only(), py::arg("write_version"),
       py::doc("Get value of '/tensorflow/core/saved_model/read/count' "
-              "counter."));
+              "counter for SavedModels with the specified `write_version`."));
 
   m.def(
       "IncrementReadApi",
-      [](const char* api_label, const char* write_version) {
-        metrics::SavedModelReadApi(api_label, write_version).IncrementBy(1);
+      [](const char* api_label) {
+        metrics::SavedModelReadApi(api_label).IncrementBy(1);
       },
-      py::arg("api_label"), py::kw_only(), py::arg("write_version"),
       py::doc("Increment the '/tensorflow/core/saved_model/read/api' "
-              "counter for API with `api_label` that reads a SavedModel "
-              "with the specifed `write_version`."));
+              "counter for API with `api_label`."));
 
   m.def(
       "GetReadApi",
-      [](const char* api_label, const char* write_version) {
-        return metrics::SavedModelReadApi(api_label, write_version).value();
+      [](const char* api_label) {
+        return metrics::SavedModelReadApi(api_label).value();
       },
-      py::arg("api_label"), py::kw_only(), py::arg("write_version"),
       py::doc("Get value of '/tensorflow/core/saved_model/read/api' "
-              "counter for (`api_label`, `write_version`) cell."));
+              "counter for `api_label` cell."));
 }
 
+}  // namespace python
+}  // namespace saved_model
 }  // namespace tensorflow

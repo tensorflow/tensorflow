@@ -414,7 +414,7 @@ class _SavedModelBuilder(object):
     Returns:
       The path to which the SavedModel protocol buffer was written.
     """
-    metrics.IncrementWriteApi(_SAVE_BUILDER_LABEL, write_version="1")
+    metrics.IncrementWriteApi(_SAVE_BUILDER_LABEL)
     if not file_io.file_exists(self._export_dir):
       file_io.recursive_create_dir(self._export_dir)
 
@@ -430,7 +430,7 @@ class _SavedModelBuilder(object):
       file_io.write_string_to_file(
           path, self._saved_model.SerializeToString(deterministic=True))
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
-    metrics.IncrementWrite()
+    metrics.IncrementWrite(write_version="1")
     return path
 
 
