@@ -794,8 +794,7 @@ SentencePiece library into the final app or binary.
 
 ## User's defined Operators
 
-*Note: This feature is only available in tf-nightly and the upcoming v2.5.0
-version*
+*Note: This feature is only available from TensorFlow 2.5 version*
 
 If you
 [created your own TensorFlow operators](https://www.tensorflow.org/guide/create_op),
