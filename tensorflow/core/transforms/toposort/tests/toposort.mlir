@@ -1,4 +1,5 @@
-// RUN: tfg-transforms-opt %s --pass-pipeline="tfg.graph(tfg-toposort), tfg.func(tfg-toposort)" | FileCheck %s
+// TODO(jpienaar): Re-enable
+// DISABLED: tfg-transforms-opt %s --pass-pipeline="tfg.graph(tfg-toposort), tfg.func(tfg-toposort)" | FileCheck %s
 
 // Sort graphs topologically
 
