@@ -1049,6 +1049,8 @@ cc_library(
                   "//conditions:default": [],
               }) +
               tf_defines_nortti_if_lite_protos(),
+    # Using private headers from other libraries violates layering check.
+    features = ["-layering_check"],
     linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
         "manual",
@@ -1072,12 +1074,18 @@ cc_library(
 #         "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
 #         "//conditions:default": [],
 #     }) + tf_defines_nortti_if_lite_protos(),
+#     features = ["-layering_check"],
 #     tags = [
 #         "manual",
 #         "notap",
 #     ],
 #     visibility = ["//visibility:public"],
 #     deps = [
+#         "@com_google_absl//absl/algorithm:container",
+#         "@com_google_absl//absl/base",
+#         "@com_google_absl//absl/meta:type_traits",
+#         "@com_google_absl//absl/strings",
+#         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/core:mobile_additional_lib_deps",
@@ -1101,7 +1109,8 @@ cc_library(
     name = "portable_tensorflow_lib",
     srcs = if_mobile([":portable_op_registrations_and_gradients"]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
-    features = tf_features_nomodules_if_mobile(),
+    # Using private headers from other libraries violates layering check.
+    features = tf_features_nomodules_if_mobile() + ["-layering_check"],
     tags = [
         "manual",
         "notap",
