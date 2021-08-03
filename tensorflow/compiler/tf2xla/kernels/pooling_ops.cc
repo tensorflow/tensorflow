@@ -66,6 +66,9 @@ class PoolingOp : public XlaOpKernel {
     }
     Padding padding;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding));
+    OP_REQUIRES(ctx, padding != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support pooling ops with explicit padding."));
     padding_ = (padding == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
     OP_REQUIRES_OK(
@@ -275,6 +278,9 @@ class MaxPoolGradOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(ctx, padding_ != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support maxpoolgrad with explicit padding."));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -328,7 +334,7 @@ class MaxPoolGradOp : public XlaOpKernel {
     // whether this is a good time/space tradeoff.
     auto input = ctx->Input(0);
     auto out_backprop = ctx->Input(2);
-
+    // We ensured padding_ is not EXPLICIT in the constructor.
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
@@ -400,6 +406,9 @@ class AvgPoolGradOp : public XlaOpKernel {
                                         "specify ",
                                         num_dims(), " dimensions"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(ctx, padding_ != EXPLICIT,
+                errors::Unimplemented(
+                    "XLA does not support avgpoolgrad with explicit padding."));
     OP_REQUIRES(ctx, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
@@ -490,6 +499,10 @@ class MaxPoolGradGradOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(
+        ctx, padding_ != EXPLICIT,
+        errors::Unimplemented(
+            "XLA does not support maxpoolgradgrad with explicit padding."));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
