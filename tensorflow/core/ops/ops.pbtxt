@@ -51763,6 +51763,7 @@ op {
     }
   }
   is_stateful: true
+  is_distributed_communication: true
 }
 op {
   name: "StatefulRandomBinomial"
