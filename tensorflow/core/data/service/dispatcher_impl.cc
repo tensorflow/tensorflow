@@ -782,6 +782,13 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));
   grpc::Status s = stub->ProcessTask(&client_ctx, req, &resp);
   if (!s.ok()) {
+    if (s.error_code() == grpc::StatusCode::UNAVAILABLE ||
+        s.error_code() == grpc::StatusCode::ABORTED ||
+        s.error_code() == grpc::StatusCode::CANCELLED) {
+      // Worker is presumably preempted. We will assign the task to the worker
+      // when it reconnects.
+      return Status::OK();
+    }
     return grpc_util::WrapError(
         absl::StrCat("Failed to submit task to worker ", task->worker_address),
         s);
