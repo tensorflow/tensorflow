@@ -908,17 +908,24 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       });
     }
     case HloOpcode::kSetDimensionSize:
-      return result.AddVisit([root, type]() {
+      return result.AddVisit([root, type](absl::Span<Literal> operands) {
+        bool any_dynamic_operand = absl::c_any_of(
+            operands, [](Literal& operand) { return !operand.IsAll(0); });
         // If values in a tensor `t` with bound are [e0, e1, e2...], we can say
         // the max value of each position is [max(t), max(t), max(t), ...]. The
         // effective size of this tensor doesn't change the max value.
         return CreatePredLiteral(
-            type == PostorderDFSNodeType::kValueIsDynamic,
+            type == PostorderDFSNodeType::kValueIsDynamic &&
+                any_dynamic_operand,
             ShapeUtil::MakeStaticShape(Shape(root->shape())));
       });
     case HloOpcode::kDynamicSlice: {
-      return result.AddVisit(
-          [root]() { return CreatePredLiteral(true, Shape(root->shape())); });
+      return result.AddVisit([root](absl::Span<Literal> operands) {
+        // If any of the operand is dynamic, we say output is dynamic.
+        bool any_dynamic_operand = absl::c_any_of(
+            operands, [](Literal& operand) { return !operand.IsAll(0); });
+        return CreatePredLiteral(any_dynamic_operand, Shape(root->shape()));
+      });
     }
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
@@ -1169,7 +1176,6 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
             Literal lhs = std::move(operands[2]);
             Literal rhs = std::move(operands[3]);
             auto result = CreatePredLiteral(true, Shape(root->shape()));
-
             result.MutableEachCell<bool>(
                 [&](absl::Span<const int64> indices, bool value) {
                   absl::optional<bool> optional_selector =

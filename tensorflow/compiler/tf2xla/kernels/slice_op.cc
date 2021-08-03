@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -57,10 +58,11 @@ class SliceOp : public XlaOpKernel {
 
     std::vector<int64> begin;
     std::vector<int64> size;
-    const bool begin_is_constant =
+    const bool all_begins_are_constant =
         ctx->ConstantInputAsIntVector(1, &begin).ok();
-    const bool size_is_constant = ctx->ConstantInputAsIntVector(2, &size).ok();
-    if (begin_is_constant && size_is_constant) {
+    const bool all_sizes_are_constant =
+        ctx->ConstantInputAsIntVector(2, &size).ok();
+    if (all_begins_are_constant && all_sizes_are_constant) {
       std::vector<int64> wrapped_size(size.size());
       // `begin` is a compile-time constant.
       for (int i = 0; i < input_dims; ++i) {
@@ -101,12 +103,12 @@ class SliceOp : public XlaOpKernel {
       std::vector<int64> strides(begin.size(), 1);
       auto slice = xla::Slice(ctx->Input(0), begin, limits, strides);
       // Check for slice on dynamic dimensions.
-      ctx->set_dynamic_dimension_is_minus_one(true);
-      std::vector<int64> dynamic_size;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &dynamic_size));
+      std::vector<bool> size_is_dynamic;
+      OP_REQUIRES_OK(
+          ctx, ctx->ResolveInputDynamismIntoPredVector(2, &size_is_dynamic));
 
       for (int64_t i = 0; i < size.size(); ++i) {
-        if (dynamic_size[i] == -1) {
+        if (size_is_dynamic[i]) {
           if (size[i] != -1) {
             // If there is a dynamic dimension, properly set dimension size of
             // the slice.
@@ -124,7 +126,7 @@ class SliceOp : public XlaOpKernel {
       // This essentially makes size as dynamic.
       bool constant_size_is_minus_one = false;
       // `begin` or `size` is not a compile-time constant.
-      if (size_is_constant) {
+      if (all_sizes_are_constant) {
         for (int i = 0; i < input_dims; ++i) {
           if (size[i] < 0) {
             OP_REQUIRES(ctx, size[i] == -1,
@@ -147,9 +149,9 @@ class SliceOp : public XlaOpKernel {
         begin_indices.push_back(
             xla::Reshape(xla::Slice(begin, {i}, {i + 1}, {1}), {}));
       }
-      if (size_is_constant && !constant_size_is_minus_one) {
-        ctx->SetOutput(0,
-                       xla::DynamicSlice(ctx->Input(0), begin_indices, size));
+      if (all_sizes_are_constant && !constant_size_is_minus_one) {
+        xla::XlaOp input = ctx->Input(0);
+        ctx->SetOutput(0, xla::DynamicSlice(input, begin_indices, size));
       } else {
         // Size is not constant, use input size as upperbound and then set
         // dimension size on it.
@@ -157,16 +159,17 @@ class SliceOp : public XlaOpKernel {
         // First pad input with input size to avoid OOB -- dynamic slice with
         // OOB slice produces undesired results.
         xla::PaddingConfig padding_config;
+        xla::XlaOp input = ctx->Input(0);
         for (xla::int64 i = 0; i < input_dims; ++i) {
           auto* dims = padding_config.add_dimensions();
           dims->set_edge_padding_low(0);
           dims->set_edge_padding_high(input_shape.dim_size(i));
           dims->set_interior_padding(0);
+          input = xla::RemoveDynamicDimension(input, i);
         }
-        auto padded_input = xla::Pad(
-            ctx->Input(0), xla::Zero(ctx->builder(), ctx->input_xla_type(0)),
-            padding_config);
-
+        auto padded_input =
+            xla::Pad(input, xla::Zero(ctx->builder(), ctx->input_xla_type(0)),
+                     padding_config);
         // Slice full size out of the input starting from the offsets.
         auto sliced = xla::DynamicSlice(padded_input, begin_indices,
                                         input_shape.dim_sizes());
@@ -179,7 +182,25 @@ class SliceOp : public XlaOpKernel {
                                                   input_shape.dim_size(i)) -
                            begin_indices[i];
           }
-          sliced = xla::SetDimensionSize(sliced, dynamic_size, i);
+          auto constant_size = ctx->value_inference().AnalyzeConstant(
+              dynamic_size, xla::ValueInferenceMode::kValue);
+          OP_REQUIRES_OK(ctx, constant_size.status());
+          if (constant_size->AllValid()) {
+            // Slice size on this dimension is constant. This branch is
+            // triggered when some dimensions's slice sizes are constant while
+            // some are dynamic.
+            sliced = xla::SliceInDim(
+                sliced, 0, constant_size->Get<int32>({}).value(), 1, i);
+          } else {
+            auto constant_bound = ctx->value_inference().AnalyzeConstant(
+                dynamic_size, xla::ValueInferenceMode::kUpperBound);
+            OP_REQUIRES_OK(ctx, constant_bound.status());
+            if (constant_bound->AllValid()) {
+              sliced = xla::SliceInDim(
+                  sliced, 0, constant_bound->Get<int32>({}).value(), 1, i);
+            }
+            sliced = xla::SetDimensionSize(sliced, dynamic_size, i);
+          }
         }
         ctx->SetOutput(0, sliced);
       }
