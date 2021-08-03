@@ -64,11 +64,18 @@ class CholeskyOp : public LinearAlgebraOp<Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         llt_decomposition(input);
 
-    OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
-                errors::InvalidArgument(kErrMsg));
-
-    // Output the lower triangular in a dense form.
-    outputs->at(0) = llt_decomposition.matrixL();
+    // If decomposition fails, fill output with NaNs so the failure can
+    // be detected at runtime.
+    if (llt_decomposition.info() != Eigen::Success) {
+      LOG(ERROR) << kErrMsg << " Eigen::LLT failed with error code "
+                 << llt_decomposition.info()
+                 << ". Filling lower-triangular output with NaNs.";
+      outputs->at(0).template triangularView<Eigen::Lower>().fill(
+          Eigen::NumTraits<Scalar>::quiet_NaN());
+    } else {
+      // Output the lower triangular in a dense form.
+      outputs->at(0) = llt_decomposition.matrixL();
+    }
   }
 };
 
