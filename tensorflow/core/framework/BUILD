@@ -714,7 +714,10 @@ cc_library(
     name = "resource_handle",
     srcs = ["resource_handle.cc"],
     hdrs = ["resource_handle.h"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/core:__pkg__",
+    ],
     deps = [
         ":resource_base",
         ":resource_handle_proto_cc",
