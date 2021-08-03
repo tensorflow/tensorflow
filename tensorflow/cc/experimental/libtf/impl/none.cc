@@ -13,39 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/cc/experimental/libtf/impl/none.h"
-#include "tensorflow/cc/experimental/libtf/impl/scalars.h"
-#include "tensorflow/cc/experimental/libtf/impl/string.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace tf {
 namespace libtf {
 namespace impl {
 
-TEST(OStreamTest, TestInt64) {
-  Int64 x(42);
-  std::stringstream stream;
-  stream << x;
-  ASSERT_EQ(stream.str(), "42");
-}
-
-TEST(OStreamTest, TestFloat32) {
-  Float32 x(0.375);  // Exactly representable as a float.
-  std::stringstream stream;
-  stream << x;
-  ASSERT_EQ(stream.str(), "0.375");
-}
-
-TEST(OStreamTest, TestString) {
-  String s("foo");
-  std::stringstream stream;
-  stream << s;
-  ASSERT_EQ(stream.str(), "foo");
-}
-
-TEST(OStreamTest, TestNone) {
-  std::stringstream stream;
-  stream << None::GetInstance();
-  ASSERT_EQ(stream.str(), "None");
+None& None::GetInstance() {
+  static None* none_inst = new None();
+  return *none_inst;
 }
 
 }  // namespace impl

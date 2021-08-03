@@ -12,40 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/cc/experimental/libtf/impl/none.h"
-#include "tensorflow/cc/experimental/libtf/impl/scalars.h"
-#include "tensorflow/cc/experimental/libtf/impl/string.h"
+
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tf {
 namespace libtf {
 namespace impl {
 
-TEST(OStreamTest, TestInt64) {
-  Int64 x(42);
-  std::stringstream stream;
-  stream << x;
-  ASSERT_EQ(stream.str(), "42");
+TEST(NoneTest, TestSingleton) {
+  None& a = None::GetInstance();
+  None& b = None::GetInstance();
+  EXPECT_EQ(&a, &b);
 }
 
-TEST(OStreamTest, TestFloat32) {
-  Float32 x(0.375);  // Exactly representable as a float.
-  std::stringstream stream;
-  stream << x;
-  ASSERT_EQ(stream.str(), "0.375");
-}
-
-TEST(OStreamTest, TestString) {
-  String s("foo");
-  std::stringstream stream;
-  stream << s;
-  ASSERT_EQ(stream.str(), "foo");
-}
-
-TEST(OStreamTest, TestNone) {
-  std::stringstream stream;
-  stream << None::GetInstance();
-  ASSERT_EQ(stream.str(), "None");
+TEST(NoneTest, TestSupportsAbslHash) {
+  absl::flat_hash_set<None> none_set;
+  None& a = None::GetInstance();
+  None& b = None::GetInstance();
+  none_set.insert(a);
+  none_set.insert(b);
+  EXPECT_EQ(none_set.size(), 1);
 }
 
 }  // namespace impl
