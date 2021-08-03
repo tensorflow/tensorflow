@@ -51,6 +51,8 @@ class CoordinationServiceAgent {
       const WorkerEnv* worker_env, const ServerDef& server_def,
       std::unique_ptr<CoordinationClientCache> client_cache,
       StatusCallback error_fn) = 0;
+  // Return true if the coordination service agent has been initialized.
+  virtual bool IsInitialized() = 0;
 
   // Connect to coordination service with the following steps:
   //   - connect to service address specified in the config of `server_def`
