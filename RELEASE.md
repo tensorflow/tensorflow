@@ -15,6 +15,10 @@
     `if x.shape.rank == 1: x = tf.expand_dims(x, axis=-1)`.
     Functional models as well as Sequential models built with an explicit
     input shape are not affected.
+  * The methods `Model.to_yaml()` and `keras.models.model_from_yaml` have been
+    replaced to raise a `RuntimeError` as they can be abused to cause arbitrary
+    code execution. It is recommended to use JSON serialization instead of YAML,
+    or, a better alternative, serialize to H5.
 
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with
