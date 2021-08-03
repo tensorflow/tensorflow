@@ -93,37 +93,38 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
   virtual Type GetFuncType() const = 0;
 
   std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
-      Location loc, unsigned int integer_width, llvm::Optional<ArrayAttr> attr,
+      Location loc, Type size_ty, Type element_ty,
+      llvm::Optional<ArrayAttr> attr,
       ConversionPatternRewriter *rewriter) const {
-    Type int_type = rewriter->getIntegerType(integer_width);
-    Type llvm_ptr_type = LLVM::LLVMPointerType::get(int_type);
+    assert(size_ty.isa<IntegerType>() && "expect integer size type");
+    assert(element_ty.isa<IntegerType>() && "expect integer element type");
+    Type element_ptr_ty = LLVM::LLVMPointerType::get(element_ty);
 
     // If the attribute is missing or empty, set the element count to 0 and
     // return NULL.
     if (!attr.hasValue() || attr.getValue().empty()) {
       Value zero = rewriter->create<LLVM::ConstantOp>(
-          loc, int_type, rewriter->getIntegerAttr(int_type, 0));
-      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, llvm_ptr_type);
+          loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
+      Value null_ptr = rewriter->create<LLVM::NullOp>(loc, element_ptr_ty);
       return std::make_pair(zero, null_ptr);
     }
 
     // Allocate array to store the elements.
     auto &array_attr = attr.getValue();
     Value array_size = rewriter->create<LLVM::ConstantOp>(
-        loc, int_type, rewriter->getIntegerAttr(int_type, array_attr.size()));
+        loc, size_ty, rewriter->getIntegerAttr(size_ty, array_attr.size()));
     Value array_ptr = rewriter->create<LLVM::AllocaOp>(
-        loc, llvm_ptr_type, array_size, /*alignment=*/0);
-
-    for (auto &dim : llvm::enumerate(array_attr)) {
+        loc, element_ptr_ty, array_size, /*alignment=*/0);
+    for (auto &e : llvm::enumerate(array_attr)) {
       Value index = rewriter->create<LLVM::ConstantOp>(
-          loc, int_type, rewriter->getIntegerAttr(int_type, dim.index()));
-      Value elem_ptr =
-          rewriter->create<LLVM::GEPOp>(loc, llvm_ptr_type, array_ptr, index);
-      Value elem = rewriter->create<LLVM::ConstantOp>(
-          loc, int_type,
-          rewriter->getIntegerAttr(int_type,
-                                   dim.value().cast<IntegerAttr>().getInt()));
-      rewriter->create<LLVM::StoreOp>(loc, elem, elem_ptr);
+          loc, size_ty, rewriter->getIntegerAttr(size_ty, e.index()));
+      Value element_ptr =
+          rewriter->create<LLVM::GEPOp>(loc, element_ptr_ty, array_ptr, index);
+      Value element = rewriter->create<LLVM::ConstantOp>(
+          loc, element_ty,
+          rewriter->getIntegerAttr(element_ty,
+                                   e.value().cast<IntegerAttr>().getInt()));
+      rewriter->create<LLVM::StoreOp>(loc, element, element_ptr);
     }
     return std::make_pair(array_size, array_ptr);
   }
@@ -166,7 +167,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     // Convert `candidate_input_indices`.
     auto candidates_count_and_ptr =
         ConvertIntegerArrayAttrToStackAllocatedArray(
-            loc, /*integer_width=*/32, tf_alloc_op.input_indices(), &rewriter);
+            loc, rewriter.getI32Type(), rewriter.getI32Type(),
+            tf_alloc_op.input_indices(), &rewriter);
 
     // Insert function call.
     FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
@@ -287,11 +289,13 @@ class JITCompileFromStrOpConverter
     Value jit_module_code = CreateOrFindGlobalStringConstant(
         loc, rewriter, kJITCodeGlobalBaseName, op.code());
     std::pair<Value, Value> tile_sizes =
-        ConvertIntegerArrayAttrToStackAllocatedArray(loc, /*integer_width=*/64,
+        ConvertIntegerArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
+                                                     rewriter.getI64Type(),
                                                      op.tileSizes(), &rewriter);
     std::pair<Value, Value> unroll_factors =
         ConvertIntegerArrayAttrToStackAllocatedArray(
-            loc, /*integer_width=*/64, op.unrollFactors(), &rewriter);
+            loc, rewriter.getI64Type(), rewriter.getI64Type(),
+            op.unrollFactors(), &rewriter);
     Value max_supported_rank = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI64Type(), op.maxSupportedRankAttr());
     Value enable_ftz = rewriter.create<LLVM::ConstantOp>(
