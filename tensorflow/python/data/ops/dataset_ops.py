@@ -93,6 +93,8 @@ autograph_ctx = lazy_loader.LazyLoader(
 autograph = lazy_loader.LazyLoader(
     "autograph", globals(),
     "tensorflow.python.autograph.impl.api")
+# Loaded lazily due to a circular dependency
+# dataset_ops->interleave_ops->dataset_ops
 interleave_ops = lazy_loader.LazyLoader(
     "interleave_ops", globals(),
     "tensorflow.python.data.experimental.ops.interleave_ops")
@@ -2953,23 +2955,23 @@ name=None))
     `target_dist` distribution.
 
     >>> import collections
-    >>> init_dist = [0.5, 0.5]
+    >>> initial_dist = [0.5, 0.5]
     >>> target_dist = [0.6, 0.4]
-    >>> num_classes = len(init_dist)
+    >>> num_classes = len(initial_dist)
     >>> num_samples = 100000
-    >>> data_np = np.random.choice(num_classes, num_samples, p=init_dist)
+    >>> data_np = np.random.choice(num_classes, num_samples, p=initial_dist)
     >>> dataset = tf.data.Dataset.from_tensor_slices(data_np)
     >>> x = collections.defaultdict(int)
     >>> for i in dataset:
     ...   x[i.numpy()] += 1
 
     The value of `x` will be close to `{0: 50000, 1: 50000}` as per the
-    `init_dist` distribution.
+    `initial_dist` distribution.
 
     >>> dataset = dataset.rejection_resample(
     ...    class_func=lambda x: x % 2,
     ...    target_dist=target_dist,
-    ...    initial_dist=init_dist)
+    ...    initial_dist=initial_dist)
 
     >>> y = collections.defaultdict(int)
     >>> for i in dataset:
