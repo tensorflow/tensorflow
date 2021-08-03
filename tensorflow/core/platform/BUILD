@@ -701,6 +701,7 @@ cc_library(
         ":types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -954,6 +955,21 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:str_util",
+    ],
+)
+
+tf_cc_test(
+    name = "status_test",
+    size = "small",
+    srcs = ["status_test.cc"],
+    deps = [
+        ":status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
