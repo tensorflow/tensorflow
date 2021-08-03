@@ -42,6 +42,9 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
   let summary = "Pass to rewrite all TF operations to JIT invocations";
   let constructor = "transforms::CreateTFToJITInvocationPass()";
   let options = [
+      ListOption<"architectures_", "architectures", "std::string",
+                 "Target architectures",
+                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
       ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
                  "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
       ListOption<"unroll_factors_", "unroll-factors", "int64_t",

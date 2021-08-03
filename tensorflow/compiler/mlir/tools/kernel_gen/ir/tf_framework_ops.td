@@ -276,6 +276,7 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
   let arguments = (ins
     Optional<TFFramework_OpKernelContextType>:$ctx,
     StrAttr:$code,
+    StrArrayAttr:$architectures,
     I64ArrayAttr:$tileSizes,
     I64ArrayAttr:$unrollFactors,
     I64Attr:$maxSupportedRank,
