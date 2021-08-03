@@ -23,7 +23,7 @@ namespace data {
 namespace experimental {
 namespace {
 
-inline int64 CeilDiv(int64 dividend, int64 divisor) {
+inline int64 CeilDiv(int64_t dividend, int64_t divisor) {
   return (dividend - 1 + divisor) / divisor;
 }
 
@@ -41,7 +41,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_replicas;
+    int64_t num_replicas;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "num_replicas", &num_replicas));
     OP_REQUIRES(
@@ -55,7 +55,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const int64 num_replicas, const DataTypeVector& output_types,
+            const int64_t num_replicas, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
@@ -151,8 +151,8 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
                   i, " is scalar.");
             }
 
-            int64 original_batch_dim = input_tensors[i].dim_size(0);
-            int64 interval =
+            int64_t original_batch_dim = input_tensors[i].dim_size(0);
+            int64_t interval =
                 CeilDiv(original_batch_dim, dataset()->num_replicas_);
             input_descriptors_.push_back(
                 {std::move(input_tensors[i]), original_batch_dim, interval});
@@ -164,9 +164,9 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         // We slice each component independently because they may have
         // different batch dimensions.
         for (const auto& input_desc : input_descriptors_) {
-          int64 start = input_desc.interval * slice_number_;
-          int64 end = std::min(start + input_desc.interval,
-                               input_desc.original_batch_dim);
+          int64_t start = input_desc.interval * slice_number_;
+          int64_t end = std::min(start + input_desc.interval,
+                                 input_desc.original_batch_dim);
           if (start >= end) {
             // We can get here if ceil(original_batch_dim_ / new batch dim) <
             // num_replicas_, i.e. the batch isn't big enough to distribute
@@ -245,8 +245,8 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
       // Describes one component of the input.
       struct InputDescriptor {
         InputDescriptor() {}
-        InputDescriptor(Tensor&& whole_tensor, int64 original_batch_dim,
-                        int64 interval)
+        InputDescriptor(Tensor&& whole_tensor, int64_t original_batch_dim,
+                        int64_t interval)
             : whole_tensor(std::move(whole_tensor)),
               original_batch_dim(original_batch_dim),
               interval(interval) {}
@@ -404,7 +404,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         auto desired_batch_size = dataset()->batch_sizes_[batch_sizes_index_];
         // Tracks the size of the current batch as it's built up, possibly from
         // different input tensors.
-        int64 batch_size = 0;
+        int64_t batch_size = 0;
 
         std::vector<std::vector<Tensor>> slices_to_concatenate;
         // Get slices from input tensors until they make up the whole batch
@@ -423,8 +423,9 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
             offset_ = 0;
           }
 
-          int64 slice_end = std::min(offset_ + desired_batch_size - batch_size,
-                                     tensors_[0].dim_size(0));
+          int64_t slice_end =
+              std::min(offset_ + desired_batch_size - batch_size,
+                       tensors_[0].dim_size(0));
 
           std::vector<Tensor> slices;
           slices.reserve(tensors_.size());
@@ -516,7 +517,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
             return errors::ResourceExhausted(
                 "Failed to allocate memory for the batch of component ", i);
           }
-          int64 dst_offset = 0;
+          int64_t dst_offset = 0;
           for (size_t j = 0; j < slices_to_concatenate.size(); ++j) {
             auto num_slices = slices_to_concatenate[j][i].shape().dim_size(0);
             TF_RETURN_IF_ERROR(batch_util::CopyContiguousSlices(

@@ -84,7 +84,7 @@ class PadOp : public OpKernel {
       OP_REQUIRES(context, before_d >= 0 && after_d >= 0,
                   errors::InvalidArgument("Paddings must be non-negative: ",
                                           before_d, " ", after_d));
-      const int64 size_d = in0.dim_size(d);
+      const int64_t size_d = in0.dim_size(d);
       output_shape.AddDim(before_d + size_d + after_d);
     }
 
@@ -169,8 +169,8 @@ class PadOp : public OpKernel {
       } else {
         // If not padded, find the next dimension that is padded and collapse
         // all dimensions in between to one dimension.
-        int64 collapsed_input_dim_size = input_shape.dim_size(i);
-        int64 collapsed_output_dim_size = output_shape.dim_size(i);
+        int64_t collapsed_input_dim_size = input_shape.dim_size(i);
+        int64_t collapsed_output_dim_size = output_shape.dim_size(i);
         ++i;
         while (i < paddings.dimension(0) && paddings(i, 0) == 0 &&
                paddings(i, 1) == 0) {

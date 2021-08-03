@@ -9,6 +9,7 @@ load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
+    "td_library",
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -32,21 +33,21 @@ package_group(
     ],
 )
 
-filegroup(
+td_library(
     name = "tfr_ops_td_files",
     srcs = [
         "ir/tfr_ops.td",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
-        "//tensorflow/compiler/mlir/tensorflow:ir/tf_op_base.td",
-        "//tensorflow/compiler/mlir/tensorflow:ir/tf_op_interfaces.td",
-        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
-        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeBase.td",
-        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeOps.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
     ],
     compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:CallInterfacesTdFiles",
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:ShapeOpsTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
+    ],
 )
 
 gentbl_cc_library(
@@ -101,6 +102,7 @@ cc_library(
         ":tfr_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -138,6 +140,7 @@ cc_library(
         "passes/decompose.cc",
         "passes/generated_decompose.inc",
         "passes/raise_to_tf.cc",
+        "passes/rewrite_quantized_io.cc",
     ],
     hdrs = [
         "passes/passes.h",

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -50,7 +51,7 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
   WorkerHeartbeatRequest req;
   req.set_worker_address(worker_address);
   req.set_transfer_address(transfer_address);
-  for (int64 task : current_tasks) {
+  for (int64_t task : current_tasks) {
     req.add_current_tasks(task);
   }
   WorkerHeartbeatResponse resp;
@@ -62,7 +63,7 @@ Status DataServiceDispatcherClient::WorkerHeartbeat(
   for (const auto& task : resp.new_tasks()) {
     new_tasks.push_back(task);
   }
-  for (int64 task_to_delete : resp.tasks_to_delete()) {
+  for (int64_t task_to_delete : resp.tasks_to_delete()) {
     tasks_to_delete.push_back(task_to_delete);
   }
   return Status::OK();
@@ -86,7 +87,7 @@ Status DataServiceDispatcherClient::WorkerUpdate(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
+Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
                                                   DatasetDef& dataset_def) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDatasetDefRequest req;
@@ -101,8 +102,8 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetSplit(int64 job_id, int64 repetition,
-                                             int64 split_provider_index,
+Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t repetition,
+                                             int64_t split_provider_index,
                                              Tensor& split,
                                              bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
@@ -146,13 +147,13 @@ Status DataServiceDispatcherClient::RegisterDataset(
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
-    int64 dataset_id, ProcessingMode processing_mode,
+    int64_t dataset_id, const ProcessingModeDef& processing_mode,
     const absl::optional<JobKey>& job_key, absl::optional<int64> num_consumers,
     int64& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
-  req.set_processing_mode(ProcessingModeDef(processing_mode));
+  *req.mutable_processing_mode_def() = processing_mode;
   if (job_key.has_value()) {
     *req.mutable_job_key() = job_key.value();
   }
@@ -172,7 +173,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
+Status DataServiceDispatcherClient::ReleaseJobClient(int64_t job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   ReleaseJobClientRequest req;
   req.set_job_client_id(job_client_id);
@@ -187,9 +188,9 @@ Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::MaybeRemoveTask(int64 task_id,
-                                                    int64 consumer_index,
-                                                    int64 round,
+Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
+                                                    int64_t consumer_index,
+                                                    int64_t round,
                                                     bool& removed) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   MaybeRemoveTaskRequest req;
@@ -234,7 +235,7 @@ Status DataServiceDispatcherClient::GetWorkers(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetElementSpec(int64 dataset_id,
+Status DataServiceDispatcherClient::GetElementSpec(int64_t dataset_id,
                                                    std::string& element_spec) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
 

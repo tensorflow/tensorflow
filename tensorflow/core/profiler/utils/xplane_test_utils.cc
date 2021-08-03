@@ -49,14 +49,14 @@ XPlane* GetOrCreateHostXPlane(XSpace* space) {
   return FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
 }
 
-XPlane* GetOrCreateGpuXPlane(XSpace* space, int32 device_ordinal) {
+XPlane* GetOrCreateGpuXPlane(XSpace* space, int32_t device_ordinal) {
   std::string name = GpuPlaneName(device_ordinal);
   return FindOrAddMutablePlaneWithName(space, name);
 }
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    absl::string_view event_name, int64_t offset_ps, int64_t duration_ps,
     std::initializer_list<std::pair<StatType, XStatValue>> stats) {
   auto event_builder = line_builder->AddEvent(
       *plane_builder->GetOrCreateEventMetadata(event_name));
@@ -74,7 +74,7 @@ void CreateXEvent(
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
+    HostEventType event_type, int64_t offset_ps, int64_t duration_ps,
     std::initializer_list<std::pair<StatType, XStatValue>> stats) {
   CreateXEvent(plane_builder, line_builder, GetHostEventTypeStr(event_type),
                offset_ps, duration_ps, stats);
@@ -82,10 +82,10 @@ void CreateXEvent(
 
 void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,
                                XLineBuilder* line_builder,
-                               absl::string_view function_name, int64 offset_ps,
-                               int64 duration_ps,
+                               absl::string_view function_name,
+                               int64_t offset_ps, int64_t duration_ps,
                                absl::string_view execution_mode,
-                               int64 tracing_count) {
+                               int64_t tracing_count) {
   if (tracing_count >= 0) {
     // Adds the tracing_count stats only if tracing_count is valid.
     CreateXEvent(plane_builder, line_builder, function_name, offset_ps,

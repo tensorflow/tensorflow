@@ -41,16 +41,6 @@ class HLO_ShapedInterfaceOp<string mnemonic, list<OpTrait> traits> :
     ["reifyReturnTypeShapes"]>]> {
 }
 
-def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
-def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
-def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
-def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
-def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
-    HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
-]> {
-  let cppNamespace = "::mlir::mhlo";
-}
-
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -897,7 +887,7 @@ def HLO_CaseOp: HLO_Op<"case", [
 
 def HLO_WhileOp: HLO_Op<"while", [
       RecursiveSideEffects,
-      SameOperandsAndResultType,
+      HLO_PairwiseSameOperandAndResultType,
       SingleBlockImplicitTerminator<"ReturnOp">
     ]> {
   let summary = "While operator";
@@ -1163,8 +1153,8 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
     HLO_Tensor:$update,
     Variadic<HLO_ScalarIntTensor>:$start_indices
   );
-
   let results = (outs HLO_Tensor:$result);
+  let hasFolder = 1;
 }
 
 
@@ -1521,7 +1511,12 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     Variadic<HLO_TensorOrTuple>:$args,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedAttr<StrAttr, "">:$backend_config
+    DefaultValuedAttr<StrAttr, "">:$backend_config,
+    // TODO(b/189822916): Remove this field when all clients are migrated to
+    // the status-returning API.
+    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
+                      "CustomCallApiVersion::API_VERSION_ORIGINAL">:
+                      $api_version
   );
   let results = (outs Variadic<HLO_TensorOrTuple>);
   let hasCustomHLOConverter = 1;
@@ -2307,7 +2302,7 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp 
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
 }
-  
+
 def HLO_PrintOp : HLO_Op<"print", []> {
   let summary = "Print operation";
   let description = [{

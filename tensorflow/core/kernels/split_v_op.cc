@@ -52,7 +52,7 @@ class SplitVOpBase : public OpKernel {
 
   void ComputeEasyCases(OpKernelContext* context, bool* done,
                         std::vector<Tlen>* split_sizes_vec) {
-    const int32 num_split = context->num_outputs();
+    const int32_t num_split = context->num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
     const Tensor& split_tensor = context->input(1);
@@ -62,8 +62,8 @@ class SplitVOpBase : public OpKernel {
                 errors::InvalidArgument("split_dim_tensor must have "
                                         "exactly one element."));
 
-    const int32 split_dim_orig = split_dim_tensor.flat<int32>()(0);
-    const int32 split_dim =
+    const int32_t split_dim_orig = split_dim_tensor.flat<int32>()(0);
+    const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     OP_REQUIRES(
@@ -163,10 +163,10 @@ class SplitVOpBase : public OpKernel {
 
   template <typename IndexType>
   std::tuple<IndexType, IndexType, IndexType> SetDims(
-      const TensorShape& input_shape, const int32 split_dim) const {
+      const TensorShape& input_shape, const int32_t split_dim) const {
     static_assert(std::is_integral<IndexType>::value,
                   "IndexType must be an integer type");
-    int32 prefix_dim_size = 1;
+    int32_t prefix_dim_size = 1;
     for (int i = 0; i < split_dim; ++i) {
       prefix_dim_size *= input_shape.dim_size(i);
     }
@@ -188,7 +188,7 @@ class SplitVOpBase : public OpKernel {
   // on the first dimension of the tensor. The requirement is that each result
   // tensor from the slice is correctly aligned within the input tensor.
   static bool SplitHasAlignedOutputsInFirstDimension(
-      const TensorShape& input_shape, int32 split_dim,
+      const TensorShape& input_shape, int32_t split_dim,
       absl::Span<const Tlen> split_sizes) {
     if (split_dim != 0) {
       return false;
@@ -211,7 +211,7 @@ class SplitVOpCPUImpl {
                                 const InputReshapedType& input_reshaped,
                                 const TensorShape& input_shape,
                                 const std::vector<Tlen>& split_sizes_vec,
-                                const int32 split_dim) const {
+                                const int32_t split_dim) const {
     const T* p_data = input_reshaped.data();
     const uint32 elem_pkg = input_reshaped.dimensions().rank() == 3
                                 ? input_reshaped.dimension(2)
@@ -234,11 +234,12 @@ class SplitVOpCPUImpl {
     }
 
     auto sub_split_func = [&split_sizes_vec, &p_data, elem_pkg, &outputs,
-                           line_elem_num](int32 start_part, int32 end_part) {
+                           line_elem_num](int32_t start_part,
+                                          int32_t end_part) {
       int start = start_part * line_elem_num;
       int end = end_part * line_elem_num;
       uint32 times = 0;
-      for (int32 i = start; i < end;) {
+      for (int32_t i = start; i < end;) {
         for (uint32 j = 0; j < split_sizes_vec.size(); ++j) {
           const auto copy_elem_num = split_sizes_vec[j] * elem_pkg;
           std::copy_n(p_data + i, copy_elem_num,
@@ -260,7 +261,7 @@ class SplitVOpCPUImpl {
   void operator()(OpKernelContext* context,
                   const InputReshapedType& input_reshaped,
                   const std::vector<int64>& split_start_points,
-                  const TensorShape& input_shape, int32 split_dim,
+                  const TensorShape& input_shape, int32_t split_dim,
                   Eigen::DenseIndex prefix_dim_size,
                   Eigen::DenseIndex split_dim_size,
                   Eigen::DenseIndex suffix_dim_size,
@@ -285,8 +286,8 @@ class SplitVOpCPUImpl {
                               &split_sizes_vec, &split_start_points,
                               use_parallelism_between_outputs, &input_reshaped,
                               &make_sizes,
-                              &reshape_result](int64 start, int64 limit) {
-      for (int64 i = start; i < limit; ++i) {
+                              &reshape_result](int64_t start, int64_t limit) {
+      for (int64_t i = start; i < limit; ++i) {
         TensorShape output_shape(input_shape);
         output_shape.set_dim(split_dim, split_sizes_vec[i]);
         Tensor* result = nullptr;
@@ -353,11 +354,11 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     if (!context->status().ok() || done) {
       return;
     }
-    const int32 num_split = Base::num_outputs();
+    const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim_orig = context->input(2).flat<int32>()(0);
-    const int32 split_dim =
+    const int32_t split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     // Android also uses int32 indexing, so check here also.
@@ -432,11 +433,11 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     if (!context->status().ok() || done) {
       return;
     }
-    const int32 num_split = Base::num_outputs();
+    const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim_orig = context->input(2).flat<int32>()(0);
-    const int32 split_dim =
+    const int32_t split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
     OP_REQUIRES(
         context,
@@ -444,9 +445,9 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
         errors::InvalidArgument("Split on GPU requires input size "
                                 "< max int32"));
 
-    int32 prefix_dim_size;
-    int32 split_dim_size;
-    int32 suffix_dim_size;
+    int32_t prefix_dim_size;
+    int32_t split_dim_size;
+    int32_t suffix_dim_size;
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
         Base::template SetDims<int32>(input_shape, split_dim);
 

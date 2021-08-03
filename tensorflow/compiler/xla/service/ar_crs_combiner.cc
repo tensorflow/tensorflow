@@ -42,14 +42,14 @@ namespace {
 // implementation of the all-reduce for the backend, this may give a better
 // performance.
 StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
-                                          int64 replica_count,
-                                          int64 partition_count) {
+                                          int64_t replica_count,
+                                          int64_t partition_count) {
   TF_ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
 
   bool changed = false;
-  int64 next_channel = hlo_query::NextChannelId(*module);
+  int64_t next_channel = hlo_query::NextChannelId(*module);
   for (auto computation : module->computations()) {
     for (auto instruction : computation->instructions()) {
       if (auto ar = DynCast<HloAllReduceInstruction>(instruction)) {
@@ -91,8 +91,8 @@ StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
 // has a ReplicaGroup config that can be combined with cross-replica all-reduce.
 // We currently restrict to those groups where all partitions in each replica
 // belong to the same group.
-bool HasCombinableReplicaGroup(HloInstruction* hlo, int64 num_replicas,
-                               int64 num_partitions) {
+bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_replicas,
+                               int64_t num_partitions) {
   auto all_reduce = Cast<HloAllReduceInstruction>(hlo);
   auto replica_groups = all_reduce->replica_groups();
   CHECK(all_reduce->IsCrossModuleAllReduce());
@@ -106,8 +106,8 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64 num_replicas,
         return false;
       }
       std::unordered_set<int64> partition_ids;
-      int64 replica_id = group.replica_ids(0) / num_partitions;
-      for (int64 i = 0; i < num_partitions; ++i) {
+      int64_t replica_id = group.replica_ids(0) / num_partitions;
+      for (int64_t i = 0; i < num_partitions; ++i) {
         if (group.replica_ids(i) / num_partitions != replica_id) {
           return false;
         }
@@ -170,7 +170,7 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
       computation_is_addition(instruction->called_computations()[0]) &&
       instruction->user_count() == 1) {
     auto next = instruction->users()[0];
-    int64 distance = 1;
+    int64_t distance = 1;
     while (!next->IsCrossReplicaAllReduce()) {
       if (can_ar_move_past_instruction(next)) {
         next = next->users()[0];
@@ -250,7 +250,7 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
       if (maybe_conditional) {
         auto cond_instr = *maybe_conditional;
         std::vector<HloInstruction*> tuples;
-        for (int64 i = 0; i < cond_instr->branch_computations().size(); ++i) {
+        for (int64_t i = 0; i < cond_instr->branch_computations().size(); ++i) {
           if (cond_instr->branch_computation(i)->parameter_instruction(0) ==
               instruction) {
             // If the same computation is used for more than one branch of the
@@ -313,7 +313,7 @@ absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
 }
 
 bool ArCrsCombiner::TupleElementsComputeSameValue(
-    HloInstruction* tuple_shaped_instruction, int64 i1, int64 i2,
+    HloInstruction* tuple_shaped_instruction, int64_t i1, int64_t i2,
     absl::flat_hash_map<int64, int64>* visited_pairs) {
   absl::flat_hash_set<HloInstruction*> visited;
   auto tuples = GetAllTuples(tuple_shaped_instruction, &visited);
@@ -417,7 +417,7 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
       auto maybe_pair = MatchesArCrsPattern(instruction);
       if (maybe_pair) {
         auto pair = *maybe_pair;
-        int64 ar_id = *(instruction->channel_id());
+        int64_t ar_id = *(instruction->channel_id());
         if (discarded_ar_ids.find(ar_id) != discarded_ar_ids.end()) {
           continue;
         }
@@ -430,7 +430,7 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
           CHECK(all_reduce_map_.find(ar_id) == all_reduce_map_.end());
           CHECK_NE(prev_ar_id, ar_id);
           auto prev_pair = all_reduce_map_[prev_ar_id].back();
-          int64 prev_distance = prev_pair.distance;
+          int64_t prev_distance = prev_pair.distance;
           if (prev_distance < pair.distance) {
             // The current AR's distance to CRS is longer than the previously
             // tracked AR, so we discard the previous AR.
@@ -447,7 +447,7 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
           }
         } else {
           if (all_reduce_map_.find(ar_id) != all_reduce_map_.end()) {
-            int64 prev_distance = all_reduce_map_[ar_id].back().distance;
+            int64_t prev_distance = all_reduce_map_[ar_id].back().distance;
             CHECK_EQ(prev_distance, pair.distance)
                 << "All ARs with the same AR ID must have the same distance "
                    "from the corresponding CRSs. Found: "

@@ -1268,13 +1268,13 @@ void BM_WhileLoop(::testing::benchmark::State& state) {
   LocalClient* client =
       ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
 
-  const int64 seq_len = 100;
+  const int64_t seq_len = 100;
   Shape loop_state_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(S32, {}),
        ShapeUtil::MakeShape(F32, {seq_len, 1024, 1024})});
 
   // Create while condition computation with 'loop_limit'.
-  const int32 loop_limit = 100;
+  const int32_t loop_limit = 100;
   XlaComputation condition;
   {
     XlaBuilder builder("condition");

@@ -41,8 +41,8 @@ void DnnPooling3dOp<T>::Compute(OpKernelContext* context,
   const auto in_shape = tensor_in.shape();
   const auto out_shape = output->shape();
 
-  const int64 in_batch = GetTensorDim(tensor_in, data_format, 'N');
-  const int64 in_features = GetTensorDim(tensor_in, data_format, 'C');
+  const int64_t in_batch = GetTensorDim(tensor_in, data_format, 'N');
+  const int64_t in_features = GetTensorDim(tensor_in, data_format, 'C');
 
   Tensor transformed_input;
   if (data_format == FORMAT_NHWC) {
@@ -142,8 +142,8 @@ void DnnPooling3dGradOp<T>::Compute(
       << "For MaxPoolGrad, both tensor_in and tensor_out needs to be "
          "specified";
 
-  const int64 in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
-  const int64 in_features = GetTensorDim(tensor_in_shape, data_format, 'C');
+  const int64_t in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
+  const int64_t in_features = GetTensorDim(tensor_in_shape, data_format, 'C');
 
   Tensor transformed_input;
   TensorShape transformed_input_shape;

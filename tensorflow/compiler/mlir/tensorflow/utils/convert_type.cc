@@ -78,9 +78,9 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
     case DT_COMPLEX128:
       *type = mlir::ComplexType::get(builder.getF64Type());
       return Status::OK();
-#define HANDLE_TF_TYPE(tftype, enumerant, name)        \
-  case DT_##enumerant:                                 \
-    *type = builder.getType<mlir::TF::tftype##Type>(); \
+#define HANDLE_TF_TYPE(tftype, enumerant, name)             \
+  case DT_##enumerant:                                      \
+    *type = builder.getType<mlir::tf_type::tftype##Type>(); \
     return Status::OK();
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
 
@@ -137,10 +137,10 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
         absl::StrCat("Converting ", debugString(type), " to DataType"));
   }
 
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  if (type.isa<mlir::TF::tftype##Type>()) {     \
-    *dtype = DT_##enumerant;                    \
-    return Status::OK();                        \
+#define HANDLE_TF_TYPE(tftype, enumerant, name)  \
+  if (type.isa<mlir::tf_type::tftype##Type>()) { \
+    *dtype = DT_##enumerant;                     \
+    return Status::OK();                         \
   }
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"

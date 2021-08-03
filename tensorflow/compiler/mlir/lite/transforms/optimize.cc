@@ -68,6 +68,9 @@ constexpr char kRelu6[] = "RELU6";
 constexpr char kRelu1[] = "RELU_N1_TO_1";
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
+  if (axis.getNumElements() == 0) {
+    return false;
+  }
   if (sq_op.getType().cast<ShapedType>().getRank() - 1 ==
           *axis.getValues<int>().begin() ||
       *axis.getValues<int>().begin() == -1) {
@@ -862,6 +865,14 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
       broadcasted_gamma = rewriter.create<ConstOp>(loc, mul_rhs);
     } else {
       return failure();
+    }
+
+    // Make sure that the fused bias will be a 1D tensor.
+    if (isa<TFL::DepthwiseConv2DOp>(mul_op_lhs)) {
+      auto gamma_shape = gamma.getType().cast<ShapedType>();
+      if (!gamma_shape.hasRank() || gamma_shape.getRank() != 1) {
+        return failure();
+      }
     }
 
     // Rewrite filter constant. Since the folder of TFL::MulOp couldn't

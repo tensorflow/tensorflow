@@ -418,7 +418,7 @@ void GradientTape<Gradient, BackwardFunction, TapeTensor>::RecordOperation(
     tensor_usage_[i]++;
     ids.push_back(i);
   }
-  const int64 op_id = next_op_id_++;
+  const int64_t op_id = next_op_id_++;
   std::vector<TapeTensor> tensors;
   tensors.reserve(output_tensors.size());
   for (const TapeTensor& o : output_tensors) {
@@ -449,7 +449,7 @@ void GradientTape<Gradient, BackwardFunction, TapeTensor>::DeleteTrace(
   if (tensor_op_it == tensor_tape_.end()) {
     return;
   }
-  const int64 op_id = tensor_op_it->second;
+  const int64_t op_id = tensor_op_it->second;
   if (op_id == -1) {
     // Do not delete watched tensors.
     return;
@@ -602,7 +602,7 @@ Status InitialGradients(
     const OpTape<BackwardFunction, TapeTensor>& op_tape,
     std::unordered_map<int64, std::vector<Gradient*>>* result) {
   for (int i = 0, end = target_tensor_ids.size(); i < end; ++i) {
-    const int64 id = target_tensor_ids[i];
+    const int64_t id = target_tensor_ids[i];
     if (output_gradients.empty() || output_gradients[i] == nullptr) {
       auto tensor_it = tensor_tape.find(id);
       if (tensor_it != tensor_tape.end() && tensor_it->second != -1) {
@@ -718,7 +718,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     }
   }
   while (!op_stack.empty()) {
-    const int64 op = op_stack.back();
+    const int64_t op = op_stack.back();
     VLOG(1) << "Popped " << op;
     op_stack.pop_back();
     auto op_it = state.op_tape.find(op);
@@ -743,7 +743,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     bool any_gradient_nonzero = false;
     std::vector<int> zero_indices;
     for (int i = 0, end = trace.output_tensor_info.size(); i < end; ++i) {
-      const int64 id = trace.output_tensor_info[i].GetID();
+      const int64_t id = trace.output_tensor_info[i].GetID();
       auto grad_it = gradients.find(id);
       if (grad_it == gradients.end()) {
         out_gradients.push_back(nullptr);
@@ -801,7 +801,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
       }
     }
     for (int i = 0, end = in_gradients.size(); i < end; ++i) {
-      const int64 id = trace.input_tensor_id[i];
+      const int64_t id = trace.input_tensor_id[i];
       if (in_gradients[i] != nullptr) {
         auto& unaggregated_grads = gradients[id];
         unaggregated_grads.push_back(in_gradients[i]);
@@ -844,7 +844,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
         }
         continue;
       }
-      const int64 op_id = tape_it->second;
+      const int64_t op_id = tape_it->second;
       if (op_id == -1) {
         VLOG(1) << "Tensor " << id << " is source";
         continue;

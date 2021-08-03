@@ -350,7 +350,7 @@ void ScopedAllocatorOptimizer::ExtendNodeAttr(StringPiece name,
   if (HasNodeAttr(*node_def, name)) {
     VLOG(2) << "extending";
     AttrValue* existing = &(*node_def->mutable_attr())[string(name)];
-    for (int32 i : values) {
+    for (int32_t i : values) {
       existing->mutable_list()->add_i(i);
     }
   } else {
@@ -1162,8 +1162,8 @@ struct InstanceKeyLess {
   bool operator()(const NodeDef* a, const NodeDef* b) const {
     AttrSlice a_attrs = AttrSlice(*a);
     AttrSlice b_attrs = AttrSlice(*b);
-    int32 a_key = -1;
-    int32 b_key = -1;
+    int32_t a_key = -1;
+    int32_t b_key = -1;
     Status s = GetNodeAttr(a_attrs, "instance_key", &a_key);
     CHECK(s.ok());
     s = GetNodeAttr(b_attrs, "instance_key", &b_key);

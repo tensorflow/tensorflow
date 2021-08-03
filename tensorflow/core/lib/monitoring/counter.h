@@ -102,12 +102,12 @@ namespace monitoring {
 // This class is thread-safe.
 class CounterCell {
  public:
-  explicit CounterCell(int64 value) : value_(value) {}
+  explicit CounterCell(int64_t value) : value_(value) {}
   ~CounterCell() {}
 
   // Atomically increments the value by step.
   // REQUIRES: Step be non-negative.
-  void IncrementBy(int64 step);
+  void IncrementBy(int64_t step);
 
   // Retrieves the current value.
   int64 value() const;
@@ -194,7 +194,7 @@ class Counter {
 //  Implementation details follow. API readers may skip.
 ////
 
-inline void CounterCell::IncrementBy(const int64 step) {
+inline void CounterCell::IncrementBy(const int64_t step) {
   DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
   value_ += step;
 }

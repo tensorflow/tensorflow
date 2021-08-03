@@ -31,7 +31,7 @@ XlaOp DynamicStridedSlice(XlaOp input, absl::Span<const XlaOp> base_indices,
                           absl::Span<const int64> strides) {
   XlaOp sliced_input = DynamicSlice(input, base_indices, window_sizes);
   if (std::any_of(strides.begin(), strides.end(),
-                  [](int64 stride) { return stride != 1; })) {
+                  [](int64_t stride) { return stride != 1; })) {
     sliced_input = Slice(sliced_input, std::vector<int64>(window_sizes.size()),
                          window_sizes, strides);
   }
@@ -43,11 +43,11 @@ XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_RET_CHECK(start.size() == end.size());
-    int64 n_minor_dims = start.size();
+    int64_t n_minor_dims = start.size();
 
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
 
-    const int64 n_dims = shape.rank();
+    const int64_t n_dims = shape.rank();
     TF_RET_CHECK(n_minor_dims <= n_dims);
     auto major_dims = AsInt64Slice(shape.dimensions())
                           .subspan(
@@ -73,8 +73,8 @@ XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64> start) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
-    const int64 start_size = start.size();
+    const int64_t n_dims = shape.rank();
+    const int64_t start_size = start.size();
     TF_RET_CHECK(start_size == n_dims);
 
     // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
@@ -92,8 +92,8 @@ XlaOp UpdateSliceInMinorDims(XlaOp x, XlaOp update,
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
-    const int64 n_minor_dims = start.size();
+    const int64_t n_dims = shape.rank();
+    const int64_t n_minor_dims = start.size();
     TF_RET_CHECK(n_minor_dims <= n_dims);
     std::vector<int64> padded_start(n_dims, 0);
     std::copy(start.begin(), start.end(),
@@ -116,7 +116,7 @@ StatusOr<std::vector<XlaOp>> PrependZerosInMajorDims(
     XlaOp x, absl::Span<const XlaOp> starts) {
   XlaBuilder* builder = x.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-  const int64 n_dims = shape.rank();
+  const int64_t n_dims = shape.rank();
   auto zero = ConstantR0<int32>(builder, 0);
   std::vector<XlaOp> padded_starts(n_dims, zero);
   for (int i = 0; i < starts.size(); ++i) {
@@ -132,8 +132,8 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = shape.rank();
-    int64 n_minor_dims = starts.size();
+    const int64_t n_dims = shape.rank();
+    int64_t n_minor_dims = starts.size();
     TF_RET_CHECK(n_minor_dims == sizes.size());
     TF_RET_CHECK(n_minor_dims <= n_dims);
     auto major_dims = AsInt64Slice(shape.dimensions())
@@ -155,7 +155,7 @@ XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
   });
 }
 
-XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
+XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
@@ -172,7 +172,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
       std::vector<int64> index_broadcast_dims;
       std::vector<int64> input_broadcast_dims;
       std::vector<int64> sizes;
-      for (int64 i = 0; i < index_shape.rank(); ++i) {
+      for (int64_t i = 0; i < index_shape.rank(); ++i) {
         if (i < dim) {
           input_broadcast_dims.push_back(i);
           index_broadcast_dims.push_back(i);
@@ -204,7 +204,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
     std::vector<XlaOp> to_concat;
 
     to_concat.reserve(input_shape.rank());
-    for (int64 i = 0; i < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (i == dim) {
         to_concat.push_back(Reshape(index, index_shape.dimensions()));
       } else {
@@ -215,7 +215,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
     std::vector<int64> slice_sizes(input_shape.rank(), 1);
     GatherDimensionNumbers gather_dnums;
     gather_dnums.set_index_vector_dim(input_shape.rank());
-    for (int64 i = 0; i < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i < input_shape.rank(); ++i) {
       gather_dnums.add_collapsed_slice_dims(i);
       gather_dnums.add_start_index_map(i);
     }
@@ -223,7 +223,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
   });
 }
 
-XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
+XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64_t dim,
                         const std::function<XlaOp(XlaOp, XlaOp)>& combiner) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -231,7 +231,7 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     std::vector<int64> index_broadcast_dims;
     std::vector<int64> sizes;
-    for (int64 i = 0; i < index_shape.rank(); ++i) {
+    for (int64_t i = 0; i < index_shape.rank(); ++i) {
       if (i < dim) {
         index_broadcast_dims.push_back(i);
       } else {
@@ -260,7 +260,8 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
   });
 }
 
-XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
+XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64_t dim,
+                       int64_t batch_dims) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
@@ -282,13 +283,13 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
       ShapeUtil::AppendMajorDimension(1, &index_shape);
       std::vector<XlaOp> to_concat;
       to_concat.reserve(batch_dims + 1);
-      for (int64 batch_dim = 0; batch_dim < batch_dims; ++batch_dim) {
+      for (int64_t batch_dim = 0; batch_dim < batch_dims; ++batch_dim) {
         to_concat.push_back(Iota(builder, index_shape, batch_dim));
       }
       to_concat.push_back(Reshape(index, index_shape.dimensions()));
       index = ConcatInDim(builder, to_concat, gather_dnums.index_vector_dim());
     }
-    for (int64 i = 0; i < input_shape.rank(); ++i) {
+    for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (i < batch_dims || i == dim) {
         slice_sizes[i] = std::min<int64>(slice_sizes[i], 1);
         gather_dnums.add_collapsed_slice_dims(i);

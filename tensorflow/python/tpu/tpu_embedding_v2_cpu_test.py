@@ -277,9 +277,13 @@ class CPUEmbeddingTest(test.TestCase):
           tables=mid_level.embedding_tables,
           feature_config=self.feature_config)
 
-  def _numpy_sequence_lookup(
-      self, table, indices, values, batch_size, max_sequence_length, dim):
-    # First we gather the values
+  def _numpy_sequence_lookup(self, table, indices, values, batch_size,
+                             max_sequence_length, dim):
+    # First we truncate to max_sequence_length.
+    valid_entries = np.nonzero(indices[:, 1] < max_sequence_length)[0]
+    indices = indices[valid_entries]
+    values = values[valid_entries]
+    # Then we gather the values
     lookup = table[values]
     # Then we scatter them into the result array.
     scatter_result = np.zeros([batch_size, max_sequence_length, dim])
@@ -290,12 +294,12 @@ class CPUEmbeddingTest(test.TestCase):
   def test_cpu_sequence_lookup_sparse(self):
     feature_config = (
         tpu_embedding_v2_utils.FeatureConfig(
-            table=self.table_video, name='watched', max_sequence_length=2),)
+            table=self.table_user, name='friends', max_sequence_length=2),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
     mid_level = tpu_embedding_v2.TPUEmbedding(
         feature_config=feature_config,
         optimizer=optimizer)
-    features = self._get_sparse_tensors()[:1]
+    features = self._get_sparse_tensors()[2:3]
     result = tpu_embedding_v2.cpu_embedding_lookup(
         features,
         weights=None,
@@ -303,24 +307,24 @@ class CPUEmbeddingTest(test.TestCase):
         feature_config=feature_config)
 
     golden = self._numpy_sequence_lookup(
-        mid_level.embedding_tables[self.table_video].numpy(),
+        mid_level.embedding_tables[self.table_user].numpy(),
         features[0].indices.numpy(),
         features[0].values.numpy(),
         self.data_batch_size,
         feature_config[0].max_sequence_length,
-        self.table_video.dim)
+        self.table_user.dim)
 
     self.assertAllClose(result[0], golden)
 
   def test_cpu_sequence_lookup_ragged(self):
     feature_config = (
         tpu_embedding_v2_utils.FeatureConfig(
-            table=self.table_video, name='watched', max_sequence_length=2),)
+            table=self.table_user, name='friends', max_sequence_length=2),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
     mid_level = tpu_embedding_v2.TPUEmbedding(
         feature_config=feature_config,
         optimizer=optimizer)
-    features = self._get_ragged_tensors()[:1]
+    features = self._get_ragged_tensors()[2:3]
     result = tpu_embedding_v2.cpu_embedding_lookup(
         features,
         weights=None,
@@ -329,12 +333,12 @@ class CPUEmbeddingTest(test.TestCase):
 
     sparse_ver = features[0].to_sparse()
     golden = self._numpy_sequence_lookup(
-        mid_level.embedding_tables[self.table_video].numpy(),
+        mid_level.embedding_tables[self.table_user].numpy(),
         sparse_ver.indices.numpy(),
         sparse_ver.values.numpy(),
         self.data_batch_size,
         feature_config[0].max_sequence_length,
-        self.table_video.dim)
+        self.table_user.dim)
 
     self.assertAllClose(result[0], golden)
 

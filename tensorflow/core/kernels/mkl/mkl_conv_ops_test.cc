@@ -291,7 +291,7 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
 #define BM_Conv2DT(kind, N, H, W, C, FC, FH, FW, type, LABEL)           \
   static void BM_NAME(Conv2D_##kind, type, N, H, W, C, FC, FH,          \
                       FW)(::testing::benchmark::State & state) {        \
-    testing::SetLabel(LABEL);                                           \
+    state.SetLabel(LABEL);                                              \
                                                                         \
     int64 num_computed_elements = (N) * (H) * (W) * (FC);               \
     int64 flops_per_iter = num_computed_elements * ((C) * (FH) * (FW)); \
@@ -300,7 +300,7 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
     test::Benchmark(#type, BM_CONCAT(kind, Conv2D)(dims),               \
                     /*old_benchmark_api*/ false)                        \
         .Run(state);                                                    \
-    testing::ItemsProcessed(state.iterations() * flops_per_iter);       \
+    state.SetItemsProcessed(state.iterations() * flops_per_iter);       \
   }                                                                     \
   BENCHMARK(BM_NAME(Conv2D_##kind, type, N, H, W, C, FC, FH, FW))
 
@@ -311,7 +311,7 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
 #define BM_Conv2DBwdInputT(kind, N, H, W, C, FC, FH, FW, type, LABEL)   \
   static void BM_NAME(Conv2DBwdInput_##kind, type, N, H, W, C, FC, FH,  \
                       FW)(::testing::benchmark::State & state) {        \
-    testing::SetLabel(LABEL);                                           \
+    state.SetLabel(LABEL);                                              \
                                                                         \
     int64 num_computed_elements = (N) * (H) * (W) * (C);                \
     int64 flops_per_iter = num_computed_elements * ((C) * (FH) * (FW)); \
@@ -320,7 +320,7 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
     test::Benchmark(#type, BM_CONCAT(kind, Conv2DBwdInput)(dims),       \
                     /*old_benchmark_api*/ false)                        \
         .Run(state);                                                    \
-    testing::ItemsProcessed(state.iterations() * flops_per_iter);       \
+    state.SetItemsProcessed(state.iterations() * flops_per_iter);       \
   }                                                                     \
   BENCHMARK(BM_NAME(Conv2DBwdInput_##kind, type, N, H, W, C, FC, FH, FW))
 
@@ -331,7 +331,7 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
 #define BM_Conv2DBwdFilterT(kind, N, H, W, C, FC, FH, FW, type, LABEL)  \
   static void BM_NAME(Conv2DBwdFilter_##kind, type, N, H, W, C, FC, FH, \
                       FW)(::testing::benchmark::State & state) {        \
-    testing::SetLabel(LABEL);                                           \
+    state.SetLabel(LABEL);                                              \
                                                                         \
     int64 num_computed_elements = (FH) * (FW) * (C) * (FC);             \
     int64 flops_per_iter = num_computed_elements * ((N) * (H) * (W));   \
@@ -340,7 +340,7 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
     test::Benchmark(#type, BM_CONCAT(kind, Conv2DBwdFilter)(dims),      \
                     /*old_benchmark_api*/ false)                        \
         .Run(state);                                                    \
-    testing::ItemsProcessed(state.iterations() * flops_per_iter);       \
+    state.SetItemsProcessed(state.iterations() * flops_per_iter);       \
   }                                                                     \
   BENCHMARK(BM_NAME(Conv2DBwdFilter_##kind, type, N, H, W, C, FC, FH, FW))
 

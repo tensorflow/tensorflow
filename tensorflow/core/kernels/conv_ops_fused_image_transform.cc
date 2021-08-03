@@ -77,8 +77,8 @@ enum SamplingMode {
 //     }
 // });
 void FusedConvParallelFor(
-    OpKernelContext* context, int64 begin, int64 end,
-    const std::function<void(int64, int64)>& task_function) {
+    OpKernelContext* context, int64_t begin, int64_t end,
+    const std::function<void(int64_t, int64_t)>& task_function) {
 // On iOS, the thread management imposes a very big performance penalty, so
 // just call the function directly with no multithreading.
 #if defined(__APPLE__) && defined(IS_MOBILE_PLATFORM)
@@ -86,15 +86,15 @@ void FusedConvParallelFor(
 #else
   auto& worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
   thread::ThreadPool* thread_pool = worker_threads.workers;
-  const int64 total_elements = end - begin;
+  const int64_t total_elements = end - begin;
   // This is a bit of an arbitrary number, but was found to work well for
   // typical models we've been profiling on various devices.
-  const int64 element_cost = 10000000;
+  const int64_t element_cost = 10000000;
   thread_pool->ParallelFor(
       total_elements, element_cost,
-      [begin, task_function](int64 begin_offset, int64 end_offset) {
-        const int64 task_begin = begin + begin_offset;
-        const int64 task_end = begin + end_offset;
+      [begin, task_function](int64_t begin_offset, int64_t end_offset) {
+        const int64_t task_begin = begin + begin_offset;
+        const int64_t task_end = begin + end_offset;
         task_function(task_begin, task_end);
       });
 #endif
@@ -167,16 +167,16 @@ struct SampleRect {
 // Calculates parameters which remain constant through a resize cache row.
 template <class T1>
 EIGEN_ALWAYS_INLINE PerCacheLineParameters<T1> CalculatePerCacheLineParameters(
-    int64 cache_height, int64 cache_y, T1* resize_cache, int64 cache_line_width,
-    int64 input_width, int64 input_depth, int64 top_padding, int64 pad_offset,
-    int64 resized_height, const ImageResizerState& st,
-    const T1* input_batch_start) {
+    int64_t cache_height, int64_t cache_y, T1* resize_cache,
+    int64_t cache_line_width, int64_t input_width, int64_t input_depth,
+    int64_t top_padding, int64_t pad_offset, int64_t resized_height,
+    const ImageResizerState& st, const T1* input_batch_start) {
   PerCacheLineParameters<T1> result;
   // The cache is organized so that the real y values of the resized image map
   // onto the actual cache values through a modulo scheme. This means that as we
   // progress downwards through the image, we keep reusing a small cache and so
   // keep memory usage down.
-  int64 cache_index_y;
+  int64_t cache_index_y;
   if (cache_y < 0) {
     cache_index_y = cache_height + (cache_y % cache_height);
   } else {
@@ -193,8 +193,8 @@ EIGEN_ALWAYS_INLINE PerCacheLineParameters<T1> CalculatePerCacheLineParameters(
   }
   // Here's where to do the actual resize.
   in_y *= st.height_scale;
-  const int64 top_y_index = static_cast<int64>(std::floor(in_y));
-  const int64 bottom_y_index =
+  const int64_t top_y_index = static_cast<int64>(std::floor(in_y));
+  const int64_t bottom_y_index =
       std::min(static_cast<int64>(std::ceil(in_y)), (st.in_height - 1));
   // Lerp is used for bilinear filtering when that's needed.
   result.y_lerp = static_cast<T1>(in_y - top_y_index);
@@ -224,10 +224,10 @@ struct PerCachePixelParameters {
 // Pulls out common parameters used for every resized pixel.
 template <class T1>
 EIGEN_ALWAYS_INLINE PerCachePixelParameters<T1>
-CalculatePerCachePixelParameters(int64 cache_x, int64 cache_start_x,
-                                 T1* cache_line_start, int64 input_depth,
-                                 int64 left_padding, int64 pad_offset,
-                                 int64 resized_width,
+CalculatePerCachePixelParameters(int64_t cache_x, int64_t cache_start_x,
+                                 T1* cache_line_start, int64_t input_depth,
+                                 int64_t left_padding, int64_t pad_offset,
+                                 int64_t resized_width,
                                  const ImageResizerState& st) {
   PerCachePixelParameters<T1> result;
   // Figure out where we're going to store the results of our transform.
@@ -419,7 +419,7 @@ class FusedResizeAndPadConvFunctor {
     task_params.resize_cache = resize_cache_resource->data;
 
     const T1* input_data = input.flat<T1>().data();
-    const int64 input_height = input.shape().dim_sizes()[1];
+    const int64_t input_height = input.shape().dim_sizes()[1];
     task_params.input_width = input.shape().dim_sizes()[2];
 
     int end_cached_lines = std::numeric_limits<int>::min();
@@ -441,7 +441,8 @@ class FusedResizeAndPadConvFunctor {
           // padding and resizing across multiple threads.
           FusedConvParallelFor(
               context, cache_start_y, cache_end_y,
-              [task_params](int64 task_cache_start_y, int64 task_cache_end_y) {
+              [task_params](int64_t task_cache_start_y,
+                            int64_t task_cache_end_y) {
                 // This is a long and confusing function, but it's been laid out
                 // this way to help with performance on some intensive models.
                 // What it's doing is populating a cache of the original input
@@ -634,8 +635,8 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
-    const int64 stride_n = GetTensorDim(strides_, FORMAT_NHWC, 'N');
-    const int64 stride_c = GetTensorDim(strides_, FORMAT_NHWC, 'C');
+    const int64_t stride_n = GetTensorDim(strides_, FORMAT_NHWC, 'N');
+    const int64_t stride_c = GetTensorDim(strides_, FORMAT_NHWC, 'C');
     OP_REQUIRES(
         context, stride_n == 1 && stride_c == 1,
         errors::InvalidArgument("Current implementation does not yet support "
@@ -709,9 +710,9 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     TensorShape padded_shape;
     TTypes<int32>::ConstMatrix paddings_matrix = paddings.matrix<int32>();
     for (int d = 0; d < dims; ++d) {
-      const int32 before =
+      const int32_t before =
           paddings_matrix(d, 0);  // Pad before existing elements.
-      const int32 after =
+      const int32_t after =
           paddings_matrix(d, 1);  // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
                   errors::InvalidArgument(
@@ -748,10 +749,10 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
         errors::InvalidArgument(
             "Fused mirror padding only support spatial padding, not channels: ",
             paddings.DebugString()));
-    const int32 top_padding = paddings_matrix(1, 0);
-    const int32 bottom_padding = paddings_matrix(1, 1);
-    const int32 left_padding = paddings_matrix(2, 0);
-    const int32 right_padding = paddings_matrix(2, 1);
+    const int32_t top_padding = paddings_matrix(1, 0);
+    const int32_t bottom_padding = paddings_matrix(1, 1);
+    const int32_t left_padding = paddings_matrix(2, 0);
+    const int32_t right_padding = paddings_matrix(2, 1);
 
     // Input filter is of the following dimensions:
     // [ filter_rows, filter_cols, in_depth, out_depth]
@@ -776,7 +777,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
-    const int64 in_depth = padded_shape.dim_size(3);
+    const int64_t in_depth = padded_shape.dim_size(3);
     OP_REQUIRES(context, in_depth == filter.dim_size(2),
                 errors::InvalidArgument(
                     "input and filter must have the same depth: ", in_depth,
@@ -787,7 +788,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
 
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
-    const int64 padded_rows_raw = padded_shape.dim_size(1);
+    const int64_t padded_rows_raw = padded_shape.dim_size(1);
     OP_REQUIRES(
         context,
         FastBoundsCheck(padded_rows_raw, std::numeric_limits<int>::max()),
@@ -798,7 +799,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
-    const int64 padded_cols_raw = padded_shape.dim_size(2);
+    const int64_t padded_cols_raw = padded_shape.dim_size(2);
     OP_REQUIRES(
         context,
         FastBoundsCheck(padded_cols_raw, std::numeric_limits<int>::max()),
@@ -808,7 +809,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     const int resized_cols = static_cast<int>(resized_shape.dim_size(2));
 
     // The first dimension for input is batch.
-    const int64 batch_raw = padded_shape.dim_size(0);
+    const int64_t batch_raw = padded_shape.dim_size(0);
     OP_REQUIRES(context,
                 FastBoundsCheck(batch_raw, std::numeric_limits<int>::max()),
                 errors::InvalidArgument("batch is too large"));
@@ -819,7 +820,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     const int stride_rows = GetTensorDim(strides_, FORMAT_NHWC, 'H');
     const int stride_cols = GetTensorDim(strides_, FORMAT_NHWC, 'W');
 
-    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+    int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
     OP_REQUIRES_OK(context,
                    GetWindowedOutputSize(padded_rows, filter_rows, stride_rows,
                                          padding_, &out_rows, &pad_rows));

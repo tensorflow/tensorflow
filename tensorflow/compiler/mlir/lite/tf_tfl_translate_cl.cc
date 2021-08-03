@@ -131,3 +131,10 @@ opt<bool> unfold_batchmatmul(
     llvm::cl::desc(
         "Whether to unfold TF BatchMatMul to a set of TFL FullyConnected ops."),
     llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+opt<bool> unfold_large_splat_constant(
+    "unfold-large-splat-constant",
+    llvm::cl::desc("Whether to unfold large splat constant tensors to reduce "
+                   "the generated model size."),
+    llvm::cl::init(false));

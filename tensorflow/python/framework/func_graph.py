@@ -976,7 +976,7 @@ def func_graph_from_py_func(name,
         from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
         _, original_func = tf_decorator.unwrap(python_func)
 
-        def wrapper(*args, **kwargs):
+        def autograph_handler(*args, **kwargs):
           """Calls a converted version of original_func."""
           # TODO(mdan): Push this block higher in tf.function's call stack.
           try:
@@ -997,7 +997,8 @@ def func_graph_from_py_func(name,
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
-        converted_func = tf_decorator.make_decorator(original_func, wrapper)
+        converted_func = tf_decorator.make_decorator(
+            original_func, autograph_handler)
         python_func = tf_decorator.rewrap(python_func, original_func,
                                           converted_func)
 

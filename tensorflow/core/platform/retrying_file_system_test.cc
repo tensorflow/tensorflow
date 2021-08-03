@@ -736,7 +736,7 @@ TEST(RetryingFileSystemTest, DeleteRecursively_SuccessWith2ndTry) {
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
 
   TF_EXPECT_OK(fs.DeleteRecursively("gs://path/dir", nullptr, &undeleted_files,
                                     &undeleted_dirs));
@@ -749,7 +749,7 @@ TEST(RetryingFileSystemTest, DeleteRecursively_AllRetriesFailed) {
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem<MockFileSystem> fs(
       std::move(base_fs), RetryConfig(0 /* init_delay_time_us */));
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
 
   const auto& status = fs.DeleteRecursively("gs://path/dir", nullptr,
                                             &undeleted_files, &undeleted_dirs);

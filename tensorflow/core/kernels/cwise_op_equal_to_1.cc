@@ -39,8 +39,6 @@ REGISTER_KERNEL_BUILDER(Name("Equal")
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "Equal", functor::equal_to, float, Eigen::half, double,
           uint8);
-#else
-REGISTER(BinaryOp, GPU, "Equal", functor::equal_to, uint8);
 #endif
 REGISTER_KERNEL_BUILDER(
     Name("ApproximateEqual").Device(DEVICE_GPU).TypeConstraint<float>("T"),

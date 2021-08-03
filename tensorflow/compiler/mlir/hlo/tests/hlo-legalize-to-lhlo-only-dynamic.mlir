@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo \
+// RUN: mlir-hlo-opt -hlo-legalize-to-lhlo -split-input-file \
 // RUN:  -canonicalize -lhlo-legalize-tensor-load-op %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @dynamic_reshape
@@ -231,4 +231,18 @@ func @dynamic_gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>, %slice_siz
       , name = "gather.71"}
       : (tensor<?x?xf32>, tensor<?xi32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %result : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @logistic
+// CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>) -> memref<?x?xf32>
+func @logistic(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK-NOT: tensor_load
+  // CHECK: %[[DIM0:.*]] = tensor.extract %[[SHAPE:.*]][%c0]
+  // CHECK: %[[DIM1:.*]] = tensor.extract %[[SHAPE]][%c1]
+  // CHECK: %[[OUT:.*]] = memref.alloc(%[[DIM0]], %[[DIM1]]) : memref<?x?xf32>
+  // CHECK: "lmhlo.logistic"(%[[ARG]], %[[OUT]])
+  %0 = "mhlo.logistic"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  return %0: tensor<?x?xf32>
 }

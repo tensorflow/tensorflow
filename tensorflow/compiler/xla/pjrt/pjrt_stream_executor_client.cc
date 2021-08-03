@@ -211,7 +211,8 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       gpu_run_options_(std::move(gpu_run_options)),
       thread_pool_(
           tensorflow::Env::Default(), "pjrt_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), client->device_count())) {
+          std::max<int>(DefaultThreadPoolSize(), client->device_count())),
+      transpose_cache_(1024) {
   if (owned_allocator_ != nullptr) {
     allocator_ = owned_allocator_.get();
   } else {
@@ -677,25 +678,37 @@ PjRtStreamExecutorBuffer::ReleaseDeviceMemoryOwnership(
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostBuffer(
-    const void* data, const Shape& shape,
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    absl::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
+  Shape shape = ShapeUtil::MakeShape(type, dims);
   VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
           << shape.ToString() << " device: " << device->DebugString();
-  if (shape.IsTuple()) {
-    return InvalidArgument("Use BufferFromHostLiteral to transfer a tuple");
-  }
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
-  int64 size = ShapeUtil::ByteSizeOf(shape);
+
+  absl::InlinedVector<int64, 4> tmp_strides;
+  if (!byte_strides) {
+    tmp_strides.resize(dims.size());
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ByteStrides(shape, absl::MakeSpan(tmp_strides)));
+    byte_strides = tmp_strides;
+  }
+  int64_t size = ShapeUtil::ByteSizeOf(shape);
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
-
+  absl::InlinedVector<int64_t, 4> compact_shape_strides(
+      compact_shape.dimensions_size());
+  TF_RETURN_IF_ERROR(ShapeUtil::ByteStrides(
+      compact_shape, absl::MakeSpan(compact_shape_strides)));
+  bool host_and_device_strides_equal =
+      (size == 0 || *byte_strides == compact_shape_strides);
   // The CPU platform is special because the "host" and the "device" are in the
   // same memory space. If the input shape is in the correct layout and we don't
   // want to defer the copy onto a thread, we can use the following fast
@@ -711,7 +724,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         host_buffer_semantics == HostBufferSemantics::kZeroCopy &&
         ((absl::bit_cast<std::uintptr_t>(data) &
           (cpu_function_runtime::kMinAlign - 1)) == 0);
-    if (shape.layout() == compact_shape.layout() &&
+    if (host_and_device_strides_equal &&
         (host_buffer_semantics ==
              HostBufferSemantics::kImmutableOnlyDuringCall ||
          can_use_zero_copy)) {
@@ -723,7 +736,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       // because XLA may generate code which requires it.
       if (can_use_zero_copy) {
         on_delete_callback = std::move(on_done_with_host_buffer);
-        buffer = se::DeviceMemoryBase(const_cast<void*>(data), size);
+        buffer = se::DeviceMemoryBase(
+            const_cast<void*>(static_cast<const void*>(data)), size);
       } else {
         void* staging_buffer = host_memory_allocator()->AllocateRaw(
             cpu_function_runtime::kMinAlign, size);
@@ -763,7 +777,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   // transfers. On GPU this is a buffer in pinned memory.
   std::shared_ptr<void> staging_buffer;
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
-      should_stage_host_to_device_transfers()) {
+      should_stage_host_to_device_transfers() ||
+      !host_and_device_strides_equal) {
     void* ptr = host_memory_allocator()->AllocateRaw(
         tensorflow::Allocator::kAllocatorAlignment, size);
     staging_buffer = std::shared_ptr<void>(
@@ -772,17 +787,32 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         });
   }
 
+  std::shared_ptr<TransposePlan> transpose;
+  if (!host_and_device_strides_equal) {
+    absl::InlinedVector<int64_t, 4> permutation(dims.size());
+    absl::c_reverse_copy(compact_shape.layout().minor_to_major(),
+                         permutation.begin());
+    absl::MutexLock lock(&transpose_mu_);
+    TF_ASSIGN_OR_RETURN(transpose,
+                        transpose_cache_.GetOrCreate(
+                            primitive_util::ByteWidth(type), dims, permutation,
+                            TransposePlan::Striding{*byte_strides}));
+  }
+
   // Copy the buffer into a staging buffer before returning control to the
   // caller if the caller only guaranteed that the buffer is valid for the
   // duration of the call. Otherwise, we stage (if necessary) on a separate
   // thread.
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
-    std::memcpy(staging_buffer.get(), data, size);
+    if (transpose) {
+      transpose->Execute(data, staging_buffer.get());
+    } else {
+      std::memcpy(staging_buffer.get(), data, size);
+    }
     if (on_done_with_host_buffer) {
       on_done_with_host_buffer();
       on_done_with_host_buffer = nullptr;
     }
-    data = nullptr;
   }
 
   // The host to device transfer is performed on a thread pool, mostly because
@@ -791,59 +821,68 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
   // usage holds have gone away.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
-                       data, size,
-                       movable_device_buffer{device_buffer.ToClosure()}, shape,
-                       py_buffer{py_buffer.get()},
-                       on_device_shape{py_buffer->on_device_shape()},
-                       staging_buffer{std::move(staging_buffer)},
-                       on_done_with_host_buffer{
-                           std::move(on_done_with_host_buffer)},
-                       host_buffer_semantics]() {
-    PjRtStreamExecutorBuffer::ScopedHold device_buffer(movable_device_buffer);
-    // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
-    // to report failures from a callback. However, the operations here are
-    // unlikely to fail and not recoverable even if we were to fail: DMAs to
-    // memory that has already been allocated, and a possible Event
-    // allocation.
+  auto transfer_h2d =
+      [local_client = client(), transfer_manager, local_device, data, size,
+       movable_device_buffer{device_buffer.ToClosure()}, shape,
+       py_buffer{py_buffer.get()},
+       on_device_shape{py_buffer->on_device_shape()},
+       staging_buffer{std::move(staging_buffer)},
+       on_done_with_host_buffer{std::move(on_done_with_host_buffer)},
+       host_buffer_semantics, transpose{std::move(transpose)}]() {
+        PjRtStreamExecutorBuffer::ScopedHold device_buffer(
+            movable_device_buffer);
+        // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
+        // to report failures from a callback. However, the operations here are
+        // unlikely to fail and not recoverable even if we were to fail: DMAs to
+        // memory that has already been allocated, and a possible Event
+        // allocation.
 
-    ShapedBuffer buffer = device_buffer->AsShapedBuffer(on_device_shape);
-    // If applicable on the backend, stage the transfer via host memory
-    // allocated via the host_memory_allocator. On GPU, this is pinned
-    // memory.
-    if (staging_buffer) {
-      // If we didn't already copy the input buffer into the staging buffer,
-      // do so now.
-      if (host_buffer_semantics !=
-          HostBufferSemantics::kImmutableOnlyDuringCall) {
-        std::memcpy(staging_buffer.get(), data, size);
-      }
-      BorrowingLiteral literal(static_cast<const char*>(staging_buffer.get()),
-                               shape);
-      TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-          local_device->host_to_device_stream(), literal, buffer));
-    } else {
-      BorrowingLiteral literal(static_cast<const char*>(data), shape);
-      // Otherwise, just transfer the literal.
-      TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-          local_device->host_to_device_stream(), literal, buffer));
-    }
-
-    std::shared_ptr<BufferSequencingEvent> event =
-        device_buffer->definition_events()[0];
-    TF_CHECK_OK(AddDestinationBufferSynchronization(
-        local_device, std::move(device_buffer), event,
-        local_device->host_to_device_stream()));
-
-    local_device->ThenExecuteCallback(
-        local_device->host_to_device_stream(),
-        [staging_buffer{std::move(staging_buffer)},
-         on_done_with_host_buffer{std::move(on_done_with_host_buffer)}]() {
-          if (on_done_with_host_buffer) {
-            on_done_with_host_buffer();
+        ShapedBuffer buffer = device_buffer->AsShapedBuffer(on_device_shape);
+        // If applicable on the backend, stage the transfer via host memory
+        // allocated via the host_memory_allocator. On GPU, this is pinned
+        // memory.
+        if (staging_buffer) {
+          // If we didn't already copy the input buffer into the staging buffer,
+          // do so now.
+          if (host_buffer_semantics !=
+              HostBufferSemantics::kImmutableOnlyDuringCall) {
+            if (transpose) {
+              transpose->Execute(data, staging_buffer.get());
+            } else {
+              std::memcpy(staging_buffer.get(), data, size);
+            }
           }
-        });
-  };
+          // The buffer has the same dimension order as the on-device shape, but
+          // is not tiled, etc.
+          BorrowingLiteral literal(
+              static_cast<const char*>(staging_buffer.get()),
+              ShapeUtil::DeviceShapeToHostShape(on_device_shape));
+          TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+              local_device->host_to_device_stream(), literal, buffer));
+        } else {
+          BorrowingLiteral literal(
+              reinterpret_cast<const char*>(data),
+              ShapeUtil::DeviceShapeToHostShape(on_device_shape));
+          // Otherwise, just transfer the literal.
+          TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+              local_device->host_to_device_stream(), literal, buffer));
+        }
+
+        std::shared_ptr<BufferSequencingEvent> event =
+            device_buffer->definition_events()[0];
+        TF_CHECK_OK(AddDestinationBufferSynchronization(
+            local_device, std::move(device_buffer), event,
+            local_device->host_to_device_stream()));
+
+        local_device->ThenExecuteCallback(
+            local_device->host_to_device_stream(),
+            [staging_buffer{std::move(staging_buffer)},
+             on_done_with_host_buffer{std::move(on_done_with_host_buffer)}]() {
+              if (on_done_with_host_buffer) {
+                on_done_with_host_buffer();
+              }
+            });
+      };
   if (is_cpu_platform) {
     // Using the thread_pool would be a double thread hop; the code
     // already defers its work onto a stream (= thread on CPU).
@@ -1335,7 +1374,7 @@ StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {
 }
 
 Status PjRtStreamExecutorBuffer::CopyRawToHost(
-    void* dst, int64 offset, int64 transfer_size,
+    void* dst, int64_t offset, int64_t transfer_size,
     std::function<void(Status)> on_ready) {
   return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size,
                                          std::move(on_ready));
@@ -1437,8 +1476,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        literal->shape().dimensions_size());
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
     return dst_device->client()->BufferFromHostBuffer(
-        literal_pointer->untyped_data(), literal_pointer->shape(),
+        literal_pointer->untyped_data(),
+        literal_pointer->shape().element_type(),
+        literal_pointer->shape().dimensions(), byte_strides,
         PjRtStreamExecutorClient::HostBufferSemantics::kZeroCopy,
         [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }

@@ -79,7 +79,7 @@ bool IsMatrixMultiplication(const HloInstruction& dot);
 // after a GemmRewriter lowering pass.
 bool IsCublasGemm(const HloInstruction& hlo);
 
-constexpr int64 kWarpSize = 32;
+constexpr int64_t kWarpSize = 32;
 
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;

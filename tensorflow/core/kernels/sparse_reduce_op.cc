@@ -58,7 +58,7 @@ ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
 
   std::vector<int32> reduction_axes(axes_slice.begin(), axes_slice.end());
   int ndims = sp.dims();
-  for (int64 i = 0; i < reduction_axes.size(); ++i) {
+  for (int64_t i = 0; i < reduction_axes.size(); ++i) {
     reduction_axes[i] = (reduction_axes[i] + ndims) % ndims;
   }
   std::sort(reduction_axes.begin(), reduction_axes.end());
@@ -118,8 +118,8 @@ Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
   }
 
   const auto reduction_axes_flat = reduction_axes_t->flat<int32>();
-  for (int64 i = 0; i < reduction_axes_flat.size(); i++) {
-    int32 axis = reduction_axes_flat(i);
+  for (int64_t i = 0; i < reduction_axes_flat.size(); i++) {
+    int32_t axis = reduction_axes_flat(i);
     if (axis < -shape_t->NumElements() || axis >= shape_t->NumElements()) {
       return errors::InvalidArgument("Invalid reduction dimension ", axis,
                                      ", for input with ",
@@ -207,7 +207,7 @@ class SparseReduceOp : public OpKernel {
         return 0;
       }
       CHECK_EQ(coords.size(), strides.size());
-      int64 idx = 0;
+      int64_t idx = 0;
       for (int i = 0; i < coords.size(); ++i) {
         idx += coords[i] * strides[i];
       }
@@ -219,7 +219,20 @@ class SparseReduceOp : public OpKernel {
     sp.Reorder<T>(reduction.reorder_dims);
     for (const auto &g : sp.group(reduction.group_by_dims)) {
       Op::template Run<T>(ctx, reduced_val, g.template values<T>());
-      const int64 idx = CoordinatesToFlatIndex(g.group(), output_strides);
+      OP_REQUIRES(ctx,
+                  output_strides.empty() ||
+                  (g.group().size() == output_strides.size()),
+                  errors::Internal(
+                      "Expected group size and output_strides size to match",
+                      ", but got ", g.group().size(), " and ",
+                      output_strides.size()));
+      const int64_t idx = CoordinatesToFlatIndex(g.group(), output_strides);
+      OP_REQUIRES(ctx,
+                  idx >= 0 && idx < out_flat.size(),
+                  errors::Internal(
+                      "Obtained a write index of ", idx,
+                      " which is outside of bounds of [0, ",
+                      out_flat.size(), ")"));
       out_flat(idx) = reduced_val();
       VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
               << "; idx: " << idx << "; group " << Op::Name() << ": "
@@ -271,7 +284,7 @@ class SparseReduceSparseOp : public OpKernel {
 
     sp.Reorder<T>(reduction.reorder_dims);
     // Count nnzs in the output SparseTensor.
-    int64 nnz = 0;
+    int64_t nnz = 0;
     auto iter = sp.group(reduction.group_by_dims);
     for (auto it = iter.begin(); it != iter.end(); ++it) {
       nnz++;
@@ -296,11 +309,11 @@ class SparseReduceSparseOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
                                            TensorShape({}), &tmp_reduced_val));
     auto reduced_val = tmp_reduced_val.scalar<T>();
-    int64 i = 0;
+    int64_t i = 0;
     for (const auto &g : sp.group(reduction.group_by_dims)) {
       Op::template Run<T>(ctx, reduced_val, g.template values<T>());
       std::vector<int64> group = g.group();
-      for (int64 j = 0; j < group.size(); j++) {
+      for (int64_t j = 0; j < group.size(); j++) {
         if (keep_dims_) {
           out_indices_mat(i, reduction.group_by_dims[j]) = group[j];
         } else {

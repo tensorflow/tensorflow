@@ -81,7 +81,7 @@ class WhileUtil {
   //    return loop_state;
   //  }
   static StatusOr<LoopStateTy> MakeCountedLoop(
-      HloComputation* computation, int32 trip_count,
+      HloComputation* computation, int32_t trip_count,
       const LoopStateTy& init_values,
       const LoopBodyGeneratorTy& loop_body_generator,
       const OpMetadata& metadata);
@@ -94,7 +94,7 @@ class WhileUtil {
   // around it in any particular computation. The caller can instead add it to a
   // computation of their choosing.
   static StatusOr<OwningLoopStateTy> MakeCountedLoop(
-      HloModule* module, int32 trip_count,
+      HloModule* module, int32_t trip_count,
       const WhileUtil::LoopStateTy& init_values,
       const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
       const OpMetadata& metadata);

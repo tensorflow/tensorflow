@@ -126,6 +126,10 @@ class TfLiteDriver::DataExpectation {
 
  private:
   bool CompareTwoValuesHelper(float v1, float v2) {
+    if (std::isnan(v1) || std::isnan(v2)) {
+      return !(std::isnan(v1) && std::isnan(v2));
+    }
+
     float diff = std::abs(v1 - v2);
     bool error_is_large = false;
     // For very small numbers, try absolute error, otherwise go with
@@ -139,6 +143,10 @@ class TfLiteDriver::DataExpectation {
   }
 
   bool CompareTwoValuesHelper(double v1, double v2) {
+    if (std::isnan(v1) || std::isnan(v2)) {
+      return !(std::isnan(v1) && std::isnan(v2));
+    }
+
     double diff = std::abs(v1 - v2);
     bool error_is_large = false;
     // For very small numbers, try absolute error, otherwise go with

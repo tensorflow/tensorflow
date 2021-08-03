@@ -142,14 +142,14 @@ Status GraphMgr::InitItem(
       graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
-          [this, session](const int64 step_id, const DeviceMgr*,
+          [this, session](const int64_t step_id, const DeviceMgr*,
                           Rendezvous** r) -> Status {
             auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
             TF_RETURN_IF_ERROR(remote_r->Initialize(session));
             *r = remote_r;
             return Status::OK();
           },
-          [this](const int64 step_id) {
+          [this](const int64_t step_id) {
             this->worker_env_->rendezvous_mgr->Cleanup(step_id);
             return Status::OK();
           }}));
@@ -349,7 +349,7 @@ Status GraphMgr::DeregisterAll() {
   return Status::OK();
 }
 
-Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
+Status GraphMgr::SendInputs(const int64_t step_id, const NamedTensors& in) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   std::vector<string> keys;
   std::vector<Tensor> tensors_to_send;
@@ -368,7 +368,7 @@ Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
   return s;
 }
 
-Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
+Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   Status s = RecvOutputsFromRendezvous(rendezvous, out, Rendezvous::Args());
   rendezvous->Unref();
@@ -386,7 +386,7 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
   return s;
 }
 
-void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
+void GraphMgr::RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
                                 StatusCallback done) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   std::vector<string> keys;
@@ -412,7 +412,7 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
       });
 }
 
-void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
+void GraphMgr::ExecuteAsync(const string& handle, const int64_t step_id,
                             WorkerSession* session, const ExecutorOpts& opts,
                             StepStatsCollector* collector,
                             MutableRunGraphResponseWrapper* response,

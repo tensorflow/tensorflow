@@ -328,9 +328,9 @@ class LSTMBlockCellOp : public OpKernel {
     const Tensor* b_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("b", &b_tensor));
 
-    const int64 batch_size = x_tensor->dim_size(0);
-    const int64 input_size = x_tensor->dim_size(1);
-    const int64 cell_size = cs_prev_tensor->dim_size(1);
+    const int64_t batch_size = x_tensor->dim_size(0);
+    const int64_t input_size = x_tensor->dim_size(1);
+    const int64_t cell_size = cs_prev_tensor->dim_size(1);
 
     // Sanity checks for our input shapes.
     OP_REQUIRES(ctx, cs_prev_tensor->dim_size(0) == batch_size,
@@ -510,9 +510,9 @@ class LSTMBlockCellGradOp : public OpKernel {
     const Tensor* h_grad_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h_grad", &h_grad_tensor));
 
-    const int64 batch_size = x_tensor->dim_size(0);
-    const int64 input_size = x_tensor->dim_size(1);
-    const int64 cell_size = cs_prev_tensor->dim_size(1);
+    const int64_t batch_size = x_tensor->dim_size(0);
+    const int64_t input_size = x_tensor->dim_size(1);
+    const int64_t cell_size = cs_prev_tensor->dim_size(1);
 
     // Sanity checks for our input shapes.
     OP_REQUIRES(ctx, cs_prev_tensor->dim_size(0) == batch_size,
@@ -846,9 +846,9 @@ class BlockLSTMOp : public OpKernel {
     const Tensor* x;
     OP_REQUIRES_OK(ctx, ctx->input("x", &x));
     OP_REQUIRES(ctx, x->dims() == 3, errors::InvalidArgument("x must be 3D"));
-    const int64 timelen = x->dim_size(0);
-    const int64 batch_size = x->dim_size(1);
-    const int64 input_size = x->dim_size(2);
+    const int64_t timelen = x->dim_size(0);
+    const int64_t batch_size = x->dim_size(1);
+    const int64_t input_size = x->dim_size(2);
 
     const Tensor* cs_prev_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("cs_prev", &cs_prev_tensor));
@@ -858,7 +858,7 @@ class BlockLSTMOp : public OpKernel {
                 errors::InvalidArgument("cs_prev.dims(0) != batch_size: ",
                                         cs_prev_tensor->dim_size(0), " vs. ",
                                         batch_size));
-    const int64 cell_size = cs_prev_tensor->dim_size(1);
+    const int64_t cell_size = cs_prev_tensor->dim_size(1);
 
     if (batch_size * input_size % 2 == 1) {
       LOG(WARNING) << "BlockLSTMOp is inefficient when both batch_size and "
@@ -969,7 +969,7 @@ class BlockLSTMOp : public OpKernel {
 
     const Device& device = ctx->eigen_device<Device>();
 
-    const int64 seq_len_max = seq_len_max_tensor->scalar<int64>()();
+    const int64_t seq_len_max = seq_len_max_tensor->scalar<int64>()();
     SliceHelper<Device, T> slicer(ctx);
     for (int64_t t = 0; t < seq_len_max; ++t) {
       const Tensor x_tensor = slicer.InputSlice(*x, t, "x");
@@ -1080,9 +1080,9 @@ class BlockLSTMGradOp : public OpKernel {
     const Tensor* x;
     OP_REQUIRES_OK(ctx, ctx->input("x", &x));
     OP_REQUIRES(ctx, x->dims() == 3, errors::InvalidArgument("x must be 3D"));
-    const int64 timelen = x->dim_size(0);
-    const int64 batch_size = x->dim_size(1);
-    const int64 input_size = x->dim_size(2);
+    const int64_t timelen = x->dim_size(0);
+    const int64_t batch_size = x->dim_size(1);
+    const int64_t input_size = x->dim_size(2);
 
     const Tensor* cs_prev_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("cs_prev", &cs_prev_tensor));
@@ -1092,7 +1092,7 @@ class BlockLSTMGradOp : public OpKernel {
 
     const Tensor* w_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("w", &w_tensor));
-    const int64 cell_size = w_tensor->dim_size(1) / 4;
+    const int64_t cell_size = w_tensor->dim_size(1) / 4;
     OP_REQUIRES(ctx, input_size + cell_size == w_tensor->dim_size(0),
                 errors::InvalidArgument(
                     "w matrix rows don't match: ", input_size + cell_size,
@@ -1234,7 +1234,7 @@ class BlockLSTMGradOp : public OpKernel {
     functor::TensorZero<Device, T>()(device, wco_grad_tensor->flat<T>());
     functor::TensorZero<Device, T>()(device, b_grad_tensor->flat<T>());
 
-    const int64 seq_len_max = seq_len_max_tensor->scalar<int64>()();
+    const int64_t seq_len_max = seq_len_max_tensor->scalar<int64>()();
     SliceHelper<Device, T> slicer(ctx);
     for (int64_t t = seq_len_max - 1; t >= 0; --t) {
       const Tensor& x_tensor = slicer.InputSlice(*x, t, "x");

@@ -61,7 +61,7 @@ class TransposeOp : public XlaOpKernel {
     absl::InlinedVector<bool, 8> bits(dims);
     bool is_identity = true;
     for (int i = 0; i < dims; ++i) {
-      const int64 d = perm[i];
+      const int64_t d = perm[i];
       OP_REQUIRES(
           ctx, 0 <= d && d < dims,
           errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));
@@ -151,7 +151,8 @@ class InvertPermutationOp : public XlaOpKernel {
                     std::numeric_limits<T>::max(), " elements"));
 
     auto e = ctx->InputExpression(0);
-    auto tensor_or_status = e.ResolveConstant(ctx->compiler()->client());
+    auto* client = ctx->compiler() ? ctx->compiler()->client() : nullptr;
+    auto tensor_or_status = e.ResolveConstant(client);
     OP_REQUIRES_OK(ctx, tensor_or_status.status());
     // If the input is a constant, we also want the output to be a constant.
     // Some models rely on the result of InvertPermutation being a constant.
@@ -167,7 +168,7 @@ class InvertPermutationOp : public XlaOpKernel {
       std::vector<T> output(size);
       std::fill_n(output.data(), size, -1);
       for (int i = 0; i < size; ++i) {
-        const int64 d = perm[i];
+        const int64_t d = perm[i];
         OP_REQUIRES(ctx, FastBoundsCheck(d, size),
                     errors::InvalidArgument(d, " is not between 0 and ", size));
         OP_REQUIRES(ctx, output[d] == -1,

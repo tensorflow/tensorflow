@@ -43,8 +43,8 @@ StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
       auto kernel_input_feature_dim = dnums.kernel_input_feature_dimension();
       auto kernel_output_feature_dim = dnums.kernel_output_feature_dimension();
 
-      const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
-      const int64 num_dims = num_spatial_dims + 2;
+      const int64_t num_spatial_dims = dnums.output_spatial_dimensions_size();
+      const int64_t num_dims = num_spatial_dims + 2;
 
       // A canonical convolution's dimension numbers need to satisfy the
       // following conditions (see cs/PotentiallyImplementedAsEigenConvolution).

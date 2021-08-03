@@ -43,8 +43,8 @@ constexpr char kErrorMessage[] = ".error_message";
 
 class WindowDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 window_size,
-          int64 window_shift, int64 window_stride, bool drop_remainder)
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t window_size,
+          int64_t window_shift, int64_t window_stride, bool drop_remainder)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         window_size_(window_size),
@@ -87,17 +87,17 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
-    int64 cardinality = 0;
+    int64_t cardinality = 0;
     if (drop_remainder_) {
       // Compute rest_elements, the number of elements after the last element
       // of the initial window. If it is negative, we know that the
       // cardinality is 0. Otherwise, it will be the number of valid shifts
       // over the rest_elements.
-      int64 rest_elements = n - ((window_size_ - 1) * window_stride_ + 1);
+      int64_t rest_elements = n - ((window_size_ - 1) * window_stride_ + 1);
       cardinality = rest_elements < 0 ? 0 : rest_elements / window_shift_ + 1;
     } else {
       cardinality = n / window_shift_ + (n % window_shift_ == 0 ? 0 : 1);
@@ -149,9 +149,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      const int64 window_size = dataset()->window_size_;
-      const int64 window_shift = dataset()->window_shift_;
-      const int64 window_stride = dataset()->window_stride_;
+      const int64_t window_size = dataset()->window_size_;
+      const int64_t window_shift = dataset()->window_shift_;
+      const int64_t window_stride = dataset()->window_stride_;
       std::vector<std::vector<Tensor>> window_elements;
       Status status = Status::OK();
       {
@@ -230,7 +230,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
 
       // Construct output tensors.
       const size_t num_tuple_components = window_elements[0].size();
-      const int64 num_window_elements = window_elements.size();
+      const int64_t num_window_elements = window_elements.size();
       *end_of_sequence = false;
       for (size_t idx = 0; idx < num_tuple_components; ++idx) {
         DatasetBase* window_dataset;
@@ -273,12 +273,12 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       // Save buffer.
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
-      for (int64 i = 0; i < buffer_.size(); i++) {
+      for (int64_t i = 0; i < buffer_.size(); i++) {
         TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, buffer_[i].status));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
             buffer_[i].result.size()));
-        for (int64 j = 0; j < buffer_[i].result.size(); j++) {
+        for (int64_t j = 0; j < buffer_[i].result.size(); j++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
               full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
               buffer_[i].result[j]));
@@ -296,18 +296,18 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         input_impl_.reset();
       }
       // Restore buffer.
-      int64 buffer_size = 0;
+      int64_t buffer_size = 0;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kBufferSize), &buffer_size));
       buffer_.resize(buffer_size);
-      for (int64 i = 0; i < buffer_size; i++) {
-        int64 vector_size;
+      for (int64_t i = 0; i < buffer_size; i++) {
+        int64_t vector_size;
         TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &buffer_[i].status));
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
             &vector_size));
         buffer_[i].result.resize(vector_size);
-        for (int64 j = 0; j < vector_size; j++) {
+        for (int64_t j = 0; j < vector_size; j++) {
           TF_RETURN_IF_ERROR(reader->ReadTensor(
               ctx->flr(),
               full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
@@ -345,7 +345,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
 
     Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
                             Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      int64 code_int;
+      int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
@@ -369,7 +369,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
           strings::StrCat(kBuffer, "[", index, "]", kErrorMessage));
     }
 
-    size_t TargetBufferSize(int64 window_size, int64 window_stride) {
+    size_t TargetBufferSize(int64_t window_size, int64_t window_stride) {
       return (window_size - 1) * window_stride + 1;
     }
 
@@ -393,19 +393,19 @@ WindowDatasetOp::WindowDatasetOp(OpKernelConstruction* ctx)
 
 void WindowDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                   DatasetBase** output) {
-  int64 window_size = 0;
+  int64_t window_size = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSize, &window_size));
   OP_REQUIRES(
       ctx, window_size > 0,
       errors::InvalidArgument("Window size must be greater than zero."));
 
-  int64 window_shift = 0;
+  int64_t window_shift = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kShift, &window_shift));
   OP_REQUIRES(
       ctx, window_shift > 0,
       errors::InvalidArgument("Window shift must be greater than zero."));
 
-  int64 window_stride = 0;
+  int64_t window_stride = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kStride, &window_stride));
   OP_REQUIRES(
       ctx, window_stride > 0,

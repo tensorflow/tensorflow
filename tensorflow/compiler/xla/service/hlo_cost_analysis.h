@@ -164,7 +164,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
   int64 bytes_accessed(const HloInstruction& hlo) const;
-  int64 operand_bytes_accessed(const HloInstruction& hlo, int64 operand_num,
+  int64 operand_bytes_accessed(const HloInstruction& hlo, int64_t operand_num,
                                ShapeIndex index = {}) const;
   int64 output_bytes_accessed(const HloInstruction& hlo,
                               ShapeIndex index = {}) const;
@@ -190,7 +190,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Return the key that is used to index into Properties for the specified
   // input/output at the shape index.
-  static std::string GetOperandBytesAccessedKey(int64 operand_num,
+  static std::string GetOperandBytesAccessedKey(int64_t operand_num,
                                                 ShapeIndex index = {});
   static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
 
@@ -198,7 +198,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
 
   // An FMA counts as two floating point operations in these analyzes.
-  static constexpr int64 kFmaFlops = 2;
+  static constexpr int64_t kFmaFlops = 2;
 
   HloCostAnalysis(const ShapeSizeFunction& shape_size,
                   const Properties& per_second_rates);
@@ -232,8 +232,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   int64 FusionParameterReadBytes(const HloInstruction* hlo) const;
 
   // Set bytes accessed by the specified operand and shape index.
-  void SetOperandBytesAccessed(int64 operand_num, float value);
-  void SetOperandBytesAccessed(int64 operand_num, ShapeIndex index,
+  void SetOperandBytesAccessed(int64_t operand_num, float value);
+  void SetOperandBytesAccessed(int64_t operand_num, ShapeIndex index,
                                float value);
 
   // Set bytes accessed by the output at the shape index.

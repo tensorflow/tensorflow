@@ -19,6 +19,7 @@ load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_fi
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/aws:workspace.bzl", aws = "repo")
+load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/clog:workspace.bzl", clog = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
@@ -55,6 +56,7 @@ def _initialize_third_party():
     FP16()
     absl()
     aws()
+    benchmark()
     clog()
     cpuinfo()
     dlpack()
@@ -129,11 +131,11 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "dec35e45065ba476614b365b5a1d5722c89f75d7bf011421a7d81808cc85bfb0",
-        strip_prefix = "XNNPACK-89cd59bcfbfb43c086aab0541e863bc91da74693",
+        sha256 = "b23e9d9fac5105e556fa0a76ea4eb11b334a74919a048ca5a83e91ad87d62be9",
+        strip_prefix = "XNNPACK-28407b24f04694a1353ffca91248e89bc250eb5b",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/89cd59bcfbfb43c086aab0541e863bc91da74693.zip",
-            "https://github.com/google/XNNPACK/archive/89cd59bcfbfb43c086aab0541e863bc91da74693.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/28407b24f04694a1353ffca91248e89bc250eb5b.zip",
+            "https://github.com/google/XNNPACK/archive/28407b24f04694a1353ffca91248e89bc250eb5b.zip",
         ],
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
@@ -438,7 +440,7 @@ def _tf_repositories():
         strip_prefix = "gast-0.4.0",
         system_build_file = "//third_party/systemlibs:gast.BUILD",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.4.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/files.pythonhosted.org/packages/83/4a/07c7e59cef23fb147454663c3271c21da68ba2ab141427c20548ae5a8a4d/gast-0.4.0.tar.gz",
             "https://files.pythonhosted.org/packages/83/4a/07c7e59cef23fb147454663c3271c21da68ba2ab141427c20548ae5a8a4d/gast-0.4.0.tar.gz",
         ],
     )
@@ -583,11 +585,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_googletest",
-        sha256 = "ff7a82736e158c077e76188232eac77913a15dac0b22508c390ab3f88e6d6d86",
-        strip_prefix = "googletest-b6cd405286ed8635ece71c72f118e659f4ade3fb",
+        sha256 = "bc1cc26d1120f5a7e9eb450751c0b24160734e46a02823a573f3c6b6c0a574a7",
+        strip_prefix = "googletest-e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/googletest/archive/b6cd405286ed8635ece71c72f118e659f4ade3fb.zip",
-            "https://github.com/google/googletest/archive/b6cd405286ed8635ece71c72f118e659f4ade3fb.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/googletest/archive/e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b.zip",
+            "https://github.com/google/googletest/archive/e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b.zip",
         ],
     )
 

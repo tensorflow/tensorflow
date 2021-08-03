@@ -53,7 +53,7 @@ class HloSharding {
 
   // Creates a sharding that emulates device placement; a tile shape equal to
   // the input shape (one tile) assigned to a single device.
-  static HloSharding AssignDevice(int64 device_id,
+  static HloSharding AssignDevice(int64_t device_id,
                                   absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding which splits a shape into tiles amongst the devices
@@ -79,9 +79,15 @@ class HloSharding {
       const Array<int64>& tile_assignment_last_dim_replicate,
       absl::Span<const OpMetadata> metadata = {});
 
+  // Creates a subgroup sharding with device-level tile assignment, the
+  // sharding type of each subgroup is defined by sharding_types.
+  static HloSharding Subgroup(const Array<int64>& tile_assignment,
+                              absl::Span<const OpSharding::Type> sharding_types,
+                              absl::Span<const OpMetadata> metadata = {});
+
   // Creates a new sharding which splits a one-dimensional input shape into
   // `num_tiles` tiles.
-  static HloSharding Tile1D(const Shape& input_shape, int64 num_tiles,
+  static HloSharding Tile1D(const Shape& input_shape, int64_t num_tiles,
                             absl::Span<const OpMetadata> metadata = {});
 
   // Creates a new sharding for a tuple type. The given ShapeTree must have
@@ -108,7 +114,7 @@ class HloSharding {
 
   // Checks whether device is a reserved device number. A reserved device number
   // has usually a special meaning, with dedicated handling logic.
-  static bool IsReservedDevice(int64 device) { return device < 0; }
+  static bool IsReservedDevice(int64_t device) { return device < 0; }
 
   OpSharding ToProto() const;
 
@@ -117,7 +123,7 @@ class HloSharding {
   string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
-  Status Validate(const Shape& shape, int64 num_devices) const;
+  Status Validate(const Shape& shape, int64_t num_devices) const;
 
   // Returns true if the sharding has tuple type.
   bool IsTuple() const { return tuple_; }
@@ -160,7 +166,7 @@ class HloSharding {
   bool ReplicateOnLastTileDim() const { return replicate_on_last_tile_dim_; }
 
   // Returns true if the sharding defines an operation on the given device.
-  bool UsesDevice(int64 device) const;
+  bool UsesDevice(int64_t device) const;
 
   // Retrieves a histogram of the devices used by the sharding. The returned
   // map has the device number as key, and the occurrence count as value.
@@ -172,7 +178,7 @@ class HloSharding {
 
   // Returns the tile that should be executed on the given device.
   // REQUIRES: !IsTuple()
-  std::vector<int64> TileIndexForDevice(int64 device) const;
+  std::vector<int64> TileIndexForDevice(int64_t device) const;
 
   // Returns the device that should execute the given tile.
   // It is an error to call this if is_replicated() is true.
@@ -188,13 +194,14 @@ class HloSharding {
   // extent of the tile in the input space.
   // REQUIRES: !IsTuple()
   std::vector<int64> TileOffsetForDevice(const Shape& shape,
-                                         int64 device) const;
+                                         int64_t device) const;
 
   // Given a device ID, returns the limit within the specified shape of the
   // tile that should be executed on the given core. This returns the upper
   // extent of the tile in the input space.
   // REQUIRES: !IsTuple()
-  std::vector<int64> TileLimitForDevice(const Shape& shape, int64 device) const;
+  std::vector<int64> TileLimitForDevice(const Shape& shape,
+                                        int64_t device) const;
 
   // Returns the single device this op operates on. If the sharding does not
   // span a single device, the return value will be empty.
@@ -249,7 +256,8 @@ class HloSharding {
            manual_ == other.manual_ &&
            tile_assignment_ == other.tile_assignment_ &&
            tuple_elements_ == other.tuple_elements_ &&
-           replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_;
+           replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
+           sharding_types_ == other.sharding_types_;
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
@@ -279,7 +287,7 @@ class HloSharding {
 
   // Gets the tile shape on the device.
   // REQUIRES: !IsTuple()
-  Shape TileShape(const Shape& shape, int64 device) const;
+  Shape TileShape(const Shape& shape, int64_t device) const;
 
   // Gets the number of tiles. If it has partial replication, this will not
   // equal the device count.
@@ -308,7 +316,7 @@ class HloSharding {
   //  0 or positive: the id of a device
   // NOTE(dimvar): -1 is needed for outside compilation. It can be removed once
   // we have fully switched to the side-effect tokens.
-  explicit HloSharding(int64 device_id, absl::Span<const OpMetadata> metadata)
+  explicit HloSharding(int64_t device_id, absl::Span<const OpMetadata> metadata)
       : replicated_(false),
         maximal_(true),
         tuple_(false),
@@ -326,6 +334,17 @@ class HloSharding {
         tile_assignment_(tile_assignment),
         replicate_on_last_tile_dim_(replicate_on_last_tile_dim),
         metadata_(metadata.begin(), metadata.end()) {}
+  explicit HloSharding(const Array<int64>& tile_assignment,
+                       absl::Span<const OpSharding::Type> sharding_types,
+                       absl::Span<const OpMetadata> metadata = {})
+      : replicated_(false),
+        maximal_(false),
+        tuple_(false),
+        manual_(false),
+        tile_assignment_(tile_assignment),
+        replicate_on_last_tile_dim_(false),
+        metadata_(metadata.begin(), metadata.end()),
+        sharding_types_(sharding_types.begin(), sharding_types.end()) {}
   explicit HloSharding(const std::vector<HloSharding>& tuple_shardings)
       : replicated_(false),
         maximal_(false),
@@ -340,10 +359,10 @@ class HloSharding {
   Status CheckLeafCount(const Shape& shape) const;
 
   // Internal helper to validate a tuple sharding.
-  Status ValidateTuple(const Shape& shape, int64 num_devices) const;
+  Status ValidateTuple(const Shape& shape, int64_t num_devices) const;
 
   // Internal helper to validate a non-tuple (leaf) sharding.
-  Status ValidateNonTuple(const Shape& shape, int64 num_devices) const;
+  Status ValidateNonTuple(const Shape& shape, int64_t num_devices) const;
 
   // Returns the number of tuple_elements_ entries to fit the shape.
   static int64 RequiredLeaves(const Shape& shape);
@@ -381,6 +400,11 @@ class HloSharding {
   // tuple_ == true and instead metadata should be set on individual tuple
   // elements.
   std::vector<OpMetadata> metadata_;
+  // This field is used to represented the sharding type of each subgroup.
+  // For example, sharding={devices=[2,2,2,2]0,1,2,...,15 last_tile_dims={
+  // replicate, manual, unreduced}} means that each of the last 3 dimensions
+  // in [2,2,2,2] represents a subgrouping in replicate, manual,
+  std::vector<OpSharding::Type> sharding_types_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding);

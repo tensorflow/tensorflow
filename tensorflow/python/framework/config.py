@@ -21,6 +21,7 @@ from __future__ import print_function
 from typing import Union
 
 from tensorflow.python.eager import context
+from tensorflow.python.util import _pywrap_determinism
 from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -808,6 +809,10 @@ def set_logical_device_configuration(device, logical_devices):
   Specifying a list of `tf.config.LogicalDeviceConfiguration` objects allows
   multiple devices to be created on the same `tf.config.PhysicalDevice`.
 
+  Logical device configurations can be modified by calling this function as
+  long as the runtime is uninitialized. After the runtime is initialized
+  calling this function raises a RuntimeError.
+
   The following example splits the CPU into 2 logical devices:
 
   >>> physical_devices = tf.config.list_physical_devices('CPU')
@@ -908,3 +913,37 @@ def disable_mlir_bridge():
 def disable_mlir_graph_optimization():
   """Disables experimental MLIR-Based TensorFlow Compiler Optimizations."""
   context.context().enable_mlir_graph_optimization = False
+
+
+def enable_deterministic_ops(enabled):
+  """Enable or disable the use of deterministic ops.
+
+  When enabled, many ops will be made deterministic. This means that if you run
+  the same op multiple times, it will have the same outputs (and stateful ops
+  will have the same side effects). This function is described in [the
+  determinism
+  RFC](https://github.com/tensorflow/community/blob/master/rfcs/20210119-determinism.md).
+
+  The determinism functionality is not yet complete. Certain ops will raise a
+  NotImplemented error when run after determinism is enabled, because they do
+  not yet have a deterministic implementation. Certain other ops will instead
+  silently run nondeterministically, either because the NotImplemented error has
+  not been added yet or that the TensorFlow developers do not yet know the op is
+  nondeterministic. This function will not be exported as part of the TensorFlow
+  API until all known nondeterministic ops raise a NotImplemented error.
+
+  Currently, enabling determinism after certain ops have already been run may
+  cause future runs of such ops to be run nondeterministically. This is because
+  Autotune for ops like Conv2D may select and cache a nondeterministic
+  algorithm, which will still be used once determinism is enabled. It is
+  therefore recommended to enable determinism only before running any ops.
+
+  Args:
+    enabled: Bool indicating whether to enable deterministic ops.
+  """
+  _pywrap_determinism.enable(enabled)
+
+
+def deterministic_ops_enabled():
+  """Returns True if deterministic ops have been enabled."""
+  return _pywrap_determinism.is_enabled()

@@ -132,8 +132,8 @@ Tensor GetTestUTF8Tensor(int batch) {
   return t;
 }
 
-Graph* SetupSubstrGraph(const Tensor& input, const int32 pos, const int32 len,
-                        const char* const unit) {
+Graph* SetupSubstrGraph(const Tensor& input, const int32_t pos,
+                        const int32_t len, const char* const unit) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor position(DT_INT32, TensorShape({}));
   position.flat<int32>().setConstant(pos);

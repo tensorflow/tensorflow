@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -125,8 +126,8 @@ class DilationOp : public OpKernel {
     // Determine relevant sizes from input and filters.
     int stride_rows = 0, stride_cols = 0;
     int rate_rows = 0, rate_cols = 0;
-    int64 pad_top = 0, pad_left = 0;
-    int64 out_rows = 0, out_cols = 0;
+    int64_t pad_top = 0, pad_left = 0;
+    int64_t out_rows = 0, out_cols = 0;
     ParseSizes(context, strides_, rates_, padding_, &stride_rows, &stride_cols,
                &rate_rows, &rate_cols, &pad_top, &pad_left, &out_rows,
                &out_cols);
@@ -222,11 +223,16 @@ class DilationBackpropInputOp : public OpKernel {
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
 
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
+                  errors::Unimplemented("Determinism is not yet supported "
+                                        "for Dilation2DBackpropInput."));
+    }
     // Determine relevant sizes from input and filters.
     int stride_rows = 0, stride_cols = 0;
     int rate_rows = 0, rate_cols = 0;
-    int64 pad_top = 0, pad_left = 0;
-    int64 out_rows = 0, out_cols = 0;
+    int64_t pad_top = 0, pad_left = 0;
+    int64_t out_rows = 0, out_cols = 0;
     ParseSizes(context, strides_, rates_, padding_, &stride_rows, &stride_cols,
                &rate_rows, &rate_cols, &pad_top, &pad_left, &out_rows,
                &out_cols);
@@ -341,6 +347,11 @@ class DilationBackpropFilterOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
+                  errors::Unimplemented("Determinism is not yet supported "
+                                        "for Dilation2DBackpropFilter."));
+    }
     const Tensor& input = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
@@ -348,8 +359,8 @@ class DilationBackpropFilterOp : public OpKernel {
     // Determine relevant sizes from input and filters.
     int stride_rows = 0, stride_cols = 0;
     int rate_rows = 0, rate_cols = 0;
-    int64 pad_top = 0, pad_left = 0;
-    int64 out_rows = 0, out_cols = 0;
+    int64_t pad_top = 0, pad_left = 0;
+    int64_t out_rows = 0, out_cols = 0;
     ParseSizes(context, strides_, rates_, padding_, &stride_rows, &stride_cols,
                &rate_rows, &rate_cols, &pad_top, &pad_left, &out_rows,
                &out_cols);

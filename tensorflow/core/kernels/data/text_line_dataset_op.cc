@@ -162,14 +162,14 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       ResetStreamsLocked();
-      int64 current_file_index;
+      int64_t current_file_index;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentFileIndex),
                                             &current_file_index));
       current_file_index_ = size_t(current_file_index);
       // The key "current_pos" is written only if the iterator was saved
       // with an open file.
       if (reader->Contains(full_name(kCurrentPos))) {
-        int64 current_pos;
+        int64_t current_pos;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name(kCurrentPos), &current_pos));
 
@@ -248,7 +248,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
                                                    &compression_type));
 
-  int64 buffer_size = -1;
+  int64_t buffer_size = -1;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(

@@ -38,8 +38,8 @@ Status GetInputMap(OpKernelContext* ctx, int index, const TensorMap** ret_map) {
 }
 
 // TODO(kattian): change into templated function
-Status ForwardInputOrCreateNewMap(OpKernelContext* ctx, int32 input_index,
-                                  int32 output_index,
+Status ForwardInputOrCreateNewMap(OpKernelContext* ctx, int32_t input_index,
+                                  int32_t output_index,
                                   const TensorMap& input_map,
                                   TensorMap** output_map) {
   // Attempt to forward the input tensor to the output if possible.

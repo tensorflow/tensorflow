@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/primitive_util.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/base/thread_annotations.h"
@@ -138,7 +140,8 @@ TfrtCpuClient::TfrtCpuClient(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),
       last_collective_launch_event_(
-          tfrt::MakeAvailableAsyncValueRef<CpuEvent>(host_ctx_.get())) {
+          tfrt::MakeAvailableAsyncValueRef<CpuEvent>(host_ctx_.get())),
+      transpose_cache_(1024) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
@@ -425,18 +428,16 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateUninitializedBuffer(
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
-    const void* data, const Shape& shape,
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    absl::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostBuffer");
+  Shape shape = ShapeUtil::MakeShape(type, dims);
   VLOG(2) << "TfrtCpuClient::BufferFromHostBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString();
-  if (shape.IsTuple()) {
-    return InvalidArgument("Use BufferFromHostLiteral to transfer a tuple");
-  }
   bool has_default_layout =
-      !shape.has_layout() ||
-      LayoutUtil::IsMonotonicWithDim0Major(shape.layout());
+      !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
   // If the input buffer has a default layout and is sufficiently aligned, we
   // can simply point to the input array's data without any further copies. At
   // the time of writing we require a 16-byte alignment because XLA may generate
@@ -460,12 +461,22 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
     auto dst_data_ptr = device_buffer->data();
     buffers.push_back(device_buffer);
     if (!has_default_layout) {
-      // If layout is not default, relayout and sync copy.
-      BorrowingLiteral literal(static_cast<const char*>(data), shape);
-      Literal transposed_literal =
-          literal.Relayout(LayoutUtil::GetDefaultLayoutForShape(shape), {});
-      CHECK_EQ(byte_size, transposed_literal.size_bytes());
-      std::memcpy(dst_data_ptr, transposed_literal.untyped_data(), byte_size);
+      // If the input array does not have a major-to-minor layout, transpose it
+      // into major-to-minor layout. Currently we choose to always do this
+      // synchronously.
+      // TODO(phawkins): consider performing the transpose asynchronously.
+      // TODO(phawkins): parallelize the transpose.
+      std::shared_ptr<TransposePlan> transpose;
+      {
+        absl::InlinedVector<int64_t, 4> permutation(dims.size());
+        absl::c_iota(permutation, 0);
+        absl::MutexLock lock(&transpose_mu_);
+        TF_ASSIGN_OR_RETURN(
+            transpose, transpose_cache_.GetOrCreate(
+                           primitive_util::ByteWidth(type), dims, permutation,
+                           TransposePlan::Striding{*byte_strides}));
+      }
+      transpose->Execute(data, dst_data_ptr);
       if (on_done_with_host_buffer) {
         on_done_with_host_buffer();
         on_done_with_host_buffer = nullptr;
@@ -1053,8 +1064,14 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
+    absl::InlinedVector<int64_t, 4> byte_strides(
+        literal->shape().dimensions_size());
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
     return dst_device->client()->BufferFromHostBuffer(
-        literal_pointer->untyped_data(), literal_pointer->shape(),
+        literal_pointer->untyped_data(),
+        literal_pointer->shape().element_type(),
+        literal_pointer->shape().dimensions(), byte_strides,
         TfrtCpuClient::HostBufferSemantics::kZeroCopy,
         [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
   }
@@ -1259,7 +1276,7 @@ static std::shared_ptr<MaybeOwningCpuMemory> MemoryForAllocation(
   }
 
   // Output and temporary buffer.
-  int64 buffer_size = allocation.size();
+  int64_t buffer_size = allocation.size();
   auto out = MaybeOwningCpuMemory::AllocateShared(buffer_size);
 
   // Since the output buffer and all the temporary buffers were written into
@@ -1281,10 +1298,6 @@ CreateBufferTable(
     const BufferAllocation& allocation = assignment.GetAllocation(i);
     buffers[i] = MemoryForAllocation(allocation, arguments);
   }
-
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment.GetUniqueTopLevelOutputSlice());
-  VLOG(3) << "result index: " << result_slice.index();
   return std::move(buffers);
 }
 

@@ -2578,8 +2578,10 @@ def _enable_get_next_as_optional(strategy, dataset):
   #
   # TODO(rxsang): We want to always enable the get_next_as_optional behavior
   # when user passed input_fn instead of dataset.
-  if not getattr(strategy.extended, "experimental_enable_get_next_as_optional",
-                 False):
+  if not getattr(
+      strategy.extended, "enable_partial_batch_handling",
+      getattr(strategy.extended, "experimental_enable_get_next_as_optional",
+              False)):
     return False
 
   if context.executing_eagerly():

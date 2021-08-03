@@ -71,7 +71,7 @@ std::vector<std::vector<int64>> InterestingShapes() {
 ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
                                             DataType dtype,
                                             absl::Span<const int64> shape,
-                                            int8 value) {
+                                            int8_t value) {
   AbstractTensorPtr tensor(ctx->CreateTensor(dtype, shape));
   CHECK_NE(tensor.get(), nullptr)
       << "Tensor creation failed for tensor of dtype: "
@@ -88,7 +88,7 @@ ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
 }
 
 void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
-                             int8 value) {
+                             int8_t value) {
   switch (dtype) {
 #define CASE(type)                                   \
   case DataTypeToEnum<type>::value: {                \
@@ -111,7 +111,7 @@ void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
 // Checks the underlying data is equal for the buffers for two numeric tensors.
 // Note: The caller must ensure to check that the dtypes and sizes of the
 // underlying buffers are the same before calling this.
-void CheckBufferDataIsEqual(DataType dtype, int64 num_elements, void* a,
+void CheckBufferDataIsEqual(DataType dtype, int64_t num_elements, void* a,
                             void* b) {
   switch (dtype) {
 #define CASE(type)                               \

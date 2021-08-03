@@ -980,7 +980,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
                            /*cancellation_manager=*/nullptr,
                            /*remote_func_params=*/absl::nullopt,
-                           /*stack_trace=*/absl::nullopt));
+                           /*stack_trace=*/absl::nullopt,
+                           /*coordination_service_agent=*/nullptr));
 
   CheckOutputsAndClose(outputs, op_id);
 }
@@ -1030,6 +1031,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
   kernel->RunAsync(/*step_container=*/nullptr, inputs, &outputs,
                    /*cancellation_manager=*/nullptr,
                    /*remote_func_params=*/absl::nullopt,
+                   /*coordination_service_agent=*/nullptr,
                    [&status, &n](const Status& s) {
                      status = s;
                      n.Notify();
@@ -1194,7 +1196,7 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   EXPECT_EQ(handle2->Type(), TensorHandle::REMOTE);
   EXPECT_EQ(handle2->op_device()->name(), device2);
   int64_t op_id;
-  int32 output_num;
+  int32_t output_num;
   TF_ASSERT_OK(handle2->RemoteAddress(handle2->device(),
                                       /*wait_until_ready=*/true, &op_id,
                                       &output_num));

@@ -1440,7 +1440,7 @@ class BaseSession(SessionInterface):
         fetches.append(mover[1])
       handles = self.run(fetches, feed_dict=feeds)
       for handle_mover, handle in zip(handle_movers, handles):
-        np_val = np.array(handle.handle, dtype=np.object)
+        np_val = np.array(handle.handle, dtype=np.object_)
         feed_name = handle_mover[0]
         feed_tensor = feed_map[feed_name][0]
         feed_dict[feed_tensor.ref()] = np_val

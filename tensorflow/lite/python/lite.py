@@ -462,6 +462,7 @@ class TFLiteConverterBase(object):
     self._collected_converter_params = {}
     self._experimental_disable_batchmatmul_unfold = False
     self._experimental_lower_tensor_list_ops = True
+    self._experimental_unfold_large_splat_constant = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -541,14 +542,24 @@ class TFLiteConverterBase(object):
       {key str: val}
     """
     args = {
-        "input_format": constants.TENSORFLOW_GRAPHDEF,
-        "allow_custom_ops": self.allow_custom_ops,
-        "debug_info": self._debug_info,
-        "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_new_converter,
-        "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
-        "unfold_batchmatmul": not self._experimental_disable_batchmatmul_unfold,
-        "lower_tensor_list_ops": self._experimental_lower_tensor_list_ops,
+        "input_format":
+            constants.TENSORFLOW_GRAPHDEF,
+        "allow_custom_ops":
+            self.allow_custom_ops,
+        "debug_info":
+            self._debug_info,
+        "target_ops":
+            self.target_spec.supported_ops,
+        "enable_mlir_converter":
+            self.experimental_new_converter,
+        "select_user_tf_ops":
+            self.target_spec.experimental_select_user_tf_ops,
+        "unfold_batchmatmul":
+            not self._experimental_disable_batchmatmul_unfold,
+        "lower_tensor_list_ops":
+            self._experimental_lower_tensor_list_ops,
+        "unfold_large_splat_constant":
+            self._experimental_unfold_large_splat_constant,
     }
 
     if self.saved_model_dir:
@@ -1015,7 +1026,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     super(TFLiteKerasModelConverterV2, self).__init__()
     self._keras_model = keras_model
     self._trackable_obj = trackable_obj
-    self.experimental_lower_to_saved_model = False
+    self.experimental_lower_to_saved_model = True
 
   @convert_phase(Component.PREPARE_TF_MODEL,
                  SubComponent.CONVERT_KERAS_TO_SAVED_MODEL)
@@ -1203,7 +1214,8 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
       input_tensors: List of input tensors.
       output_tensors: List of output tensors.
     """
-    func = self._funcs[0]
+    if len(self._funcs) == 0:  # pylint: disable=g-explicit-length-test
+      raise ValueError("No ConcreteFunction is specified.")
 
     if not self.experimental_lower_to_saved_model:
       return None, None, None
@@ -1213,11 +1225,24 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     if not self._trackable_obj:
       return None, None, None
 
+    signatures = {}
+    signature_keys = []
     try:
+      if len(self._funcs) == 1:
+        signatures[_signature_constants
+                   .DEFAULT_SERVING_SIGNATURE_DEF_KEY] = self._funcs[0]
+        signature_keys = [
+            _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+        ]
+      else:
+        for func in self._funcs:
+          signatures[func.graph.name] = func
+          signature_keys.append(func.graph.name)
+
       _saved_model.save(
           self._trackable_obj,
           output_dir,
-          signatures={"serving_default": func},
+          signatures=signatures,
           options=_save_options.SaveOptions(save_debug_info=True))
     except Exception:  # pylint: disable=broad-except
       # When storing the given concrete function to a saved model is failed,
@@ -1226,9 +1251,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
 
     self.saved_model_dir = output_dir
     self._saved_model_tags = set([_tag_constants.SERVING])
-    self._saved_model_exported_names = [
-        _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-    ]
+    self._saved_model_exported_names = signature_keys
     self._parse_saved_model_args(always_enable_saved_model_import=True)
     if self.saved_model_dir:
       graph_def, input_tensors, output_tensors = self._load_saved_model(
@@ -1337,7 +1360,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     tflite_model = converter.convert()
 
     # Converting ConcreteFunctions to a TensorFlow Lite model.
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
     tflite_model = converter.convert()
     ```
   """

@@ -46,8 +46,8 @@ namespace {
 
 const absl::string_view kAnnotationDelimiter = "::";
 
-XEvent CreateXEvent(const XEventMetadata& metadata, int64 offset_ps,
-                    int64 duration_ps, int64 group_id_stat_metadata_id,
+XEvent CreateXEvent(const XEventMetadata& metadata, int64_t offset_ps,
+                    int64_t duration_ps, int64_t group_id_stat_metadata_id,
                     absl::optional<int64> group_id) {
   XEvent event;
   event.set_metadata_id(metadata.id());
@@ -72,17 +72,17 @@ int64 GroupIdOrInvalid(absl::optional<int64> group_id) {
 }  // namespace
 
 void ProcessTfOpEvent(absl::string_view tf_op_full_name,
-                      absl::string_view low_level_event_name, int64 offset_ps,
-                      int64 duration_ps, absl::optional<int64> group_id,
+                      absl::string_view low_level_event_name, int64_t offset_ps,
+                      int64_t duration_ps, absl::optional<int64> group_id,
                       XPlaneBuilder* plane_builder,
                       DerivedXLineBuilder* tf_name_scope_line_builder,
                       DerivedXLineBuilder* tf_op_line_builder) {
-  int64 group_id_stat_metadata_id =
+  int64_t group_id_stat_metadata_id =
       plane_builder->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))
           ->id();
   TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
   Category category = tf_op.category;
-  int64 group_id_or_invalid = GroupIdOrInvalid(group_id);
+  int64_t group_id_or_invalid = GroupIdOrInvalid(group_id);
   if (category == Category::kTensorFlow || category == Category::kJax) {
     std::vector<XEvent> name_scope_event_per_level;
     for (const auto& tf_name_scope : ParseTfNameScopes(tf_op)) {
@@ -105,8 +105,8 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name,
 }
 
 DerivedXLineBuilder::DerivedXLineBuilder(
-    XPlaneBuilder* plane, int64 line_id, absl::string_view name,
-    int64 timestamp_ns, std::vector<DerivedXLineBuilder*> dependent_lines)
+    XPlaneBuilder* plane, int64_t line_id, absl::string_view name,
+    int64_t timestamp_ns, std::vector<DerivedXLineBuilder*> dependent_lines)
     : line_(plane->GetOrCreateLine(line_id)) {
   line_.SetName(name);
   line_.SetTimestampNs(timestamp_ns);
@@ -114,10 +114,10 @@ DerivedXLineBuilder::DerivedXLineBuilder(
 }
 
 void DerivedXLineBuilder::ExpandOrAddLevelEvent(
-    const XEvent& event, int64 group_id, absl::string_view low_level_event_name,
-    int level) {
-  int64 offset_ps = event.offset_ps();
-  int64 duration_ps = event.duration_ps();
+    const XEvent& event, int64_t group_id,
+    absl::string_view low_level_event_name, int level) {
+  int64_t offset_ps = event.offset_ps();
+  int64_t duration_ps = event.duration_ps();
   auto& last_event = last_event_by_level_[level];
   // If last_event is not nullptr, its offset must be less than or equal to
   // the given event's offset.
@@ -194,15 +194,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
   DerivedXLineBuilder source(&plane, kThreadIdSource, kSourceLineName,
                              start_timestamp_ns, {});
 
-  int64 group_id_stat_metadata_id =
+  int64_t group_id_stat_metadata_id =
       plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))->id();
-  int64 step_name_stat_metadata_id =
+  int64_t step_name_stat_metadata_id =
       plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName))->id();
 
   // Process events in order by start time.
   for (const XEventVisitor& event : events) {
-    int64 offset_ps = event.OffsetPs();
-    int64 duration_ps = event.DurationPs();
+    int64_t offset_ps = event.OffsetPs();
+    int64_t duration_ps = event.DurationPs();
     absl::string_view tf_op_full_name;
     absl::string_view hlo_module_name;
     std::vector<absl::string_view> hlo_op_names;
@@ -223,7 +223,7 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
         is_kernel = true;
       }
     });
-    int64 group_id_or_invalid = GroupIdOrInvalid(group_id);
+    int64_t group_id_or_invalid = GroupIdOrInvalid(group_id);
     if (group_id) {
       XEvent step_event = CreateXEvent(
           *plane.GetOrCreateEventMetadata(absl::StrCat(*group_id)), offset_ps,
@@ -345,7 +345,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
     launch_line.SetName(kKernelLaunchLineName);
     launch_line.SetTimestampNs(std::min(device_plane_start, host_plane_start));
     for (const auto& kv : per_device_launch_info[i]) {
-      int64 group_id = kv.first;
+      int64_t group_id = kv.first;
       const GroupLaunchInfo& group_info = kv.second;
       if (auto group_metadata = gtl::FindOrNull(group_metadata_map, group_id)) {
         XEventBuilder device_event =

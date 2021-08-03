@@ -28,7 +28,7 @@ namespace window_util {
 
 Window MakeWindow(absl::Span<const int64> sizes) {
   Window window;
-  for (int64 size : sizes) {
+  for (int64_t size : sizes) {
     auto* dimension = window.add_dimensions();
     dimension->set_size(size);
     dimension->set_stride(1);
@@ -54,7 +54,7 @@ Window MakeWindow(absl::Span<const int64> sizes,
 
 PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
   PaddingConfig config;
-  for (int64 size : sizes) {
+  for (int64_t size : sizes) {
     auto* dimension = config.add_dimensions();
     dimension->set_edge_padding_low(size);
     dimension->set_edge_padding_high(size);
@@ -231,7 +231,7 @@ bool HasOverlappingWindow(const Window& window) {
   return false;
 }
 
-int64 DilatedBound(int64 bound, int64 dilation) {
+int64 DilatedBound(int64_t bound, int64_t dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);
   if (bound == 0) {
@@ -245,7 +245,7 @@ int64 DilatedBound(int64 bound, int64 dilation) {
   return (bound - 1) * dilation + 1;
 }
 
-int64 StridedBound(int64 bound, int64 window_size, int64 stride) {
+int64 StridedBound(int64_t bound, int64_t window_size, int64_t stride) {
   CHECK_GE(window_size, 0);
   CHECK_GE(bound, 0);
   CHECK_GE(stride, 1);

@@ -32,8 +32,8 @@ std::vector<xla::ReplicaGroup> Convert(
   VLOG(1) << "group_assignment_shape: " << group_assignment_shape.DebugString();
 
   std::vector<xla::ReplicaGroup> replica_groups;
-  const int64 num_groups = group_assignment_shape.dim_size(0);
-  const int64 num_replica_per_group = group_assignment_shape.dim_size(1);
+  const int64_t num_groups = group_assignment_shape.dim_size(0);
+  const int64_t num_replica_per_group = group_assignment_shape.dim_size(1);
 
   replica_groups.reserve(num_groups);
   for (int64_t g = 0; g < num_groups; ++g) {

@@ -52,7 +52,7 @@ void MemoryCache::Reset() {
   cache_.clear();
 }
 
-const std::vector<Tensor>& MemoryCache::at(int64 index) {
+const std::vector<Tensor>& MemoryCache::at(int64_t index) {
   tf_shared_lock l(mu_);
   DCHECK(index < cache_.size());
   return cache_[index];

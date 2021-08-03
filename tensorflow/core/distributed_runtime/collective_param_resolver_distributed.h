@@ -53,7 +53,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
  protected:
   // Returns the cached group iff there's an entry for this group_key in the
   // local group_table_; returns nullptr otherwise.
-  GroupRec* GetCachedGroup(int32 group_key) TF_LOCKS_EXCLUDED(group_mu_);
+  GroupRec* GetCachedGroup(int32_t group_key) TF_LOCKS_EXCLUDED(group_mu_);
 
   // Updates group_table_ with contents of resp.
   Status UpdateGroupCache(const CompleteGroupResponse& resp)
@@ -71,7 +71,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
 
   // Returns true iff there's an entry for this instance_key in the
   // local instance_table_.
-  bool InstanceIsCached(int32 group_key, int32 instance_key)
+  bool InstanceIsCached(int32_t group_key, int32_t instance_key)
       TF_LOCKS_EXCLUDED(instance_mu_);
 
   // Updates instance_table_ with contents of resp.

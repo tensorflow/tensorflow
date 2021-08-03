@@ -272,6 +272,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     pass_manager->addPass(
         mlir::TFL::CreateInsertCallOnceOpFromSessionInitializerPass());
   }
+  if (pass_config.unfold_large_splat_constant) {
+    pass_manager->addPass(mlir::TFL::CreateUnfoldLargeSplatConstantPass());
+  }
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,

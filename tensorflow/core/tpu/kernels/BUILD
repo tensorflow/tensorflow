@@ -65,6 +65,7 @@ cc_library(
         ":tpu_op_util",
         ":tpu_program_group_interface",
         ":tpu_util",
+        ":tpu_fingerprint_lookup",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",

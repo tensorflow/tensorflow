@@ -73,7 +73,7 @@ class DebugEventsWriter {
 #ifndef SWIG
   // Prefix of version string present in the first entry of every event file.
   // Default size of each circular buffer (unit: number of DebugEvent protos).
-  static constexpr const int64 kDefaultCyclicBufferSize = 1000;
+  static constexpr const int64_t kDefaultCyclicBufferSize = 1000;
 
   static constexpr const char* kFileNamePrefix = "tfdbg_events";
   static constexpr const char* kMetadataSuffix = "metadata";
@@ -166,8 +166,8 @@ class DebugEventsWriter {
   //     depends on the value of `tensor_debug_mode`.
   Status WriteGraphExecutionTrace(const string& tfdbg_context_id,
                                   const string& device_name,
-                                  const string& op_name, int32 output_slot,
-                                  int32 tensor_debug_mode,
+                                  const string& op_name, int32_t output_slot,
+                                  int32_t tensor_debug_mode,
                                   const Tensor& tensor_value);
 
   // Writes a serialized DebugEvent to one of the debug-events files

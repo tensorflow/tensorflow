@@ -131,16 +131,10 @@ class HloComputation {
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
                                  const std::string& new_name = "");
 
-  // Replace the old parameter at index param_no with
-  // `instruction`. Updates uses and root instruction. Removes old
-  // instruction from computation. No check is done on the shape.
-  HloInstruction* ReplaceParameter(int64 param_no,
-                                   std::unique_ptr<HloInstruction> instruction);
-
   // Remove the param_no'th parameter from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
-  Status RemoveParameter(int64 param_no);
+  Status RemoveParameter(int64_t param_no);
 
   // Remove unused parameters from the computation.
   // Note this is only applicatable to the computation for the fusion
@@ -167,9 +161,9 @@ class HloComputation {
       std::unique_ptr<HloInstruction> instruction);
 
   // Replaces an old parameter with a new parameter. Adds the new parameter
-  // instruction to the entry computation.  Updates users instruction.
+  // instruction to the entry computation.
   Status ReplaceEntryComputationParameter(
-      int64 param_no, HloInstruction* old_instruction,
+      int64_t param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
@@ -205,7 +199,7 @@ class HloComputation {
   int64 num_parameters() const { return param_instructions_.size(); }
 
   // Returns the parameter instruction for the given parameter number.
-  HloInstruction* parameter_instruction(int64 param_no) const {
+  HloInstruction* parameter_instruction(int64_t param_no) const {
     CHECK_GE(param_no, 0);
     CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()))
         << "Computation " << name() << " has no parameter number " << param_no;
@@ -363,10 +357,6 @@ class HloComputation {
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 
-  // As ReplaceInstruction, but the new instruction can have a different shape.
-  Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
-                                              HloInstruction* new_instruction);
-
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
   const HloModule* parent() const { return parent_; }
@@ -508,7 +498,7 @@ class HloComputation {
   void ClearUniqueIdInternal() { unique_id_ = -1; }
 
   // The id of this computation should be unique within the module.
-  void SetUniqueId(int64 id) {
+  void SetUniqueId(int64_t id) {
     CHECK_EQ(unique_id_, -1);
     CHECK_GE(id, 0);
     unique_id_ = id;

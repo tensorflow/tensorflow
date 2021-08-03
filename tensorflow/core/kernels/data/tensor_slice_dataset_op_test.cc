@@ -273,7 +273,7 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
 
   auto params =
       static_cast<TensorSliceDatasetParams&>(test_case.dataset_params);
-  int64 num_slices = params.num_slices();
+  int64_t num_slices = params.num_slices();
   size_t num_tensors_per_slice = params.num_tensors_per_slice();
   std::vector<Tensor> out_tensors;
   const std::vector<int>& breakpoints = test_case.breakpoints;

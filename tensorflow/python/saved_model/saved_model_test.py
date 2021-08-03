@@ -1372,7 +1372,7 @@ class SavedModelTest(SavedModelTestBase):
     # OpKernel registered to handle T = double.
     sess = session.Session(graph=ops.Graph())
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "No OpKernel was registered.*DOUBLE"):
+                                "(?s)No OpKernel was registered.*DOUBLE"):
       loader.load(sess, ["foo"], export_dir)
 
 

@@ -53,7 +53,7 @@ static void Convert8to16(const uint8* p8, int num_comps, int p8_row_bytes,
   // enforced to < 29 bits in decode_png_op.cc, but height*row_bytes is
   // height*width*channels*(8bit?1:2) which is therefore only constrained to <
   // 33 bits.
-  int64 height = static_cast<int64>(height_in);
+  int64_t height = static_cast<int64>(height_in);
 
   // Adjust pointers to copy backwards
   width *= num_comps;

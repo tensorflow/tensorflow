@@ -634,14 +634,14 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
 
 PyObject* InterpreterWrapper::GetSignatureDefs() const {
   PyObject* result = PyDict_New();
-  for (const auto& sig_def_name : interpreter_->signature_def_names()) {
+  for (const auto& sig_key : interpreter_->signature_keys()) {
     PyObject* signature_def = PyDict_New();
     PyObject* inputs = PyDict_New();
     PyObject* outputs = PyDict_New();
     const auto& signature_def_inputs =
-        interpreter_->signature_inputs(sig_def_name->c_str());
+        interpreter_->signature_inputs(sig_key->c_str());
     const auto& signature_def_outputs =
-        interpreter_->signature_outputs(sig_def_name->c_str());
+        interpreter_->signature_outputs(sig_key->c_str());
     for (const auto& input : signature_def_inputs) {
       PyDict_SetItemString(inputs, input.first.c_str(),
                            PyLong_FromLong(input.second));
@@ -653,17 +653,17 @@ PyObject* InterpreterWrapper::GetSignatureDefs() const {
 
     PyDict_SetItemString(signature_def, "inputs", inputs);
     PyDict_SetItemString(signature_def, "outputs", outputs);
-    PyDict_SetItemString(result, sig_def_name->c_str(), signature_def);
+    PyDict_SetItemString(result, sig_key->c_str(), signature_def);
   }
   return result;
 }
 
-PyObject* InterpreterWrapper::GetSubgraphIndexFromSignatureDefName(
-    const char* method_name) {
+PyObject* InterpreterWrapper::GetSubgraphIndexFromSignature(
+    const char* signature_key) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
 
   int32_t subgraph_index =
-      interpreter_->GetSubgraphIndexFromSignatureDefName(method_name);
+      interpreter_->GetSubgraphIndexFromSignature(signature_key);
 
   if (subgraph_index < 0) {
     PyErr_SetString(PyExc_ValueError, "No matching signature.");

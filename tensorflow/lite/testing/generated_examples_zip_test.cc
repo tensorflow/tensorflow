@@ -103,6 +103,11 @@ const std::map<string, string>& GetKnownBrokenTests() {
       {R"(^\/div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
+      // TODO(b/194364155): TF and TFLite have different behaviors when output
+      // nan values in LocalResponseNorm ops.
+      {R"(^\/local_response_norm.*alpha=-3.*beta=2)", "194364155"},
+      {R"(^\/local_response_norm.*alpha=(None|2).*beta=2.*bias=-0\.1.*depth_radius=(0|1).*input_shape=\[3,15,14,3\])",
+       "194364155"},
   });
   return *kBrokenTests;
 }
@@ -170,7 +175,7 @@ class ArchiveEnvironment : public ::testing::Environment {
   // Delete all temporary directories on teardown.
   void TearDown() override {
     for (const auto& dir : temporary_directories_) {
-      tensorflow::int64 undeleted_dirs, undeleted_files;
+      int64_t undeleted_dirs, undeleted_files;
       TF_CHECK_OK(
           env->DeleteRecursively(dir, &undeleted_dirs, &undeleted_files));
     }

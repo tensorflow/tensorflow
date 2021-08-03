@@ -89,7 +89,7 @@ void SimplePropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
       input_tensors_[dst_loc] = (*outputs)[src_slot];
     }
 
-    int32 previous_num_pending =
+    int32_t previous_num_pending =
         pending_[dst_id].fetch_sub(1, std::memory_order_release);
     if (previous_num_pending == 1) ready->emplace_back(&gview.node_ref(dst_id));
   }
@@ -97,7 +97,7 @@ void SimplePropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
   for (const ControlEdgeInfo& e : item->output_control_edges()) {
     const int dst_id = e.dst_id;
 
-    int32 previous_num_pending =
+    int32_t previous_num_pending =
         pending_[dst_id].fetch_sub(1, std::memory_order_release);
     if (previous_num_pending == 1) ready->emplace_back(&gview.node_ref(dst_id));
   }

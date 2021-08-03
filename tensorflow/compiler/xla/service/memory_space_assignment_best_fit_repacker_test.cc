@@ -25,8 +25,9 @@ class MemorySpaceAssignmentBestFitRepackerTest : public ::testing::Test {
 
   MemorySpaceAssignmentBestFitRepackerTest() : repacker_(100, 1) {}
 
-  AllocationBlock* MakeAllocationBlock(int64 start_time, int64 end_time,
-                                       int64 size, int64 initial_offset = -1) {
+  AllocationBlock* MakeAllocationBlock(int64_t start_time, int64_t end_time,
+                                       int64_t size,
+                                       int64_t initial_offset = -1) {
     allocation_blocks_.push_back({start_time,
                                   end_time,
                                   size,

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -72,26 +73,26 @@ class QuantizedAddTester {
 
   inline bool Input2Static() const { return input2_static_; }
 
-  inline QuantizedAddTester& Input1ZeroPoint(int8_t input1_zero_point) {
+  inline QuantizedAddTester& Input1ZeroPoint(int32_t input1_zero_point) {
     input1_zero_point_ = input1_zero_point;
     return *this;
   }
 
-  inline int8_t Input1ZeroPoint() const { return input1_zero_point_; }
+  inline int32_t Input1ZeroPoint() const { return input1_zero_point_; }
 
-  inline QuantizedAddTester& Input2ZeroPoint(int8_t input2_zero_point) {
+  inline QuantizedAddTester& Input2ZeroPoint(int32_t input2_zero_point) {
     input2_zero_point_ = input2_zero_point;
     return *this;
   }
 
-  inline int8_t Input2ZeroPoint() const { return input2_zero_point_; }
+  inline int32_t Input2ZeroPoint() const { return input2_zero_point_; }
 
-  inline QuantizedAddTester& OutputZeroPoint(int8_t output_zero_point) {
+  inline QuantizedAddTester& OutputZeroPoint(int32_t output_zero_point) {
     output_zero_point_ = output_zero_point;
     return *this;
   }
 
-  inline int8_t OutputZeroPoint() const { return output_zero_point_; }
+  inline int32_t OutputZeroPoint() const { return output_zero_point_; }
 
   inline QuantizedAddTester& Input1Scale(float input1_scale) {
     input1_scale_ = input1_scale;
@@ -114,6 +115,13 @@ class QuantizedAddTester {
 
   inline float OutputScale() const { return output_scale_; }
 
+  inline QuantizedAddTester& Unsigned(bool is_unsigned) {
+    unsigned_ = is_unsigned;
+    return *this;
+  }
+
+  inline bool Unsigned() const { return unsigned_; }
+
   inline QuantizedAddTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
     return *this;
@@ -128,6 +136,10 @@ class QuantizedAddTester {
     activation_ = ::tflite::ActivationFunctionType_RELU_N1_TO_1;
     return *this;
   }
+
+  template <class T>
+  void Test(Interpreter* delegate_interpreter,
+            Interpreter* default_interpreter) const;
 
   void Test(TfLiteDelegate* delegate) const;
 
@@ -144,12 +156,13 @@ class QuantizedAddTester {
   std::vector<int32_t> input2_shape_;
   bool input1_static_ = false;
   bool input2_static_ = false;
-  int8_t input1_zero_point_ = 0;
-  int8_t input2_zero_point_ = 0;
-  int8_t output_zero_point_ = 0;
+  int32_t input1_zero_point_ = 0;
+  int32_t input2_zero_point_ = 0;
+  int32_t output_zero_point_ = 0;
   float input1_scale_ = 0.75f;
   float input2_scale_ = 1.0f;
   float output_scale_ = 1.25f;
+  bool unsigned_ = false;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
 };

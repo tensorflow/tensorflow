@@ -59,7 +59,7 @@ struct InTopKFunctor<CPUDevice, T, TargetT> {
     const Eigen::Index num_targets = predictions.dimension(0);
     const Eigen::Index num_classes = predictions.dimension(1);
 
-    int64 k_val = k.k_value;
+    int64_t k_val = k.k_value;
     if (k.k_tensor != nullptr) {
       if (k.k_tensor->dtype() == DT_INT32) {
         k_val = k.k_tensor->scalar<int32>()();

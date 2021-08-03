@@ -109,7 +109,7 @@ std::vector<Shape> AllLayoutsOf(const Shape& s) {
 }
 
 TEST_F(LayoutAssignmentTest, BatchNormInference) {
-  const int64 kFeatureIndex = 1;
+  const int64_t kFeatureIndex = 1;
 
   // The shape of the data operand to BatchNormInference and of the output of
   // the BatchNormInference call.
@@ -180,7 +180,7 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
 }
 
 TEST_F(LayoutAssignmentTest, BatchNormTraining) {
-  const int64 kFeatureIndex = 1;
+  const int64_t kFeatureIndex = 1;
 
   // The shape of the data operand to BatchNormTraining.
   Shape shape = ShapeUtil::MakeShape(F32, {42, 12, 1, 100});
@@ -252,7 +252,7 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
 }
 
 TEST_F(LayoutAssignmentTest, BatchNormGrad) {
-  const int64 kFeatureIndex = 1;
+  const int64_t kFeatureIndex = 1;
 
   // The shape of the data operand to BatchNormTraining.
   Shape shape = ShapeUtil::MakeShape(F32, {42, 12, 1, 100});

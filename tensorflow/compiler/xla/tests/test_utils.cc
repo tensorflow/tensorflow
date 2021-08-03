@@ -481,7 +481,7 @@ ConstantType GetInitValue(const HloComputation& computation) {
 bool NeedsInitValue(const HloUse& use) {
   const HloInstruction* const instruction = use.instruction;
   const HloOpcode opcode = instruction->opcode();
-  const int64 op_num = use.operand_number;
+  const int64_t op_num = use.operand_number;
   return ((opcode == HloOpcode::kReduceWindow && op_num == 1) ||
           (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
           (opcode == HloOpcode::kReduce &&
@@ -508,7 +508,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
     for (const HloUse& use : value.uses()) {
       HloInstruction* instruction = use.instruction;
       const HloOpcode opcode = instruction->opcode();
-      const int64 op_num = use.operand_number;
+      const int64_t op_num = use.operand_number;
       if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
           (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
         constrained_uses.push_back(instruction);
@@ -563,7 +563,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         const Shape& slice_shape = use->opcode() == HloOpcode::kDynamicSlice
                                        ? use->shape()
                                        : use->operand(1)->shape();
-        const int64 first_index =
+        const int64_t first_index =
             Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
         for (int64_t operand = first_index; operand < use->operand_count();
              ++operand) {

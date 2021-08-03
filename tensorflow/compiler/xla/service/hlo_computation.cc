@@ -79,7 +79,7 @@ HloComputation::HloComputation(
   bool root_found = false;
   for (auto& instruction : *instructions) {
     if (instruction->opcode() == HloOpcode::kParameter) {
-      int64 param_no = instruction->parameter_number();
+      int64_t param_no = instruction->parameter_number();
       CHECK(param_no >= 0 && param_no < parameter_count)
           << "\nERROR: invalid parameter number.  Expected [0, "
           << parameter_count << "), got " << param_no;
@@ -157,7 +157,7 @@ HloInstruction* HloComputation::AddEntryComputationParameter(
 }
 
 Status HloComputation::ReplaceEntryComputationParameter(
-    int64 param_no, HloInstruction* old_instruction,
+    int64_t param_no, HloInstruction* old_instruction,
     std::unique_ptr<HloInstruction> instruction) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
@@ -176,7 +176,7 @@ Status HloComputation::ReplaceEntryComputationParameter(
   return ForceRemoveInstruction(old_instruction);
 }
 
-Status HloComputation::RemoveParameter(int64 param_no) {
+Status HloComputation::RemoveParameter(int64_t param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
   CHECK(IsFusionComputation());
@@ -200,25 +200,6 @@ Status HloComputation::RemoveParameter(int64 param_no) {
   return Status::OK();
 }
 
-HloInstruction* HloComputation::ReplaceParameter(
-    int64 param_no, std::unique_ptr<HloInstruction> instruction) {
-  CHECK_GE(param_no, 0);
-  CHECK_LT(param_no, param_instructions_.size());
-  CHECK(instruction->opcode() == HloOpcode::kParameter);
-  CHECK(IsFusionComputation());
-  CHECK_EQ(fusion_instruction_->operand_count(), param_instructions_.size());
-
-  instruction->set_parent(this);
-  HloInstruction* new_instruction =
-      AddInstructionInternal(std::move(instruction));
-  HloInstruction* old_instruction = param_instructions_[param_no];
-  CHECK(
-      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction).ok());
-  param_instructions_[param_no] = new_instruction;
-  CHECK(RemoveInstruction(old_instruction).ok());
-  return new_instruction;
-}
-
 Status HloComputation::RemoveUnusedParametersFromFusedComputation() {
   return RemoveUnusedParametersImpl(/*allow_non_fusion=*/false);
 }
@@ -229,8 +210,8 @@ Status HloComputation::RemoveUnusedParametersFromAnyComputation() {
 
 Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   CHECK(allow_non_fusion || IsFusionComputation());
-  int64 removed = 0;
-  for (int64 i = 0; i < param_instructions_.size(); ++i) {
+  int64_t removed = 0;
+  for (int64_t i = 0; i < param_instructions_.size(); ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
     if (param_instruction->user_count() == 0 &&
         param_instruction != root_instruction()) {
@@ -241,7 +222,7 @@ Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
     }
 
     if (removed > 0) {
-      const int64 param_no = i - removed;
+      const int64_t param_no = i - removed;
       HloInstruction* new_instr = AddInstructionInternal(
           HloInstruction::CreateParameter(param_no, param_instruction->shape(),
                                           StrCat("param_", param_no)));
@@ -469,7 +450,7 @@ void HloComputation::ComputeInstructionPostOrder(
       // processed first. This will produce a more natural ordering and a nicer
       // result for things like HLO stringification.
       const auto& operands = inst->operands();
-      for (int64 i = operands.size() - 1; i >= 0; --i) {
+      for (int64_t i = operands.size() - 1; i >= 0; --i) {
         add_dfs_stack(operands[i]);
       }
 
@@ -495,6 +476,11 @@ void HloComputation::ComputeInstructionPostOrder(
 HloComputation::ChannelDependencyGroup
 HloComputation::ComputeChannelDependencies() const {
   ChannelDependencyGroup channel_dependency_group;
+  if (parent() && parent()->config().has_static_device_assignment() &&
+      (parent()->config().static_device_assignment().computation_count() == 1 ||
+       parent()->config().use_spmd_partitioning())) {
+    return channel_dependency_group;
+  }
   for (const auto& instruction : instructions_) {
     switch (instruction->opcode()) {
       case HloOpcode::kSend:
@@ -701,7 +687,7 @@ HloComputation::CreateFromProto(
   absl::flat_hash_map<int64, HloInstruction*> instruction_map;
   absl::flat_hash_map<HloInstruction*, int64> to_proto_id;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
-  int64 parameter_count = 0;
+  int64_t parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
                         HloInstruction::CreateFromProto(
@@ -731,7 +717,7 @@ HloComputation::CreateFromProto(
     int parameters_seen_count = 0;
     for (auto& instruction : instructions) {
       if (instruction->opcode() == HloOpcode::kParameter) {
-        int64 param_no = instruction->parameter_number();
+        int64_t param_no = instruction->parameter_number();
         TF_RET_CHECK(param_no >= 0 && param_no < parameter_count)
             << "Invalid parameter number.  Expected [0, " << parameter_count
             << "), got " << param_no;
@@ -791,7 +777,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
                         HloComputation* computation)>& copy_leaf) {
   if (instruction->shape().IsTuple()) {
     std::vector<HloInstruction*> elements;
-    for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
          i++) {
       HloInstruction* gte =
           AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -945,11 +931,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
       << ShapeUtil::HumanString(new_instruction->shape());
-  return ReplaceInstructionWithDifferentShape(old_instruction, new_instruction);
-}
 
-Status HloComputation::ReplaceInstructionWithDifferentShape(
-    HloInstruction* old_instruction, HloInstruction* new_instruction) {
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
   // Try to add metadata for HLO instructions that are created to replace
@@ -979,8 +961,7 @@ Status HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->set_sharding(old_instruction->sharding_ptr());
   }
 
-  TF_RETURN_IF_ERROR(
-      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
+  TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 

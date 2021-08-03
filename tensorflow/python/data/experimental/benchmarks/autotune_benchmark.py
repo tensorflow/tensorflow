@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.ops import math_ops
 
 
@@ -30,7 +31,7 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
 
   def _run_benchmark(self, dataset, autotune, autotune_buffers,
                      benchmark_iters, benchmark_label, benchmark_id):
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune
     options.experimental_optimization.autotune_buffers = autotune_buffers

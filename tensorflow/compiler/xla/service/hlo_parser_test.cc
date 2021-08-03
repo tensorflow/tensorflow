@@ -1108,6 +1108,18 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 
 )"
 },
+// CustomCall that returns a status.
+{
+"CustomCallWithStatusReturningVersion",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_STATUS_RETURNING
+}
+
+)"
+},
 // Parse c64 literal
 {
 "ParseC64Literal",
@@ -1763,6 +1775,61 @@ ENTRY CollectivePermuteInPlaceUpdate {
 )",
 /*replica_count=*/4
 },
+// collective-permute with in-place updates with multiple targets per source
+{
+"CollectivePermuteInPlaceUpdateMultipleReadWrite",
+R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite
+
+ENTRY CollectivePermuteInPlaceUpdate {
+  constant.3 = s32[] constant(2)
+  constant.1 = s32[] constant(0)
+  output_offset.3 = (s32[], s32[], s32[]) tuple(constant.3, constant.1, constant.1)
+  constant.4 = s32[] constant(3)
+  output_offset.4 = (s32[], s32[], s32[]) tuple(constant.4, constant.1, constant.1)
+  input = f32[8,8,128]{2,1,0} parameter(0)
+  constant = f32[] constant(1)
+  output = f32[8,8,128]{2,1,0} broadcast(constant), dimensions={}
+  input_offset.1 = (s32[], s32[], s32[]) tuple(constant.1, constant.1, constant.1)
+  constant.2 = s32[] constant(1)
+  input_offset.2 = (s32[], s32[], s32[]) tuple(constant.2, constant.1, constant.1)
+  input_offset = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(input_offset.1, input_offset.2)
+  output_offset = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(input_offset.1, input_offset.2)
+  ROOT root = f32[8,8,128]{2,1,0} collective-permute(input, output, input_offset, output_offset), source_target_pairs={{0,1},{1,2},{2,3},{0,3},{2,1},{3,2}}, slice_sizes={{1,8,128},{1,8,128}}
+}
+
+)",
+/*replica_count=*/4
+},
+{
+"CollectivePermuteInPlaceUpdateTupleMultipleReadWrite",
+R"(HloModule hlo_runner_test_0.1
+
+ENTRY hlo_runner_test_0.1 {
+  replica_id = u32[] replica-id()
+  broadcast.0 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(replica_id), dimensions={}
+  tuple.input = (u32[2,8,128]{2,1,0:T(2,128)}, u32[2,8,128]{2,1,0:T(2,128)}) tuple(broadcast.0, broadcast.0)
+  constant.1 = u32[] constant(1000)
+  broadcast.1 = u32[2,8,128]{2,1,0:T(2,128)} broadcast(constant.1), dimensions={}
+  broadcast.2 = u32[4,8,128]{2,1,0:T(2,128)} broadcast(constant.1), dimensions={}
+  tuple.output = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) tuple(broadcast.1, broadcast.2)
+  constant.2 = s32[] constant(0)
+  tuple.2 = (s32[], s32[], s32[]) tuple(constant.2, constant.2, constant.2)
+  constant.3 = s32[] constant(1)
+  tuple.3 = (s32[], s32[], s32[]) tuple(constant.3, constant.2, constant.2)
+  tuple.4 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2, tuple.3)
+  tuple.7 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2, tuple.2)
+  tuple.8 = (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(tuple.4, tuple.7)
+  constant.4 = s32[] constant(2)
+  tuple.5 = (s32[], s32[], s32[]) tuple(constant.4, constant.2, constant.2)
+  tuple.6 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple(tuple.2, tuple.5)
+  tuple.9 = (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(tuple.4, tuple.6)
+  ROOT collective-permute.53 = (u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)}) collective-permute(tuple.input, tuple.output, tuple.8, tuple.9), source_target_pairs={{0,1},{1,2},{2,3},{3,0},{0,3},{3,2},{2,1},{1,0}}, slice_sizes={{1,8,128},{1,8,128},{2,8,128},{2,8,128}}
+}
+
+)",
+/*replica_count=*/4
+},
+
 // collective-permute tuple with in-place updates
 {
 "CollectivePermuteTupleInPlaceUpdate",
@@ -1862,6 +1929,17 @@ R"(HloModule CustomCallWithWindowAndDimLabelsAndFeatureGroupCount
 
 ENTRY Computation {
   ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=b01f_01io->b01f, feature_group_count=2, custom_call_target="target"
+}
+
+)"
+    },
+// custom-call with unknown dim labels.
+{
+"CustomCallWithUnknownDimLabels",
+R"(HloModule CustomCallWithUnknownDimLabels
+
+ENTRY Computation {
+  ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=?b01f_0?1io->b01?f, custom_call_target="target"
 }
 
 )"
@@ -2902,6 +2980,20 @@ TEST_F(HloParserTest, ParseShardingPartialReplication) {
       original);
 }
 
+TEST_F(HloParserTest, ParseShardingSubGroup) {
+  const string original =
+      "{devices=[2,2,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 "
+      "last_tile_dims={replicated, manual}}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  Array<int64> tile_assignment({2, 2, 2, 2});
+  tile_assignment.FillIota(0);
+  std::vector<OpSharding::Type> sharding_types = {OpSharding::REPLICATED,
+                                                  OpSharding::MANUAL};
+  EXPECT_EQ(HloSharding::Subgroup(tile_assignment, sharding_types).ToString(),
+            original);
+}
+
 TEST_F(HloParserTest, ParseFrontendAttributes) {
   const string original =
       R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";
@@ -3275,6 +3367,34 @@ ENTRY %CustomCallIncompatibleOperandConstraints (p0: f32[42,2,3], p1: f32[123,4]
   ExpectHasSubstr(
       ParseAndReturnUnverifiedModule(original).status().error_message(),
       "operand 1 is not compatible with operand shape");
+}
+
+TEST_F(HloParserTest, CustomCallWithNonexistentVersion) {
+  const string original = R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_THAT_DOESNT_EXIST
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Unknown API version");
+}
+
+TEST_F(HloParserTest, CustomCallWithUnspecifiedVersion) {
+  const string original = R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call.1 = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo", api_version=API_VERSION_UNSPECIFIED
+}
+
+)";
+  ExpectHasSubstr(
+      ParseAndReturnUnverifiedModule(original).status().error_message(),
+      "Invalid API version");
 }
 
 TEST_F(HloParserTest, AllowShapeWhitespace) {
@@ -3679,6 +3799,21 @@ ENTRY InferUnaryShape {
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
       ShapeUtil::MakeScalarShape(F32)));
+}
+
+TEST_F(HloParserTest, CheckAliasPassthroughParams) {
+  const char* const hlo_string = R"(
+HloModule TestModule, alias_passthrough_params=true
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_TRUE(result.ValueOrDie()->config().alias_passthrough_params());
 }
 
 }  // namespace

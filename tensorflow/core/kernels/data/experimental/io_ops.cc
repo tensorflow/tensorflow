@@ -142,7 +142,7 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
     (*num_elements)++;
 
     // Run the shard function to compute the shard index.
-    int64 shard_index = -1;
+    int64_t shard_index = -1;
     TF_RETURN_IF_ERROR(GetShardIndex(
         &iter_ctx, instantiated_captured_func.get(), element, &shard_index));
 
@@ -375,7 +375,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
         }
         (num_elements_)++;
 
-        int64 shard_index = 0;
+        int64_t shard_index = 0;
         TF_RETURN_IF_ERROR(
             GetShardIndex(ctx, instantiated_shard_func_.get(), *out_tensors,
                           dataset()->use_shard_func_, &shard_index));
@@ -420,8 +420,8 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      int64 run_id_signed;
-      int64 current_checkpoint_id;
+      int64_t run_id_signed;
+      int64_t current_checkpoint_id;
 
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunId), &run_id_signed));
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentCheckpointId),

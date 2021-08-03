@@ -62,8 +62,8 @@ constexpr char kErrorMessageSuffix[] = ".error_message";
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-          int64 slack_period, bool legacy_autotune, int64 buffer_size_min)
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+          int64_t slack_period, bool legacy_autotune, int64_t buffer_size_min)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         buffer_size_(buffer_size),
@@ -271,7 +271,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       size_t buffer_size;
       {
-        int64 temp;
+        int64_t temp;
         TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kBufferSize, &temp));
         buffer_size = static_cast<size_t>(temp);
       }
@@ -282,7 +282,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         if (buffer_element.status.ok()) {
           size_t value_size;
           {
-            int64 temp;
+            int64_t temp;
             TF_RETURN_IF_ERROR(
                 reader->ReadScalar(absl::StrCat(prefix(), "::", i),
                                    absl::StrCat(kBuffer, kSizeSuffix), &temp));
@@ -303,7 +303,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 limit = -1, size = -1;
+      int64_t limit = -1, size = -1;
       data::TraceMeMetadata result;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
@@ -391,7 +391,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // (if we successfully got an element) the output values.
       Status s = buffer_.front().status;
       if (s.ok()) {
-        int64 buffer_element_id = buffer_.front().uid;
+        int64_t buffer_element_id = buffer_.front().uid;
         profiler::TraceMe traceme(
             [&] {
               return profiler::TraceMeEncode(
@@ -402,7 +402,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             (num_elements() + 1) % dataset()->slack_period_ == 0) {
           // TODO(rachelim): Consider doing something more sophisticated
           // to decide how long to sleep for; e.g. using a kalman filter.
-          int64 slack_us = EnvTime::NowMicros() - buffer_.front().created_us;
+          int64_t slack_us = EnvTime::NowMicros() - buffer_.front().created_us;
           // Every slack_period_-th element, update the most recent slack time,
           // measured by the duration between when the element is prefetched
           // and when it is consumed. We add kSleepFactor * slack_us_ to the
@@ -531,7 +531,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status ReadStatus(IteratorStateReader* reader, size_t index, Status* status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      int64 code_int;
+      int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
                                             CodeKey(), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
@@ -616,7 +616,7 @@ PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
 
 void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
-  int64 buffer_size = 0;
+  int64_t buffer_size = 0;
   OP_REQUIRES_OK(ctx,
                  ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx, buffer_size >= 0 || buffer_size == model::kAutotune,

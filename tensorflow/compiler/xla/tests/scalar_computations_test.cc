@@ -127,8 +127,8 @@ XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsU64) {
 
 XLA_TEST_F(ScalarComputationsTest, AddTwoScalarsS64) {
   XlaBuilder builder(TestName());
-  const int64 a = static_cast<int64>(1) << 62;
-  const int64 b = a - 1;
+  const int64_t a = static_cast<int64>(1) << 62;
+  const int64_t b = a - 1;
   Add(ConstantR0<int64>(&builder, a), ConstantR0<int64>(&builder, b));
 
   ComputeAndCompareR0<int64>(&builder, a + b, {});
@@ -195,15 +195,15 @@ XLA_TEST_F(ScalarComputationsTest, MulTwoScalarsS32) {
                              std::numeric_limits<int32>::max(),
                              std::numeric_limits<int32>::min()};
 
-  for (int32 x : data) {
-    for (int32 y : data) {
+  for (int32_t x : data) {
+    for (int32_t y : data) {
       XlaBuilder builder(TestName());
       Mul(ConstantR0<int32>(&builder, x), ConstantR0<int32>(&builder, y));
 
       // Signed integer overflow is undefined behavior in C++. Convert the input
       // integers to unsigned, perform the multiplication unsigned, and convert
       // back.
-      int32 expected = static_cast<uint32>(x) * static_cast<uint32>(y);
+      int32_t expected = static_cast<uint32>(x) * static_cast<uint32>(y);
 
       ComputeAndCompareR0<int32>(&builder, expected, {});
     }
@@ -485,8 +485,8 @@ XLA_TEST_F(ScalarComputationsTest, AndBool) {
 }
 
 XLA_TEST_F(ScalarComputationsTest, AndS32) {
-  for (int32 x : {0, 8}) {
-    for (int32 y : {1, -16}) {
+  for (int32_t x : {0, 8}) {
+    for (int32_t y : {1, -16}) {
       XlaBuilder builder(TestName());
       And(ConstantR0<int32>(&builder, x), ConstantR0<int32>(&builder, y));
 
@@ -518,8 +518,8 @@ XLA_TEST_F(ScalarComputationsTest, OrBool) {
 }
 
 XLA_TEST_F(ScalarComputationsTest, OrS32) {
-  for (int32 x : {0, 8}) {
-    for (int32 y : {1, -16}) {
+  for (int32_t x : {0, 8}) {
+    for (int32_t y : {1, -16}) {
       XlaBuilder builder(TestName());
       Or(ConstantR0<int32>(&builder, x), ConstantR0<int32>(&builder, y));
 
@@ -549,7 +549,7 @@ XLA_TEST_F(ScalarComputationsTest, NotBool) {
 }
 
 XLA_TEST_F(ScalarComputationsTest, NotS32) {
-  for (int32 x : {-1, 0, 1}) {
+  for (int32_t x : {-1, 0, 1}) {
     XlaBuilder builder(TestName());
     Not(ConstantR0<int32>(&builder, x));
 

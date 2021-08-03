@@ -49,7 +49,8 @@ struct TfOp {
 };
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname);
 
-// Returns a vector of TF name scopes extracted from tf_op_full_name.
+// Returns a vector of TF name scopes extracted from a TF op name.
+std::vector<absl::string_view> ParseTfNameScopes(absl::string_view tf_op_name);
 std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op);
 
 // Trace event name for TF ops is the op type so they have the same color in
@@ -72,8 +73,9 @@ inline bool IsDatasetOp(const TfOp& tf_op) {
 }
 
 // Returns true if the given name is a TensorFlow Infeed Enqueue Op.
+// See: tensorflow/core/tpu/kernels/infeed_ops.h
 inline bool IsInfeedEnqueueOp(absl::string_view tf_op_type) {
-  return tf_op_type == "InfeedEnqueue" || tf_op_type == "InfeedEnqueueTuple";
+  return absl::StartsWith(tf_op_type, "InfeedEnqueue");
 }
 
 // Returns true if the given op is for outside compilation.

@@ -1139,7 +1139,7 @@ BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 4096);
 BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 1048576);
 
 static void BM_BundleWriterSmallTensor(::testing::benchmark::State& state) {
-  const int64 bytes = state.range(0);
+  const int64_t bytes = state.range(0);
   Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
   BundleWriter writer(Env::Default(), Prefix("foo"));
   int suffix = 0;
@@ -1152,7 +1152,7 @@ BENCHMARK(BM_BundleWriterSmallTensor)->Range(1, 1 << 20);
 
 static void BM_BundleWriterLargeTensor(::testing::benchmark::State& state) {
   const int mb = state.range(0);
-  const int64 bytes = static_cast<int64>(mb) * (1 << 20);
+  const int64_t bytes = static_cast<int64>(mb) * (1 << 20);
   Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
   for (auto s : state) {
     BundleWriter writer(Env::Default(), Prefix("foo"));

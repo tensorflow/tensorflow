@@ -31,7 +31,7 @@ class TopKOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* context) override {
-    int64 k;
+    int64_t k;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(1, &k));
     OP_REQUIRES(context, k >= 0,
                 errors::InvalidArgument("Need k >= 0, got ", k));

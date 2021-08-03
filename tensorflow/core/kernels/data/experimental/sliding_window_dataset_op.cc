@@ -33,19 +33,19 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 window_size = 0;
+    int64_t window_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "window_size", &window_size));
     OP_REQUIRES(
         ctx, window_size > 0,
         errors::InvalidArgument("Window size must be greater than zero."));
-    int64 window_shift = 0;
+    int64_t window_shift = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "window_shift", &window_shift));
     OP_REQUIRES(
         ctx, window_shift > 0,
         errors::InvalidArgument("Window shift must be greater than zero."));
-    int64 window_stride = 0;
+    int64_t window_stride = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "window_stride", &window_stride));
     OP_REQUIRES(
@@ -62,8 +62,8 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, int64 window_size, int64 window_shift,
-            int64 window_stride, const DatasetBase* input)
+    Dataset(OpKernelContext* ctx, int64_t window_size, int64_t window_shift,
+            int64_t window_stride, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           window_size_(window_size),
           window_shift_(window_shift),
@@ -101,7 +101,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override {
-      int64 n = input_->Cardinality();
+      int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
@@ -150,9 +150,9 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        const int64 window_size = dataset()->window_size_;
-        const int64 window_shift = dataset()->window_shift_;
-        const int64 window_stride = dataset()->window_stride_;
+        const int64_t window_size = dataset()->window_size_;
+        const int64_t window_shift = dataset()->window_shift_;
+        const int64_t window_stride = dataset()->window_stride_;
         std::vector<std::vector<Tensor>> batch_elements;
         {
           mutex_lock l(mu_);
@@ -207,7 +207,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
 
         // Construct output tensors.
         const size_t num_tuple_components = batch_elements[0].size();
-        const int64 num_batch_elements = batch_elements.size();
+        const int64_t num_batch_elements = batch_elements.size();
         for (size_t component_index = 0; component_index < num_tuple_components;
              ++component_index) {
           const Tensor& first_element = batch_elements[0][component_index];
@@ -257,10 +257,10 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
         // Save buffer.
         TF_RETURN_IF_ERROR(writer->WriteScalar(strings::StrCat("buffer_size"),
                                                buffer_.size()));
-        for (int64 i = 0; i < buffer_.size(); i++) {
+        for (int64_t i = 0; i < buffer_.size(); i++) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               strings::StrCat("buffer[", i, "]_size"), buffer_[i].size()));
-          for (int64 j = 0; j < buffer_[i].size(); j++) {
+          for (int64_t j = 0; j < buffer_[i].size(); j++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
                 strings::StrCat("buffer[", i, "][", j, "]"), buffer_[i][j]));
           }
@@ -277,16 +277,16 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
         }
         // Restore buffer.
-        int64 buffer_size = 0;
+        int64_t buffer_size = 0;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(strings::StrCat("buffer_size"), &buffer_size));
         buffer_.resize(buffer_size);
-        for (int64 i = 0; i < buffer_size; i++) {
-          int64 vector_size;
+        for (int64_t i = 0; i < buffer_size; i++) {
+          int64_t vector_size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               strings::StrCat("buffer[", i, "]_size"), &vector_size));
           buffer_[i].resize(vector_size);
-          for (int64 j = 0; j < vector_size; j++) {
+          for (int64_t j = 0; j < vector_size; j++) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
                 ctx->flr(), strings::StrCat("buffer[", i, "][", j, "]"),
                 &buffer_[i][j]));
@@ -296,7 +296,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      size_t TargetBufferSize(int64 window_size, int64 window_stride) {
+      size_t TargetBufferSize(int64_t window_size, int64_t window_stride) {
         return (window_size - 1) * window_stride + 1;
       }
 

@@ -188,7 +188,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
 }
 
 XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileSingleComputation)) {
-  const int64 m = 256, k = 256, n = 256;
+  const int64_t m = 256, k = 256, n = 256;
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {m, k});
 
@@ -266,7 +266,7 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileSingleComputation)) {
 }
 
 XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
-  const int64 size = 256;
+  const int64_t size = 256;
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {size, size});
   Shape while_result_shape =
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {}), matrix_shape});

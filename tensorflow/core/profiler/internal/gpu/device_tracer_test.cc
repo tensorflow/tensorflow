@@ -506,11 +506,12 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   });
 
   // Expect these CUDA API activities to be found.
-  EXPECT_TRUE(found_activity_memory_device);
   EXPECT_TRUE(found_activity_memset);
   EXPECT_TRUE(found_activity_memcpy);
+
+  EXPECT_FALSE(found_activity_memory_device);
 #if CUPTI_NVBUG_3299481_WAR
-  EXPECT_TRUE(found_activity_memory_host);
+  EXPECT_FALSE(found_activity_memory_host);
 #endif
 }
 

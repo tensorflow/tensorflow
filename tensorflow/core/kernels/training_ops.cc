@@ -103,7 +103,7 @@ struct ApplyAdagradDA<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat gradient_accum,
                   typename TTypes<T>::Flat gradient_squared_accum,
-                  typename TTypes<T>::ConstScalar lr, int64 global_step,
+                  typename TTypes<T>::ConstScalar lr, int64_t global_step,
                   typename TTypes<T>::ConstScalar l1,
                   typename TTypes<T>::ConstScalar l2,
                   typename TTypes<T>::ConstFlat grad) {
@@ -169,8 +169,8 @@ struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
                     typename TTypes<T>::ConstScalar lr,
                     typename TTypes<T>::ConstScalar epsilon,
                     typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,
-                    bool update_slots) {
+                    typename TTypes<Tindex>::ConstVec indices,
+                    int64_t inner_dim, bool update_slots) {
     const Tindex N = static_cast<Tindex>(indices.dimension(0));
     if (N == 0) return Status::OK();
     const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
@@ -279,7 +279,7 @@ struct SparseApplyProximalAdagrad<CPUDevice, T, Tindex> {
                     typename TTypes<T>::ConstScalar l2,
                     typename TTypes<T>::ConstMatrix grad,
                     typename TTypes<Tindex>::ConstVec indices,
-                    int64 inner_dim) {
+                    int64_t inner_dim) {
     const Tindex N = static_cast<Tindex>(indices.dimension(0));
     if (N == 0) return Status::OK();
     const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
@@ -597,7 +597,7 @@ struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
                     typename TTypes<T>::ConstScalar lr_power,
                     typename TTypes<T>::ConstMatrix grad_flat,
                     typename TTypes<Tindex>::ConstVec indices_vec,
-                    int64 inner_dim, bool multiply_linear_by_lr) {
+                    int64_t inner_dim, bool multiply_linear_by_lr) {
     const Tindex N = static_cast<Tindex>(indices_vec.dimension(0));
     if (N > 0) {
       T lr_scalar = lr();
@@ -1461,7 +1461,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
-    int64 inner_dim = 1;
+    int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(strings::StrCat(
@@ -1921,7 +1921,7 @@ class SparseApplyAdagradOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
-    int64 inner_dim = 1;
+    int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(strings::StrCat(
@@ -2055,7 +2055,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
-    int64 inner_dim = 1;
+    int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(strings::StrCat(
@@ -2204,7 +2204,7 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
-    int64 inner_dim = 1;
+    int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(strings::StrCat(
@@ -2461,7 +2461,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
                 errors::InvalidArgument("global_step is not a scalar: ",
                                         global_step.shape().DebugString()));
 
-    int64 inner_dim = 1;
+    int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(strings::StrCat(
@@ -2528,7 +2528,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
         auto gradient_squared_accum_flat = gradient_squared_accum.flat<T>();
         auto grad_flat = grad.flat<T>();
         const double lr_scalar = lr.scalar<T>()();
-        const int64 global_step_scalar = global_step.scalar<int64>()();
+        const int64_t global_step_scalar = global_step.scalar<int64>()();
         const double l1_scalar = l1.scalar<T>()();
         const double l2_scalar = l2.scalar<T>()();
         const Tindex first_dim_size = var_flat.size();
@@ -2887,7 +2887,7 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("lr_power is not a "
                                         "non-positive scalar: ",
                                         lr_power.shape().DebugString()));
-    int64 inner_dim = 1;
+    int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(strings::StrCat(

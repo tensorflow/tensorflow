@@ -6458,6 +6458,45 @@ ENTRY entry {
               AllOf(op::Convolution(lhs, rhs), op::Shape("f32[16,801,1,512]")));
 }
 
+TEST_F(SpmdPartitioningTest, PartitionConvWithFeatureGroupCount2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[64,3,1,3072] parameter(0)
+  %lhs.copy = f32[64,3,1,3072] copy(%lhs),
+    sharding={devices=[1,1,1,4,8]0,1,2,3,4,5,6,7,16,17,18,19,20,21,22,23,24,25
+    ,26,27,28,29,30,31,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  %rhs = f32[3,1,1,3072] parameter(1)
+  %rhs.copy = f32[3,1,1,3072] copy(%rhs),
+    sharding={devices=[1,1,1,4,8]0,1,2,3,4,5,6,7,16,17,18,19,20,21,22,23,24,25
+    ,26,27,28,29,30,31,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+  ROOT %conv = f32[64,1,1,3072] convolution(%lhs.copy, %rhs.copy),
+    dim_labels=b01f_01io->b01f,feature_group_count=3072,
+    window={size=3x1},
+    sharding={devices=[8,1,1,4]0,16,24,8,2,18,26,10,4,20,28,12,6,22,30,14,7,23,
+    31,15,5,21,29,13,3,19,27,11,1,17,25,9}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs =
+      AllOf(op::DynamicSlice(
+                op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(),
+                                          op::Constant(), op::Constant(),
+                                          op::Reshape())),
+                op::Reshape(), op::Constant(), op::Constant(), op::Constant()),
+            op::Shape("f32[8,3,1,768]"));
+  auto rhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(), op::Constant(),
+                                op::Constant(), op::Reshape())),
+      op::Shape("f32[3,1,1,768]"));
+  EXPECT_THAT(root,
+              AllOf(op::Convolution(lhs, rhs), op::Shape("f32[8,1,1,768]")));
+}
+
 TEST_F(SpmdPartitioningTest,
        PartitionConvWithFeatureGroupCountRHSAlignWithLHS) {
   absl::string_view hlo_string = R"(

@@ -243,7 +243,7 @@ class HeapAlgorithm {
   virtual ~HeapAlgorithm() = default;
 
   // Alloc allocates a buffer of 'size' bytes.
-  virtual void Alloc(const BufferType* buffer, int64 size) = 0;
+  virtual void Alloc(const BufferType* buffer, int64_t size) = 0;
 
   // Takes memory usage of subcomputations into account when calculating the
   // memory usage of a computation. Currently, we don't handle buffer aliasing
@@ -257,12 +257,12 @@ class HeapAlgorithm {
   virtual void AccountForSubcomputationMemory(
       const HloInstruction* instruction,
       // The total number of bytes allocated by instruction.
-      int64 alloc_size_by_instruction,
+      int64_t alloc_size_by_instruction,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) {}
 
   // Free de-allocates a previously allocated buffer.
-  virtual void Free(const BufferType* buffer, int64 size) = 0;
+  virtual void Free(const BufferType* buffer, int64_t size) = 0;
 
   // Indicates that a buffer has to be collocated with another buffer. In
   // addition to Alloc and Free, the heap simulator exposes a concept of buffer
@@ -271,7 +271,7 @@ class HeapAlgorithm {
   // shared) buffer.  Each group of mutually-shared buffers points to a single
   // SharedGroup instance, which is a shared control block.
   virtual void ShareWith(const BufferType* buffer, const BufferType* share_with,
-                         int64 size) {
+                         int64_t size) {
     Alloc(buffer, size);
   }
 
@@ -292,14 +292,14 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
   NoFragmentationStatsHeap() = default;
   ~NoFragmentationStatsHeap() override = default;
 
-  void Alloc(const BufferType* buffer, int64 size) override;
+  void Alloc(const BufferType* buffer, int64_t size) override;
 
   void AccountForSubcomputationMemory(
-      const HloInstruction* instruction, int64 alloc_size_by_instruction,
+      const HloInstruction* instruction, int64_t alloc_size_by_instruction,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) override;
 
-  void Free(const BufferType* buffer, int64 size) override;
+  void Free(const BufferType* buffer, int64_t size) override;
 
   Result Finish() override;
 
@@ -333,14 +333,14 @@ class BufferIntervalTree {
   using Chunk = HeapSimulator::Chunk;
   // Adds a buffer to the interval tree, with the time interval and allocated
   // chunk specified.
-  void Add(int64 start, int64 end, const Chunk& chunk);
+  void Add(int64_t start, int64_t end, const Chunk& chunk);
 
   // Remove the interval from the tree. Returns true if the chunk is removed.
-  bool Remove(int64 start, int64 end, const Chunk& chunk);
+  bool Remove(int64_t start, int64_t end, const Chunk& chunk);
 
   // Returns vector of allocated chunks that overlap with the given time
   // interval.
-  std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) const;
+  std::vector<Chunk> ChunksOverlappingInTime(int64_t start, int64_t end) const;
 
   BufferIntervalTreeNode* GetRoot() { return root_; }
 
@@ -387,15 +387,15 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   using BufferIntervalCompare =
       std::function<bool(const BufferInterval&, const BufferInterval&)>;
 
-  explicit GlobalDecreasingSizeBestFitHeap(int64 alignment,
+  explicit GlobalDecreasingSizeBestFitHeap(int64_t alignment,
                                            Type type = kSpatial);
   ~GlobalDecreasingSizeBestFitHeap() override {}
 
-  void Alloc(const BufferType* buffer, int64 size) override;
-  void Free(const BufferType* buffer, int64 size) override;
+  void Alloc(const BufferType* buffer, int64_t size) override;
+  void Free(const BufferType* buffer, int64_t size) override;
 
   void ShareWith(const BufferType* buffer, const BufferType* share_with,
-                 int64 size) override;
+                 int64_t size) override;
 
   Result Finish() override;
 
@@ -423,7 +423,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // then call CommitChunk to associate the chunk with the BufferInterval, if
   // the final heap size is within the limits.
   ChunkCandidate FindChunkCandidate(const BufferInterval& buffer_interval,
-                                    int64 preferred_offset = -1) const;
+                                    int64_t preferred_offset = -1) const;
   void CommitChunk(const BufferInterval& buffer_interval,
                    ChunkCandidate chunk_candidate);
 
@@ -480,7 +480,7 @@ class ConstrainedGlobalDecreasingSizeBestFitHeap
     : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   explicit ConstrainedGlobalDecreasingSizeBestFitHeap(
-      uint64 size_limit_per_heap, int64 alignment, Type type = kSpatial)
+      uint64 size_limit_per_heap, int64_t alignment, Type type = kSpatial)
       : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, type),
         size_limit_per_heap_(size_limit_per_heap) {}
   ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
@@ -504,20 +504,20 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
       : algorithms_(std::move(*algorithms)) {}
   ~ChooseBestHeapAlgorithm() override {}
 
-  void Alloc(const BufferType* buffer, int64 size) override {
+  void Alloc(const BufferType* buffer, int64_t size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->Alloc(buffer, size);
     }
   }
 
   void ShareWith(const BufferType* buffer, const BufferType* share_with,
-                 int64 size) override {
+                 int64_t size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->ShareWith(buffer, share_with, size);
     }
   }
 
-  void Free(const BufferType* buffer, int64 size) override {
+  void Free(const BufferType* buffer, int64_t size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->Free(buffer, size);
     }

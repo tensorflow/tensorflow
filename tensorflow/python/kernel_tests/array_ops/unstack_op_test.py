@@ -42,7 +42,7 @@ class UnstackOpTest(test.TestCase):
 
   def randn(self, shape, dtype):
     data = np.random.randn(*shape)
-    if dtype == np.bool:
+    if dtype == np.bool_:
       return data < 0  # Naive casting yields True with P(1)!
     else:
       return data.astype(dtype)
@@ -68,7 +68,7 @@ class UnstackOpTest(test.TestCase):
       rank = len(shape)
       for axis in range(-rank, rank):
         for dtype in [
-            np.bool, np.float16, np.float32, np.float64, np.uint8, np.int32,
+            np.bool_, np.float16, np.float32, np.float64, np.uint8, np.int32,
             np.int64
         ]:
           data = self.randn(shape, dtype)
@@ -94,7 +94,7 @@ class UnstackOpTest(test.TestCase):
         rank = len(shape)
         for axis in range(-rank, rank):
           for dtype in [
-              np.bool, np.float16, np.float32, np.float64, np.uint8, np.int32,
+              np.bool_, np.float16, np.float32, np.float64, np.uint8, np.int32,
               np.int64
           ]:
             data = self.randn(shape, dtype)

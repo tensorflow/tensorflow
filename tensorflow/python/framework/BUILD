@@ -18,6 +18,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additi
 
 visibility = [
     "//tensorflow:__subpackages__",
+    "//third_party/py/tensorflow_numerics:__subpackages__",
 ]
 
 package(
@@ -325,7 +326,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":c_api_util",
-        ":error_interpolation",
         "//tensorflow/python:_pywrap_py_exception_registry",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python/util",
@@ -1131,6 +1131,7 @@ py_library(
     name = "extension_type",
     srcs = ["extension_type.py"],
     srcs_version = "PY3",
+    visibility = visibility,
     deps = [
         ":dtypes",
         ":extension_type_field",
@@ -1139,6 +1140,7 @@ py_library(
         ":tensor_shape",
         ":tensor_spec",
         ":type_spec",
+        "//tensorflow/python:composite_tensor_ops",
     ],
 )
 
@@ -1602,7 +1604,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
+    ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
     alwayslink = 1,
 )
 

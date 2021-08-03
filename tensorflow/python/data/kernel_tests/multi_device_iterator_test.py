@@ -25,6 +25,7 @@ from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -209,7 +210,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
     dataset = dataset.skip(0)  # this should be optimized away
     dataset = dataset.cache()
 
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.noop_elimination = True
     dataset = dataset.with_options(options)
 

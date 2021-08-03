@@ -45,7 +45,7 @@ namespace data {
 namespace model {
 
 // A constant that can be used to enable auto-tuning.
-constexpr int64 kAutotune = -1;
+constexpr int64_t kAutotune = -1;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
 
@@ -61,7 +61,7 @@ enum class TraversalOrder {
 // the performance model.
 struct SharedState {
  public:
-  SharedState(int64 value, std::shared_ptr<mutex> mu,
+  SharedState(int64_t value, std::shared_ptr<mutex> mu,
               std::shared_ptr<condition_variable> cond_var)
       : value(value),
         mu(std::move(mu)),
@@ -197,7 +197,7 @@ class Node {
   }
 
   // Increments the aggregate processing time by the given delta.
-  void add_processing_time(int64 delta) TF_LOCKS_EXCLUDED(mu_) {
+  void add_processing_time(int64_t delta) TF_LOCKS_EXCLUDED(mu_) {
     processing_time_ += delta;
   }
 
@@ -270,13 +270,17 @@ class Node {
   }
 
   // Records that the node consumed the given number of bytes.
-  void record_bytes_consumed(int64 num_bytes) { bytes_consumed_ += num_bytes; }
+  void record_bytes_consumed(int64_t num_bytes) {
+    bytes_consumed_ += num_bytes;
+  }
 
   // Records that the node produced the given number of bytes.
-  void record_bytes_produced(int64 num_bytes) { bytes_produced_ += num_bytes; }
+  void record_bytes_produced(int64_t num_bytes) {
+    bytes_produced_ += num_bytes;
+  }
 
   // Records the change in this node's buffer.
-  void record_buffer_event(int64 bytes_delta, int64 elements_delta) {
+  void record_buffer_event(int64_t bytes_delta, int64_t elements_delta) {
     buffered_bytes_ += bytes_delta;
     buffered_elements_ += elements_delta;
   }
@@ -287,13 +291,13 @@ class Node {
   }
 
   // Records that a node thread has started executing.
-  void record_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+  void record_start(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
     DCHECK_EQ(work_start_, 0);
     work_start_ = time_nanos;
   }
 
   // Records that a node thread has stopped executing.
-  void record_stop(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+  void record_stop(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
     // TODO(jsimsa): Use DCHECK_NE(work_start_, 0) here.
     if (work_start_ != 0) {
       processing_time_ += time_nanos - work_start_;
@@ -402,24 +406,24 @@ class Node {
 
     // Expects the total number of bytes consumed and records the delta since
     // last invocation.
-    void record_bytes_consumed(int64 total_bytes) {
-      int64 delta =
+    void record_bytes_consumed(int64_t total_bytes) {
+      int64_t delta =
           total_bytes - recorded_bytes_consumed_.exchange(total_bytes);
       bytes_consumed_counter_->IncrementBy(delta);
     }
 
     // Expects the total number of bytes produced and records the delta since
     // last invocation.
-    void record_bytes_produced(int64 total_bytes) {
-      int64 delta =
+    void record_bytes_produced(int64_t total_bytes) {
+      int64_t delta =
           total_bytes - recorded_bytes_produced_.exchange(total_bytes);
       bytes_produced_counter_->IncrementBy(delta);
     }
 
     // Expects the total number of elements produced and records the delta since
     // last invocation.
-    void record_num_elements(int64 total_elements) {
-      int64 delta =
+    void record_num_elements(int64_t total_elements) {
+      int64_t delta =
           total_elements - recorded_num_elements_.exchange(total_elements);
       num_elements_counter_->IncrementBy(delta);
     }
@@ -435,7 +439,7 @@ class Node {
 
   // Returns the number of inputs.
   int64 num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
-    int64 num_inputs = 0;
+    int64_t num_inputs = 0;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
@@ -555,7 +559,7 @@ class Node {
   // particular thread at any time. Therefore if `n->record_start()` is called
   // on thread `t`, then `n->record_stop()` must be called before another call
   // to `Node::record_start()` (for any node).
-  static thread_local int64 work_start_;  // Will be initialized to zero.
+  static thread_local int64_t work_start_;  // Will be initialized to zero.
 
   mutable mutex mu_;
   const int64 id_;
@@ -670,14 +674,14 @@ class Model {
   //
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
-  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                      int64 ram_budget,
+  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                      int64_t ram_budget,
                       CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget,
-                double model_input_time,
+  void Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                int64_t ram_budget, double model_input_time,
                 CancellationManager* cancellation_manager);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
@@ -707,8 +711,8 @@ class Model {
                      OptimizationParams* optimization_params);
 
  private:
-  static constexpr int64 kOptimizationPeriodMinMs = 10;
-  static constexpr int64 kOptimizationPeriodMaxMs =
+  static constexpr int64_t kOptimizationPeriodMinMs = 10;
+  static constexpr int64_t kOptimizationPeriodMaxMs =
       60 * EnvTime::kSecondsToMillis;
 
   // Collects tunable parameters in the tree rooted in the given node, returning
@@ -742,7 +746,7 @@ class Model {
   // Determines if we should stop the gradient descent optimization iterations
   // based on number of increasable parameters, CPU budget, RAM budget and
   // current resource usage.
-  bool ShouldStop(int64 cpu_budget, int64 ram_budget,
+  bool ShouldStop(int64_t cpu_budget, int64_t ram_budget,
                   const ModelParameters& parameters,
                   const ModelParameters& parallelism_parameters,
                   const ModelParameters& buffer_size_parameters,

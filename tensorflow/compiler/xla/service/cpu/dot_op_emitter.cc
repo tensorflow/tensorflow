@@ -186,7 +186,7 @@ class DotOpEmitter {
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.
   int64 GetGemvTilingFactor() const {
-    const int64 kDefaultTilingFactor = 8;
+    const int64_t kDefaultTilingFactor = 8;
     return options::LlvmIrGemvTilingFactor(hlo_module_config_)
         .value_or(kDefaultTilingFactor);
   }
@@ -1029,6 +1029,20 @@ DotImplementationStrategy GetDotImplementationStrategy(
       (primitive_util::IsFloatingPointType(element_type) ||
        primitive_util::IsIntegralType(element_type))) {
     return DotImplementationStrategy::kTiledLlvmIrGemv;
+  }
+
+  // MatMul smaller than 3x3 should use naive nested loop.
+  if ((dot_info.lhs_shape.dimensions_size() <= 1 ||
+       (dot_info.lhs_shape.dimensions_size() == 2 &&
+        (dot_info.lhs_shape.dimensions(0) <= 3 ||
+         dot_info.lhs_shape.dimensions(1) <= 3))) &&
+      (dot_info.rhs_shape.dimensions_size() <= 1 ||
+       (dot_info.rhs_shape.dimensions_size() == 2 &&
+        (dot_info.rhs_shape.dimensions(0) <= 3 ||
+         dot_info.rhs_shape.dimensions(1) <= 3))) &&
+      (primitive_util::IsFloatingPointType(element_type) ||
+       primitive_util::IsIntegralType(element_type))) {
+    return DotImplementationStrategy::kNaiveLlvmIr;
   }
 
   if (IsAlignedGemm(dot_info, target_machine_features)) {

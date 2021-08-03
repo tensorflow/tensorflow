@@ -104,7 +104,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     // TODO(anudhyan): Tune the cost per unit based on benchmarks.
     const double nnz_per_row =
         (input_matrix->total_nnz() / batch_size) / num_rows;
-    const int64 sparse_cholesky_cost_per_batch =
+    const int64_t sparse_cholesky_cost_per_batch =
         nnz_per_row * nnz_per_row * num_rows;
     // Perform sparse Cholesky factorization of each batch in parallel.
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
@@ -173,7 +173,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
                      batch_ptr_vec.data());
 
     // Allocate output Tensors.
-    const int64 total_nnz = batch_ptr_vec(batch_size);
+    const int64_t total_nnz = batch_ptr_vec(batch_size);
     Tensor output_row_ptr(cpu_allocator(), DT_INT32,
                           TensorShape({(num_rows + 1) * batch_size}));
     Tensor output_col_ind(cpu_allocator(), DT_INT32, TensorShape({total_nnz}));
@@ -195,7 +195,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
                  ++batch_index) {
               const SparseMatrix& cholesky_factor =
                   sparse_cholesky_factors[batch_index];
-              const int64 nnz = cholesky_factor.nonZeros();
+              const int64_t nnz = cholesky_factor.nonZeros();
 
               std::copy(cholesky_factor.outerIndexPtr(),
                         cholesky_factor.outerIndexPtr() + num_rows + 1,
@@ -245,7 +245,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     const int row_dim = (rank == 2) ? 0 : 1;
     auto dense_shape_vec = dense_shape.vec<int64>();
     *num_rows = dense_shape_vec(row_dim);
-    const int64 num_cols = dense_shape_vec(row_dim + 1);
+    const int64_t num_cols = dense_shape_vec(row_dim + 1);
     if (*num_rows != num_cols)
       return errors::InvalidArgument(
           "sparse matrix must be square; got: ", *num_rows, " != ", num_cols);

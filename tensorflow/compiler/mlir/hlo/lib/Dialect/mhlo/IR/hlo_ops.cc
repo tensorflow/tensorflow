@@ -686,6 +686,26 @@ static LogicalResult Verify(DynamicUpdateSliceOp op) {
   return success();
 }
 
+OpFoldResult DynamicUpdateSliceOp::fold(ArrayRef<Attribute> operands) {
+  auto operand_shape = this->operand().getType().cast<RankedTensorType>();
+  auto update_shape = this->update().getType().cast<RankedTensorType>();
+
+  if (operand_shape != update_shape || !operand_shape.hasStaticShape()) {
+    return {};
+  }
+
+  // Ensure that indices are 0 constants. The 0 check mostly ensures
+  // correctness. For non-constants, the pattern does not fold to avoid hiding
+  // the behavior of incorrect user input.
+  for (Value index : this->start_indices()) {
+    DenseIntElementsAttr de_attr;
+    if (!matchPattern(index, m_Constant(&de_attr))) return {};
+    int start_val = de_attr.getSplatValue<IntegerAttr>().getInt();
+    if (start_val != 0) return {};
+  }
+  return this->update();
+}
+
 //===----------------------------------------------------------------------===//
 // AbsOp
 //===----------------------------------------------------------------------===//
@@ -2454,7 +2474,7 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult RngNormalOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   return rngInferReturnTypeComponents(context, location, operands, attributes,
@@ -2466,7 +2486,7 @@ LogicalResult RngNormalOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 
 LogicalResult RngUniformOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   return rngInferReturnTypeComponents(context, location, operands, attributes,
@@ -2548,11 +2568,28 @@ LogicalResult SelectOp::inferReturnTypes(
 }
 
 LogicalResult SelectOp::inferReturnTypeComponents(
-    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
-    mlir::DictionaryAttr, mlir::RegionRange,
-    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
-  // TODO(b/168772852)
-  return failure();
+    mlir::MLIRContext* ctx, llvm::Optional<mlir::Location> loc,
+    ValueShapeRange operands, mlir::DictionaryAttr attributes,
+    mlir::RegionRange regions,
+    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&
+        inferredShapedTypeComponents) {
+  llvm::SmallVector<Type, 4> inferredReturnTypes;
+  const LogicalResult infer_types_status = inferReturnTypes(
+      ctx, loc, operands, attributes, regions, inferredReturnTypes);
+  if (infer_types_status.failed()) return infer_types_status;
+
+  if (inferredReturnTypes.size() != 1) return failure();
+
+  auto result_tensor_type =
+      inferredReturnTypes[0].dyn_cast_or_null<TensorType>();
+  if (!result_tensor_type) return failure();
+
+  mlir::Type element_type =
+      operands[1].getType().cast<TensorType>().getElementType();
+  inferredShapedTypeComponents.push_back(
+      {result_tensor_type.getShape(), element_type});
+
+  return success();
 }
 
 LogicalResult SelectOp::reifyReturnTypeShapes(
@@ -3839,11 +3876,13 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
 }
 
 LogicalResult CompareOp::inferReturnTypeComponents(
-    mlir::MLIRContext*, llvm::Optional<mlir::Location>, mlir::ValueRange,
-    mlir::DictionaryAttr, mlir::RegionRange,
-    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
-  // TODO(b/168772852)
-  return failure();
+    mlir::MLIRContext* ctx, llvm::Optional<mlir::Location>,
+    ValueShapeRange operands, mlir::DictionaryAttr, mlir::RegionRange,
+    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnTypes) {
+  OpBuilder builder(ctx);
+  auto arg_ty = operands.front().getType().cast<TensorType>();
+  inferredReturnTypes.push_back({arg_ty.getShape(), builder.getI1Type()});
+  return success();
 }
 
 LogicalResult CompareOp::reifyReturnTypeShapes(

@@ -60,7 +60,7 @@ FunctionDef XTimesX() {
 }
 }  // namespace
 
-DatasetDef RangeSquareDataset(const int64 range) {
+DatasetDef RangeSquareDataset(const int64_t range) {
   DatasetDef dataset_def;
   *dataset_def.mutable_graph() = GDef(
       {NDef("start", "Const", /*inputs=*/{},

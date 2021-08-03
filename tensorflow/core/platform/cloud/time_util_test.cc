@@ -20,14 +20,14 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(TimeUtil, ParseRfc3339Time) {
-  int64 mtime_nsec;
+  int64_t mtime_nsec;
   TF_EXPECT_OK(ParseRfc3339Time("2016-04-29T23:15:24.896Z", &mtime_nsec));
   // Compare milliseconds instead of nanoseconds.
   EXPECT_NEAR(1461971724896, mtime_nsec / 1000 / 1000, 1);
 }
 
 TEST(TimeUtil, ParseRfc3339Time_ParseError) {
-  int64 mtime_nsec;
+  int64_t mtime_nsec;
   EXPECT_EQ("Unrecognized RFC 3339 time format: 2016-04-29",
             ParseRfc3339Time("2016-04-29", &mtime_nsec).error_message());
 }

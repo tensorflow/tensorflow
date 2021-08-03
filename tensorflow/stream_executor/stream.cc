@@ -1109,7 +1109,7 @@ Stream *Stream::GetOrCreateSubStream() {
       // The stream is reusable and not ok. Streams have a monotonic state
       // machine; the stream will remain in !ok forever. Swap it with the last
       // stream and pop it off.
-      const int64 last = sub_streams_.size() - 1;
+      const int64_t last = sub_streams_.size() - 1;
       if (index != last) {
         std::swap(pair, sub_streams_[last]);
       }
@@ -1162,7 +1162,7 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
       // stream and pop it off.
       VLOG(1) << DebugStreamPointers() << " returned !ok sub_stream "
               << sub_stream->DebugStreamPointers();
-      const int64 last = sub_streams_.size() - 1;
+      const int64_t last = sub_streams_.size() - 1;
       if (index != last) {
         std::swap(pair, sub_streams_[last]);
       }

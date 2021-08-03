@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/resource_handle.h"
+
 #include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -77,11 +79,45 @@ string ResourceHandle::DebugString() const {
                          " maybe_type_name: ", maybe_type_name());
 }
 
+ResourceHandle ResourceHandle::MakeRefCountingHandle(
+    ResourceBase* resource, const string& device_name,
+    const TypeIndex& type_index,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
+    const absl::optional<ManagedStackTrace>& definition_stack_trace) {
+  ResourceHandle result;
+  result.resource_.reset(resource, /*add_ref=*/false);
+  result.set_device(device_name);
+  // "container" is only a ResourceMgr-only concept
+  result.set_container("");
+  result.set_definition_stack_trace(definition_stack_trace);
+  result.set_name(strings::StrCat("_AnonymousResource", GenerateUniqueId()));
+  result.set_hash_code(type_index.hash_code());
+  result.set_maybe_type_name(type_index.name());
+  result.set_dtypes_and_shapes(dtypes_and_shapes);
+  return result;
+}
+
+Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
+  if (type_index.hash_code() != hash_code()) {
+    return errors::InvalidArgument(
+        "Trying to access a handle's resource using the wrong type. ",
+        "The handle points to a resource (name '", name(), "') of type '",
+        maybe_type_name(), "' (hash code ", hash_code(),
+        ") but you are trying to access the resource as type '",
+        type_index.name(), "' (hash code ", type_index.hash_code(), ")");
+  }
+  return Status::OK();
+}
+
+std::atomic<int64> ResourceHandle::current_id_;
+
+int64 ResourceHandle::GenerateUniqueId() { return current_id_.fetch_add(1); }
+
 string ProtoDebugString(const ResourceHandle& handle) {
   return handle.DebugString();
 }
 
-void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
+void EncodeResourceHandleList(const ResourceHandle* p, int64_t n,
                               std::unique_ptr<port::StringListEncoder> e) {
   ResourceHandleProto proto;
   for (int i = 0; i < n; ++i) {
@@ -92,7 +128,7 @@ void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
 }
 
 bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
-                              ResourceHandle* ps, int64 n) {
+                              ResourceHandle* ps, int64_t n) {
   std::vector<uint32> sizes(n);
   if (!d->ReadSizes(&sizes)) return false;
 

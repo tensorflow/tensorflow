@@ -184,7 +184,7 @@ class HloModule {
   int64 computation_count() const { return computations_.size(); }
 
   // Returns the mutable computation for the given index.
-  HloComputation* mutable_computation(int64 idx) {
+  HloComputation* mutable_computation(int64_t idx) {
     CHECK(idx >= 0 && idx < computations_.size());
     return computations_[idx].get();
   }
@@ -364,7 +364,7 @@ class HloModule {
   }
 
   // Add a program argument to be prefetched across programs.
-  void AddCrossProgramPrefetch(int64 parameter, const ShapeIndex& index) {
+  void AddCrossProgramPrefetch(int64_t parameter, const ShapeIndex& index) {
     cross_program_prefetches_.emplace_back(parameter, index);
   }
 

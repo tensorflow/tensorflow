@@ -33,7 +33,7 @@ using memory_space_assignment::Options;
 using memory_space_assignment::PrefetchIntervalPicker;
 using memory_space_assignment::PresetAssignments;
 
-constexpr int64 kPointerSize = 8;
+constexpr int64_t kPointerSize = 8;
 constexpr float kAsyncCopyBandwidth = 100;
 constexpr float kAlternateMemBandwidth = 1000;
 constexpr float kBytesPerSecond = 100;
@@ -88,8 +88,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   }
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
-      HloModule* module, int64 max_outstanding_async_copies = -1,
-      int64 max_prefetch_interval = 10, int64 min_prefetch_interval = 2,
+      HloModule* module, int64_t max_outstanding_async_copies = -1,
+      int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2,
       absl::optional<Options> options = absl::nullopt) {
     MemorySpaceAssignmentUtils::HoistConstantOperations(*module);
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
@@ -100,7 +100,7 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   }
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
-      HloModule* module, int64 max_outstanding_async_copies,
+      HloModule* module, int64_t max_outstanding_async_copies,
       absl::optional<MemorySpaceAssignment::BufferIntervalCompare>
           buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker,
@@ -218,9 +218,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   /*static*/ OutstandingAsyncCopies CountMaximumOutstandingAsyncCopies(
       const HloModule& module) {
     OutstandingAsyncCopies copies{0, 0, 0};
-    int64 current_copies = 0;
-    int64 current_prefetches = 0;
-    int64 current_evictions = 0;
+    int64_t current_copies = 0;
+    int64_t current_prefetches = 0;
+    int64_t current_evictions = 0;
     for (HloInstruction* instruction : module.schedule()
                                            .sequence(module.entry_computation())
                                            .instructions()) {
@@ -3681,7 +3681,7 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   // make sure at least one does.
   std::vector<HloInstruction*> negate_instructions = {negate0, negate1, negate2,
                                                       negate3, negate4};
-  int64 num_negates_in_alternate_mem = absl::c_count_if(
+  int64_t num_negates_in_alternate_mem = absl::c_count_if(
       negate_instructions, [&](const HloInstruction* instruction) {
         return instruction->shape().layout().memory_space() ==
                kAlternateMemorySpace;
@@ -5510,11 +5510,11 @@ ENTRY main {
   auto preset_assignments = AssignMemorySpace(module.get());
   HloInstruction* negate_instruction =
       module->entry_computation()->GetInstructionWithName("negate");
-  int64 negate_offset =
+  int64_t negate_offset =
       GetAlternateMemoryOffset(*preset_assignments, negate_instruction);
   HloInstruction* fusion_instruction =
       module->entry_computation()->GetInstructionWithName("fusion");
-  int64 fusion_offset =
+  int64_t fusion_offset =
       GetAlternateMemoryOffset(*preset_assignments, fusion_instruction);
   // We expect negate and fusion to get the same offsets.
   EXPECT_EQ(negate_offset, fusion_offset);

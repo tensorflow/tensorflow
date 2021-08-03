@@ -42,7 +42,7 @@ class TpuExecutable : public xla::TpuExecutableInterface {
   // format).
   StatusOr<std::string> Serialize() const;
   static StatusOr<std::unique_ptr<TpuExecutable>> Deserialize(
-      absl::string_view serialized, std::unique_ptr<HloModule> hlo_module);
+      absl::string_view serialized);
 
  private:
   Status LoadProgramAndEnqueueToStream(

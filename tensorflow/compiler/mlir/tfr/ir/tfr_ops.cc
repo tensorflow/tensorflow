@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
@@ -58,9 +61,10 @@ namespace TFR {
 
 namespace {
 /// This class defines the interface for inlining within the TFR dialect.
-struct TFRInlinerInterface : public DialectInlinerInterface {
+class TFRInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
+ public:
   // Allow all call operations to be inlined.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
@@ -370,9 +374,11 @@ static void PrintFuncOp(OpAsmPrinter &p, TFRFuncOp op) {
 
 namespace mlir {
 namespace TFR {
-struct ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
+namespace {
+class ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
   using OpRewritePattern<ConstantTensorOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(ConstantTensorOp cst_tensor_op,
                                 PatternRewriter &rewriter) const override {
     Location loc = cst_tensor_op.getLoc();
@@ -412,9 +418,10 @@ struct ConvertConstToTensorConst : public OpRewritePattern<ConstantTensorOp> {
   }
 };
 
-struct RemoveRedundantCast : public OpRewritePattern<CastOp> {
+class RemoveRedundantCast : public OpRewritePattern<CastOp> {
   using OpRewritePattern<CastOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(CastOp cast_op,
                                 PatternRewriter &rewriter) const override {
     auto preceding_cast =
@@ -454,9 +461,10 @@ struct RemoveRedundantCast : public OpRewritePattern<CastOp> {
   }
 };
 
-struct GetTensorShape : public OpRewritePattern<GetShapeOp> {
+class GetTensorShape : public OpRewritePattern<GetShapeOp> {
   using OpRewritePattern<GetShapeOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(GetShapeOp shape_op,
                                 PatternRewriter &rewriter) const override {
     Operation *preceding_op = shape_op.arg().getDefiningOp();
@@ -469,9 +477,10 @@ struct GetTensorShape : public OpRewritePattern<GetShapeOp> {
   }
 };
 
-struct RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
+class RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
   using OpRewritePattern<GetElementOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(GetElementOp ge_op,
                                 PatternRewriter &rewriter) const override {
     IntegerAttr index;
@@ -495,9 +504,10 @@ struct RemoveRedundantGetElement : public OpRewritePattern<GetElementOp> {
   }
 };
 
-struct RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
+class RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
   using OpRewritePattern<GetLengthOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(GetLengthOp gl_op,
                                 PatternRewriter &rewriter) const override {
     auto preceding_build_list = llvm::dyn_cast_or_null<BuildListOp>(
@@ -512,9 +522,10 @@ struct RemoveRedundantGetLength : public OpRewritePattern<GetLengthOp> {
   }
 };
 
-struct BuildConstantListAsAttr : public OpRewritePattern<BuildListOp> {
+class BuildConstantListAsAttr : public OpRewritePattern<BuildListOp> {
   using OpRewritePattern<BuildListOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(BuildListOp bl_op,
                                 PatternRewriter &rewriter) const override {
     SmallVector<Attribute, 4> array_list;
@@ -542,9 +553,10 @@ quant::QuantizedType getQuantizedElementType(CastOp cast_op) {
       .dyn_cast<quant::QuantizedType>();
 }
 
-struct RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
+class RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
   using OpRewritePattern<TFRQuantRawDataOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(TFRQuantRawDataOp raw_data_op,
                                 PatternRewriter &rewriter) const override {
     auto preceding_cast = dyn_cast<CastOp>(raw_data_op.input().getDefiningOp());
@@ -568,9 +580,10 @@ struct RemoveRawDataOp : public OpRewritePattern<TFRQuantRawDataOp> {
   }
 };
 
-struct RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
+class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
   using OpRewritePattern<TFRQuantQParamsOp>::OpRewritePattern;
 
+ public:
   LogicalResult matchAndRewrite(TFRQuantQParamsOp qparams_op,
                                 PatternRewriter &rewriter) const override {
     auto cast_op = dyn_cast<TFR::CastOp>(qparams_op.input().getDefiningOp());
@@ -578,44 +591,78 @@ struct RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
     if (!cast_qtype) {
       return failure();
     }
+
+    TF::ConstOp scale_op;
+    TF::ConstOp zp_op;
+
     // Reads quantization parameters from the quantized type, and converts
     // them to constants.
     rewriter.setInsertionPoint(qparams_op);
+    Location loc = qparams_op->getLoc();
     if (auto qtype = cast_qtype.dyn_cast<quant::UniformQuantizedType>()) {
-      auto scale = rewriter.create<ConstantOp>(
-          qparams_op->getLoc(), rewriter.getF32FloatAttr(qtype.getScale()));
-      auto scale_tensor = rewriter.create<TFR::ConstantTensorOp>(
-          qparams_op->getLoc(), qparams_op.scale().getType(),
-          scale.getResult());
-      auto zp = rewriter.create<ConstantOp>(
-          qparams_op->getLoc(),
+      scale_op = rewriter.create<TF::ConstOp>(
+          loc, RankedTensorType::get({}, rewriter.getF32Type()),
+          rewriter.getF32FloatAttr(qtype.getScale()));
+      zp_op = rewriter.create<TF::ConstOp>(
+          loc, RankedTensorType::get({}, rewriter.getI32Type()),
           rewriter.getI32IntegerAttr(qtype.getZeroPoint()));
-      auto zp_tensor = rewriter.create<TFR::ConstantTensorOp>(
-          qparams_op->getLoc(), qparams_op.zp().getType(), zp.getResult());
-      qparams_op.scale().replaceAllUsesWith(scale_tensor.getResult());
-      qparams_op.zp().replaceAllUsesWith(zp_tensor.getResult());
-    } else {
-      // TODO(b/192720615): Add handling of UniformQuantizedPerAxisType
+    } else if (auto qtype =
+                   cast_qtype.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
+      SmallVector<float> scales(qtype.getScales().begin(),
+                                qtype.getScales().end());
+      SmallVector<int32_t> zps(qtype.getZeroPoints().begin(),
+                               qtype.getZeroPoints().end());
+      const size_t num_channels = qtype.getScales().size();
+
+      auto scales_type = RankedTensorType::get(
+          {static_cast<int64_t>(num_channels)}, rewriter.getF32Type());
+      auto scales_attr =
+          DenseElementsAttr::get(scales_type, llvm::makeArrayRef(scales));
+      scale_op = rewriter.create<TF::ConstOp>(loc, scales_attr);
+
+      auto zps_type = RankedTensorType::get(
+          {static_cast<int64_t>(num_channels)}, rewriter.getI32Type());
+      auto zps_attr = DenseElementsAttr::get(zps_type, llvm::makeArrayRef(zps));
+      zp_op = rewriter.create<TF::ConstOp>(loc, zps_attr);
+    }
+    if (!scale_op || !zp_op) {
       return failure();
     }
+    auto scale_cast = rewriter.create<CastOp>(loc, qparams_op.scale().getType(),
+                                              scale_op.output());
+    auto zp_cast =
+        rewriter.create<CastOp>(loc, qparams_op.zp().getType(), zp_op.output());
+
+    qparams_op.scale().replaceAllUsesWith(scale_cast.out());
+    qparams_op.zp().replaceAllUsesWith(zp_cast.out());
     return success();
   }
 };
 
 // TODO(b/193731721): Migrate tfr_ builtin canonicalizations to LowerTFROpPass
-struct RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
+class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
   using OpRewritePattern<TFRQuantScaleFactorOp>::OpRewritePattern;
 
+ public:
   // Replace quant_scale_factor with constant tensor equivalent to
   // TFR_ConstantTensorOp (
-  //  ConstantOp (ConstAttr<F32Attr (in_scale[0] * in_scale [1] / filter_scale))
+  //   ConstantOp (ConstAttr<F32Attr (in_scale[0] * in_scale[1] / out_scale))
   // )
+  // Currently, all decompositions using this pattern (Conv2D, FC) have the
+  // following preconditions:
+  // * out_scale: float scalar attribute
+  // * in_scale[0] (input scale): float scalar, given by tf.Const -> tfr.cast
+  // * in_scale[1] (filter scale): float scalar/vector
+  //     (per-tensor vs per-channel) quantization, given by tf.Const -> tfr.cast
   LogicalResult matchAndRewrite(TFRQuantScaleFactorOp scale_factor_op,
                                 PatternRewriter &rewriter) const override {
     auto out_scale_op = scale_factor_op.out_scale().getDefiningOp<ConstantOp>();
     if (!out_scale_op) {
       return failure();
     }
+    const double out_scale =
+        out_scale_op.value().cast<FloatAttr>().getValueAsDouble();
+
     auto in_scales_op =
         scale_factor_op.in_scales().getDefiningOp<BuildListOp>();
     if (!in_scales_op || in_scales_op.getNumOperands() != 2) {
@@ -623,65 +670,55 @@ struct RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
       // and filter_scale.
       return failure();
     }
-    auto in_scale_tensor =
-        in_scales_op.getOperand(0).getDefiningOp<ConstantTensorOp>();
-    if (!in_scale_tensor) {
-      return failure();
-    }
-    auto in_scale_op = in_scale_tensor.arg().getDefiningOp<ConstantOp>();
+
+    auto in_scale_op = in_scales_op.getOperand(0).getDefiningOp<CastOp>();
     if (!in_scale_op) {
       return failure();
     }
-    const double out_scale =
-        out_scale_op.value().cast<FloatAttr>().getValueAsDouble();
-    const double in_scale =
-        in_scale_op.value().cast<FloatAttr>().getValueAsDouble();
-    const Location loc = scale_factor_op->getLoc();
-    const Type out_type = scale_factor_op.scale_factor().getType();
-    ConstantOp const_op;
-    if (auto filter_scale_tensor_op =
-            in_scales_op.getOperand(1).getDefiningOp<ConstantTensorOp>()) {
-      auto filter_scale_op =
-          filter_scale_tensor_op.arg().getDefiningOp<ConstantOp>();
-      if (!filter_scale_op) {
-        return failure();
-      }
-      const double filter_scale =
-          filter_scale_op.value().cast<FloatAttr>().getValueAsDouble();
-      const_op = rewriter.create<ConstantOp>(
-          loc, rewriter.getF32FloatAttr(in_scale * filter_scale / out_scale));
-    } else if (auto perchannel_tensor_op =
-                   in_scales_op.getOperand(1).getDefiningOp<CastOp>()) {
-      auto perchannel_op =
-          perchannel_tensor_op.arg().getDefiningOp<ConstantOp>();
-      if (!perchannel_op) {
-        return failure();
-      }
-      auto filter_scales_attr = perchannel_op.value().cast<DenseElementsAttr>();
-      if (!filter_scales_attr) {
-        return failure();
-      }
-      SmallVector<float> scale_factors;
-      scale_factors.reserve(filter_scales_attr.size());
-      for (auto value : filter_scales_attr.getFloatValues()) {
-        scale_factors.push_back(in_scale * value.convertToFloat() / out_scale);
-      }
-      const_op = rewriter.create<ConstantOp>(
-          loc, rewriter.getF32ArrayAttr(scale_factors));
-    }
-    if (!const_op) {
+
+    DenseFPElementsAttr in_scale_attr;
+    if (!matchPattern(in_scale_op.arg(), m_Constant(&in_scale_attr)) ||
+        in_scale_attr.size() != 1) {
       return failure();
     }
-    auto const_tensor_op =
-        rewriter.create<ConstantTensorOp>(loc, out_type, const_op.getResult());
-    scale_factor_op.scale_factor().replaceAllUsesWith(const_tensor_op.out());
+    const float in_scale = in_scale_attr.getValue<float>(0);
+    auto filter_scale_op = in_scales_op.getOperand(1).getDefiningOp<CastOp>();
+    if (!filter_scale_op) {
+      return failure();
+    }
+    DenseFPElementsAttr filter_scale_attr;
+    if (!matchPattern(filter_scale_op.arg(), m_Constant(&filter_scale_attr))) {
+      return failure();
+    }
+
+    // The shape of scale_type is {} (rank 0) for per-tensor quantized tensor,
+    // and {num_channels} (rank 1) for per-channel quantized one.
+    auto scale_type = filter_scale_attr.getType().dyn_cast<RankedTensorType>();
+    if (scale_type.getRank() != 0 && scale_type.getRank() != 1) {
+      return failure();
+    }
+    SmallVector<float> scale_factors;
+    scale_factors.reserve(filter_scale_attr.size());
+    for (auto value : filter_scale_attr.getFloatValues()) {
+      scale_factors.push_back(in_scale * value.convertToFloat() / out_scale);
+    }
+    rewriter.setInsertionPoint(scale_factor_op);
+    const Location loc = scale_factor_op->getLoc();
+    auto result_scale_op = rewriter.create<TF::ConstOp>(
+        loc,
+        DenseElementsAttr::get(scale_type, llvm::makeArrayRef(scale_factors)));
+    auto result_scale_cast_op = rewriter.create<CastOp>(
+        loc, scale_factor_op.getType(), result_scale_op.output());
+    scale_factor_op.scale_factor().replaceAllUsesWith(
+        result_scale_cast_op.out());
     return success();
   }
 };
 
-struct RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
+class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
   using OpRewritePattern<TFRQuantRescaleOp>::OpRewritePattern;
 
+ public:
   // Replace quant_rescale (input, scale, zp) with
   // tf.Cast(tf.Round(tf.Cast(input, f32) * scale) + tf.Cast(zp, f32), i32)
   LogicalResult matchAndRewrite(TFRQuantRescaleOp rescale_op,
@@ -689,6 +726,7 @@ struct RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     Value input = rescale_op.input();
     Value scale = rescale_op.scale();
     Value zp = rescale_op.zp();
+
     const Location loc = rescale_op->getLoc();
     const auto result_types = rescale_op->getResultTypes();
     auto c_false =
@@ -698,6 +736,18 @@ struct RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     auto constant_f32_op = rewriter.create<ConstOp>(loc, output_type, f32_attr);
     TypeAttr i32_attr = TypeAttr::get(rewriter.getI32Type());
     auto constant_i32_op = rewriter.create<ConstOp>(loc, output_type, i32_attr);
+
+    IntegerAttr zp_attr;
+    if (!matchPattern(zp, m_Constant(&zp_attr))) {
+      return failure();
+    }
+    rewriter.setInsertionPoint(zp.getDefiningOp());
+    auto zp_tensor = rewriter.create<TF::ConstOp>(
+        loc, RankedTensorType::get({}, zp.getType()), zp_attr);
+    auto zp_cast = rewriter.create<CastOp>(
+        loc, rewriter.getType<TFRTensorType>(), zp_tensor.output());
+
+    rewriter.setInsertionPoint(rescale_op);
     auto cast_input_to_float_op = rewriter.create<CallOp>(
         loc, result_types, rewriter.getSymbolRefAttr("tf__cast"),
         ArrayRef<Value>{input, constant_f32_op, c_false});
@@ -709,7 +759,7 @@ struct RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
         ArrayRef<Value>{input_x_scale_op->getResult(0)});
     auto cast_zp_to_float_op = rewriter.create<CallOp>(
         loc, result_types, rewriter.getSymbolRefAttr("tf__cast"),
-        ArrayRef<Value>{zp, constant_f32_op, c_false});
+        ArrayRef<Value>{zp_cast, constant_f32_op, c_false});
     auto recentered_op = rewriter.create<CallOp>(
         loc, result_types, rewriter.getSymbolRefAttr("tf__add"),
         ArrayRef<Value>{round_rescaled_op->getResult(0),
@@ -721,6 +771,8 @@ struct RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     return success();
   }
 };
+
+}  // namespace
 
 void ConstantTensorOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {

@@ -528,14 +528,15 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.dot"(%arg0, %arg1, %{{.*}}) {
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.dot_general"(%{{.*}}, %{{.*}}) {
 // CHECK-SAME: dot_dimension_numbers = {
 // CHECK-SAME:   lhs_batching_dimensions = dense<0> : tensor<1xi64>,
 // CHECK-SAME:   lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
 // CHECK-SAME:   rhs_batching_dimensions = dense<0> : tensor<1xi64>,
 // CHECK-SAME:   rhs_contracting_dimensions = dense<1> : tensor<1xi64>},
 // CHECK-SAME:   precision_config = ["DEFAULT", "DEFAULT"]}
-// CHECK-SAME:   : (memref<1x3x4xf32>, memref<1x4x5xf32>, memref<1x4x5xf32>) -> ()
+// CHECK-SAME:   : (tensor<1x3x4xf32>, tensor<1x4x5xf32>) -> tensor<1x4x5xf32>
 ENTRY main {
   %arg0 = f32[1,3,4]{2,1,0} parameter(0)
   %arg1 = f32[1,4,5]{2,1,0} parameter(1)
@@ -547,7 +548,8 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.reshape"(%arg0, %{{.*}}) : (memref<2xf32>, memref<1x2xf32>) -> ()
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.reshape"(%{{.*}}) : (tensor<2xf32>) -> tensor<1x2xf32>
 ENTRY main {
   %arg0 = f32[2]{0} parameter(0)
   ROOT %out = f32[1,2]{1,0} reshape(%arg0)
@@ -564,16 +566,17 @@ max {
 }
 
 // CHECK: func @main
-// CHECK: "lmhlo.reduce_window"(%arg0, %{{.*}}, %{{.*}}) ( {
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.reduce_window"(%{{.*}}, %{{.*}}) ( {
 // CHECK:   ^bb0(%[[ARG6:.*]]: tensor<f32>, %[[ARG7:.*]]: tensor<f32>):
-// CHECK:   %2 = mhlo.maximum %[[ARG6]], %[[ARG7]] : tensor<f32>
-// CHECK:   "mhlo.return"(%2) : (tensor<f32>) -> ()
+// CHECK:   %[[RET:.*]] = mhlo.maximum %[[ARG6]], %[[ARG7]] : tensor<f32>
+// CHECK:   "mhlo.return"(%[[RET]]) : (tensor<f32>) -> ()
 // CHECK: }) {
 // CHECK-SAME: padding = dense<{{\[}}[0, 0], [2, 0], [0, 2], [0, 0]{{\]}}> : tensor<4x2xi64>,
 // CHECK-SAME: window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>,
 // CHECK-SAME: window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
 // CHECK-SAME: window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>}
-// CHECK-SAME: : (memref<2x17x31x7xf32>, memref<f32>, memref<2x5x8x7xf32>) -> ()
+// CHECK-SAME: : (tensor<2x17x31x7xf32>, tensor<f32>) -> tensor<2x5x8x7xf32>
 ENTRY main {
   %arg0 = f32[2,17,31,7] parameter(0)
   %c = f32[] constant(0)
@@ -585,11 +588,12 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.pad"(%arg0, %arg1, %{{.*}}) {
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.pad"(%{{.*}}, %{{.*}}) {
 // CHECK-SAME: edge_padding_high = dense<[4, 5]> : tensor<2xi64>,
 // CHECK-SAME: edge_padding_low = dense<[2, 3]> : tensor<2xi64>,
 // CHECK-SAME: interior_padding = dense<1> : tensor<2xi64>}
-// CHECK-SAME: : (memref<4x6xf32>, memref<f32>, memref<13x19xf32>) -> ()
+// CHECK-SAME: : (tensor<4x6xf32>, tensor<f32>) -> tensor<13x19xf32>
 ENTRY main {
   %arg0 = f32[4,6] parameter(0)
   %arg1 = f32[] parameter(1)
@@ -601,7 +605,8 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.transpose"(%arg0, %{{.*}}) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (memref<1x2x3x4xf32>, memref<2x1x4x3xf32>) -> ()
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.transpose"(%{{.*}}) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xf32>) -> tensor<2x1x4x3xf32>
 ENTRY main {
   %arg0 = f32[1,2,3,4] parameter(0)
   %out = f32[2,1,4,3] transpose(%arg0), dimensions={1,0,3,2}
@@ -612,7 +617,8 @@ ENTRY main {
 HloModule Test
 
 // CHECK: func @main
-// CHECK: "lmhlo.broadcast_in_dim"(%arg0, %{{.*}}) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (memref<1xf32>, memref<10xf32>) -> ()
+// CHECK: "lmhlo.fusion"()
+// CHECK: "mhlo.broadcast_in_dim"(%{{.*}}) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<10xf32>
 ENTRY main {
   %arg0 = f32[1] parameter(0)
   %out = f32[10] broadcast(%arg0), dimensions={0}

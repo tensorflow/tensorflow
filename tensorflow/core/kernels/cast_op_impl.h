@@ -68,10 +68,6 @@ CAST_FUNCTORS(Eigen::ThreadPoolDevice);
 // The subset of types which are currently not supported yet with the MLIR
 // generated kernels.
 #define CURRY_SUBSET_TYPES3(FN, arg0, arg1) \
-  FN(arg0, arg1, uint8);                    \
-  FN(arg0, arg1, uint16);                   \
-  FN(arg0, arg1, uint32);                   \
-  FN(arg0, arg1, uint64);                   \
   FN(arg0, arg1, std::complex<float>);      \
   FN(arg0, arg1, std::complex<double>)
 

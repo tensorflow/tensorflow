@@ -38,7 +38,7 @@ class BroadcastToOp : public XlaOpKernel {
     std::vector<bool> dynamic_dims;
     OP_REQUIRES_OK(
         context, context->ResolveInputDynamismIntoPredVector(1, &dynamic_dims));
-    for (int64 dim = 0; dim < dynamic_dims.size(); ++dim) {
+    for (int64_t dim = 0; dim < dynamic_dims.size(); ++dim) {
       if (dynamic_dims[dim]) {
         output = xla::SetDimensionSize(
             output,

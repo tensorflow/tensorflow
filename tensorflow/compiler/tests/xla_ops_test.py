@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import googletest
 
 
@@ -315,6 +316,26 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           expected=np.array(
               [[7, 7, 1, 7], [7, 7, 7, 7], [7, 7, 4, 7], [7, 7, 7, 7]],
               dtype=dtype))
+
+  @parameterized.parameters(stateless_random_ops.Algorithm.THREEFRY,
+                            stateless_random_ops.Algorithm.PHILOX,
+                            stateless_random_ops.Algorithm.AUTO_SELECT)
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testRngBitGeneratorIsDeterministic(self, algorithm):
+    dtype = np.uint32
+    key = np.array([1, 2], dtype=np.uint64)
+    shape = (10, 12)
+
+    def rng_fun_is_deterministic(k):
+      res1 = xla.rng_bit_generator(algorithm, k, shape, dtype=dtype)
+      res2 = xla.rng_bit_generator(algorithm, k, shape, dtype=dtype)
+      return (res1[0] - res2[0], res1[1] - res2[1])
+
+    self._assertOpOutputMatchesExpected(
+        rng_fun_is_deterministic,
+        args=(key,),
+        expected=(np.zeros(key.shape, dtype=key.dtype),
+                  np.zeros(shape, dtype=dtype)))
 
   @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
@@ -967,6 +988,41 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 'All inputs must have the same shape'):
       reduce_with_shapes((None, 4, 5), (3, None, 5), (13, 4, 5))
+
+  @parameterized.parameters(stateless_random_ops.Algorithm.THREEFRY,
+                            stateless_random_ops.Algorithm.PHILOX,
+                            stateless_random_ops.Algorithm.AUTO_SELECT)
+  def testRngBitGenerator(self, algorithm):
+    dtype = np.uint64
+    initial_state = array_ops.placeholder(np.uint64, shape=(2,))
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape, initial_state.shape)
+    self.assertEqual(res[1].shape, shape)
+
+    # The initial_state has unknown dimension size
+    initial_state = array_ops.placeholder(np.uint64, shape=(None,))
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape.as_list(), initial_state.shape.as_list())
+    self.assertEqual(res[1].shape, shape)
+
+    # The initial_state has unknown rank
+    initial_state = array_ops.placeholder(np.uint64, shape=None)
+    shape = (2, 3)
+    res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
+
+    self.assertEqual(res[0].shape.as_list(), [None])
+    self.assertEqual(res[1].shape, shape)
+
+    # The output shape has unknown dimension
+    initial_state = array_ops.placeholder(np.uint64, shape=(None,))
+    shape = (None, 3)
+    with self.assertRaisesRegex(TypeError,
+                                'Failed to convert object .* to Tensor'):
+      res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)
 
 
 if __name__ == '__main__':

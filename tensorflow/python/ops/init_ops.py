@@ -120,7 +120,24 @@ class Zeros(Initializer):
 @tf_export(v1=["initializers.ones", "ones_initializer"])
 @deprecation.deprecated_endpoints("initializers.ones", "ones_initializer")
 class Ones(Initializer):
-  """Initializer that generates tensors initialized to 1."""
+  """Initializer that generates tensors initialized to 1.
+
+  @compatibility(TF2)
+  This API is compatible with TF2 behavior and `tf.function`, and can be
+  migrated immediately with `tf.keras.initializers.ones`.
+
+  Before:
+  >>> initializer = tf.compat.v1.keras.initializers.ones()
+  >>> initializer((1, 1))
+  <tf.Tensor: shape=(1, 1), dtype=float32, numpy=array([[1.]], dtype=float32)>
+
+  After:
+  >>> initializer = tf.keras.initializers.ones()
+  >>> initializer((1, 1))
+  <tf.Tensor: shape=(1, 1), dtype=float32, numpy=array([[1.]], dtype=float32)>
+
+  @end_compatibility
+  """
 
   @deprecated_args(None,
                    "Call initializer instance with the dtype argument instead "
@@ -337,6 +354,98 @@ class TruncatedNormal(Initializer):
       `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
+
+  @compatibility(TF2)
+  Although it is a legacy compat.v1 API, this symbol is compatible with eager
+  execution and `tf.function`.
+
+  To switch to native TF2, switch to using either
+  `tf.initializers.truncated_normal` or `tf.keras.initializers.TruncatedNormal`
+  (neither from `compat.v1`) and
+  pass the dtype when calling the initializer. Keep in mind that
+  the default stddev and the behavior of fixed seeds have changed.
+
+  Random seed behavior:
+  Also be aware that as of TF 2.6, if you pass a seed to the TF2 initializer
+  API it will reuse that same seed for every single initialization
+  (unlike the TF1 intializer)
+
+  #### Structural Mapping to Native TF2
+
+  Before:
+
+  ```python
+  initializer = tf.compat.v1.truncated_normal_initializer(
+    mean=mean,
+    stddev=stddev,
+    seed=seed,
+    dtype=dtype)
+
+  weight_one = tf.Variable(initializer(shape_one))
+  weight_two = tf.Variable(initializer(shape_two))
+  ```
+
+  After:
+
+  ```python
+  tf.random.set_seed(...) # set determinism globally if needed
+
+  initializer = tf.initializers.truncated_normal(
+    mean=mean,
+    # seed=seed,  # Setting a seed in the native TF2 API
+                  # causes it to produce the same initializations
+                  # across multiple calls of the same initializer.
+    stddev=stddev)
+
+  weight_one = tf.Variable(initializer(shape_one, dtype=dtype))
+  weight_two = tf.Variable(initializer(shape_two, dtype=dtype))
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `mean`               | `mean`        | No change to defaults |
+  | `stddev`         | `stddev`        | Default changes from 1.0 to 0.05 |
+  | `seed`             | `seed` | Different random number generation |
+  :                    :        : semantics (to change in a  :
+  :                    :        : future version). If set, the TF2 version :
+  :                    :        : will use stateless random number :
+  :                    :        : generation which will produce the exact :
+  :                    :        : same initialization even across multiple :
+  :                    :        : calls of the initializer instance. the :
+  :                    :        : `compat.v1` version will generate new :
+  :                    :        : initializations each time. Do not set :
+  :                    :        : a seed if you need different          :
+  :                    :        : initializations each time. Instead    :
+  :                    :        : either set a global tf seed with      :
+  :                    :        : `tf.random.set_seed` if you need :
+  :                    :        : determinism, or initialize each weight :
+  :                    :        : with a separate initializer instance  :
+  :                    :        : and a different seed.                 :
+  | `dtype` | `dtype`   | The TF2 native api only takes it  |
+  :                     :      : as a `__call__` arg, not a constructor arg. :
+  | `partition_info`     | - |  (`__call__` arg in TF1) Not supported       |
+
+  #### Example of fixed-seed behavior differences
+
+  `compat.v1` Fixed seed behavior:
+
+  >>> initializer = tf.compat.v1.truncated_normal_initializer(seed=10)
+  >>> a = initializer(shape=(2, 2))
+  >>> b = initializer(shape=(2, 2))
+  >>> tf.reduce_sum(a - b) == 0
+  <tf.Tensor: shape=(), dtype=bool, numpy=False>
+
+  After:
+
+  >>> initializer = tf.initializers.truncated_normal(seed=10)
+  >>> a = initializer(shape=(2, 2))
+  >>> b = initializer(shape=(2, 2))
+  >>> tf.reduce_sum(a - b) == 0
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+
+  @end_compatibility
   """
 
   @deprecated_args(None,

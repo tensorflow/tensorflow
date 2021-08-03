@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-absl::InlinedVector<xla::XlaOp, 4> SliceVector(xla::XlaOp input, int64 rank) {
+absl::InlinedVector<xla::XlaOp, 4> SliceVector(xla::XlaOp input, int64_t rank) {
   absl::InlinedVector<xla::XlaOp, 4> scalar_indices;
   scalar_indices.reserve(rank);
   for (int i = 0; i < rank; i++)
@@ -50,7 +50,7 @@ class DynamicUpdateSliceOp : public XlaOpKernel {
     const TensorShape update_shape = ctx->InputShape("update");
     const TensorShape index_shape = ctx->InputShape("indices");
 
-    int64 rank = input_shape.dims();
+    int64_t rank = input_shape.dims();
     OP_REQUIRES(
         ctx,
         TensorShapeUtils::IsVector(index_shape) &&
@@ -87,7 +87,7 @@ class DynamicSliceOp : public XlaOpKernel {
     const TensorShape start_indices_shape = ctx->InputShape("start_indices");
     const TensorShape size_indices_shape = ctx->InputShape("size_indices");
 
-    int64 rank = input_shape.dims();
+    int64_t rank = input_shape.dims();
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(start_indices_shape) &&
                     start_indices_shape.num_elements() == rank,

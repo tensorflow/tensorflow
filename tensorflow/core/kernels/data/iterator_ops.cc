@@ -401,7 +401,7 @@ class IteratorVariantSerializer {
 
   // Initializes `this` from `serialized_t` while restoring the iterator state.
   Status InitFromTensor(const Tensor* serialized_t) {
-    int64 num_tensors = serialized_t->dim_size(0);
+    int64_t num_tensors = serialized_t->dim_size(0);
     auto serialized_vec = serialized_t->vec<Variant>();
     std::vector<const VariantTensorData*> data;
     data.reserve(num_tensors);
@@ -429,8 +429,8 @@ class IteratorVariantSerializer {
       return errors::InvalidArgument(
           "Please call InitializeFromIterator before calling Serialize.");
     }
-    int64 size = variants_.size();
-    for (int64 i = 0; i < size; ++i) {
+    int64_t size = variants_.size();
+    for (int64_t i = 0; i < size; ++i) {
       if (variants_[i].GetData() == nullptr) {
         return errors::Internal(
             "Cannot serialize an empty IteratorStateVariant");
@@ -894,7 +894,7 @@ AsyncOpKernel* IteratorGetNextOp::AsAsync() {
 void RecordElementSize(const std::vector<Tensor> element,
                        profiler::TraceMe* traceme) {
   traceme->AppendMetadata([&]() {
-    int64 element_size = 0;
+    int64_t element_size = 0;
     for (const auto& component : element) {
       element_size += component.TotalBytes();
     }
@@ -905,7 +905,7 @@ void RecordElementSize(const std::vector<Tensor> element,
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
       [&] {
-        int64 mem_bw = port::GetMemoryBandwidthInfo().bw_used;
+        int64_t mem_bw = port::GetMemoryBandwidthInfo().bw_used;
 
         if (mem_bw != INT64_MAX) {
           return profiler::TraceMeEncode(
@@ -943,9 +943,9 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
       [&] {
-        return strings::StrCat(
-            "IteratorGetNextAsOptionalOp::DoCompute#id=", ctx->step_id(),
-            ",iter_num=", ctx->frame_iter().iter_id, "#");
+        return profiler::TraceMeEncode(
+            "IteratorGetNextAsOptionalOp::DoCompute",
+            {{"id", ctx->step_id()}, {"iter_num", ctx->frame_iter().iter_id}});
       },
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
@@ -1056,7 +1056,7 @@ void IteratorFromStringHandleOp::Compute(OpKernelContext* ctx) {
 SerializeIteratorOp::SerializeIteratorOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
   if (ctx->HasAttr(kExternalStatePolicy)) {
-    int64 state_change_option;
+    int64_t state_change_option;
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr(kExternalStatePolicy, &state_change_option));
     external_state_policy_ =

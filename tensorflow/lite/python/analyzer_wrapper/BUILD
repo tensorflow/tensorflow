@@ -26,6 +26,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite:model_builder",
+        "//tensorflow/lite:version",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",

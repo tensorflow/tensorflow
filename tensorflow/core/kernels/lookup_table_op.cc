@@ -66,12 +66,12 @@ class MutableHashTableOfScalars final : public LookupInterface {
     auto value_values = value->flat<V>();
     const auto default_flat = default_value.flat<V>();
 
-    int64 total = value_values.size();
-    int64 default_total = default_flat.size();
+    int64_t total = value_values.size();
+    int64_t default_total = default_flat.size();
     bool is_full_size_default = (total == default_total);
 
     tf_shared_lock l(mu_);
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       // is_full_size_default is true:
       //   Each key has an independent default value, key_values(i)
       //   corresponding uses default_flat(i) as its default value.
@@ -94,7 +94,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     if (clear) {
       table_.clear();
     }
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
                           SubtleMustCopyIfIntegral(value_values(i)));
     }
@@ -110,7 +110,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     const auto key_values = keys.flat<K>();
 
     mutex_lock l(mu_);
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       table_.erase(SubtleMustCopyIfIntegral(key_values(i)));
     }
     return Status::OK();
@@ -123,7 +123,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   Status ExportValues(OpKernelContext* ctx) override {
     tf_shared_lock l(mu_);
-    int64 size = table_.size();
+    int64_t size = table_.size();
 
     Tensor* keys;
     Tensor* values;
@@ -144,7 +144,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
   TensorShape value_shape() const override { return TensorShape(); }
 
   int64 MemoryUsed() const override {
-    int64 ret = 0;
+    int64_t ret = 0;
     tf_shared_lock l(mu_);
     for (unsigned i = 0; i < table_.bucket_count(); ++i) {
       size_t bucket_size = table_.bucket_size(i);
@@ -159,7 +159,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
     tf_shared_lock l(mu_);
-    int64 size = table_.size();
+    int64_t size = table_.size();
     Tensor keys(key_dtype(), TensorShape({size}));
     Tensor values(value_dtype(), TensorShape({size}));
     ExportKeysAndValues(&keys, &values);
@@ -201,7 +201,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     auto keys_data = keys->flat<K>();
     auto values_data = values->flat<V>();
-    int64 i = 0;
+    int64_t i = 0;
     for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
       keys_data(i) = it->first;
       values_data(i) = it->second;
@@ -236,18 +236,18 @@ class MutableHashTableOfTensors final : public LookupInterface {
     const auto default_flat = default_value.flat_inner_dims<V, 2>();
     const auto key_values = key.flat<K>();
     auto value_values = value->flat_inner_dims<V, 2>();
-    int64 value_dim = value_shape_.dim_size(0);
+    int64_t value_dim = value_shape_.dim_size(0);
 
-    int64 total = value_values.size();
-    int64 default_total = default_flat.size();
+    int64_t total = value_values.size();
+    int64_t default_total = default_flat.size();
     bool is_full_size_default = (total == default_total);
 
     tf_shared_lock l(mu_);
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       ValueArray* value_vec =
           gtl::FindOrNull(table_, SubtleMustCopyIfIntegral(key_values(i)));
       if (value_vec != nullptr) {
-        for (int64 j = 0; j < value_dim; j++) {
+        for (int64_t j = 0; j < value_dim; j++) {
           value_values(i, j) = value_vec->at(j);
         }
       } else {
@@ -257,7 +257,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
         //
         // is_full_size_default is false:
         //   All keys will share the default_flat(0) as default value.
-        for (int64 j = 0; j < value_dim; j++) {
+        for (int64_t j = 0; j < value_dim; j++) {
           value_values(i, j) =
               is_full_size_default ? default_flat(i, j) : default_flat(0, j);
         }
@@ -270,15 +270,15 @@ class MutableHashTableOfTensors final : public LookupInterface {
   Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat_inner_dims<V, 2>();
-    int64 value_dim = value_shape_.dim_size(0);
+    int64_t value_dim = value_shape_.dim_size(0);
 
     mutex_lock l(mu_);
     if (clear) {
       table_.clear();
     }
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       ValueArray value_vec;
-      for (int64 j = 0; j < value_dim; j++) {
+      for (int64_t j = 0; j < value_dim; j++) {
         V value = value_values(i, j);
         value_vec.push_back(value);
       }
@@ -297,7 +297,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
     const auto key_values = keys.flat<K>();
 
     mutex_lock l(mu_);
-    for (int64 i = 0; i < key_values.size(); ++i) {
+    for (int64_t i = 0; i < key_values.size(); ++i) {
       table_.erase(SubtleMustCopyIfIntegral(key_values(i)));
     }
     return Status::OK();
@@ -310,8 +310,8 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   Status ExportValues(OpKernelContext* ctx) override {
     tf_shared_lock l(mu_);
-    int64 size = table_.size();
-    int64 value_dim = value_shape_.dim_size(0);
+    int64_t size = table_.size();
+    int64_t value_dim = value_shape_.dim_size(0);
 
     Tensor* keys;
     Tensor* values;
@@ -332,7 +332,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
   TensorShape value_shape() const override { return value_shape_; }
 
   int64 MemoryUsed() const override {
-    int64 ret = 0;
+    int64_t ret = 0;
     tf_shared_lock l(mu_);
     for (unsigned i = 0; i < table_.bucket_count(); ++i) {
       size_t bucket_size = table_.bucket_size(i);
@@ -347,7 +347,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
     tf_shared_lock l(mu_);
-    int64 size = table_.size();
+    int64_t size = table_.size();
     Tensor keys(key_dtype(), TensorShape({size}));
     Tensor values(value_dtype(), TensorShape({size, value_shape_.dim_size(0)}));
     ExportKeysAndValues(&keys, &values);
@@ -388,15 +388,15 @@ class MutableHashTableOfTensors final : public LookupInterface {
   // must point to tensors of size `table_.size()`.
   void ExportKeysAndValues(Tensor* keys, Tensor* values) const
       TF_SHARED_LOCKS_REQUIRED(mu_) {
-    int64 value_dim = value_shape_.dim_size(0);
+    int64_t value_dim = value_shape_.dim_size(0);
     auto keys_data = keys->flat<K>();
     auto values_data = values->matrix<V>();
-    int64 i = 0;
+    int64_t i = 0;
     for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
       K key = it->first;
       ValueArray value = it->second;
       keys_data(i) = key;
-      for (int64 j = 0; j < value_dim; j++) {
+      for (int64_t j = 0; j < value_dim; j++) {
         values_data(i, j) = value[j];
       }
     }
@@ -475,7 +475,7 @@ class MutableDenseHashTable final : public LookupInterface {
                                 0);
 
     if (empty_key_hash_ == deleted_key_hash_) {
-      const int64 key_size = key_shape_.num_elements();
+      const int64_t key_size = key_shape_.num_elements();
       const auto empty_key_matrix =
           empty_key_.template shaped<K, 2>({1, key_size});
       const auto deleted_key_matrix =
@@ -485,7 +485,7 @@ class MutableDenseHashTable final : public LookupInterface {
           errors::InvalidArgument("Empty and deleted keys cannot be equal"));
     }
 
-    int64 initial_num_buckets;
+    int64_t initial_num_buckets;
     OP_REQUIRES_OK(ctx, GetNodeAttr(kernel->def(), "initial_num_buckets",
                                     &initial_num_buckets));
     OP_REQUIRES_OK(ctx, AllocateBuckets(ctx, initial_num_buckets));
@@ -498,9 +498,9 @@ class MutableDenseHashTable final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override TF_LOCKS_EXCLUDED(mu_) {
-    const int64 num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
-    const int64 key_size = key_shape_.num_elements();
-    const int64 value_size = value_shape_.num_elements();
+    const int64_t num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
+    const int64_t key_size = key_shape_.num_elements();
+    const int64_t value_size = value_shape_.num_elements();
     if (key.NumElements() != num_elements * key_size) {
       TensorShape expected_shape({num_elements});
       expected_shape.AppendShape(key_shape_);
@@ -519,9 +519,9 @@ class MutableDenseHashTable final : public LookupInterface {
         empty_key_.template shaped<K, 2>({1, key_size});
     const auto deleted_key_matrix =
         deleted_key_.template shaped<K, 2>({1, key_size});
-    const int64 bit_mask = num_buckets_ - 1;
+    const int64_t bit_mask = num_buckets_ - 1;
     // TODO(andreasst): parallelize using work_sharder
-    for (int64 i = 0; i < num_elements; ++i) {
+    for (int64_t i = 0; i < num_elements; ++i) {
       const uint64 key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_matrix, 0, key_matrix, i)) {
@@ -533,11 +533,11 @@ class MutableDenseHashTable final : public LookupInterface {
         return errors::InvalidArgument(
             "Using the deleted_key as a table key is not allowed");
       }
-      int64 bucket_index = key_hash & bit_mask;
-      int64 num_probes = 0;
+      int64_t bucket_index = key_hash & bit_mask;
+      int64_t num_probes = 0;
       while (true) {
         if (IsEqualKey(key_buckets_matrix, bucket_index, key_matrix, i)) {
-          for (int64 j = 0; j < value_size; ++j) {
+          for (int64_t j = 0; j < value_size; ++j) {
             // TODO(andreasst): check if we can get rid of SubtleMustCopy
             // here and elsewhere in this file.
             value_matrix(i, j) =
@@ -546,7 +546,7 @@ class MutableDenseHashTable final : public LookupInterface {
           break;
         }
         if (IsEqualKey(key_buckets_matrix, bucket_index, empty_key_matrix, 0)) {
-          for (int64 j = 0; j < value_size; ++j) {
+          for (int64_t j = 0; j < value_size; ++j) {
             value_matrix(i, j) = SubtleMustCopyIfIntegral(default_flat(j));
           }
           break;
@@ -565,7 +565,7 @@ class MutableDenseHashTable final : public LookupInterface {
 
   Status Insert(OpKernelContext* ctx, const Tensor& key,
                 const Tensor& value) override TF_LOCKS_EXCLUDED(mu_) {
-    const int64 batch_size = (key.dims() == 0) ? 1 : key.dim_size(0);
+    const int64_t batch_size = (key.dims() == 0) ? 1 : key.dim_size(0);
     if (key.NumElements() != batch_size * key_shape_.num_elements()) {
       TensorShape expected_shape({batch_size});
       expected_shape.AppendShape(key_shape_);
@@ -578,9 +578,9 @@ class MutableDenseHashTable final : public LookupInterface {
     // rather than updates. That means we may grow the table even though we
     // don't need to. As long as the number of keys inserted in one call is
     // small compared to the size of the map, the impact of this is minimal.
-    const int64 pending_num_entries = num_entries_ + batch_size;
+    const int64_t pending_num_entries = num_entries_ + batch_size;
     if (pending_num_entries > num_buckets_ * max_load_factor_) {
-      int64 new_num_buckets = num_buckets_;
+      int64_t new_num_buckets = num_buckets_;
       do {
         new_num_buckets <<= 1;
       } while (pending_num_entries > new_num_buckets * max_load_factor_);
@@ -617,7 +617,7 @@ class MutableDenseHashTable final : public LookupInterface {
     const auto deleted_key_tensor =
         deleted_key_.template shaped<K, 2>({1, key_shape_.num_elements()});
     const auto key_buckets_tensor = key_buckets_.template matrix<K>();
-    for (int64 i = 0; i < num_buckets_; ++i) {
+    for (int64_t i = 0; i < num_buckets_; ++i) {
       if (!IsEqualKey(key_buckets_tensor, i, empty_key_tensor, 0) &&
           !IsEqualKey(key_buckets_tensor, i, deleted_key_tensor, 0)) {
         ++num_entries_;
@@ -676,9 +676,9 @@ class MutableDenseHashTable final : public LookupInterface {
   Status DoInsert(OpKernelContext* ctx, const Tensor& key, const Tensor& value,
                   bool ignore_empty_and_deleted_key)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    const int64 num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
-    const int64 value_size = value_shape_.num_elements();
-    const int64 key_size = key_shape_.num_elements();
+    const int64_t num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
+    const int64_t value_size = value_shape_.num_elements();
+    const int64_t key_size = key_shape_.num_elements();
     const auto key_matrix = key.shaped<K, 2>({num_elements, key_size});
     auto value_matrix = value.shaped<V, 2>({num_elements, value_size});
 
@@ -688,8 +688,8 @@ class MutableDenseHashTable final : public LookupInterface {
         empty_key_.template shaped<K, 2>({1, key_size});
     const auto deleted_key_tensor =
         deleted_key_.template shaped<K, 2>({1, key_size});
-    const int64 bit_mask = num_buckets_ - 1;
-    for (int64 i = 0; i < num_elements; ++i) {
+    const int64_t bit_mask = num_buckets_ - 1;
+    for (int64_t i = 0; i < num_elements; ++i) {
       const uint64 key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_tensor, 0, key_matrix, i)) {
@@ -707,11 +707,11 @@ class MutableDenseHashTable final : public LookupInterface {
         return errors::InvalidArgument(
             "Using the deleted_key as a table key is not allowed");
       }
-      int64 bucket_index = key_hash & bit_mask;
-      int64 num_probes = 0;
+      int64_t bucket_index = key_hash & bit_mask;
+      int64_t num_probes = 0;
       while (true) {
         if (IsEqualKey(key_buckets_matrix, bucket_index, key_matrix, i)) {
-          for (int64 j = 0; j < value_size; ++j) {
+          for (int64_t j = 0; j < value_size; ++j) {
             value_buckets_matrix(bucket_index, j) =
                 SubtleMustCopyIfIntegral(value_matrix(i, j));
           }
@@ -721,11 +721,11 @@ class MutableDenseHashTable final : public LookupInterface {
             IsEqualKey(key_buckets_matrix, bucket_index, deleted_key_tensor,
                        0)) {
           ++num_entries_;
-          for (int64 j = 0; j < key_size; ++j) {
+          for (int64_t j = 0; j < key_size; ++j) {
             key_buckets_matrix(bucket_index, j) =
                 SubtleMustCopyIfIntegral(key_matrix(i, j));
           }
-          for (int64 j = 0; j < value_size; ++j) {
+          for (int64_t j = 0; j < value_size; ++j) {
             value_buckets_matrix(bucket_index, j) =
                 SubtleMustCopyIfIntegral(value_matrix(i, j));
           }
@@ -745,8 +745,8 @@ class MutableDenseHashTable final : public LookupInterface {
 
   Status DoRemove(OpKernelContext* ctx, const Tensor& key)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    const int64 num_elements = key.dim_size(0);
-    const int64 key_size = key_shape_.num_elements();
+    const int64_t num_elements = key.dim_size(0);
+    const int64_t key_size = key_shape_.num_elements();
     const auto key_matrix = key.shaped<K, 2>({num_elements, key_size});
 
     auto key_buckets_matrix = key_buckets_.template matrix<K>();
@@ -755,8 +755,8 @@ class MutableDenseHashTable final : public LookupInterface {
     const auto deleted_key_tensor =
         deleted_key_.template shaped<K, 2>({1, key_size});
     const auto deleted_key_flat = deleted_key_.template flat<K>();
-    const int64 bit_mask = num_buckets_ - 1;
-    for (int64 i = 0; i < num_elements; ++i) {
+    const int64_t bit_mask = num_buckets_ - 1;
+    for (int64_t i = 0; i < num_elements; ++i) {
       const uint64 key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_tensor, 0, key_matrix, i)) {
@@ -768,12 +768,12 @@ class MutableDenseHashTable final : public LookupInterface {
         return errors::InvalidArgument(
             "Using the deleted_key as a table key is not allowed");
       }
-      int64 bucket_index = key_hash & bit_mask;
-      int64 num_probes = 0;
+      int64_t bucket_index = key_hash & bit_mask;
+      int64_t num_probes = 0;
       while (true) {
         if (IsEqualKey(key_buckets_matrix, bucket_index, key_matrix, i)) {
           --num_entries_;
-          for (int64 j = 0; j < key_size; ++j) {
+          for (int64_t j = 0; j < key_size; ++j) {
             key_buckets_matrix(bucket_index, j) =
                 SubtleMustCopyIfIntegral(deleted_key_flat(j));
           }
@@ -794,7 +794,7 @@ class MutableDenseHashTable final : public LookupInterface {
     return Status::OK();
   }
 
-  Status AllocateBuckets(OpKernelContext* ctx, int64 new_num_buckets)
+  Status AllocateBuckets(OpKernelContext* ctx, int64_t new_num_buckets)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (new_num_buckets < 4 ||
         ((new_num_buckets & (new_num_buckets - 1)) != 0)) {
@@ -805,25 +805,25 @@ class MutableDenseHashTable final : public LookupInterface {
     num_buckets_ = new_num_buckets;
     num_entries_ = 0;
 
-    const int64 key_size = key_shape_.num_elements();
+    const int64_t key_size = key_shape_.num_elements();
     TF_RETURN_IF_ERROR(ctx->allocate_temp(
         key_dtype(), TensorShape({num_buckets_, key_size}), &key_buckets_));
     auto key_buckets_matrix = key_buckets_.matrix<K>();
     const auto empty_key_flat = empty_key_.template flat<K>();
-    for (int64 i = 0; i < num_buckets_; ++i) {
-      for (int64 j = 0; j < key_size; ++j) {
+    for (int64_t i = 0; i < num_buckets_; ++i) {
+      for (int64_t j = 0; j < key_size; ++j) {
         key_buckets_matrix(i, j) = empty_key_flat(j);
       }
     }
 
-    const int64 value_size = value_shape_.num_elements();
+    const int64_t value_size = value_shape_.num_elements();
 
     TF_RETURN_IF_ERROR(ctx->allocate_temp(
         value_dtype(), TensorShape({num_buckets_, value_size}),
         &value_buckets_));
     auto value_buckets_matrix = value_buckets_.matrix<V>();
-    for (int64 i = 0; i < num_buckets_; ++i) {
-      for (int64 j = 0; j < value_size; ++j) {
+    for (int64_t i = 0; i < num_buckets_; ++i) {
+      for (int64_t j = 0; j < value_size; ++j) {
         // Initialize values to the default value for the type to avoid
         // exposing uninitialized memory in ExportValues().
         value_buckets_matrix(i, j) = V();
@@ -832,7 +832,7 @@ class MutableDenseHashTable final : public LookupInterface {
     return Status::OK();
   }
 
-  Status Rebucket(OpKernelContext* ctx, int64 num_new_buckets)
+  Status Rebucket(OpKernelContext* ctx, int64_t num_new_buckets)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     Tensor old_key_buckets = key_buckets_;
     Tensor old_value_buckets = value_buckets_;
@@ -840,12 +840,12 @@ class MutableDenseHashTable final : public LookupInterface {
     return DoInsert(ctx, old_key_buckets, old_value_buckets, true);
   }
 
-  uint64 HashKey(typename TTypes<K>::ConstMatrix key, int64 index) const {
+  uint64 HashKey(typename TTypes<K>::ConstMatrix key, int64_t index) const {
     if (key_shape_.num_elements() == 1) {
       return HashScalar(key(index, 0));
     }
     uint64 result = 0;
-    for (int64 i = 0; i < key_shape_.num_elements(); ++i) {
+    for (int64_t i = 0; i < key_shape_.num_elements(); ++i) {
       result = Hash64Combine(result, HashScalar(key(index, i)));
     }
     return result;
@@ -854,9 +854,9 @@ class MutableDenseHashTable final : public LookupInterface {
   // Use a template to allow this function to be used both with Matrix and
   // ConstMatrix types.
   template <typename MT2>
-  bool IsEqualKey(typename TTypes<K>::Matrix tensor1, int64 index1, MT2 tensor2,
-                  int64 index2) const {
-    for (int64 i = 0; i < key_shape_.num_elements(); ++i) {
+  bool IsEqualKey(typename TTypes<K>::Matrix tensor1, int64_t index1,
+                  MT2 tensor2, int64_t index2) const {
+    for (int64_t i = 0; i < key_shape_.num_elements(); ++i) {
       if (tensor1(index1, i) != tensor2(index2, i)) {
         return false;
       }
@@ -953,7 +953,7 @@ class LookupTableInsertOp : public LookupTableOpKernel {
     const Tensor& values = ctx->input(2);
     OP_REQUIRES_OK(ctx, table->CheckKeyAndValueTensorsForInsert(keys, values));
 
-    int64 memory_used_before = 0;
+    int64_t memory_used_before = 0;
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }
@@ -986,7 +986,7 @@ class LookupTableRemoveOp : public LookupTableOpKernel {
     const Tensor& key = ctx->input(1);
     OP_REQUIRES_OK(ctx, table->CheckKeyTensorForRemove(key));
 
-    int64 memory_used_before = 0;
+    int64_t memory_used_before = 0;
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }

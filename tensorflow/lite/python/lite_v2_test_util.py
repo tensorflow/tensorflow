@@ -68,22 +68,22 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         interpreter.get_tensor(details['index']) for details in output_details
     ]
 
-  def _evaluateTFLiteModelUsingSignatureDef(self, tflite_model, method_name,
+  def _evaluateTFLiteModelUsingSignatureDef(self, tflite_model, signature_key,
                                             inputs):
     """Evaluates the model on the `inputs`.
 
     Args:
       tflite_model: TensorFlow Lite model.
-      method_name: Exported Method name of the SavedModel.
+      signature_key: Signature key.
       inputs: Map from input tensor names in the SignatureDef to tensor value.
 
     Returns:
       Dictionary of outputs.
-      Key is the output name in the SignatureDef 'method_name'
+      Key is the output name in the SignatureDef 'signature_key'
       Value is the output value
     """
     interpreter = Interpreter(model_content=tflite_model)
-    signature_runner = interpreter.get_signature_runner(method_name)
+    signature_runner = interpreter.get_signature_runner(signature_key)
     return signature_runner(**inputs)
 
   def _getSimpleVariableModel(self):

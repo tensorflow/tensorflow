@@ -503,9 +503,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # b/190188732
-    ],
     deps = [
         ":quantized_depthwise_conv_2d_tester",
         ":test_main",
@@ -941,9 +938,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = [
-        "nomsan",  # b/190188732
-    ],
     deps = [
         ":quantized_depthwise_conv_2d_tester",
         ":test_main",
@@ -1043,6 +1037,21 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_add_test",
+    srcs = ["unsigned_quantized_add_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_add_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_conv_2d_test",
     srcs = ["unsigned_quantized_conv_2d_test.cc"],
     linkopts = select({
@@ -1066,6 +1075,21 @@ cc_test(
     }),
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_fully_connected_test",
+    srcs = ["unsigned_quantized_fully_connected_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_fully_connected_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",

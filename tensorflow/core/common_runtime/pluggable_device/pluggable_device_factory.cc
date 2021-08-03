@@ -37,7 +37,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-int64 MinSystemMemory(int64 available_memory) {
+int64 MinSystemMemory(int64_t available_memory) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 225MiB to system memory,
@@ -45,7 +45,7 @@ int64 MinSystemMemory(int64 available_memory) {
   // available_memory) to system memory.
   //
   // In the future we could be more sophisticated by using a table of devices.
-  int64 min_system_memory;
+  int64_t min_system_memory;
   constexpr float kMinSystemMemoryFraction = 0.06;
   if (available_memory < (1LL << 31)) {
     // 225MiB
@@ -78,8 +78,8 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
                                       const GPUOptions& device_options,
                                       PlatformDeviceId platform_device_id,
                                       int64* memory_limit) {
-  int64 total_memory = 0;
-  int64 available_memory = 0;
+  int64_t total_memory = 0;
+  int64_t available_memory = 0;
   se::Platform* platform = PluggableDeviceMachineManager(platform_name);
   se::StreamExecutor* se =
       DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_device_id)
@@ -90,7 +90,7 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
         platform_device_id.value());
   }
 
-  int64 allocated_memory = 0;
+  int64_t allocated_memory = 0;
   const double per_process_device_memory_fraction =
       device_options.per_process_gpu_memory_fraction();
   if (per_process_device_memory_fraction > 1.0 ||
@@ -100,7 +100,7 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
 
   if (per_process_device_memory_fraction == 0) {
     allocated_memory = available_memory;
-    const int64 min_system_memory = MinSystemMemory(available_memory);
+    const int64_t min_system_memory = MinSystemMemory(available_memory);
     if (min_system_memory < allocated_memory) {
       allocated_memory -= min_system_memory;
     }
@@ -190,7 +190,7 @@ Status PluggableDeviceFactory::CreateDevices(
   std::vector<int64> memory_limit_bytes;
   for (int i = 0; i < num_tf_devices; ++i) {
     const PlatformDeviceId platform_device_id = visible_device_order[i];
-    int64 single_virtual_device_memory_limit = 0;
+    int64_t single_virtual_device_memory_limit = 0;
     TF_RETURN_IF_ERROR(SingleVirtualDeviceMemoryLimit(
         platform_name_, device_options, platform_device_id,
         &single_virtual_device_memory_limit));
@@ -206,7 +206,7 @@ Status PluggableDeviceFactory::CreateDevices(
   // Build the PluggableDevices.
   for (int di = 0; di < num_tf_devices; ++di) {
     TfDeviceId tf_device_id(di);
-    int64 bytes = memory_limit_bytes[di];
+    int64_t bytes = memory_limit_bytes[di];
     TF_RETURN_IF_ERROR(CreatePluggableDevice(options, name_prefix, tf_device_id,
                                              bytes, device_localities[di],
                                              devices));
@@ -223,7 +223,7 @@ static string GetShortDeviceDescription(PlatformDeviceId platform_device_id,
 
 Status PluggableDeviceFactory::CreatePluggableDevice(
     const SessionOptions& options, const string& name_prefix,
-    TfDeviceId tf_device_id, int64 memory_limit,
+    TfDeviceId tf_device_id, int64_t memory_limit,
     const DeviceLocality& dev_locality,
     std::vector<std::unique_ptr<Device>>* devices) {
   DCHECK_GE(tf_device_id.value(), 0);
@@ -261,7 +261,7 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
   // a new one (as TF Device is a shared resource), in which case the actual
   // memory limit represented by 'stats.bytes_limit' used by that allocator
   // may be different (which should be an error).
-  int64 bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
+  int64_t bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
   auto pluggable_device = absl::make_unique<PluggableDevice>(
       options, device_name, device_type_, platform_name_,
       static_cast<Bytes>(bytes_limit), dev_locality, tf_device_id,

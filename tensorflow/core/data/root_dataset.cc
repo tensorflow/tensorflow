@@ -38,7 +38,7 @@ constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr double kRamBudgetShare = 0.5;
 
 // If value `x` matches `y`, returns default value `z`. Otherwise, return `x`.
-inline int64 value_or_default(int64 x, int64 y, int64 z) {
+inline int64 value_or_default(int64_t x, int64_t y, int64_t z) {
   return x == y ? z : x;
 }
 

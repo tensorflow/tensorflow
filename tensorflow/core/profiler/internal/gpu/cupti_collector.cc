@@ -291,7 +291,8 @@ class PerDeviceCollector {
   }
 
   std::string GetDeviceXLineName(
-      int64 stream_id, absl::flat_hash_set<CuptiTracerEventType>& event_types) {
+      int64_t stream_id,
+      absl::flat_hash_set<CuptiTracerEventType>& event_types) {
     std::string line_name = absl::StrCat("Stream #", stream_id);
     event_types.erase(CuptiTracerEventType::Unsupported);
     if (event_types.empty()) return line_name;
@@ -323,7 +324,7 @@ class PerDeviceCollector {
     }
   }
 
-  void Flush(int32 device_ordinal, uint64 start_walltime_ns,
+  void Flush(int32_t device_ordinal, uint64 start_walltime_ns,
              uint64 start_gpu_ns, StepStats* step_stats) {
     mutex_lock l(m_);
     absl::flat_hash_map<std::pair<int64 /*stream_id*/, CuptiTracerEventType>,
@@ -454,7 +455,7 @@ class PerDeviceCollector {
     absl::flat_hash_map<int64, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
     for (auto& event : events_) {
-      int64 line_id = CuptiTracerEvent::kInvalidThreadId;
+      int64_t line_id = CuptiTracerEvent::kInvalidThreadId;
       bool is_host_event = IsHostEvent(event, &line_id);
       if (line_id == CuptiTracerEvent::kInvalidThreadId ||
           line_id == CuptiTracerEvent::kInvalidStreamId) {
@@ -484,7 +485,7 @@ class PerDeviceCollector {
     return num_events;
   }
 
-  void GetDeviceCapabilities(int32 device_ordinal,
+  void GetDeviceCapabilities(int32_t device_ordinal,
                              XPlaneBuilder* device_plane) {
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;
@@ -749,7 +750,7 @@ std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
 }
 
 // The strings are parser friendly and have no whitespaces in them.
-absl::string_view GetMemoryKindName(int8 memory_kind) {
+absl::string_view GetMemoryKindName(int8_t memory_kind) {
   switch (memory_kind) {
     case CUPTI_ACTIVITY_MEMORY_KIND_ARRAY:
       return "array";

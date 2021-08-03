@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -36,10 +35,6 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   const BufferAllocations& buffer_allocations = *params.buffer_allocations;
 
   VLOG(2) << "Infeeding to GPU";
-
-  auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(profile_index());
-
   ShapeTree<se::ScopedDeviceMemory<uint8>> source_buffers =
       GetOrCreateInfeedManager(stream.parent())->BlockingGetNextDestination();
 

@@ -163,7 +163,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
 
   def testConvertNumpyArrayWithUnsupportedDtype(self):
     converter = self.makePythonTensorConverter()
-    x = np.array([[1, 2], ["a", "b"]], np.object)
+    x = np.array([[1, 2], ["a", "b"]], np.object_)
     with self.assertRaises((ValueError, TypeError)):
       converter.Convert(x, types_pb2.DT_INVALID)
 

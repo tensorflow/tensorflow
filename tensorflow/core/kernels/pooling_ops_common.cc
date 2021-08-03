@@ -84,8 +84,9 @@ struct PadInputWithNegativeInf<qint8> {
 
 }  // namespace
 
-Status CheckPaddingSize(int64 window_rows, int64 window_cols, int64 pad_top,
-                        int64 pad_bottom, int64 pad_left, int64 pad_right) {
+Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
+                        int64_t pad_top, int64_t pad_bottom, int64_t pad_left,
+                        int64_t pad_right) {
   if (!FastBoundsCheck(pad_top, window_rows)) {
     return errors::InvalidArgument("Top padding ", pad_top,
                                    " needs to be smaller than the "
@@ -170,6 +171,8 @@ PoolParameters::PoolParameters(OpKernelContext* context,
     pad_depth = 0;
     out_depth = depth;
   } else {
+    OP_REQUIRES(context, depth_window > 0,
+                errors::InvalidArgument("depth_window must not be 0"));
     // Our current version of depthwise max pooling does not support
     // any padding, and expects the depth_window to equal the
     // depth_stride (no overlapping).
@@ -289,27 +292,27 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
   }
 #endif
 
-  int64 vertical_padding = params.pad_top;
-  int64 horizontal_padding = params.pad_left;
+  int64_t vertical_padding = params.pad_top;
+  int64_t horizontal_padding = params.pad_left;
 
   if (padding == EXPLICIT && (params.pad_top != params.pad_bottom ||
                               params.pad_left != params.pad_right)) {
     // cuDNN only supports padding the same amount on the left and right sides,
     // and on the top and bottom sides. So we manually create a new padded
     // input tensor such that we can pass it to cuDNN.
-    const int64 common_padding_rows =
+    const int64_t common_padding_rows =
         std::min(params.pad_top, params.pad_bottom);
-    const int64 common_padding_cols =
+    const int64_t common_padding_cols =
         std::min(params.pad_left, params.pad_right);
 
     Tensor padded_input;
-    const int64 padding_rows_diff =
+    const int64_t padding_rows_diff =
         std::abs(params.pad_top - params.pad_bottom);
-    const int64 padding_cols_diff =
+    const int64_t padding_cols_diff =
         std::abs(params.pad_left - params.pad_right);
 
-    const int64 new_in_rows = tensor_in_rows + padding_rows_diff;
-    const int64 new_in_cols = tensor_in_cols + padding_cols_diff;
+    const int64_t new_in_rows = tensor_in_rows + padding_rows_diff;
+    const int64_t new_in_cols = tensor_in_cols + padding_cols_diff;
 
     OP_REQUIRES_OK(
         context,
@@ -317,10 +320,10 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
                                ShapeFromFormat(data_format, batch_size,
                                                new_in_rows, new_in_cols, depth),
                                &padded_input));
-    const int64 input_pad_top = params.pad_top - common_padding_rows;
-    const int64 input_pad_bottom = params.pad_bottom - common_padding_rows;
-    const int64 input_pad_left = params.pad_left - common_padding_cols;
-    const int64 input_pad_right = params.pad_right - common_padding_cols;
+    const int64_t input_pad_top = params.pad_top - common_padding_rows;
+    const int64_t input_pad_bottom = params.pad_bottom - common_padding_rows;
+    const int64_t input_pad_left = params.pad_left - common_padding_cols;
+    const int64_t input_pad_right = params.pad_right - common_padding_cols;
 
     bool in_bounds =
         FastBoundsCheck(input_pad_top, std::numeric_limits<int>::max()) &&
@@ -567,18 +570,18 @@ void DnnPoolingGradOp<T>::Compute(
   }
 #endif  // CUDNN_VERSION < 7300
 
-  int64 vertical_padding = params.pad_top;
-  int64 horizontal_padding = params.pad_left;
+  int64_t vertical_padding = params.pad_top;
+  int64_t horizontal_padding = params.pad_left;
 
   int batch_size = params.tensor_in_batch;
   int depth = params.depth;
   int tensor_in_cols = params.tensor_in_cols;
   int tensor_in_rows = params.tensor_in_rows;
 
-  int64 input_pad_top = 0;
-  int64 input_pad_bottom = 0;
-  int64 input_pad_left = 0;
-  int64 input_pad_right = 0;
+  int64_t input_pad_top = 0;
+  int64_t input_pad_bottom = 0;
+  int64_t input_pad_left = 0;
+  int64_t input_pad_right = 0;
 
   Tensor transformed_and_padded_input_backprop;
 
@@ -587,19 +590,19 @@ void DnnPoolingGradOp<T>::Compute(
     // Pad the input in the same way we did during the forward pass, so that
     // cuDNN or MIOpen receives the same input during the backward pass function
     // as it did during the forward pass function.
-    const int64 common_padding_rows =
+    const int64_t common_padding_rows =
         std::min(params.pad_top, params.pad_bottom);
-    const int64 common_padding_cols =
+    const int64_t common_padding_cols =
         std::min(params.pad_left, params.pad_right);
 
     Tensor padded_input;
-    const int64 padding_rows_diff =
+    const int64_t padding_rows_diff =
         std::abs(params.pad_top - params.pad_bottom);
-    const int64 padding_cols_diff =
+    const int64_t padding_cols_diff =
         std::abs(params.pad_left - params.pad_right);
 
-    const int64 new_in_rows = tensor_in_rows + padding_rows_diff;
-    const int64 new_in_cols = tensor_in_cols + padding_cols_diff;
+    const int64_t new_in_rows = tensor_in_rows + padding_rows_diff;
+    const int64_t new_in_cols = tensor_in_cols + padding_cols_diff;
 
     VLOG(2) << "Create new tensor: "
             << " original rows=" << tensor_in_rows

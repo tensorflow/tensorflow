@@ -82,16 +82,16 @@ class EventNode {
 
   std::string GetGroupName() const;
 
-  void SetGroupId(int64 group_id);
+  void SetGroupId(int64_t group_id);
 
   // Sets group_id for this node and its descendants.
-  void PropagateGroupId(int64 group_id, GroupMetadataMap* group_metadata_map);
+  void PropagateGroupId(int64_t group_id, GroupMetadataMap* group_metadata_map);
 
   const XPlaneVisitor& GetPlaneVisitor() const { return *plane_; }
 
   const XEventVisitor& GetEventVisitor() const { return visitor_; }
 
-  absl::optional<XStatVisitor> GetContextStat(int64 stat_type) const;
+  absl::optional<XStatVisitor> GetContextStat(int64_t stat_type) const;
 
   void AddStepName(absl::string_view step_name);
 
@@ -107,7 +107,7 @@ class EventNode {
   bool IsNestedIn(EventNode* parent);
 
   // Returns the closest parent (including itself) of the given event type.
-  const EventNode* FindParent(int64 event_type) const;
+  const EventNode* FindParent(int64_t event_type) const;
 
   absl::optional<ContextInfo> GetProducerContext() const {
     return producer_context_;
@@ -130,7 +130,7 @@ class EventNode {
   }
 
  private:
-  XStat* FindOrAddStatByType(int64 stat_type);
+  XStat* FindOrAddStatByType(int64_t stat_type);
 
   const XPlaneVisitor* plane_;
   XEventVisitor visitor_;

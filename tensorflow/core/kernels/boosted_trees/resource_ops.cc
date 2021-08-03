@@ -42,7 +42,7 @@ class BoostedTreesCreateEnsembleOp : public OpKernel {
     // Get the stamp token.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input("stamp_token", &stamp_token_t));
-    int64 stamp_token = stamp_token_t->scalar<int64>()();
+    int64_t stamp_token = stamp_token_t->scalar<int64>()();
 
     // Get the tree ensemble proto.
     const Tensor* tree_ensemble_serialized_t;
@@ -53,6 +53,7 @@ class BoostedTreesCreateEnsembleOp : public OpKernel {
     if (!result->InitFromSerialized(
             tree_ensemble_serialized_t->scalar<tstring>()(), stamp_token)) {
       result->Unref();
+      result.release();  // Needed due to the `->Unref` above, to prevent UAF
       OP_REQUIRES(
           context, false,
           errors::InvalidArgument("Unable to parse tree ensemble proto."));
@@ -119,8 +120,8 @@ class BoostedTreesGetEnsembleStatesOp : public OpKernel {
     output_num_finalized_trees_t->scalar<int32>()() = num_finalized_trees;
     output_num_attempted_layers_t->scalar<int32>()() = num_attempted_layers;
 
-    int32 range_start;
-    int32 range_end;
+    int32_t range_start;
+    int32_t range_end;
     tree_ensemble_resource->GetLastLayerNodesRange(&range_start, &range_end);
 
     output_last_layer_nodes_range_t->vec<int32>()(0) = range_start;
@@ -176,7 +177,7 @@ class BoostedTreesDeserializeEnsembleOp : public OpKernel {
     // Get the stamp token.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input("stamp_token", &stamp_token_t));
-    int64 stamp_token = stamp_token_t->scalar<int64>()();
+    int64_t stamp_token = stamp_token_t->scalar<int64>()();
 
     // Get the tree ensemble proto.
     const Tensor* tree_ensemble_serialized_t;

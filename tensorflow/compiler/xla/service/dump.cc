@@ -227,13 +227,13 @@ absl::optional<std::string> DumpToFileInDirImpl(
     static const LazyRE2 module_id_regex = {R"(.*module_(\d+)\..*)"};
     absl::flat_hash_set<int64> dumped_module_ids;
     for (const string& match : matches) {
-      int64 dumped_module_id;
+      int64_t dumped_module_id;
       if (RE2::FullMatch(match, *module_id_regex, &dumped_module_id)) {
         dumped_module_ids.insert(dumped_module_id);
       }
     }
     if (dumped_module_ids.size() >= opts.dump_max_hlo_modules) {
-      int64 module_id;
+      int64_t module_id;
       if (RE2::FullMatch(filename, *module_id_regex, &module_id) &&
           !dumped_module_ids.contains(module_id)) {
         LOG(ERROR) << "Have already dumped " << dumped_module_ids.size()
@@ -556,7 +556,7 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
     return {};
   }
 
-  int64 step_number = StepNumberForModule(module);
+  int64_t step_number = StepNumberForModule(module);
   std::string timestamp = TimestampFor(module);
 
   string filename_suffix =
@@ -575,7 +575,7 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
     return;
   }
 
-  int64 step_number = StepNumberForModule(module);
+  int64_t step_number = StepNumberForModule(module);
   std::string timestamp = TimestampFor(module);
 
   string filename_suffix =
@@ -590,7 +590,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   if (!opts.should_dump_module(module.name()) || !opts.dump_snapshots) {
     return;
   }
-  int64 execution_count;
+  int64_t execution_count;
   uint64 timestamp;
   {
     static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
@@ -628,7 +628,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
 
   // We don't have a unique id for an HloSnapshot, so in this overload we just
   // have to use its name.
-  int64 execution_count;
+  int64_t execution_count;
   {
     static auto& module_name_to_execution_count TF_GUARDED_BY(mu) =
         *new absl::flat_hash_map<string, int64>();

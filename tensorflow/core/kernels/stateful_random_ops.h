@@ -31,11 +31,11 @@ static constexpr DataType ALGORITHM_DTYPE = STATE_ELEMENT_DTYPE;
 
 using random::PhiloxRandom;
 
-static constexpr int64 PHILOX_MIN_STATE_SIZE =
+static constexpr int64_t PHILOX_MIN_STATE_SIZE =
     (PhiloxRandom::ResultType::kElementCount +
      PhiloxRandom::Key::kElementCount) /
     2;
-static constexpr int64 THREEFRY_MIN_STATE_SIZE = 2;
+static constexpr int64_t THREEFRY_MIN_STATE_SIZE = 2;
 
 }  // end namespace tensorflow
 

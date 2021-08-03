@@ -42,7 +42,7 @@ namespace {
 
 class CpuInfeedBuffer : public cpu::runtime::XfeedBuffer {
  public:
-  explicit CpuInfeedBuffer(int32 length)
+  explicit CpuInfeedBuffer(int32_t length)
       : length_(length), buffer_(new char[length]) {}
   ~CpuInfeedBuffer() override { delete[] buffer_; }
 
@@ -57,7 +57,7 @@ class CpuInfeedBuffer : public cpu::runtime::XfeedBuffer {
 
 class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
  public:
-  CpuOutfeedBuffer(void* destination, int32 length)
+  CpuOutfeedBuffer(void* destination, int32_t length)
       : destination_(destination), length_(length) {}
 
   StatusOr<Shape> WaitForNotification() {
@@ -292,7 +292,7 @@ Status ReadDynamicShapesOnCpu(
 
         // Read the dynamic shape metadata from the device stream.
         Shape buffer_shape_static = ShapeUtil::MakeStaticShape(buffer_shape);
-        const int64 offset = shape_size_fn(buffer_shape_static);
+        const int64_t offset = shape_size_fn(buffer_shape_static);
         int64_t metadata_size = shape_size_fn(buffer_shape) - offset;
         if (metadata_size == 0) {
           return InvalidArgument("Dynamic shape metadata size should not be 0");

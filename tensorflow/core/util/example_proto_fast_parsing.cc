@@ -220,7 +220,7 @@ class Feature {
         return false;
       }
 
-      constexpr int32 kNumFloatBytes = 4;
+      constexpr int32_t kNumFloatBytes = 4;
       if (peek_tag == kDelimitedTag(1)) {                       // packed
         if (!stream.ExpectTag(kDelimitedTag(1))) return false;  // packed tag
         uint32 packed_length;
@@ -262,7 +262,7 @@ class Feature {
         const size_t initial_size = float_list->size();
         // 1 byte for the tag (`1` encoded as Variant32) and kNumFloatBytes for
         // the value.
-        const int64 num_elements =
+        const int64_t num_elements =
             stream.BytesUntilLimit() / (1 + kNumFloatBytes);
         float_list->resize(initial_size + num_elements);
         int64_t index = initial_size;
@@ -1161,7 +1161,7 @@ Status FastParseExample(const Config& config,
     if (config.dense[d].variable_length) continue;
     TensorShape out_shape;
     out_shape.AddDim(serialized.size());
-    for (const int64 dim : config.dense[d].shape.dim_sizes()) {
+    for (const int64_t dim : config.dense[d].shape.dim_sizes()) {
       out_shape.AddDim(dim);
     }
     fixed_dense_values[d] = Tensor(config.dense[d].dtype, out_shape);
@@ -1340,7 +1340,7 @@ Status FastParseExample(const Config& config,
         }
       } else {
         int32* row_splits_out = &row_splits->flat<int32>()(splits_offset);
-        int32 start = *row_splits_out;
+        int32_t start = *row_splits_out;
         for (size_t example_end_index : buffer.example_end_indices) {
           *++row_splits_out = start + example_end_index;
         }

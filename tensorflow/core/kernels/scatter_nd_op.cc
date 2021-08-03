@@ -48,8 +48,8 @@ typedef Eigen::GpuDevice GPUDevice;
 // If shape_input has 0 elements, then we need to have indices and updates with
 // exactly 0 elements too, otherwise we should error. If indices has 0 elements
 // then updates should also have 0 elements, otherwise we should error.
-bool ValidEmptyOutputShape(int64 num_inputs, int64 num_indices,
-                           int64 num_updates) {
+bool ValidEmptyOutputShape(int64_t num_inputs, int64_t num_indices,
+                           int64_t num_updates) {
   if (num_indices == 0 && num_updates == 0) {
     return true;  // regardless of num_inputs ?= 0, covers both cases
   }
@@ -92,7 +92,7 @@ class ScatterNdOp : public OpKernel {
                 errors::InvalidArgument(
                     "Indices and updates specified for empty output shape"));
 
-    const int64 outer_dims = indices.shape().dims() - 1;
+    const int64_t outer_dims = indices.shape().dims() - 1;
 
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(
@@ -104,7 +104,7 @@ class ScatterNdOp : public OpKernel {
               ") of updates[shape=", updates.shape().DebugString(), "]"));
     }
 
-    const int64 ix = indices.shape().dim_size(outer_dims);
+    const int64_t ix = indices.shape().dim_size(outer_dims);
     OP_REQUIRES(c, updates.shape().dims() - outer_dims == shape.dims() - ix,
                 errors::InvalidArgument(
                     "Dimensions [", ix, ",", shape.dims(), ") of input[shape=",
@@ -165,7 +165,7 @@ class TensorScatterOp : public OpKernel {
                 errors::InvalidArgument(
                     "Indices and updates specified for empty output shape"));
 
-    const int64 outer_dims = indices.shape().dims() - 1;
+    const int64_t outer_dims = indices.shape().dims() - 1;
 
     for (int i = 0; i < outer_dims; ++i) {
       OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
@@ -176,7 +176,7 @@ class TensorScatterOp : public OpKernel {
                       ", updates shape:", updates.shape().DebugString()));
     }
 
-    const int64 ix = indices.shape().dim_size(outer_dims);
+    const int64_t ix = indices.shape().dim_size(outer_dims);
     OP_REQUIRES(
         c, updates.shape().dims() - outer_dims == shape.dims() - ix,
         errors::InvalidArgument("Inner dimensions of output shape must match "
@@ -776,9 +776,9 @@ namespace functor {
 // params_shape[slice_dim:]
 Status ValidateUpdateShape(const TensorShape& params_shape,
                            const Tensor& indices, const Tensor& updates) {
-  const int64 slice_dim =
+  const int64_t slice_dim =
       (indices.dims() > 1) ? indices.dim_size(indices.dims() - 1) : 1;
-  const int64 batch_dim = (indices.dims() > 1) ? indices.dims() - 1 : 1;
+  const int64_t batch_dim = (indices.dims() > 1) ? indices.dims() - 1 : 1;
 
   auto shape_err_prefix = [&]() {
     return errors::InvalidArgument(
@@ -844,7 +844,7 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
   TF_RETURN_IF_ERROR(ValidateUpdateShape(params_shape, indices, updates));
 
   // Check that we have enough index space
-  const int64 N_big = indices.NumElements();
+  const int64_t N_big = indices.NumElements();
   if (N_big > std::numeric_limits<Index>::max()) {
     return errors::InvalidArgument("indices has too many elements for ",
                                    DataTypeString(DataTypeToEnum<Index>::v()),
@@ -868,8 +868,8 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
   // slices at a time.
   Index total_nd = params_shape.dims();
 
-  int64 slice_size_big = 1;
-  for (int64 i = *slice_dim; i < total_nd; ++i) {
+  int64_t slice_size_big = 1;
+  for (int64_t i = *slice_dim; i < total_nd; ++i) {
     slice_size_big *= params_shape.dim_size(i);
   }
 
@@ -881,7 +881,7 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
 
   *slice_size = static_cast<Index>(slice_size_big);
 
-  const int64 safe_slice_dim = (*slice_dim < 1) ? 1 : *slice_dim;
+  const int64_t safe_slice_dim = (*slice_dim < 1) ? 1 : *slice_dim;
   *num_updates = indices_shape.num_elements() / safe_slice_dim;
 
   return Status::OK();
@@ -902,7 +902,7 @@ template <typename Device, typename T, typename Index,
 Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
                    const Tensor& updates, const TensorShape& shape, Tensor* out,
                    bool allocate) {
-  int64 slice_dim;
+  int64_t slice_dim;
   Index num_updates;
   Index slice_size;
   TF_RETURN_IF_ERROR(PrepareAndValidateInputs<Index>(

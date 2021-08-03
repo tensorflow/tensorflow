@@ -140,7 +140,8 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
     concrete_func = root.f.get_concrete_function(input_data)
 
     # Convert model.
-    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
     converter.target_spec.supported_ops = set([lite.OpsSet.SELECT_TF_OPS])
     converter.experimental_new_converter = enable_mlir
     tflite_model = converter.convert()

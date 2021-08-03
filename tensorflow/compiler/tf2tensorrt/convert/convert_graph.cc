@@ -774,6 +774,14 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
     curr_engine.engine_name = StrCat(engine_name_prefix, t);
+
+    bool int8_no_calib = (params.use_calibration == false &&
+                          params.precision_mode == TrtPrecisionMode::INT8);
+    bool has_qdq = false;
+    if (int8_no_calib) {
+      has_qdq = absl::c_any_of(reverse_topo_order, IsQuantizeAndDequantizeOp);
+    }
+
     Status status = GetEngineInfo(&graph, static_graph_properties, curr_segment,
                                   node_map, reverse_topo_order, &curr_engine);
     if (!status.ok()) {
@@ -781,9 +789,18 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                               << ": " << status;
       continue;
     }
-    curr_engine.precision_mode = params.precision_mode;
+
     curr_engine.engine_type = GetEngineType(params);
     curr_engine.use_calibration = params.use_calibration;
+    // Building cuda engines for INT8 without calibration and without dynamic
+    // range info cause TRT failure. Avoid this situation by setting the
+    // precision to FP16.
+    if (int8_no_calib && !has_qdq) {
+      VLOG(1) << "Set engine precision to FP16 due to missing QDQ OP";
+      curr_engine.precision_mode = TrtPrecisionMode::FP16;
+    } else {
+      curr_engine.precision_mode = params.precision_mode;
+    }
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     curr_engine.allow_build_at_runtime = params.allow_build_at_runtime;
     if (!curr_engine.max_batch_size.has_value()) {

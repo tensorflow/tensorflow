@@ -865,7 +865,8 @@ void SchedulerState::GetOutputNodes(const NodeDef* node,
 }
 
 std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
-    const NodeDef* node, const Costs& node_costs, const OpContext& op_context) {
+    const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+    const std::string& override_device_name) {
   auto& node_state = node_map_[node];
   // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
   // Merge -- it can create a loop which may include loop-carried dependency,
@@ -898,8 +899,16 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
                        !node_costs.inaccurate);
   }
 
+  std::string device_name = node_state.device_name;
+  if (!override_device_name.empty()) {
+    // N.B. There's a chance that device_name doesn't exist in the device map
+    // (device_), but it's ok because we'll effectively create a new device the
+    // first time a new device is seen.
+    device_name = override_device_name;
+  }
+
   // Update node and device states.
-  auto& device = device_[node_state.device_name];
+  auto& device = device_[device_name];
   device.nodes_executed.push_back(node);
   // Node is scheduled when the device is available AND all the inputs are
   // ready; hence, time_scheduled is time_ready if time_ready > device curr

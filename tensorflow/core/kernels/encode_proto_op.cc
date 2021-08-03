@@ -76,7 +76,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_INT64, int64>(const Tensor& input,
                                                           int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<int64>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::Int64Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -89,7 +89,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_UINT64, uint64>(const Tensor& input,
                                                             int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<uint64>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::UInt64Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -102,7 +102,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_INT32, int64>(const Tensor& input,
                                                           int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<int64>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::Int32Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -115,7 +115,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_INT32, int32>(const Tensor& input,
                                                           int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<int32>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::Int32Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -153,7 +153,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_UINT32, uint64>(const Tensor& input,
                                                             int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<uint64>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::UInt32Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -166,7 +166,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_UINT32, uint32>(const Tensor& input,
                                                             int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<uint32>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::UInt32Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -179,7 +179,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_ENUM, int32>(const Tensor& input,
                                                          int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<int32>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size +=
         WireFormatLite::EnumSize(input_t(static_cast<int64>(message_index), i));
   }
@@ -210,7 +210,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_SINT32, int32>(const Tensor& input,
                                                            int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<int32>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::SInt32Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -223,7 +223,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_SINT32, int64>(const Tensor& input,
                                                            int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<int64>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::SInt32Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -236,7 +236,7 @@ size_t TotalPackedSize<WireFormatLite::TYPE_SINT64, int64>(const Tensor& input,
                                                            int size) {
   size_t data_size = 0;
   auto input_t = input.flat_inner_dims<int64>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     data_size += WireFormatLite::SInt64Size(
         input_t(static_cast<int64>(message_index), i));
   }
@@ -265,13 +265,13 @@ Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
     output->WriteVarint32(data_size);
 
     // Write individual values.
-    for (int64 i = 0; i < size; i++) {
+    for (int64_t i = 0; i < size; i++) {
       // Note implicit cast from signed to unsigned.
       const ProtoT& value = input_t(static_cast<int64>(message_index), i);
       Writer(value, output);
     }
   } else {
-    for (int64 i = 0; i < size; i++) {
+    for (int64_t i = 0; i < size; i++) {
       WireFormatLite::WriteTag(field_desc.number(), wire_type, output);
 
       // Note implicit cast from signed to unsigned.
@@ -288,7 +288,7 @@ Status WriteVarLenField(const FieldDescriptor& field_desc, const Tensor& input,
                         int message_index, int size,
                         CodedOutputStream* output) {
   auto input_t = input.flat_inner_dims<T>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     const T& value = input_t(static_cast<int64>(message_index), i);
     // TODO(nix): there doesn't seem to be an inlined version of
     // WireFormatLite::WriteString or its relatives, which might allow a
@@ -324,7 +324,7 @@ static void WriteBytesAdapter(int field_number, const tstring& value,
 Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
                   int message_index, int size, CodedOutputStream* output) {
   auto input_t = input.flat_inner_dims<tstring>();
-  for (int64 i = 0; i < size; i++) {
+  for (int64_t i = 0; i < size; i++) {
     const string& value = input_t(static_cast<int64>(message_index), i);
     WireFormatLite::WriteTag(field_desc.number(),
                              WireFormatLite::WIRETYPE_START_GROUP, output);

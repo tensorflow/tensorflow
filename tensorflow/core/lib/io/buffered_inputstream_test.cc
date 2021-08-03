@@ -36,7 +36,7 @@ class ReadOnceInputStream : public InputStreamInterface {
  public:
   ReadOnceInputStream() : start_(true) {}
 
-  virtual Status ReadNBytes(int64 bytes_to_read, tstring* result) {
+  virtual Status ReadNBytes(int64_t bytes_to_read, tstring* result) {
     if (bytes_to_read < 11) {
       return errors::InvalidArgument("Not reading all bytes: ", bytes_to_read);
     }
@@ -546,7 +546,7 @@ void BM_BufferedReaderSmallReads(::testing::benchmark::State& state) {
   int itr = 0;
   for (auto s : state) {
     BufferedInputStream in(file.get(), buff_size);
-    for (int64 i = 0; i < 10 * file_size; ++i) {
+    for (int64_t i = 0; i < 10 * file_size; ++i) {
       TF_ASSERT_OK(in.ReadNBytes(1, &result))
           << "i: " << i << " itr: " << itr << " buff_size: " << buff_size
           << " file size: " << file_size;

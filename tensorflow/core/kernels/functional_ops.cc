@@ -272,7 +272,7 @@ class CaseOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(branch_index.shape()),
                       errors::InvalidArgument("branch_index must be scalar"),
                       done);
-    int32 branch = branch_index.scalar<int32>()();
+    int32_t branch = branch_index.scalar<int32>()();
     (new State(this, ctx, branch, branch_handles, done))->Start();
   }
 
@@ -367,6 +367,7 @@ class WhileOp : public AsyncOpKernel {
       // Use the non-callback-based implementation when kernels (and function
       // callbacks) execute inline to avoid stack overflow.
       OP_REQUIRES_OK_ASYNC(ctx, DoComputeSync(ctx), done);
+      done();
     } else {
       FHandle cond_handle;
       FHandle body_handle;
@@ -755,7 +756,7 @@ class ForOp : public AsyncOpKernel {
       args_[0] = Tensor(DT_INT32, {});
       iter_ = &args_[0].scalar<int32>()();
 
-      const int32 num_loop_inputs = ctx_->num_inputs() - 3;
+      const int32_t num_loop_inputs = ctx_->num_inputs() - 3;
       rets_.reserve(num_loop_inputs);
       for (int i = 0; i < num_loop_inputs; ++i) {
         rets_.push_back(ctx_->input(3 + i));
@@ -871,7 +872,7 @@ class FakeParamOp : public OpKernel {
     PartialTensorShape partial_shape;
     OP_REQUIRES_OK(context, context->GetAttr("shape", &partial_shape));
     if (!partial_shape.unknown_rank()) {
-      for (int64 d : partial_shape.dim_sizes()) {
+      for (int64_t d : partial_shape.dim_sizes()) {
         shape.AddDim(d == -1 ? 0 : d);
       }
     }

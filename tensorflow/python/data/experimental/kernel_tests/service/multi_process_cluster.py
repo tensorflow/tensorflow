@@ -33,9 +33,7 @@ class _RemoteWorkerProcess(multi_process_lib.Process):
     self._dispatcher_address = dispatcher_address
     self._pipe_writer = pipe_writer
 
-  # `run` is hidden in multi_process_lib.py. It is assigned with a decorated
-  # `run` that runs the process in `absl.app.run`.
-  def run(self):  # pylint: disable=method-hidden
+  def run(self):
     self.start_worker()
 
   def start_worker(self):
@@ -63,33 +61,42 @@ class MultiProcessCluster(object):
   ```
   """
 
-  def __init__(self, num_local_workers, num_remote_workers, dispatcher_port=0):
-    self._start_dispatcher(dispatcher_port)
+  def __init__(self,
+               num_local_workers,
+               num_remote_workers,
+               worker_addresses=None):
+    self._start_dispatcher(worker_addresses)
     self._start_local_workers(num_local_workers)
     self._start_remote_workers(num_remote_workers)
 
-  def _start_dispatcher(self, dispatcher_port):
+  def _start_dispatcher(self, worker_addresses):
     work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     self._dispatcher = server_lib.DispatchServer(
         server_lib.DispatcherConfig(
-            port=dispatcher_port, work_dir=work_dir, protocol="grpc"),
+            port=0,
+            work_dir=work_dir,
+            protocol="grpc",
+            worker_addresses=worker_addresses),
         start=True)
 
   def _start_local_workers(self, num_workers):
     self._local_workers = []
     for _ in range(num_workers):
-      worker = data_service_test_base.TestWorker(
-          self.dispatcher_address(), _WORKER_SHUTDOWN_QUIET_PERIOD_MS)
-      worker.start()
-      self._local_workers.append(worker)
+      self.start_local_worker()
 
   def _start_remote_workers(self, num_workers):
     # List of (worker address, remote worker process) tuples.
     self._remote_workers = []
     for _ in range(num_workers):
-      self._start_remote_worker()
+      self.start_remote_worker()
 
-  def _start_remote_worker(self):
+  def start_local_worker(self):
+    worker = data_service_test_base.TestWorker(
+        self.dispatcher_address(), _WORKER_SHUTDOWN_QUIET_PERIOD_MS)
+    worker.start()
+    self._local_workers.append(worker)
+
+  def start_remote_worker(self):
     pipe_reader, pipe_writer = multi_process_lib.multiprocessing.Pipe(
         duplex=False)
     worker_process = _RemoteWorkerProcess(

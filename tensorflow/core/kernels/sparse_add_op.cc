@@ -42,8 +42,8 @@ class SparseAddOp : public OpKernel {
                     "Input indices should be matrices but received shapes: ",
                     a_indices->shape().DebugString(), " and ",
                     b_indices->shape().DebugString()));
-    const int64 a_nnz = a_indices->dim_size(0);
-    const int64 b_nnz = b_indices->dim_size(0);
+    const int64_t a_nnz = a_indices->dim_size(0);
+    const int64_t b_nnz = b_indices->dim_size(0);
     const int num_dims = a_indices->dim_size(1);
     OP_REQUIRES(ctx, b_indices->dim_size(1) == num_dims,
                 errors::InvalidArgument(
@@ -115,7 +115,7 @@ class SparseAddOp : public OpKernel {
 
     // The input and output sparse tensors are assumed to be ordered along
     // increasing dimension number.
-    int64 i = 0, j = 0;
+    int64_t i = 0, j = 0;
     T s;
     while (i < a_nnz && j < b_nnz) {
       switch (sparse::DimComparator::cmp(a_indices_mat, b_indices_mat, i, j,
@@ -155,7 +155,7 @@ class SparseAddOp : public OpKernel {
 #undef HANDLE_LEFTOVERS
 
     // (2) allocate and fill output tensors
-    const int64 sum_nnz = out_values.size();
+    const int64_t sum_nnz = out_values.size();
     Tensor *out_indices_t, *out_values_t;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({sum_nnz, num_dims}),
@@ -167,7 +167,7 @@ class SparseAddOp : public OpKernel {
 
     for (i = 0; i < sum_nnz; ++i) {
       const bool from_a = entries_to_copy[i].first;
-      const int64 idx = entries_to_copy[i].second;
+      const int64_t idx = entries_to_copy[i].second;
       out_indices_mat.chip<0>(i) =
           from_a ? a_indices_mat.chip<0>(idx) : b_indices_mat.chip<0>(idx);
     }

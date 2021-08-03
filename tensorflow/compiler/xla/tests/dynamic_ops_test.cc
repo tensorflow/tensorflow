@@ -509,11 +509,11 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   }
 
   template <class T>
-  void RunR3Contiguous(std::vector<int32> operand_shape, int32 index,
-                       int32 size) {
-    const int32 kSeq = operand_shape[0];
-    const int32 kBatch = operand_shape[1];
-    const int32 kDim = operand_shape[2];
+  void RunR3Contiguous(std::vector<int32> operand_shape, int32_t index,
+                       int32_t size) {
+    const int32_t kSeq = operand_shape[0];
+    const int32_t kBatch = operand_shape[1];
+    const int32_t kDim = operand_shape[2];
     Array3D<T> input_values(kSeq, kBatch, kDim);
     Array3D<T> update_values(size, kBatch, kDim);
     Array3D<T> expected_values(kSeq, kBatch, kDim);

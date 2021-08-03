@@ -46,7 +46,7 @@ class SimpleRewrite
 
 TEST_P(SimpleRewrite, EnableGradientDescentTest) {
   const bool autotune = std::get<0>(GetParam());
-  const int64 algorithm_index = std::get<1>(GetParam());
+  const int64_t algorithm_index = std::get<1>(GetParam());
   const string op = std::get<2>(GetParam());
 
   using test::function::NDef;

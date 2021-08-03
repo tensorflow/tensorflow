@@ -130,7 +130,8 @@ ENTRY cluster {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TopkRewriter rewriter([](const HloSortInstruction*, int64) { return true; });
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
@@ -160,7 +161,8 @@ ENTRY cluster {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TopkRewriter rewriter([](const HloSortInstruction*, int64) { return true; });
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
@@ -190,7 +192,8 @@ ENTRY cluster {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TopkRewriter rewriter([](const HloSortInstruction*, int64) { return true; });
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
@@ -220,7 +223,8 @@ ENTRY cluster {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TopkRewriter rewriter([](const HloSortInstruction*, int64) { return true; });
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
@@ -250,7 +254,8 @@ ENTRY cluster {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TopkRewriter rewriter([](const HloSortInstruction*, int64) { return true; });
+  TopkRewriter rewriter(
+      [](const HloSortInstruction*, int64_t) { return true; });
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);

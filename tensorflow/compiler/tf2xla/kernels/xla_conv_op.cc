@@ -49,7 +49,7 @@ class XlaConvOp : public XlaOpKernel {
     std::vector<int64> window_strides;
     std::vector<int64> lhs_dilation;
     std::vector<int64> rhs_dilation;
-    int64 feature_group_count;
+    int64_t feature_group_count;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("window_strides",
                                                               &window_strides));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("lhs_dilation",

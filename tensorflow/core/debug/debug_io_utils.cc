@@ -416,7 +416,7 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string> debug_urls,
                                    const bool gated_grpc) {
-  int32 num_failed_urls = 0;
+  int32_t num_failed_urls = 0;
   std::vector<Status> fail_statuses;
   for (const string& url : debug_urls) {
     if (absl::StartsWith(absl::AsciiStrToLower(url), kFileURLScheme)) {

@@ -143,8 +143,8 @@ std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
   auto u64_shape = ShapeUtil::MakeShape(U64, shape.dimensions());
   // initial_state is an R1, so reshape it to a scalar.
   auto input_u64 = Broadcast(Reshape(initial_state, {}), shape.dimensions());
-  int64 trailing_dims_product = 1;
-  for (int64 i = shape.rank() - 1; i >= 0; --i) {
+  int64_t trailing_dims_product = 1;
+  for (int64_t i = shape.rank() - 1; i >= 0; --i) {
     if (shape.dimensions(i) < 2) {
       continue;
     }
@@ -177,7 +177,7 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
     return pair;
   }
   pair.split_dim = -1;
-  for (int64 i = 0; i < shape.rank(); ++i) {
+  for (int64_t i = 0; i < shape.rank(); ++i) {
     if (shape.dimensions(i) % 2 == 0) {
       pair.split_dim = i;
       break;
@@ -185,7 +185,7 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
   }
   if (pair.split_dim == -1) {
     // No even dims. Find a dimension with maximum size.
-    for (int64 i = 0; i < shape.rank(); ++i) {
+    for (int64_t i = 0; i < shape.rank(); ++i) {
       if (pair.split_dim == -1 ||
           shape.dimensions(i) > shape.dimensions(pair.split_dim)) {
         pair.split_dim = i;
@@ -195,7 +195,7 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
   CHECK_GE(pair.split_dim, 0);
   std::vector<int64> half_shape_dims;
   std::vector<int64> concat_shape_dims;
-  for (int64 i = 0; i < shape.rank(); ++i) {
+  for (int64_t i = 0; i < shape.rank(); ++i) {
     if (i == pair.split_dim) {
       // Create a new trivial dim for the later concat, which is more friendly
       // to sharding propagation.
@@ -224,7 +224,8 @@ XlaOp CombineShapePair(absl::Span<const XlaOp> pair,
   }
   XlaBuilder* builder = pair[0].builder();
   XlaOp result = ConcatInDim(builder, pair, shape_pair.new_concat_dim);
-  const int64 pre_split_size = original_shape.dimensions(shape_pair.split_dim);
+  const int64_t pre_split_size =
+      original_shape.dimensions(shape_pair.split_dim);
   std::vector<int64> reshape_dims(original_shape.dimensions().begin(),
                                   original_shape.dimensions().end());
   reshape_dims[shape_pair.split_dim] =
@@ -375,7 +376,7 @@ XlaOp Uint128ToOp(std::array<XlaOp, 2> u128) {
 // represented as 4 U32s in the order from the least significant one to the most
 // significant one.
 std::pair<Philox4x32State, XlaOp> GetPhiloxInputsAndUpdatedState(
-    const Philox4x32State& state, int64 n) {
+    const Philox4x32State& state, int64_t n) {
   XlaBuilder* builder = state[0].builder();
   XlaOp iota = Iota(builder, U64, n);
   auto state_u128 = Uint32sToUint128(state);
@@ -387,12 +388,12 @@ std::pair<Philox4x32State, XlaOp> GetPhiloxInputsAndUpdatedState(
 
 // Generates CeilOfRatio(num_elems, 4)*4 32bit Philox random numbers, as Philox
 // numbers are generated in the unit of 128bits.
-std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64 num_elems,
+std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64_t num_elems,
                                                      XlaOp initial_state,
                                                      Philox4x32Key key) {
   Philox4x32State state;
   state = Uint128ToUint32s(Uint128FromOp(initial_state));
-  const int64 num_vector4 = CeilOfRatio<int64>(num_elems, 4);
+  const int64_t num_vector4 = CeilOfRatio<int64>(num_elems, 4);
   Philox4x32State inputs;
   XlaOp new_state;
   std::tie(inputs, new_state) =
@@ -407,7 +408,7 @@ std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64 num_elems,
 RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
                          const Shape& shape) {
   XlaBuilder* builder = op_key.builder();
-  const int64 num_elems = ShapeUtil::ElementsIn(shape);
+  const int64_t num_elems = ShapeUtil::ElementsIn(shape);
 
   Philox4x32Key key = Uint64ToUint32s(op_key);
   Philox4x32State bits;
@@ -415,7 +416,7 @@ RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
   std::tie(bits, new_state) = GeneratePhiloxBits(num_elems, initial_state, key);
   // Combining bits[i] in a round-robin fashion, to align with non-XLA
   // implementations
-  int64 bits_len = (num_elems + 3) / 4;
+  int64_t bits_len = (num_elems + 3) / 4;
   for (auto i = 0; i < 4; ++i) {
     bits[i] = Reshape(bits[i], {bits_len, 1});
   }
@@ -434,7 +435,7 @@ RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
 RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
                          const Shape& shape) {
   XlaBuilder* builder = op_key.builder();
-  const int64 num_elems = ShapeUtil::ElementsIn(shape);
+  const int64_t num_elems = ShapeUtil::ElementsIn(shape);
 
   Philox4x32Key key = Uint64ToUint32s(op_key);
   Philox4x32State bits32;
@@ -448,7 +449,7 @@ RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
 
   // Combining bits64[i] in a round-robin fashion, to align with non-XLA
   // implementations
-  int64 bits64_len = (num_elems + 1) / 2;
+  int64_t bits64_len = (num_elems + 1) / 2;
   for (auto i = 0; i < 2; ++i) {
     bits64[i] = Reshape(bits64[i], {bits64_len, 1});
   }

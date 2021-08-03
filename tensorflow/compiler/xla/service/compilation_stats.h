@@ -41,6 +41,8 @@ class CompilationStats {
   virtual void EndPass(absl::string_view pass_name) = 0;
 
   virtual void CompilationReport() = 0;
+
+  virtual int GetPassesSize() = 0;
 };
 
 }  // namespace xla

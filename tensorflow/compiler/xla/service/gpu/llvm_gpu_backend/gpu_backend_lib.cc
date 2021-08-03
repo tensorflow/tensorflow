@@ -411,7 +411,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   // too.
   llvm::legacy::FunctionPassManager function_passes(module);
 
-  int32 opt_level =
+  int32_t opt_level =
       hlo_module_config.debug_options().xla_backend_optimization_level();
 
   if (opt_level < 2) {

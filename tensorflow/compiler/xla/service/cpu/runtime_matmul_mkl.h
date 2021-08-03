@@ -46,7 +46,7 @@ extern void __xla_cpu_runtime_MKLSingleThreadedMatMulF64(
 extern void __xla_cpu_runtime_MKLMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
     float* lhs, float* rhs, int64_t m, int64_t n, int64_t k,
-    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs) {
+    int32_t transpose_lhs, int32_t transpose_rhs) {
   std::cerr << "Attempt to call MKL MatMul runtime library without defining "
                "ENABLE_MKL. Add --config=mkl to build with MKL.";
   exit(1);
@@ -54,7 +54,7 @@ extern void __xla_cpu_runtime_MKLMatMulF32(
 extern void __xla_cpu_runtime_MKLMatMulF64(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, double* out,
     double* lhs, double* rhs, int64_t m, int64_t n, int64_t k,
-    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs) {
+    int32_t transpose_lhs, int32_t transpose_rhs) {
   std::cerr << "Attempt to call MKL MatMul runtime library without defining "
                "ENABLE_MKL. Add --config=mkl to build with MKL.";
   exit(1);
@@ -62,7 +62,7 @@ extern void __xla_cpu_runtime_MKLMatMulF64(
 extern void __xla_cpu_runtime_MKLSingleThreadedMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
     float* lhs, float* rhs, int64_t m, int64_t n, int64_t k,
-    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs) {
+    int32_t transpose_lhs, int32_t transpose_rhs) {
   std::cerr << "Attempt to call MKL MatMul runtime library without defining "
                "ENABLE_MKL. Add --config=mkl to build with MKL.";
   exit(1);
@@ -70,7 +70,7 @@ extern void __xla_cpu_runtime_MKLSingleThreadedMatMulF32(
 extern void __xla_cpu_runtime_MKLSingleThreadedMatMulF64(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, double* out,
     double* lhs, double* rhs, int64_t m, int64_t n, int64_t k,
-    tensorflow::int32 transpose_lhs, tensorflow::int32 transpose_rhs) {
+    int32_t transpose_lhs, int32_t transpose_rhs) {
   std::cerr << "Attempt to call MKL MatMul runtime library without defining "
                "ENABLE_MKL. Add --config=mkl to build with MKL.";
   exit(1);

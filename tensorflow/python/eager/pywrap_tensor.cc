@@ -990,8 +990,8 @@ tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor) {
 tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor) {
   DCHECK(EagerTensor_CheckExact(tensor));
   EagerTensor* as_c_eager_tensor = reinterpret_cast<EagerTensor*>(tensor);
-  tensorflow::int64 result = TFE_TensorHandleNumElements(
-      as_c_eager_tensor->handle, &as_c_eager_tensor->status);
+  int64_t result = TFE_TensorHandleNumElements(as_c_eager_tensor->handle,
+                                               &as_c_eager_tensor->status);
 
   if (MaybeRaiseExceptionFromTFStatus(&as_c_eager_tensor->status,
                                       PyExc_ValueError)) {
@@ -1228,7 +1228,7 @@ PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor) {
   int rank = TFE_TensorDebugInfoOnDeviceNumDims(debug_info);
   PyObject* shape = PyTuple_New(rank);
   for (int i = 0; i < rank; ++i) {
-    tensorflow::int64 dim_size = TFE_TensorDebugInfoOnDeviceDim(debug_info, i);
+    int64_t dim_size = TFE_TensorDebugInfoOnDeviceDim(debug_info, i);
     PyTuple_SET_ITEM(shape, i, PyLong_FromLongLong(dim_size));
   }
   TFE_DeleteTensorDebugInfo(debug_info);

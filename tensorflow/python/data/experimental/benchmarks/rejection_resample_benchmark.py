@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import resampling
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 
 
 class RejectionResampleBenchmark(benchmark_base.DatasetBenchmarkBase):
@@ -43,7 +44,7 @@ class RejectionResampleBenchmark(benchmark_base.DatasetBenchmarkBase):
             target_dist=target_dist,
             initial_dist=init_dist,
             seed=142))
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     dataset = dataset.with_options(options)
 

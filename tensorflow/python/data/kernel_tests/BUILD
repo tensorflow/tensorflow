@@ -608,7 +608,6 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -645,10 +644,9 @@ tf_py_test(
     deps = [
         ":test_base",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/experimental/ops:threading_options",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
     ],
 )
 

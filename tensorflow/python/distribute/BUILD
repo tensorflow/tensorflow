@@ -954,6 +954,7 @@ distribute_py_test(
     srcs = ["strategy_combinations_test.py"],
     disable_mlir_bridge = False,
     python_version = "PY3",
+    tags = ["no_cuda_asan"],  # b/195246941
     deps = [
         ":central_storage_strategy",
         ":collective_all_reduce_strategy",
@@ -1187,9 +1188,11 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",

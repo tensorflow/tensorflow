@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -36,15 +37,11 @@ class ReduceScatterDecomposerTest : public HloTestBase {
     kTrivialGroups,
     kTableLookup,
   };
-  enum class ParticipantID {
-    kReplicaId,
-    kPartitionId,
-    kFlattenedId,
-  };
-  void RunPass(absl::string_view hlo_module, PassAction action,
-               ParticipantID id = ParticipantID::kReplicaId,
-               int64_t shard_size = 0, int64_t shard_dimension = 0) {
-    const int64_t replica_count = 2;
+  void RunPass(
+      absl::string_view hlo_module, PassAction action,
+      CollectiveOpGroupMode mode = CollectiveOpGroupMode::kCrossReplica,
+      int64_t shard_size = 0, int64_t shard_dimension = 0,
+      int64_t replica_count = 2) {
     const int64_t partition_count = 2;
     TF_ASSERT_OK_AND_ASSIGN(
         auto module, ParseAndReturnVerifiedModule(hlo_module, replica_count,
@@ -59,12 +56,14 @@ class ReduceScatterDecomposerTest : public HloTestBase {
 
     Literal multiplier = LiteralUtil::CreateR0<uint32_t>(shard_size);
     ::testing::Matcher<const ::xla::HloInstruction *> id_matcher = [&]() {
-      switch (id) {
-        case ParticipantID::kPartitionId:
+      switch (mode) {
+        case CollectiveOpGroupMode::kCrossPartition:
           return op::PartitionId();
-        case ParticipantID::kReplicaId:
+        case CollectiveOpGroupMode::kCrossReplica:
           return op::ReplicaId();
-        case ParticipantID::kFlattenedId: {
+        case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+          return op::ReplicaId();
+        case CollectiveOpGroupMode::kFlattenedID: {
           return op::Add(
               op::Multiply(op::ReplicaId(),
                            op::Constant(LiteralUtil::CreateR0<uint32_t>(
@@ -80,7 +79,13 @@ class ReduceScatterDecomposerTest : public HloTestBase {
     if (action == PassAction::kTableLookup) {
       slice_index = op::Reshape(op::DynamicSlice(op::Constant(), id_matcher));
     }
-
+    if (mode == CollectiveOpGroupMode::kCrossReplicaAndPartition) {
+      slice_index = op::Add(
+          op::Multiply(
+              slice_index,
+              op::Constant(LiteralUtil::CreateR0<uint32_t>(partition_count))),
+          op::PartitionId());
+    }
     auto zero_matcher = op::Constant(LiteralUtil::Zero(U32));
 
     std::vector<::testing::Matcher<const ::xla::HloInstruction *>> ds_operands(
@@ -107,7 +112,8 @@ ENTRY main {
   ROOT rs = f32[4] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=sum
 }
 )";
-  RunPass(hlo_string, PassAction::kTrivialGroups, ParticipantID::kReplicaId,
+  RunPass(hlo_string, PassAction::kTrivialGroups,
+          CollectiveOpGroupMode::kCrossReplica,
           /*shard_size=*/4);
 }
 
@@ -126,7 +132,8 @@ ENTRY main {
   ROOT rs = f32[4] reduce-scatter(p0), replica_groups={{1, 0}}, dimensions={0}, to_apply=sum
 }
 )";
-  RunPass(hlo_string, PassAction::kTableLookup, ParticipantID::kReplicaId,
+  RunPass(hlo_string, PassAction::kTableLookup,
+          CollectiveOpGroupMode::kCrossReplica,
           /*shard_size=*/4);
 }
 
@@ -147,8 +154,34 @@ ENTRY main {
   ROOT rs = f32[4, 2] reduce-scatter(p0), replica_groups={{0, 1}}, channel_id=1, dimensions={1}, to_apply=sum
 }
 )";
-  RunPass(hlo_string, PassAction::kTrivialGroups, ParticipantID::kReplicaId,
+  RunPass(hlo_string, PassAction::kTrivialGroups,
+          CollectiveOpGroupMode::kCrossReplicaAndPartition,
           /*shard_size=*/2, /*shard_dimension=*/1);
+}
+
+TEST_F(ReduceScatterDecomposerTest,
+       TrivialCrossReplicaAndPartition_SingleReplica) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[4, 8] parameter(0)
+  // Tn this mode, the participants are the given replicas across all partitions.
+  // Here, we have 1 replicas and 2 partitions, so 2 total shards.
+  ROOT rs = f32[4, 4] reduce-scatter(p0), replica_groups={{0}}, channel_id=1, dimensions={1}, to_apply=sum
+}
+)";
+  // kCrossPartition here indicates that replica_index * num_partitions +
+  // partition_id will be simplified by the pass to just partition_id
+  RunPass(hlo_string, PassAction::kTrivialGroups,
+          CollectiveOpGroupMode::kCrossPartition,
+          /*shard_size=*/4, /*shard_dimension=*/1, /*replica_count=*/1);
 }
 
 TEST_F(ReduceScatterDecomposerTest, TableLookupFlattenedId) {
@@ -166,7 +199,8 @@ ENTRY main {
   ROOT rs = f32[4, 2] reduce-scatter(p0), replica_groups={{1,0, 3, 2}}, channel_id=1, dimensions={1}, to_apply=sum, use_global_device_ids=true
 }
 )";
-  RunPass(hlo_string, PassAction::kTableLookup, ParticipantID::kFlattenedId,
+  RunPass(hlo_string, PassAction::kTableLookup,
+          CollectiveOpGroupMode::kFlattenedID,
           /*shard_size=*/2, /*shard_dimension=*/1);
 }
 

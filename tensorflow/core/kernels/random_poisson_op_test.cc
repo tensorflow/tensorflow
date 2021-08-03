@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Tensor VecShape(int64 v) {
+Tensor VecShape(int64_t v) {
   if (v >= std::numeric_limits<int32>::max()) {
     Tensor shape(DT_INT64, TensorShape({1}));
     shape.vec<int64>()(0) = v;
@@ -35,7 +35,7 @@ Tensor VecShape(int64 v) {
   }
 }
 
-Tensor VecLam32(int64 n, int magnitude) {
+Tensor VecLam32(int64_t n, int magnitude) {
   std::mt19937 gen(0x12345);
   std::uniform_real_distribution<float> dist(0.0, 1.0);
   Tensor lams(DT_FLOAT, TensorShape({n}));
@@ -46,7 +46,7 @@ Tensor VecLam32(int64 n, int magnitude) {
   return lams;
 }
 
-Tensor VecLam64(int64 n, int magnitude) {
+Tensor VecLam64(int64_t n, int magnitude) {
   std::mt19937 gen(0x12345);
   std::uniform_real_distribution<double> dist(0.0, 1.0);
   Tensor lams(DT_DOUBLE, TensorShape({n}));

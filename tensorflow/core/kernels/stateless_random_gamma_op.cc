@@ -56,8 +56,8 @@ namespace functor {
 template <typename T>
 struct StatelessRandomGammaFunctor<CPUDevice, T> {
   static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
-                     int64 num_samples, int64 num_alphas,
-                     int64 samples_per_alpha,
+                     int64_t num_samples, int64_t num_alphas,
+                     int64_t samples_per_alpha,
                      const random::PhiloxRandom& random, T* samples_flat) {
     typedef random::NormalDistribution<random::PhiloxRandom, double> Normal;
     typedef random::UniformDistribution<random::PhiloxRandom, double> Uniform;
@@ -66,7 +66,7 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
     // avoid a couple flops which can be done on a per-alpha basis.
 
     auto DoWork = [samples_per_alpha, num_alphas, &random, samples_flat,
-                   alpha_flat](int64 start_output, int64 limit_output) {
+                   alpha_flat](int64_t start_output, int64_t limit_output) {
       // Capturing "random" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "random" by reference and explicitly do a copy assignment.
@@ -82,9 +82,9 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
       RandomSampleBuffer<Normal> normal_buffer(&normal);
       RandomSampleBuffer<Uniform> uniform_buffer(&uniform);
 
-      for (int64 output_idx = start_output; output_idx < limit_output;
+      for (int64_t output_idx = start_output; output_idx < limit_output;
            /* output_idx incremented within inner loop below */) {
-        int64 alpha_idx = output_idx / samples_per_alpha;
+        int64_t alpha_idx = output_idx / samples_per_alpha;
 
         // Instead of +alpha_idx for each sample, we offset the pointer once.
         T* const samples_alpha_offset = samples_flat + alpha_idx;
@@ -96,7 +96,7 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
         if (alpha == 1.0) {
           ENABLE_FLOAT_EQUALITY_WARNING
           // Sample from an exponential distribution.
-          for (int64 sample_idx = output_idx % samples_per_alpha;
+          for (int64_t sample_idx = output_idx % samples_per_alpha;
                sample_idx < samples_per_alpha && output_idx < limit_output;
                sample_idx++, output_idx++) {
             // As we want data stable regardless of sharding, we skip on a
@@ -122,7 +122,7 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
           const double c = 1.0 / 3 / sqrt(d);
 
           // Compute the rest of the samples for the current alpha value.
-          for (int64 sample_idx = output_idx % samples_per_alpha;
+          for (int64_t sample_idx = output_idx % samples_per_alpha;
                sample_idx < samples_per_alpha && output_idx < limit_output;
                sample_idx++, output_idx++) {
             // Since each sample may use a variable number of normal/uniform
@@ -229,14 +229,14 @@ class StatelessRandomGammaOp : public OpKernel {
                 errors::InvalidArgument(
                     "Shape passed in must end with broadcasted shape."));
 
-    const int64 num_alphas = alpha_t.NumElements();
+    const int64_t num_alphas = alpha_t.NumElements();
     OP_REQUIRES(ctx, num_alphas > 0,
                 errors::InvalidArgument(
                     "Input alpha should have non-zero element count, got: ",
                     num_alphas));
 
-    const int64 num_samples = samples_shape.num_elements();
-    const int64 samples_per_alpha = num_samples / num_alphas;
+    const int64_t num_samples = samples_shape.num_elements();
+    const int64_t samples_per_alpha = num_samples / num_alphas;
     const auto alpha_flat = alpha_t.flat<T>().data();
     auto samples_flat = output->flat<T>().data();
 

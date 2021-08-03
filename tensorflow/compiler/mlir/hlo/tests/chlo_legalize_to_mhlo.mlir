@@ -52,13 +52,13 @@ func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_13:.*]] = "mhlo.abs"(%[[ARG]])
   // CHECK: %[[TMP_14:.*]] = "mhlo.abs"(%[[ARG]])
   // CHECK: %[[TMP_15:.*]] = "mhlo.abs"(%[[ARG]])
+  // CHECK: %[[TMP_22:.*]] = mhlo.constant dense<1.000{{.*}}e+00>
   // CHECK: %[[TMP_16:.*]] = "mhlo.abs"(%[[ARG]])
   // CHECK: %[[TMP_17:.*]] = "mhlo.abs"(%[[ARG]])
   // CHECK: %[[TMP_18:.*]] = mhlo.multiply %[[TMP_16]], %[[TMP_17]]
   // CHECK: %[[TMP_19:.*]] = mhlo.constant dense<1.000{{.*}}e+00>
   // CHECK: %[[TMP_20:.*]] = mhlo.add %[[TMP_18]], %[[TMP_19]]
   // CHECK: %[[TMP_21:.*]] = "mhlo.sqrt"(%[[TMP_20]])
-  // CHECK: %[[TMP_22:.*]] = mhlo.constant dense<1.000{{.*}}e+00>
   // CHECK: %[[TMP_23:.*]] = mhlo.add %[[TMP_22]], %[[TMP_21]]
   // CHECK: %[[TMP_24:.*]] = mhlo.divide %[[TMP_15]], %[[TMP_23]]
   // CHECK: %[[TMP_25:.*]] = mhlo.multiply %[[TMP_14]], %[[TMP_24]]
@@ -364,6 +364,7 @@ func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
 func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[MINUSONE:.*]] = mhlo.constant dense<-1.000000e+00>
   // CHECK: %[[CMP:.*]] = "mhlo.compare"(%[[ARG]], %[[MINUSONE]]) {comparison_direction = "LT"}
+  // CHECK: %[[NAN:.*]] = mhlo.constant dense<0x7E00>
   // CHECK: %[[MAX:.*]] = mhlo.constant dense<6.550400e+04>
   // CHECK: %[[SQRTMAX:.*]] = "mhlo.sqrt"(%[[MAX]])
   // CHECK: %[[OVERFLOW:.*]] = "mhlo.compare"(%[[ARG]], %[[SQRTMAX]]) {comparison_direction = "GE"}
@@ -380,7 +381,6 @@ func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[APSQRT:.*]] = mhlo.add %[[ARG]], %[[SQRT]]
   // CHECK: %[[LOGAPMUL:.*]] = "mhlo.log"(%[[APSQRT]])
   // CHECK: %[[SEL1:.*]] = "mhlo.select"(%[[OVERFLOW]], %[[OFLRES]], %[[LOGAPMUL]])
-  // CHECK: %[[NAN:.*]] = mhlo.constant dense<0x7E00>
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[CMP]], %[[NAN]], %[[SEL1]])
   // CHECK: return %[[RESULT]]
   %1 = "chlo.acosh"(%arg) : (tensor<f16>) -> tensor<f16>

@@ -82,7 +82,7 @@ bool DotIsDefault(const HloInstruction* instruction) {
 
 // Returns an MLIR Location generated from HLO Instruction. Uses instruction
 // metadata if present or instruction name.
-mlir::Location GenerateInstructionLocation(HloInstruction* instruction,
+mlir::Location GenerateInstructionLocation(const HloInstruction* instruction,
                                            mlir::OpBuilder* func_builder) {
   const std::string& op_name = instruction->metadata().op_name();
   if (op_name.empty()) {
@@ -179,8 +179,10 @@ StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
   }
 
   for (auto instruction : computation.MakeInstructionPostOrder()) {
-    TF_ASSIGN_OR_RETURN(auto new_operation,
-                        ImportInstruction(instruction, builder));
+    TF_ASSIGN_OR_RETURN(auto operands, GetOperands(instruction));
+    TF_ASSIGN_OR_RETURN(
+        auto new_operation,
+        ImportInstructionWithLayout(instruction, operands, builder));
     if (new_operation) {
       instruction_value_map_[instruction] = new_operation->getResult(0);
     }
@@ -222,9 +224,25 @@ StatusOr<Value> HloFunctionImporter::ImportInstructions(
   return importer.ImportInstructionsImpl(computation, arguments, builder);
 }
 
+StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
+    const xla::HloInstruction* instr,
+    const llvm::SmallVectorImpl<mlir::Value>& operands,
+    mlir::OpBuilder* builder) {
+  mlir::Block* block = builder->getBlock();
+  if (block == nullptr)
+    return InvalidArgument(
+        "ImportInstructions requires a valid block in the builder");
+
+  HloFunctionImporter importer(
+      block->getParent()->getParentOfType<mlir::ModuleOp>(), {}, builder);
+
+  return importer.ImportInstructionWithLayout(instr, operands, builder);
+}
+
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
-    HloInstruction* instruction, mlir::OpBuilder* func_builder) {
-  TF_ASSIGN_OR_RETURN(auto operands, GetOperands(instruction));
+    const HloInstruction* instruction,
+    const llvm::SmallVectorImpl<mlir::Value>& operands,
+    mlir::OpBuilder* func_builder) {
   TF_ASSIGN_OR_RETURN(auto result_type, ConvertShapeToType<RankedTensorType>(
                                             instruction->shape(), *builder_));
   mlir::Location loc = GenerateInstructionLocation(instruction, func_builder);
@@ -315,6 +333,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCustomCall: {
       auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+      TF_ASSIGN_OR_RETURN(
+          auto mlir_api_version,
+          ConvertCustomCallApiVersion(custom_call->api_version()));
       attributes.push_back(builder_->getNamedAttr(
           "call_target_name",
           builder_->getStringAttr(custom_call->custom_call_target())));
@@ -324,6 +345,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "backend_config",
           builder_->getStringAttr(custom_call->raw_backend_config_string())));
+      attributes.push_back(builder_->getNamedAttr(
+          "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
+                             builder_->getContext(), mlir_api_version)));
       MakeAndReturn(CustomCallOp);
     }
     case HloOpcode::kCompare: {
@@ -758,6 +782,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kBitcastConvert, BitcastConvertOp);
       NoAttributeCase(kCbrt, CbrtOp);
+      NoAttributeCase(kClz, ClzOp);
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kCeil, CeilOp);
       NoAttributeCase(kClamp, ClampOp);
@@ -782,6 +807,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NoAttributeCase(kReal, RealOp);
       NoAttributeCase(kRemainder, RemOp);
       NoAttributeCase(kReplicaId, ReplicaIdOp);
+      NoAttributeCase(kLogistic, LogisticOp);
       // The dimensions attribute is not present on the HLO Reshape
       // instruction. If dimensions are non-default, the XLA builder
       // implements it as a separate transpose.
@@ -853,10 +879,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   }
 }
 
-StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
-    HloInstruction* instruction, mlir::OpBuilder* func_builder) {
-  TF_ASSIGN_OR_RETURN(mlir::Operation * op,
-                      ImportInstructionImpl(instruction, func_builder));
+StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionWithLayout(
+    const HloInstruction* instruction,
+    const llvm::SmallVectorImpl<mlir::Value>& operands,
+    mlir::OpBuilder* func_builder) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Operation * op,
+      ImportInstructionImpl(instruction, operands, func_builder));
   if (op == nullptr) return op;
 
   // See MlirToHloConversionOptions for more about layouts.
@@ -874,7 +903,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
 }
 
 StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
-    HloInstruction* instruction) {
+    const HloInstruction* instruction) {
   llvm::SmallVector<mlir::Value, 4> operands;
   for (const auto& operand : instruction->operands()) {
     auto input_it = instruction_value_map_.find(operand);
@@ -899,7 +928,8 @@ tensorflow::Status HloFunctionImporter::GetMlirTypes(
   return tensorflow::Status::OK();
 }
 
-StatusOr<Value> HloFunctionImporter::GetMlirValue(HloInstruction* instruction) {
+StatusOr<Value> HloFunctionImporter::GetMlirValue(
+    const HloInstruction* instruction) {
   auto lookup = instruction_value_map_.find(instruction);
   if (lookup != instruction_value_map_.end()) {
     return lookup->second;

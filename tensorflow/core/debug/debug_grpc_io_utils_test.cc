@@ -177,7 +177,7 @@ TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex1ViaGrpcTest) {
 }
 
 TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
-  const int32 kSends = 4;
+  const int32_t kSends = 4;
 
   // Prepare the tensors to sent.
   std::vector<Tensor> tensors;

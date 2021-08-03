@@ -112,7 +112,7 @@ class ReaderReadUpToOp : public ReaderVerbAsyncOpKernel {
 
     const Tensor* num_records_tensor;
     OP_REQUIRES_OK(context, context->input("num_records", &num_records_tensor));
-    int64 num_records = num_records_tensor->scalar<int64>()();
+    int64_t num_records = num_records_tensor->scalar<int64>()();
 
     OP_REQUIRES_OK(context,
                    GetResourceFromContext(context, "queue_handle", &queue));
@@ -123,7 +123,7 @@ class ReaderReadUpToOp : public ReaderVerbAsyncOpKernel {
     std::vector<tstring> values_vec;
     values_vec.reserve(num_records);
 
-    int64 num_actually_read =
+    int64_t num_actually_read =
         reader->ReadUpTo(num_records, queue, &keys_vec, &values_vec, context);
 
     OP_REQUIRES(context, num_actually_read == keys_vec.size(),

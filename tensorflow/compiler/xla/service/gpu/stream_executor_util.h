@@ -110,20 +110,6 @@ StatusOr<tensorflow::AutotuneResult> PickBestResult(
     const HloInstruction& instr);
 
 // Returns whether determinism is required.
-//
-// The following function allows deterministic ops to be implemented relatively
-// quickly using environment variables. It is intended to be temporary. The
-// longer-term intention is to enable deterministic ops via tf.config and
-// appropriate plumbing. See the discussion on PR 34951 for more information:
-// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
-// This function and associated comment are replicated in the following three
-// places:
-//   1. tensorflow/core/kernels/gpu_utils.cc
-//   2. tensorflow/stream_executor/cuda/cuda_dnn.cc
-// When implementing the plumbing, you should also search for the use of
-// TF_DETERMINISTIC_OPS on its own.
-// TODO(duncanriach): move to an API that uses tf.config and implement the first
-//                    phase of plumbing.
 bool RequireDeterminism(const HloModuleConfig& config);
 
 }  // namespace gpu

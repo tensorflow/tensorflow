@@ -24,6 +24,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -75,7 +76,7 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.map(function)
 
     dataset = dataset.cache()
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_fusion = True
     dataset = dataset.with_options(options)
@@ -100,7 +101,7 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(1).apply(
         testing.assert_next(["Map", "Map"
                             ])).map(lambda x: some_tensor).map(lambda x: x)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_fusion = True
     dataset = dataset.with_options(options)

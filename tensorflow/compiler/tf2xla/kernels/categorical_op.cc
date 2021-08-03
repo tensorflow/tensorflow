@@ -44,7 +44,7 @@ class CategoricalOp : public XlaOpKernel {
     // Get the logits
     const xla::XlaOp& logits = ctx->Input(0);
     TensorShape logits_shape = ctx->InputShape(0);
-    int64 num_samples;
+    int64_t num_samples;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &num_samples));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_shape),
                 errors::InvalidArgument("logits should be a matrix, got shape ",
@@ -54,15 +54,15 @@ class CategoricalOp : public XlaOpKernel {
                     "num_samples should be nonnegative, got ", num_samples));
 
     for (int i = 0; i < 2; i++) {
-      const int64 dim = logits_shape.dim_size(i);
+      const int64_t dim = logits_shape.dim_size(i);
       OP_REQUIRES(
           ctx, static_cast<int>(dim) == dim,
           errors::InvalidArgument("logits.shape = ", logits_shape.DebugString(),
                                   " too large for int"));
     }
 
-    const int64 batch_size = logits_shape.dim_size(0);
-    const int64 num_classes = logits_shape.dim_size(1);
+    const int64_t batch_size = logits_shape.dim_size(0);
+    const int64_t num_classes = logits_shape.dim_size(1);
 
     xla::Shape uniform_shape;
     int class_dimension;

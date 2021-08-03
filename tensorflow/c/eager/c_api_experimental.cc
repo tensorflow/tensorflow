@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
@@ -765,32 +765,32 @@ void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,
   status->status = tensorflow::unwrap(ctx)->AddDevices(std::move(devices));
 }
 
-void TFE_SetConfigKeyValue(TFE_Context* ctx, const char* key, const char* value,
-                           TF_Status* status) {
+void TFE_InsertConfigKeyValue(TFE_Context* ctx, const char* key,
+                              const char* value, TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceInterface* coord_service =
-      dist_mgr->GetCoordinationService();
-  if (coord_service == nullptr) {
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
-        "Coordination service is not enabled.");
+        "Coordination service agent is not enabled.");
     return;
   }
-  status->status = coord_service->SetKeyValue(key, value);
+  status->status = coord_agent->InsertKeyValue(key, value);
 }
 
 void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
                            TF_Buffer* value_buf, TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceInterface* coord_service =
-      dist_mgr->GetCoordinationService();
-  if (coord_service == nullptr) {
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
         "Coordination service is not enabled.");
     return;
   }
-  auto status_or_value = coord_service->GetKeyValue(key);
+  auto status_or_value = coord_agent->GetKeyValue(key);
   status->status = status_or_value.status();
   if (!status_or_value.ok()) return;
 
@@ -808,12 +808,12 @@ void TFE_DeleteConfigKeyValue(TFE_Context* ctx, const char* key,
                               TF_Status* status) {
   tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
       tensorflow::unwrap(ctx)->GetDistributedManager();
-  tensorflow::CoordinationServiceInterface* coord_service =
-      dist_mgr->GetCoordinationService();
-  if (coord_service == nullptr) {
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
     status->status = tensorflow::errors::FailedPrecondition(
         "Coordination service is not enabled.");
     return;
   }
-  status->status = coord_service->DeleteKeyValue(key, /*is_directory=*/true);
+  status->status = coord_agent->DeleteKeyValue(key);
 }

@@ -165,10 +165,10 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
                 self.GetTensor(tensor_index, subgraph_index));
           },
           py::arg("tensor_index"), py::arg("subgraph_index") = 0)
-      .def("GetSubgraphIndexFromSignatureDefName",
-           [](InterpreterWrapper& self, const char* method_name) {
+      .def("GetSubgraphIndexFromSignature",
+           [](InterpreterWrapper& self, const char* signature_key) {
              return tensorflow::PyoOrThrow(
-                 self.GetSubgraphIndexFromSignatureDefName(method_name));
+                 self.GetSubgraphIndexFromSignature(signature_key));
            })
       .def("GetSignatureDefs",
            [](InterpreterWrapper& self) {

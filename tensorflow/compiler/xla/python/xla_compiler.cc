@@ -471,7 +471,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("clear_sharding", &XlaBuilder::ClearSharding)
       .def("setup_alias",
            [](XlaBuilder& builder, const std::vector<int64>& output_index,
-              int64 param_number, const std::vector<int64>& param_index) {
+              int64_t param_number, const std::vector<int64>& param_index) {
              builder.SetUpAlias(
                  ShapeIndex(output_index.begin(), output_index.end()),
                  param_number,

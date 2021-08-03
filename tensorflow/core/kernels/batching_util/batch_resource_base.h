@@ -134,14 +134,35 @@ class BatchResourceBase : public ResourceBase {
         allowed_batch_sizes_(std::move(allowed_batch_sizes)) {}
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
-      int32 num_batch_threads, int32 max_batch_size, int32 batch_timeout_micros,
-      int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
+      int32_t num_batch_threads, int32_t max_batch_size,
+      int32_t batch_timeout_micros, int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
       bool enable_large_batch_splitting);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
-      int32 max_batch_size, int32 batch_timeout_micros,
-      int32 max_enqueued_batches, bool enable_large_batch_splitting,
+      int32_t max_batch_size, int32_t batch_timeout_micros,
+      int32_t max_enqueued_batches, bool enable_large_batch_splitting,
       const std::vector<int32>& allowed_batch_sizes);
+
+  // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
+  // 'output_tasks'.
+  // Task sizes are determined by
+  // 1) open_batch_remaining_slot
+  // 2) max_batch_size
+  // 3) size-of-input-task
+  // in a way that
+  // 1) Task sizes add up to `size-of-input-task`.
+  // 2) Task sizes from left to right are like
+  //    [open_batch_remaining_slot, max_batch_size, max_batch_size, ...,
+  //    `size-of-input-task` - `sum-of-previous-elements`].
+  //
+  // REQUIRES:
+  // Caller should make sure size-of-input-task is greater than
+  // open_batch_remaining_slot.
+  static Status SplitInputTask(
+      std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
+      int max_batch_size,
+      std::vector<std::unique_ptr<BatchTask>>* output_tasks);
 
  private:
   // Implementation of calling the process batch function.
@@ -166,26 +187,6 @@ class BatchResourceBase : public ResourceBase {
 
   Status ConcatInputTensors(const BatchT& batch, OpKernelContext* context,
                             std::vector<Tensor>* concatenated_tensors) const;
-
-  // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
-  // 'output_tasks'.
-  // Task sizes are determined by
-  // 1) open_batch_remaining_slot
-  // 2) max_batch_size
-  // 3) size-of-input-task
-  // in a way that
-  // 1) Task sizes add up to `size-of-input-task`.
-  // 2) Task sizes from left to right are like
-  //    [open_batch_remaining_slot, max_batch_size, max_batch_size, ...,
-  //    `size-of-input-task` - `sum-of-previous-elements`].
-  //
-  // REQUIRES:
-  // Caller should make sure size-of-input-task is greater than
-  // open_batch_remaining_slot.
-  static Status SplitInputTask(
-      std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
-      int max_batch_size,
-      std::vector<std::unique_ptr<BatchTask>>* output_tasks);
 
   Status SplitOutputTensors(const std::vector<Tensor>& combined_outputs,
                             BatchT* batch) const;

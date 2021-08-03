@@ -60,7 +60,7 @@ namespace tensorflow {
 static void SetConstOp(const string& name, std::initializer_list<int64> dims,
                        DataType data_type, NodeDef* node) {
   Tensor tensor(data_type, TensorShape(dims));
-  for (int64 i = 0; i < tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < tensor.NumElements(); ++i) {
     switch (data_type) {
       case DT_FLOAT:
         tensor.flat<float>()(i) = i / 10.0f;
@@ -83,7 +83,7 @@ static void SetConstSizesOp(const string& name, const std::vector<int32>& sizes,
   TensorShape shape;
   shape.AddDim(sizes.size());
   Tensor tensor(DT_INT32, shape);
-  for (int64 i = 0; i < tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < tensor.NumElements(); ++i) {
     tensor.flat<int32>()(i) = sizes[i];
   }
   TF_CHECK_OK(NodeDefBuilder(name, "Const")
@@ -125,13 +125,13 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
 
   // For this, we need an input tensor and a filter tensor.
   // Compute the output size.
-  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+  int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
   TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, stride, padding,
                                     &out_rows, &pad_rows));
   TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, stride, padding,
                                     &out_cols, &pad_cols));
   // Counting the number of floating point operations (both MUL and ADD)
-  int64 num_ops = 0;
+  int64_t num_ops = 0;
   if (op == CONV_OP_FORWARD) {
     // Forward computation:
     // BATCH x OUT_ROW X OUT_COL X IN_DEPTH X PATCH_ROW X PATH_COL X OUT_DEPTH
@@ -166,7 +166,7 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
 
   TensorShape paddings_shape({4, 2});
   Tensor paddings_tensor(DT_INT32, paddings_shape);
-  for (int64 i = 0; i < paddings_tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < paddings_tensor.NumElements(); ++i) {
     paddings_tensor.flat<int32>()(i) = 0;
   }
   TF_CHECK_OK(NodeDefBuilder("paddings", "Const")
@@ -534,13 +534,13 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
 
   // For this, we need an input tensor and a filter tensor.
   // Compute the output size.
-  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
+  int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
   TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, stride, padding,
                                     &out_rows, &pad_rows));
   TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, stride, padding,
                                     &out_cols, &pad_cols));
 
-  int64 num_ops = 0;
+  int64_t num_ops = 0;
   if (op == DEPTHWISE_CONV_OP_FWD) {
     // Counting the number of floating point operations (both MUL and ADD)
     // Forward computation:
@@ -938,7 +938,7 @@ static void BM_AvgPoolBk(::testing::benchmark::State& state, int batch_size,
 
   gtl::InlinedVector<TensorValue, 4> inputs;
 
-  int64 out_height, out_width, pad_rows, pad_cols;
+  int64_t out_height, out_width, pad_rows, pad_cols;
   TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, stride, padding,
                                     &out_height, &pad_rows));
   TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, stride, padding,
@@ -1126,7 +1126,7 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
                          int num_threads, bool use_gpu, const string& label) {
   auto root = Scope::NewRootScope().ExitOnError();
 
-  int64 out_height, out_width, pad_rows, pad_cols;
+  int64_t out_height, out_width, pad_rows, pad_cols;
   TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, stride, padding,
                                     &out_height, &pad_rows));
   TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, stride, padding,

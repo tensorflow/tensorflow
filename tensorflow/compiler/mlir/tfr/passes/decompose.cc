@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
@@ -87,10 +88,11 @@ Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
 }
 
 // Decompose the TF ops with the registered composition library.
-struct DecomposeTFOpsPass
+class DecomposeTFOpsPass
     : public PassWrapper<DecomposeTFOpsPass, FunctionPass> {
+ public:
   explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
-      : external_tfr_module(external_tfr_module) {}
+      : external_tfr_module_(external_tfr_module) {}
 
   StringRef getArgument() const final { return "tfr-decompose"; }
 
@@ -112,7 +114,7 @@ struct DecomposeTFOpsPass
   LogicalResult InlineTFRFuncCalls();
 
   // Optional external symbol table to look up the TFR function.
-  llvm::Optional<ModuleOp> external_tfr_module;
+  llvm::Optional<ModuleOp> external_tfr_module_;
 };
 
 #include "tensorflow/compiler/mlir/tfr/passes/generated_decompose.inc"
@@ -129,8 +131,8 @@ void DecomposeTFOpsPass::ApplyCanonicalization() {
 
 LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
   FuncOp func = getFunction();
-  SymbolTable table(external_tfr_module.hasValue()
-                        ? *external_tfr_module
+  SymbolTable table(external_tfr_module_.hasValue()
+                        ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
   OpBuilder builder(func);
   bool changed = false;
@@ -197,6 +199,13 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
           attribute =
               compose_func.getArgAttr(arg.index(), kAttrArgumentDefaultAttr);
         }
+        if (!attribute && attr_name.getValue() == "out_type") {
+          auto type = op->getResult(0).getType();
+          if (type.isa<TensorType>()) {
+            type = type.cast<TensorType>().getElementType();
+          }
+          attribute = TypeAttr::get(type);
+        }
         Value attr_cst;
         // Wrap these special attributes as a special TFR constant, so the SSA
         // value has a valid type to be used as TFR function argument. These
@@ -262,8 +271,8 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The Inliner will automatically use the registered dialect inliner.
   InlinerInterface inliner(&getContext());
   FuncOp func = getFunction();
-  SymbolTable table(external_tfr_module.hasValue()
-                        ? *external_tfr_module
+  SymbolTable table(external_tfr_module_.hasValue()
+                        ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
   // The inliner only inlines the TFR call op.

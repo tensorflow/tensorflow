@@ -95,7 +95,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // start over when optimizing a new model.
   explicit ConditionalCodeMotion(bool is_layout_sensitive,
                                  bool pursue_full_conditional_code_motion,
-                                 int64 search_config = 0)
+                                 int64_t search_config = 0)
       : is_layout_sensitive_(is_layout_sensitive),
         pursue_full_conditional_code_motion_(
             /*turn off special case if tuning*/
@@ -134,24 +134,24 @@ class ConditionalCodeMotion : public HloModulePass {
   static constexpr int kStridePos = 32;
   // Bit mask for extracting the last digits of value.
   static constexpr int kValueMask = 0xffff;
-  static int64 MakeSearchConfig(int64 start, int64 max, int64 stride) {
-    const int64 config =
+  static int64 MakeSearchConfig(int64_t start, int64_t max, int64_t stride) {
+    const int64_t config =
         (max << kMaxPos) + (start << kStartPos) + (stride << kStridePos);
     VLOG(2) << "flip stride = " << flip_stride(config) << "\n";
     VLOG(2) << "flig config = " << config << "\n";
     return config;
   }
 
-  static int16 flip_start(int64 search_config) {
+  static int16 flip_start(int64_t search_config) {
     return (search_config >> kStartPos) & kValueMask;
   }
 
-  static int16 flip_stride(int64 search_config) {
+  static int16 flip_stride(int64_t search_config) {
     return (search_config >> kStridePos) & kValueMask;
   }
 
   static int16 DecrementMaxFlip(int64* search_config) {
-    const int16 max_flip = ((*search_config) >> kMaxPos) & kValueMask;
+    const int16_t max_flip = ((*search_config) >> kMaxPos) & kValueMask;
     // Decrement flip count so we can stop if it reaches 0.
     if (max_flip > 0) {
       *search_config -= (1 << kMaxPos);

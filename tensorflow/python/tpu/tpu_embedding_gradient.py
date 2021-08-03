@@ -140,15 +140,10 @@ def get_gradients_through_dummy_table_variables(tpu_embedding):
     ValueError: if some gradients are not defined.
   """
   g = ops.get_default_graph()
-  feature_to_gradient_dict = collections.OrderedDict()
+  gradients_found = False
   for table_id, table in enumerate(tpu_embedding.table_to_config_dict):
     table_gradients = g.get_collection(
         'tpu_embedding_gradients_table_{}'.format(table_id))
-    if all(gradient is None for gradient in table_gradients):
-      raise ValueError(
-          'Table {} with id {} has undefined gradients: this is probably '
-          'because the model asked TPUEmbedding to compute activations that '
-          'were not used.'.format(table, table_id))
     if any(gradient is None for gradient in table_gradients):
       # TODO(bfontain): create a white-list for optimizers which are compatible
       # with `tf.stop_gradient`.
@@ -157,9 +152,23 @@ def get_gradients_through_dummy_table_variables(tpu_embedding):
           'because the model asked TPUEmbedding to compute activations that '
           'were not used, or tf.stop_gradient() is applied. Gradients of zeros '
           'are sent back to TPUEmbedding instead. Gradients of zeros and no '
-          'gradients are equivalent for SGD, AdaGrad, FTRL, momentum, etc, but '
-          'might differ for other optimizers due to implementation of tpu '
+          'gradients are equivalent for SGD, AdaGrad, FTRL, etc, but '
+          'might differ for other optimizers due to implementation of TPU '
           'embedding optimizers.'.format(table, table_id))
+    gradients_found = gradients_found or any(
+        gradient is not None for gradient in table_gradients)
+
+  if not gradients_found:
+    logging.warn(
+        'All tables have undefined gradients: this is probably because the '
+        'model asked TPUEmbedding to compute activations that were not used. '
+        'If all TPUEmbedding features have stop_gradients, consider using the '
+        'INFERENCE mode instead.')
+
+  feature_to_gradient_dict = collections.OrderedDict()
+  for table_id, table in enumerate(tpu_embedding.table_to_config_dict):
+    table_gradients = g.get_collection(
+        'tpu_embedding_gradients_table_{}'.format(table_id))
     for feature, gradient in zip(tpu_embedding.table_to_features_dict[table],
                                  table_gradients):
       if gradient is not None:

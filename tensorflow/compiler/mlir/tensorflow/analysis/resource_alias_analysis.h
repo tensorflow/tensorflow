@@ -116,15 +116,6 @@ class ResourceAliasAnalysis : public detail::PerFunctionAggregateAnalysis<
   explicit ResourceAliasAnalysis(ModuleOp module);
 };
 
-// Returns a range with just resource type values from the input range
-// preserved.
-template <typename RangeT>
-auto filter_resources(RangeT&& range) {
-  return llvm::make_filter_range(std::forward<RangeT>(range), [](Value val) {
-    return getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>();
-  });
-}
-
 }  // namespace TF
 }  // namespace mlir
 

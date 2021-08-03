@@ -71,7 +71,7 @@ class BufferAllocation {
   // contiguously and can be used as array indexes.
   using Index = int64;
 
-  BufferAllocation(Index index, int64 size, LogicalBuffer::Color color)
+  BufferAllocation(Index index, int64_t size, LogicalBuffer::Color color)
       : index_(index), size_(size), color_(color) {}
   ~BufferAllocation() {}
 
@@ -167,7 +167,7 @@ class BufferAllocation {
   class Slice {
    public:
     Slice() {}
-    Slice(const BufferAllocation* allocation, int64 offset, int64 size)
+    Slice(const BufferAllocation* allocation, int64_t offset, int64_t size)
         : allocation_(allocation), offset_(offset), size_(size) {}
 
     const BufferAllocation* allocation() const { return allocation_; }
@@ -189,8 +189,8 @@ class BufferAllocation {
     // Returns true iff this slice's memory range has a non-empty intersection
     // with the other slice's memory range.
     bool OverlapsWith(const Slice& other) const {
-      const int64 end = offset_ + size_;
-      const int64 other_end = other.offset_ + other.size_;
+      const int64_t end = offset_ + size_;
+      const int64_t other_end = other.offset_ + other.size_;
       return index() == other.index() && offset_ < other_end &&
              end > other.offset_;
     }
@@ -275,7 +275,7 @@ class BufferAllocation {
     return index() < other.index();
   }
 
-  void set_entry_computation_parameter(int64 parameter_number,
+  void set_entry_computation_parameter(int64_t parameter_number,
                                        ShapeIndex param_shape_index,
                                        bool parameter_aliased_with_output) {
     is_entry_computation_parameter_ = true;
@@ -292,10 +292,10 @@ class BufferAllocation {
   friend class BufferAssignment;
 
   // Adds a LogicalBuffer to the set assigned to this buffer.
-  void AddAssignment(const HloValue& buffer, int64 offset, int64 size);
+  void AddAssignment(const HloValue& buffer, int64_t offset, int64_t size);
 
   void set_index(Index index) { index_ = index; }
-  void set_size(int64 size) { size_ = size; }
+  void set_size(int64_t size) { size_ = size; }
 
   // The index of the allocation in the BufferAssignment.
   Index index_;
@@ -508,9 +508,9 @@ class BufferAssignment {
         color_alignment_(std::move(color_alignment)),
         alias_analysis_(std::move(alias_analysis)),
         hlo_live_range_(std::move(hlo_live_range)) {
-    int32 raw_value = module->config()
-                          .debug_options()
-                          .xla_multiheap_size_constraint_per_heap();
+    int32_t raw_value = module->config()
+                            .debug_options()
+                            .xla_multiheap_size_constraint_per_heap();
     // -1 means no constraint.
     multiheap_size_constraint_per_heap_ =
         (raw_value == -1) ? UINT64_MAX : raw_value;
@@ -518,18 +518,19 @@ class BufferAssignment {
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
-  BufferAllocation* NewEmptyAllocation(int64 size, LogicalBuffer::Color color);
+  BufferAllocation* NewEmptyAllocation(int64_t size,
+                                       LogicalBuffer::Color color);
 
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
-  BufferAllocation* NewAllocation(const HloBuffer& buffer, int64 size);
+  BufferAllocation* NewAllocation(const HloBuffer& buffer, int64_t size);
 
   // Adds a LogicalBuffer to the set assigned to the given allocation.
   void AddAssignment(BufferAllocation* allocation, const HloBuffer& buffer,
-                     int64 offset, int64 size);
+                     int64_t offset, int64_t size);
 
   void AddAssignment(BufferAllocation* allocation, const HloValue& value,
-                     int64 offset, int64 size);
+                     int64_t offset, int64_t size);
 
   // Returns the HloModule used to construct this assignment.
   const HloModule& module() const { return *module_; }
@@ -539,7 +540,7 @@ class BufferAssignment {
   BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
 
   int64 HloBufferSize(const HloBuffer& buffer) {
-    int64 result = buffer_size_(*buffer.values()[0]);
+    int64_t result = buffer_size_(*buffer.values()[0]);
     for (const HloValue* value : buffer.values()) {
       DCHECK_EQ(result, buffer_size_(*value));
     }

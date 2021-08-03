@@ -77,7 +77,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
 
   // Inserts a conversion HLO that changes the given HLO's operand type. If the
   // operand is a tuple, change all elements that match the from type.
-  Status InsertConvertBeforeOperand(HloInstruction* hlo, int64 operand_idx,
+  Status InsertConvertBeforeOperand(HloInstruction* hlo, int64_t operand_idx,
                                     PrimitiveType from, PrimitiveType to,
                                     HloComputation* computation);
 
@@ -93,7 +93,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
 };
 
 int64 CountSubshapesWithMatchingType(const Shape& shape, PrimitiveType type) {
-  int64 count = 0;
+  int64_t count = 0;
   ShapeUtil::ForEachSubshape(
       shape, [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.element_type() == type) {
@@ -104,7 +104,7 @@ int64 CountSubshapesWithMatchingType(const Shape& shape, PrimitiveType type) {
 }
 
 int64 ShapeLeafCount(const Shape& shape) {
-  int64 count = 0;
+  int64_t count = 0;
   ShapeUtil::ForEachSubshape(
       shape, [&](const Shape& subshape, const ShapeIndex& index) {
         if (ShapeUtil::IsLeafIndex(shape, index)) {
@@ -216,7 +216,7 @@ Status BFloat16NormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
 }
 
 Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
-    HloInstruction* hlo, int64 operand_idx, PrimitiveType from,
+    HloInstruction* hlo, int64_t operand_idx, PrimitiveType from,
     PrimitiveType to, HloComputation* computation) {
   auto operand = hlo->mutable_operand(operand_idx);
   TF_ASSIGN_OR_RETURN(auto new_operand,
@@ -262,11 +262,11 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
     HloInstruction* hlo) {
   std::vector<PrimitiveType> operand_types(hlo->operand_count());
   std::vector<PrimitiveType> output_types(hlo->operand_count());
-  int64 f32_count = 0;
-  int64 bf16_count = 0;
+  int64_t f32_count = 0;
+  int64_t bf16_count = 0;
   bool has_unsupported_bf16_operand = false;
   bool has_unsupported_bf16_output = false;
-  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     CHECK(hlo->operand(i)->shape().IsArray());
     CHECK(ShapeUtil::GetSubshape(hlo->shape(), {i}).IsArray());
     operand_types[i] = hlo->operand(i)->shape().element_type();
@@ -293,7 +293,7 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
     return Status::OK();
   }
 
-  auto should_convert_operand = [&](int64 i) {
+  auto should_convert_operand = [&](int64_t i) {
     if (operand_types[i] != BF16) {
       return false;
     }
@@ -307,7 +307,7 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
            f32_count > 0;
   };
 
-  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     if (should_convert_operand(i)) {
       TF_RETURN_IF_ERROR(
           InsertConvertBeforeOperand(hlo, i, BF16, F32, computation_));
@@ -347,7 +347,7 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
   std::vector<HloInstruction*> materialized_users = hlo->users();
   std::vector<HloInstruction*> output_elements(hlo->operand_count());
   auto original_shape = hlo->shape();
-  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     auto subshape = ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), {i});
     if (output_types[i] != BF16) {
       output_elements[i] = computation_->AddInstruction(
@@ -384,7 +384,7 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
   int f32_count = 0;
   int bf16_count = 0;
 
-  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+  for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     f32_count += CountSubshapesWithMatchingType(hlo->operand(i)->shape(), F32);
     bf16_count +=
         CountSubshapesWithMatchingType(hlo->operand(i)->shape(), BF16);
@@ -398,7 +398,7 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
     bool comp_has_bf16 = false;
     f32_count +=
         CountSubshapesWithMatchingType(comp->root_instruction()->shape(), F32);
-    int64 bf16_count_comp_root =
+    int64_t bf16_count_comp_root =
         CountSubshapesWithMatchingType(comp->root_instruction()->shape(), BF16);
     if (bf16_count_comp_root > 0) {
       bf16_count += bf16_count_comp_root;
@@ -406,7 +406,7 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
     }
     for (auto* param : comp->parameter_instructions()) {
       f32_count += CountSubshapesWithMatchingType(param->shape(), F32);
-      int64 bf16_count_comp_param =
+      int64_t bf16_count_comp_param =
           CountSubshapesWithMatchingType(param->shape(), BF16);
       if (bf16_count_comp_param > 0) {
         bf16_count += bf16_count_comp_param;
@@ -420,7 +420,7 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
 
   // Resolve unsupported BF16 operands.
   for (int i = 0; i < hlo->operand_count(); ++i) {
-    int64 bf16_count_in_operand =
+    int64_t bf16_count_in_operand =
         CountSubshapesWithMatchingType(hlo->operand(i)->shape(), BF16);
     if (bf16_count_in_operand > 0 &&
         !bfloat16_support_->SupportsBF16Operand(*hlo, i)) {
@@ -433,7 +433,7 @@ Status BFloat16NormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
 
   // Resolve unsupported BF16 output.
   if (!bfloat16_support_->SupportsBF16Output(*hlo)) {
-    int64 bf16_count_in_hlo =
+    int64_t bf16_count_in_hlo =
         CountSubshapesWithMatchingType(hlo->shape(), BF16);
     if (bf16_count_in_hlo > 0) {
       TF_RETURN_IF_ERROR(

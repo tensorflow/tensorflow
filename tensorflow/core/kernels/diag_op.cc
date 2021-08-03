@@ -127,12 +127,13 @@ namespace functor {
 template <typename T>
 struct DiagFunctor<CPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status operator()(OpKernelContext* context,
-                                        const int64 size, const T* in, T* out) {
+                                        const int64_t size, const T* in,
+                                        T* out) {
     // This subprocess is responsible for writing values in index range
     // [start*size, limit*size)
-    auto subDiag = [in, out, size](int64 start, int64 limit) {
+    auto subDiag = [in, out, size](int64_t start, int64_t limit) {
       std::fill(out + size * start, out + size * limit, T());
-      for (int64 index = start; index < limit; ++index) {
+      for (int64_t index = start; index < limit; ++index) {
         out[(1 + size) * index] = in[index];
       }
     };
@@ -148,11 +149,12 @@ struct DiagFunctor<CPUDevice, T> {
 template <typename T>
 struct DiagPartFunctor<CPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status operator()(OpKernelContext* context,
-                                        const int64 size, const T* in, T* out) {
+                                        const int64_t size, const T* in,
+                                        T* out) {
     // This subprocess is responsible for extracting values in index range
     // [start, limit)
-    auto subDiagPart = [in, out, size](int64 start, int64 limit) {
-      for (int64 index = start; index < limit; ++index) {
+    auto subDiagPart = [in, out, size](int64_t start, int64_t limit) {
+      for (int64_t index = start; index < limit; ++index) {
         out[index] = in[(1 + size) * index];
       }
     };

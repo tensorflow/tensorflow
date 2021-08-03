@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif  // TENSORFLOW_USE_ROCM
+
 #ifdef NCCL_ENABLED
 #include "third_party/nccl/nccl.h"
 #endif  // NCCL_ENABLED
@@ -166,13 +170,17 @@ class GpuClient : public xla::PjRtStreamExecutorClient {
       int num_replicas, int num_partitions) const override;
 
   absl::string_view platform_version() const override {
-#if defined(CUDART_VERSION)
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)
+#if TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)  // rocm
+    // TF_ROCM_VERSION fomrat may change in future. Use it
+    // cautiously
+    return "rocm " STRINGIFY(TF_ROCM_VERSION);
+#elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
     return "cuda " STRINGIFY(CUDART_VERSION);
-#else   // defined(CUDART_VERSION)
+#else
     return "<unknown>";
-#endif  // defined(CUDART_VERSION)
+#endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
   }
 };
 
@@ -243,8 +251,8 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
         /*alloc_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>(),
         /*free_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>());
 
-    int64 free_memory;
-    int64 total_memory;
+    int64_t free_memory;
+    int64_t total_memory;
     if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
       return Unavailable("Failed to query available memory from device %i",
                          device_ordinal);
@@ -320,7 +328,7 @@ std::unique_ptr<tensorflow::BFCAllocator> GetGpuHostAllocator(
   tensorflow::SubAllocator* sub_allocator = new tensorflow::DeviceHostAllocator(
       executor, /*numa_node=*/0, /*alloc_visitors=*/{}, /*free_visitors=*/{});
   // TODO(phawkins): allow the user to tune this.
-  const int64 kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+  const int64_t kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
   return absl::make_unique<tensorflow::BFCAllocator>(
       sub_allocator, kGpuHostMemoryLimitBytes, /*allow_growth=*/true,
       /*name=*/"xla_gpu_host_bfc");
@@ -392,6 +400,7 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         local_device->executor()->GetDeviceDescription();
     auto device = absl::make_unique<GpuDevice>(
         device_ordinal, std::move(local_device), description.name(),
+        description.device_vendor(),
         /*node_id=*/0);
     devices.push_back(std::move(device));
   }
@@ -441,7 +450,7 @@ Status BuildDistributedDevices(
       }
       auto device = absl::make_unique<GpuDevice>(
           device_proto.global_device_id(), std::move(local_device),
-          device_proto.name(), node.node_id());
+          device_proto.name(), device_proto.vendor(), node.node_id());
       devices->push_back(std::move(device));
     }
   }
@@ -463,9 +472,13 @@ Status BuildDistributedDevices(
 
 GpuDevice::GpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state,
-                     std::string device_kind, int node_id)
+                     std::string device_kind, std::string device_vendor,
+                     int node_id)
     : PjRtStreamExecutorDevice(id, std::move(local_device_state),
-                               std::move(device_kind), node_id) {}
+                               std::move(device_kind), node_id),
+      device_vendor_(std::move(device_vendor)) {}
+
+absl::string_view GpuDevice::device_vendor() { return device_vendor_; }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,

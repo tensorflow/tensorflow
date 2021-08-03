@@ -702,7 +702,7 @@ Status GraphConstructor::InitFromEdges() {
       // identified by an edge from a NextIteration node to a Merge node. For
       // such Merge nodes, only wait for one non-control input before
       // considering the node ready to process in Convert().
-      int32 num_control_edges = 0;
+      int32_t num_control_edges = 0;
       bool has_loop_back_edge = false;
       for (int i = 0; i < node_def.input_size(); ++i) {
         StringPiece input_name(node_def.input(i));

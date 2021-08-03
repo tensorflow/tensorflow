@@ -173,4 +173,19 @@ StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
   }
 }
 
+StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
+    mlir::mhlo::CustomCallApiVersion api_version) {
+  switch (api_version) {
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_UNSPECIFIED:
+      return xla::CustomCallApiVersion::API_VERSION_UNSPECIFIED;
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
+      return xla::CustomCallApiVersion::API_VERSION_ORIGINAL;
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING;
+    default:
+      return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
+                             api_version);
+  }
+}
+
 }  // namespace xla

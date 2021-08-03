@@ -67,6 +67,7 @@ def mlir_only_generated_test_models():
         "tensor_list_resize",
         "tensor_list_set_item",
         "tensor_list_dynamic_shape",
+        "tensor_scatter_add",
         "tensor_scatter_update",
         "where_v2",
         "while",

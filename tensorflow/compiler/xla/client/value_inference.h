@@ -92,11 +92,11 @@ class ValueInference {
   // Given an op handle, returns a simplified version of the handle inside a
   // int64 Literal. If the a -1 value for the handle means invalid
   // simplification and the result shouldn't be used.
-  StatusOr<Literal> SimplifyOp(int64 handle);
+  StatusOr<Literal> SimplifyOp(int64_t handle);
 
   // Perform CSE on a given handle, and return an equivalent handle if seen
   // before. Otherwise, returns nullopt.
-  absl::optional<int64> CseOpHandle(int64 handle);
+  absl::optional<int64> CseOpHandle(int64_t handle);
   XlaBuilder* builder_;
   HloEvaluator evaluator_;
   // A map from instruction_hash to handle that helps perform CSE.

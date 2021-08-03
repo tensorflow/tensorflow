@@ -55,7 +55,7 @@ bool CompareTensor(const Tensor& actual, const Tensor& expected,
     }
   }
 
-  for (int64 i = 0, e = actual.NumElements(); i < e; i++) {
+  for (int64_t i = 0, e = actual.NumElements(); i < e; i++) {
     if (actual.flat<T>()(i) != expected.flat<T>()(i)) {
       *listener << "\nmismatch in constant tensor at index " << i
                 << " expected = " << expected.flat<T>()(i)

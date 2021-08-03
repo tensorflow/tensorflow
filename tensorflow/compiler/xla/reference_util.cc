@@ -36,8 +36,8 @@ namespace xla {
     const Array2D<float>& input) {
   auto result =
       absl::make_unique<Array2D<double>>(input.height(), input.width());
-  for (int64 rowno = 0; rowno < input.height(); ++rowno) {
-    for (int64 colno = 0; colno < input.height(); ++colno) {
+  for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
+    for (int64_t colno = 0; colno < input.height(); ++colno) {
       (*result)(rowno, colno) = input(rowno, colno);
     }
   }
@@ -45,7 +45,7 @@ namespace xla {
 }
 
 /*  static */ std::unique_ptr<Array3D<float>> ReferenceUtil::ConvArray3D(
-    const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
+    const Array3D<float>& lhs, const Array3D<float>& rhs, int64_t kernel_stride,
     Padding padding) {
   return ConvArray3DGeneralDimensionsDilated(
       lhs, rhs, kernel_stride, padding, 1, 1,
@@ -54,8 +54,8 @@ namespace xla {
 
 /*static*/ std::unique_ptr<Array3D<float>>
 ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
-    const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
-    Padding padding, int64 lhs_dilation, int64 rhs_dilation,
+    const Array3D<float>& lhs, const Array3D<float>& rhs, int64_t kernel_stride,
+    Padding padding, int64_t lhs_dilation, int64_t rhs_dilation,
     const ConvolutionDimensionNumbers& dnums) {
   CHECK_EQ(dnums.input_spatial_dimensions_size(), 1);
   CHECK_EQ(dnums.kernel_spatial_dimensions_size(), 1);
@@ -105,19 +105,19 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
                                     const Array4D<float>& pointwise_weights,
                                     std::pair<int64, int64> kernel_stride,
                                     Padding padding) {
-  const int64 depth_multiplier = depthwise_weights.planes();
+  const int64_t depth_multiplier = depthwise_weights.planes();
   CHECK_EQ(pointwise_weights.depth(), input.depth() * depth_multiplier);
 
   // Combine the two weights by reducing the depth_multiplier, so that we can
   // apply a single convolution on the combined weights.
   Array4D<float> weights(pointwise_weights.planes(), input.depth(),
                          depthwise_weights.height(), depthwise_weights.width());
-  for (int64 kx = 0; kx < depthwise_weights.width(); ++kx) {
-    for (int64 ky = 0; ky < depthwise_weights.height(); ++ky) {
-      for (int64 kz = 0; kz < input.depth(); ++kz) {
-        for (int64 out = 0; out < pointwise_weights.planes(); ++out) {
+  for (int64_t kx = 0; kx < depthwise_weights.width(); ++kx) {
+    for (int64_t ky = 0; ky < depthwise_weights.height(); ++ky) {
+      for (int64_t kz = 0; kz < input.depth(); ++kz) {
+        for (int64_t out = 0; out < pointwise_weights.planes(); ++out) {
           float weight = 0.0;
-          for (int64 depth = 0; depth < depth_multiplier; ++depth) {
+          for (int64_t depth = 0; depth < depth_multiplier; ++depth) {
             weight +=
                 depthwise_weights(depth, kz, ky, kx) *
                 pointwise_weights(out, depth + kz * depth_multiplier, 0, 0);
@@ -131,9 +131,9 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
   return ConvArray4D(input, weights, kernel_stride, padding);
 }
 
-/* static */ int64 ReferenceUtil::WindowCount(int64 unpadded_width,
-                                              int64 window_len, int64 stride,
-                                              Padding padding) {
+/* static */ int64 ReferenceUtil::WindowCount(int64_t unpadded_width,
+                                              int64_t window_len,
+                                              int64_t stride, Padding padding) {
   if (padding == Padding::kValid) {
     return window_util::StridedBound(unpadded_width, window_len, stride);
   }
@@ -150,19 +150,19 @@ ReferenceUtil::ReduceWindow1DGeneric(
   CHECK_EQ(stride.size(), 1);
   CHECK_EQ(padding.size(), 1);
 
-  int64 padded_width = padding[0].first + operand.size() + padding[0].second;
-  int64 stride_amount = stride[0];
-  int64 window_size = window[0];
-  int64 result_size =
+  int64_t padded_width = padding[0].first + operand.size() + padding[0].second;
+  int64_t stride_amount = stride[0];
+  int64_t window_size = window[0];
+  int64_t result_size =
       window_util::StridedBound(padded_width, window_size, stride_amount);
-  int64 pad_low = padding[0].first;
+  int64_t pad_low = padding[0].first;
   auto result = absl::make_unique<std::vector<float>>(result_size);
 
   // Do a full 1D reduce window.
-  for (int64 i0 = 0; i0 < result_size; ++i0) {
-    int64 i0_base = i0 * stride_amount - pad_low;
+  for (int64_t i0 = 0; i0 < result_size; ++i0) {
+    int64_t i0_base = i0 * stride_amount - pad_low;
     float val = init;
-    for (int64 i0_win = 0; i0_win < window_size; ++i0_win) {
+    for (int64_t i0_win = 0; i0_win < window_size; ++i0_win) {
       if (i0_base + i0_win >= 0 && i0_base + i0_win < operand.size()) {
         val = reduce_func(val, operand[i0_base + i0_win]);
       }
@@ -192,7 +192,7 @@ ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
 
   std::vector<int64> window_counts(window.size(), 0);
   std::vector<int64> pad_low(window.size(), 0);
-  for (int64 i = 0; i < window.size(); ++i) {
+  for (int64_t i = 0; i < window.size(); ++i) {
     window_counts[i] =
         WindowCount(dim_lengths[i], window[i], stride[i], padding);
     pad_low[i] = padding_both[i].first;
@@ -200,17 +200,17 @@ ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
   auto result = absl::make_unique<Array3D<float>>(
       window_counts[0], window_counts[1], window_counts[2]);
 
-  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
-    for (int64 i1 = 0; i1 < window_counts[1]; ++i1) {
-      for (int64 i2 = 0; i2 < window_counts[2]; ++i2) {
-        int64 i0_base = i0 * stride[0] - pad_low[0];
-        int64 i1_base = i1 * stride[1] - pad_low[1];
-        int64 i2_base = i2 * stride[2] - pad_low[2];
+  for (int64_t i0 = 0; i0 < window_counts[0]; ++i0) {
+    for (int64_t i1 = 0; i1 < window_counts[1]; ++i1) {
+      for (int64_t i2 = 0; i2 < window_counts[2]; ++i2) {
+        int64_t i0_base = i0 * stride[0] - pad_low[0];
+        int64_t i1_base = i1 * stride[1] - pad_low[1];
+        int64_t i2_base = i2 * stride[2] - pad_low[2];
 
         float val = init;
-        for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
-          for (int64 i1_win = 0; i1_win < window[1]; ++i1_win) {
-            for (int64 i2_win = 0; i2_win < window[2]; ++i2_win) {
+        for (int64_t i0_win = 0; i0_win < window[0]; ++i0_win) {
+          for (int64_t i1_win = 0; i1_win < window[1]; ++i1_win) {
+            for (int64_t i2_win = 0; i2_win < window[2]; ++i2_win) {
               if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
                   i2_base + i2_win >= 0 && i0_base + i0_win < operand.n1() &&
                   i1_base + i1_win < operand.n2() &&
@@ -252,8 +252,9 @@ ReferenceUtil::ReduceWindow4DGeneric(
 
   std::vector<int64> window_counts(window.size(), 0);
   std::vector<int64> pad_low(window.size(), 0);
-  for (int64 i = 0; i < window.size(); ++i) {
-    int64 padded_width = padding[i].first + dim_lengths[i] + padding[i].second;
+  for (int64_t i = 0; i < window.size(); ++i) {
+    int64_t padded_width =
+        padding[i].first + dim_lengths[i] + padding[i].second;
     window_counts[i] =
         window_util::StridedBound(padded_width, window[i], stride[i]);
     pad_low[i] = padding[i].first;
@@ -261,20 +262,20 @@ ReferenceUtil::ReduceWindow4DGeneric(
   auto result = absl::make_unique<Array4D<float>>(
       window_counts[0], window_counts[1], window_counts[2], window_counts[3]);
   // Do a full 4D reduce window.
-  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
-    for (int64 i1 = 0; i1 < window_counts[1]; ++i1) {
-      for (int64 i2 = 0; i2 < window_counts[2]; ++i2) {
-        for (int64 i3 = 0; i3 < window_counts[3]; ++i3) {
-          int64 i0_base = i0 * stride[0] - pad_low[0];
-          int64 i1_base = i1 * stride[1] - pad_low[1];
-          int64 i2_base = i2 * stride[2] - pad_low[2];
-          int64 i3_base = i3 * stride[3] - pad_low[3];
+  for (int64_t i0 = 0; i0 < window_counts[0]; ++i0) {
+    for (int64_t i1 = 0; i1 < window_counts[1]; ++i1) {
+      for (int64_t i2 = 0; i2 < window_counts[2]; ++i2) {
+        for (int64_t i3 = 0; i3 < window_counts[3]; ++i3) {
+          int64_t i0_base = i0 * stride[0] - pad_low[0];
+          int64_t i1_base = i1 * stride[1] - pad_low[1];
+          int64_t i2_base = i2 * stride[2] - pad_low[2];
+          int64_t i3_base = i3 * stride[3] - pad_low[3];
 
           float val = init;
-          for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
-            for (int64 i1_win = 0; i1_win < window[1]; ++i1_win) {
-              for (int64 i2_win = 0; i2_win < window[2]; ++i2_win) {
-                for (int64 i3_win = 0; i3_win < window[3]; ++i3_win) {
+          for (int64_t i0_win = 0; i0_win < window[0]; ++i0_win) {
+            for (int64_t i1_win = 0; i1_win < window[1]; ++i1_win) {
+              for (int64_t i2_win = 0; i2_win < window[2]; ++i2_win) {
+                for (int64_t i3_win = 0; i3_win < window[3]; ++i3_win) {
                   if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
                       i2_base + i2_win >= 0 && i3_base + i3_win >= 0 &&
                       i0_base + i0_win < operand.n1() &&
@@ -337,7 +338,7 @@ ReferenceUtil::SelectAndScatter4DGePlus(const Array4D<float>& operand,
 
   std::vector<int64> window_counts(window.size(), 0);
   std::vector<int64> pad_low(window.size(), 0);
-  for (int64 i = 0; i < window.size(); ++i) {
+  for (int64_t i = 0; i < window.size(); ++i) {
     window_counts[i] =
         WindowCount(dim_lengths[i], window[i], stride[i], padding);
     pad_low[i] = padding_both[i].first;
@@ -348,24 +349,24 @@ ReferenceUtil::SelectAndScatter4DGePlus(const Array4D<float>& operand,
   CHECK_EQ(window_counts[3], source.n4());
 
   // Do a full 4D select and Scatter.
-  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
-    for (int64 i1 = 0; i1 < window_counts[1]; ++i1) {
-      for (int64 i2 = 0; i2 < window_counts[2]; ++i2) {
-        for (int64 i3 = 0; i3 < window_counts[3]; ++i3) {
+  for (int64_t i0 = 0; i0 < window_counts[0]; ++i0) {
+    for (int64_t i1 = 0; i1 < window_counts[1]; ++i1) {
+      for (int64_t i2 = 0; i2 < window_counts[2]; ++i2) {
+        for (int64_t i3 = 0; i3 < window_counts[3]; ++i3) {
           // Now we are inside a window and need to find the max and the argmax.
-          int64 i0_base = i0 * stride[0] - pad_low[0];
-          int64 i1_base = i1 * stride[1] - pad_low[1];
-          int64 i2_base = i2 * stride[2] - pad_low[2];
-          int64 i3_base = i3 * stride[3] - pad_low[3];
-          int64 scatter_0 = (i0_base >= 0) ? i0_base : 0;
-          int64 scatter_1 = (i1_base >= 0) ? i1_base : 0;
-          int64 scatter_2 = (i2_base >= 0) ? i2_base : 0;
-          int64 scatter_3 = (i3_base >= 0) ? i3_base : 0;
+          int64_t i0_base = i0 * stride[0] - pad_low[0];
+          int64_t i1_base = i1 * stride[1] - pad_low[1];
+          int64_t i2_base = i2 * stride[2] - pad_low[2];
+          int64_t i3_base = i3 * stride[3] - pad_low[3];
+          int64_t scatter_0 = (i0_base >= 0) ? i0_base : 0;
+          int64_t scatter_1 = (i1_base >= 0) ? i1_base : 0;
+          int64_t scatter_2 = (i2_base >= 0) ? i2_base : 0;
+          int64_t scatter_3 = (i3_base >= 0) ? i3_base : 0;
           float val = operand(scatter_0, scatter_1, scatter_2, scatter_3);
-          for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
-            for (int64 i1_win = 0; i1_win < window[1]; ++i1_win) {
-              for (int64 i2_win = 0; i2_win < window[2]; ++i2_win) {
-                for (int64 i3_win = 0; i3_win < window[3]; ++i3_win) {
+          for (int64_t i0_win = 0; i0_win < window[0]; ++i0_win) {
+            for (int64_t i1_win = 0; i1_win < window[1]; ++i1_win) {
+              for (int64_t i2_win = 0; i2_win < window[2]; ++i2_win) {
+                for (int64_t i3_win = 0; i3_win < window[3]; ++i3_win) {
                   if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
                       i2_base + i2_win >= 0 && i3_base + i3_win >= 0 &&
                       i0_base + i0_win < operand.n1() &&
@@ -506,12 +507,12 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 ReferenceUtil::ReduceToColArray2D(
     const Array2D<float>& matrix, float init,
     const std::function<float(float, float)>& reduce_function) {
-  int64 rows = matrix.height();
-  int64 cols = matrix.width();
+  int64_t rows = matrix.height();
+  int64_t cols = matrix.width();
   auto result = absl::make_unique<std::vector<float>>();
-  for (int64 i = 0; i < rows; ++i) {
+  for (int64_t i = 0; i < rows; ++i) {
     float acc = init;
-    for (int64 j = 0; j < cols; ++j) {
+    for (int64_t j = 0; j < cols; ++j) {
       acc = reduce_function(acc, matrix(i, j));
     }
     result->push_back(acc);
@@ -523,12 +524,12 @@ ReferenceUtil::ReduceToColArray2D(
 ReferenceUtil::ReduceToRowArray2D(
     const Array2D<float>& matrix, float init,
     const std::function<float(float, float)>& reduce_function) {
-  int64 rows = matrix.height();
-  int64 cols = matrix.width();
+  int64_t rows = matrix.height();
+  int64_t cols = matrix.width();
   auto result = absl::make_unique<std::vector<float>>();
-  for (int64 i = 0; i < cols; ++i) {
+  for (int64_t i = 0; i < cols; ++i) {
     float acc = init;
-    for (int64 j = 0; j < rows; ++j) {
+    for (int64_t j = 0; j < rows; ++j) {
       acc = reduce_function(acc, matrix(j, i));
     }
     result->push_back(acc);
@@ -543,22 +544,22 @@ ReferenceUtil::ReduceToRowArray2D(
   CHECK_EQ(dims.size(), 3);
   const absl::flat_hash_set<int64> dim_set(dims.begin(), dims.end());
   CHECK_EQ(dim_set.size(), 3);
-  for (int64 a0 = 0; a0 == 0 || (!dim_set.contains(0) && a0 < array.n1());
+  for (int64_t a0 = 0; a0 == 0 || (!dim_set.contains(0) && a0 < array.n1());
        ++a0) {
-    for (int64 a1 = 0; a1 == 0 || (!dim_set.contains(1) && a1 < array.n2());
+    for (int64_t a1 = 0; a1 == 0 || (!dim_set.contains(1) && a1 < array.n2());
          ++a1) {
-      for (int64 a2 = 0; a2 == 0 || (!dim_set.contains(2) && a2 < array.n3());
+      for (int64_t a2 = 0; a2 == 0 || (!dim_set.contains(2) && a2 < array.n3());
            ++a2) {
-        for (int64 a3 = 0; a3 == 0 || (!dim_set.contains(3) && a3 < array.n4());
-             ++a3) {
+        for (int64_t a3 = 0;
+             a3 == 0 || (!dim_set.contains(3) && a3 < array.n4()); ++a3) {
           float accumulator = init;
-          for (int64 i0 = 0;
+          for (int64_t i0 = 0;
                i0 == 0 || (dim_set.contains(0) && i0 < array.n1()); ++i0) {
-            for (int64 i1 = 0;
+            for (int64_t i1 = 0;
                  i1 == 0 || (dim_set.contains(1) && i1 < array.n2()); ++i1) {
-              for (int64 i2 = 0;
+              for (int64_t i2 = 0;
                    i2 == 0 || (dim_set.contains(2) && i2 < array.n3()); ++i2) {
-                for (int64 i3 = 0;
+                for (int64_t i3 = 0;
                      i3 == 0 || (dim_set.contains(3) && i3 < array.n4());
                      ++i3) {
                   // Handle zero-sized arrays.
@@ -581,13 +582,13 @@ ReferenceUtil::ReduceToRowArray2D(
 
 /* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::Broadcast1DTo4D(
     const std::vector<float>& array, const std::vector<int64>& bounds,
-    int64 broadcast_from_dim) {
+    int64_t broadcast_from_dim) {
   auto result = absl::make_unique<Array4D<float>>(bounds[0], bounds[1],
                                                   bounds[2], bounds[3]);
-  for (int64 i = 0; i < result->n1(); ++i) {
-    for (int64 j = 0; j < result->n2(); ++j) {
-      for (int64 k = 0; k < result->n3(); ++k) {
-        for (int64 l = 0; l < result->n4(); ++l) {
+  for (int64_t i = 0; i < result->n1(); ++i) {
+    for (int64_t j = 0; j < result->n2(); ++j) {
+      for (int64_t k = 0; k < result->n3(); ++k) {
+        for (int64_t l = 0; l < result->n4(); ++l) {
           switch (broadcast_from_dim) {
             case 0:
               (*result)(i, j, k, l) = array[i];
@@ -615,15 +616,15 @@ ReferenceUtil::ReduceToRowArray2D(
     const Array3D<float>& array, float init, absl::Span<const int64> dims,
     const std::function<float(float, float)>& reduce_function) {
   CHECK_EQ(dims.size(), 1);
-  int64 rows = dims[0] == 0 ? array.n2() : array.n1();
-  int64 cols = dims[0] == 2 ? array.n2() : array.n3();
+  int64_t rows = dims[0] == 0 ? array.n2() : array.n1();
+  int64_t cols = dims[0] == 2 ? array.n2() : array.n3();
   auto result = absl::make_unique<Array2D<float>>(rows, cols);
   result->Fill(init);
   for (int i0 = 0; i0 < array.n1(); ++i0) {
     for (int i1 = 0; i1 < array.n2(); ++i1) {
       for (int i2 = 0; i2 < array.n3(); ++i2) {
-        int64 row = dims[0] == 0 ? i1 : i0;
-        int64 col = dims[0] == 2 ? i1 : i2;
+        int64_t row = dims[0] == 0 ? i1 : i0;
+        int64_t col = dims[0] == 2 ? i1 : i2;
         (*result)(row, col) =
             reduce_function((*result)(row, col), array(i0, i1, i2));
       }
@@ -635,11 +636,11 @@ ReferenceUtil::ReduceToRowArray2D(
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MapArray2D(
     const Array2D<float>& matrix,
     const std::function<float(float)>& map_function) {
-  int64 rows = matrix.height();
-  int64 cols = matrix.width();
+  int64_t rows = matrix.height();
+  int64_t cols = matrix.width();
   auto result = absl::make_unique<Array2D<float>>(rows, cols);
-  for (int64 i = 0; i < rows; ++i) {
-    for (int64 j = 0; j < cols; ++j) {
+  for (int64_t i = 0; i < rows; ++i) {
+    for (int64_t j = 0; j < cols; ++j) {
       (*result)(i, j) = map_function(matrix(i, j));
     }
   }
@@ -651,11 +652,11 @@ ReferenceUtil::ReduceToRowArray2D(
     const std::function<float(float, float)>& map_function) {
   CHECK_EQ(lhs.height(), rhs.height());
   CHECK_EQ(lhs.width(), rhs.width());
-  int64 rows = lhs.height();
-  int64 cols = rhs.width();
+  int64_t rows = lhs.height();
+  int64_t cols = rhs.width();
   auto result = absl::make_unique<Array2D<float>>(rows, cols);
-  for (int64 i = 0; i < rows; ++i) {
-    for (int64 j = 0; j < cols; ++j) {
+  for (int64_t i = 0; i < rows; ++i) {
+    for (int64_t j = 0; j < cols; ++j) {
       (*result)(i, j) = map_function(lhs(i, j), rhs(i, j));
     }
   }
@@ -664,12 +665,12 @@ ReferenceUtil::ReduceToRowArray2D(
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MapWithIndexArray2D(
     const Array2D<float>& matrix,
-    const std::function<float(float, int64, int64)>& map_function) {
-  int64 rows = matrix.height();
-  int64 cols = matrix.width();
+    const std::function<float(float, int64_t, int64_t)>& map_function) {
+  int64_t rows = matrix.height();
+  int64_t cols = matrix.width();
   auto result = absl::make_unique<Array2D<float>>(rows, cols);
-  for (int64 i = 0; i < rows; ++i) {
-    for (int64 j = 0; j < cols; ++j) {
+  for (int64_t i = 0; i < rows; ++i) {
+    for (int64_t j = 0; j < cols; ++j) {
       (*result)(i, j) = map_function(matrix(i, j), i, j);
     }
   }

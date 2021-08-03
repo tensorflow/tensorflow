@@ -22,8 +22,8 @@ import warnings
 import weakref
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as ds_values
@@ -1704,8 +1704,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if (self._in_multi_worker_mode() or _is_tpu_multi_host(
           self.distribute_strategy)) and isinstance(x, dataset_types):
         try:
-          options = dataset_ops.Options()
-          data_option = distribute_options.AutoShardPolicy.DATA
+          options = options_lib.Options()
+          data_option = options_lib.AutoShardPolicy.DATA
           options.experimental_distribute.auto_shard_policy = data_option
           x = x.with_options(options)
         except ValueError:

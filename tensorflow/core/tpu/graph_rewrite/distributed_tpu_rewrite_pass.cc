@@ -458,6 +458,10 @@ class TensorDevicePlacer {
   // Reports that the argument/return-value at index has been assigned
   // by the user to a given device.
   void ReportDeviceAssigned(int64_t device, int64_t index) {
+    if (device >= index_nodes_.size()) {
+      LOG(FATAL) << "Sharding assignment is out of bounds. "  // Crash OK
+                    "Check that the number of nodes is properly set.";
+    }
     DeviceNode* node = &index_nodes_.at(device);
     node->size += sizes_.at(index);
     heap_.Adjust(node);
@@ -705,7 +709,7 @@ xla::StatusOr<Node*> CreatePadNode(const int padding, const int num_dims,
 // Adds split node and split dimension node to graph for sharding tiled inputs.
 // |graph| owns the returned Node* instance.
 xla::StatusOr<Node*> CreateSplitNode(const int num_splits, const int dim,
-                                     const int num_dims, const int64 padding,
+                                     const int num_dims, const int64_t padding,
                                      const int orig_src_output, DataType dtype,
                                      absl::string_view name_prefix,
                                      Node* control_predecessor, Node* orig_src,
@@ -1658,10 +1662,10 @@ static Status ParseTopologyAttr(const string& topology_attr,
   int pos = 0;
   for (int task = 0; task < num_tasks; ++task) {
     for (int device = 0; device < num_tpus_per_task; ++device) {
-      int32 x = proto.device_coordinates(pos++);
-      int32 y = proto.device_coordinates(pos++);
-      int32 z = proto.device_coordinates(pos++);
-      int32 core = proto.device_coordinates(pos++);
+      int32_t x = proto.device_coordinates(pos++);
+      int32_t y = proto.device_coordinates(pos++);
+      int32_t z = proto.device_coordinates(pos++);
+      int32_t core = proto.device_coordinates(pos++);
 
       if (!tpu_topology.HasChip(x, y, z) || core < 0 ||
           core >= devices_per_chip) {
@@ -1689,7 +1693,7 @@ static Status ParseDeviceAssignmentAttr(
     xla::Array2D<tpu::TpuCoreLocationExternal>* device_assignment) {
   static_assert(4 == kTPUTopologyRank, "Assumes the topology rank is 4");
 
-  const int64 device_assignment_attr_size =
+  const int64_t device_assignment_attr_size =
       num_replicas * num_cores_per_replica * kTPUTopologyRank;
   if (device_assignment_attr.size() != device_assignment_attr_size) {
     return errors::InvalidArgument(
@@ -1714,10 +1718,10 @@ static Status ParseDeviceAssignmentAttr(
   for (int replica = 0; replica < num_replicas; ++replica) {
     for (int logical_core = 0; logical_core < num_cores_per_replica;
          ++logical_core) {
-      int32 x = device_assignment_attr[pos++];
-      int32 y = device_assignment_attr[pos++];
-      int32 z = device_assignment_attr[pos++];
-      int32 core = device_assignment_attr[pos++];
+      int32_t x = device_assignment_attr[pos++];
+      int32_t y = device_assignment_attr[pos++];
+      int32_t z = device_assignment_attr[pos++];
+      int32_t core = device_assignment_attr[pos++];
 
       if (!tpu_topology.HasChip(x, y, z) || core < 0 ||
           core >= devices_per_chip) {
@@ -2336,6 +2340,10 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64_t core :
            node_and_sharding->sharding.tile_assignment_devices()) {
+        TF_RET_CHECK(core >= 0 && core < num_cores_per_replica)
+            << "core " << core << " should be between [0, "
+            << num_cores_per_replica << "). sharding is "
+            << node_and_sharding->sharding.DebugString();
         args_device_selector.ReportDeviceAssigned(core, i);
       }
       VLOG(3) << "Assigning argument " << i << " (" << n->DebugString()
@@ -2442,6 +2450,10 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64_t core :
            node_and_sharding->sharding.tile_assignment_devices()) {
+        TF_RET_CHECK(core >= 0 && core < num_cores_per_replica)
+            << "core " << core << " should be between [0, "
+            << num_cores_per_replica << "). sharding is "
+            << node_and_sharding->sharding.DebugString();
         retvals_device_selector.ReportDeviceAssigned(core, i);
       }
       VLOG(3) << "Assigning return value " << i << " ("

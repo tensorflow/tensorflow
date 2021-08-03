@@ -45,14 +45,14 @@ constexpr char kMaxInflightBatchesAttr[] = "_max_inflight_batches";
 constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
 
 // Per-model inflight batches parameters.
-constexpr int64 kMinInflightBatches = 16;
-constexpr int64 kInitialInflightBatches = 16;
-constexpr int64 kBatchesToAverageOver = 10;
-constexpr int64 kMaxInflightBatches = 64;
+constexpr int64_t kMinInflightBatches = 16;
+constexpr int64_t kInitialInflightBatches = 16;
+constexpr int64_t kBatchesToAverageOver = 10;
+constexpr int64_t kMaxInflightBatches = 64;
 
 // The max number of threads in the per-process thread pool, shared by
 // all executions of batch-op.
-constexpr int64 kBatchThreadPoolSize = 128;
+constexpr int64_t kBatchThreadPoolSize = 128;
 }  // namespace
 
 auto* batch_op_split_usage = monitoring::Gauge<string, 1>::New(
@@ -75,7 +75,7 @@ void RecordBatchSplitUsage(
   }
 }
 
-void RecordBatchParamNumBatchThreads(int64 num_batch_threads,
+void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
                                      const string& model_name) {
   static auto* cell = monitoring::Gauge<int64, 1>::New(
       "/tensorflow/serving/batching/num_batch_threads",
@@ -103,8 +103,10 @@ static thread::ThreadPool* GetOrCreateBatchThreadsPool(
 // A class encapsulating the state and logic for batching tensors.
 class BatchResource : public serving::BatchResourceBase {
  public:
-  static Status Create(int32 num_batch_threads, int32 max_execution_batch_size,
-                       int32 batch_timeout_micros, int32 max_enqueued_batches,
+  static Status Create(int32_t num_batch_threads,
+                       int32_t max_execution_batch_size,
+                       int32_t batch_timeout_micros,
+                       int32_t max_enqueued_batches,
                        const std::vector<int32>& allowed_batch_sizes,
                        FunctionLibraryRuntime::Handle fhandle,
                        FunctionLibraryRuntime* flib,
@@ -127,8 +129,9 @@ class BatchResource : public serving::BatchResourceBase {
 
   static Status Create(
       AdaptiveBatcherT::Options adaptive_shared_batch_scheduler_options,
-      int32 max_batch_size, int32 batch_timeout_micros,
-      int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
+      int32_t max_batch_size, int32_t batch_timeout_micros,
+      int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
       FunctionLibraryRuntime::Handle fhandle, FunctionLibraryRuntime* flib,
       std::unique_ptr<BatchResource>* resource) {
     std::shared_ptr<AdaptiveBatcherT> batcher;
@@ -416,9 +419,9 @@ class BatchFunctionKernel : public AsyncOpKernel {
     if (allowed_batch_sizes_.empty()) {
       return Status::OK();
     }
-    int32 last_size = 0;
+    int32_t last_size = 0;
     for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
-      const int32 size = allowed_batch_sizes_.at(i);
+      const int32_t size = allowed_batch_sizes_.at(i);
       if (i > 0 && size <= last_size) {
         return errors::InvalidArgument(
             "allowed_batch_sizes entries must be monotonically increasing");
@@ -445,7 +448,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   // - adaptive_batch_scheduler_options_
   //   Read from corresponding attributes as long as they are set.
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
-                                        int32 num_batch_threads) {
+                                        int32_t num_batch_threads) {
     if (c->HasAttr(kEnableAdaptiveSchedulerAttr)) {
       OP_REQUIRES_OK(c, c->GetAttr(kEnableAdaptiveSchedulerAttr,
                                    &enable_adaptive_batch_threads_));
@@ -575,9 +578,9 @@ class BatchKernel : public AsyncOpKernel {
     if (allowed_batch_sizes_.empty()) {
       return Status::OK();
     }
-    int32 last_size = 0;
+    int32_t last_size = 0;
     for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
-      const int32 size = allowed_batch_sizes_.at(i);
+      const int32_t size = allowed_batch_sizes_.at(i);
       if (i > 0 && size <= last_size) {
         return errors::InvalidArgument(
             "allowed_batch_sizes entries must be monotonically increasing");
@@ -614,7 +617,7 @@ REGISTER_KERNEL_BUILDER(Name("Batch").Device(DEVICE_CPU), BatchKernel);
 // see if it can be used to dispatch any stored continuations.
 class UnbatchResource : public ResourceBase {
  public:
-  explicit UnbatchResource(int32 timeout_micros)
+  explicit UnbatchResource(int32_t timeout_micros)
       : timeout_micros_(timeout_micros),
         timeout_enforcer_(new serving::PeriodicFunction(
             [this] { EnforceTimeout(); }, 1000 /* 1 ms */)) {}
@@ -645,7 +648,7 @@ class UnbatchResource : public ResourceBase {
           batch_index_t.shape().dim_size(1), ".");
     }
 
-    const int64 batch_key = context->input(2).scalar<int64>()();
+    const int64_t batch_key = context->input(2).scalar<int64>()();
     const bool nonempty_input = batch_index_t.dim_size(0) > 0;
 
     // If we have a non-empty tensor, slice it up.
@@ -878,7 +881,7 @@ class UnbatchGradResource : public ResourceBase {
 
     mutex_lock ml(mu_);
 
-    const int64 batch_key = context->input(3).scalar<int64>()();
+    const int64_t batch_key = context->input(3).scalar<int64>()();
     // Mark our tensor as available.
     if (!available_tensors_.emplace(batch_key, grad_t).second) {
       return errors::InvalidArgument("Two runs with the same batch key.");
@@ -895,7 +898,7 @@ class UnbatchGradResource : public ResourceBase {
       const auto batch_index =
           batch_index_t.shaped<int64, 2>({batch_index_t.dim_size(0), 3});
       for (int i = 0; i < batch_index_t.dim_size(0); ++i) {
-        const int64 batch_key = batch_index(i, 0);
+        const int64_t batch_key = batch_index(i, 0);
         if (available_tensors_.find(batch_key) == available_tensors_.end()) {
           missing_tensors.emplace(batch_key);
         }
@@ -909,7 +912,7 @@ class UnbatchGradResource : public ResourceBase {
         return errors::InvalidArgument(
             "Batch key with valid batch used twice.");
       }
-      for (const int64 i : missing_tensors) {
+      for (const int64_t i : missing_tensors) {
         if (!desired_tensor_to_batch_map_.emplace(i, batch_key).second) {
           return errors::InvalidArgument(
               "Missing tensor wanted by more than one batch.");

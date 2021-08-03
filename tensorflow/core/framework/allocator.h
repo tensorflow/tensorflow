@@ -90,7 +90,7 @@ class ScopedMemoryDebugAnnotation {
     annotation_.pending_op_name = op_name;
   }
 
-  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id) {
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64_t step_id) {
     last_annotation_ = annotation_;
     CleanupAnnotation();
     annotation_.pending_op_name = op_name;
@@ -100,7 +100,8 @@ class ScopedMemoryDebugAnnotation {
   // This constructor keeps the pending_op_name and pending_step_id from parent
   // (if any).  Otherwise it overwrites with op_name.
   explicit ScopedMemoryDebugAnnotation(const char* op_name,
-                                       const char* region_type, int32 data_type,
+                                       const char* region_type,
+                                       int32_t data_type,
                                        const TensorShape* shape) {
     last_annotation_ = annotation_;
     if (!annotation_.pending_op_name) {
@@ -111,8 +112,9 @@ class ScopedMemoryDebugAnnotation {
     annotation_.pending_shape = shape;
   }
 
-  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id,
-                                       const char* region_type, int32 data_type,
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64_t step_id,
+                                       const char* region_type,
+                                       int32_t data_type,
                                        const TensorShape* shape) {
     last_annotation_ = annotation_;
     annotation_.pending_op_name = op_name;

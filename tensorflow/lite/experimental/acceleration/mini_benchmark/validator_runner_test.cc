@@ -14,14 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
-#include <fcntl.h>
-#ifndef _WIN32
-#include <dlfcn.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#endif  // !_WIN32
-
 #include <fstream>
 #include <memory>
 #include <string>
@@ -32,11 +24,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#ifdef __ANDROID__
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_validator_runner_so_for_tests.h"
-#endif  // __ANDROID__
 
 namespace tflite {
 namespace acceleration {
@@ -44,84 +33,35 @@ namespace {
 
 class ValidatorRunnerTest : public ::testing::Test {
  protected:
-  void* LoadEntryPointModule() {
-#ifndef _WIN32
-    std::string path = ::testing::TempDir() +
-                       "/tensorflow/lite/experimental/acceleration/"
-                       "mini_benchmark/libvalidator_runner_so_for_tests.so";
-    void* module = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL | RTLD_NODELETE);
-    EXPECT_TRUE(module) << dlerror();
-    return module;
-#else   // _WIN32
-    return nullptr;
-#endif  // !_WIN32
-  }
-
-  void WriteFile(const std::string& rootdir, const std::string& filename,
-                 const unsigned char* data, size_t length) {
-    std::string dir = rootdir +
-                      "/tensorflow/lite/experimental/"
-                      "acceleration/mini_benchmark";
-    system((std::string("mkdir -p ") + dir).c_str());
-    std::string path = dir + "/" + filename;
-    (void)unlink(path.c_str());
-    std::string contents(reinterpret_cast<const char*>(data), length);
-    std::ofstream f(path, std::ios::binary);
-    ASSERT_TRUE(f.is_open());
-    f << contents;
-    f.close();
-    ASSERT_EQ(chmod(path.c_str(), 0500), 0);
-  }
-
   void SetUp() override {
-#ifdef __ANDROID__
-    AndroidInfo android_info;
-    auto status = RequestAndroidInfo(&android_info);
-    ASSERT_TRUE(status.ok());
-    if (android_info.is_emulator) {
-      return;
+    MiniBenchmarkTestHelper helper;
+    should_perform_test_ = helper.should_perform_test();
+
+    if (should_perform_test_) {
+      model_path_ = helper.DumpToTempFile(
+          "mobilenet_quant_with_validation.tflite",
+          g_tflite_acceleration_embedded_mobilenet_validation_model,
+          g_tflite_acceleration_embedded_mobilenet_validation_model_len);
+      ASSERT_TRUE(!model_path_.empty());
     }
-    ASSERT_NO_FATAL_FAILURE(
-        WriteFile(::testing::TempDir(), "librunner_main.so",
-                  g_tflite_acceleration_embedded_runner,
-                  g_tflite_acceleration_embedded_runner_len));
-    ASSERT_NO_FATAL_FAILURE(WriteFile(
-        ::testing::TempDir(), "libvalidator_runner_so_for_tests.so",
-        g_tflite_acceleration_embedded_validator_runner_so_for_tests,
-        g_tflite_acceleration_embedded_validator_runner_so_for_tests_len));
-    EXPECT_TRUE(LoadEntryPointModule());
-#endif
-    ASSERT_NO_FATAL_FAILURE(WriteFile(
-        ::testing::TempDir(), "mobilenet_quant_with_validation.tflite",
-        g_tflite_acceleration_embedded_mobilenet_validation_model,
-        g_tflite_acceleration_embedded_mobilenet_validation_model_len));
   }
 
   void CheckConfigurations(bool use_path = true) {
+    if (!should_perform_test_) return;
+
     AndroidInfo android_info;
     auto status = RequestAndroidInfo(&android_info);
     ASSERT_TRUE(status.ok());
-#ifdef __ANDROID__
-    if (android_info.is_emulator) {
-      return;
-    }
-#endif  // __ANDROID__
-
     std::unique_ptr<ValidatorRunner> validator1, validator2;
-    std::string model_path =
-        ::testing::TempDir() +
-        "/tensorflow/lite/experimental/acceleration/"
-        "mini_benchmark/mobilenet_quant_with_validation.tflite";
-
     std::string storage_path = ::testing::TempDir() + "/storage_path.fb";
     (void)unlink(storage_path.c_str());
     if (use_path) {
-      validator1 = std::make_unique<ValidatorRunner>(model_path, storage_path,
+      validator1 = std::make_unique<ValidatorRunner>(model_path_, storage_path,
                                                      ::testing::TempDir());
-      validator2 = std::make_unique<ValidatorRunner>(model_path, storage_path,
+      validator2 = std::make_unique<ValidatorRunner>(model_path_, storage_path,
                                                      ::testing::TempDir());
     } else {
-      int fd = open(model_path.c_str(), O_RDONLY);
+      int fd = open(model_path_.c_str(), O_RDONLY);
       ASSERT_GE(fd, 0);
       struct stat stat_buf = {0};
       ASSERT_EQ(fstat(fd, &stat_buf), 0);
@@ -187,6 +127,9 @@ class ValidatorRunnerTest : public ::testing::Test {
 
     EXPECT_EQ(validator2->TriggerMissingValidation(settings), 0);
   }
+
+  bool should_perform_test_ = true;
+  std::string model_path_;
 };
 
 TEST_F(ValidatorRunnerTest, AllConfigurationsWithFilePath) {

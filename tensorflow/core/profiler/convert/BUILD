@@ -220,6 +220,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:hardware_type_utils",
         "//tensorflow/core/profiler/utils:html_utils",
         "//tensorflow/core/profiler/utils:math_utils",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/util:stats_calculator_portable",

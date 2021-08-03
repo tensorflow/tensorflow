@@ -96,7 +96,7 @@ class ScatterUpdateOp : public OpKernel {
     if (!c->status().ok()) return;
 
     // Check that we have enough index space
-    const int64 N_big = indices.NumElements();
+    const int64_t N_big = indices.NumElements();
     OP_REQUIRES(
         c, N_big <= std::numeric_limits<Index>::max(),
         errors::InvalidArgument("indices has too many elements for ",

@@ -202,7 +202,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core:framework_internal"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/util:determinism_for_kernels",
+    ],
 )
 
 tf_kernel_library(
@@ -296,13 +299,16 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resize_bilinear_op",
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:cast_op"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/util:determinism_for_kernels",
+    ],
 )
 
 tf_kernel_library(
     name = "resize_nearest_neighbor_op",
     prefix = "resize_nearest_neighbor_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
 )
 
 tf_kernel_library(

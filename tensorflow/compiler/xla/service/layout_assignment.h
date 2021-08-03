@@ -50,7 +50,8 @@ namespace xla {
 // gathered together in LayoutConstraints object.
 class LayoutConstraint {
  public:
-  LayoutConstraint(bool mandatory, bool dfs, int64 priority = kDefaultPriority)
+  LayoutConstraint(bool mandatory, bool dfs,
+                   int64_t priority = kDefaultPriority)
       : mandatory_(mandatory), dfs_(dfs), priority_(priority) {}
   virtual ~LayoutConstraint() = default;
 
@@ -67,7 +68,7 @@ class LayoutConstraint {
   int64 priority() const { return priority_; }
 
   // The default priority of all constraints when not set explicitly.
-  static constexpr int64 kDefaultPriority = 1;
+  static constexpr int64_t kDefaultPriority = 1;
 
  private:
   bool mandatory_;
@@ -83,7 +84,7 @@ class BufferLayoutConstraint : public LayoutConstraint {
  public:
   BufferLayoutConstraint(const Layout& layout, const LogicalBuffer& buffer,
                          bool mandatory, bool dfs,
-                         int64 priority = LayoutConstraint::kDefaultPriority);
+                         int64_t priority = LayoutConstraint::kDefaultPriority);
 
   const LogicalBuffer& buffer() const { return *buffer_; }
   const Layout& layout() const { return layout_; }
@@ -102,10 +103,10 @@ class BufferLayoutConstraint : public LayoutConstraint {
 // use.
 class OperandLayoutConstraint : public LayoutConstraint {
  public:
-  OperandLayoutConstraint(const ShapeLayout& shape_layout,
-                          const HloInstruction* instruction, int64 operand_no,
-                          bool mandatory, bool dfs,
-                          int64 priority = LayoutConstraint::kDefaultPriority);
+  OperandLayoutConstraint(
+      const ShapeLayout& shape_layout, const HloInstruction* instruction,
+      int64_t operand_no, bool mandatory, bool dfs,
+      int64_t priority = LayoutConstraint::kDefaultPriority);
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   const HloInstruction* instruction() const { return instruction_; }
@@ -127,7 +128,7 @@ class ResultLayoutConstraint : public LayoutConstraint {
  public:
   explicit ResultLayoutConstraint(
       const ShapeLayout& shape_layout, bool dfs = false,
-      int64 priority = LayoutConstraint::kDefaultPriority)
+      int64_t priority = LayoutConstraint::kDefaultPriority)
       : LayoutConstraint(/*mandatory=*/true, dfs),
         shape_layout_(shape_layout) {}
 
@@ -170,9 +171,9 @@ class LayoutConstraints {
   const BufferLayoutConstraint* GetBufferLayoutConstraint(
       const LogicalBuffer& buffer) const;
   const ShapeLayout* OperandLayout(const HloInstruction* instruction,
-                                   int64 operand_no) const;
+                                   int64_t operand_no) const;
   const OperandLayoutConstraint* GetOperandLayoutConstraint(
-      const HloInstruction* instruction, int64 operand_no) const;
+      const HloInstruction* instruction, int64_t operand_no) const;
   const ShapeLayout* ResultLayout() const;
 
   // Add a constraint on the layout of a LogicalBuffer, the layout of the
@@ -181,7 +182,7 @@ class LayoutConstraints {
   Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
                          bool mandatory = true, bool dfs = true);
   Status SetOperandLayout(const Shape& shape_with_layout,
-                          const HloInstruction* instruction, int64 operand_no,
+                          const HloInstruction* instruction, int64_t operand_no,
                           bool mandatory = true, bool dfs = true);
   Status SetResultLayout(const Shape& shape_with_layout, bool dfs = true);
 
@@ -189,7 +190,7 @@ class LayoutConstraints {
   // operand using a Layout object. The operand must be array-shaped.
   Status SetArrayOperandLayout(const Layout& layout,
                                const HloInstruction* instruction,
-                               int64 operand_no, bool mandatory = true,
+                               int64_t operand_no, bool mandatory = true,
                                bool dfs = true);
 
   // Convenience wrapper around SetBufferLayout. Sets the layouts of all buffers
@@ -207,11 +208,11 @@ class LayoutConstraints {
   // of the given instruction. For example, the Tuple instruction forwards the
   // buffers of its operands and would return true for each of its operands.
   bool AnyOperandBufferForwarded(const HloInstruction* instruction,
-                                 int64 operand_no) const;
+                                 int64_t operand_no) const;
   // Similar to above, but returns true only if all buffers associated with that
   // operand are forwarded.
   bool AllOperandBuffersForwarded(const HloInstruction* instruction,
-                                  int64 operand_no) const;
+                                  int64_t operand_no) const;
 
   // Returns the set of logical buffers (by LogicalBuffer:Id) which do not
   // yet have a layout constraint
@@ -263,13 +264,13 @@ class ChannelLayoutConstraints {
   ChannelLayoutConstraints() {}
 
   // Returns true if channel_id has a layout constraint.
-  bool IsChannelConstrained(int64 channel_id) const {
+  bool IsChannelConstrained(int64_t channel_id) const {
     return constraints_.contains(channel_id);
   }
 
   // Given `shape`, apply the layout for `channel_id`. `channel_id` must already
   // be constrained.
-  Shape LayoutShapeForChannel(Shape shape, int64 channel_id) const {
+  Shape LayoutShapeForChannel(Shape shape, int64_t channel_id) const {
     auto it = constraints_.find(channel_id);
     CHECK(it != constraints_.end()) << "Channel " << channel_id;
     *shape.mutable_layout() = it->second;
@@ -278,7 +279,7 @@ class ChannelLayoutConstraints {
 
   // Returns the layout constraint for `channel_id`, which must already be
   // constrained.
-  const Layout& LayoutForChannel(int64 channel_id) const {
+  const Layout& LayoutForChannel(int64_t channel_id) const {
     auto it = constraints_.find(channel_id);
     CHECK(it != constraints_.end()) << "Channel " << channel_id;
     return it->second;
@@ -287,7 +288,7 @@ class ChannelLayoutConstraints {
   // Adds a new layout constraint for `channel_id`. If a constraint for
   // `channel_id` has been added, this API returns nullptr, otherwise returns
   // the layout which has already been set for the channel.
-  const Layout* ConstrainChannel(int64 channel_id, const Layout& layout) {
+  const Layout* ConstrainChannel(int64_t channel_id, const Layout& layout) {
     auto it = constraints_.emplace(std::make_pair(channel_id, layout));
     if (it.second) {
       return nullptr;
@@ -390,14 +391,14 @@ class LayoutAssignment : public HloModulePass {
   // Precondition: `instruction` and the operand are array-shaped.
   virtual std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
       const Layout& output_layout, const HloInstruction* instruction,
-      int64 operand_no);
+      int64_t operand_no);
   // Given the layout of `user`'s `operand_no`-th operand, chooses a layout of
   // `user` that minimizes its cost on that operand.  Returns null if it can't
   // decide the best layout.
   // Precondition: `user` and the operand are array-shaped.
   virtual std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
       const Layout& operand_layout, const HloInstruction* user,
-      int64 operand_no);
+      int64_t operand_no);
 
  private:
   // Initializes the layout assignment object for a new Run() call.
@@ -498,7 +499,7 @@ class LayoutAssignment : public HloModulePass {
   // Tuple operands will be deep-copied.
   virtual Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
                                             HloInstruction* instruction,
-                                            int64 operand_no);
+                                            int64_t operand_no);
 
   // Registers a copy instruction added by the layout assignment pass.
   void RegisterAddedCopy(HloInstruction* copy) {
@@ -509,7 +510,7 @@ class LayoutAssignment : public HloModulePass {
   // Adds a copy for the operand of an instruction, unless such operand is
   // already a copy, and has a single user (which is forcibly the instruction
   // itself).
-  Status AddCopyForOperand(HloInstruction* instruction, int64 operand_number);
+  Status AddCopyForOperand(HloInstruction* instruction, int64_t operand_number);
 
   // Apply the channel layout constraints by populating the channel_constraints
   // data structure passed in at constructor time. Eventually adds copies in

@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
@@ -653,6 +654,64 @@ class CudnnFilterDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnFilterDescriptor);
 };
 
+#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+// The errata sheet (JSON format) for marking the cudnn engines that might be
+// buggy. For example, we don't want the engine 999 of forward convolution:
+// R"({ "version" : 1,
+//      "rules"   : [
+//        { "rule_id"             : "ConvFwd_eng999",
+//          "operation"           : "ConvFwd",
+//          "engine"              : 999,
+//          "knob"                : [],
+//          "cudnn_version_start" : 8000,
+//          "cudnn_version_end"   : -1
+//        }
+// ]})"
+// We skip eng0 in the static filter because they are too slow. Additionally,
+// users can specify an additional errata JSON file via
+// CUDNN_ERRATA_JSON_FILE at runtime.
+const json* CudnnExecutionPlanEngineFilterStatic() {
+  static absl::string_view filter_str = R"({
+      "version" : 1,
+        "rules"   : [
+          { "rule_id"             : "ConvFwd_eng0",
+            "operation"           : "ConvFwd",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvBwdData_eng0",
+            "operation"           : "ConvBwdData",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvBwdFilter_eng0",
+            "operation"           : "ConvBwdFilter",
+            "engine"              : 0,
+            "knob"                : [],
+            "cudnn_version_start" : 8000,
+            "cudnn_version_end"   : -1
+          }
+      ]})";
+  static const json* json_handle = new json(json::parse(filter_str));
+  return json_handle;
+}
+
+const json* CudnnExecutionPlanEngineFilterRuntime() {
+  static const json* json_handle = []() -> const json* {
+    json j;
+    if (cudnn_frontend::load_from_config(j, "")) {
+      return new json(j);
+    }
+    return nullptr;
+  }();
+  return json_handle;
+}
+#endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+
 // A helper function to decide whether to use
 // CUDNN_BATCHNORM_SPATIAL_PERSISTENT in batchnorm. This mode can be faster in
 // some tasks because an optimized path may be selected for CUDNN_DATA_FLOAT
@@ -673,33 +732,16 @@ bool BatchnormSpatialPersistentEnabled() {
   return is_enabled;
 }
 
-// The following function allows deterministic ops to be implemented relatively
-// quickly using environment variables. It is intended to be temporary. The
-// longer-term intention is to enable deterministic ops via tf.config and
-// appropriate plumbing. See the discussion on PR 34951 for more information:
-// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
-// This function and associated comment are replicated in the following three
-// places:
-//   1. tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-//   2. tensorflow/core/kernels/gpu_utils.cc
-//   3. tensorflow/stream_executor/cuda/cuda_dnn.cc
-// When implementing the plumbing, you should also search for the use of
-// TF_DETERMINISTIC_OPS on its own.
-// TODO(duncanriach): move to an API that uses tf.config and implement the first
-//                    phase of plumbing.
 bool RequireCudnnDeterminism() {
   static bool require_cudnn_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
+    // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
     bool cudnn_deterministic = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
                                                /*default_val=*/false,
                                                &cudnn_deterministic));
-    return deterministic_ops || cudnn_deterministic;
+    return cudnn_deterministic;
   }();
-  return require_cudnn_determinism;
+  return tensorflow::OpDeterminismRequired() || require_cudnn_determinism;
 }
 
 // A helper function to decide whether to force the default conv algorithm.
@@ -3204,26 +3246,6 @@ namespace {
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
-absl::optional<int64_t> GetEngineId(cudnnBackendDescriptor_t engine_config) {
-  int64_t count;
-  int64_t engine_id;
-  cudnn_frontend::ManagedOpaqueDescriptor managed_engine =
-      cudnn_frontend::make_shared_backend_pointer(
-          CUDNN_BACKEND_ENGINE_DESCRIPTOR);
-  cudnnBackendDescriptor_t engine = managed_engine->get_backend_descriptor();
-  if (cudnnBackendGetAttribute(engine_config, CUDNN_ATTR_ENGINECFG_ENGINE,
-                               CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &count,
-                               &engine) != CUDNN_STATUS_SUCCESS) {
-    return absl::nullopt;
-  }
-  if (cudnnBackendGetAttribute(engine, CUDNN_ATTR_ENGINE_GLOBAL_INDEX,
-                               CUDNN_TYPE_INT64, 1, &count,
-                               &engine_id) != CUDNN_STATUS_SUCCESS) {
-    return absl::nullopt;
-  }
-  return engine_id;
-}
-
 bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
                          bool disable_winograd, bool disable_nondeterminism,
                          bool disable_tensor_core) {
@@ -3244,11 +3266,6 @@ bool GenericEngineFilter(cudnnBackendDescriptor_t engine_config,
   if (disable_tensor_core) {
     ret |= cudnn_frontend::hasNumericalNote<CUDNN_NUMERICAL_NOTE_TENSOR_CORE>(
         engine_config);
-  }
-
-  auto maybe_engine_id = GetEngineId(engine_config);
-  if (maybe_engine_id.has_value()) {
-    ret |= *maybe_engine_id == 0;
   }
 
   return ret;
@@ -3490,7 +3507,7 @@ GetCudnnFusedOperationGraph(
     dnn::ConvolutionKind kind, dnn::DataType element_type, double alpha,
     double alpha2, Stream* stream, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& bias_descriptor,
+    dnn::BatchDescriptor bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::ActivationMode activation_mode, CudnnHandle& cudnn) {
@@ -3569,6 +3586,12 @@ GetCudnnFusedOperationGraph(
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_w);
+
+  // For the purposes of the cudnn graph, say that the bias tensor has the same
+  // layout as the output tensor.  It doesn't actually matter, because bias is a
+  // 1D array.  But we need to get the correct vectorization, otherwise the
+  // cudnn graph API rejects this tensor.
+  bias_descriptor.set_layout(output_descriptor.layout());
 
   std::tie(vector_size, vector_dim) =
       GetTensorVectorSizeAndDim(bias_descriptor, element_type);
@@ -3794,12 +3817,29 @@ GetFirstWorkingExecutionPlan(
   cudnn_frontend::filter(engine_config, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_list, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
+
   for (int i = 0; i < filtered_configs.size(); i++) {
     auto plan = cudnn_frontend::ExecutionPlanBuilder()
                     .setHandle(cudnn.handle())
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (maybe_json_handle_static &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (maybe_json_handle_runtime &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       bool specify_workspace_limit = scratch_allocator != nullptr;
       auto memory_limit_bytes =
           specify_workspace_limit
@@ -4129,16 +4169,46 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
 
-template <typename ScaleType>
+// Utility for dealing with CUDA's type-erased scaling parameters, where some
+// sets of parameters expect a void* pointing at a float while others expect it
+// to point at a double.
+//
+// This is rather ugly, but its purpose is to quarantine the corresponding
+// ugliness that already exists in the CUDA API.
+class ScalingParam {
+ public:
+  explicit ScalingParam(double value) : as_double_(value), as_float_(value) {}
+
+  // Return a pointer to the appropriate representation type for the given
+  // element type.
+  //
+  // See
+  // https://docs.nvidia.com/deeplearning/cudnn/developer-guide/index.html#scaling-parameters
+  // for more info; the behavior for int8 result tensors is not described there,
+  // but is maintained from the existing behavior (namely, using a float scaling
+  // parameter).
+  void* ToVoidPointer(dnn::DataType element_type) {
+    if (element_type == dnn::DataType::kDouble) {
+      return &as_double_;
+    } else {
+      return &as_float_;
+    }
+  }
+
+ private:
+  double as_double_;
+  float as_float_;
+};
+
 port::Status CudnnSupport::DoFusedConvolveImpl(
     Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
     dnn::DataType bias_type, dnn::DataType output_type,
     const dnn::BatchDescriptor& conv_input_descriptor,
-    DeviceMemoryBase conv_input_data, ScaleType conv_input_scale,
+    DeviceMemoryBase conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemoryBase filter_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    DeviceMemoryBase side_input_data, ScaleType side_input_scale,
+    DeviceMemoryBase side_input_data, double side_input_scale,
     const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
     dnn::ActivationMode activation_mode,
     const dnn::BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
@@ -4204,6 +4274,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
           << "\nfilter_data.opaque() = " << filter_data.opaque()
           << "\nconv.handle() = " << conv.handle()
           << "\nalgo = " << algo_desc.algo_id()
+          << ", tensor_ops_enabled=" << algo_desc.tensor_ops_enabled()
           << "\nscratch.opaque() = " << scratch.opaque()
           << "\nscratch.size() = " << scratch.size()
           << "\nside_input_scale = " << side_input_scale
@@ -4221,14 +4292,17 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
                         "match that of the CudnnConvolutionDescriptor");
   }
 
+  // N.B. the scaling parameters alpha1 and alpha2 are pointers to temporaries;
+  // this API doesn't persist the pointers beyond its own stack frame.
   auto status = cudnnConvolutionBiasActivationForward(
       cudnn.handle(),
-      /*alpha1=*/&conv_input_scale,
+      /*alpha1=*/ScalingParam(conv_input_scale).ToVoidPointer(input_type),
       /*xDesc=*/conv_input_nd.handle(), /*x=*/conv_input_data.opaque(),
       /*wDesc=*/filter.handle(), /*w=*/filter_data.opaque(),
       /*convDesc=*/conv.handle(), ToConvForwardAlgo(algo_desc),
       /*workSpace=*/scratch.opaque(),
-      /*workSpaceSizeInBytes=*/scratch.size(), /*alpha2=*/&side_input_scale,
+      /*workSpaceSizeInBytes=*/scratch.size(),
+      /*alpha2=*/ScalingParam(side_input_scale).ToVoidPointer(input_type),
       /*zDesc=*/output_nd.handle(), /*z=*/side_input_data_ptr,
       /*biasDesc=*/bias_nd.handle(), /*bias=*/biases.opaque(),
       /*activationDesc=*/activation_desc.handle(),
@@ -4249,6 +4323,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
     VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo_desc)
+            << ", tensor_ops_enabled=" << algo_desc.tensor_ops_enabled()
             << ", workspace_size=" << scratch.size() << " -> "
             << ToString(status) << " in " << timer->GetElapsedMilliseconds()
             << "ms";
@@ -4283,7 +4358,7 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
     SE_ASSIGN_OR_RETURN(
         std::unique_ptr<cudnn_frontend::OperationGraph> op_graph,
         GetCudnnFusedOperationGraph(
-            dnn::ConvolutionKind::FORWARD, accumulator_type, conv_input_scale,
+            dnn::ConvolutionKind::FORWARD, element_type, conv_input_scale,
             side_input_scale, stream, conv_input_descriptor, filter_descriptor,
             bias_descriptor, output_descriptor, convolution_descriptor,
             activation_mode, cudnn));
@@ -4327,9 +4402,9 @@ port::Status CudnnSupport::DoFusedConvolveWithExecutionPlanImpl(
   }
 
   void* data_ptrs[] = {
-      const_cast<void*>(conv_input_data.opaque()), output_data.opaque(),
-      const_cast<void*>(filter_data.opaque()), output_data.opaque(),
-      const_cast<void*>(biases.opaque())};
+      conv_input_data.opaque(), output_data.opaque(), filter_data.opaque(),
+      side_input_data.opaque(), biases.opaque(),
+  };
   int64_t uids[] = {'x', 'y', 'w', 'z', 'b'};
   auto variantPack = cudnn_frontend::VariantPackBuilder()
                          .setWorkspacePointer(scratch_memory.opaque())
@@ -4442,6 +4517,10 @@ bool CudnnSupport::GetConvolveExecutionPlans(
   cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
+
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
@@ -4451,6 +4530,19 @@ bool CudnnSupport::GetConvolveExecutionPlans(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (maybe_json_handle_static &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (maybe_json_handle_runtime &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       out_exec_plans->push_back(std::unique_ptr<dnn::ConvolveExecutionPlan>(
           new CudnnConvolveExecutionPlan(std::move(plan))));
       // We will use the first working plan when determinism is required.
@@ -4529,6 +4621,10 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
   cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
   cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
 
+  auto fn = []() { return true; };
+  auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
+  auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
+
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
@@ -4538,6 +4634,19 @@ port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
                     .setEngineConfig(filtered_configs[i], op_graph->getTag())
                     .build();
     if (plan.get_status() == CUDNN_STATUS_SUCCESS) {
+      if (maybe_json_handle_static &&
+          cudnn_frontend::check_errata(*maybe_json_handle_static, plan.getTag(),
+                                       cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (static): " << plan.getTag();
+        continue;
+      }
+      if (maybe_json_handle_runtime &&
+          cudnn_frontend::check_errata(*maybe_json_handle_runtime,
+                                       plan.getTag(), cudnn.handle(), fn)) {
+        VLOG(4) << "Exclude engine (runtime): " << plan.getTag();
+        continue;
+      }
+
       out_exec_plans->push_back(std::unique_ptr<dnn::ConvolveExecutionPlan>(
           new CudnnConvolveExecutionPlan(std::move(plan))));
       // We will use the first working plan when determinism is required.
@@ -5048,25 +5157,13 @@ port::Status CudnnSupport::DoFusedConvolve(
         "go/nvbugs/3326122");
   }
 
-  if (input_type == dnn::DataType::kDouble) {
-    return DoFusedConvolveImpl(
-        stream, input_type, side_input_type, bias_type, output_type,
-        conv_input_descriptor, conv_input_data, conv_input_scale,
-        filter_descriptor, filter_data, convolution_descriptor, side_input_data,
-        side_input_scale, bias_descriptor, biases, activation_mode,
-        output_descriptor, output_data, GetConvAccumulatorType(input_type),
-        scratch_allocator, algorithm_config, output_profile_result);
-  } else {
-    float conv_input_scale_float = static_cast<float>(conv_input_scale);
-    float side_input_scale_float = static_cast<float>(side_input_scale);
-    return DoFusedConvolveImpl(
-        stream, input_type, side_input_type, bias_type, output_type,
-        conv_input_descriptor, conv_input_data, conv_input_scale_float,
-        filter_descriptor, filter_data, convolution_descriptor, side_input_data,
-        side_input_scale_float, bias_descriptor, biases, activation_mode,
-        output_descriptor, output_data, GetConvAccumulatorType(input_type),
-        scratch_allocator, algorithm_config, output_profile_result);
-  }
+  return DoFusedConvolveImpl(
+      stream, input_type, side_input_type, bias_type, output_type,
+      conv_input_descriptor, conv_input_data, conv_input_scale,
+      filter_descriptor, filter_data, convolution_descriptor, side_input_data,
+      side_input_scale, bias_descriptor, biases, activation_mode,
+      output_descriptor, output_data, GetConvAccumulatorType(input_type),
+      scratch_allocator, algorithm_config, output_profile_result);
 }
 
 port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(

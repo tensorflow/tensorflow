@@ -41,7 +41,7 @@ static T RoundUpToNearest(T value, T divisor) {
 
 // The size of the redzone at the end of the user buffer is rounded up to a
 // multiple of kRhsRedzoneAlign.  This simplifies the implementation a bit.
-constexpr int64 kRhsRedzoneAlign = 4;
+constexpr int64_t kRhsRedzoneAlign = 4;
 
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 

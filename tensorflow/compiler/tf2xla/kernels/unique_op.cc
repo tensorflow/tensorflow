@@ -101,7 +101,7 @@ class UniqueOp : public XlaOpKernel {
 
   xla::XlaComputation BuildOuterLoopCond(XlaOpKernelContext* ctx,
                                          xla::Shape outer_loop_shape,
-                                         int64 list_size) {
+                                         int64_t list_size) {
     std::unique_ptr<xla::XlaBuilder> builder =
         ctx->builder()->CreateSubBuilder("outer_loop_body");
     auto param =
@@ -150,7 +150,7 @@ class UniqueOp : public XlaOpKernel {
     // common), DCE will only keep the fastpath.
     auto iota_shape = input_shape;
     iota_shape.set_element_type(xla::S32);
-    int64 input_count = input_shape.dimensions(0);
+    int64_t input_count = input_shape.dimensions(0);
     xla::XlaOp iota = xla::Iota(ctx->builder(), iota_shape, 0);
     std::vector<xla::XlaOp> to_sort = {input, iota};
     std::vector<xla::PrimitiveType> types_to_sort = {input_shape.element_type(),
@@ -226,7 +226,7 @@ class UniqueOp : public XlaOpKernel {
     OP_REQUIRES(ctx, input_shape.rank() == 1,
                 xla::InvalidArgument("Input to UniqueOp must be rank-1: %s",
                                      input_shape.ToString()));
-    int64 list_size = input_shape.dimensions()[0];
+    int64_t list_size = input_shape.dimensions()[0];
     auto indices_shape =
         xla::ShapeUtil::ChangeElementType(input_shape, xla::S32);
     auto outer_loop_shape = xla::ShapeUtil::MakeTupleShape(

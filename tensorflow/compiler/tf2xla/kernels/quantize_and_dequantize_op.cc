@@ -78,7 +78,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
       } else {
         std::vector<int64> dimensions_to_reduce;
         TensorShape input_shape = ctx->InputShape(0);
-        int64 input_rank = input_shape.dims();
+        int64_t input_rank = input_shape.dims();
         OP_REQUIRES(ctx, input_rank >= 1,
                     errors::Unimplemented("QuantizeAndDequantizeOp with axis "
                                           "!= -1 requires minimum rank 1"));
@@ -86,7 +86,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
             ctx, axis_ >= 0 && axis_ < input_rank,
             errors::Unimplemented("QuantizeAndDequantizeOp with invalid axis"));
         dimensions_to_reduce.reserve(input_rank - 1);
-        for (int64 i = 0; i < input_rank; ++i) {
+        for (int64_t i = 0; i < input_rank; ++i) {
           if (i != axis_) {
             dimensions_to_reduce.push_back(i);
           }

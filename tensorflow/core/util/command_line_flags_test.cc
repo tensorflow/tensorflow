@@ -66,7 +66,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
                "some int32 set directly"),
           Flag(
               "some_int32_set_via_hook",
-              [&](int32 value) {
+              [&](int32_t value) {
                 some_int32_set_via_hook = value;
                 return true;
               },
@@ -171,8 +171,9 @@ TEST(CommandLineFlagsTest, FailedInt32Hook) {
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
-                   {Flag("some_int32", [](int32 value) { return false; }, 30,
-                         "some int32")});
+                   {Flag(
+                       "some_int32", [](int32_t value) { return false; }, 30,
+                       "some int32")});
 
   EXPECT_EQ(false, parsed_ok);
   EXPECT_EQ(argc, 1);

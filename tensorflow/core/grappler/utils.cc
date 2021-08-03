@@ -124,7 +124,7 @@ string AddPrefixToNodeName(const string& name, const string& prefix) {
   return AddPrefixToNodeName(name, prefix, "/");
 }
 
-bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
+bool ExecuteWithTimeout(std::function<void()> fn, const int64_t timeout_in_ms,
                         thread::ThreadPool* const thread_pool) {
   if (timeout_in_ms <= 0) {
     fn();

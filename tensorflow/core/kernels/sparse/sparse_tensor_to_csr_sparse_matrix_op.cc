@@ -71,9 +71,9 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
                 errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
                                         "but indices has rank: ", rank));
     auto dense_shape_vec = dense_shape.vec<int64>();
-    const int64 batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
-    const int64 num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
-    const int64 total_nnz = values.NumElements();
+    const int64_t batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
+    const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
+    const int64_t total_nnz = values.NumElements();
 
     // Allocate output Tensors.
     Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
@@ -132,9 +132,9 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                                 "but indices has ", rank, " columns"),
         done);
     auto dense_shape = dense_shape_t.vec<int64>();
-    const int64 batch_size = (rank == 2) ? 1 : dense_shape(0);
-    const int64 rows = dense_shape((rank == 2) ? 0 : 1);
-    const int64 cols = dense_shape((rank == 2) ? 1 : 2);
+    const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
+    const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t cols = dense_shape((rank == 2) ? 1 : 2);
 
     ScratchSpace<int32> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
 

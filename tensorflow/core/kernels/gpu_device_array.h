@@ -42,7 +42,7 @@ namespace tensorflow {
 template <typename ValueType, int MaxInlineValues = 8>
 class GpuDeviceArrayOnHost {
  public:
-  GpuDeviceArrayOnHost(OpKernelContext* context, int32 size)
+  GpuDeviceArrayOnHost(OpKernelContext* context, int32_t size)
       : context_(context),
         total_bytes_(static_cast<int64>(size) * sizeof(ValueType)) {
     data_.size = size;

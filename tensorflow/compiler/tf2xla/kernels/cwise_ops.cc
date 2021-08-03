@@ -48,7 +48,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
           // Find out mismatched dimensions that are non-broadcastable.
           // Reconcile the
           // difference by slicing the bigger dimension.
-          for (int64 i = 0; i < lhs_xla_shape.rank(); ++i) {
+          for (int64_t i = 0; i < lhs_xla_shape.rank(); ++i) {
             if (lhs_xla_shape.is_dynamic_dimension(i)) {
               if (!rhs_xla_shape.is_dynamic_dimension(i) &&
                   lhs_xla_shape.dimensions(i) > rhs_xla_shape.dimensions(i) &&
@@ -79,7 +79,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
                 // Note that we can't slice N into M because M could be a
                 // dynamic size 1 dim that's meant to be broadcasted to N.
                 auto size = xla::GetDimensionSize(op, i);
-                int64 diff =
+                int64_t diff =
                     rhs_xla_shape.dimensions(i) - lhs_xla_shape.dimensions(i);
                 op = xla::PadInDim(
                     op, xla::Zero(ctx->builder(), lhs_xla_shape.element_type()),

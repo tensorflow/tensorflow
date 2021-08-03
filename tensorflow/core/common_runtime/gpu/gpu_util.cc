@@ -50,7 +50,7 @@ limitations under the License.
 
 // If this need to be runtime configurable, consider adding options to
 // ConfigProto.
-const tensorflow::int64 FLAGS_brain_gpu_util_debug_string_maxlen = 128;
+const int64_t FLAGS_brain_gpu_util_debug_string_maxlen = 128;
 extern bool FLAGS_brain_gpu_record_mem_types;
 
 namespace tensorflow {
@@ -145,7 +145,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   // backing buffer.
   Allocator* alloc = nullptr;
   char* buf = nullptr;
-  const int64 total_bytes = is_dead ? 0 : tensor.TotalBytes();
+  const int64_t total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
     profiler::ScopedAnnotation annotation("SetProtoFromGPU");
     alloc = GPUProcessState::singleton()->GetGpuHostAllocator(0);
@@ -208,7 +208,7 @@ void GPUUtil::DeviceToDeviceCopy(
   // available.
   send_device_to_device_stream->ThenWaitFor(send_stream);
 
-  const int64 total_bytes = input->TotalBytes();
+  const int64_t total_bytes = input->TotalBytes();
   if (total_bytes > 0) {
     void* src_ptr = GetBase(input);
     DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
@@ -275,7 +275,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
   // Wait for the sender's main stream to make sure the data are available.
   send_device_to_host_stream->ThenWaitFor(send_stream);
 
-  const int64 total_bytes = gpu_tensor->TotalBytes();
+  const int64_t total_bytes = gpu_tensor->TotalBytes();
   if (total_bytes > 0) {
     void* src_ptr = GetBase(gpu_tensor);
     DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
@@ -322,7 +322,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     recv_host_to_device_stream->ThenWaitFor(recv_stream);
   }
 
-  const int64 total_bytes = cpu_tensor->TotalBytes();
+  const int64_t total_bytes = cpu_tensor->TotalBytes();
   // Note that 0-size tensors have no backing buffer.
   if (total_bytes > 0) {
     void* src_ptr = GetBase(cpu_tensor);
@@ -368,7 +368,7 @@ Status GPUUtil::SyncAll(Device* gpu_device) {
 string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
   string ret;
   CHECK(tensor);
-  const int64 num_bytes = std::min<int64>(
+  const int64_t num_bytes = std::min<int64>(
       FLAGS_brain_gpu_util_debug_string_maxlen, tensor->TotalBytes());
   void* ptr = (num_bytes > 0) ? GetBase(tensor) : nullptr;
   strings::Appendf(&ret, "%p:", ptr);
@@ -434,7 +434,7 @@ void GPUUtil::CopyGPUTensorToSameGPU(Device* gpu_device,
     return;
   }
 
-  const int64 total_bytes = src_gpu_tensor->TotalBytes();
+  const int64_t total_bytes = src_gpu_tensor->TotalBytes();
   if (total_bytes > 0) {
     void* src_ptr = GetBase(src_gpu_tensor);
     DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);

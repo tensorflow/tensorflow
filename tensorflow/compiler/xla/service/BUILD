@@ -810,6 +810,7 @@ tf_cc_test(
     name = "hlo_reachability_test",
     srcs = ["hlo_reachability_test.cc"],
     deps = [
+        ":computation_placer",
         ":hlo",
         ":hlo_reachability",
         "//tensorflow/compiler/xla:test",
@@ -1156,7 +1157,8 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_plugin",
+    name = "gpu_plugin_impl",
+    compatible_with = [],
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -1169,6 +1171,15 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
     ]) + internal_cuda_deps(),
+)
+
+cc_library(
+    name = "gpu_plugin_stub",
+)
+
+alias(
+    name = "gpu_plugin",
+    actual = if_libtpu("gpu_plugin_stub", "gpu_plugin_impl"),
 )
 
 cc_library(
@@ -2427,6 +2438,22 @@ cc_library(
 )
 
 cc_library(
+    name = "collective_decomposer_utils",
+    srcs = ["collective_decomposer_utils.cc"],
+    hdrs = ["collective_decomposer_utils.h"],
+    deps = [
+        ":collective_ops_utils",
+        ":hlo",
+        ":hlo_module_config",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "all_gather_broadcast_reorder",
     srcs = ["all_gather_broadcast_reorder.cc"],
     hdrs = ["all_gather_broadcast_reorder.h"],
@@ -2644,6 +2671,7 @@ cc_library(
     srcs = ["reduce_scatter_decomposer.cc"],
     hdrs = ["reduce_scatter_decomposer.h"],
     deps = [
+        ":collective_decomposer_utils",
         ":collective_ops_utils",
         ":hlo",
         ":hlo_casting_utils",
@@ -2662,6 +2690,7 @@ tf_cc_test(
     name = "reduce_scatter_decomposer_test",
     srcs = ["reduce_scatter_decomposer_test.cc"],
     deps = [
+        ":collective_ops_utils",
         ":hlo",
         ":hlo_matchers",
         ":hlo_parser",
@@ -3085,6 +3114,8 @@ cc_library(
     srcs = ["all_gather_decomposer.cc"],
     hdrs = ["all_gather_decomposer.h"],
     deps = [
+        ":collective_decomposer_utils",
+        ":collective_ops_utils",
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_pass",
@@ -4244,11 +4275,11 @@ cc_library(
         ":shape_inference",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:permutation_util",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -5759,6 +5790,63 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+# Exposes the public interface only and hides internal details. Suitable for
+# linking into a static library or binary.
+cc_library(
+    name = "custom_call_status",
+    srcs = [
+        "custom_call_status.cc",
+        "custom_call_status_internal.h",
+    ],
+    hdrs = ["custom_call_status.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+# Internal version that exposes internal details and private interfaces. For
+# use by other XLA code only.
+cc_library(
+    name = "custom_call_status_internal",
+    hdrs = [
+        "custom_call_status_internal.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":custom_call_status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+# Public headers only, suitable for inclusion in a shared library of CustomCall
+# target functions.
+cc_library(
+    name = "custom_call_status_public_headers",
+    hdrs = ["custom_call_status.h"],
+    visibility = ["//visibility:public"],
+)
+
+tf_cc_test(
+    name = "custom_call_status_test",
+    srcs = ["custom_call_status_test.cc"],
+    deps = [
+        ":custom_call_status_internal",
+        ":custom_call_status_test_c_caller",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "custom_call_status_test_c_caller",
+    testonly = True,
+    srcs = ["custom_call_status_test_c_caller.c"],
+    hdrs = ["custom_call_status_test_c_caller.h"],
+    deps = [":custom_call_status"],
+)
+
 tf_cc_test(
     name = "slice_sinker_test",
     srcs = ["slice_sinker_test.cc"],
@@ -5844,7 +5932,6 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/core:lib_internal",  # fixdeps: keep
         "@com_google_absl//absl/types:optional",
     ],

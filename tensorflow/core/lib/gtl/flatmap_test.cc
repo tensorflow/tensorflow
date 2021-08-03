@@ -30,7 +30,7 @@ namespace {
 typedef FlatMap<int64, int32> NumMap;
 
 // If map has an entry for k, return the corresponding value, else return def.
-int32 Get(const NumMap& map, int64_t k, int32 def = -1) {
+int32 Get(const NumMap& map, int64_t k, int32_t def = -1) {
   auto iter = map.find(k);
   if (iter == map.end()) {
     EXPECT_EQ(map.count(k), 0);

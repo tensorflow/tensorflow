@@ -77,16 +77,17 @@ class TestErrorIterator : public TaskIterator {
 
 std::vector<std::vector<Tensor>> GetRangeDataset(const size_t range) {
   std::vector<std::vector<Tensor>> dataset;
-  for (int64 i = 0; i < range; ++i) {
+  for (int64_t i = 0; i < range; ++i) {
     dataset.push_back({Tensor(i)});
   }
   return dataset;
 }
 
 // Reads from the task runner, storing results in `*output`.
-Status RunConsumer(int64 consumer_index, int64 start_index, int64 end_index,
-                   TaskRunner& task_runner, std::vector<int64>& output) {
-  for (int64 next_index = start_index; next_index < end_index; ++next_index) {
+Status RunConsumer(int64_t consumer_index, int64_t start_index,
+                   int64_t end_index, TaskRunner& task_runner,
+                   std::vector<int64>& output) {
+  for (int64_t next_index = start_index; next_index < end_index; ++next_index) {
     GetElementRequest request;
     request.set_round_index(next_index);
     request.set_consumer_index(consumer_index);
@@ -184,8 +185,8 @@ class ConsumeParallelTest
       public ::testing::WithParamInterface<std::tuple<int64, int64>> {};
 
 TEST_P(ConsumeParallelTest, ConsumeParallel) {
-  int64 num_elements = std::get<0>(GetParam());
-  int64 num_consumers = std::get<1>(GetParam());
+  int64_t num_elements = std::get<0>(GetParam());
+  int64_t num_consumers = std::get<1>(GetParam());
   std::vector<std::vector<Tensor>> elements = GetRangeDataset(num_elements);
   RoundRobinTaskRunner runner(
       absl::make_unique<TestTaskIterator>(elements, /*repeat=*/true),
@@ -231,9 +232,9 @@ INSTANTIATE_TEST_SUITE_P(ConsumeParallelTests, ConsumeParallelTest,
                                            std::make_tuple(0, 20)));
 
 TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
-  int64 num_consumers = 5;
+  int64_t num_consumers = 5;
   std::vector<int64> starting_rounds = {12, 11, 11, 12, 12};
-  int64 end_index = 15;
+  int64_t end_index = 15;
   std::vector<std::vector<int64>> expected_consumer_results = {
       {5, 10, 15}, {1, 6, 11, 16}, {2, 7, 12, 17}, {8, 13, 18}, {9, 14, 19}};
   std::vector<std::vector<Tensor>> elements = GetRangeDataset(30);

@@ -41,7 +41,7 @@ constexpr char kNextIndex[] = "next_index";
 
 class ShardDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 num_shards, int64 index,
+  Dataset(OpKernelContext* ctx, int64_t num_shards, int64_t index,
           bool require_non_empty, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)),
         num_shards_(num_shards),
@@ -78,7 +78,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -124,8 +124,11 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       if (dataset()->num_shards_ == kShardHint) {
         return errors::FailedPrecondition(
             "`tf.data.Dataset.shard(SHARD_HINT, ...)` can only be used in "
-            "combiantion with "
-            "`tf.distribute.Strategy.experimental_distribute_dataset()`.");
+            "`tf.distribute.Strategy.experimental_distribute_dataset()` with "
+            "`tf.data.experimental.AutoShardPolicy.HINT` policy, or tf.data "
+            "service with "
+            "`tf.data.experimental.service.ShardingPolicy.HINT` processing "
+            "mode.");
       }
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
@@ -250,8 +253,8 @@ ShardDatasetOp::ShardDatasetOp(OpKernelConstruction* ctx)
 
 void ShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
-  int64 index = 0;
-  int64 num_shards = 0;
+  int64_t index = 0;
+  int64_t num_shards = 0;
 
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kNumShards, &num_shards));
   OP_REQUIRES(

@@ -39,13 +39,13 @@ void TransposeSimple(const CPUDevice& device, const Tensor& in,
   gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-  auto transpose_fn = [=, &in_strides, &out_strides, &perm](int64 begin,
-                                                            int64 end) {
-    for (int64 o_idx = begin; o_idx < end; ++o_idx) {
-      int64 i_idx = 0;
-      int64 t = o_idx;
+  auto transpose_fn = [=, &in_strides, &out_strides, &perm](int64_t begin,
+                                                            int64_t end) {
+    for (int64_t o_idx = begin; o_idx < end; ++o_idx) {
+      int64_t i_idx = 0;
+      int64_t t = o_idx;
       for (int i = 0; i < ndims; ++i) {
-        const int64 ratio = t / out_strides[i];
+        const int64_t ratio = t / out_strides[i];
         t -= ratio * out_strides[i];
         i_idx += ratio * in_strides[perm[i]];
       }

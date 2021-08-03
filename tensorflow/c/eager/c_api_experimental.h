@@ -664,10 +664,10 @@ TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
 // Note that the key-values are only expected to be used for cluster
 // configuration data, and should not be used for storing large amount of data
 // or being accessed very frequently.
-TF_CAPI_EXPORT extern void TFE_SetConfigKeyValue(TFE_Context* ctx,
-                                                 const char* key,
-                                                 const char* value,
-                                                 TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_InsertConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    const char* value,
+                                                    TF_Status* status);
 
 // Get configuration key and value using coordination service.
 // The config key must be set before getting its value. Getting value of

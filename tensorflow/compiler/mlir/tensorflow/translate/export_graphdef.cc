@@ -465,7 +465,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // generate unique names.
   if (!output_names.empty()) {
     const int num_data_results = graph_op.getNumResults();
-    const int64 output_names_size = output_names.size();
+    const int64_t output_names_size = output_names.size();
     TF_RET_CHECK(output_names_size == num_data_results)
         << "output names (" << output_names.size()
         << ") != terminator operands (" << num_data_results << ")";
@@ -473,7 +473,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     llvm::StringMap<Operation*> name_to_op;
     for (const auto& it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
       // Skip control rets.
-      const int64 index = it.index();
+      const int64_t index = it.index();
       if (index >= num_data_results) break;
       // TODO(jpienaar): If there is a result index specified, ensure only one
       // and that it matches the result index of the op.

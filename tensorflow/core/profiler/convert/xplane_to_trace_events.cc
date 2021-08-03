@@ -69,7 +69,7 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
     uint32 resource_id = xline.DisplayId();
     xline.ForEachEvent(
         [device_id, resource_id, trace](const XEventVisitor& xevent) {
-          int64 event_type =
+          int64_t event_type =
               xevent.Type().value_or(HostEventType::kUnknownHostEventType);
           if (IsInternalEvent(event_type)) return;
           auto* event = trace->add_trace_events();

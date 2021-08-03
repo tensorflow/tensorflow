@@ -94,22 +94,6 @@ absl::Status RetrieveCustomInitialData(const TfLiteNode* tflite_node,
   return absl::OkStatus();
 }
 
-absl::Status CheckDilation(int dilation_h, int dilation_w) {
-  if (dilation_h <= 0 || dilation_w <= 0) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Incorrect dilation values: dilation_factor = ", dilation_h,
-        ", dilation_factor = ", dilation_w));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckStridesAndDilation(int strides_h, int strides_w,
-                                     int dilation_h, int dilation_w) {
-  RETURN_IF_ERROR(CheckStrides(strides_h, strides_w));
-  RETURN_IF_ERROR(CheckDilation(dilation_h, dilation_w));
-  return absl::OkStatus();
-}
-
 // Creates a simple node that holds tensor value.
 absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   ConstTensorAttributes attr;

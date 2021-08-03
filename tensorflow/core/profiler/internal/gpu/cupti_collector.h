@@ -108,7 +108,7 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
 }
 
 // Gets the name of the CUpti_ActivityMemoryKind value.
-absl::string_view GetMemoryKindName(int8 memory_kind);
+absl::string_view GetMemoryKindName(int8_t memory_kind);
 
 enum class CuptiTracerEventType {
   Unsupported = 0,

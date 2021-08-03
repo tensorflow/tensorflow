@@ -113,7 +113,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
 
 // An element produced by a task.
 struct Element {
-  explicit Element(std::vector<Tensor>&& components, int64 index)
+  explicit Element(std::vector<Tensor>&& components, int64_t index)
       : components(components), index(index) {}
   // The components of the element.
   std::vector<Tensor> components;
@@ -126,7 +126,7 @@ struct Element {
 class PrefetchThread {
  public:
   explicit PrefetchThread(std::unique_ptr<TaskIterator> iterator,
-                          int64 round_size);
+                          int64_t round_size);
   ~PrefetchThread();
   // Runs the prefetch thread. It runs until an error is encountered or the
   // destructor is called.
@@ -134,7 +134,8 @@ class PrefetchThread {
   // Fills `out` with a round of data. Waits for up to `wait_us` micoseconds
   // before giving up and returning with `out` empty. A negative `wait_us`
   // signals to wait indefinitely.
-  Status FillBuffer(int64 wait_us, std::vector<std::unique_ptr<Element>>& out);
+  Status FillBuffer(int64_t wait_us,
+                    std::vector<std::unique_ptr<Element>>& out);
   // Returns the status for any failures encountered by the prefetch thread.
   Status GetStatus();
 
@@ -176,7 +177,7 @@ class PrefetchThread {
 class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
-                       int64 num_consumers, string worker_address);
+                       int64_t num_consumers, string worker_address);
 
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
@@ -185,7 +186,7 @@ class RoundRobinTaskRunner : public TaskRunner {
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before
   // skipping if a full round of data is not yet ready.
-  Status PrepareFullRound(int64 wait_us) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status PrepareFullRound(int64_t wait_us) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Prepares a partial round to get consumers back in sync.
   Status PreparePartialRound() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status ValidateRequest(const GetElementRequest& req);

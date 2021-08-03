@@ -131,9 +131,8 @@ def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
       should be traded for performance by allowing elements to be produced out
       of order if some parsing calls complete faster than others. If
       `deterministic` is `None`, the
-      `tf.data.Options.experimental_deterministic` dataset option (`True` by
-      default) is used to decide whether to produce elements
-      deterministically.
+      `tf.data.Options.deterministic` dataset option (`True` by default) is used
+      to decide whether to produce elements deterministically.
 
   Returns:
     A dataset transformation function, which can be passed to

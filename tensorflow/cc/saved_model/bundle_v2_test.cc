@@ -15,15 +15,13 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 
-#include "tensorflow/cc/experimental/libexport/metrics.h"
+#include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
-
-namespace metrics = libexport::metrics;
 
 constexpr char kTestData[] = "cc/saved_model/testdata";
 
@@ -100,16 +98,18 @@ TEST_F(BundleV2Test, LoadsCyclicModule) {
 
 TEST_F(BundleV2Test, UpdatesMetrics) {
   const string kCCLoadBundleV2Label = "cc_load_bundle_v2";
-  const int read_count = metrics::Read().value();
-  const int api_count = metrics::ReadApi(kCCLoadBundleV2Label, "2").value();
+  const int read_count = metrics::SavedModelRead("2").value();
+  const int api_count =
+      metrics::SavedModelReadApi(kCCLoadBundleV2Label).value();
   const string export_dir = io::JoinPath(
       testing::TensorFlowSrcRoot(), kTestData, "VarsAndArithmeticObjectGraph");
 
   SavedModelV2Bundle bundle;
   TF_ASSERT_OK(SavedModelV2Bundle::Load(export_dir, &bundle));
 
-  EXPECT_EQ(metrics::Read().value(), read_count + 1);
-  EXPECT_EQ(metrics::ReadApi(kCCLoadBundleV2Label, "2").value(), api_count + 1);
+  EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count + 1);
+  EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadBundleV2Label).value(),
+            api_count + 1);
 }
 
 }  // namespace

@@ -331,7 +331,7 @@ class ProcessFunctionLibraryRuntime {
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done, const int64 step_id,
+      FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
       const Rendezvous* rendezvous) const;
 
   DistributedFunctionLibraryRuntime* const parent_;

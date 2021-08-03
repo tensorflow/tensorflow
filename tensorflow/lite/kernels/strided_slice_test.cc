@@ -846,10 +846,10 @@ TYPED_TEST(StridedSliceOpTest, NewAxisMask1) {
 }
 
 TYPED_TEST(StridedSliceOpTest, NoInfiniteLoop) {
-  StridedSliceOpModel<TypeParam> m({1, 1}, {6}, {6}, {1}, 1, 2, 1, 6, 0);
-  m.SetBegin({1});
-  m.SetEnd({3});
-  m.SetStrides({1});
+  StridedSliceOpModel<TypeParam> m({1, 1}, {6}, {6}, {6}, 1, 2, 1, 6, 0);
+  m.SetBegin({1, 1, 1, 1, 1, 1});
+  m.SetEnd({3, 3, 3, 3, 3, 3});
+  m.SetStrides({1, 1, 1, 1, 1, 1});
   m.Invoke();
 }
 

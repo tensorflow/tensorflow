@@ -67,7 +67,7 @@ constexpr char kStatus[] = "status";
 
 class ParallelBatchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 batch_size, int64 num_parallel_calls,
+  Dataset(OpKernelContext* ctx, int64_t batch_size, int64_t num_parallel_calls,
           bool drop_remainder, bool parallel_copy, const DatasetBase* input,
           DeterminismPolicy deterministic)
       : DatasetBase(DatasetContext(ctx)),
@@ -128,7 +128,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+    int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -285,7 +285,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      int64 batch_results_size;
+      int64_t batch_results_size;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
                                             &batch_results_size));
       DCHECK(batch_results_.empty());
@@ -296,7 +296,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 parallelism = -1;
+      int64_t parallelism = -1;
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {
@@ -436,7 +436,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         new_calls.reserve(num_parallel_calls_->value);
       }
       auto busy = [this]() TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
-        int64 num_parallel_calls = num_parallel_calls_->value;
+        int64_t num_parallel_calls = num_parallel_calls_->value;
         return num_calls_ >= num_parallel_calls ||
                batch_results_.size() >= num_parallel_calls;
       };
@@ -610,12 +610,12 @@ ParallelBatchDatasetOp::ParallelBatchDatasetOp(OpKernelConstruction* ctx)
 void ParallelBatchDatasetOp::MakeDataset(OpKernelContext* ctx,
                                          DatasetBase* input,
                                          DatasetBase** output) {
-  int64 batch_size = 0;
+  int64_t batch_size = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kBatchSize, &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("Batch size must be greater than zero."));
 
-  int64 num_parallel_calls = 0;
+  int64_t num_parallel_calls = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kNumParallelCalls,
                                                  &num_parallel_calls));
 

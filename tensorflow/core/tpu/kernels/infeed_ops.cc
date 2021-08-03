@@ -76,7 +76,7 @@ xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
                                       const Tensor& input_tensor,
                                       const xla::Shape& xla_shape) {
   profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
-  const int64 rank = xla_shape.rank();
+  const int64_t rank = xla_shape.rank();
   std::vector<int32> permutation(rank);
   std::vector<int64> transposed_shapes(rank);
   for (int64_t i = 0; i < rank; ++i) {
