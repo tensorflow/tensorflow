@@ -752,3 +752,22 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:xplane_test_utils",
     ],
 )
+
+cc_library(
+    name = "xplane_to_step_stats",
+    srcs = ["xplane_to_step_stats.cc"],
+    hdrs = ["xplane_to_step_stats.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:parse_annotation",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/strings",
+    ],
+)

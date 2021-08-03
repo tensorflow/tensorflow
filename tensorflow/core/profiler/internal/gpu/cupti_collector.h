@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -236,7 +235,6 @@ class CuptiTraceCollector {
   virtual void Flush() = 0;
 
   // Consumer side functions (i.e. called by GPU tracer);
-  virtual void Export(StepStats* step_stats) {}
   virtual bool Export(XSpace* space, uint64 end_gpu_ns) { return true; }
   virtual std::string ReportNumEventsIfDropped() { return ""; }
 
