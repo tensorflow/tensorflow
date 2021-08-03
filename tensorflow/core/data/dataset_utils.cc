@@ -609,11 +609,9 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
   batch->reserve(output_size);
   for (int i = 0; i < output_size; i++) {
     Tensor t;
-    TF_RETURN_IF_ERROR(reader->ReadTensor(
-        ctx->flr(),
-        FullName(iterator_prefix,
-                 strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-        &t));
+    TF_RETURN_IF_ERROR(
+        reader->ReadTensor(ctx->flr(), FullName(iterator_prefix, batch_prefix),
+                           strings::StrCat(kOutput, "_", i), &t));
     // If the batch was not full, we may have stored only the relevant slice.
     // Since tensors in `BatchResult.output` are expected to have the leading
     // dimension of size batch_size, we build a larger tensor and copy the slice
@@ -645,15 +643,14 @@ Status WriteBatch(int64_t batch_size, int64_t num_elements,
     // The rest of the batch tensor is *uninitialized* and accessing that will
     // raise msan errors.
     if (num_elements < batch_size) {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          FullName(iterator_prefix,
-                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-          (*batch)[i].Slice(0, num_elements)));
+      TF_RETURN_IF_ERROR(
+          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
+                              strings::StrCat(kOutput, "_", i),
+                              (*batch)[i].Slice(0, num_elements)));
     } else {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          FullName(iterator_prefix,
-                   strings::StrCat(batch_prefix, "_", kOutput, "_", i)),
-          (*batch)[i]));
+      TF_RETURN_IF_ERROR(
+          writer->WriteTensor(FullName(iterator_prefix, batch_prefix),
+                              strings::StrCat(kOutput, "_", i), (*batch)[i]));
     }
   }
   return Status::OK();
