@@ -546,7 +546,8 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
     # ast.literal_eval does not work with numpy expressions
     input_dict[input_key] = eval(expr)  # pylint: disable=eval-used
   return input_dict
-  
+
+
 def preprocess_input_examples_arg_string_safe(input_examples_str):
   """Parses input arg into dictionary that maps input key to python expression.
 
@@ -573,9 +574,9 @@ def preprocess_input_examples_arg_string_safe(input_examples_str):
     input_key, expr = input_raw.split('=', 1)
     # using json.loads instead of eval to prevent code injection
     try:
-    	input_dict[input_key] = json.loads(expr)
+      input_dict[input_key] = json.loads(expr)
     except:
-          raise RuntimeError('expression %s is not valid json dictionary' % expr)
+      raise RuntimeError('expression %s is not valid json dictionary' % expr)
   return input_dict
 
 
