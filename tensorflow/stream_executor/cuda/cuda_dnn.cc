@@ -4169,16 +4169,46 @@ port::Status CudnnSupport::DoConvolveWithExecutionPlan(
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
 
-template <typename ScaleType>
+// Utility for dealing with CUDA's type-erased scaling parameters, where some
+// sets of parameters expect a void* pointing at a float while others expect it
+// to point at a double.
+//
+// This is rather ugly, but its purpose is to quarantine the corresponding
+// ugliness that already exists in the CUDA API.
+class ScalingParam {
+ public:
+  explicit ScalingParam(double value) : as_double_(value), as_float_(value) {}
+
+  // Return a pointer to the appropriate representation type for the given
+  // element type.
+  //
+  // See
+  // https://docs.nvidia.com/deeplearning/cudnn/developer-guide/index.html#scaling-parameters
+  // for more info; the behavior for int8 result tensors is not described there,
+  // but is maintained from the existing behavior (namely, using a float scaling
+  // parameter).
+  void* ToVoidPointer(dnn::DataType element_type) {
+    if (element_type == dnn::DataType::kDouble) {
+      return &as_double_;
+    } else {
+      return &as_float_;
+    }
+  }
+
+ private:
+  double as_double_;
+  float as_float_;
+};
+
 port::Status CudnnSupport::DoFusedConvolveImpl(
     Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
     dnn::DataType bias_type, dnn::DataType output_type,
     const dnn::BatchDescriptor& conv_input_descriptor,
-    DeviceMemoryBase conv_input_data, ScaleType conv_input_scale,
+    DeviceMemoryBase conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemoryBase filter_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    DeviceMemoryBase side_input_data, ScaleType side_input_scale,
+    DeviceMemoryBase side_input_data, double side_input_scale,
     const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
     dnn::ActivationMode activation_mode,
     const dnn::BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
@@ -4262,14 +4292,17 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
                         "match that of the CudnnConvolutionDescriptor");
   }
 
+  // N.B. the scaling parameters alpha1 and alpha2 are pointers to temporaries;
+  // this API doesn't persist the pointers beyond its own stack frame.
   auto status = cudnnConvolutionBiasActivationForward(
       cudnn.handle(),
-      /*alpha1=*/&conv_input_scale,
+      /*alpha1=*/ScalingParam(conv_input_scale).ToVoidPointer(input_type),
       /*xDesc=*/conv_input_nd.handle(), /*x=*/conv_input_data.opaque(),
       /*wDesc=*/filter.handle(), /*w=*/filter_data.opaque(),
       /*convDesc=*/conv.handle(), ToConvForwardAlgo(algo_desc),
       /*workSpace=*/scratch.opaque(),
-      /*workSpaceSizeInBytes=*/scratch.size(), /*alpha2=*/&side_input_scale,
+      /*workSpaceSizeInBytes=*/scratch.size(),
+      /*alpha2=*/ScalingParam(side_input_scale).ToVoidPointer(input_type),
       /*zDesc=*/output_nd.handle(), /*z=*/side_input_data_ptr,
       /*biasDesc=*/bias_nd.handle(), /*bias=*/biases.opaque(),
       /*activationDesc=*/activation_desc.handle(),
@@ -5124,25 +5157,13 @@ port::Status CudnnSupport::DoFusedConvolve(
         "go/nvbugs/3326122");
   }
 
-  if (input_type == dnn::DataType::kDouble) {
-    return DoFusedConvolveImpl(
-        stream, input_type, side_input_type, bias_type, output_type,
-        conv_input_descriptor, conv_input_data, conv_input_scale,
-        filter_descriptor, filter_data, convolution_descriptor, side_input_data,
-        side_input_scale, bias_descriptor, biases, activation_mode,
-        output_descriptor, output_data, GetConvAccumulatorType(input_type),
-        scratch_allocator, algorithm_config, output_profile_result);
-  } else {
-    float conv_input_scale_float = static_cast<float>(conv_input_scale);
-    float side_input_scale_float = static_cast<float>(side_input_scale);
-    return DoFusedConvolveImpl(
-        stream, input_type, side_input_type, bias_type, output_type,
-        conv_input_descriptor, conv_input_data, conv_input_scale_float,
-        filter_descriptor, filter_data, convolution_descriptor, side_input_data,
-        side_input_scale_float, bias_descriptor, biases, activation_mode,
-        output_descriptor, output_data, GetConvAccumulatorType(input_type),
-        scratch_allocator, algorithm_config, output_profile_result);
-  }
+  return DoFusedConvolveImpl(
+      stream, input_type, side_input_type, bias_type, output_type,
+      conv_input_descriptor, conv_input_data, conv_input_scale,
+      filter_descriptor, filter_data, convolution_descriptor, side_input_data,
+      side_input_scale, bias_descriptor, biases, activation_mode,
+      output_descriptor, output_data, GetConvAccumulatorType(input_type),
+      scratch_allocator, algorithm_config, output_profile_result);
 }
 
 port::Status CudnnSupport::DoFusedConvolveWithExecutionPlan(

@@ -592,16 +592,15 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator);
 
-  template <typename ScaleType>
   port::Status DoFusedConvolveImpl(
       Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
       dnn::DataType bias_type, dnn::DataType output_type,
       const dnn::BatchDescriptor& conv_input_descriptor,
-      DeviceMemoryBase conv_input_data, ScaleType conv_input_scale,
+      DeviceMemoryBase conv_input_data, double conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
       DeviceMemoryBase filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      DeviceMemoryBase side_input_data, ScaleType side_input_scale,
+      DeviceMemoryBase side_input_data, double side_input_scale,
       const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
       dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor& output_descriptor,
