@@ -281,8 +281,13 @@ void BuildPmapSubmodule(pybind11::module& m) {
   no_sharding.def(py::init<>())
       .def("__repr__",
            [](const NoSharding& chuncked) { return "NoSharding()"; })
-      .def("__eq__", [](const NoSharding& self, py::object obj) {
-        return py::isinstance<NoSharding>(obj);
+      .def("__eq__",
+           [](const NoSharding& self, py::object obj) {
+             return py::isinstance<NoSharding>(obj);
+           })
+      .def("__hash__", [](const NoSharding& self) {
+        const size_t hash = absl::HashOf(self);
+        return py::int_(hash);
       });
 
   py::class_<Chunked> chunked(pmap_lib, "Chunked");
@@ -338,13 +343,23 @@ void BuildPmapSubmodule(pybind11::module& m) {
 
   py::class_<ShardingSpec> sharding_spec(pmap_lib, "ShardingSpec");
   sharding_spec
-      .def(py::init<std::vector<AvalDimSharding>,
-                    std::vector<MeshDimAssignment>>(),
-           py::arg("sharding"), py::arg("mesh_mapping"))
-      .def_property_readonly("sharding", &ShardingSpec::GetSharding)
-      .def_property_readonly("mesh_mapping", &ShardingSpec::GetMeshMapping)
-      .def("__eq__", [](const ShardingSpec& self, const ShardingSpec& other) {
-        return self == other;
+      .def(py::init<py::iterable, py::iterable>(), py::arg("sharding"),
+           py::arg("mesh_mapping"))
+      .def_property_readonly("sharding",
+                             [](const ShardingSpec& self) {
+                               return xla::VectorSpanToTuple(
+                                   absl::MakeConstSpan(self.GetSharding()));
+                             })
+      .def_property_readonly("mesh_mapping",
+                             [](const ShardingSpec& self) {
+                               return xla::VectorSpanToTuple(
+                                   absl::MakeSpan(self.GetMeshMapping()));
+                             })
+      .def("__eq__", [](const ShardingSpec& self,
+                        const ShardingSpec& other) { return self == other; })
+      .def("__hash__", [](const ShardingSpec& self) {
+        const size_t hash = absl::HashOf(self);
+        return py::int_(hash);
       });
 
   py::class_<ShardedDeviceArray> sda(pmap_lib, "ShardedDeviceArray");

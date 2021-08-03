@@ -103,8 +103,26 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(
 pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
 pybind11::tuple IntSpanToTuple(absl::Span<int const> xs);
 
+template <typename T>
+pybind11::tuple VectorSpanToTuple(absl::Span<T const> xs) {
+  pybind11::tuple out(xs.size());
+  for (int i = 0; i < xs.size(); ++i) {
+    out[i] = pybind11::cast(xs[i]);
+  }
+  return out;
+}
+
 // Converts a Python sequence of integers to a std::vector<int64>
 std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
+// TODO(jblespiau): Replace `IntSequenceToVector` with `SequenceToVector`.
+template <typename T>
+std::vector<T> SequenceToVector(const pybind11::object& sequence) {
+  std::vector<T> output;
+  for (auto item : sequence) {
+    output.push_back(item.cast<T>());
+  }
+  return output;
+}
 
 // Private helper function used in the implementation of the type caster for
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer
