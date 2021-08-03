@@ -243,15 +243,16 @@ static void ConvertTensorOperandsToMemrefDesc(
 }
 
 struct DebugListener : public JitExecutable::Listener {
-  void notifyModuleSpecialized(ArrayRef<mlir::Type> inputs) override {
+  void notifyModuleSpecialized(ArrayRef<mlir::Type> inputs) const override {
     std::string message;
     llvm::raw_string_ostream(message)
         << "Specialized module: " << inputs << "\n";
     printf("%s", message.c_str());
     fflush(stdout);
   }
+
   void notifyValueSpecialized(unsigned index, mlir::Type type,
-                              mlir::Attribute attr) override {
+                              mlir::Attribute attr) const override {
     std::string message;
     llvm::raw_string_ostream(message) << "Arg[" << index << "] "
                                       << "value specialized: " << attr << "\n";
@@ -309,15 +310,11 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   llvm::SmallVector<MemrefDesc> memrefs;
   ConvertTensorOperandsToMemrefDesc(operands, &memrefs);
 
-  DebugListener debug_listener;
-  if (debug) jit_executable.setListener(&debug_listener);
-
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
-      jit_executable.GetExecutable(memrefs, exec_ctx);
+  DebugListener debug_listener;
 
-  // TODO(ezhulenev): Listener should be a GetExecutable argument.
-  if (debug) jit_executable.setListener(nullptr);
+  AsyncValuePtr<Executable> executable = jit_executable.GetExecutable(
+      memrefs, exec_ctx, debug ? &debug_listener : nullptr);
 
   // If executable is available execute it inline.
   if (executable.IsAvailable()) {
