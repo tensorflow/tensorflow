@@ -175,8 +175,9 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
                             'scatter_update')
   def test_scatter_ops_even_partition(self, op):
     v = variables_lib.Variable(array_ops.zeros((30, 1)))
+    # Make sure values does not contain 0 due to testing `scatter_div`!
     sparse_delta = ops.IndexedSlices(
-        values=constant_op.constant([[0.], [1.], [2.], [3.], [4.]]),
+        values=constant_op.constant([[1.], [2.], [3.], [4.], [5.]]),
         indices=constant_op.constant([0, 10, 12, 21, 22]))
 
     v0 = variables_lib.Variable(array_ops.zeros((10, 1)))
