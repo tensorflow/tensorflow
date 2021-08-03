@@ -23,6 +23,7 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
 list(APPEND TFLITE_BENCHMARK_SRCS
   ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
+  ${TFLITE_SOURCE_DIR}/profiling/memory_usage_monitor.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/time.cc
