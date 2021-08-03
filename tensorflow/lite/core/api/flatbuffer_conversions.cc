@@ -1962,6 +1962,28 @@ TfLiteStatus ParseSplitV(const Operator* op, ErrorReporter* error_reporter,
   return kTfLiteOk;
 }
 
+TfLiteStatus ParseUnidirectionalSequenceLSTM(const Operator* op,
+                                             ErrorReporter* error_reporter,
+                                             BuiltinDataAllocator* allocator,
+                                             void** builtin_data) {
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params =
+      safe_allocator.Allocate<TfLiteUnidirectionalSequenceLSTMParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* seq_lstm_params =
+          op->builtin_options_as_UnidirectionalSequenceLSTMOptions()) {
+    params->activation =
+        ConvertActivation(seq_lstm_params->fused_activation_function());
+    params->cell_clip = seq_lstm_params->cell_clip();
+    params->proj_clip = seq_lstm_params->proj_clip();
+    params->time_major = seq_lstm_params->time_major();
+    params->asymmetric_quantize_inputs =
+        seq_lstm_params->asymmetric_quantize_inputs();
+  }
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
 TfLiteStatus ParseSqueeze(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator,
                           void** builtin_data) {
