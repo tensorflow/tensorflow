@@ -968,7 +968,7 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
       cls.iteration = variables.Variable(initial_value=0.0)
 
 
-class StrategyIntegrationTest(test.TestCase):
+class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
@@ -1227,11 +1227,18 @@ class StrategyIntegrationTest(test.TestCase):
         with distribute_utils.cache_variable_reads():
           v.read_value()
 
-  def testDistributedDatasetInsidePerWorkerDatasetFn(self):
+  @parameterized.parameters(True, False)
+  def testDistributedDatasetInsidePerWorkerDatasetFn(self, from_function):
+    if from_function:
 
-    def per_worker_dataset_fn():
-      dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
-      return self.strategy.experimental_distribute_dataset(dataset)
+      def per_worker_dataset_fn():
+        dataset_fn = lambda _: dataset_ops.DatasetV2.range(1, 11).batch(4)
+        return self.strategy.distribute_datasets_from_function(dataset_fn)
+    else:
+
+      def per_worker_dataset_fn():
+        dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
+        return self.strategy.experimental_distribute_dataset(dataset)
 
     @def_function.function
     def worker_fn(iterator):
@@ -1249,9 +1256,16 @@ class StrategyIntegrationTest(test.TestCase):
 
     self.assertAllEqual(result, (expected_result))
 
-  def testPassDistributedDatasetToCreatePerWorkerDataset(self):
-    dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
-    distributed_dataset = self.strategy.experimental_distribute_dataset(dataset)
+  @parameterized.parameters(True, False)
+  def testPassDistributedDatasetToCreatePerWorkerDataset(self, from_function):
+    if from_function:
+      dataset_fn = lambda _: dataset_ops.DatasetV2.range(1, 11).batch(4)
+      distributed_dataset = self.strategy.distribute_datasets_from_function(
+          dataset_fn)
+    else:
+      dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
+      distributed_dataset = self.strategy.experimental_distribute_dataset(
+          dataset)
 
     @def_function.function
     def worker_fn(iterator):
@@ -1374,11 +1388,6 @@ class StrategyIntegrationTest(test.TestCase):
         self.strategy.experimental_local_results(result.fetch()),
         tuple(expected_result))
     self.assertEqual(self._map_fn_tracing_count, 1)
-
-  def testCallingDistributeDatasetOutside(self):
-    with self.assertRaises(ValueError):
-      self.strategy.distribute_datasets_from_function(
-          lambda _: dataset_ops.DatasetV2.range(1, 2).batch(2))
 
   def testPerWorkerDistributeDatasetsElementSpec(self):
 
