@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -222,6 +223,11 @@ class DilationBackpropInputOp : public OpKernel {
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
 
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
+                  errors::Unimplemented("Determinism is not yet supported "
+                                        "for Dilation2DBackpropInput."));
+    }
     // Determine relevant sizes from input and filters.
     int stride_rows = 0, stride_cols = 0;
     int rate_rows = 0, rate_cols = 0;
@@ -341,6 +347,11 @@ class DilationBackpropFilterOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
+                  errors::Unimplemented("Determinism is not yet supported "
+                                        "for Dilation2DBackpropFilter."));
+    }
     const Tensor& input = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/pooling_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -1053,6 +1054,11 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
   explicit MaxPoolingGradWithArgmaxOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string data_format_str;
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(context, !tensorflow::OpDeterminismRequired(),
+                  errors::Unimplemented("Determinism is not yet supported "
+                                        "for MaxPoolGradWithArgmax."));
+    }
     auto status = context->GetAttr("data_format", &data_format_str);
     if (status.ok()) {
       OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),

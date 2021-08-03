@@ -24,6 +24,7 @@ import os
 import numpy as np
 
 from tensorflow.python.eager import context
+import tensorflow.python.framework.config as config_exec
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -1066,6 +1067,61 @@ class PoolingTest(test.TestCase):
             11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0, 21.0, 0.0, 22.0,
             0.0, 0.0, 0.0, 23.0, 0.0, 24.0
         ])
+
+  def testMaxPoolingGradThrowDeterminismError(self):
+    if test.is_gpu_available(cuda_only=True):
+      try:
+        config_exec.enable_deterministic_ops(True)
+        orig_input = [
+            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 1.0
+        ]
+        tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
+
+        with GetDeviceScope(self, True):
+          orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+          t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
+          argmax_t = constant_op.constant(
+              [0, 1, 3, 5, 0, 2, 6, 8], shape=[2, 2, 2, 1], dtype=dtypes.int64)
+          with self.assertRaisesRegexp(
+              errors_impl.UnimplementedError, "Determinism is not yet supported "
+              "for MaxPoolGradWithArgmax."):
+            out_op = gen_nn_ops.max_pool_grad_with_argmax(
+                orig_in,
+                t,
+                argmax_t,
+                ksize=[1, 2, 2, 1],
+                strides=[1, 1, 1, 1],
+                padding="VALID",
+                include_batch_in_index=False)
+            self.evaluate(out_op)
+      finally:
+        config_exec.enable_deterministic_ops(False)
+    else:
+      try:
+        config_exec.enable_deterministic_ops(True)
+        orig_input = [
+            1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 1.0
+        ]
+        tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
+
+        with GetDeviceScope(self, False):
+          orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+          t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
+          argmax_t = constant_op.constant(
+              [0, 1, 3, 5, 0, 2, 6, 8], shape=[2, 2, 2, 1], dtype=dtypes.int64)
+          out_op = gen_nn_ops.max_pool_grad_with_argmax(
+              orig_in,
+              t,
+              argmax_t,
+              ksize=[1, 2, 2, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID",
+              include_batch_in_index=False)
+          self.evaluate(out_op)
+      finally:
+        config_exec.enable_deterministic_ops(False)
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
