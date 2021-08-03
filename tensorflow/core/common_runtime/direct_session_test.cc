@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -1804,48 +1805,49 @@ TEST(DirectSessionTest, CreateGraphFailsWhenAssigningAFedVar) {
 TEST(DirectSessionTest, TimeoutSession) {
   GraphDef graph;
   // Creates a graph with one FIFOQueue and one dequeue op.
-  protobuf::TextFormat::ParseFromString(R"proto(
-    node {
-      name: 'fifo_queue'
-      op: 'FIFOQueue'
-      device: '/device:CPU:0'
-      attr {
-        key: 'capacity'
-        value { i: 10 }
-      }
-      attr {
-        key: 'component_types'
-        value { list { type: DT_FLOAT } }
-      }
-      attr {
-        key: 'container'
-        value { s: '' }
-      }
-      attr {
-        key: 'shapes'
-        value { list {} }
-      }
-      attr {
-        key: 'shared_name'
-        value { s: '' }
-      }
-    }
-    node {
-      name: 'fifo_queue_Dequeue'
-      op: 'QueueDequeue'
-      input: 'fifo_queue'
-      device: '/device:CPU:0'
-      attr {
-        key: 'component_types'
-        value { list { type: DT_FLOAT } }
-      }
-      attr {
-        key: 'timeout_ms'
-        value { i: -1 }
-      }
-    }
-    versions { producer: 9 }
-  )proto", &graph);
+  protobuf::TextFormat::ParseFromString(R"pb(
+                                          node {
+                                            name: 'fifo_queue'
+                                            op: 'FIFOQueue'
+                                            device: '/device:CPU:0'
+                                            attr {
+                                              key: 'capacity'
+                                              value { i: 10 }
+                                            }
+                                            attr {
+                                              key: 'component_types'
+                                              value { list { type: DT_FLOAT } }
+                                            }
+                                            attr {
+                                              key: 'container'
+                                              value { s: '' }
+                                            }
+                                            attr {
+                                              key: 'shapes'
+                                              value { list {} }
+                                            }
+                                            attr {
+                                              key: 'shared_name'
+                                              value { s: '' }
+                                            }
+                                          }
+                                          node {
+                                            name: 'fifo_queue_Dequeue'
+                                            op: 'QueueDequeue'
+                                            input: 'fifo_queue'
+                                            device: '/device:CPU:0'
+                                            attr {
+                                              key: 'component_types'
+                                              value { list { type: DT_FLOAT } }
+                                            }
+                                            attr {
+                                              key: 'timeout_ms'
+                                              value { i: -1 }
+                                            }
+                                          }
+                                          versions { producer: 9 }
+                                        )pb",
+                                        &graph);
 
   {
     // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
@@ -1902,14 +1904,15 @@ REGISTER_OP("CancellationMgrPollingOp").Doc("");
 TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
   GraphDef graph;
   // Creates a graph with one FIFOQueue and one dequeue op.
-  protobuf::TextFormat::ParseFromString(R"proto(
-    node {
-      name: 'cm_polling'
-      op: 'CancellationMgrPollingOp'
-      device: '/device:CPU:0'
-    }
-    versions { producer: 9 }
-  )proto", &graph);
+  protobuf::TextFormat::ParseFromString(R"pb(
+                                          node {
+                                            name: 'cm_polling'
+                                            op: 'CancellationMgrPollingOp'
+                                            device: '/device:CPU:0'
+                                          }
+                                          versions { producer: 9 }
+                                        )pb",
+                                        &graph);
 
   // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
   SessionOptions options;
@@ -2121,10 +2124,10 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
       Status s = session->Run(run_options, {} /* inputs */,
                               {x->name() + ":0"} /* output_names */, {},
                               &outputs, nullptr /* run_metadata */);
-      EXPECT_EQ(
-          strings::StrCat("Invalid argument: Invalid inter_op_thread_pool: ",
-                          pool_num),
-          s.ToString());
+      EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+      EXPECT_TRUE(absl::StrContains(
+          s.error_message(),
+          strings::StrCat("Invalid inter_op_thread_pool: ", pool_num)));
     }
   }
 
@@ -2189,11 +2192,13 @@ TEST(DirectSessionTest, TestDirectSessionRunClose) {
   // Run the read on the variable to get an error.
   Status s = session->Run({} /* inputs */, {},
                           {var_assign->name()} /* target_nodes */, nullptr);
-  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+  EXPECT_EQ(s.code(), error::CANCELLED);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "Session has been closed."));
 
   // Run the read as a callable to verify that we get the same error.
   s = session->RunCallable(handle, {}, {}, nullptr);
-  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+  EXPECT_EQ(s.code(), error::CANCELLED);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "Session has been closed."));
 }
 
 TEST(DirectSessionTest, TestDirectSessionPRunClose) {
@@ -2240,7 +2245,8 @@ TEST(DirectSessionTest, TestDirectSessionPRunClose) {
   // Feed first_const, fetch first_identity
   s = session->PRun(handle, {{first_const->name(), value_11}},
                     {first_identity->name() + ":0"}, &outputs);
-  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+  EXPECT_EQ(s.code(), error::CANCELLED);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "Session has been closed."));
 }
 
 TEST(DirectSessionTest, TestDirectSessionReset) {
@@ -2280,7 +2286,8 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   // fail, since the Variable buffer is cached by var.
   Status s = session->Run({} /* inputs */, {},
                           {var_assign->name()} /* target_nodes */, nullptr);
-  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+  EXPECT_EQ(s.code(), error::CANCELLED);
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "Session has been closed."));
 }
 
 TEST(DirectSessionTest, LocalDeviceManager) {
@@ -2847,10 +2854,10 @@ TEST(DirectSessionTest, TestStatefulOutputRequiredOp) {
   GraphDef graph;
   // Creates a graph with a StatefulOutputRequired op with 5 outputs.
   protobuf::TextFormat::ParseFromString(
-      R"proto(
+      R"pb(
         node { name: 'n' op: 'StatefulOutputRequired' device: '/device:CPU:0' }
         versions { producer: 9 }
-      )proto",
+      )pb",
       &graph);
 
   std::unique_ptr<Session> session(NewSession(SessionOptions()));
