@@ -6712,7 +6712,7 @@ cc_library(
 )
 
 build_test(
-    name = "android_tensorflow_kernels_build_test",
+    name = "portable_tensorflow_kernels_build_test",
     targets = [":portable_tensorflow_kernels"],
 )
 
