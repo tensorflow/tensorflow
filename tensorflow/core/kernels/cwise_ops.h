@@ -409,6 +409,103 @@ struct less_equal : std::binary_function<T, T, bool> {
   }
 };
 
+// brief Template functors for comparison of two scalars and cast the output
+// from boolean to input datatype
+template <typename Scalar, ComparisonName cmp>
+struct scalar_cmp_with_cast_op;
+
+template <typename Scalar, ComparisonName cmp>
+struct functor_traits<scalar_cmp_with_cast_op<Scalar, cmp>> {
+  enum {
+    Cost = NumTraits<Scalar>::AddCost,
+    PacketAccess = packet_traits<Scalar>::HasCmp
+  };
+};
+
+template <typename Scalar>
+struct scalar_cmp_with_cast_op<Scalar, cmp_EQ> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return (a == b) ? static_cast<Scalar>(1) : static_cast<Scalar>(0);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return pselect(pcmp_eq(a, b), pset1<Packet>(static_cast<Scalar>(1)),
+                   pzero(a));
+  }
+};
+
+template <typename Scalar>
+struct scalar_cmp_with_cast_op<Scalar, cmp_NEQ> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return (a == b) ? static_cast<Scalar>(0) : static_cast<Scalar>(1);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return pselect(pcmp_eq(a, b), pzero(a),
+                   pset1<Packet>(static_cast<Scalar>(1)));
+  }
+};
+
+template <typename Scalar>
+struct scalar_cmp_with_cast_op<Scalar, cmp_LT> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return (a < b) ? static_cast<Scalar>(1) : static_cast<Scalar>(0);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return pselect(pcmp_lt(a, b), pset1<Packet>(static_cast<Scalar>(1)),
+                   pzero(a));
+  }
+};
+
+template <typename Scalar>
+struct scalar_cmp_with_cast_op<Scalar, cmp_GT> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return (a <= b) ? static_cast<Scalar>(0) : static_cast<Scalar>(1);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return pselect(pcmp_le(a, b), pzero(a),
+                   pset1<Packet>(static_cast<Scalar>(1)));
+  }
+};
+
+template <typename Scalar>
+struct scalar_cmp_with_cast_op<Scalar, cmp_LE> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return (a <= b) ? static_cast<Scalar>(1) : static_cast<Scalar>(0);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return pselect(pcmp_le(a, b), pset1<Packet>(static_cast<Scalar>(1)),
+                   pzero(a));
+  }
+};
+
+template <typename Scalar>
+struct scalar_cmp_with_cast_op<Scalar, cmp_GE> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& a, const Scalar& b) const {
+    return (a < b) ? static_cast<Scalar>(0) : static_cast<Scalar>(1);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    return pselect(pcmp_lt(a, b), pzero(a),
+                   pset1<Packet>(static_cast<Scalar>(1)));
+  }
+};
+
 // Functor that enables squared difference functor.
 template <typename Scalar>
 struct scalar_squared_difference_op {
@@ -1203,6 +1300,32 @@ struct equal_to : base<T, Eigen::internal::equal_to<T>, bool> {};
 
 template <typename T>
 struct not_equal_to : base<T, Eigen::internal::not_equal_to<T>, bool> {};
+
+template <typename T>
+struct less_with_cast : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                                    T, Eigen::internal::cmp_LT>> {};
+
+template <typename T>
+struct less_equal_with_cast : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                                          T, Eigen::internal::cmp_LE>> {};
+
+template <typename T>
+struct greater_with_cast : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                                       T, Eigen::internal::cmp_GT>> {};
+
+template <typename T>
+struct greater_equal_with_cast
+    : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                  T, Eigen::internal::cmp_GE>> {};
+
+template <typename T>
+struct equal_to_with_cast : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                                        T, Eigen::internal::cmp_EQ>> {};
+
+template <typename T>
+struct not_equal_to_with_cast
+    : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                  T, Eigen::internal::cmp_NEQ>> {};
 
 struct logical_and : base<bool, Eigen::internal::scalar_boolean_and_op> {};
 

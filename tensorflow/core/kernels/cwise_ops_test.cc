@@ -94,56 +94,60 @@ BM_UNARY(gpu, Round, float, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // data func scalar.
-Graph* BinaryScalar(int num, const string& func) {
+template <typename T>
+Graph* BinaryScalar(int num, const string& func, DataType dtype) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor lhs(DT_FLOAT, TensorShape({64, 64, num / (64 * 64)}));
-  lhs.flat<float>().setRandom();
-  Tensor rhs(DT_FLOAT, TensorShape({}));
-  rhs.flat<float>().setRandom();
+  Tensor lhs(dtype, TensorShape({64, 64, num / (64 * 64)}));
+  lhs.flat<T>().setRandom();
+  Tensor rhs(dtype, TensorShape({}));
+  rhs.flat<T>().setRandom();
   test::graph::Binary(g, func, test::graph::Constant(g, lhs),
                       test::graph::Constant(g, rhs));
   return g;
 }
 
-#define BM_BINARY_SCALAR(DEVICE, FUNC)                                     \
-  void BM_##DEVICE##_##FUNC##_scalar(::testing::benchmark::State& state) { \
-    const int num = state.range(0);                                        \
-                                                                           \
-    test::Benchmark(#DEVICE, BinaryScalar(num, #FUNC),                     \
-                    /*old_benchmark_api=*/false)                           \
-        .Run(state);                                                       \
-    const int64 tot = static_cast<int64>(state.iterations()) * num;        \
-    state.SetItemsProcessed(tot);                                          \
-    state.SetBytesProcessed(tot * sizeof(float));                          \
-  }                                                                        \
-  BENCHMARK(BM_##DEVICE##_##FUNC##_scalar)                                 \
-      ->Arg(1 << 12) /* must >= 4096 */                                    \
-      ->Arg(1 << 13)                                                       \
-      ->Arg(1 << 14)                                                       \
-      ->Arg((1 << 15) - (1 << 13))                                         \
-      ->Arg(1 << 15)                                                       \
-      ->Arg((1 << 15) + (1 << 14))                                         \
-      ->Arg(1 << 16)                                                       \
-      ->Arg((1 << 17) - (1 << 15))                                         \
-      ->Arg(1 << 17)                                                       \
-      ->Arg((1 << 17) + (1 << 16))                                         \
-      ->Arg(1 << 18)                                                       \
-      ->Arg(1 << 19)                                                       \
+#define BM_BINARY_SCALAR(DEVICE, FUNC, T, TYPE)                        \
+  void BM_##DEVICE##_##FUNC##_scalar##_##TYPE(                         \
+      ::testing::benchmark::State& state) {                            \
+    const int num = state.range(0);                                    \
+                                                                       \
+    test::Benchmark(#DEVICE, BinaryScalar<T>(num, #FUNC, TYPE), false) \
+        .Run(state);                                                   \
+    const int64 tot = static_cast<int64>(state.iterations()) * num;    \
+    state.SetItemsProcessed(tot);                                      \
+    state.SetBytesProcessed(tot * sizeof(T));                          \
+  }                                                                    \
+  BENCHMARK(BM_##DEVICE##_##FUNC##_scalar##_##TYPE)                    \
+      ->Arg(1 << 12) /* must >= 4096 */                                \
+      ->Arg(1 << 13)                                                   \
+      ->Arg(1 << 14)                                                   \
+      ->Arg((1 << 15) - (1 << 13))                                     \
+      ->Arg(1 << 15)                                                   \
+      ->Arg((1 << 15) + (1 << 14))                                     \
+      ->Arg(1 << 16)                                                   \
+      ->Arg((1 << 17) - (1 << 15))                                     \
+      ->Arg(1 << 17)                                                   \
+      ->Arg((1 << 17) + (1 << 16))                                     \
+      ->Arg(1 << 18)                                                   \
+      ->Arg(1 << 19)                                                   \
       ->Arg(1 << 20);
 
-BM_BINARY_SCALAR(cpu, Less);
+BM_BINARY_SCALAR(cpu, Less, float, DT_FLOAT);
+BM_BINARY_SCALAR(cpu, Less, bfloat16, DT_BFLOAT16);
+BM_BINARY_SCALAR(cpu, _LessWithCast, float, DT_FLOAT);
+BM_BINARY_SCALAR(cpu, _LessWithCast, bfloat16, DT_BFLOAT16);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-BM_BINARY_SCALAR(gpu, Less);
+BM_BINARY_SCALAR(gpu, Less, float, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-BM_BINARY_SCALAR(cpu, Add);
+BM_BINARY_SCALAR(cpu, Add, float, DT_FLOAT);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-BM_BINARY_SCALAR(gpu, Add);
+BM_BINARY_SCALAR(gpu, Add, float, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-BM_BINARY_SCALAR(cpu, DivNoNan);
+BM_BINARY_SCALAR(cpu, DivNoNan, float, DT_FLOAT);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-BM_BINARY_SCALAR(gpu, DivNoNan);
+BM_BINARY_SCALAR(gpu, DivNoNan, float, DT_FLOAT);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef BM_BINARY_SCALAR
