@@ -1137,6 +1137,8 @@ class DatasetBaseIterator : public IteratorBase {
                            const std::vector<Tensor>& element) {
     if (collect_resource_usage(ctx)) {
       node_->record_buffer_event(-GetAllocatedBytes(element), -1);
+
+      DCHECK_GE(node_->buffered_elements(), 0);
     }
   }
 

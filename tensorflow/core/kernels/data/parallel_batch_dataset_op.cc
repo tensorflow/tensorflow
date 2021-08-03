@@ -246,7 +246,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       auto cleanup =
           gtl::MakeCleanup([result]() TF_EXCLUSIVE_LOCKS_REQUIRED(
                                &BatchResult::mu) { result->output.clear(); });
-      RecordBufferDequeue(ctx, result->output);
+      if (result->num_elements > 0) {
+        RecordBufferDequeue(ctx, result->output);
+      }
       TF_RETURN_IF_ERROR(
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
@@ -395,7 +397,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           status = CopyBatch(dataset()->parallel_copy_, ctx.get(),
                              *batch_elements, &result->output);
           result->status.Update(status);
-          RecordBufferEnqueue(ctx.get(), result->output);
+          if (result->num_elements > 0) {
+            RecordBufferEnqueue(ctx.get(), result->output);
+          }
         }
         CallCompleted(ctx, result);
         return status;
@@ -524,7 +528,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadStatus(prefix(),
                                     strings::StrCat(batch_prefix, "_", kStatus),
                                     reader, &result->status));
-      RecordBufferEnqueue(ctx, result->output);
+      if (result->num_elements > 0) {
+        RecordBufferEnqueue(ctx, result->output);
+      }
       return Status::OK();
     }
 
@@ -572,7 +578,12 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     // Counts the number of outstanding calls for this batch.
     int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
     std::unique_ptr<IteratorBase> input_impl_;
-    // Buffer for storing the (intermediate) batch results.
+    // Buffer for storing the (intermediate) batch results. Whenever a non-empty
+    // batch result is added to or removed from `batch_results_`, call
+    // `RecordBufferEnqueue` or `RecordBufferDequeue` respectively.
+    //
+    // TODO(xiaojies): improve the accuracy of the condition used for
+    // determining when to record allocated bytes.
     std::deque<std::shared_ptr<BatchResult>> batch_results_ TF_GUARDED_BY(*mu_);
     // Background thread used for coordinating input processing.
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
