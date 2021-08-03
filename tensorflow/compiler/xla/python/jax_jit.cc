@@ -235,13 +235,8 @@ xla::Status ParseArguments(py::handle args,
   tensorflow::profiler::TraceMe traceme("ParseArguments");
   int num_args = PyTuple_GET_SIZE(args.ptr());
   int num_kwargs = py_kwargs ? py_kwargs->size() : 0;
-  if (static_argnums.size() > num_args) {
-    return xla::InvalidArgument(
-        "%s", "[jaxjit] Error with static argnums, executing the Python path.");
-  }
 
-  arguments.flat_dynamic_args.reserve(num_args + num_kwargs -
-                                      static_argnums.size());
+  arguments.flat_dynamic_args.reserve(num_args + num_kwargs);
   if (static_argnums.empty()) {
     arguments.signature.dynamic_arg_treedefs.resize(num_args);
 
@@ -252,8 +247,7 @@ xla::Status ParseArguments(py::handle args,
                              arguments.flat_dynamic_args);
     }
   } else {
-    arguments.signature.dynamic_arg_treedefs.reserve(num_args -
-                                                     static_argnums.size());
+    arguments.signature.dynamic_arg_treedefs.reserve(num_args);
 
     // Positional arguments.
     for (int i = 0; i < num_args; ++i) {
@@ -492,6 +486,7 @@ class CompiledFunction {
   }
 
   py::handle AsPyHandle();
+  const std::string& function_name() const { return function_name_; }
 
  private:
   // Attempts to populate default_device_. May release the GIL; is
@@ -503,6 +498,8 @@ class CompiledFunction {
   bool always_fallback_to_python_ = false;
 
   py::function fun_;  // The Python function to jit.
+  std::string function_name_;
+
   // See JAX _cpp_jit in api.py for documentation.
   py::function cache_miss_;
 
@@ -552,6 +549,7 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
     PyUnicode_InternInPlace(&s.ptr());
   }
   executables_ = cache_->Lookup(fun_, donate_argnums);
+  function_name_ = py::str(py::getattr(fun_, "__name__", fun));
 }
 
 CompiledFunction::~CompiledFunction() = default;
@@ -803,9 +801,10 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   }
 
   ParsedArgumentsAsBuffers arguments;
-  if (!ParseArguments(args, kwargs, static_argnums_, static_argnames_,
-                      arguments)
-           .ok()) {
+  xla::Status status = ParseArguments(args, kwargs, static_argnums_,
+                                      static_argnames_, arguments);
+  if (!status.ok()) {
+    VLOG(2) << "ParseArguments failed: " << status;
     return py::object(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
                                         **kwargs.value_or(py::kwargs())))[0]);
@@ -815,9 +814,10 @@ xla::StatusOr<py::object> CompiledFunction::Call(
   arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  if (!ComputeSignature(jax_enable_x64, *default_pyclient_, default_device_,
-                        is_committed_, arguments)
-           .ok()) {
+  status = ComputeSignature(jax_enable_x64, *default_pyclient_, default_device_,
+                            is_committed_, arguments);
+  if (!status.ok()) {
+    VLOG(2) << "ComputeSignature failed: " << status;
     return py::object(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
                                         **kwargs.value_or(py::kwargs())))[0]);
@@ -838,6 +838,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(
     if (inserted) {
       py::object out_and_fastpath_data;
       py::tuple out_tuple;
+      VLOG(2) << "Cache miss for " << arguments.signature.DebugString();
       try {
         // Calls Python and may release the GIL. May also throw if
         // compilation/tracing fails.
@@ -873,9 +874,10 @@ xla::StatusOr<py::object> CompiledFunction::Call(
                                         **kwargs.value_or(py::kwargs())))[0]);
   }
 
-  if (!CopyBuffersToDevice(jax_enable_x64, cache_entry->kept_var_bitvec,
-                           arguments)
-           .ok()) {
+  status = CopyBuffersToDevice(jax_enable_x64, cache_entry->kept_var_bitvec,
+                               arguments);
+  if (!status.ok()) {
+    VLOG(2) << "CopyBuffersToDevice failed: " << status;
     return py::object(
         py::cast<py::tuple>(cache_miss_(*py::reinterpret_borrow<py::args>(args),
                                         **kwargs.value_or(py::kwargs())))[0]);
@@ -1051,9 +1053,11 @@ static PyGetSetDef JaxCompiledFunction_tp_getset[] = {
 
 PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
                                       PyObject* kwargs) {
-  tensorflow::profiler::TraceMe traceme("JaxCompiledFunction::tp_call");
   JaxCompiledFunctionObject* o =
       reinterpret_cast<JaxCompiledFunctionObject*>(self);
+  tensorflow::profiler::TraceMe traceme([&] {
+    return absl::StrCat("JaxCompiledFunction(", o->fun.function_name(), ")");
+  });
   absl::optional<py::kwargs> py_kwargs;
   if (kwargs) {
     py_kwargs = py::reinterpret_borrow<py::kwargs>(kwargs);
