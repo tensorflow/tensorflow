@@ -554,6 +554,14 @@ add {
   ROOT %or.3 = pred[4] or(pred[4] %Arg_0.1, pred[4] %Arg_1.2)
 }
 
+// CHECK-LABEL:  func private @test_logistic(%arg0: tensor<16xf32>) -> tensor<16xf32>
+%test_logistic (arg0.1: f32[16]) -> f32[16] {
+  %arg0.1 = f32[16] parameter(0)
+
+  // CHECK-NEXT:  "mhlo.logistic"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
+  ROOT %logistic.2 = f32[16] logistic(f32[16] %arg0.1)
+}
+
 // CHECK-LABEL:  func private @test_outfeed
 // CHECK-SAME: ([[DATA:%.*]]: tensor<3xi32>, [[TOKEN:%.*]]: !mhlo.token) -> !mhlo.token
 %test_outfeed (Arg_0.1: s32[3], Arg_1.2: token[]) -> token[] {
