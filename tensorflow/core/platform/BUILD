@@ -28,6 +28,7 @@ load(
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
     "tf_resource_deps",
+    "tf_testing_deps",
     "tf_windows_aware_platform_deps",
 )
 load(
@@ -618,7 +619,7 @@ cc_library(
     name = "resource_loader",
     testonly = 1,
     textual_hdrs = ["resource_loader.h"],
-    deps = tf_platform_deps("resource_loader"),
+    deps = tf_testing_deps("resource_loader"),
 )
 
 cc_library(
@@ -819,7 +820,12 @@ cc_library(
     name = "test",
     testonly = True,
     textual_hdrs = ["test.h"],
-    deps = tf_platform_deps("test"),
+    deps = tf_testing_deps("test") + [
+        ":macros",
+        ":platform",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/core:tflite_portable_logging",
+    ],
 )
 
 cc_library(
@@ -829,7 +835,7 @@ cc_library(
     deps = [
         "@com_google_benchmark//:benchmark",
         ":platform",
-    ] + tf_platform_deps("test_benchmark"),
+    ] + tf_testing_deps("test_benchmark"),
 )
 
 cc_library(
@@ -1803,7 +1809,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ] + selects.with_or({
-        ("//tensorflow:chromiumos", "//tensorflow:fuchsia"): tf_google_mobile_srcs_no_runtime(),
+        "//tensorflow:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
             "//tensorflow/core/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
