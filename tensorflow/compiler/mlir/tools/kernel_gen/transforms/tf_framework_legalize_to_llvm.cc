@@ -45,27 +45,6 @@ static constexpr StringRef kCInterfaceJITExecute =
 static constexpr StringRef kJITCodeGlobalBaseName = "jit_module_code";
 static constexpr StringRef kErrorMessageGlobalBaseName = "error_message";
 
-Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
-                                       StringRef base_name, StringRef str) {
-  auto module =
-      builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
-  std::string global_name =
-      llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
-  Operation *global_constant =
-      SymbolTable::lookupNearestSymbolFrom(module, global_name);
-  if (global_constant) {
-    Value global_ptr = builder.create<LLVM::AddressOfOp>(
-        loc, cast<LLVM::GlobalOp>(global_constant));
-    Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
-                                                builder.getIndexAttr(0));
-    return builder.create<LLVM::GEPOp>(
-        loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)), global_ptr,
-        ValueRange{c0, c0});
-  }
-  return LLVM::createGlobalString(loc, builder, global_name, str,
-                                  LLVM::Linkage::Internal);
-}
-
 /// Base class for patterns converting TF Framework ops to function calls.
 template <typename OpTy>
 class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
@@ -91,6 +70,28 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
  protected:
   virtual StringRef GetFuncName() const = 0;
   virtual Type GetFuncType() const = 0;
+
+  Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
+                                         StringRef base_name,
+                                         StringRef str) const {
+    auto module =
+        builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
+    std::string global_name =
+        llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
+    Operation *global_constant =
+        SymbolTable::lookupNearestSymbolFrom(module, global_name);
+    if (global_constant) {
+      Value global_ptr = builder.create<LLVM::AddressOfOp>(
+          loc, cast<LLVM::GlobalOp>(global_constant));
+      Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
+                                                  builder.getIndexAttr(0));
+      return builder.create<LLVM::GEPOp>(
+          loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)),
+          global_ptr, ValueRange{c0, c0});
+    }
+    return LLVM::createGlobalString(loc, builder, global_name, str,
+                                    LLVM::Linkage::Internal);
+  }
 
   std::pair<Value, Value> ConvertIntegerArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
