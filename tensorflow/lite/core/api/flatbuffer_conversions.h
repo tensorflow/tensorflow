@@ -349,6 +349,10 @@ TfLiteStatus ParseTransposeConv(const Operator* op,
 TfLiteStatus ParseUnpack(const Operator* op, ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseUnidirectionalSequenceLSTM(const Operator* op,
+                                             ErrorReporter* error_reporter,
+                                             BuiltinDataAllocator* allocator,
+                                             void** builtin_data);
 TfLiteStatus ParseZerosLike(const Operator* op, ErrorReporter* error_reporter,
                             BuiltinDataAllocator* allocator,
                             void** builtin_data);

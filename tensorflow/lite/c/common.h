@@ -562,6 +562,10 @@ typedef struct TfLiteNode {
   // Outputs to this node expressed as indices into the simulator's tensors.
   TfLiteIntArray* outputs;
 
+  // intermediate tensors to this node expressed as indices into the simulator's
+  // tensors.
+  TfLiteIntArray* intermediates;
+
   // Opaque data provided by the node implementer through `Registration.init`.
   void* user_data;
 
