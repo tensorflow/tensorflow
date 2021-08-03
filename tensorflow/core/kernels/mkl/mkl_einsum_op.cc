@@ -110,7 +110,7 @@ struct MklEinsumHelper {
                                          trans_x, trans_y);
 
     // Create or retrieve matmul primitive from cache.
-    MklMatMulPrimitive<T>* matmul_prim = MklMatMulPrimitiveFactory<T>::Get(
+    MklMatMulPrimitive<T, T, T>* matmul_prim = MklMatMulPrimitiveFactory<T, T, T, T>::Get(
         *params, false /* value for do_not_cache */);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
