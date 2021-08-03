@@ -374,3 +374,31 @@ func @unique_resource_allocation(%arg0: tensor<i32>) {
   %stack_handle2 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
   return
 }
+
+// -----
+
+!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+
+// Tests that ops with different known resource types get different resource IDs
+// assigned, even if resource instances are unknown.
+func @known_different_resource_types_unknown_instances(%arg0: tensor<i32>) {
+  // expected-remark@below {{Result #0, ID 0 : 0}}
+  %iter_handle = "tf.IteratorV2"() {container = "c", shared_name = "v0", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
+  // expected-remark@below {{Result #0, ID 1 : 1}}
+  %seed_handle = "tf.DummySeedGenerator"() : () -> !tf_res
+  return
+}
+
+// -----
+
+!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+
+// Tests that ops with same known resource type get same resource ID assigned
+// (not unknown ID) if resource instances are unknown.
+func @known_same_resource_types_unknown_instances(%arg0: tensor<i32>) {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1}}
+  %iter_handle1 = "tf.IteratorV2"() {container = "c", shared_name = "v0", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
+  // expected-remark@below {{Result #0, ID 1 : 0, 1}}
+  %iter_handle2 = "tf.IteratorV2"() {container = "c", shared_name = "v1", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
+  return
+}
