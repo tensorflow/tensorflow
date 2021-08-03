@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_ADD_TESTER_H_
-#define TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_ADD_TESTER_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_BINARY_ELEMENTWISE_TESTER_H_
+#define TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_BINARY_ELEMENTWISE_TESTER_H_
 
 #include <cstdint>
 #include <vector>
@@ -27,13 +27,16 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-class QuantizedAddTester {
+class QuantizedBinaryElementwiseTester {
  public:
-  QuantizedAddTester() = default;
-  QuantizedAddTester(const QuantizedAddTester&) = delete;
-  QuantizedAddTester& operator=(const QuantizedAddTester&) = delete;
+  QuantizedBinaryElementwiseTester() = default;
+  QuantizedBinaryElementwiseTester(const QuantizedBinaryElementwiseTester&) =
+      delete;
+  QuantizedBinaryElementwiseTester& operator=(
+      const QuantizedBinaryElementwiseTester&) = delete;
 
-  inline QuantizedAddTester& Input1Shape(std::initializer_list<int32_t> shape) {
+  inline QuantizedBinaryElementwiseTester& Input1Shape(
+      std::initializer_list<int32_t> shape) {
     for (auto it = shape.begin(); it != shape.end(); ++it) {
       EXPECT_GT(*it, 0);
     }
@@ -45,7 +48,8 @@ class QuantizedAddTester {
     return input1_shape_;
   }
 
-  inline QuantizedAddTester& Input2Shape(std::initializer_list<int32_t> shape) {
+  inline QuantizedBinaryElementwiseTester& Input2Shape(
+      std::initializer_list<int32_t> shape) {
     for (auto it = shape.begin(); it != shape.end(); ++it) {
       EXPECT_GT(*it, 0);
     }
@@ -59,80 +63,83 @@ class QuantizedAddTester {
 
   std::vector<int32_t> OutputShape() const;
 
-  inline QuantizedAddTester& Input1Static(bool is_static) {
+  inline QuantizedBinaryElementwiseTester& Input1Static(bool is_static) {
     input1_static_ = is_static;
     return *this;
   }
 
   inline bool Input1Static() const { return input1_static_; }
 
-  inline QuantizedAddTester& Input2Static(bool is_static) {
+  inline QuantizedBinaryElementwiseTester& Input2Static(bool is_static) {
     input2_static_ = is_static;
     return *this;
   }
 
   inline bool Input2Static() const { return input2_static_; }
 
-  inline QuantizedAddTester& Input1ZeroPoint(int32_t input1_zero_point) {
+  inline QuantizedBinaryElementwiseTester& Input1ZeroPoint(
+      int32_t input1_zero_point) {
     input1_zero_point_ = input1_zero_point;
     return *this;
   }
 
   inline int32_t Input1ZeroPoint() const { return input1_zero_point_; }
 
-  inline QuantizedAddTester& Input2ZeroPoint(int32_t input2_zero_point) {
+  inline QuantizedBinaryElementwiseTester& Input2ZeroPoint(
+      int32_t input2_zero_point) {
     input2_zero_point_ = input2_zero_point;
     return *this;
   }
 
   inline int32_t Input2ZeroPoint() const { return input2_zero_point_; }
 
-  inline QuantizedAddTester& OutputZeroPoint(int32_t output_zero_point) {
+  inline QuantizedBinaryElementwiseTester& OutputZeroPoint(
+      int32_t output_zero_point) {
     output_zero_point_ = output_zero_point;
     return *this;
   }
 
   inline int32_t OutputZeroPoint() const { return output_zero_point_; }
 
-  inline QuantizedAddTester& Input1Scale(float input1_scale) {
+  inline QuantizedBinaryElementwiseTester& Input1Scale(float input1_scale) {
     input1_scale_ = input1_scale;
     return *this;
   }
 
   inline float Input1Scale() const { return input1_scale_; }
 
-  inline QuantizedAddTester& Input2Scale(float input2_scale) {
+  inline QuantizedBinaryElementwiseTester& Input2Scale(float input2_scale) {
     input2_scale_ = input2_scale;
     return *this;
   }
 
   inline float Input2Scale() const { return input2_scale_; }
 
-  inline QuantizedAddTester& OutputScale(float output_scale) {
+  inline QuantizedBinaryElementwiseTester& OutputScale(float output_scale) {
     output_scale_ = output_scale;
     return *this;
   }
 
   inline float OutputScale() const { return output_scale_; }
 
-  inline QuantizedAddTester& Unsigned(bool is_unsigned) {
+  inline QuantizedBinaryElementwiseTester& Unsigned(bool is_unsigned) {
     unsigned_ = is_unsigned;
     return *this;
   }
 
   inline bool Unsigned() const { return unsigned_; }
 
-  inline QuantizedAddTester& ReluActivation() {
+  inline QuantizedBinaryElementwiseTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
     return *this;
   }
 
-  inline QuantizedAddTester& Relu6Activation() {
+  inline QuantizedBinaryElementwiseTester& Relu6Activation() {
     activation_ = ::tflite::ActivationFunctionType_RELU6;
     return *this;
   }
 
-  inline QuantizedAddTester& ReluMinus1To1Activation() {
+  inline QuantizedBinaryElementwiseTester& ReluMinus1To1Activation() {
     activation_ = ::tflite::ActivationFunctionType_RELU_N1_TO_1;
     return *this;
   }
@@ -141,10 +148,10 @@ class QuantizedAddTester {
   void Test(Interpreter* delegate_interpreter,
             Interpreter* default_interpreter) const;
 
-  void Test(TfLiteDelegate* delegate) const;
+  void Test(tflite::BuiltinOperator binary_op, TfLiteDelegate* delegate) const;
 
  private:
-  std::vector<char> CreateTfLiteModel() const;
+  std::vector<char> CreateTfLiteModel(tflite::BuiltinOperator binary_op) const;
 
   inline ::tflite::ActivationFunctionType Activation() const {
     return activation_;
@@ -161,7 +168,7 @@ class QuantizedAddTester {
   int32_t output_zero_point_ = 0;
   float input1_scale_ = 0.75f;
   float input2_scale_ = 1.0f;
-  float output_scale_ = 1.25f;
+  float output_scale_ = 2.0f;
   bool unsigned_ = false;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
@@ -170,4 +177,4 @@ class QuantizedAddTester {
 }  // namespace xnnpack
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_ADD_TESTER_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_BINARY_ELEMENTWISE_TESTER_H_

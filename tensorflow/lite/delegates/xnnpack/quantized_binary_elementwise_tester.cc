@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/xnnpack/quantized_add_tester.h"
+#include "tensorflow/lite/delegates/xnnpack/quantized_binary_elementwise_tester.h"
 
 #include <array>
 #include <cstdint>
@@ -34,7 +34,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-std::vector<int32_t> QuantizedAddTester::OutputShape() const {
+std::vector<int32_t> QuantizedBinaryElementwiseTester::OutputShape() const {
   std::vector<int32_t> output_shape;
   if (!input1_shape_.empty()) {
     output_shape.insert(
@@ -59,8 +59,8 @@ std::vector<int32_t> QuantizedAddTester::OutputShape() const {
 }
 
 template <class T>
-void QuantizedAddTester::Test(Interpreter* delegate_interpreter,
-                              Interpreter* default_interpreter) const {
+void QuantizedBinaryElementwiseTester::Test(
+    Interpreter* delegate_interpreter, Interpreter* default_interpreter) const {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   std::uniform_int_distribution<int32_t> input1_distribution(
@@ -106,16 +106,18 @@ void QuantizedAddTester::Test(Interpreter* delegate_interpreter,
                        static_cast<int32_t>(delegate_output_data[i])),
               1)
         << "default " << static_cast<int32_t>(default_output_data[i])
-        << ", delegate " << static_cast<int32_t>(delegate_output_data[i]);
+        << ", delegate " << static_cast<int32_t>(delegate_output_data[i])
+        << " at index " << i << " / " << ComputeSize(OutputShape());
   }
 }
 
-void QuantizedAddTester::Test(TfLiteDelegate* delegate) const {
+void QuantizedBinaryElementwiseTester::Test(tflite::BuiltinOperator binary_op,
+                                            TfLiteDelegate* delegate) const {
   if (Input1Static()) {
     ASSERT_FALSE(Input2Static());
   }
 
-  std::vector<char> buffer = CreateTfLiteModel();
+  std::vector<char> buffer = CreateTfLiteModel(binary_op);
   const Model* model = GetModel(buffer.data());
 
   std::unique_ptr<Interpreter> delegate_interpreter;
@@ -159,7 +161,8 @@ void QuantizedAddTester::Test(TfLiteDelegate* delegate) const {
   }
 }
 
-std::vector<char> QuantizedAddTester::CreateTfLiteModel() const {
+std::vector<char> QuantizedBinaryElementwiseTester::CreateTfLiteModel(
+    tflite::BuiltinOperator binary_op) const {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   std::uniform_int_distribution<int32_t> input1_distribution(
@@ -170,8 +173,8 @@ std::vector<char> QuantizedAddTester::CreateTfLiteModel() const {
   auto input2_rng = std::bind(input2_distribution, std::ref(rng));
 
   flatbuffers::FlatBufferBuilder builder;
-  std::vector<flatbuffers::Offset<OperatorCode>> operator_codes{
-      {CreateOperatorCode(builder, BuiltinOperator_ADD)}};
+  const std::array<flatbuffers::Offset<OperatorCode>, 1> operator_codes{
+      {CreateOperatorCode(builder, binary_op)}};
 
   std::vector<flatbuffers::Offset<Buffer>> buffers{{
       CreateBuffer(builder, builder.CreateVector({})),
@@ -272,7 +275,8 @@ std::vector<char> QuantizedAddTester::CreateTfLiteModel() const {
                            builder.GetBufferPointer() + builder.GetSize());
 }
 
-int32_t QuantizedAddTester::ComputeSize(const std::vector<int32_t>& shape) {
+int32_t QuantizedBinaryElementwiseTester::ComputeSize(
+    const std::vector<int32_t>& shape) {
   return std::accumulate(shape.cbegin(), shape.cend(), 1,
                          std::multiplies<int32_t>());
 }

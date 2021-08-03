@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(SignedQuantizedAdd, 4DBy4D) {
+TEST(SignedQuantizedMul, 4DBy4D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -50,453 +50,10 @@ TEST(SignedQuantizedAdd, 4DBy4D) {
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DBy4DBroadcastChannels) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({1, 1, 1, channels})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({1, 1, 1, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DBy4DBroadcastWidth) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({1, 1, width, 1})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({1, 1, width, 1})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DBy4DBroadcastHeight) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({1, height, 1, 1})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({1, height, 1, 1})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DBy4DBroadcastBatch) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, 1, 1, 1})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({batch, 1, 1, 1})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DBy4DBroadcastHeightWidthChannels) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({1, height, width, channels})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({1, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DBy3D) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({height, width, channels})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DBy2D) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({width, channels})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DBy1D) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({channels})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DBy0D) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({})
-      .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 2DBy2D) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, channels})
-      .Input2Shape({batch, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 2DBy1D) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({channels})
-      .Input2Shape({batch, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, channels})
-      .Input2Shape({channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 2DBy0D) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({})
-      .Input2Shape({batch, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, channels})
-      .Input2Shape({})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DByStatic4D) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto shape_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
-  const auto batch = shape_rng();
-  const auto height = shape_rng();
-  const auto width = shape_rng();
-  const auto channels = shape_rng();
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({batch, height, width, channels})
-      .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-
-  QuantizedBinaryElementwiseTester()
-      .Input1ZeroPoint(zero_point_rng())
-      .Input2ZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .Input1Shape({batch, height, width, channels})
-      .Input2Shape({batch, height, width, channels})
-      .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
-}
-
-TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastChannels) {
+TEST(SignedQuantizedMul, 4DBy4DBroadcastChannels) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -520,8 +77,451 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastChannels) {
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({1, 1, 1, channels})
       .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({1, 1, 1, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DBy4DBroadcastWidth) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({1, 1, width, 1})
+      .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({1, 1, width, 1})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DBy4DBroadcastHeight) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({1, height, 1, 1})
+      .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({1, height, 1, 1})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DBy4DBroadcastBatch) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, 1, 1, 1})
+      .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, 1, 1, 1})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DBy4DBroadcastHeightWidthChannels) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({1, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({1, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DBy3D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DBy2D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DBy1D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({channels})
+      .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DBy0D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({})
+      .Input2Shape({batch, height, width, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 2DBy2D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, channels})
+      .Input2Shape({batch, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 2DBy1D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({channels})
+      .Input2Shape({batch, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, channels})
+      .Input2Shape({channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 2DBy0D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({})
+      .Input2Shape({batch, channels})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, channels})
+      .Input2Shape({})
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DByStatic4D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Input2Static(true)
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedMul, 4DByStatic4DBroadcastChannels) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  QuantizedBinaryElementwiseTester()
+      .Input1ZeroPoint(zero_point_rng())
+      .Input2ZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .Input1Shape({1, 1, 1, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Input1Static(true)
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -530,10 +530,10 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastChannels) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, 1, 1, channels})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastWidth) {
+TEST(SignedQuantizedMul, 4DByStatic4DBroadcastWidth) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -558,7 +558,7 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastWidth) {
       .Input1Shape({1, 1, width, 1})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -567,10 +567,10 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastWidth) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, 1, width, 1})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeight) {
+TEST(SignedQuantizedMul, 4DByStatic4DBroadcastHeight) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -595,7 +595,7 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeight) {
       .Input1Shape({1, height, 1, 1})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -604,10 +604,10 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeight) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, height, 1, 1})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastBatch) {
+TEST(SignedQuantizedMul, 4DByStatic4DBroadcastBatch) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -632,7 +632,7 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastBatch) {
       .Input1Shape({batch, 1, 1, 1})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -641,10 +641,10 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastBatch) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, 1, 1, 1})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeightWidthChannels) {
+TEST(SignedQuantizedMul, 4DByStatic4DBroadcastHeightWidthChannels) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -669,7 +669,7 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeightWidthChannels) {
       .Input1Shape({1, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -678,10 +678,10 @@ TEST(SignedQuantizedAdd, 4DByStatic4DBroadcastHeightWidthChannels) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({1, height, width, channels})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DByStatic3D) {
+TEST(SignedQuantizedMul, 4DByStatic3D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -706,7 +706,7 @@ TEST(SignedQuantizedAdd, 4DByStatic3D) {
       .Input1Shape({height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -715,10 +715,10 @@ TEST(SignedQuantizedAdd, 4DByStatic3D) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({height, width, channels})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DByStatic2D) {
+TEST(SignedQuantizedMul, 4DByStatic2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -743,7 +743,7 @@ TEST(SignedQuantizedAdd, 4DByStatic2D) {
       .Input1Shape({width, channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -752,10 +752,10 @@ TEST(SignedQuantizedAdd, 4DByStatic2D) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({width, channels})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DByStatic1D) {
+TEST(SignedQuantizedMul, 4DByStatic1D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -780,7 +780,7 @@ TEST(SignedQuantizedAdd, 4DByStatic1D) {
       .Input1Shape({channels})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -789,10 +789,10 @@ TEST(SignedQuantizedAdd, 4DByStatic1D) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({channels})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 4DByStatic0D) {
+TEST(SignedQuantizedMul, 4DByStatic0D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -817,7 +817,7 @@ TEST(SignedQuantizedAdd, 4DByStatic0D) {
       .Input1Shape({})
       .Input2Shape({batch, height, width, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -826,10 +826,10 @@ TEST(SignedQuantizedAdd, 4DByStatic0D) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 2DByStatic2D) {
+TEST(SignedQuantizedMul, 2DByStatic2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -852,7 +852,7 @@ TEST(SignedQuantizedAdd, 2DByStatic2D) {
       .Input1Shape({batch, channels})
       .Input2Shape({batch, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -861,10 +861,10 @@ TEST(SignedQuantizedAdd, 2DByStatic2D) {
       .Input1Shape({batch, channels})
       .Input2Shape({batch, channels})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 2DByStatic1D) {
+TEST(SignedQuantizedMul, 2DByStatic1D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -887,7 +887,7 @@ TEST(SignedQuantizedAdd, 2DByStatic1D) {
       .Input1Shape({channels})
       .Input2Shape({batch, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -896,10 +896,10 @@ TEST(SignedQuantizedAdd, 2DByStatic1D) {
       .Input1Shape({batch, channels})
       .Input2Shape({channels})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, 2DByStatic0D) {
+TEST(SignedQuantizedMul, 2DByStatic0D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -922,7 +922,7 @@ TEST(SignedQuantizedAdd, 2DByStatic0D) {
       .Input1Shape({})
       .Input2Shape({batch, channels})
       .Input1Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 
   QuantizedBinaryElementwiseTester()
       .Input1ZeroPoint(zero_point_rng())
@@ -931,10 +931,10 @@ TEST(SignedQuantizedAdd, 2DByStatic0D) {
       .Input1Shape({batch, channels})
       .Input2Shape({})
       .Input2Static(true)
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, ReluActivation) {
+TEST(SignedQuantizedMul, ReluActivation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -966,10 +966,10 @@ TEST(SignedQuantizedAdd, ReluActivation) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .ReluActivation()
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, Relu6Activation) {
+TEST(SignedQuantizedMul, Relu6Activation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -1001,10 +1001,10 @@ TEST(SignedQuantizedAdd, Relu6Activation) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .Relu6Activation()
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, ReluMinus1To1Activation) {
+TEST(SignedQuantizedMul, ReluMinus1To1Activation) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -1029,10 +1029,10 @@ TEST(SignedQuantizedAdd, ReluMinus1To1Activation) {
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
       .ReluMinus1To1Activation()
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedAdd, MultiThreading) {
+TEST(SignedQuantizedMul, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
@@ -1059,7 +1059,7 @@ TEST(SignedQuantizedAdd, MultiThreading) {
       .OutputZeroPoint(zero_point_rng())
       .Input1Shape({batch, height, width, channels})
       .Input2Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_ADD, xnnpack_delegate.get());
+      .Test(BuiltinOperator_MUL, xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

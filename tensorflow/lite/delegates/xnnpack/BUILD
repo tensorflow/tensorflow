@@ -255,10 +255,10 @@ cc_library(
 )
 
 cc_library(
-    name = "quantized_add_tester",
+    name = "quantized_binary_elementwise_tester",
     testonly = 1,
-    srcs = ["quantized_add_tester.cc"],
-    hdrs = ["quantized_add_tester.h"],
+    srcs = ["quantized_binary_elementwise_tester.cc"],
+    hdrs = ["quantized_binary_elementwise_tester.h"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -909,7 +909,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
-        ":quantized_add_tester",
+        ":quantized_binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -955,6 +955,21 @@ cc_test(
     }),
     deps = [
         ":quantized_fully_connected_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_mul_test",
+    srcs = ["signed_quantized_mul_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1044,7 +1059,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
-        ":quantized_add_tester",
+        ":quantized_binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1090,6 +1105,21 @@ cc_test(
     }),
     deps = [
         ":quantized_fully_connected_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_mul_test",
+    srcs = ["unsigned_quantized_mul_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
