@@ -152,19 +152,12 @@ std::array<int64, 3> GetReductionTiling(
     se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
-    if (reduction_dimensions.dimensions[1] == 1) {
-      CHECK_EQ(reduction_dimensions.dimensions[0], 1);
-      return {tile_z, 1, 16};
-    }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
-        0) {
-      return {tile_z, 1, 64};
-    }
-    int unroll_x = 8;
-    if (cuda_compute_capability.major >= 6 && smallest_input_dtype_bits == 16) {
-      unroll_x = 16;
-    } else if (cuda_compute_capability.major >= 6 &&
-               smallest_input_dtype_bits == 8) {
+    int unroll_x = 16;
+    if ((cuda_compute_capability.IsAtLeast(
+             se::CudaComputeCapability::PASCAL_) &&
+         smallest_input_dtype_bits == 8) ||
+        reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+            0) {
       unroll_x = 64;
     }
     return {tile_z, 1, unroll_x};

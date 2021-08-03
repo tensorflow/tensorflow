@@ -559,7 +559,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   if (RequireDeterminism(hlo_module->config()) ||
       hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+        stream_exec->GetDeviceDescription().cuda_compute_capability());
   }
 
   // GemmRewriter assumes that all transposes are folded into gemms, but,
