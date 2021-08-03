@@ -4,12 +4,21 @@
 
 ## Breaking Changes
 
+* `tf.keras`:
+  * The methods `Model.fit()`, `Model.predict()`, and `Model.evaluate()` will
+    no longer uprank input data of shape `(batch_size,)`
+    to become `(batch_size, 1)`. This enables `Model` subclasses to process
+    scalar data in their `train_step()`/`test_step()`/`predict_step()` methods.
+    Note that this change may break certain subclassed models.
+    You can revert back to the previous behavior by adding upranking yourself
+    in the `train_step()`/`test_step()`/`predict_step()` methods, e.g.
+    `if x.shape.rank == 1: x = tf.expand_dims(x, axis=-1)`.
+    Functional models as well as Sequential models built with an explicit
+    input shape are not affected.
+
 * `tf.lite`:
   * Rename fields `SignatureDef` table in schema to maximize the parity with
     TF SavedModel's Signature concept.
-
-*<DOCUMENT BREAKING CHANGES HERE>
-*<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
 * TF Core:
     *   `tf.Graph.get_name_scope()` now always returns a string, as documented.
