@@ -1838,8 +1838,7 @@ class MklPrimitiveFactory {
   static inline bool IsPrimitiveMemOptEnabled() {
     static const bool is_primitive_mem_opt_enabled = [] {
       bool value = true;
-      TF_CHECK_OK(
-          ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true, &value));
+      ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true, &value);
       return value;
     }();
     return is_primitive_mem_opt_enabled;
