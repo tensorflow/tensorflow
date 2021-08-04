@@ -3026,7 +3026,7 @@ ENTRY TestComputation {
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
   CopyInsertion copy_insertion(nullptr,
-                               /*use_region_based_live_range_analysis=*/-1);
+                               /*use_region_based_live_range_analysis=*/true);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
   // The copy.1 must be kept due to modification in the other branch.
@@ -3075,7 +3075,7 @@ ENTRY TestComputation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   CopyInsertion copy_insertion(nullptr,
-                               /*use_region_based_live_range_analysis=*/-1);
+                               /*use_region_based_live_range_analysis=*/true);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   // The copy.1 must be kept due to modification in the other branch.
   auto conditional18 = FindInstruction(module.get(), "conditional.18");
@@ -3120,7 +3120,7 @@ ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2], p
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
   CopyInsertion copy_insertion(nullptr,
-                               /*use_region_based_live_range_analysis=*/-1);
+                               /*use_region_based_live_range_analysis=*/true);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
   // The copy.1 must be kept b/c aliasing of parameter and root is not allowed.
@@ -3165,7 +3165,7 @@ ENTRY TestComputation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   CopyInsertion copy_insertion(nullptr,
-                               /*use_region_based_live_range_analysis=*/-1);
+                               /*use_region_based_live_range_analysis=*/true);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString() << "\n";
 
@@ -3218,7 +3218,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   CopyInsertion copy_insertion(nullptr,
-                               /*use_region_based_live_range_analysis=*/-1);
+                               /*use_region_based_live_range_analysis=*/true);
   SequentialHloOrdering ordering(module->schedule());
   ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(&ordering, module.get()));
   auto while_1 = FindInstruction(module.get(), "while.1");

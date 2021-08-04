@@ -46,7 +46,6 @@ namespace xla {
 class CopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
-  static constexpr int64_t kUseRegionAnalysisLimit = 0;
 
   // backend specific function that decides whether an instruction
   // can share buffer with its operand.
@@ -55,7 +54,7 @@ class CopyInsertion : public HloModulePass {
   // buffer.
   explicit CopyInsertion(
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr,
-      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
+      bool use_region_based_live_range_analysis = false)
       : can_share_buffer_(can_share_buffer),
         use_region_based_live_range_analysis_(
             use_region_based_live_range_analysis) {}
@@ -102,7 +101,7 @@ class CopyInsertion : public HloModulePass {
   // TODO(b/189898980): the region based live range analysis currently
   // does not enforce a strict ordering of the merged live ranges. This may
   // cause problems for parallel workloads (e.g., in SPMD).
-  int64_t use_region_based_live_range_analysis_;
+  bool use_region_based_live_range_analysis_;
 };
 
 }  // namespace xla
