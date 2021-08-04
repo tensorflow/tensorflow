@@ -78,6 +78,14 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 // for any benchmarks.
 template <typename Parameters, typename Config>
 class AutotuneMap {
+ private:
+  // Retrieves the hash code of Parameters class.
+  struct Hasher {
+    std::size_t operator()(const Parameters& parameter) const {
+      return parameter.hash();
+    }
+  };
+
  public:
   bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
@@ -145,7 +153,28 @@ class AutotuneMap {
     autotune_global_count_++;
   }
 
+  std::unordered_map<Parameters, Config, Hasher> GetMap() const {
+    mutex_lock lock(mu_);
+    std::unordered_map<Parameters, Config, Hasher> map;
+    for (const auto& entry : params_config_map_) {
+      map.insert(std::make_pair(entry.first, entry.second.config));
+    }
+    return map;
+  }
+
+  // Only for testing
+  void ClearMap() {
+    mutex_lock lock(mu_);
+    params_config_map_.clear();
+  }
+
  private:
+  // Underlying data structure of values in the map.
+  struct ValueType {
+    Config config;
+    int32 score;
+    int32 count;
+  };
   AutotuneMap(const std::string& name) : name_(name) {
     min_score_threshold_ = 1;
     int min_warmup_iterations = 10;
@@ -169,12 +198,6 @@ class AutotuneMap {
   template <class Group, class Params, class Cfg>
   friend class AutotuneSingleton;
 
-  struct Hasher {
-    std::size_t operator()(const Parameters& parameter) const {
-      return parameter.hash();
-    }
-  };
-
   std::string GetActionSummary(StringPiece action, const Parameters& params,
                                const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
@@ -183,11 +206,7 @@ class AutotuneMap {
   }
 
   mutable mutex mu_;
-  struct ValueType {
-    Config config;
-    int32 score;
-    int32 count;
-  };
+
   std::unordered_map<Parameters, ValueType, Hasher> params_config_map_
       TF_GUARDED_BY(mu_);
   std::string name_;
