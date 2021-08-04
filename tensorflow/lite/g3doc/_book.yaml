@@ -103,6 +103,9 @@ upper_tabs:
       - heading: "Run Inference"
       - title: "Overview"
         path: /lite/guide/inference
+      - title: "Signatures"
+        path: /lite/guide/signatures
+        status: nightly
       - title: "Operator compatibility"
         path: /lite/guide/ops_compatibility
       - title: "Select operators"
