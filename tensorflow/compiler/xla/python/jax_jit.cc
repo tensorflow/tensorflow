@@ -71,44 +71,8 @@ namespace py = pybind11;
 
 namespace {
 
-// Flags, such as JIT disable and the x64 mode, are controlled by:
-// - a global flag value, e.g., associated to --jax_enable_x64
-// - possibly a thread-local value, which initially is absl::nullopt and
-//   overrides the global value if set. The thread-local state is
-//   used to implement context managers that locally override the global state.
-// TODO(phawkins): consider changing the global state to optional types to
-// catch cases where we fail to set it.
-struct GlobalJitState {
-  bool disable_jit = false;
-  bool enable_x64 = false;
-
-  // Extra context that should be included in the JIT cache key. Must be
-  // hashable and have an equality defined.
-  py::object extra_jit_context = py::none();
-
-  // A callback that, if present, is called when a JITted function is executed
-  // from cache.
-  absl::optional<py::function> post_hook;
-};
-
 // Protected by the GIL.
 GlobalJitState& global_state = *new GlobalJitState();
-
-struct ThreadLocalJitState {
-  ~ThreadLocalJitState() {
-    if (extra_jit_context) {
-      // We likely do not hold the GIL, so we hand the Python object to the
-      // global reference manager to destroy.
-      py::object o = std::move(*extra_jit_context);
-      xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&o, 1));
-      extra_jit_context = absl::nullopt;
-    }
-  }
-  absl::optional<bool> disable_jit;
-  absl::optional<bool> enable_x64;
-  absl::optional<py::object> extra_jit_context;
-  absl::optional<py::function> post_hook;
-};
 
 // TODO(phawkins): Google style guide forbids thread-local values with
 // non-trivial destructors.
@@ -119,6 +83,9 @@ bool JitIsDisabled() {
 }
 
 }  // namespace
+
+GlobalJitState& GetGlobalState() { return global_state; }
+ThreadLocalJitState& GetLocalState() { return thread_local_state; }
 
 bool GetEnableX64() {
   return thread_local_state.enable_x64.value_or(global_state.enable_x64);
