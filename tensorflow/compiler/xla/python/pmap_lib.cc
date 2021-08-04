@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/notification.h"
@@ -286,7 +287,7 @@ void BuildPmapSubmodule(pybind11::module& m) {
              return py::isinstance<NoSharding>(obj);
            })
       .def("__hash__", [](const NoSharding& self) {
-        const size_t hash = absl::HashOf(self);
+        const size_t hash = absl::Hash<NoSharding>()(self);
         return py::int_(hash);
       });
 
@@ -358,7 +359,7 @@ void BuildPmapSubmodule(pybind11::module& m) {
       .def("__eq__", [](const ShardingSpec& self,
                         const ShardingSpec& other) { return self == other; })
       .def("__hash__", [](const ShardingSpec& self) {
-        const size_t hash = absl::HashOf(self);
+        const size_t hash = absl::Hash<ShardingSpec>()(self);
         return py::int_(hash);
       });
 
