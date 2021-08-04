@@ -1459,6 +1459,7 @@ distribute_py_test(
 distribute_py_test(
     name = "custom_training_loop_input_test",
     srcs = ["custom_training_loop_input_test.py"],
+    disable_tfrt = False,
     main = "custom_training_loop_input_test.py",
     shard_count = 5,
     tags = [
