@@ -384,6 +384,7 @@ py_library(
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
+        "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",

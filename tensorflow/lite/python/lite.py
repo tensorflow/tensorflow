@@ -39,6 +39,7 @@ from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import deduplicate_readonly_buffers as _deduplicate_readonly_buffers
 from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import mlir_sparsify as _mlir_sparsify
 from tensorflow.lite.python.convert import OpsSet
@@ -709,6 +710,7 @@ class TFLiteConverterBase(object):
     if self._sparsify_model():
       model = _mlir_sparsify(model)
 
+    model = _deduplicate_readonly_buffers(model)
     return model
 
   def _convert_and_export_metrics(self, convert_func, *args, **kwargs):

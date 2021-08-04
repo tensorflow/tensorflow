@@ -40,6 +40,7 @@ from tensorflow.lite.python.metrics_wrapper import metrics_wrapper as _metrics_w
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader as _resource_loader
@@ -861,3 +862,122 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   enable_mlir_converter = kwargs.get("enable_mlir_converter", False)
   return toco_convert_impl(input_data, input_tensors, output_tensors,
                            enable_mlir_converter, *args, **kwargs)
+
+
+def deduplicate_readonly_buffers(tflite_model):
+  """"Generates a new model byte array after deduplicating readonly buffers.
+
+  This function should be invoked after the model optimization toolkit. The
+  model optimization toolkit assumes that each tensor object owns its each
+  buffer separately.
+
+  Args:
+    tflite_model: TFLite flatbuffer in a byte array to be deduplicated.
+
+  Returns:
+    TFLite flatbuffer in a bytes array, processed with the deduplication method.
+
+  """
+  # Load TFLite Flatbuffer byte array into an object.
+  model = flatbuffer_utils.convert_bytearray_to_object(tflite_model)
+
+  # Get all the read-only buffers, which can be modified without causing any
+  # issue in the graph invocation stage.
+  read_only_buffer_indices = set()
+  for subgraph in model.subgraphs:
+    # To get all the read-only buffers:
+    # (1) Get all read-only input tensors.
+    # (2) Discard intermediate or output tensors.
+    # (3) Discard the subgraph's input/output tensors.
+    # (4) Gather the buffers of the read-only input tensors.
+
+    # (1) Get read-only input tensors.
+    read_only_input_tensor_indices = set()
+    for op in subgraph.operators:
+      if op.inputs is None:
+        continue
+      for i, input_tensor_idx in enumerate(op.inputs):
+        # Ignore mutable tensors.
+        if op.mutatingVariableInputs is not None:
+          # Ignore invalid tensors.
+          if (i < len(op.mutatingVariableInputs) and
+              op.mutatingVariableInputs[i]):
+            continue
+        # Ignore variable tensors.
+        if subgraph.tensors[input_tensor_idx].isVariable:
+          continue
+        read_only_input_tensor_indices.add(input_tensor_idx)
+
+    # (2) Discard intermediate or output tensors.
+    for op in subgraph.operators:
+      if op.outputs is not None:
+        for output_tensor_idx in op.outputs:
+          read_only_input_tensor_indices.discard(output_tensor_idx)
+      if op.intermediates is not None:
+        for intermediate_tensor_idx in op.intermediates:
+          read_only_input_tensor_indices.discard(intermediate_tensor_idx)
+
+    # (3) Discard the subgraph's input and output tensors.
+    if subgraph.inputs is not None:
+      for input_tensor_idx in subgraph.inputs:
+        read_only_input_tensor_indices.discard(input_tensor_idx)
+    if subgraph.outputs is not None:
+      for output_tensor_idx in subgraph.outputs:
+        read_only_input_tensor_indices.discard(output_tensor_idx)
+
+    # (4) Gather the buffers of the read-only input tensors.
+    for tensor_idx in read_only_input_tensor_indices:
+      read_only_buffer_indices.add(subgraph.tensors[tensor_idx].buffer)
+
+  # Ignore invalid negative index or zero-sized buffers.
+  for buffer_idx in read_only_buffer_indices.copy():
+    if (buffer_idx < 0 or (model.buffers[buffer_idx].data is None or
+                           isinstance(model.buffers[buffer_idx].data, list) or
+                           model.buffers[buffer_idx].data.size == 0)):
+      read_only_buffer_indices.discard(buffer_idx)
+
+  # Sort by buffer size.
+  read_only_buffer_indices = list(read_only_buffer_indices)
+  sorted(
+      read_only_buffer_indices,
+      key=lambda idx: model.buffers[idx].data.data.tobytes())
+
+  # Create a map of duplicate buffers (same size and same type).
+  # eg: In [1, 2, 3, 4, 5, 6] if (1, 4, 6) and (2, 5) are each, groups of buffer
+  # indices of the same size and type, then the map would be {4:1, 6:1, 5:2}
+  duplicate_buffer_map = {}
+  for i, buffer_i_idx in enumerate(read_only_buffer_indices):
+    # This buffer is a duplicate.
+    if buffer_i_idx in duplicate_buffer_map:
+      continue
+    # This buffer is unique. Scan rest of the list to find duplicates
+    # of this buffer and mark them accordingly.
+    buffer_i = model.buffers[buffer_i_idx]
+    for buffer_j_idx in read_only_buffer_indices[i + 1:]:
+      if buffer_j_idx in duplicate_buffer_map:
+        continue
+      buffer_j = model.buffers[buffer_j_idx]
+      if buffer_i.data.size != buffer_j.data.size:
+        break
+      if buffer_i.data.data != buffer_j.data.data:
+        continue
+      # Found duplicate. Nullify j-th buffer and use i-th buffer instead.
+      duplicate_buffer_map[buffer_j_idx] = buffer_i_idx
+
+  # Make the duplicated tensors use the single shared buffer index.
+  for subgraph in model.subgraphs:
+    for op in subgraph.operators:
+      if op.inputs is None:
+        continue
+      for input_tensor in op.inputs:
+        buffer_idx = subgraph.tensors[input_tensor].buffer
+        if buffer_idx in duplicate_buffer_map:
+          subgraph.tensors[input_tensor].buffer = (
+              duplicate_buffer_map[buffer_idx])
+
+  # Nullify the unused buffers.
+  for idx in duplicate_buffer_map:
+    model.buffers[idx].data = None
+
+  # Return a TFLite flatbuffer as a byte array.
+  return flatbuffer_utils.convert_object_to_bytearray(model)
