@@ -308,11 +308,6 @@ class LayoutAssignment : public HloModulePass {
   // entry_computation_layout is modified to populate a layout for the result in
   // the case that no particular layout is requested.
   //
-  // instruction_can_change_layout_func is a function object that determines
-  // whether an instruction can change layouts. An instruction not being able to
-  // change layout means that it requires operands with the same rank as the
-  // output to have the same layout as the output.
-  //
   // channel_constraints is both an input and output. Any sends or recvs that
   // are present in channel_constraints will be laid out as constrained. Any
   // unconstrained sends or recvs will be laid out as locally optimal and their
@@ -322,8 +317,6 @@ class LayoutAssignment : public HloModulePass {
   // within any module passed to `Run`.
   explicit LayoutAssignment(
       ComputationLayout* entry_computation_layout,
-      std::function<bool(const HloInstruction*)>
-          instruction_can_change_layout_func = InstructionCanChangeLayout,
       ChannelLayoutConstraints* channel_constraints = nullptr,
       bool reverse_computation_order = false);
   ~LayoutAssignment() override {}
@@ -399,6 +392,11 @@ class LayoutAssignment : public HloModulePass {
   virtual std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
       const Layout& operand_layout, const HloInstruction* user,
       int64_t operand_no);
+
+  // Convenient wrapper for InstructionCanChangeLayout which can be overridden
+  // in subclasses.
+  virtual bool InstructionCanChangeLayoutInstance(
+      const HloInstruction* instruction);
 
  private:
   // Initializes the layout assignment object for a new Run() call.
