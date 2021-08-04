@@ -346,16 +346,16 @@ void BuildPmapSubmodule(pybind11::module& m) {
   sharding_spec
       .def(py::init<py::iterable, py::iterable>(), py::arg("sharding"),
            py::arg("mesh_mapping"))
-      .def_property_readonly("sharding",
-                             [](const ShardingSpec& self) {
-                               return xla::VectorSpanToTuple(
-                                   absl::MakeConstSpan(self.GetSharding()));
-                             })
-      .def_property_readonly("mesh_mapping",
-                             [](const ShardingSpec& self) {
-                               return xla::VectorSpanToTuple(
-                                   absl::MakeSpan(self.GetMeshMapping()));
-                             })
+      .def_property_readonly(
+          "sharding",
+          [](const ShardingSpec& self) {
+            return xla::SpanToTuple(absl::MakeConstSpan(self.GetSharding()));
+          })
+      .def_property_readonly(
+          "mesh_mapping",
+          [](const ShardingSpec& self) {
+            return xla::SpanToTuple(absl::MakeConstSpan(self.GetMeshMapping()));
+          })
       .def("__eq__", [](const ShardingSpec& self,
                         const ShardingSpec& other) { return self == other; })
       .def("__hash__", [](const ShardingSpec& self) {

@@ -155,9 +155,9 @@ class ShardingSpec {
         mesh_mapping_(std::move(mesh_mapping)) {}
   ShardingSpec(pybind11::iterable py_sharding,
                pybind11::iterable py_mesh_mapping)
-      : sharding_(xla::SequenceToVector<AvalDimSharding>(py_sharding)),
+      : sharding_(xla::IterableToVector<AvalDimSharding>(py_sharding)),
         mesh_mapping_(
-            xla::SequenceToVector<MeshDimAssignment>(py_mesh_mapping)) {}
+            xla::IterableToVector<MeshDimAssignment>(py_mesh_mapping)) {}
 
   const std::vector<AvalDimSharding>& GetSharding() const { return sharding_; }
   const std::vector<MeshDimAssignment>& GetMeshMapping() const {

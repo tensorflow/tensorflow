@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
@@ -1290,10 +1291,11 @@ void BuildJaxjitSubmodule(py::module& m) {
                              [](const xla::PyArgSignature& sig) {
                                return PrimitiveTypeToDtype(sig.dtype);
                              })
-      .def_property_readonly("shape",
-                             [](const xla::PyArgSignature& sig) {
-                               return xla::IntSpanToTuple(sig.shape);
-                             })
+      .def_property_readonly(
+          "shape",
+          [](const xla::PyArgSignature& sig) {
+            return xla::SpanToTuple(absl::MakeConstSpan(sig.shape));
+          })
       .def_readonly("weak_type", &xla::PyArgSignature::weak_type);
   jitlib.def("_ArgSignatureOfValue", &xla::PyArgSignatureOfValue);
 

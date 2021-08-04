@@ -196,9 +196,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
              absl::optional<py::object> layout_seq,
              absl::optional<std::vector<bool>> dynamic_dimensions)
               -> StatusOr<Shape> {
-            std::vector<int64> dims = IntSequenceToVector(dims_seq);
+            std::vector<int64> dims = SequenceToVector<int64>(dims_seq);
             if (layout_seq) {
-              std::vector<int64> layout = IntSequenceToVector(*layout_seq);
+              std::vector<int64> layout = SequenceToVector<int64>(*layout_seq);
               return MakeShapeWithLayout(type, dims, layout,
                                          dynamic_dimensions);
             } else {
@@ -216,9 +216,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
              absl::optional<std::vector<bool>> dynamic_dimensions)
               -> StatusOr<Shape> {
             PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
-            std::vector<int64> dims = IntSequenceToVector(dims_seq);
+            std::vector<int64> dims = SequenceToVector<int64>(dims_seq);
             if (layout_seq) {
-              std::vector<int64> layout = IntSequenceToVector(*layout_seq);
+              std::vector<int64> layout = SequenceToVector<int64>(*layout_seq);
               return MakeShapeWithLayout(type, dims, layout,
                                          dynamic_dimensions);
             } else {
@@ -245,7 +245,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           "Constructs a scalar shape.", py::arg("type"))
       .def("dimensions",
            [](const Shape& shape) -> py::tuple {
-             return IntSpanToTuple(shape.dimensions());
+             return SpanToTuple(shape.dimensions());
            })
       .def("xla_element_type", &Shape::element_type)
       .def("element_type",
