@@ -151,11 +151,18 @@ void RestoreTensor(OpKernelContext* context,
         context, size == 1,
         errors::InvalidArgument(
             "Input 0 (file_pattern) must be a string scalar; got a tensor of ",
-            size, "elements"));
+            size, " elements"));
   }
   const string& file_pattern = file_pattern_t.flat<tstring>()(0);
 
   const Tensor& tensor_name_t = context->input(1);
+  {
+    const int64_t size = tensor_name_t.NumElements();
+    OP_REQUIRES(context, size > restore_index,
+                errors::InvalidArgument(
+                    "Input 1 (file_pattern) must be a have at least ",
+                    restore_index + 1, " elements"));
+  }
   const string& tensor_name = tensor_name_t.flat<tstring>()(restore_index);
 
   // If we cannot find a cached reader we will allocate our own.
