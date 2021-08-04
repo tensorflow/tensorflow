@@ -160,26 +160,25 @@ PmapCacheEntry* PmapFunction::AddCacheEntry(const py::args& args,
     return cache_entry;
   }
 
-  py::dict pmap_data = py::cast<py::dict>(tuple[1]);
-  if (py::cast<int>(pmap_data["version"]) != 1) {
+  py::tuple pmap_data = py::cast<py::tuple>(tuple[1]);
+  if (py::cast<int>(pmap_data.attr("version")) != 1) {
     throw std::runtime_error(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (pmap cpp version 1 "
         "expected, but got ",
-        py::cast<int>(pmap_data["version"]),
+        py::cast<int>(pmap_data.attr("version")),
         "Upgrade jaxlib and jax. Provided data was:",
         py::cast<std::string>(py::str(py::repr(pmap_data)))));
   }
-  // { "version": 1,
-  //   "xla_executable": xla_executable,
-  //   "in_handler": in_handler,
-  //   "out_handler": out_handler,
-  //   "out_pytree_def": out_pytree_def }
-  auto executable =
-      py::cast<std::shared_ptr<xla::PyExecutable>>(pmap_data["xla_executable"]);
+  // See api.py::_PmapFastpathData in the JAX code base for the expected
+  // namedtuple.
+  auto executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+      pmap_data.attr("xla_executable"));
   cache_entry->executable = std::move(executable);
-  cache_entry->handle_args = py::cast<py::function>(pmap_data["in_handler"]);
-  cache_entry->out_handler = py::cast<py::function>(pmap_data["out_handler"]);
-  auto out_tree = py::cast<xla::PyTreeDef>(pmap_data["out_pytree_def"]);
+  cache_entry->handle_args =
+      py::cast<py::function>(pmap_data.attr("in_handler"));
+  cache_entry->out_handler =
+      py::cast<py::function>(pmap_data.attr("out_handler"));
+  auto out_tree = py::cast<xla::PyTreeDef>(pmap_data.attr("out_pytree_def"));
   cache_entry->out_pytree_def = std::move(out_tree);
 
   cache_entry->compilation_complete.Notify();
