@@ -31,6 +31,9 @@
     *   `tensorflow/core/ir/` contains a new MLIR-based Graph dialect that is
         isomorphic to GraphDef and will be used to replace GraphDef-based (e.g.,
         Grappler) optimizations.
+    *   Deprecated and removed attrs() function in shape inference. All
+        attributes should be queried by name now (rather than range returned)
+        to enable changing the underlying storage there.
 
 ## Known Caveats
 
