@@ -742,6 +742,13 @@ XLA_TEST_F(ScalarComputationsTest, PowScalar) {
   ComputeAndCompareR0<float>(&builder, 8.0, {}, error_spec_);
 }
 
+XLA_TEST_F(ScalarComputationsTest, CbrtScalar) {
+  XlaBuilder builder(TestName());
+  Cbrt(ConstantR0<float>(&builder, 2.0f));
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
 XLA_TEST_F(ScalarComputationsTest, ClampScalarHighS32) {
   XlaBuilder builder(TestName());
   Clamp(ConstantR0<int32>(&builder, -1),  // The lower bound.
