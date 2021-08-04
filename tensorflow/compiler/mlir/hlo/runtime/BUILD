@@ -63,6 +63,7 @@ cc_library(
     ],
     includes = ["."],
     deps = [
+        ":ral_base",
         ":ral_logging",
     ],
     alwayslink = 1,

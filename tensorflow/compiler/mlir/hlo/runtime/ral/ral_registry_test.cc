@@ -157,10 +157,10 @@ TEST(FunctionWrapperTest, PODTest) {
 
   // test int64_t return
   ret_i64 = 0;
-  apply(func_i64, -1 << 33, &ret_i64);
-  EXPECT_EQ(ret_i64, -1 << 33);
-  apply(func_i64, 3 << 33, &ret_i64);
-  EXPECT_EQ(ret_i64, 3 << 33);
+  apply(func_i64, -1 << 30, &ret_i64);
+  EXPECT_EQ(ret_i64, -1 << 30);
+  apply(func_i64, 3 << 30, &ret_i64);
+  EXPECT_EQ(ret_i64, 3 << 30);
 
   // test float return
   ret_f32 = 0;
