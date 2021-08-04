@@ -37,6 +37,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1591,6 +1592,29 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
                                 "contrast_factor must be scalar|"
                                 "Shape must be rank 0 but is rank 1"):
       image_ops.adjust_contrast(x_np, [2.0])
+
+  @test_util.run_gpu_only
+  @test_util.run_all_in_graph_and_eager_modes
+  def testDeterminismUnimplementedExceptionThrowing(self):
+    config.enable_deterministic_ops(True)
+    with self.session(), test_util.force_gpu():
+      input_shape = (1, 2, 2, 1)
+      # AdjustContrastOp seems to now be inaccessible via the Python API.
+      # AdjustContrastOpv2 only suports float16 and float32 on GPU, but the
+      # following types are converted to and from float32 at the Python level
+      # before AdjustContrastOpv2 is called.
+      for dtype in [
+          dtypes.uint8, dtypes.int8, dtypes.int16, dtypes.int32, dtypes.float16,
+          dtypes.float32, dtypes.float64]:
+        input_images = array_ops.zeros(input_shape, dtype=dtype)
+        contrast_factor = 1.
+        with self.assertRaisesRegex(
+            errors.UnimplementedError,
+            'A deterministic GPU implementation of AdjustContrastOpv2 is not' +
+            ' currently available.'):
+          output_images = image_ops.adjust_contrast(
+              input_images, contrast_factor)
+          self.evaluate(output_images)
 
 
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):
