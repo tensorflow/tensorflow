@@ -1,6 +1,10 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite:build_def.bzl",
+    "tflite_copts",
+)
 
 package(
     default_visibility = [
@@ -224,6 +228,7 @@ cc_library(
     srcs = ["operator_property.cc"],
     hdrs = ["operator_property.h"],
     compatible_with = get_compatible_with_cloud(),
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
