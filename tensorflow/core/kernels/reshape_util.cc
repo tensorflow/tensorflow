@@ -174,6 +174,12 @@ void ReshapeSparseTensor(OpKernelContext *context,
                                           TensorShape({nnz, output_rank}),
                                           &result_indices));
   if (nnz > 0) {
+    OP_REQUIRES(
+        context, dense_size > 0 && product > 0,
+        errors::InvalidArgument(
+            "Input tensor has ", nnz, " non zero elements but input shape (",
+            input_shape.DebugString(), ") or output shape (",
+            output_shape.DebugString(), ") is empty"));
     OP_REQUIRES_OK(context, functor::ReshapeSparseTensorFunctor<Device>()(
                                 context, input_shape, output_shape,
                                 input_indices_in.matrix<int64>(),
